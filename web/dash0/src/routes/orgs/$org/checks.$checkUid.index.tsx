@@ -32,11 +32,13 @@ import { useEmailAddressDomain, emailCheckAddress } from "@/api/email-inbox";
 import {
   stretchWhileLive,
   useLiveSubscription,
+  useScopeError,
   useScopeLive,
 } from "@/contexts/LiveEventsContext";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Badge, badgeVariants } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -410,11 +412,22 @@ function CheckDetailPage() {
     [check?.period]
   );
 
+  // Subscribe with the canonical uid from the loaded check, never the raw
+  // route param — `$checkUid` also accepts a slug (the REST fetch above
+  // resolves either via GetCheckByUidOrSlug), but the realtime WS scope is
+  // validated by a uid-only lookup server-side, so a slug is rejected with
+  // NOT_FOUND. Gate the subscription until the check has resolved: passing
+  // `undefined` is a no-op (see useLiveSubscription/useScopeLive), so this
+  // never subscribes with a stale/wrong identifier while loading.
+  const canonicalUid = check?.uid;
+  const checkScope = canonicalUid ? { entity: "check" as const, uid: canonicalUid } : undefined;
+
   // Watch this check (status/results) and the org's incidents collection —
   // an open/resolved incident for this check must reflect live too.
-  useLiveSubscription({ entity: "check", uid: checkUid });
+  useLiveSubscription(checkScope);
   useLiveSubscription({ entity: "incidents" });
-  const checkLive = useScopeLive({ entity: "check", uid: checkUid });
+  const checkLive = useScopeLive(checkScope);
+  const checkLiveError = useScopeError(checkScope);
 
   // While the very first result is still the "created" placeholder, poll
   // fast enough that a freshly-created check shows its first real status
@@ -647,6 +660,26 @@ function CheckDetailPage() {
                   <Loader2 className="h-3 w-3 animate-spin" />
                   {t("checks:detail.pendingFirstRun")}
                 </Badge>
+              )}
+              {checkLiveError && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      variant="warning"
+                      className="shrink-0 gap-1"
+                      data-testid="check-live-error-badge"
+                      aria-live="polite"
+                    >
+                      <AlertTriangle className="h-3 w-3" />
+                      {t("checks:detail.liveUnavailable")}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {t("checks:detail.liveUnavailableTooltip", {
+                      title: checkLiveError.title,
+                    })}
+                  </TooltipContent>
+                </Tooltip>
               )}
             </div>
               {check.slug && !editingSlug && (

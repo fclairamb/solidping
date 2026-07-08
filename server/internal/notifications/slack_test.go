@@ -761,7 +761,9 @@ func (m *mockDBService) ListDistinctLabelValues(
 	return nil, errMockNotImplemented
 }
 
-func (m *mockDBService) GetLastResultForChecks(_ context.Context, _ []string) (map[string]*models.Result, error) {
+func (m *mockDBService) GetLastResultForChecks(
+	_ context.Context, _ string, _ []string,
+) (map[string]*models.Result, error) {
 	panic("not implemented")
 }
 

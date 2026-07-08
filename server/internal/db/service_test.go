@@ -1052,14 +1052,7 @@ func TestPostgresService(t *testing.T) {
 		t.Skip("Skipping PostgreSQL test in short mode")
 	}
 
-	tempDir, err := os.MkdirTemp("", "postgres-test-*")
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		_ = os.RemoveAll(tempDir)
-	})
-
-	svc, err := postgres.NewEmbedded(t.Context(), tempDir, 5435, false, "", false)
+	svc, err := postgres.NewEmbedded(t.Context(), "db-service", 5435, false, "", false)
 	require.NoError(t, err, "Failed to create PostgreSQL service")
 
 	t.Cleanup(func() {

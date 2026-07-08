@@ -42,6 +42,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UptimeStrip, type UptimeBucket } from "@/components/ui/uptime-strip";
 import {
+  getEventChannelName,
+  getEventChannelUid,
   getEventCheckName,
   getEventDescription,
   getEventIcon,
@@ -886,6 +888,14 @@ function RecentActivityList({
             {events.map((event) => {
               const description = getEventDescription(event.eventType, tEvents);
               const checkName = getEventCheckName(event);
+              const channelName =
+                event.eventType ===
+                "org.activation.first_notification_configured"
+                  ? getEventChannelName(event)
+                  : undefined;
+              const channelUid = channelName
+                ? getEventChannelUid(event)
+                : undefined;
               return (
                 <li
                   key={event.uid}
@@ -896,8 +906,17 @@ function RecentActivityList({
                     <div className="truncate">
                       {getEventLabel(event.eventType, tEvents)}
                     </div>
-                    {checkName ? (
-                      <div className="text-xs truncate">
+                    {event.incidentUid || event.checkUid ? (
+                      <div className="text-xs truncate flex items-center gap-1.5">
+                        {event.incidentUid ? (
+                          <Link
+                            to="/orgs/$org/incidents/$incidentUid"
+                            params={{ org, incidentUid: event.incidentUid }}
+                            className="text-primary hover:underline"
+                          >
+                            {tEvents("links.incident")}
+                          </Link>
+                        ) : null}
                         {event.checkUid ? (
                           <Link
                             to="/orgs/$org/checks/$checkUid"
@@ -905,10 +924,29 @@ function RecentActivityList({
                             search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }}
                             className="text-primary hover:underline"
                           >
+                            {checkName ?? tEvents("links.check")}
+                          </Link>
+                        ) : checkName ? (
+                          <span className="text-muted-foreground">
                             {checkName}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : channelName ? (
+                      <div className="text-xs text-muted-foreground truncate">
+                        {tEvents(
+                          "descriptions.first_notification_configured_prefix",
+                        )}{" "}
+                        {channelUid ? (
+                          <Link
+                            to="/orgs/$org/integrations/$integrationUid"
+                            params={{ org, integrationUid: channelUid }}
+                            className="text-primary hover:underline"
+                          >
+                            {channelName}
                           </Link>
                         ) : (
-                          <span className="text-muted-foreground">{checkName}</span>
+                          <span>{channelName}</span>
                         )}
                       </div>
                     ) : description ? (

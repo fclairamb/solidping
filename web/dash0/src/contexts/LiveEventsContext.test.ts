@@ -40,6 +40,9 @@ class FakeConnection {
   resync(): void {
     this.callbacks?.onResync();
   }
+  scopeError(scope: LiveScope, error: { code: string; title: string }): void {
+    this.callbacks?.onScopeError(scope, error);
+  }
   disconnectedByServer(): void {
     this.callbacks?.onDisconnected();
   }
@@ -421,5 +424,111 @@ describe("LiveRegistry scope listeners", () => {
     unsubscribe();
     conn.disconnectedByServer();
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe("LiveRegistry disabled scope (uid not yet known)", () => {
+  // The check-detail page passes `undefined` to useLiveSubscription/useScopeLive
+  // while the check's canonical uid hasn't resolved yet. There is no scope
+  // object at all in that case, so nothing ever reaches addScope — this
+  // documents the contract the hooks rely on: a disabled scope never causes a
+  // subscribe frame, since the hook's effect body simply doesn't call
+  // registry.addScope when passed undefined (see LiveEventsContext.tsx).
+  it("never sends subscribe when no scope is ever registered", () => {
+    const { conn, registry } = setup();
+    registry.start();
+    conn.open();
+
+    // Simulates the gated period: the component mounted but the disabled
+    // scope means useLiveSubscription's effect never calls addScope.
+    expect(conn.sent).toEqual([]);
+    expect(registry.isScopeLive({ entity: "check", uid: "uid-1" })).toBe(false);
+  });
+
+  it("becomes live once the real uid arrives and the scope is registered", () => {
+    const { conn, registry } = setup();
+    registry.start();
+    conn.open();
+
+    // uid resolves (e.g. the check REST fetch completes) — the caller now
+    // registers the real scope.
+    registry.addScope({ entity: "check", uid: "uid-1" });
+    expect(conn.sent).toEqual([{ scope: { entity: "check", uid: "uid-1" }, action: "subscribe" }]);
+
+    conn.subscribed({ entity: "check", uid: "uid-1" });
+    expect(registry.isScopeLive({ entity: "check", uid: "uid-1" })).toBe(true);
+  });
+});
+
+describe("LiveRegistry per-scope error state (useScopeError)", () => {
+  it("onScopeError sets the scope's error and notifies its listeners", () => {
+    const { conn, registry } = setup();
+    registry.start();
+    conn.open();
+    registry.addScope({ entity: "check", uid: "slug-not-uid" });
+
+    const listener = vi.fn();
+    registry.subscribeScope({ entity: "check", uid: "slug-not-uid" }, listener);
+
+    expect(registry.getScopeError({ entity: "check", uid: "slug-not-uid" })).toBeUndefined();
+    conn.scopeError({ entity: "check", uid: "slug-not-uid" }, { code: "NOT_FOUND", title: "Check not found" });
+
+    expect(registry.getScopeError({ entity: "check", uid: "slug-not-uid" })).toEqual({
+      code: "NOT_FOUND",
+      title: "Check not found",
+    });
+    expect(listener).toHaveBeenCalled();
+  });
+
+  it("a later subscribed ack for the same scope clears the error", () => {
+    const { conn, registry } = setup();
+    registry.start();
+    conn.open();
+    registry.addScope({ entity: "check", uid: "uid-1" });
+
+    conn.scopeError({ entity: "check", uid: "uid-1" }, { code: "NOT_FOUND", title: "Check not found" });
+    expect(registry.getScopeError({ entity: "check", uid: "uid-1" })).toBeDefined();
+
+    conn.subscribed({ entity: "check", uid: "uid-1" });
+    expect(registry.getScopeError({ entity: "check", uid: "uid-1" })).toBeUndefined();
+    expect(registry.isScopeLive({ entity: "check", uid: "uid-1" })).toBe(true);
+  });
+
+  it("a reconnect (onOpen replay) clears a stale error from the previous connection", () => {
+    const { conn, registry } = setup();
+    registry.start();
+    conn.open();
+    registry.addScope({ entity: "check", uid: "uid-1" });
+    conn.scopeError({ entity: "check", uid: "uid-1" }, { code: "CONCURRENCY_LIMITED", title: "Subscription limit reached" });
+    expect(registry.getScopeError({ entity: "check", uid: "uid-1" })).toBeDefined();
+
+    conn.disconnectedByServer();
+    expect(registry.getScopeError({ entity: "check", uid: "uid-1" })).toBeUndefined();
+
+    conn.open(); // automatic reconnect, replays the scope
+    expect(registry.getScopeError({ entity: "check", uid: "uid-1" })).toBeUndefined();
+  });
+
+  it("onDisabled clears any stale per-scope error", () => {
+    const { conn, registry } = setup();
+    registry.start();
+    conn.open();
+    registry.addScope({ entity: "check", uid: "uid-1" });
+    conn.scopeError({ entity: "check", uid: "uid-1" }, { code: "INTERNAL_ERROR", title: "Failed to subscribe" });
+
+    conn.disabled();
+    expect(registry.getScopeError({ entity: "check", uid: "uid-1" })).toBeUndefined();
+  });
+
+  it("errors on one scope never leak into another scope's error state", () => {
+    const { conn, registry } = setup();
+    registry.start();
+    conn.open();
+    registry.addScope({ entity: "check", uid: "uid-1" });
+    registry.addScope({ entity: "check", uid: "uid-2" });
+
+    conn.scopeError({ entity: "check", uid: "uid-1" }, { code: "NOT_FOUND", title: "Check not found" });
+    expect(registry.getScopeError({ entity: "check", uid: "uid-1" })).toBeDefined();
+    expect(registry.getScopeError({ entity: "check", uid: "uid-2" })).toBeUndefined();
   });
 });

@@ -1045,6 +1045,11 @@ func (r *CheckWorker) saveResult(ctx context.Context, checkJob *models.CheckJob,
 	lastForStatus := true
 	worker := r.getWorker()
 
+	region := checkJob.Region
+	if region == nil {
+		region = worker.Region
+	}
+
 	result := &models.Result{
 		UID:             resultUID.String(),
 		OrganizationUID: checkJob.OrganizationUID,
@@ -1052,7 +1057,7 @@ func (r *CheckWorker) saveResult(ctx context.Context, checkJob *models.CheckJob,
 		PeriodType:      periodTypeRaw,
 		PeriodStart:     time.Now(),
 		WorkerUID:       &worker.UID,
-		Region:          checkJob.Region,
+		Region:          region,
 		Status:          &status,
 		Duration:        &durationMs,
 		Metrics:         models.JSONMap(checkResult.Metrics),
@@ -1107,6 +1112,11 @@ func (r *CheckWorker) saveErrorResult(ctx context.Context, checkJob *models.Chec
 	lastForStatus := true
 	worker := r.getWorker()
 
+	region := checkJob.Region
+	if region == nil {
+		region = worker.Region
+	}
+
 	result := &models.Result{
 		UID:             resultUID.String(),
 		OrganizationUID: checkJob.OrganizationUID,
@@ -1114,7 +1124,7 @@ func (r *CheckWorker) saveErrorResult(ctx context.Context, checkJob *models.Chec
 		PeriodType:      periodTypeRaw,
 		PeriodStart:     time.Now(),
 		WorkerUID:       &worker.UID,
-		Region:          checkJob.Region,
+		Region:          region,
 		Status:          &status,
 		Duration:        &durationMs,
 		Metrics:         make(models.JSONMap),
@@ -1183,7 +1193,7 @@ func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger
 	noun := passiveSignalNoun(checkerdef.CheckType(checkJob.Type))
 
 	// Get the latest result for this check
-	lastResults, err := r.dbService.GetLastResultForChecks(ctx, []string{checkJob.CheckUID})
+	lastResults, err := r.dbService.GetLastResultForChecks(ctx, checkJob.OrganizationUID, []string{checkJob.CheckUID})
 	if err != nil {
 		return r.saveErrorResult(ctx, checkJob, fmt.Errorf("failed to get last result: %w", err))
 	}

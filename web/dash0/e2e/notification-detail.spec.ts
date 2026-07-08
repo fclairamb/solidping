@@ -1,6 +1,4 @@
-import { test, expect } from "./fixtures";
-
-const API_BASE = "http://localhost:4000";
+import { test, expect, API_BASE } from "./fixtures";
 
 // The new flat notification URL: /orgs/:org/notifications/:uuid (with optional ?from=...)
 const FLAT_NOTIF_RE =

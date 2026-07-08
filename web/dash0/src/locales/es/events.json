@@ -24,13 +24,28 @@
     "incident.opened": "Incidente abierto",
     "incident.resolved": "Incidente resuelto",
     "incident.escalated": "Incidente escalado",
+    "incident.escalation_failed": "Escalado fallido",
     "incident.acknowledged": "Incidente reconocido",
+    "incident.unacknowledged": "Reconocimiento anulado",
+    "incident.reopened": "Incidente reabierto",
+    "incident.snoozed": "Incidente silenciado",
+    "incident.unsnoozed": "Silencio anulado",
+    "status_update.created": "Actualización de estado publicada",
+    "status_update.updated": "Actualización de estado editada",
+    "status_update.deleted": "Actualización de estado eliminada",
+    "org.activation.signup_completed": "Registro completado",
     "org.activation.first_check_created": "Primera comprobación creada",
-    "org.activation.first_notification_configured": "Primera notificación configurada"
+    "org.activation.first_result_received": "Primer resultado recibido",
+    "org.activation.first_notification_configured": "Primera notificación configurada",
+    "org.activation.first_incident_paged": "Primer incidente notificado"
   },
   "descriptions": {
+    "org.activation.signup_completed": "Tu organización está configurada y lista para empezar.",
     "org.activation.first_check_created": "Tu primera comprobación de disponibilidad está activa y monitorizando.",
-    "org.activation.first_notification_configured": "Has configurado tu primer canal de notificación."
+    "org.activation.first_result_received": "Ha llegado tu primer resultado de comprobación.",
+    "org.activation.first_notification_configured": "Has configurado tu primer canal de notificación.",
+    "first_notification_configured_prefix": "Has configurado tu primer canal de notificación:",
+    "org.activation.first_incident_paged": "Se ha entregado tu primera notificación de incidente."
   },
   "links": {
     "check": "Comprobación",

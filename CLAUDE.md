@@ -17,6 +17,8 @@ If the server is running on port 4000, apply code changes directly — `make dev
 3. Test mode: `make dev-test` (same but with `SP_RUNMODE=test`)
 4. Database changes: add migrations, then `make migrate`
 
+Dev logs live in `logs/*.log` (`backend.log`, `dash0.log`, `status0.log`), size-rotated with `.1`/`.2` suffixes (~20 MB cap); all three processes run as children of the `server/cmd/devloop` supervisor, so Ctrl-C stops everything.
+
 ### Key Makefile targets
 | Target | Purpose |
 |---|---|

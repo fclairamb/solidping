@@ -78,6 +78,7 @@ function noopCallbacks(overrides: Partial<LiveEventsCallbacks> = {}): LiveEvents
     onSubscribed: vi.fn(),
     onUpdate: vi.fn(),
     onResync: vi.fn(),
+    onScopeError: vi.fn(),
     onDisconnected: vi.fn(),
     onDisabled: vi.fn(),
     ...overrides,
@@ -193,6 +194,60 @@ describe("connectLiveSocket", () => {
 
     expect(() => sockets[0].message({ type: "some-future-type", foo: "bar" })).not.toThrow();
     expect(callbacks.onUpdate).not.toHaveBeenCalled();
+  });
+
+  it("an error frame with a recognizable entity invokes onScopeError with the parsed scope and code/title", async () => {
+    const sockets: FakeSocket[] = [];
+    const factory = (url: string) => {
+      const s = new FakeSocket(url);
+      sockets.push(s);
+      return s;
+    };
+    const onScopeError = vi.fn();
+
+    connectLiveSocket("acme", noopCallbacks({ onScopeError }), factory);
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0].open();
+    sockets[0].message({ type: "hello", protocol: 2 });
+
+    sockets[0].message({
+      type: "error",
+      code: "NOT_FOUND",
+      title: "Check not found",
+      entity: "check",
+      uid: "http-api-stonal-io-datalake",
+    });
+
+    expect(onScopeError).toHaveBeenCalledWith(
+      { entity: "check", uid: "http-api-stonal-io-datalake" },
+      { code: "NOT_FOUND", title: "Check not found" },
+    );
+  });
+
+  it("ignores malformed/unrecognizable error frames (empty entity) without throwing", async () => {
+    const sockets: FakeSocket[] = [];
+    const factory = (url: string) => {
+      const s = new FakeSocket(url);
+      sockets.push(s);
+      return s;
+    };
+    const onScopeError = vi.fn();
+
+    connectLiveSocket("acme", noopCallbacks({ onScopeError }), factory);
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0].open();
+    sockets[0].message({ type: "hello", protocol: 2 });
+
+    // Global errors (malformed message / unknown message type) echo an empty
+    // entity — not a recognizable scope, must not be reported as a scope error.
+    expect(() =>
+      sockets[0].message({ type: "error", code: "VALIDATION_ERROR", title: "Malformed message", entity: "", uid: "" }),
+    ).not.toThrow();
+    expect(onScopeError).not.toHaveBeenCalled();
+
+    // Also tolerate a completely missing entity/code/title.
+    expect(() => sockets[0].message({ type: "error" })).not.toThrow();
+    expect(onScopeError).not.toHaveBeenCalled();
   });
 
   it("send() encodes subscribe/unsubscribe frames with entity and uid", async () => {

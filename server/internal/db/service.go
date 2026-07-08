@@ -178,7 +178,9 @@ type Service interface {
 		ctx context.Context, orgUID, checkUID, periodType string, regions []string,
 		pivotStart time.Time, pivotUID string,
 	) (prevUID, nextUID string, err error)
-	GetLastResultForChecks(ctx context.Context, checkUIDs []string) (map[string]*models.Result, error)
+	GetLastResultForChecks(
+		ctx context.Context, orgUID string, checkUIDs []string,
+	) (map[string]*models.Result, error)
 	GetLastStatusChangeForChecks(ctx context.Context, checkUIDs []string) (map[string]*models.LastStatusChange, error)
 	DeleteResults(ctx context.Context, orgUID string, resultUIDs []string) (int64, error)
 	// SaveResultWithStatusTracking atomically clears old last_for_status for the check+status

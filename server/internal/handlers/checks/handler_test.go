@@ -441,3 +441,96 @@ func TestCreateCheckFlappingValidationRejectsBadFactor(t *testing.T) {
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &errBody))
 	r.Equal(string(base.ErrorCodeValidationError), errBody["code"])
 }
+
+// TestLastResultListVsDetailShape is the regression test for spec
+// 2026-07-06-01 Part B: with=last_result on the list endpoint must return a
+// slim lastResult ({uid, status, timestamp, durationMs}), while the same
+// query param on the detail endpoint must keep the full object (output,
+// metrics) that the detail page renders (Output/Metrics/SSL-chain card).
+func TestLastResultListVsDetailShape(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("lastres-h", "Last Result Handler Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	entSvc := entcore.NewService(dbSvc, entcore.DefaultsFor(config.DeploymentModeSelfHosted), 0)
+	svc := checks.NewService(dbSvc, notifier.NewLocalEventNotifier(), disabledCreds(t), entSvc)
+	handler := checks.NewHandler(svc, &config.Config{})
+
+	router := bunrouter.New()
+	group := router.NewGroup("/api/v1/orgs/:org/checks")
+	group.POST("", handler.CreateCheck)
+	group.GET("", handler.ListChecks)
+	group.GET("/:checkUid", handler.GetCheck)
+
+	rec := postCheck(t, router, org.Slug, map[string]any{
+		"type": "http", "config": map[string]any{"url": "https://example.com"},
+	})
+	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
+
+	var created map[string]any
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &created))
+	uid, _ := created["uid"].(string)
+	r.NotEmpty(uid)
+
+	// Seed a raw result carrying Output/Metrics — the fields Part B must
+	// strip from list responses but keep on detail responses.
+	result := models.NewResult(org.UID, uid, models.ResultStatusUp, 123.45)
+	result.Output = models.JSONMap{"message": "OK", "sslChain": []string{"leaf", "intermediate", "root"}}
+	result.Metrics = models.JSONMap{"dnsblHits": 0}
+	r.NoError(dbSvc.CreateResult(ctx, result))
+
+	// --- List: ?with=last_result must be slim ---
+	listReq := httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet, "/api/v1/orgs/"+org.Slug+"/checks?with=last_result", http.NoBody)
+	listRec := httptest.NewRecorder()
+	router.ServeHTTP(listRec, listReq)
+	r.Equal(http.StatusOK, listRec.Code, listRec.Body.String())
+
+	var list struct {
+		Data []map[string]any `json:"data"`
+	}
+	r.NoError(json.Unmarshal(listRec.Body.Bytes(), &list))
+	r.NotEmpty(list.Data)
+
+	lastResult, ok := list.Data[0]["lastResult"].(map[string]any)
+	r.True(ok, "lastResult expected on list item: %v", list.Data[0])
+	r.Contains(lastResult, "uid")
+	r.Contains(lastResult, "status")
+	r.Contains(lastResult, "timestamp")
+	r.Contains(lastResult, "durationMs")
+	r.NotContains(lastResult, "output", "list lastResult must not carry output")
+	r.NotContains(lastResult, "metrics", "list lastResult must not carry metrics")
+	r.Equal("up", lastResult["status"])
+	r.InDelta(float64(123.45), lastResult["durationMs"], 0.001)
+
+	// --- Detail: ?with=last_result must stay full ---
+	detailReq := httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet, "/api/v1/orgs/"+org.Slug+"/checks/"+uid+"?with=last_result", http.NoBody)
+	detailRec := httptest.NewRecorder()
+	router.ServeHTTP(detailRec, detailReq)
+	r.Equal(http.StatusOK, detailRec.Code, detailRec.Body.String())
+
+	var detail map[string]any
+	r.NoError(json.Unmarshal(detailRec.Body.Bytes(), &detail))
+
+	detailLastResult, ok := detail["lastResult"].(map[string]any)
+	r.True(ok, "lastResult expected on detail response: %v", detail)
+	r.Contains(detailLastResult, "output", "detail lastResult must keep output")
+	r.Contains(detailLastResult, "metrics", "detail lastResult must keep metrics")
+
+	detailOutput, ok := detailLastResult["output"].(map[string]any)
+	r.True(ok, "output expected to be an object: %v", detailLastResult)
+	r.Equal("OK", detailOutput["message"])
+
+	detailMetrics, ok := detailLastResult["metrics"].(map[string]any)
+	r.True(ok, "metrics expected to be an object: %v", detailLastResult)
+	r.InDelta(float64(0), detailMetrics["dnsblHits"], 0.0001)
+}

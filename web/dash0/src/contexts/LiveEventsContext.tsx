@@ -160,11 +160,20 @@ function scopeKey(scope: LiveScope): string {
   return scope.uid ? `${scope.entity}:${scope.uid}` : scope.entity;
 }
 
+/** Per-scope subscription error, set from a server `error` frame and cleared
+ * on a successful `subscribed` ack, a fresh subscribe, or a reconnect/drop
+ * (see LiveRegistry.onScopeError / onSubscribed / onOpen / markAllScopesNotLive). */
+export interface ScopeError {
+  code: string;
+  title: string;
+}
+
 interface ScopeEntry {
   scope: LiveScope;
   count: number;
   queryRoots?: QueryRoot[];
   live: boolean;
+  error?: ScopeError;
   listeners: Set<() => void>;
 }
 
@@ -220,6 +229,9 @@ export class LiveRegistry {
         const entry = this.scopes.get(scopeKey(scope));
         if (!entry) return;
         entry.live = true;
+        // A successful ack supersedes any earlier rejection for this scope
+        // (e.g. a resubscribe after the caller fixed the uid it sent).
+        entry.error = undefined;
         this.notifyScope(entry);
         // A fresh subscribe (or a replayed one after reconnect) may have
         // missed updates; invalidate once so the scope catches up.
@@ -234,6 +246,12 @@ export class LiveRegistry {
         for (const entry of this.scopes.values()) {
           invalidateScope(this.queryClient, this.org, entry.scope, [], entry.queryRoots);
         }
+      },
+      onScopeError: (scope, error) => {
+        const entry = this.scopes.get(scopeKey(scope));
+        if (!entry) return;
+        entry.error = error;
+        this.notifyScope(entry);
       },
       onDisconnected: () => {
         this.setStatus("reconnecting");
@@ -277,6 +295,10 @@ export class LiveRegistry {
 
   isScopeLive(scope: LiveScope): boolean {
     return this.scopes.get(scopeKey(scope))?.live ?? false;
+  }
+
+  getScopeError(scope: LiveScope): ScopeError | undefined {
+    return this.scopes.get(scopeKey(scope))?.error;
   }
 
   subscribeScope(scope: LiveScope, listener: () => void): () => void {
@@ -327,8 +349,15 @@ export class LiveRegistry {
 
   private markAllScopesNotLive(): void {
     for (const entry of this.scopes.values()) {
-      if (entry.live) {
-        entry.live = false;
+      // A drop/disable invalidates any pending subscribe result — clear a
+      // stale error too, so a transient rejection doesn't keep showing the
+      // degraded-mode indicator through an unrelated disconnect/reconnect
+      // cycle; the upcoming reconnect's replay will surface a fresh error if
+      // the same scope is still invalid server-side.
+      const changed = entry.live || entry.error !== undefined;
+      entry.live = false;
+      entry.error = undefined;
+      if (changed) {
         this.notifyScope(entry);
       }
     }
@@ -412,14 +441,21 @@ export function useLiveConnectionStatus(): LiveConnectionStatus {
  * widgets both watching `checks`) — the registry refcounts so the
  * unsubscribe only reaches the server once the last interested component
  * unmounts.
+ *
+ * Pass `undefined` to disable the subscription entirely — a no-op, no
+ * `subscribe`/`unsubscribe` frame is ever sent. This is how a caller gates a
+ * per-uid scope until the uid is actually known (e.g. the check detail page
+ * waiting for its REST fetch to resolve the canonical uid): hooks can't be
+ * called conditionally, so the disabled state has to be a value, not a
+ * skipped call.
  */
-export function useLiveSubscription(scope: LiveScope): void {
+export function useLiveSubscription(scope: LiveScope | undefined): void {
   const registry = useRegistry();
-  const entityKey = scope.entity;
-  const uidKey = scope.uid;
+  const entityKey = scope?.entity;
+  const uidKey = scope?.uid;
 
   useEffect(() => {
-    if (!registry) return undefined;
+    if (!registry || !entityKey) return undefined;
     const s: LiveScope = uidKey ? { entity: entityKey, uid: uidKey } : { entity: entityKey };
     registry.addScope(s);
     return () => registry.removeScope(s);
@@ -432,23 +468,57 @@ export function useLiveSubscription(scope: LiveScope): void {
  * page keeps polling at its base rate until the ack lands — gate
  * stretchWhileLive on this, not the coarse useLiveStatus, for scope-accurate
  * poll stretching.
+ *
+ * `undefined` (disabled scope, uid not yet known) always reports false, same
+ * as "not live yet" — the caller keeps polling at its base rate.
  */
-export function useScopeLive(scope: LiveScope): boolean {
+export function useScopeLive(scope: LiveScope | undefined): boolean {
   const registry = useRegistry();
-  const entityKey = scope.entity;
-  const uidKey = scope.uid;
+  const entityKey = scope?.entity;
+  const uidKey = scope?.uid;
 
   return useSyncExternalStore(
     (listener) => {
-      if (!registry) return () => {};
+      if (!registry || !entityKey) return () => {};
       const s: LiveScope = uidKey ? { entity: entityKey, uid: uidKey } : { entity: entityKey };
       return registry.subscribeScope(s, listener);
     },
     () => {
-      if (!registry) return false;
+      if (!registry || !entityKey) return false;
       const s: LiveScope = uidKey ? { entity: entityKey, uid: uidKey } : { entity: entityKey };
       return registry.isScopeLive(s);
     },
     () => false,
+  );
+}
+
+/**
+ * Per-scope subscription error: set from a server `error` frame (NOT_FOUND,
+ * VALIDATION_ERROR, CONCURRENCY_LIMITED, INTERNAL_ERROR — see
+ * realtimews.handleSubscribe), cleared on a successful `subscribed` ack or a
+ * reconnect/drop. Pair with a visible, non-blocking degraded-mode indicator
+ * in the consuming page — polling keeps working regardless, this is purely
+ * informational (mirrors useScopeLive's "gate on ack" pattern, but for the
+ * rejection path instead of the success path).
+ *
+ * `undefined` scope (uid not yet known) always reports no error.
+ */
+export function useScopeError(scope: LiveScope | undefined): ScopeError | undefined {
+  const registry = useRegistry();
+  const entityKey = scope?.entity;
+  const uidKey = scope?.uid;
+
+  return useSyncExternalStore(
+    (listener) => {
+      if (!registry || !entityKey) return () => {};
+      const s: LiveScope = uidKey ? { entity: entityKey, uid: uidKey } : { entity: entityKey };
+      return registry.subscribeScope(s, listener);
+    },
+    () => {
+      if (!registry || !entityKey) return undefined;
+      const s: LiveScope = uidKey ? { entity: entityKey, uid: uidKey } : { entity: entityKey };
+      return registry.getScopeError(s);
+    },
+    () => undefined,
   );
 }

@@ -238,6 +238,69 @@ func TestAuditCheckConnectionSend(t *testing.T) {
 	r.NotNil(rows[0].SentAt)
 }
 
+// TestFirstIncidentPagedEventIsEnriched verifies that a successful
+// notification dispatch emits org.activation.first_incident_paged linked to
+// the incident/check that triggered it — IncidentUID/CheckUID set on the
+// row, plus check_slug/check_name in the payload. Per the "Recent activity"
+// spec this milestone previously carried only {"source": ...}.
+func TestFirstIncidentPagedEventIsEnriched(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	// Fake webhook server that accepts any POST so the dispatch succeeds.
+	fakeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(fakeServer.Close)
+
+	s := newNotificationAuditSetup(t)
+
+	s.conn.Settings = models.JSONMap{"url": fakeServer.URL}
+	_, err := s.dbSvc.DB().NewUpdate().
+		Model(s.conn).
+		Column("settings").
+		Where("uid = ?", s.conn.UID).
+		Exec(ctx)
+	r.NoError(err)
+
+	incident := s.triggerIncident(t)
+
+	pendingJobs := pendingNotificationJobsForIncident(t, s.dbSvc, incident.UID)
+	r.Len(pendingJobs, 1, "expected one pending notification job")
+
+	jobRow := pendingJobs[0]
+	cfgBytes, err := json.Marshal(jobRow.Config)
+	r.NoError(err)
+
+	jobDef := &jobtypes.NotificationJobDefinition{}
+	jobRun, err := jobDef.CreateJobRun(cfgBytes)
+	r.NoError(err)
+
+	jctx := s.makeJobContext(jobRow, &services.Registry{})
+	r.NoError(jobRun.Run(ctx, jctx))
+
+	events, err := s.dbSvc.ListEvents(ctx, &models.ListEventsFilter{
+		OrganizationUID: s.org.UID,
+		EventTypes: []models.EventType{
+			models.EventTypeOrgActivationFirstIncidentPaged,
+		},
+	})
+	r.NoError(err)
+	r.Len(events, 1, "expected exactly one first_incident_paged event")
+
+	got := events[0]
+	r.NotNil(got.IncidentUID, "must link to the incident that triggered the page")
+	r.Equal(incident.UID, *got.IncidentUID)
+	r.NotNil(got.CheckUID, "must link to the check that triggered the page")
+	r.Equal(s.check.UID, *got.CheckUID)
+	r.NotNil(s.check.Slug)
+	r.Equal(*s.check.Slug, got.Payload["check_slug"])
+	r.NotNil(s.check.Name)
+	r.Equal(*s.check.Name, got.Payload["check_name"])
+}
+
 // mockEmailSender is a test double for email.Sender.
 type mockEmailSender struct {
 	sendFunc func(ctx context.Context, msg *email.Message) (*email.SendResult, error)

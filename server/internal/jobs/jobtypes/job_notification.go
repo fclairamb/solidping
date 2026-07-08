@@ -165,10 +165,17 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 	log.InfoContext(ctx, "Notification sent successfully")
 
 	// Activation funnel: idempotent — fires once on the first successful
-	// incident notification dispatch for this org.
+	// incident notification dispatch for this org. Links the milestone to
+	// the incident/check that triggered it so the dashboard can render a
+	// named check link even for this historically-payload-thin event type.
 	activation.Emit(ctx, jctx.DBService, connection.OrganizationUID,
 		models.EventTypeOrgActivationFirstIncidentPaged,
-		activation.SourceSystem, "")
+		activation.SourceSystem, "", models.JSONMap{
+			"_incident_uid": incident.UID,
+			"_check_uid":    check.UID,
+			"check_slug":    check.Slug,
+			"check_name":    check.Name,
+		})
 
 	return nil
 }

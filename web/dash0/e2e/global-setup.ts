@@ -25,6 +25,17 @@ const SERVER_URL = "http://localhost:4000/api/mgmt/health";
 const MAX_RETRIES = 30; // 30 seconds
 const RETRY_DELAY = 1000; // 1 second
 
+// Connection info for the PostgreSQL container started below (docker-compose.yml's
+// `postgres` service, host-mapped port + the `solidping` role provisioned by
+// docker-compose/scripts/init-db.sh). Without this, SP_RUNMODE=test with no
+// SP_DB_TYPE silently falls back to sqlite-memory (config.go's
+// `cfg.RunMode == "test" && cfg.Database.Type == ""` default), which caps the
+// connection pool at 1 (sqlite.go's SetMaxOpenConns(1)) and serializes every
+// DB-backed request — including concurrent test logins. See spec
+// 2026-07-06-02.
+const POSTGRES_TEST_DB_URL =
+  "postgres://solidping:solidping@localhost:55432/solidping?sslmode=disable";
+
 // Check if running in CI environment
 const IS_CI = process.env.CI === "true";
 
@@ -148,6 +159,8 @@ export default async function globalSetup(): Promise<void> {
         SOLIDPING_LISTEN: ":4000",
         SP_RUNMODE: "test",
         SP_DB_RESET: "true",
+        SP_DB_TYPE: "postgres",
+        SP_DB_URL: POSTGRES_TEST_DB_URL,
       },
     });
 

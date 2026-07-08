@@ -359,6 +359,8 @@
     },
     "checkDetails": "Détails du contrôle",
     "pendingFirstRun": "Première exécution en cours…",
+    "liveUnavailable": "Mises à jour en direct indisponibles",
+    "liveUnavailableTooltip": "Les mises à jour en direct sont indisponibles pour ce check ({{title}}) — retour au sondage périodique.",
     "dutyCycle": {
       "title": "Ce contrôle occupe un créneau de supervision {{duty}} % du temps",
       "description": "Chaque exécution prend environ {{cost}} pour une période de {{period}} : ce contrôle occupe donc un exécuteur {{duty}} % du temps. Augmentez sa période pour libérer de la capacité de supervision."
