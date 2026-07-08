@@ -151,4 +151,101 @@ test.describe("Chart point preview", () => {
     await page.waitForURL(`**/results/${resultUid}`, { timeout: 10000 });
     expect(page.url()).toContain(`/results/${resultUid}`);
   });
+
+  test("a failing point still renders and pins a dot above the 150-point density threshold (single-series)", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const now = Date.now();
+    const downUid = "single-series-down-result";
+    const pointCount = 180; // above the 150-point dots-density threshold
+    const downIndex = 90;
+    const intervalMs = 5 * 60_000;
+
+    // Single-region (no `region` field) dense dataset — takes the
+    // single-series chart path, not the multi-series one.
+    await page.route("**/api/v1/orgs/*/results*", (route) => {
+      const url = route.request().url();
+      if (!url.includes("/results")) return route.continue();
+      const points = [];
+      for (let i = 0; i < pointCount; i++) {
+        const ts = now - (pointCount - i) * intervalMs;
+        const isDown = i === downIndex;
+        points.push({
+          uid: isDown ? downUid : `raw-${i}`,
+          durationMs: isDown ? 5000 : 42 + (i % 3) * 5,
+          status: isDown ? "down" : "up",
+          periodStart: new Date(ts).toISOString(),
+          periodType: "raw",
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: points,
+          pagination: { total: points.length, size: points.length },
+        }),
+      });
+    });
+
+    await page.route(`**/api/v1/orgs/*/checks/*/results/${downUid}`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          uid: downUid,
+          durationMs: 5000,
+          status: "down",
+          periodStart: new Date(now - (pointCount - downIndex) * intervalMs).toISOString(),
+          periodType: "raw",
+        }),
+      })
+    );
+
+    await page.route("**/api/v1/orgs/*/incidents*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [], pagination: { total: 0, size: 0 } }),
+      })
+    );
+
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+
+    const checkName = `E2E Single Dense Down ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-url-input").fill("https://example.com/single-dense-down-test");
+    await page.getByTestId("check-submit-button").click();
+
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    await expect(page.locator(".recharts-wrapper")).toBeVisible({ timeout: 15000 });
+
+    // The gradient carries a red (COLOR_DOWN) stop despite the density gate
+    // hiding neutral per-point dots.
+    const COLOR_DOWN = "hsl(0, 72%, 51%)";
+    const stopColors = await page
+      .locator('linearGradient[id^="strokeGradient-"] stop')
+      .evaluateAll((els) => els.map((el) => el.getAttribute("stop-color")));
+    expect(stopColors).toContain(COLOR_DOWN);
+
+    // Exactly the one down point renders a persistent dot; the ~179 healthy
+    // points render invisible <g/> at this density.
+    const persistentDots = page.locator(".recharts-wrapper .recharts-area-dots circle");
+    await expect(persistentDots).toHaveCount(1);
+    await expect(persistentDots.first()).toHaveAttribute("fill", COLOR_DOWN);
+
+    // It stays clickable/pinnable.
+    await persistentDots.first().hover({ force: true });
+    await persistentDots.first().click({ force: true });
+    await expect(page.getByTestId("pinned-result-box")).toBeVisible({
+      timeout: 5000,
+    });
+  });
 });
