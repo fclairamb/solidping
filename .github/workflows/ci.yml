@@ -234,7 +234,10 @@ jobs:
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # 20 min for the main suite + ~5 min budget for the session-continuity
+    # side-car run below (session-continuity.spec.ts waits out real
+    # access-token expiries, so it inherently takes longer than a normal spec).
+    timeout-minutes: 30
     needs: [build]
     if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) }}
     defaults:
@@ -332,6 +335,49 @@ jobs:
         env:
           CI: "true"
 
+      # session-continuity.spec.ts's access-token-expiry tests need a server
+      # started with a short SP_AUTH_ACCESS_TOKEN_EXPIRY — the main server
+      # above runs with the default 1h expiry, which no test can wait out, so
+      # those tests self-skip unless E2E_ACCESS_TOKEN_EXPIRY_SECONDS is set
+      # (see the spec file header). Start a second, disposable instance of
+      # the same binary on another port, pointed at the same already-seeded
+      # Postgres DB (InitializeTestData/CreateTestData is idempotent — it
+      # detects the existing "test" org and skips reseeding, so this is safe
+      # without SP_DB_RESET), to give these tests something real to run
+      # against instead of skipping every CI run.
+      - name: Start side-car server (short access-token expiry)
+        working-directory: .
+        run: |
+          ./solidping serve > "$GITHUB_WORKSPACE/solidping-sidecar.log" 2>&1 &
+          echo "solidping side-car pid $!"
+          disown
+        env:
+          PORT: "4001"
+          SP_RUNMODE: test
+          SP_DB_TYPE: postgres
+          SP_DB_URL: postgres://solidping:solidping@localhost:55432/solidping?sslmode=disable
+          SP_AUTH_ACCESS_TOKEN_EXPIRY: "10s"
+          SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE: "0"
+          SP_SERVER_RATE_LIMITING_MAX_CONCURRENT: "0"
+
+      - name: Wait for side-car server
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4001/api/mgmt/health && exit 0
+            sleep 1
+          done
+          echo "Side-car server failed to start" && exit 1
+
+      - name: Run session-continuity E2E tests (side-car, short expiry)
+        # --reporter=list only: the default html/json reporters write to the
+        # same playwright-report/test-results paths as the main run above,
+        # and would clobber that report/summary in the uploaded artifact.
+        run: bunx playwright test session-continuity.spec.ts --reporter=list
+        env:
+          CI: "true"
+          E2E_BASE_URL: "http://localhost:4001/dash0/"
+          E2E_ACCESS_TOKEN_EXPIRY_SECONDS: "10"
+
       - name: Surface server log on failure
         if: failure()
         working-directory: .
@@ -339,9 +385,12 @@ jobs:
           echo "::group::solidping server log (tail)"
           tail -n 300 "$GITHUB_WORKSPACE/solidping-server.log" || echo "(no server log)"
           echo "::endgroup::"
+          echo "::group::solidping side-car log (tail)"
+          tail -n 300 "$GITHUB_WORKSPACE/solidping-sidecar.log" || echo "(no side-car log)"
+          echo "::endgroup::"
           echo "::group::server crash signatures"
           grep -nE "panic:|goroutine [0-9]+|fatal error|signal SIG|runtime error|nil pointer|out of memory|Killed" \
-            "$GITHUB_WORKSPACE/solidping-server.log" || echo "(no crash signatures found)"
+            "$GITHUB_WORKSPACE/solidping-server.log" "$GITHUB_WORKSPACE/solidping-sidecar.log" || echo "(no crash signatures found)"
           echo "::endgroup::"
           # If the server died during the run, report that as the real cause so a
           # connection-refused cascade is treated as a server-crash bug, not a flake.
@@ -358,6 +407,7 @@ jobs:
             web/dash0/playwright-report/
             web/dash0/test-results/
             solidping-server.log
+            solidping-sidecar.log
           retention-days: 7
 
 

@@ -28,23 +28,30 @@ async function waitForLiveSocketHello(page: Page): Promise<WebSocket> {
 
 // Requires a server started with a short SP_AUTH_ACCESS_TOKEN_EXPIRY (e.g.
 // SP_AUTH_ACCESS_TOKEN_EXPIRY=10s) so the access-token lifetime can actually
-// be crossed within a test's timeout — the shared devloop / CI server this
-// suite otherwise runs against is started once by global-setup.ts with the
-// default 1h expiry (see server/internal/config/config.go), which no test
-// can wait out. Point E2E_ACCESS_TOKEN_EXPIRY_SECONDS at whatever value the
-// side-car server was actually started with (must match, so the test knows
-// how long to wait) to opt in; otherwise every test here is skipped with a
-// clear reason instead of silently passing or hanging.
+// be crossed within a test's timeout — the shared devloop / main CI server
+// this suite otherwise runs against is started once by global-setup.ts (or
+// ci.yml's "Start solidping server" step) with the default 1h expiry (see
+// server/internal/config/config.go), which no test can wait out. Point
+// E2E_ACCESS_TOKEN_EXPIRY_SECONDS at whatever value the side-car server was
+// actually started with (must match, so the test knows how long to wait) to
+// opt in; otherwise every test here is skipped with a clear reason instead
+// of silently passing or hanging.
 //
-// To actually run this file locally: start a second, disposable server on
-// an alternate port with a short expiry, e.g.:
-//   SP_RUNMODE=test SOLIDPING_LISTEN=:4001 SP_AUTH_ACCESS_TOKEN_EXPIRY=10s \
+// CI runs this file for real: .github/workflows/ci.yml's e2e-tests job
+// starts a second, disposable `solidping serve` on :4001 with
+// SP_AUTH_ACCESS_TOKEN_EXPIRY=10s (pointed at the same already-seeded
+// Postgres DB — CreateTestData is idempotent, so no reset is needed) after
+// the main E2E run, then runs just this spec file against it with
+// E2E_BASE_URL/E2E_ACCESS_TOKEN_EXPIRY_SECONDS set. To reproduce locally:
+//   SP_RUNMODE=test PORT=4001 SP_AUTH_ACCESS_TOKEN_EXPIRY=10s \
 //     SP_DB_RESET=true ./solidping serve &
 //   E2E_BASE_URL=http://localhost:4001/dash0/ \
 //     E2E_ACCESS_TOKEN_EXPIRY_SECONDS=10 CI=true \
 //     bunx playwright test session-continuity.spec.ts
 // (CI=true skips global-setup's build-and-start-its-own-server step — see
-// global-setup.ts — so it doesn't fight the side-car server for :4000/DB.)
+// global-setup.ts — so it doesn't fight the side-car server for :4000/DB.
+// PORT is the env config.go reads into server.listen — SOLIDPING_LISTEN,
+// mentioned in an earlier version of this comment, is not read anywhere.)
 const configuredExpirySeconds = process.env.E2E_ACCESS_TOKEN_EXPIRY_SECONDS
   ? parseInt(process.env.E2E_ACCESS_TOKEN_EXPIRY_SECONDS, 10)
   : undefined;
