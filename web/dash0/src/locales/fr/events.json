@@ -24,13 +24,28 @@
     "incident.opened": "Incident ouvert",
     "incident.resolved": "Incident résolu",
     "incident.escalated": "Incident escaladé",
+    "incident.escalation_failed": "Échec de l'escalade",
     "incident.acknowledged": "Incident acquitté",
+    "incident.unacknowledged": "Acquittement annulé",
+    "incident.reopened": "Incident rouvert",
+    "incident.snoozed": "Incident mis en veille",
+    "incident.unsnoozed": "Mise en veille annulée",
+    "status_update.created": "Mise à jour de statut publiée",
+    "status_update.updated": "Mise à jour de statut modifiée",
+    "status_update.deleted": "Mise à jour de statut supprimée",
+    "org.activation.signup_completed": "Inscription terminée",
     "org.activation.first_check_created": "Premier contrôle créé",
-    "org.activation.first_notification_configured": "Première notification configurée"
+    "org.activation.first_result_received": "Premier résultat reçu",
+    "org.activation.first_notification_configured": "Première notification configurée",
+    "org.activation.first_incident_paged": "Premier incident notifié"
   },
   "descriptions": {
+    "org.activation.signup_completed": "Votre organisation est configurée et prête à l'emploi.",
     "org.activation.first_check_created": "Votre premier contrôle de disponibilité est actif et surveille.",
-    "org.activation.first_notification_configured": "Vous avez configuré votre premier canal de notification."
+    "org.activation.first_result_received": "Votre premier résultat de contrôle est arrivé.",
+    "org.activation.first_notification_configured": "Vous avez configuré votre premier canal de notification.",
+    "first_notification_configured_prefix": "Vous avez configuré votre premier canal de notification :",
+    "org.activation.first_incident_paged": "Votre première notification d'incident a été délivrée."
   },
   "links": {
     "check": "Contrôle",

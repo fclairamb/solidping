@@ -1,6 +1,4 @@
-import { test, expect } from "./fixtures";
-
-const API_BASE = "http://localhost:4000";
+import { test, expect, API_BASE } from "./fixtures";
 
 test.describe("Invitations", () => {
   test("should create invitation with correct base URL", async ({

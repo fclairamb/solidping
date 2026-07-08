@@ -88,7 +88,7 @@ function UsagePage() {
                     {data.displayEmoji}
                   </span>
                 )}
-                {data.displayName ?? t("usage.freePlan")}
+                {data.displayName ?? "—"}
               </span>
             </div>
             <div className="space-y-5">

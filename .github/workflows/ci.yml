@@ -279,6 +279,19 @@ jobs:
         working-directory: .
         run: chmod +x solidping
 
+      - name: Start PostgreSQL
+        working-directory: .
+        run: docker compose up -d postgres
+
+      - name: Wait for PostgreSQL
+        working-directory: .
+        run: |
+          for i in $(seq 1 30); do
+            docker compose exec -T postgres pg_isready -U postgres && exit 0
+            sleep 1
+          done
+          echo "PostgreSQL failed to become ready" && exit 1
+
       - name: Start solidping server
         working-directory: .
         run: |
@@ -295,6 +308,14 @@ jobs:
           PORT: "4000"
           SP_RUNMODE: test
           SP_DB_RESET: "true"
+          # Point the E2E server at the PostgreSQL container started above
+          # instead of falling back to the single-connection sqlite-memory
+          # default (config.go: RunMode=="test" && Database.Type=="" ->
+          # sqlite-memory). Matches docker-compose.yml's postgres service +
+          # docker-compose/scripts/init-db.sh's provisioned `solidping` role.
+          # See spec 2026-07-06-02.
+          SP_DB_TYPE: postgres
+          SP_DB_URL: postgres://solidping:solidping@localhost:55432/solidping?sslmode=disable
           SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE: "0"
           SP_SERVER_RATE_LIMITING_MAX_CONCURRENT: "0"
 

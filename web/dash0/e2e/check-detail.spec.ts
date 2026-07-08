@@ -121,18 +121,31 @@ test.describe("Check Detail Page", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
-    // The check page polls every 1.5s for its first result (fast-poll window,
-    // up to 30s) — wait for the first Recent Results row to appear.
-    const firstRow = page.locator('[data-testid^="result-row-"]').first();
-    await expect(firstRow).toBeVisible({ timeout: 30000 });
+    // CreateCheck synchronously inserts a "created" placeholder result row
+    // (status: created) in the same transaction as the check itself, before
+    // any worker ever claims the job. StatusBadge renders that raw status
+    // string ("created") as its label, so it's a stable way to exclude the
+    // placeholder. That row structurally has no region (it predates
+    // execution), so grabbing `.first()` of all result rows can flakily land
+    // on it instead of a real, executed result — wait for a row whose status
+    // badge is NOT "created" instead. The real result needs job scheduling +
+    // worker claim + an actual HTTP request to example.com + save + the
+    // page's poll/refetch to land, so this needs the same order of headroom
+    // as the 30s fast-poll window documented above, not the default
+    // expect() timeout.
+    const executedRow = page
+      .locator('[data-testid^="result-row-"]')
+      .filter({ hasNot: page.getByText("created", { exact: true }) })
+      .first();
+    await expect(executedRow).toBeVisible({ timeout: 30000 });
 
     // The Region cell must render the actual region the result ran from, not
     // the "-" placeholder used only for legacy rows with no stored region.
     // Single-worker local/e2e setups register under region "default", which
     // has no configured region-definition system parameter, so it renders
     // via the built-in fallback definition (📍 Default) as an outline Badge.
-    const regionCell = firstRow.getByTestId("result-region-cell");
-    await expect(regionCell).toBeVisible();
+    const regionCell = executedRow.getByTestId("result-region-cell");
+    await expect(regionCell).toBeVisible({ timeout: 30000 });
     await expect(regionCell).not.toHaveText("-");
     await expect(regionCell.getByText(/default/i)).toBeVisible();
   });

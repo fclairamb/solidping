@@ -28,10 +28,9 @@ func TestCompute_PostgresPercentiles(t *testing.T) {
 	r := require.New(t)
 
 	dbSvc, err := postgres.New(ctx, &postgres.Config{
-		Embedded:    true,
-		EmbeddedDir: t.TempDir(),
-		Port:        15434,
-		RunMode:     "test",
+		Embedded: true,
+		Port:     15434,
+		RunMode:  "test",
 	})
 	if err != nil {
 		t.Skipf("embedded postgres unavailable: %v", err)

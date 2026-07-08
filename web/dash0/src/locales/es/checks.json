@@ -314,6 +314,8 @@
     },
     "checkDetails": "Detalles de la comprobación",
     "pendingFirstRun": "Primera ejecución en curso…",
+    "liveUnavailable": "Actualizaciones en vivo no disponibles",
+    "liveUnavailableTooltip": "Las actualizaciones en vivo no están disponibles para esta comprobación ({{title}}) — usando sondeo periódico.",
     "dutyCycle": {
       "title": "Esta comprobación ocupa un slot de monitorización el {{duty}} % del tiempo",
       "description": "Cada ejecución tarda unos {{cost}} con un período de {{period}}, por lo que esta comprobación mantiene ocupado un ejecutor el {{duty}} % del tiempo. Aumenta su período para liberar capacidad de monitorización."

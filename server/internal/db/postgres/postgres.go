@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
@@ -24,6 +23,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/postgres/embeddedpg"
 	"github.com/fclairamb/solidping/server/internal/db/sloghook"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
@@ -32,6 +32,15 @@ import (
 // backendLabel is the value used for the "backend" label on
 // Postgres-flavored Prometheus metrics.
 const backendLabel = "postgres"
+
+// runModeTest is the RunMode value that permits a destructive database
+// reset (alongside runModeDemo) and, for embedded-Postgres tests in this
+// package, selects the test-oriented startup path.
+const runModeTest = "test"
+
+// runModeDemo is the RunMode value that permits a destructive database
+// reset alongside runModeTest.
+const runModeDemo = "demo"
 
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
@@ -50,9 +59,8 @@ type Config struct {
 	DSN string
 
 	// Embedded configuration (for testing)
-	Embedded    bool
-	EmbeddedDir string
-	Port        uint32
+	Embedded bool
+	Port     uint32
 
 	// LogSQL enables SQL query logging using slog
 	LogSQL bool
@@ -142,7 +150,7 @@ func checkRoleConnLimitHeadroom(ctx context.Context, bunDB *bun.DB, maxOpenConns
 // Service implements db.Service for PostgreSQL.
 type Service struct {
 	db       *bun.DB
-	embedded *embeddedpostgres.EmbeddedPostgres
+	embedded *embeddedpg.Instance
 	reset    bool   // Reset database before migrations
 	runMode  string // Run mode (test, demo, etc.)
 }
@@ -158,7 +166,12 @@ var _ db.Service = (*Service)(nil)
 // New creates a new PostgreSQL service with an external database.
 func New(ctx context.Context, cfg *Config) (*Service, error) {
 	if cfg.Embedded {
-		return NewEmbedded(ctx, cfg.EmbeddedDir, cfg.Port, cfg.LogSQL, cfg.RunMode, cfg.Reset)
+		suite := cfg.RunMode
+		if suite == "" {
+			suite = "app"
+		}
+
+		return NewEmbedded(ctx, suite, cfg.Port, cfg.LogSQL, cfg.RunMode, cfg.Reset)
 	}
 
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(cfg.DSN)))
@@ -184,37 +197,34 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 	}, nil
 }
 
-// NewEmbedded creates a new PostgreSQL service with an embedded server (for testing).
+// NewEmbedded creates a new PostgreSQL service with an embedded server (for
+// testing). suite labels the embedded-postgres data directory for debugging
+// (e.g. "test", "notifier") — the directory itself, its owner marker, the
+// startup sweep, and the parent-death watchdog are all owned by the
+// embeddedpg package; callers no longer manage their own data directory.
 func NewEmbedded(
-	_ context.Context, dataDir string, port uint32, logSQL bool, runMode string, reset bool,
+	_ context.Context, suite string, port uint32, logSQL bool, runMode string, reset bool,
 ) (*Service, error) {
-	if port == 0 {
-		port = 5434
-	}
-
-	postgres := embeddedpostgres.NewDatabase(
-		embeddedpostgres.DefaultConfig().
-			Port(port).
-			Database("solidping_test").
-			Username("postgres").
-			Password("postgres").
-			DataPath(dataDir).
-			StartParameters(map[string]string{
-				"dynamic_shared_memory_type": "posix",
-				"shared_buffers":             "128kB",
-				"max_connections":            "10",
-			}),
-	)
-
-	if err := postgres.Start(); err != nil {
+	// contextcheck: the watchdog subprocess embeddedpg.Start spawns is
+	// intentionally detached from any request/caller context — it must
+	// outlive it.
+	inst, err := embeddedpg.Start(&embeddedpg.Options{ //nolint:contextcheck
+		Suite: suite,
+		Port:  port,
+		StartParameters: map[string]string{
+			"dynamic_shared_memory_type": "posix",
+			"shared_buffers":             "128kB",
+			"max_connections":            "10",
+		},
+	})
+	if err != nil {
 		return nil, fmt.Errorf("failed to start embedded postgres: %w", err)
 	}
 
 	// Wait for server to be ready
 	time.Sleep(1 * time.Second)
 
-	dsn := fmt.Sprintf("postgres://postgres:postgres@localhost:%d/solidping_test?sslmode=disable", port)
-	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(dsn)))
+	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(inst.DSN())))
 	bunDB := bun.NewDB(sqldb, pgdialect.New())
 
 	// Query hook is always installed for metrics; verbose slog logging is opt-in.
@@ -225,7 +235,7 @@ func NewEmbedded(
 
 	return &Service{
 		db:       bunDB,
-		embedded: postgres,
+		embedded: inst,
 		reset:    reset,
 		runMode:  runMode,
 	}, nil
@@ -234,7 +244,7 @@ func NewEmbedded(
 // Initialize sets up the database schema using migrations.
 func (s *Service) Initialize(ctx context.Context) error {
 	// Reset database if requested and in test/demo mode
-	if s.reset && (s.runMode == "test" || s.runMode == "demo") {
+	if s.reset && (s.runMode == runModeTest || s.runMode == runModeDemo) {
 		if err := s.resetDatabase(ctx); err != nil {
 			return fmt.Errorf("failed to reset database: %w", err)
 		}
@@ -1872,16 +1882,24 @@ func (s *Service) DeleteResults(ctx context.Context, orgUID string, resultUIDs [
 	return result.RowsAffected()
 }
 
-func (s *Service) GetLastResultForChecks(ctx context.Context, checkUIDs []string) (map[string]*models.Result, error) {
+func (s *Service) GetLastResultForChecks(
+	ctx context.Context, orgUID string, checkUIDs []string,
+) (map[string]*models.Result, error) {
 	if len(checkUIDs) == 0 {
 		return make(map[string]*models.Result), nil
 	}
 
 	var results []*models.Result
 
-	// Use DISTINCT ON to get the latest result per check_uid
+	// DISTINCT ON (check_uid) returns exactly one row per check_uid: the
+	// first row in each check_uid group per the ORDER BY, i.e. the newest
+	// by period_start. The organization_uid predicate rides the
+	// results_raw_idx partial index (organization_uid, check_uid,
+	// period_start desc) where period_type = 'raw'.
 	err := s.db.NewSelect().
 		Model(&results).
+		DistinctOn("check_uid").
+		Where("organization_uid = ?", orgUID).
 		Where("check_uid IN (?)", bun.List(checkUIDs)).
 		Where("period_type = ?", "raw").
 		Order("check_uid", "period_start DESC").
@@ -1890,13 +1908,11 @@ func (s *Service) GetLastResultForChecks(ctx context.Context, checkUIDs []string
 		return nil, err
 	}
 
-	// Convert to map for easy lookup
+	// Convert to map for easy lookup — DISTINCT ON already guarantees at
+	// most one row per check_uid.
 	resultMap := make(map[string]*models.Result)
 	for _, result := range results {
-		// Only keep the first (latest) result for each check_uid
-		if _, exists := resultMap[result.CheckUID]; !exists {
-			resultMap[result.CheckUID] = result
-		}
+		resultMap[result.CheckUID] = result
 	}
 
 	return resultMap, nil

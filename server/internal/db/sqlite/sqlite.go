@@ -1783,30 +1783,48 @@ func (s *Service) DeleteResults(ctx context.Context, orgUID string, resultUIDs [
 	return result.RowsAffected()
 }
 
-func (s *Service) GetLastResultForChecks(ctx context.Context, checkUIDs []string) (map[string]*models.Result, error) {
+func (s *Service) GetLastResultForChecks(
+	ctx context.Context, orgUID string, checkUIDs []string,
+) (map[string]*models.Result, error) {
 	if len(checkUIDs) == 0 {
 		return make(map[string]*models.Result), nil
 	}
 
 	var results []*models.Result
 
-	// For SQLite, we need to use a subquery to get the latest result per check
-	err := s.db.NewSelect().
-		Model(&results).
-		Where("check_uid IN (?)", bun.List(checkUIDs)).
-		Where("period_type = ?", "raw").
-		Order("check_uid", "period_start DESC").
-		Scan(ctx)
+	// SQLite has no DISTINCT ON, so rank rows per check_uid with
+	// ROW_NUMBER() (window functions supported since SQLite 3.25.0) and
+	// keep rn = 1 — the newest by period_start. Mirrors the Postgres
+	// DISTINCT ON behavior exactly (sync-pg-to-sqlite convention). The
+	// ranking lives in a CTE keyed on uid only, then joins back to the base
+	// table so the final SELECT can use r.* without leaking the rn column
+	// into the models.Result scan target.
+	query := `
+		WITH ranked AS (
+			SELECT
+				uid,
+				ROW_NUMBER() OVER (PARTITION BY check_uid ORDER BY period_start DESC) AS rn
+			FROM results
+			WHERE organization_uid = ?
+				AND check_uid IN (?)
+				AND period_type = 'raw'
+		)
+		SELECT r.*
+		FROM results r
+		JOIN ranked ON ranked.uid = r.uid
+		WHERE ranked.rn = 1
+	`
+
+	err := s.db.NewRaw(query, orgUID, bun.List(checkUIDs)).Scan(ctx, &results)
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert to map for easy lookup, keeping only the first (latest) result per check
+	// Convert to map for easy lookup — the rn = 1 filter already guarantees
+	// at most one row per check_uid.
 	resultMap := make(map[string]*models.Result)
 	for _, result := range results {
-		if _, exists := resultMap[result.CheckUID]; !exists {
-			resultMap[result.CheckUID] = result
-		}
+		resultMap[result.CheckUID] = result
 	}
 
 	return resultMap, nil

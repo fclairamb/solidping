@@ -1,6 +1,4 @@
-import { test, expect } from "./fixtures";
-
-const API_BASE = "http://localhost:4000";
+import { test, expect, API_BASE } from "./fixtures";
 
 // These tests cover the membership-request flow as exposed by the
 // dash0 frontend: the /no-org screen redesign, the admin "Requests" tab

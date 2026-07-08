@@ -39,6 +39,9 @@ func TestDefaultsForSelfHosted(t *testing.T) {
 	r.NotNil(defaults.Limits.MaxSSOUsers)
 	r.Equal(30, *defaults.Limits.MaxSSOUsers)
 	r.Nil(defaults.Limits.MaxChecksPerMinute)
+	r.Nil(defaults.Limits.MaxChecks)
+	r.NotNil(defaults.DisplayName)
+	r.Equal("Self-hosted", *defaults.DisplayName)
 }
 
 func TestDefaultsForSaaS(t *testing.T) {
@@ -49,6 +52,13 @@ func TestDefaultsForSaaS(t *testing.T) {
 	r.Nil(defaults.Limits.MaxSSOUsers)
 	r.NotNil(defaults.Limits.MaxChecksPerMinute)
 	r.Equal(6, *defaults.Limits.MaxChecksPerMinute)
+	// Aligned with the billing Free plan (spec 2026-07-07-01).
+	r.NotNil(defaults.Limits.MaxChecks)
+	r.Equal(10, *defaults.Limits.MaxChecks)
+	r.NotNil(defaults.DisplayName)
+	r.Equal("Free", *defaults.DisplayName)
+	r.NotNil(defaults.DisplayEmoji)
+	r.Equal("🆓", *defaults.DisplayEmoji)
 }
 
 func TestDefaultsForUnknownFallsBackToSelfHosted(t *testing.T) {
@@ -58,6 +68,8 @@ func TestDefaultsForUnknownFallsBackToSelfHosted(t *testing.T) {
 	defaults := entitlements.DefaultsFor("nope")
 	r.NotNil(defaults.Limits.MaxSSOUsers)
 	r.Equal(30, *defaults.Limits.MaxSSOUsers)
+	r.NotNil(defaults.DisplayName)
+	r.Equal("Self-hosted", *defaults.DisplayName)
 }
 
 func TestResolveDefaultsWhenNoRow(t *testing.T) {
@@ -73,6 +85,37 @@ func TestResolveDefaultsWhenNoRow(t *testing.T) {
 	r.NotNil(resolved.Limits.MaxSSOUsers)
 	r.Equal(30, *resolved.Limits.MaxSSOUsers)
 	r.Nil(resolved.Limits.MaxChecksPerMinute)
+	// No row at all still inherits the default display identity.
+	r.NotNil(resolved.DisplayName)
+	r.Equal("Self-hosted", *resolved.DisplayName)
+}
+
+func TestResolveSaaSDefaultsWhenNoRow(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("saas-no-row", "SaaS No Row")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	svc := entitlements.NewService(dbSvc, entitlements.DefaultsFor(config.DeploymentModeSaaS), 0)
+
+	resolved, err := svc.Resolve(ctx, org.UID)
+	r.NoError(err)
+	r.NotNil(resolved.Limits.MaxChecks)
+	r.Equal(10, *resolved.Limits.MaxChecks)
+	r.NotNil(resolved.Limits.MaxChecksPerMinute)
+	r.Equal(6, *resolved.Limits.MaxChecksPerMinute)
+	r.Nil(resolved.Limits.MaxSSOUsers)
+	r.NotNil(resolved.DisplayName)
+	r.Equal("Free", *resolved.DisplayName)
+	r.NotNil(resolved.DisplayEmoji)
+	r.Equal("🆓", *resolved.DisplayEmoji)
 }
 
 func TestSetMergesWithDefaults(t *testing.T) {
@@ -95,6 +138,31 @@ func TestSetMergesWithDefaults(t *testing.T) {
 	// Default MaxSSOUsers still surfaces for unset fields.
 	r.NotNil(resolved.Limits.MaxSSOUsers)
 	r.Equal(30, *resolved.Limits.MaxSSOUsers)
+	// A row that never set a display identity inherits the default one.
+	r.NotNil(resolved.DisplayName)
+	r.Equal("Self-hosted", *resolved.DisplayName)
+}
+
+func TestSetOwnDisplayIdentityOverridesDefault(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	svc, org, _ := setup(t)
+
+	name := "🚀 Team"
+	emoji := "🚀"
+	r.NoError(svc.Set(t.Context(), org.UID, entitlements.Entitlements{
+		Limits:       entitlements.Limits{MaxChecksPerMinute: entitlements.Int(12)},
+		Source:       models.EntitlementSourceBilling,
+		DisplayName:  &name,
+		DisplayEmoji: &emoji,
+	}, "service:entitlements", "test"))
+
+	resolved, err := svc.Resolve(t.Context(), org.UID)
+	r.NoError(err)
+	r.NotNil(resolved.DisplayName)
+	r.Equal("🚀 Team", *resolved.DisplayName)
+	r.NotNil(resolved.DisplayEmoji)
+	r.Equal("🚀", *resolved.DisplayEmoji)
 }
 
 func TestSetWritesAuditRow(t *testing.T) {

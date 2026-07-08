@@ -1,7 +1,5 @@
-import { test, expect } from "./fixtures";
+import { test, expect, API_BASE } from "./fixtures";
 import type { Page } from "@playwright/test";
-
-const API_BASE = "http://localhost:4000";
 
 async function getAuthToken(page: Page): Promise<string> {
   const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {

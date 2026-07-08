@@ -11,7 +11,6 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
-  ChevronRight,
   Copy,
   Eye,
   Info,
@@ -34,6 +33,11 @@ import {
 import { toast } from "sonner";
 
 import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
+import {
+  CollapsibleCode,
+  CopyableCode,
+  CopyableInline,
+} from "@/components/shared/copyable-code";
 import { ErrorFallbackCard } from "@/components/shared/error-boundary";
 import { MaintenanceScheduleSummary } from "@/components/shared/maintenance-schedule-summary";
 import { JsonViewer } from "@/components/shared/json-viewer";
@@ -131,6 +135,8 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "buttons-badges", label: "Buttons & badges" },
   { id: "forms", label: "Forms" },
   { id: "data-display", label: "Data display" },
+  { id: "copyable-code", label: "Copyable code" },
+  { id: "copyable-inline", label: "Copyable inline" },
   { id: "collapsible-code", label: "Collapsible code" },
   { id: "feedback", label: "Feedback" },
   { id: "label-filter", label: "Label filter" },
@@ -162,6 +168,8 @@ function DesignReferencePage() {
       <ButtonsBadgesSection />
       <FormsSection />
       <DataDisplaySection />
+      <CopyableCodeSection />
+      <CopyableInlineSection />
       <CollapsibleCodeSection />
       <FeedbackSection />
       <LabelFilterSection />
@@ -1448,55 +1456,59 @@ function DataDisplaySection() {
   );
 }
 
-/** ReferenceCollapsibleCode mirrors the CollapsibleCode used on the notification
- * delivery detail page: a native <details>/<summary> disclosure wrapping a
- * monospace block with a copy affordance. Keyboard-accessible and mobile-safe
- * with no JS-driven layout. Reuse this pattern for long, optional payloads
- * (request/response bodies, raw JSON) that should default to collapsed. */
-function ReferenceCollapsibleCode({
-  label,
-  value,
-  defaultOpen = false,
-}: {
-  label: string;
-  value: string;
-  defaultOpen?: boolean;
-}) {
-  const [copied, setCopied] = useState(false);
-
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard requires a secure context; the value stays visible to copy by hand.
-    }
-  };
-
+function CopyableCodeSection() {
   return (
-    <details className="group rounded-md border" open={defaultOpen}>
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent">
-        <span className="flex min-w-0 items-center gap-2">
-          <ChevronRight className="h-4 w-4 shrink-0 transition-transform group-open:rotate-90" />
-          <span className="truncate font-medium">{label}</span>
-        </span>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            void onCopy();
-          }}
-          aria-label={copied ? "Copied" : `Copy ${label}`}
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-        >
-          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-        </button>
-      </summary>
-      <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words border-t bg-muted p-3 font-mono text-xs">
-        {value}
-      </pre>
-    </details>
+    <Section
+      id="copyable-code"
+      title="Copyable code"
+      description="A short, always-visible monospace value (URL, one-liner command) with an inline copy-to-clipboard button. Use for values that should never require an extra click to reveal. For long or optional payloads, use Collapsible code below instead. Lives on the AI assistants (MCP) page."
+    >
+      <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+        <div className="space-y-2">
+          <CopyableCode code="https://monitoring.example.com/api/v1/mcp" />
+          <CopyableCode code="claude mcp add --transport http solidping <url>" />
+        </div>
+        <CodeSnippet
+          code={`import { CopyableCode } from "@/components/shared/copyable-code";\n\n<CopyableCode code="https://monitoring.example.com/api/v1/mcp" />`}
+        />
+      </div>
+    </Section>
+  );
+}
+
+function CopyableInlineSection() {
+  return (
+    <Section
+      id="copyable-inline"
+      title="Copyable inline"
+      description="A copy-to-clipboard icon button for a value shown elsewhere on the page — a form-field-style ID/URL row (inline, the default) or a bare button next to a caller-rendered value block, e.g. a <pre> error box (inline={false}). For a boxed, always-visible code block use Copyable code above; for a collapsible block use Collapsible code below. Lives on the notification delivery detail page."
+    >
+      <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <div className="text-muted-foreground text-xs">Request URL</div>
+            <CopyableInline
+              value="https://hooks.example.com/incoming/018e"
+              label="request URL"
+            />
+          </div>
+          <div className="flex items-start gap-2">
+            <pre className="min-w-0 flex-1 overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 font-mono text-xs text-destructive">
+              connect ECONNREFUSED
+            </pre>
+            <CopyableInline
+              value="connect ECONNREFUSED"
+              label="error"
+              inline={false}
+              size="md"
+            />
+          </div>
+        </div>
+        <CodeSnippet
+          code={`import { CopyableInline } from "@/components/shared/copyable-code";\n\n// Form-field-style row (inline, default)\n<CopyableInline value={url} label="request URL" />\n\n// Bare button next to a caller-rendered value block\n<CopyableInline value={error} label="error" inline={false} size="md" />`}
+        />
+      </div>
+    </Section>
   );
 }
 
@@ -1505,22 +1517,22 @@ function CollapsibleCodeSection() {
     <Section
       id="collapsible-code"
       title="Collapsible code"
-      description="A native <details> disclosure wrapping a copyable monospace block. Use for long, optional payloads (webhook request/response bodies, raw JSON) that should default collapsed but stay one click from view. Keyboard- and touch-friendly; no extra dependency. Lives inline on the notification delivery detail page."
+      description="A native <details> disclosure wrapping a copyable monospace block. Use for long, optional payloads (webhook request/response bodies, raw JSON) that should default collapsed but stay one click from view. Keyboard- and touch-friendly; no extra dependency. Shared by the notification delivery detail page and the AI assistants page."
     >
       <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
         <div className="space-y-2">
-          <ReferenceCollapsibleCode
+          <CollapsibleCode
             label="Request payload"
             value={`{\n  "type": "incident.created",\n  "data": { "incident": { "uid": "018e…" } }\n}`}
           />
-          <ReferenceCollapsibleCode
+          <CollapsibleCode
             label="Response body"
             value={`{ "error": "service unavailable" }`}
             defaultOpen
           />
         </div>
         <CodeSnippet
-          code={`// Native disclosure + copy. Default collapsed; pass defaultOpen for failures.\n<details className="group rounded-md border">\n  <summary>…<ChevronRight className="group-open:rotate-90" />…</summary>\n  <pre className="font-mono text-xs">{value}</pre>\n</details>`}
+          code={`import { CollapsibleCode } from "@/components/shared/copyable-code";\n\n<CollapsibleCode label="Response body" value={json} defaultOpen={failed} />`}
         />
       </div>
     </Section>

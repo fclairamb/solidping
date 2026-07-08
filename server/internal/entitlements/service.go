@@ -313,8 +313,10 @@ func (s *Service) Defaults() Entitlements {
 // true, the entire payload is dropped in favor of defaults.
 func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	out := Resolved{
-		Limits: s.defaults.Limits,
-		Source: models.EntitlementSourceDefault,
+		Limits:       s.defaults.Limits,
+		Source:       models.EntitlementSourceDefault,
+		DisplayName:  s.defaults.DisplayName,
+		DisplayEmoji: s.defaults.DisplayEmoji,
 	}
 
 	if row == nil || stale {
@@ -322,10 +324,19 @@ func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	}
 
 	out.Source = row.Payload.Source
-	out.DisplayName = row.Payload.DisplayName
-	out.DisplayEmoji = row.Payload.DisplayEmoji
 	out.ExpiresAt = row.ExpiresAt
 	out.LastSyncedAt = row.LastSyncedAt
+
+	// Display identity: a row with its own name/emoji (e.g. billing-written)
+	// keeps it; a row that never got one (e.g. an admin override that only
+	// touched limits) inherits the default — same null-fill semantics as
+	// the limits below.
+	if row.Payload.DisplayName != nil {
+		out.DisplayName = row.Payload.DisplayName
+	}
+	if row.Payload.DisplayEmoji != nil {
+		out.DisplayEmoji = row.Payload.DisplayEmoji
+	}
 
 	limits := row.Payload.Limits
 	if limits.MaxChecks != nil {
