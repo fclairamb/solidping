@@ -125,10 +125,16 @@ func BucketAvailability(
 		CheckUIDs:        checkUIDs,
 		PeriodTypes:      []string{models.PeriodTypeRaw, models.PeriodTypeHour, models.PeriodTypeDay},
 		PeriodStartAfter: &start,
-		// Bound the fetch: at most n buckets per check, and the raw tier is itself
-		// bounded by RetentionRaw (~24h) regardless of the window length, so older
-		// buckets come from hour/day rollups rather than raw.
-		Limit: n * len(checkUIDs),
+		// No row-count Limit here (0 = no limit, same idiom as
+		// models.ListResultsFilter elsewhere): the window is already bounded by
+		// PeriodStartAfter, and a single bucket can be fed by many rows — up to
+		// ~24 hourly rollups plus every not-yet-rolled-up raw row per probe per
+		// region, and hourly rollups themselves can persist for RetentionHour
+		// days (30 by default) before being folded into a day row. A row-count
+		// Limit sized off "n buckets" (the previous bug) or even a generous
+		// fixed cap silently drops the OLDEST rows first (ORDER BY period_start
+		// DESC) once a check's real row count exceeds it, which is exactly the
+		// "only the newest 1-3 days render" bug this replaces.
 	}
 
 	resp, err := db.ListResults(ctx, filter)
