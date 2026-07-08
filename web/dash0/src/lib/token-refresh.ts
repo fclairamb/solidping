@@ -79,7 +79,6 @@ async function doRefresh(): Promise<RefreshOutcome> {
     });
 
     if (!response.ok) {
-      clearToken();
       escalate("rejected");
       return { accessToken: null, failureReason: "rejected" };
     }

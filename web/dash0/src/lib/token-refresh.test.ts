@@ -12,15 +12,17 @@ const setSessionMock = vi.fn((_accessToken: string, refreshToken?: string) => {
 const clearTokenMock = vi.fn(() => {
   storedRefreshToken = null;
 });
+const redirectToExpiredLoginMock = vi.fn();
 
 vi.mock("@/api/client", () => ({
   getRefreshToken: () => storedRefreshToken,
   setSession: (accessToken: string, refreshToken?: string, expiresIn?: number) =>
     setSessionMock(accessToken, refreshToken, expiresIn),
   clearToken: () => clearTokenMock(),
+  redirectToExpiredLogin: () => redirectToExpiredLoginMock(),
 }));
 
-import { refreshAccessToken, shouldRefreshNow } from "./token-refresh";
+import { refreshAccessToken, refreshWithOutcome, shouldRefreshNow } from "./token-refresh";
 
 function mockFetchOnce(response: { ok: boolean; status?: number; body?: unknown }) {
   return vi.fn().mockResolvedValueOnce({
@@ -35,13 +37,16 @@ describe("refreshAccessToken", () => {
     storedRefreshToken = "stored-refresh-token";
     setSessionMock.mockClear();
     clearTokenMock.mockClear();
+    redirectToExpiredLoginMock.mockClear();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("resolves null without a network call when there is no stored refresh token", async () => {
+  it("resolves null, clears the session, and redirects to login when there is no stored refresh token", async () => {
     storedRefreshToken = null;
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
@@ -50,6 +55,12 @@ describe("refreshAccessToken", () => {
 
     expect(result).toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
+    // "No refresh token" while the app believes it's authenticated means
+    // the session is definitively over — escalate immediately instead of
+    // waiting for a 401 that may never come in a backgrounded tab (spec
+    // A.2/A.4).
+    expect(clearTokenMock).toHaveBeenCalledTimes(1);
+    expect(redirectToExpiredLoginMock).toHaveBeenCalledTimes(1);
   });
 
   it("posts to /api/v1/auth/refresh and persists the new access token + expiry", async () => {
@@ -76,7 +87,7 @@ describe("refreshAccessToken", () => {
     expect(clearTokenMock).not.toHaveBeenCalled();
   });
 
-  it("clears the session and resolves null when the server rejects the refresh token", async () => {
+  it("clears the session, redirects, and resolves null when the server rejects the refresh token", async () => {
     const fetchSpy = mockFetchOnce({ ok: false, status: 401 });
     vi.stubGlobal("fetch", fetchSpy);
 
@@ -84,9 +95,10 @@ describe("refreshAccessToken", () => {
 
     expect(result).toBeNull();
     expect(clearTokenMock).toHaveBeenCalledTimes(1);
+    expect(redirectToExpiredLoginMock).toHaveBeenCalledTimes(1);
   });
 
-  it("resolves null and leaves the session untouched on a network error", async () => {
+  it("resolves null and leaves the session untouched (no redirect) on a network error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValueOnce(new Error("network down")));
 
     const result = await refreshAccessToken();
@@ -97,6 +109,7 @@ describe("refreshAccessToken", () => {
     // tick, or another 401) should retry rather than being permanently
     // logged out by one blip.
     expect(clearTokenMock).not.toHaveBeenCalled();
+    expect(redirectToExpiredLoginMock).not.toHaveBeenCalled();
   });
 
   it("is single-flight: N concurrent callers share one in-flight request", async () => {
@@ -139,6 +152,70 @@ describe("refreshAccessToken", () => {
 
     expect(second).toBe("second-access");
     expect(secondFetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("refreshWithOutcome", () => {
+  beforeEach(() => {
+    storedRefreshToken = "stored-refresh-token";
+    setSessionMock.mockClear();
+    clearTokenMock.mockClear();
+    redirectToExpiredLoginMock.mockClear();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("differentiates no-refresh-token from a server rejection from a network error", async () => {
+    storedRefreshToken = null;
+    vi.stubGlobal("fetch", vi.fn());
+    expect(await refreshWithOutcome()).toEqual({
+      accessToken: null,
+      failureReason: "no-refresh-token",
+    });
+
+    storedRefreshToken = "stored-refresh-token";
+    vi.stubGlobal("fetch", mockFetchOnce({ ok: false, status: 401 }));
+    expect(await refreshWithOutcome()).toEqual({
+      accessToken: null,
+      failureReason: "rejected",
+    });
+
+    storedRefreshToken = "stored-refresh-token";
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValueOnce(new Error("network down")));
+    expect(await refreshWithOutcome()).toEqual({
+      accessToken: null,
+      failureReason: "network-error",
+    });
+  });
+
+  it("returns the fresh access token on success with no failureReason", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetchOnce({ ok: true, body: { accessToken: "new-access", expiresIn: 3600 } })
+    );
+
+    expect(await refreshWithOutcome()).toEqual({ accessToken: "new-access" });
+  });
+
+  it("escalates (clears + redirects) exactly once even with concurrent callers sharing the in-flight request", async () => {
+    storedRefreshToken = null;
+    vi.stubGlobal("fetch", vi.fn());
+
+    const outcomes = await Promise.all([
+      refreshWithOutcome(),
+      refreshWithOutcome(),
+      refreshWithOutcome(),
+    ]);
+
+    for (const outcome of outcomes) {
+      expect(outcome).toEqual({ accessToken: null, failureReason: "no-refresh-token" });
+    }
+    expect(clearTokenMock).toHaveBeenCalledTimes(1);
+    expect(redirectToExpiredLoginMock).toHaveBeenCalledTimes(1);
   });
 });
 
