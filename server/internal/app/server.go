@@ -703,7 +703,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	}
 
 	// Badge routes (public, no authentication required)
-	badgesService := badges.NewService(s.dbService)
+	badgesService := badges.NewService(s.dbService, s.config)
 	badgesHandler := badges.NewHandler(badgesService, s.config)
 	api.GET("/orgs/:org/checks/:check/badges/:components", badgesHandler.GetBadge)
 
@@ -1016,7 +1016,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgStatusUpdates.DELETE("/:uid", statusUpdatesHandler.DeleteStatusUpdate)
 
 	// Status pages routes (authentication required)
-	statusPagesService := statuspages.NewService(s.dbService)
+	statusPagesService := statuspages.NewService(s.dbService, s.config)
 	statusPagesHandler := statuspages.NewHandler(statusPagesService, s.config)
 	orgStatusPages := api.NewGroup("/orgs/:org/status-pages").Use(authMiddleware.RequireAuth)
 	orgStatusPages.GET("", statusPagesHandler.ListStatusPages)

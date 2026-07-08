@@ -1,8 +1,10 @@
 package uptimebar
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"testing"
 	"time"
@@ -99,7 +101,7 @@ func TestBucketAvailability_RawSpansCurrentAndPreviousHour(t *testing.T) {
 		rawRow("c1", models.ResultStatusUp, currentHour.Add(5*time.Minute), 50),
 	}}
 
-	out, err := BucketAvailability(context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 24)
+	out, err := BucketAvailability(context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 24, 0, 0)
 	r.NoError(err)
 
 	byBucket := out["c1"]
@@ -136,7 +138,7 @@ func TestBucketAvailability_RawAndRollupNoDoubleCount(t *testing.T) {
 		hourRow("c1", 60, 60, olderHour),
 	}}
 
-	out, err := BucketAvailability(context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 24)
+	out, err := BucketAvailability(context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 24, 0, 0)
 	r.NoError(err)
 
 	byBucket := out["c1"]
@@ -174,7 +176,7 @@ func TestBucketAvailability_WarningCountsAsUpLifecycleExcluded(t *testing.T) {
 		rawRow("c1", models.ResultStatusRunning, currentHour.Add(5*time.Minute), 0),
 	}}
 
-	out, err := BucketAvailability(context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 24)
+	out, err := BucketAvailability(context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 24, 0, 0)
 	r.NoError(err)
 
 	stats := out["c1"][currentHour]
@@ -200,7 +202,7 @@ func TestBucketAvailability_EmptyBucketAbsent(t *testing.T) {
 		rawRow("c1", models.ResultStatusUp, currentHour.Add(time.Minute), 40),
 	}}
 
-	out, err := BucketAvailability(context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 24)
+	out, err := BucketAvailability(context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 24, 0, 0)
 	r.NoError(err)
 
 	byBucket := out["c1"]
@@ -226,7 +228,7 @@ func TestBucketAvailability_MultiCheckSingleQuery(t *testing.T) {
 	}}
 
 	out, err := BucketAvailability(
-		context.Background(), lister, "org", []string{"c1", "c2"}, time.Hour, bucketStart, 24,
+		context.Background(), lister, "org", []string{"c1", "c2"}, time.Hour, bucketStart, 24, 0, 0,
 	)
 	r.NoError(err)
 
@@ -236,10 +238,15 @@ func TestBucketAvailability_MultiCheckSingleQuery(t *testing.T) {
 	r.InDelta(0.0, c2, 0.0001)
 
 	r.NotNil(lister.gotFilter)
-	r.Equal(0, lister.gotFilter.Limit,
-		"no row-count limit: a bucket can be fed by many rows, so limiting by "+
-			"windowBuckets × len(checkUIDs) truncates dense windows (see "+
-			"TestBucketAvailability_DenseRowsFillAllBuckets)")
+	// Not a row-count limit sized off "n buckets" or len(checkUIDs) (that
+	// truncates dense windows — see TestBucketAvailability_DenseRowsFillAllBuckets)
+	// but a generous retention-derived safety cap (see safetyRowCap): it must
+	// exceed this tiny query's actual row count by a wide margin.
+	wantLimit := safetyRowCap(2, 24, time.Hour, 0, 0)
+	r.Equal(wantLimit, lister.gotFilter.Limit,
+		"the query is bounded by the retention-derived safety cap")
+	r.Greater(lister.gotFilter.Limit, len(lister.results),
+		"the cap must be generous enough not to truncate this small query")
 	r.ElementsMatch(
 		[]string{models.PeriodTypeRaw, models.PeriodTypeHour, models.PeriodTypeDay},
 		lister.gotFilter.PeriodTypes,
@@ -254,7 +261,7 @@ func TestBucketAvailability_NoChecks(t *testing.T) {
 	r := require.New(t)
 
 	lister := &fakeLister{}
-	out, err := BucketAvailability(context.Background(), lister, "org", nil, time.Hour, time.Now(), 24)
+	out, err := BucketAvailability(context.Background(), lister, "org", nil, time.Hour, time.Now(), 24, 0, 0)
 	r.NoError(err)
 	r.Empty(out)
 	r.Nil(lister.gotFilter, "no query is issued when there are no checks")
@@ -302,7 +309,7 @@ func TestBucketAvailability_DenseRowsFillAllBuckets(t *testing.T) {
 			lister := &fakeLister{results: results}
 
 			out, err := BucketAvailability(
-				context.Background(), lister, "org", []string{"c1"}, 24*time.Hour, bucketStart, n,
+				context.Background(), lister, "org", []string{"c1"}, 24*time.Hour, bucketStart, n, 0, 0,
 			)
 			r.NoError(err)
 
@@ -356,10 +363,71 @@ func TestBucketAvailability_MultiCheckDoesNotStarveOlderChecks(t *testing.T) {
 	lister := &fakeLister{results: results}
 
 	out, err := BucketAvailability(
-		context.Background(), lister, "org", []string{"c1", "c2"}, 24*time.Hour, bucketStart, n,
+		context.Background(), lister, "org", []string{"c1", "c2"}, 24*time.Hour, bucketStart, n, 0, 0,
 	)
 	r.NoError(err)
 
 	r.Len(out["c2"], n, "c1's dense recent rows must not starve c2's older buckets out of the shared query")
 	r.NotEmpty(out["c1"], "c1 itself must still be present")
+}
+
+// TestBucketAvailability_SafetyCapEngagesAndWarns is the pathological-scenario
+// regression for the safety cap (see safetyRowCap): a lister returning far
+// more rows than ANY reasonable retention configuration would ever produce for
+// the requested window — simulating an aggregation job stalled/crashed
+// indefinitely, so raw rows pile up without bound — must not be fetched
+// unbounded. The query is capped, a warning is logged with org/check context,
+// and the (partial) result is still returned rather than erroring — the same
+// "generous cap + log + return partial" shape as the Slack client's
+// pagination cap (see internal/integrations/slack/client.go's paginate and
+// TestListChannelsStopsAtPageCap in client_test.go).
+func TestBucketAvailability_SafetyCapEngagesAndWarns(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// Capture slog output for the duration of this test so the warning can be
+	// asserted on, restoring the previous default logger afterwards.
+	var logBuf bytes.Buffer
+
+	prevLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prevLogger) })
+
+	now := time.Now().UTC()
+	currentHour := now.Truncate(time.Hour)
+
+	// A single-bucket (n=1, 1h) window with default retention hints (0, 0 →
+	// the documented 24h/30d fallback) yields a small cap. Feed it FAR more
+	// raw rows than even a full RetentionRaw window at the platform's fastest
+	// allowed period could produce — the pathological "aggregation job never
+	// ran" case, not a realistic one.
+	const pathologicalRowCount = 20_000
+
+	results := make([]*models.Result, 0, pathologicalRowCount)
+	for i := range pathologicalRowCount {
+		results = append(
+			results,
+			rawRow("c1", models.ResultStatusUp, currentHour.Add(time.Duration(i)*time.Millisecond), 40),
+		)
+	}
+
+	lister := &fakeLister{results: results}
+
+	out, err := BucketAvailability(context.Background(), lister, "org", []string{"c1"}, time.Hour, currentHour, 1, 0, 0)
+	r.NoError(err, "a capped, partial fetch must not error")
+
+	r.NotNil(lister.gotFilter)
+
+	wantLimit := safetyRowCap(1, 1, time.Hour, 0, 0)
+	r.Less(wantLimit, pathologicalRowCount,
+		"the cap must be smaller than the pathological row count for this test to be meaningful")
+	r.Equal(wantLimit, lister.gotFilter.Limit, "the query is bounded by the safety cap")
+
+	r.NotEmpty(out["c1"], "a bucket with partial data is still returned, not an error and not empty")
+
+	logged := logBuf.String()
+	r.Contains(logged, "hit its safety row cap", "a warning must be logged when the cap engages")
+	r.Contains(logged, "organization_uid=org", "the warning must include org context")
+	r.Contains(logged, "check_uids=", "the warning must include check context")
 }
