@@ -253,13 +253,18 @@ function SettingsPage() {
                 disabled={updateSessionSettings.isPending}
                 aria-invalid={sessionError != null}
                 className="max-w-xs"
+                data-testid="session-duration-hours"
               />
               <p className="text-xs text-muted-foreground">
                 {t("settings.sessionDurationHelp")}
               </p>
             </div>
 
-            <Button type="submit" disabled={updateSessionSettings.isPending}>
+            <Button
+              type="submit"
+              disabled={updateSessionSettings.isPending}
+              data-testid="session-duration-save"
+            >
               {updateSessionSettings.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
