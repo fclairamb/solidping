@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { PinnedResultBox } from "@/components/checks/pinned-result-box";
+import { StatusBadge } from "@/components/shared/status-badge";
 import { statusStyle } from "@/lib/status-style";
 
 type TimeRange = "hour" | "day" | "week" | "month";
@@ -940,9 +941,7 @@ export function ResponseTimeChart({
                         </p>
                         <p className="font-medium">{formatMs(data.durationMs)}</p>
                         {data.status && data.status !== "up" && (
-                          <p className="text-xs font-medium text-red-500 capitalize">
-                            {data.status}
-                          </p>
+                          <StatusBadge status={data.status} className="mt-1 text-xs" />
                         )}
                         {data.uid && (
                           <p className="text-xs text-muted-foreground mt-1">
@@ -965,9 +964,7 @@ export function ResponseTimeChart({
                         {formatMs(data.durationMs)}
                       </p>
                       {data.status && data.status !== "up" && (
-                        <p className="text-xs font-medium text-red-500 capitalize">
-                          {data.status}
-                        </p>
+                        <StatusBadge status={data.status} className="mt-1 text-xs" />
                       )}
                       {data.uid && (
                         <p className="text-xs text-muted-foreground mt-1">
