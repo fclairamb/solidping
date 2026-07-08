@@ -4,9 +4,9 @@ import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
-import { setSession } from "@/api/client";
 import { AuthSplitLayout } from "@/components/layout/auth-split-layout";
 import { useConfirmRegistration } from "@/api/hooks";
+import { applyConfirmRegistrationHandoff } from "@/lib/confirm-registration-handoff";
 
 export const Route = createFileRoute("/confirm-registration/$token")({
   component: ConfirmRegistrationPage,
@@ -27,14 +27,9 @@ function ConfirmRegistrationPage() {
       .mutateAsync({ token })
       .then((data) => {
         setConfirmed(true);
-        setSession(data.accessToken, data.refreshToken, data.expiresIn);
-        const orgSlug = data.organization?.slug;
+        const target = applyConfirmRegistrationHandoff(data);
         setTimeout(() => {
-          if (orgSlug) {
-            navigate({ to: "/orgs/$org", params: { org: orgSlug } });
-          } else {
-            navigate({ to: "/no-org" });
-          }
+          navigate(target);
         }, 1500);
       })
       .catch((err) => {
