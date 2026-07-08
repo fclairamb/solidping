@@ -180,10 +180,18 @@ func (r *AggregationJobRun) aggregatePeriod(
 		return false, fmt.Errorf("failed to create aggregated result: %w", createErr)
 	}
 
-	// 6. Collect UIDs of source results to delete
-	resultUIDs := make([]string, len(resultsResp.Results))
-	for i, result := range resultsResp.Results {
-		resultUIDs[i] = result.UID
+	// 6. Collect UIDs of source results to delete, skipping lifecycle-marker
+	// rows (created, running). They already contribute nothing to the
+	// aggregate's stats (see processRawResult), so keeping them changes no
+	// rollup numbers — it just preserves the one raw row that records e.g.
+	// "this check was created here" instead of letting its permalink morph
+	// into a misleading aggregation fallback (see GetResult).
+	resultUIDs := make([]string, 0, len(resultsResp.Results))
+	for _, result := range resultsResp.Results {
+		if result.Status != nil && models.ResultStatus(*result.Status).IsLifecycleMarker() {
+			continue
+		}
+		resultUIDs = append(resultUIDs, result.UID)
 	}
 
 	// 7. Delete source results by their UIDs
