@@ -321,6 +321,68 @@ function computeTicks(
   return ticks;
 }
 
+interface GradientStop {
+  offset: number;
+  color: string;
+}
+
+/** Non-failing statuses (up, created, running, and the warning/degraded "up,
+ * but something to report" states) render neutral — only hard failures
+ * (down/error/timeout/unknown) go red. Shared by the gradient-stop builder
+ * below and the always-render-dot predicate so line color and dot color
+ * agree on what counts as "failing". */
+function isFailingStatus(status: string): boolean {
+  return status === "unknown" || statusStyle(status).isDown;
+}
+
+/** Returns true when a chart point represents a failing result — used to
+ * exempt failure dots from the density threshold (dotsEnabled). */
+function isDownPoint(payload: ChartPoint | undefined): boolean {
+  return !!payload && isFailingStatus(payload.status);
+}
+
+/** Builds per-status gradient stops for one series' real (non-null) points:
+ * `neutralColor` everywhere except failing stretches, which use
+ * `downColor`. Stop offsets are index fractions over the real points
+ * ((i - 0.5) / (n - 1)) — this assumes roughly even x-spacing, the same
+ * assumption the single-series chart has always made (including across
+ * mixed raw/hour tiers; fixing x-linearity for unevenly spaced points is out
+ * of scope). Shared by the single-series gradient and, per region, the
+ * multi-series gradients. */
+function buildGradientStops(
+  points: ChartPoint[],
+  neutralColor: string,
+  downColor: string,
+): GradientStop[] {
+  const realPoints = points.filter((p) => p.durationMs != null);
+  const colorFor = (status: string) =>
+    isFailingStatus(status) ? downColor : neutralColor;
+
+  if (realPoints.length < 2) {
+    const color =
+      realPoints.length === 1 ? colorFor(realPoints[0].status) : neutralColor;
+    return [
+      { offset: 0, color },
+      { offset: 1, color },
+    ];
+  }
+
+  const n = realPoints.length;
+  const stops: GradientStop[] = [];
+  stops.push({ offset: 0, color: colorFor(realPoints[0].status) });
+
+  for (let i = 1; i < n; i++) {
+    if (realPoints[i].status !== realPoints[i - 1].status) {
+      const mid = (i - 0.5) / (n - 1);
+      stops.push({ offset: mid, color: colorFor(realPoints[i - 1].status) });
+      stops.push({ offset: mid, color: colorFor(realPoints[i].status) });
+    }
+  }
+
+  stops.push({ offset: 1, color: colorFor(realPoints[n - 1].status) });
+  return stops;
+}
+
 export function ResponseTimeChart({
   org,
   checkUid,
@@ -610,40 +672,27 @@ export function ResponseTimeChart({
   const COLOR_UP = "hsl(142, 76%, 36%)";
   const COLOR_DOWN = "hsl(0, 72%, 51%)";
 
-  const gradientStops = useMemo(() => {
-    // Non-failing statuses (up, created, running, and the warning/degraded
-    // "up, but something to report" states) render neutral green — only hard
-    // failures (down/error/timeout/unknown) tint the line red.
-    const isNeutralStatus = (status: string) => !statusStyle(status).isDown;
-    const realPoints = chartData.filter((p) => p.durationMs != null);
-    if (realPoints.length < 2) {
-      const color =
-        realPoints.length === 1 && !isNeutralStatus(realPoints[0].status)
-          ? COLOR_DOWN
-          : COLOR_UP;
-      return [{ offset: 0, color }, { offset: 1, color }];
+  const gradientStops = useMemo(
+    () => buildGradientStops(chartData, COLOR_UP, COLOR_DOWN),
+    [chartData],
+  );
+
+  // Multi-series mode: one gradient's worth of stops per region, using that
+  // region's own palette color as the neutral base instead of the flat
+  // COLOR_UP single-series uses — this is what lets a region's line keep its
+  // identity color while still turning red over a failing stretch.
+  const regionGradientStops = useMemo(() => {
+    const map: Record<string, GradientStop[]> = {};
+    for (const slug of regions) {
+      const neutralColor = colorByRegion.get(slug) ?? COLOR_UP;
+      map[slug] = buildGradientStops(
+        seriesByRegion[slug] ?? [],
+        neutralColor,
+        COLOR_DOWN,
+      );
     }
-    const n = realPoints.length;
-    const stops: { offset: number; color: string }[] = [];
-    const colorFor = (status: string) =>
-      isNeutralStatus(status) ? COLOR_UP : COLOR_DOWN;
-
-    stops.push({ offset: 0, color: colorFor(realPoints[0].status) });
-
-    for (let i = 1; i < n; i++) {
-      if (realPoints[i].status !== realPoints[i - 1].status) {
-        const mid = (i - 0.5) / (n - 1);
-        stops.push({
-          offset: mid,
-          color: colorFor(realPoints[i - 1].status),
-        });
-        stops.push({ offset: mid, color: colorFor(realPoints[i].status) });
-      }
-    }
-
-    stops.push({ offset: 1, color: colorFor(realPoints[n - 1].status) });
-    return stops;
-  }, [chartData]);
+    return map;
+  }, [regions, seriesByRegion, colorByRegion]);
 
   // Recharts v3 routes all pointer events through a single top-level surface,
   // so per-dot onClick handlers never fire. Handle clicks at the chart level
@@ -810,6 +859,24 @@ export function ResponseTimeChart({
                   </linearGradient>
                 </defs>
               )}
+              {isMultiSeries && (
+                <defs>
+                  {regions.map((slug) => (
+                    <linearGradient
+                      key={slug}
+                      id={`rt-region-${slug}`}
+                      x1="0"
+                      y1="0"
+                      x2="1"
+                      y2="0"
+                    >
+                      {(regionGradientStops[slug] ?? []).map((s, i) => (
+                        <stop key={i} offset={s.offset} stopColor={s.color} />
+                      ))}
+                    </linearGradient>
+                  ))}
+                </defs>
+              )}
               <CartesianGrid
                 strokeDasharray="3 3"
                 className="stroke-muted"
@@ -947,56 +1014,57 @@ export function ResponseTimeChart({
                 strokeWidth={2}
                 connectNulls={false}
                 isAnimationActive={false}
-                dot={
-                  // Dense data → skip per-point circles entirely. activeDot
-                  // still renders the hover/selected dot and caches the anchor
-                  // so the pinned-result box can find it.
-                  !dotsEnabled
-                    ? false
-                    : (props) => {
-                        const dotProps = props as {
-                          cx?: number;
-                          cy?: number;
-                          payload?: ChartPoint;
-                          key?: React.Key | null;
-                        };
-                        const { cx, cy, payload, key } = dotProps;
-                        const reactKey =
-                          key == null ? undefined : (key as React.Key);
-                        if (cx == null || cy == null || !payload?.uid) {
-                          return <g key={reactKey} />;
-                        }
-                        const uid = payload.uid;
-                        // Cache the dot's coordinates for the pinned-box anchor.
-                        // Mutating a ref outside the React commit phase is safe —
-                        // it doesn't trigger a re-render.
-                        dotPositions.current[uid] = { cx, cy };
-                        const fill =
-                          payload.status === "unknown" ||
-                          statusStyle(payload.status).isDown
-                            ? COLOR_DOWN
-                            : COLOR_UP;
-                        const isSelected = selectedUid === uid;
-                        return (
-                          <circle
-                            key={reactKey}
-                            cx={cx}
-                            cy={cy}
-                            r={isSelected ? 5 : 3.5}
-                            fill={fill}
-                            stroke={isSelected ? "var(--primary)" : undefined}
-                            strokeWidth={isSelected ? 2 : 0}
-                            style={{ cursor: "pointer" }}
-                          >
-                            <title>
-                              {isSelected
-                                ? t("detail.chart.dotClickToClose")
-                                : t("detail.chart.dotClickForDetails")}
-                            </title>
-                          </circle>
-                        );
-                      }
-                }
+                dot={(props) => {
+                  // Dense data → skip per-point circles, except for failing
+                  // points: a down/unknown result always renders and stays
+                  // clickable/pinnable, regardless of the density threshold.
+                  // activeDot still renders the hover/selected dot and caches
+                  // the anchor so the pinned-result box can find it.
+                  const dotProps = props as {
+                    cx?: number;
+                    cy?: number;
+                    payload?: ChartPoint;
+                    key?: React.Key | null;
+                  };
+                  const { cx, cy, payload, key } = dotProps;
+                  const reactKey =
+                    key == null ? undefined : (key as React.Key);
+                  if (cx == null || cy == null || !payload?.uid) {
+                    return <g key={reactKey} />;
+                  }
+                  if (!dotsEnabled && !isDownPoint(payload)) {
+                    return <g key={reactKey} />;
+                  }
+                  const uid = payload.uid;
+                  // Cache the dot's coordinates for the pinned-box anchor.
+                  // Mutating a ref outside the React commit phase is safe —
+                  // it doesn't trigger a re-render.
+                  dotPositions.current[uid] = { cx, cy };
+                  const fill =
+                    payload.status === "unknown" ||
+                    statusStyle(payload.status).isDown
+                      ? COLOR_DOWN
+                      : COLOR_UP;
+                  const isSelected = selectedUid === uid;
+                  return (
+                    <circle
+                      key={reactKey}
+                      cx={cx}
+                      cy={cy}
+                      r={isSelected ? 5 : 3.5}
+                      fill={fill}
+                      stroke={isSelected ? "var(--primary)" : undefined}
+                      strokeWidth={isSelected ? 2 : 0}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <title>
+                        {isSelected
+                          ? t("detail.chart.dotClickToClose")
+                          : t("detail.chart.dotClickForDetails")}
+                      </title>
+                    </circle>
+                  );
+                }}
                 activeDot={(props) => {
                   const dotProps = props as {
                     cx?: number;
@@ -1043,61 +1111,61 @@ export function ResponseTimeChart({
                       data={seriesData}
                       type="monotone"
                       dataKey={key}
-                      stroke={color}
-                      fill={color}
+                      stroke={`url(#rt-region-${slug})`}
+                      fill={`url(#rt-region-${slug})`}
                       fillOpacity={0.08}
                       strokeWidth={2}
                       connectNulls={false}
                       isAnimationActive={false}
-                      dot={
+                      dot={(props) => {
                         // Same combined-total dot-density threshold as
-                        // single-series mode (totalPointCount / dotsEnabled).
-                        !dotsEnabled
-                          ? false
-                          : (props) => {
-                              const dotProps = props as {
-                                cx?: number;
-                                cy?: number;
-                                payload?: ChartPoint;
-                                key?: React.Key | null;
-                              };
-                              const { cx, cy, payload, key: reactKeyRaw } = dotProps;
-                              const reactKey =
-                                reactKeyRaw == null ? undefined : (reactKeyRaw as React.Key);
-                              if (cx == null || cy == null || !payload?.uid) {
-                                return <g key={reactKey} />;
-                              }
-                              const uid = payload.uid;
-                              dotPositions.current[uid] = { cx, cy };
-                              // Down results stay visible as red dots on
-                              // their line even though the line itself uses
-                              // the region color, not the status gradient.
-                              const fill =
-                                payload.status === "unknown" ||
-                                statusStyle(payload.status).isDown
-                                  ? COLOR_DOWN
-                                  : color;
-                              const isSelected = selectedUid === uid;
-                              return (
-                                <circle
-                                  key={reactKey}
-                                  cx={cx}
-                                  cy={cy}
-                                  r={isSelected ? 5 : 3.5}
-                                  fill={fill}
-                                  stroke={isSelected ? "var(--primary)" : undefined}
-                                  strokeWidth={isSelected ? 2 : 0}
-                                  style={{ cursor: "pointer" }}
-                                >
-                                  <title>
-                                    {isSelected
-                                      ? t("detail.chart.dotClickToClose")
-                                      : t("detail.chart.dotClickForDetails")}
-                                  </title>
-                                </circle>
-                              );
-                            }
-                      }
+                        // single-series mode (totalPointCount / dotsEnabled),
+                        // except a failing point always renders regardless.
+                        const dotProps = props as {
+                          cx?: number;
+                          cy?: number;
+                          payload?: ChartPoint;
+                          key?: React.Key | null;
+                        };
+                        const { cx, cy, payload, key: reactKeyRaw } = dotProps;
+                        const reactKey =
+                          reactKeyRaw == null ? undefined : (reactKeyRaw as React.Key);
+                        if (cx == null || cy == null || !payload?.uid) {
+                          return <g key={reactKey} />;
+                        }
+                        if (!dotsEnabled && !isDownPoint(payload)) {
+                          return <g key={reactKey} />;
+                        }
+                        const uid = payload.uid;
+                        dotPositions.current[uid] = { cx, cy };
+                        // Down results stay visible as red dots on
+                        // their line even though the line itself uses
+                        // the region color, not the status gradient.
+                        const fill =
+                          payload.status === "unknown" ||
+                          statusStyle(payload.status).isDown
+                            ? COLOR_DOWN
+                            : color;
+                        const isSelected = selectedUid === uid;
+                        return (
+                          <circle
+                            key={reactKey}
+                            cx={cx}
+                            cy={cy}
+                            r={isSelected ? 5 : 3.5}
+                            fill={fill}
+                            stroke={isSelected ? "var(--primary)" : undefined}
+                            strokeWidth={isSelected ? 2 : 0}
+                            style={{ cursor: "pointer" }}
+                          >
+                            <title>
+                              {isSelected
+                                ? t("detail.chart.dotClickToClose")
+                                : t("detail.chart.dotClickForDetails")}
+                            </title>
+                          </circle>
+                        );
+                      }}
                       activeDot={(props) => {
                         const dotProps = props as {
                           cx?: number;
