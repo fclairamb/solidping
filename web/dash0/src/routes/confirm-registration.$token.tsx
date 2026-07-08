@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
-import { setToken } from "@/api/client";
+import { setSession } from "@/api/client";
 import { AuthSplitLayout } from "@/components/layout/auth-split-layout";
 import { useConfirmRegistration } from "@/api/hooks";
 
@@ -27,7 +27,7 @@ function ConfirmRegistrationPage() {
       .mutateAsync({ token })
       .then((data) => {
         setConfirmed(true);
-        setToken(data.accessToken);
+        setSession(data.accessToken, data.refreshToken, data.expiresIn);
         const orgSlug = data.organization?.slug;
         setTimeout(() => {
           if (orgSlug) {

@@ -1796,8 +1796,14 @@ export function useRegister() {
 export function useConfirmRegistration() {
   return useMutation({
     mutationFn: (data: { token: string }) =>
+      // Login-shaped response — the backend mints a full session (refresh
+      // token + expiry included) just like password/OAuth login, so both
+      // fields must be captured here and passed to setSession, not dropped
+      // (2026-07-08 funnel audit).
       apiFetch<{
         accessToken: string;
+        refreshToken?: string;
+        expiresIn?: number;
         user: { email: string; name?: string; avatarUrl?: string; role: string };
         organization?: { uid: string; slug: string; name?: string };
       }>("/api/v1/auth/confirm-registration", {
@@ -1845,7 +1851,9 @@ export function useUpdateProfile() {
   });
 }
 
-// Organization creation hook
+// Organization creation hook. The response never carries a fresh token (see
+// server/internal/handlers/auth/service.go OrgResponse) — the caller's
+// existing access token is used as-is, unlike the other login-shaped paths.
 export function useCreateOrg() {
   return useMutation({
     mutationFn: (data: { name: string; slug: string }) =>
@@ -1853,7 +1861,6 @@ export function useCreateOrg() {
         uid: string;
         slug: string;
         name: string;
-        accessToken: string;
       }>("/api/v1/orgs", {
         method: "POST",
         body: JSON.stringify(data),
