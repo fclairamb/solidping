@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.1](https://github.com/fclairamb/solidping/compare/v0.2.0...v0.2.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* **dash0:** live-socket CONNECTING crash + route-level error boundaries ([#108](https://github.com/fclairamb/solidping/issues/108)) ([008c015](https://github.com/fclairamb/solidping/commit/008c015761d958b53f32ec1a956f0300230af7b1))
+* **deps:** update go dependencies (non-major) ([#109](https://github.com/fclairamb/solidping/issues/109)) ([ec616d4](https://github.com/fclairamb/solidping/commit/ec616d4759118d4027cb673909b57bc876dcd554))
+* **deps:** update module github.com/oapi-codegen/oapi-codegen/v2 to v2.7.2 ([#110](https://github.com/fclairamb/solidping/issues/110)) ([09d6ad0](https://github.com/fclairamb/solidping/commit/09d6ad0890c752442cc7a26f96227e7866da7502))
+* **deps:** update module github.com/ohler55/ojg to v1.28.2 ([#107](https://github.com/fclairamb/solidping/issues/107)) ([335615c](https://github.com/fclairamb/solidping/commit/335615c7db9ef8b3abb0233ccff3e2f4d17792ac))
+* **deps:** update module github.com/wneessen/go-mail to v0.8.0 ([#103](https://github.com/fclairamb/solidping/issues/103)) ([aa533c1](https://github.com/fclairamb/solidping/commit/aa533c104e173acf220848e1797f8b94e18ae4a5))
+* Slack multi-org, region filtering, mail-checker hang fixes, live-status dot ([#100](https://github.com/fclairamb/solidping/issues/100)) ([35f3aa2](https://github.com/fclairamb/solidping/commit/35f3aa23d8f20b605313ed94159942a10c7a6bef))
+
 ## [0.2.0](https://github.com/fclairamb/solidping/compare/v0.1.0...v0.2.0) (2026-07-04)
 
 
