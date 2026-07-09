@@ -272,7 +272,7 @@ type Disable2FARequest struct {
 // MeResponse contains the current user's information.
 type MeResponse struct {
 	User                      *UserInfo                  `json:"user"`
-	Organization              *OrganizationInfo          `json:"organization"`
+	Organization              *OrganizationInfo          `json:"organization,omitempty"`
 	Organizations             []OrganizationSummary      `json:"organizations"`
 	TOTPEnabled               bool                       `json:"totpEnabled"`
 	PasskeyCount              int                        `json:"passkeyCount"`
@@ -1330,6 +1330,16 @@ func (s *Service) cleanupExpiredPATCache() {
 // GetUserInfo returns information about the current user.
 // orgSlug is extracted from the JWT claims.
 func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse, error) {
+	// Zero-org session: the token carries no org slug — the user belongs to no
+	// organization yet (a fresh sign-up who hasn't created/joined one, or a
+	// user removed from their last org). This is a legitimate state, exactly as
+	// completeLogin's resolvedOrg==nil branch treats it, so resolve the user's
+	// info WITHOUT an org rather than 401ing on a GetOrganizationBySlug("")
+	// miss (which would silently destroy the session on the next page load).
+	if claims.OrgSlug == "" {
+		return s.getUserInfoNoOrg(ctx, claims)
+	}
+
 	org, err := s.db.GetOrganizationBySlug(ctx, claims.OrgSlug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1391,6 +1401,57 @@ func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse,
 			Slug: org.Slug,
 			Name: org.Name,
 		},
+		Organizations:             orgs,
+		TOTPEnabled:               user.TOTPEnabled,
+		PasskeyCount:              len(passkeys),
+		HasPassword:               hasPassword,
+		PendingMembershipRequests: pending,
+	}, nil
+}
+
+// getUserInfoNoOrg builds the /auth/me response for a zero-org session (empty
+// OrgSlug claim). It skips the org / membership-role lookups entirely and
+// returns a nil Organization. The role is derived from the user alone: a plain
+// no-org user has an empty role (mirroring the login response's no-org branch,
+// which the dashboard's /no-org page already renders correctly), while a
+// superadmin keeps their global role.
+func (s *Service) getUserInfoNoOrg(ctx context.Context, claims *Claims) (*MeResponse, error) {
+	user, err := s.db.GetUser(ctx, claims.UserUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+
+		return nil, err
+	}
+
+	role := ""
+	if user.SuperAdmin {
+		role = RoleSuperAdmin
+	}
+
+	orgs, err := s.getOrganizationsForUser(ctx, claims.UserUID)
+	if err != nil {
+		return nil, err
+	}
+
+	pending, err := s.listPendingMembershipRequests(ctx, claims.UserUID)
+	if err != nil {
+		return nil, err
+	}
+
+	passkeys, _ := s.db.ListUserPasskeysByUser(ctx, user.UID)
+	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
+
+	return &MeResponse{
+		User: &UserInfo{
+			UID:       user.UID,
+			Email:     user.Email,
+			Name:      user.Name,
+			AvatarURL: user.AvatarURL,
+			Role:      role,
+		},
+		Organization:              nil,
 		Organizations:             orgs,
 		TOTPEnabled:               user.TOTPEnabled,
 		PasskeyCount:              len(passkeys),
