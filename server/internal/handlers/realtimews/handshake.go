@@ -159,10 +159,20 @@ func (h *Handler) authenticate(
 		return nil, nil, CloseForbidden, "organization not found"
 	}
 
+	// Mirror middleware.RequireOrgAccess exactly. Only a *claims* super-admin
+	// may cross orgs: a DB-only super-admin (user.SuperAdmin) whose token is
+	// scoped to a different org is 403'd by the REST middleware, so the WS
+	// handshake must reject it too rather than silently allowing a cross-org
+	// socket the REST API would deny. (In practice a super-admin always logs in
+	// with super-admin claims, so this divergence is currently unreachable —
+	// but the two paths claim to mirror each other and now provably do.)
+	if !claims.IsSuperAdmin() && claims.OrgSlug != orgSlug {
+		return nil, nil, CloseForbidden, "access to this organization is denied"
+	}
+
+	// Regular users must be members of the org; claims and DB super-admins skip
+	// the membership check (mirrors RequireOrgAccess's second guard).
 	if !claims.IsSuperAdmin() && !user.SuperAdmin {
-		if claims.OrgSlug != orgSlug {
-			return nil, nil, CloseForbidden, "access to this organization is denied"
-		}
 		if _, err := h.dbService.GetMemberByUserAndOrg(ctx, user.UID, org.UID); err != nil {
 			return nil, nil, CloseForbidden, "access to this organization is denied"
 		}
