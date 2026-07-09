@@ -166,6 +166,25 @@ function DiscordIcon({ className }: { className?: string }) {
   );
 }
 
+function OIDCIcon({ className }: { className?: string }) {
+  // Generic shield glyph for the configurable OIDC/SSO connector — unlike the
+  // other providers this isn't a fixed brand, so no brand mark applies.
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 2.5l7.5 3.2v5.2c0 5.1-3.2 8.9-7.5 10.6-4.3-1.7-7.5-5.5-7.5-10.6V5.7L12 2.5z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  );
+}
+
 const PROVIDER_ICONS: Record<string, React.FC<{ className?: string }>> = {
   google: GoogleIcon,
   slack: SlackIcon,
@@ -173,6 +192,7 @@ const PROVIDER_ICONS: Record<string, React.FC<{ className?: string }>> = {
   microsoft: MicrosoftIcon,
   gitlab: GitLabIcon,
   discord: DiscordIcon,
+  oidc: OIDCIcon,
 };
 
 function LoginPage() {

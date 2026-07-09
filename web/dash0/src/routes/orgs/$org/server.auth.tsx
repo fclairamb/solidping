@@ -32,7 +32,13 @@ type FieldKind =
   | "signingSecret"
   | "botToken"
   | "redirectUrl"
-  | "tenantId";
+  | "tenantId"
+  | "displayName"
+  | "issuerUrl"
+  | "scopes"
+  | "emailClaim"
+  | "nameClaim"
+  | "avatarClaim";
 
 interface ProviderConfig {
   name: string;
@@ -103,6 +109,45 @@ const providers: ProviderConfig[] = [
       { key: "auth.discord.client_secret", labelKey: "clientSecret", secret: true },
       { key: "auth.discord.bot_token", labelKey: "botToken", secret: true },
       { key: "auth.discord.redirect_url", labelKey: "redirectUrl", secret: false },
+    ],
+  },
+  {
+    name: "Generic OIDC",
+    enabledKey: "auth.oidc.enabled",
+    fields: [
+      {
+        key: "auth.oidc.display_name",
+        labelKey: "displayName",
+        secret: false,
+        helpKey: "displayName",
+      },
+      {
+        key: "auth.oidc.issuer_url",
+        labelKey: "issuerUrl",
+        secret: false,
+        helpKey: "issuerUrl",
+      },
+      { key: "auth.oidc.client_id", labelKey: "clientId", secret: false },
+      { key: "auth.oidc.client_secret", labelKey: "clientSecret", secret: true },
+      { key: "auth.oidc.scopes", labelKey: "scopes", secret: false, helpKey: "scopes" },
+      {
+        key: "auth.oidc.email_claim",
+        labelKey: "emailClaim",
+        secret: false,
+        helpKey: "emailClaim",
+      },
+      {
+        key: "auth.oidc.name_claim",
+        labelKey: "nameClaim",
+        secret: false,
+        helpKey: "nameClaim",
+      },
+      {
+        key: "auth.oidc.avatar_claim",
+        labelKey: "avatarClaim",
+        secret: false,
+        helpKey: "avatarClaim",
+      },
     ],
   },
 ];

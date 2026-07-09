@@ -74,10 +74,22 @@
       "signingSecret": "Signing Secret",
       "botToken": "Bot Token",
       "redirectUrl": "Redirect URL",
-      "tenantId": "Tenant ID"
+      "tenantId": "Tenant ID",
+      "displayName": "Display Name",
+      "issuerUrl": "Issuer URL",
+      "scopes": "Scopes",
+      "emailClaim": "Email Claim",
+      "nameClaim": "Name Claim",
+      "avatarClaim": "Avatar Claim"
     },
     "fieldHelp": {
-      "tenantId": "Your Entra directory (tenant) ID, or a verified domain. Leave blank for \"common\" (multi-tenant). Use \"organizations\" or \"consumers\" to restrict account types."
+      "tenantId": "Your Entra directory (tenant) ID, or a verified domain. Leave blank for \"common\" (multi-tenant). Use \"organizations\" or \"consumers\" to restrict account types.",
+      "displayName": "Shown on the login button, e.g. \"Continue with Company IdP\". Defaults to \"SSO\" when blank.",
+      "issuerUrl": "The OIDC issuer URL, e.g. https://idp.example.com/realms/acme. Discovery is performed against \"{issuer URL}/.well-known/openid-configuration\".",
+      "scopes": "Space-separated OAuth2 scopes. \"openid\" is always included. Defaults to \"openid email profile\" when blank.",
+      "emailClaim": "ID token claim used for the user's email. Defaults to \"email\".",
+      "nameClaim": "ID token claim used for the user's display name. Defaults to \"name\".",
+      "avatarClaim": "ID token claim used for the user's avatar URL. Defaults to \"picture\"."
     }
   },
   "hashing": {

@@ -74,10 +74,22 @@
       "signingSecret": "Signing Secret",
       "botToken": "Token del bot",
       "redirectUrl": "URL de redirección",
-      "tenantId": "ID de inquilino"
+      "tenantId": "ID de inquilino",
+      "displayName": "Nombre para mostrar",
+      "issuerUrl": "URL del emisor",
+      "scopes": "Ámbitos",
+      "emailClaim": "Claim de Email",
+      "nameClaim": "Claim de Nombre",
+      "avatarClaim": "Claim de Avatar"
     },
     "fieldHelp": {
-      "tenantId": "El ID de su directorio (inquilino) de Entra, o un dominio verificado. Déjelo en blanco para \"common\" (multiinquilino). Use \"organizations\" o \"consumers\" para restringir los tipos de cuenta."
+      "tenantId": "El ID de su directorio (inquilino) de Entra, o un dominio verificado. Déjelo en blanco para \"common\" (multiinquilino). Use \"organizations\" o \"consumers\" para restringir los tipos de cuenta.",
+      "displayName": "Se muestra en el botón de inicio de sesión, p. ej. \"Continuar con Company IdP\". Por defecto \"SSO\" si está vacío.",
+      "issuerUrl": "La URL del emisor OIDC, p. ej. https://idp.example.com/realms/acme. El descubrimiento se realiza mediante \"{URL emisor}/.well-known/openid-configuration\".",
+      "scopes": "Lista de ámbitos OAuth2 separados por espacios. \"openid\" siempre se incluye. Por defecto \"openid email profile\" si está vacío.",
+      "emailClaim": "Claim del token de identidad usado para el email. Por defecto \"email\".",
+      "nameClaim": "Claim del token de identidad usado para el nombre. Por defecto \"name\".",
+      "avatarClaim": "Claim del token de identidad usado para la URL del avatar. Por defecto \"picture\"."
     }
   },
   "hashing": {

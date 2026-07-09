@@ -74,10 +74,22 @@
       "signingSecret": "Signing Secret",
       "botToken": "Bot-Token",
       "redirectUrl": "Weiterleitungs-URL",
-      "tenantId": "Mandanten-ID"
+      "tenantId": "Mandanten-ID",
+      "displayName": "Anzeigename",
+      "issuerUrl": "Aussteller-URL",
+      "scopes": "Scopes",
+      "emailClaim": "E-Mail-Claim",
+      "nameClaim": "Name-Claim",
+      "avatarClaim": "Avatar-Claim"
     },
     "fieldHelp": {
-      "tenantId": "Die ID Ihres Entra-Verzeichnisses (Mandant) oder eine verifizierte Domäne. Leer lassen für \"common\" (mandantenübergreifend). Verwenden Sie \"organizations\" oder \"consumers\", um Kontotypen einzuschränken."
+      "tenantId": "Die ID Ihres Entra-Verzeichnisses (Mandant) oder eine verifizierte Domäne. Leer lassen für \"common\" (mandantenübergreifend). Verwenden Sie \"organizations\" oder \"consumers\", um Kontotypen einzuschränken.",
+      "displayName": "Wird auf der Anmeldeschaltfläche angezeigt, z. B. \"Weiter mit Company IdP\". Standardmäßig \"SSO\", wenn leer.",
+      "issuerUrl": "Die OIDC-Aussteller-URL, z. B. https://idp.example.com/realms/acme. Die Discovery erfolgt über \"{Aussteller-URL}/.well-known/openid-configuration\".",
+      "scopes": "Durch Leerzeichen getrennte OAuth2-Scopes. \"openid\" ist immer enthalten. Standardmäßig \"openid email profile\", wenn leer.",
+      "emailClaim": "ID-Token-Claim für die E-Mail-Adresse des Benutzers. Standardmäßig \"email\".",
+      "nameClaim": "ID-Token-Claim für den Anzeigenamen des Benutzers. Standardmäßig \"name\".",
+      "avatarClaim": "ID-Token-Claim für die Avatar-URL des Benutzers. Standardmäßig \"picture\"."
     }
   },
   "hashing": {
