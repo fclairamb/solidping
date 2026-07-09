@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.2.2](https://github.com/fclairamb/solidping/compare/v0.2.1...v0.2.2) (2026-07-09)
+
+
+### Features
+
+* **auth:** enterprise SSO — generic OAuth2/OIDC provider (discovery + ID-token validation, `email_verified` gating against account-takeover), SAML 2.0 SP (`crewjam/saml`, full assertion validation, metadata endpoint), and LDAP/AD bind auth (search-then-bind, RFC-4515 escaping, super-admin lockout guard), all sharing `maxSsoUsers` entitlement counting and `UserProvider` linking ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **auth:** per-org configurable max session duration — `auth.session_max_duration` system parameter with a per-org override on the org settings API ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **dash0:** multi-region response-time chart shows red failure segments and always-visible failure dots even on dense views ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **dash0:** colored status badges in "Checks at a glance" and the pinned check-result box ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **incidents:** restyled ack magic-link page with a countdown redirect to the incident ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+
+
+### Bug Fixes
+
+* **auth:** sessions no longer die ~1h after login — repaired the token-refresh chain and an OAuth handoff that dropped the refresh token ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **auth:** creating an org from `/no-org` now mints an org-scoped session token instead of leaving every API call 403'ing ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **auth:** `auth.Service` reads overlaid `AuthConfig` fields (registration-disabled, session cap) live instead of from a frozen snapshot ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **auth:** a zero-org session is kept alive — `/auth/me` returns no-org info instead of 401-logging-out the user ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **dash0:** deep links survive login — every post-login path resolves through a shared `returnTo` resolver with a tightened same-origin open-redirect guard ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **dash0:** uptime-bar badge shows the full 7d/30d/90d history instead of only 1/2/3 days ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **dash0:** `validateSearch` boolean query-params (`showSuppressed`, `graphFull`) no longer silently no-op from string-vs-bool coercion ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **checks:** `created` lifecycle results are no longer swallowed by aggregation ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **slack:** channel/user pickers paginate (cursor) so large workspaces are fully searchable ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **devloop:** hard-cap the rotating log so a newline-less/hot-looping child can't grow `logs/backend.log` without bound ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **deps:** update go dependencies (non-major) ([#113](https://github.com/fclairamb/solidping/issues/113)) ([8d8debd](https://github.com/fclairamb/solidping/commit/8d8debd2ec5aa1870e7058bf83a53b9614cb49da))
+* **deps:** update go dependencies (non-major) ([#115](https://github.com/fclairamb/solidping/issues/115)) ([d53dafa](https://github.com/fclairamb/solidping/commit/d53dafa57ef824fbdb0bf40b1d836c9acdd90f14))
+* **deps:** update go dependencies (non-major) ([#116](https://github.com/fclairamb/solidping/issues/116)) ([179d2f5](https://github.com/fclairamb/solidping/commit/179d2f50bef2761cda3e35cff7e7dca6e4acbc2e))
+
 ## [0.2.1](https://github.com/fclairamb/solidping/compare/v0.2.0...v0.2.1) (2026-07-08)
 
 
