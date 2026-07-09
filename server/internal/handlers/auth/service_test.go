@@ -31,13 +31,18 @@ func setupAuthTestService(t *testing.T) (*Service, db.Service, context.Context) 
 		_ = dbService.Close()
 	})
 
-	cfg := config.AuthConfig{
+	authCfg := config.AuthConfig{
 		JWTSecret:          "test-jwt-secret",
 		AccessTokenExpiry:  time.Hour,
 		RefreshTokenExpiry: 7 * 24 * time.Hour,
 	}
 
-	svc := NewService(dbService, cfg, nil, nil, nil)
+	// fullCfg must be non-nil and carry the same Auth values: the Service now
+	// reads overlaid fields (JWTSecret, SessionMaxDuration,
+	// RegistrationEmailPattern) live through fullCfg.Auth. Tests that exercise
+	// the overlay mutate fullCfg.Auth, mirroring InitializeSystemConfig.
+	fullCfg := &config.Config{Auth: authCfg}
+	svc := NewService(dbService, authCfg, fullCfg, nil, nil)
 
 	return svc, dbService, ctx
 }

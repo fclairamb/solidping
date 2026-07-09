@@ -27,9 +27,10 @@ func TestResolveSessionMaxDuration(t *testing.T) {
 	r.Equal(time.Duration(0), svc.resolveSessionMaxDuration(ctx, org.UID))
 
 	// System-wide default set (mirrors the systemconfig startup overlay of
-	// auth.session_max_duration onto cfg.Auth.SessionMaxDuration), no org
-	// override yet: system value wins.
-	svc.cfg.SessionMaxDuration = 6 * time.Hour
+	// auth.session_max_duration onto the LIVE fullCfg.Auth.SessionMaxDuration,
+	// which is what resolveSessionMaxDuration reads), no org override yet:
+	// system value wins.
+	svc.fullCfg.Auth.SessionMaxDuration = 6 * time.Hour
 	r.Equal(6*time.Hour, svc.resolveSessionMaxDuration(ctx, org.UID))
 
 	// Org override set: org value wins over the system default.
@@ -69,7 +70,7 @@ func TestRefreshTokenExpiryCapsSlidingWindow(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 		svc, _, ctx := setupAuthTestService(t)
-		svc.cfg.SessionMaxDuration = 2 * time.Hour // session cap: 2h from login
+		svc.fullCfg.Auth.SessionMaxDuration = 2 * time.Hour // session cap: 2h from login
 
 		now := time.Now()
 		got := svc.refreshTokenExpiry(ctx, "", loginTime, now)
@@ -82,7 +83,7 @@ func TestRefreshTokenExpiryCapsSlidingWindow(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 		svc, _, ctx := setupAuthTestService(t)
-		svc.cfg.SessionMaxDuration = 365 * 24 * time.Hour // a year — way past the 7-day window
+		svc.fullCfg.Auth.SessionMaxDuration = 365 * 24 * time.Hour // a year — way past the 7-day window
 
 		now := time.Now()
 		got := svc.refreshTokenExpiry(ctx, "", loginTime, now)
@@ -147,7 +148,7 @@ func TestOrgWithoutSessionCapFollowsSystemParameter(t *testing.T) {
 	r := require.New(t)
 
 	svc, dbSvc, ctx := setupAuthTestService(t)
-	svc.cfg.SessionMaxDuration = 3 * time.Hour // system default, no org override
+	svc.fullCfg.Auth.SessionMaxDuration = 3 * time.Hour // system default, no org override
 
 	org := models.NewOrganization("uncapped-org", "Uncapped Org")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
