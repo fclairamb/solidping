@@ -224,6 +224,7 @@ type Config struct {
 	GitLab      GitLabOAuthConfig    `koanf:"gitlab"`
 	Discord     DiscordOAuthConfig   `koanf:"discord"`
 	OIDC        OIDCOAuthConfig      `koanf:"oidc"`
+	SAML        SAMLConfig           `koanf:"saml"`
 	Node        NodeConfig           `koanf:"node"`
 	Profiler    ProfilerConfig       `koanf:"profiler"`
 	Runtime     RuntimeConfig        `koanf:"runtime"`
@@ -727,6 +728,7 @@ func Load() (*Config, error) {
 		Slack:     SlackConfig{Enabled: false},
 		Discord:   DiscordOAuthConfig{Enabled: false},
 		OIDC:      OIDCOAuthConfig{Enabled: false},
+		SAML:      SAMLConfig{Enabled: false},
 		Node: NodeConfig{
 			Role:   NodeRoleAll,
 			Region: "",

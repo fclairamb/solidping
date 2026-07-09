@@ -92,6 +92,17 @@ const (
 	KeyOIDCNameClaim    ParameterKey = "auth.oidc.name_claim"
 	KeyOIDCAvatarClaim  ParameterKey = "auth.oidc.avatar_claim"
 
+	// SAML 2.0 Service Provider keys (spec 2026-07-08-08, part 2). Global-only,
+	// single instance, SP-initiated only — see config.SAMLConfig. None of these
+	// are secrets: SAML trust is certificate-based, not a shared client secret.
+	KeySAMLEnabled        ParameterKey = "auth.saml.enabled"
+	KeySAMLDisplayName    ParameterKey = "auth.saml.display_name"
+	KeySAMLIDPMetadataURL ParameterKey = "auth.saml.idp_metadata_url"
+	KeySAMLIDPMetadataXML ParameterKey = "auth.saml.idp_metadata_xml"
+	KeySAMLSPEntityID     ParameterKey = "auth.saml.sp_entity_id"
+	KeySAMLEmailAttribute ParameterKey = "auth.saml.email_attribute"
+	KeySAMLNameAttribute  ParameterKey = "auth.saml.name_attribute"
+
 	// Password-hashing policy keys. These mutate cfg.Auth.Password.* and take
 	// effect after a restart, when the policy is re-resolved from the overlaid
 	// config (see app.Server.InitializeSystemConfig). Numeric values arrive as
@@ -661,6 +672,74 @@ func getKnownParameters() []ParameterDefinition {
 			ApplyFunc: func(cfg *config.Config, value any) {
 				if v, ok := value.(string); ok {
 					cfg.OIDC.AvatarClaim = v
+				}
+			},
+		},
+		{
+			Key:    KeySAMLEnabled,
+			EnvVar: "SP_SAML_ENABLED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.SAML.Enabled = parseBool(value, cfg.SAML.Enabled)
+			},
+		},
+		{
+			Key:    KeySAMLDisplayName,
+			EnvVar: "SP_SAML_DISPLAY_NAME",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.SAML.DisplayName = v
+				}
+			},
+		},
+		{
+			Key:    KeySAMLIDPMetadataURL,
+			EnvVar: "SP_SAML_IDP_METADATA_URL",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.SAML.IDPMetadataURL = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			Key:    KeySAMLIDPMetadataXML,
+			EnvVar: "SP_SAML_IDP_METADATA_XML",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.SAML.IDPMetadataXML = v
+				}
+			},
+		},
+		{
+			Key:    KeySAMLSPEntityID,
+			EnvVar: "SP_SAML_SP_ENTITY_ID",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.SAML.SPEntityID = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			Key:    KeySAMLEmailAttribute,
+			EnvVar: "SP_SAML_EMAIL_ATTRIBUTE",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.SAML.EmailAttribute = v
+				}
+			},
+		},
+		{
+			Key:    KeySAMLNameAttribute,
+			EnvVar: "SP_SAML_NAME_ATTRIBUTE",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.SAML.NameAttribute = v
 				}
 			},
 		},
