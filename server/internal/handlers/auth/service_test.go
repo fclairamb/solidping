@@ -288,6 +288,71 @@ func TestGetUserInfo(t *testing.T) {
 	})
 }
 
+// TestGetUserInfoZeroOrgSession drives the real login flow for a user with no
+// organization membership and asserts GET /auth/me survives instead of 401ing
+// (regression guard for "zero-org session gets logged out almost immediately":
+// GetUserInfo used to resolve the empty OrgSlug via GetOrganizationBySlug and
+// fail with ErrOrganizationNotFound → 401, silently destroying the session on
+// the next page load before the user could reach the create/join-org cards).
+func TestGetUserInfoZeroOrgSession(t *testing.T) {
+	t.Parallel()
+
+	t.Run("real no-org login then /auth/me returns 200 with nil org", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		svc, dbSvc, ctx := setupAuthTestService(t)
+
+		hash, err := passwords.Hash("testpass1234")
+		r.NoError(err)
+
+		// A confirmed user who belongs to no organization (fresh sign-up who
+		// hasn't created/joined one, or removed from their last org).
+		user := models.NewUser("zero-org@example.com")
+		user.PasswordHash = &hash
+		r.NoError(dbSvc.CreateUser(ctx, user))
+
+		// Real login, no org preference → LoginActionNoOrg, access token with
+		// an empty OrgSlug claim and NO refresh token (by design).
+		loginResp, err := svc.Login(ctx, "", "zero-org@example.com", "testpass1234", Context{})
+		r.NoError(err)
+		r.Equal(LoginActionNoOrg, loginResp.LoginAction)
+		r.Nil(loginResp.Organization, "no-org login must not carry an organization")
+		r.Empty(loginResp.RefreshToken, "no-org login mints no refresh token")
+		r.NotEmpty(loginResp.AccessToken)
+
+		// Decode the minted access token back into claims, exactly as the
+		// RequireAuth middleware does for a real GET /auth/me request.
+		claims, err := svc.ValidateToken(ctx, loginResp.AccessToken)
+		r.NoError(err)
+		r.Empty(claims.OrgSlug, "no-org access token carries an empty org slug")
+
+		// The call that used to 401: it must now succeed with a nil org.
+		resp, err := svc.GetUserInfo(ctx, claims)
+		r.NoError(err, "GetUserInfo must not fail for a zero-org session")
+		r.Nil(resp.Organization, "zero-org /auth/me returns no organization")
+		r.Empty(resp.User.Role, "a plain no-org user has an empty role")
+		r.Equal("zero-org@example.com", resp.User.Email)
+		r.Empty(resp.Organizations, "user with no membership has no organizations")
+	})
+
+	t.Run("superadmin no-org session keeps the superadmin role", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		svc, dbSvc, ctx := setupAuthTestService(t)
+
+		user := models.NewUser("super-noorg@example.com")
+		user.SuperAdmin = true
+		r.NoError(dbSvc.CreateUser(ctx, user))
+
+		resp, err := svc.GetUserInfo(ctx, &Claims{UserUID: user.UID, OrgSlug: ""})
+		r.NoError(err)
+		r.Nil(resp.Organization)
+		r.Equal(RoleSuperAdmin, resp.User.Role, "a superadmin keeps their global role with no org")
+	})
+}
+
 func TestLoginUserInfo(t *testing.T) {
 	t.Parallel()
 
