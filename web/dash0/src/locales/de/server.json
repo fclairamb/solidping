@@ -88,7 +88,14 @@
       "idpMetadataXml": "IdP-Metadaten-XML",
       "spEntityId": "SP-Entitäts-ID (Override)",
       "emailAttribute": "E-Mail-Attribut",
-      "nameAttribute": "Name-Attribut"
+      "nameAttribute": "Name-Attribut",
+      "serverUrl": "Server-URL",
+      "startTls": "StartTLS verwenden",
+      "insecureSkipVerify": "Zertifikatsprüfung überspringen",
+      "bindDn": "Bind DN",
+      "bindPassword": "Bind-Passwort",
+      "baseDn": "Base DN",
+      "userFilter": "Benutzer-Suchfilter"
     },
     "fieldHelp": {
       "tenantId": "Die ID Ihres Entra-Verzeichnisses (Mandant) oder eine verifizierte Domäne. Leer lassen für \"common\" (mandantenübergreifend). Verwenden Sie \"organizations\" oder \"consumers\", um Kontotypen einzuschränken.",
@@ -102,7 +109,13 @@
       "idpMetadataXml": "Eingefügtes IdP-Metadaten-XML, das anstelle des Abrufs der obigen URL verwendet wird, wenn gesetzt. Hat Vorrang vor der URL, wenn beide angegeben sind.",
       "spEntityId": "Überschreibt die Entitäts-ID dieses SP, wie sie in seinen eigenen Metadaten angegeben wird. Standardmäßig die Metadaten-URL unten, wenn leer.",
       "emailAttribute": "Assertion-Attribut für die E-Mail-Adresse des Benutzers. Standardmäßig gängige Attributnamen (email, mail, ...) und dann die NameID, wenn sie wie eine E-Mail-Adresse aussieht.",
-      "nameAttribute": "Assertion-Attribut für den Anzeigenamen des Benutzers. Standardmäßig gängige Attributnamen (cn, displayName, ...)."
+      "nameAttribute": "Assertion-Attribut für den Anzeigenamen des Benutzers. Standardmäßig gängige Attributnamen (cn, displayName, ...).",
+      "serverUrl": "LDAP-Server-URL, z. B. ldap://ldap.example.com:389 oder ldaps://ldap.example.com:636 für LDAPS.",
+      "startTls": "Aktualisiert eine unverschlüsselte ldap://-Verbindung nach dem Verbindungsaufbau auf TLS. Wird bei ldaps://-URLs ignoriert, da diese bereits verschlüsselt sind.",
+      "insecureSkipVerify": "Überspringt die TLS-Zertifikatsprüfung. Nur zum Testen mit einem selbstsignierten Zertifikat verwenden — dies ermöglicht Man-in-the-Middle-Angriffe.",
+      "bindDn": "Distinguished Name des Dienstkontos, das für die Verzeichnissuche verwendet wird, z. B. cn=admin,dc=example,dc=com. Leer lassen für eine anonyme (unauthentifizierte) Suche.",
+      "baseDn": "Base DN, unter der nach Benutzern gesucht wird, z. B. ou=people,dc=example,dc=com.",
+      "userFilter": "LDAP-Filtervorlage mit einem \"%s\"-Platzhalter für den übermittelten Benutzernamen (vor der Ersetzung maskiert), z. B. (sAMAccountName=%s). Standardmäßig (mail=%s), wenn leer."
     }
   },
   "hashing": {

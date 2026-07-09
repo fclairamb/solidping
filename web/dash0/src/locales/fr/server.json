@@ -88,7 +88,14 @@
       "idpMetadataXml": "XML des métadonnées IdP",
       "spEntityId": "ID d'entité SP (surcharge)",
       "emailAttribute": "Attribut Email",
-      "nameAttribute": "Attribut Nom"
+      "nameAttribute": "Attribut Nom",
+      "serverUrl": "URL du serveur",
+      "startTls": "Utiliser StartTLS",
+      "insecureSkipVerify": "Ignorer la vérification du certificat",
+      "bindDn": "Bind DN",
+      "bindPassword": "Mot de passe de bind",
+      "baseDn": "Base DN",
+      "userFilter": "Filtre de recherche utilisateur"
     },
     "fieldHelp": {
       "tenantId": "L'ID de votre annuaire (locataire) Entra, ou un domaine vérifié. Laissez vide pour \"common\" (multi-locataire). Utilisez \"organizations\" ou \"consumers\" pour restreindre les types de comptes.",
@@ -102,7 +109,13 @@
       "idpMetadataXml": "XML des métadonnées IdP collé, utilisé à la place de la récupération de l'URL ci-dessus si renseigné. Prend le pas sur l'URL si les deux sont fournies.",
       "spEntityId": "Remplace l'ID d'entité de ce SP tel qu'annoncé dans ses propres métadonnées. Par défaut, l'URL des métadonnées ci-dessous si vide.",
       "emailAttribute": "Attribut de l'assertion utilisé pour l'email de l'utilisateur. Par défaut, des noms d'attributs courants (email, mail, ...) puis le NameID s'il ressemble à une adresse email.",
-      "nameAttribute": "Attribut de l'assertion utilisé pour le nom affiché. Par défaut, des noms d'attributs courants (cn, displayName, ...)."
+      "nameAttribute": "Attribut de l'assertion utilisé pour le nom affiché. Par défaut, des noms d'attributs courants (cn, displayName, ...).",
+      "serverUrl": "URL du serveur LDAP, par ex. ldap://ldap.example.com:389 ou ldaps://ldap.example.com:636 pour LDAPS.",
+      "startTls": "Passe une connexion ldap:// en clair en TLS après la connexion. Ignoré pour les URL ldaps://, déjà chiffrées.",
+      "insecureSkipVerify": "Ignore la vérification du certificat TLS. À utiliser uniquement pour les tests avec un certificat auto-signé — expose à une attaque de type homme du milieu.",
+      "bindDn": "Distinguished Name du compte de service utilisé pour rechercher dans l'annuaire, par ex. cn=admin,dc=example,dc=com. Laissez vide pour une recherche anonyme (non authentifiée).",
+      "baseDn": "Base DN sous laquelle rechercher les utilisateurs, par ex. ou=people,dc=example,dc=com.",
+      "userFilter": "Modèle de filtre LDAP avec un espace réservé \"%s\" pour le nom d'utilisateur soumis (échappé avant substitution), par ex. (sAMAccountName=%s). Par défaut (mail=%s) si vide."
     }
   },
   "hashing": {

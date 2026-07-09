@@ -88,7 +88,14 @@
       "idpMetadataXml": "IdP Metadata XML",
       "spEntityId": "SP Entity ID Override",
       "emailAttribute": "Email Attribute",
-      "nameAttribute": "Name Attribute"
+      "nameAttribute": "Name Attribute",
+      "serverUrl": "Server URL",
+      "startTls": "Use StartTLS",
+      "insecureSkipVerify": "Skip certificate verification",
+      "bindDn": "Bind DN",
+      "bindPassword": "Bind Password",
+      "baseDn": "Base DN",
+      "userFilter": "User Search Filter"
     },
     "fieldHelp": {
       "tenantId": "Your Entra directory (tenant) ID, or a verified domain. Leave blank for \"common\" (multi-tenant). Use \"organizations\" or \"consumers\" to restrict account types.",
@@ -102,7 +109,13 @@
       "idpMetadataXml": "Pasted IdP metadata XML, used instead of fetching the URL above when set. Takes precedence over the URL when both are provided.",
       "spEntityId": "Overrides this SP's entity ID as advertised in its own metadata. Defaults to the metadata URL below when blank.",
       "emailAttribute": "Assertion attribute used for the user's email. Falls back to common attribute names (email, mail, ...) and then to the NameID when it looks like an email address.",
-      "nameAttribute": "Assertion attribute used for the user's display name. Falls back to common attribute names (cn, displayName, ...)."
+      "nameAttribute": "Assertion attribute used for the user's display name. Falls back to common attribute names (cn, displayName, ...).",
+      "serverUrl": "LDAP server URL, e.g. ldap://ldap.example.com:389 or ldaps://ldap.example.com:636 for LDAPS.",
+      "startTls": "Upgrade a plain ldap:// connection to TLS after connecting. Ignored for ldaps:// URLs, which are already encrypted.",
+      "insecureSkipVerify": "Skip TLS certificate verification. Only use for testing against a self-signed certificate — this allows man-in-the-middle attacks.",
+      "bindDn": "Distinguished Name of the service account used to search the directory, e.g. cn=admin,dc=example,dc=com. Leave blank for an anonymous (unauthenticated) search bind.",
+      "baseDn": "Base DN to search for users under, e.g. ou=people,dc=example,dc=com.",
+      "userFilter": "LDAP filter template with one \"%s\" placeholder for the submitted username (escaped before substitution), e.g. (sAMAccountName=%s). Defaults to (mail=%s) when blank."
     }
   },
   "hashing": {

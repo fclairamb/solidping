@@ -88,7 +88,14 @@
       "idpMetadataXml": "XML de metadatos del IdP",
       "spEntityId": "ID de entidad del SP (anulación)",
       "emailAttribute": "Atributo de Email",
-      "nameAttribute": "Atributo de Nombre"
+      "nameAttribute": "Atributo de Nombre",
+      "serverUrl": "URL del servidor",
+      "startTls": "Usar StartTLS",
+      "insecureSkipVerify": "Omitir verificación de certificado",
+      "bindDn": "Bind DN",
+      "bindPassword": "Contraseña de bind",
+      "baseDn": "Base DN",
+      "userFilter": "Filtro de búsqueda de usuario"
     },
     "fieldHelp": {
       "tenantId": "El ID de su directorio (inquilino) de Entra, o un dominio verificado. Déjelo en blanco para \"common\" (multiinquilino). Use \"organizations\" o \"consumers\" para restringir los tipos de cuenta.",
@@ -102,7 +109,13 @@
       "idpMetadataXml": "XML de metadatos del IdP pegado, usado en lugar de obtener la URL anterior cuando se indica. Tiene prioridad sobre la URL si se proporcionan ambos.",
       "spEntityId": "Anula el ID de entidad de este SP tal como se anuncia en sus propios metadatos. Por defecto, la URL de metadatos de abajo si está vacío.",
       "emailAttribute": "Atributo de la aserción usado para el email del usuario. Por defecto, nombres de atributos comunes (email, mail, ...) y luego el NameID si parece una dirección de email.",
-      "nameAttribute": "Atributo de la aserción usado para el nombre para mostrar. Por defecto, nombres de atributos comunes (cn, displayName, ...)."
+      "nameAttribute": "Atributo de la aserción usado para el nombre para mostrar. Por defecto, nombres de atributos comunes (cn, displayName, ...).",
+      "serverUrl": "URL del servidor LDAP, p. ej. ldap://ldap.example.com:389 o ldaps://ldap.example.com:636 para LDAPS.",
+      "startTls": "Actualiza una conexión ldap:// en texto plano a TLS tras conectar. Se ignora en URLs ldaps://, que ya están cifradas.",
+      "insecureSkipVerify": "Omite la verificación del certificado TLS. Use solo para pruebas con un certificado autofirmado — esto permite ataques de intermediario (man-in-the-middle).",
+      "bindDn": "Distinguished Name de la cuenta de servicio usada para buscar en el directorio, p. ej. cn=admin,dc=example,dc=com. Déjelo vacío para una búsqueda anónima (sin autenticar).",
+      "baseDn": "Base DN bajo la que buscar usuarios, p. ej. ou=people,dc=example,dc=com.",
+      "userFilter": "Plantilla de filtro LDAP con un marcador \"%s\" para el nombre de usuario enviado (escapado antes de sustituirlo), p. ej. (sAMAccountName=%s). Por defecto (mail=%s) si está vacío."
     }
   },
   "hashing": {
