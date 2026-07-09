@@ -452,7 +452,11 @@ func (s *SAMLService) GenerateAuthnRequest(ctx context.Context, redirectURI, org
 		return "", fmt.Errorf("saml: failed to generate nonce: %w", randErr)
 	}
 
-	nonce := base64.URLEncoding.EncodeToString(nonceBytes)
+	// RawURLEncoding (no "=" padding): authnRequest.Redirect below appends
+	// RelayState to the query string verbatim, without percent-encoding, so
+	// the nonce must only ever contain characters that are already safe
+	// unescaped in a URL query component.
+	nonce := base64.RawURLEncoding.EncodeToString(nonceBytes)
 
 	state := SAMLRelayState{
 		Nonce:       nonce,
