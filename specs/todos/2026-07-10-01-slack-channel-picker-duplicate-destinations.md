@@ -77,3 +77,24 @@ string or a *different-but-equivalent* one each time isn't 100% certain. The
 `next == cursor` guard handles the identical-string case; the seen-cursor set
 plus ID de-dup (step 2) covers the different-string case. Implement both so the
 fix is robust either way.
+
+## Implementation Plan
+
+Backend-only Go change in `server/internal/integrations/slack/`.
+
+1. **`paginate` (client.go)** — add cursor-progress guards inside the loop:
+   - Keep a `seen` set of cursors already followed.
+   - After fetching, if `next == ""` stop (unchanged).
+   - If `next == cursor` (non-advancing / identical cursor), stop — no forward progress.
+   - If `next` is already in `seen` (repeating cursor from an earlier page), stop — the loop is cycling.
+   - Otherwise record `next` in `seen`, advance `cursor`, continue. Page-cap warning path unchanged (still guards genuinely infinite distinct pages).
+
+2. **`ListChannels` (client.go)** — collect channels through a `seen` set keyed by Slack `ID`; skip any channel whose ID was already appended. Defensive de-dup so overlapping/repeating pages can never surface duplicates.
+
+3. **`ListUsers` (client.go)** — symmetric ID de-dup, folded into the existing bot/deleted filter.
+
+4. **Tests (client_test.go)** — reuse the existing fake-Slack harness:
+   - Update `newCappedFakeSlack` to emit *distinct advancing* cursors and unique item IDs per call, so the existing `StopsAtPageCap` tests still exercise the genuine infinite-distinct-pages case (cap stops at `maxListPages`, `len == maxListPages`).
+   - Add table-driven `TestListChannelsStopsOnNonAdvancingCursor` (and a symmetric users test) covering "cursor repeats immediately" and "cursor repeats after N pages", asserting each channel/user appears exactly once (not `maxListPages` copies) and the fetch loop terminates early.
+
+5. **QA** — `make build-backend lint-back test`.
