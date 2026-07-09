@@ -58,15 +58,21 @@ type OIDCOAuthResult struct {
 // oidcUserInfo is the set of claims extracted from a validated ID token, per
 // the configured (or default) claim mappings.
 type oidcUserInfo struct {
-	Subject       string
-	Email         string
+	Subject string
+	Email   string
+	// EmailVerified is true only when the token's "email_verified" claim is
+	// present AND is literally the JSON boolean `true`. Unlike the other
+	// (fixed-catalog) providers, generic OIDC connects to an arbitrary,
+	// admin-chosen IdP, so a malicious or misconfigured issuer could assert
+	// any existing user's email. We therefore never default to "verified":
+	// an absent claim, a `false` claim, or a claim of the wrong type
+	// (e.g. the string "false", which some real IdPs emit) all count as
+	// unverified. This mirrors google_service.go/discord_service.go, which
+	// also reject the login outright when the provider doesn't assert a
+	// verified email — see the `!EmailVerified` check in HandleCallback.
 	EmailVerified bool
-	// hasEmailVerified is true when the "email_verified" claim was present in
-	// the token at all. Many enterprise IdPs never set it; when absent we
-	// trust the IdP-asserted email rather than rejecting every login.
-	hasEmailVerifiedClaim bool
-	Name                  string
-	AvatarURL             string
+	Name          string
+	AvatarURL     string
 }
 
 // OIDCOAuthService handles generic OpenID Connect authentication logic.
@@ -269,7 +275,12 @@ func (s *OIDCOAuthService) HandleCallback(ctx context.Context, code, orgSlug str
 		return nil, ErrEmailNotVerified
 	}
 
-	if userInfo.hasEmailVerifiedClaim && !userInfo.EmailVerified {
+	// Reject outright (never silently create/link a user) unless the IdP
+	// explicitly asserts a verified email, consistent with Google/Discord's
+	// handling of their own !EmailVerified case. See oidcUserInfo.EmailVerified
+	// for why this doesn't default to "verified" when the claim is missing or
+	// of the wrong type.
+	if !userInfo.EmailVerified {
 		return nil, ErrEmailNotVerified
 	}
 
@@ -328,18 +339,18 @@ func (s *OIDCOAuthService) mapClaims(subject string, claims map[string]any) *oid
 	}
 
 	info := &oidcUserInfo{
-		Subject:       subject,
-		Email:         claimString(claims, emailClaim),
-		Name:          claimString(claims, nameClaim),
-		AvatarURL:     claimString(claims, avatarClaim),
-		EmailVerified: true,
+		Subject:   subject,
+		Email:     claimString(claims, emailClaim),
+		Name:      claimString(claims, nameClaim),
+		AvatarURL: claimString(claims, avatarClaim),
 	}
 
-	if v, ok := claims[oidcClaimEmailVerified]; ok {
-		info.hasEmailVerifiedClaim = true
-		if b, ok := v.(bool); ok {
-			info.EmailVerified = b
-		}
+	// Only an actual boolean `true` counts as verified. A missing claim, a
+	// `false` claim, or a claim of any other type (e.g. a stringly-typed
+	// "false" some real IdPs emit) all leave EmailVerified at its zero value
+	// (false) — see the field doc on oidcUserInfo for the rationale.
+	if b, ok := claims[oidcClaimEmailVerified].(bool); ok {
+		info.EmailVerified = b
 	}
 
 	if info.Name == "" {
