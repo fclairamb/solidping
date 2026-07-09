@@ -1,22 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // live-socket has no DOM dependency of its own except localStorage (via
-// getToken) and window.location (for the ws:// URL) — vitest.config.ts runs
-// tests in node env with neither, so both are mocked/stubbed here rather
-// than pulling in jsdom for one file.
+// getToken/getExpiresAt) and window.location (for the ws:// URL) —
+// vitest.config.ts runs tests in node env with neither, so both are
+// mocked/stubbed here rather than pulling in jsdom for one file.
 let currentToken: string | null = "test-token";
+// null = "no expiry metadata" (most tests' baseline — the pre-dial expiry
+// check in run() only engages when this is a known past timestamp).
+let currentExpiresAt: number | null = null;
 vi.mock("@/api/client", () => ({
   getToken: () => currentToken,
+  getExpiresAt: () => currentExpiresAt,
   msSinceLastApiActivity: () => Number.MAX_SAFE_INTEGER,
 }));
 
 // token-refresh.ts is mocked separately (not through @/api/client) so most
 // tests here don't need to care about refresh-token plumbing at all; the
-// dedicated "4401" describe block below overrides this mock to assert the
-// refresh call actually happens before reconnecting.
-const refreshAccessTokenMock = vi.fn<() => Promise<string | null>>(() => Promise.resolve(null));
+// dedicated "4401"/pre-dial describe blocks below override this mock to
+// assert the refresh call actually happens, and to drive its outcome.
+// Defaults to a network-error outcome — "ambiguous failure, keep retrying
+// with backoff" — matching this suite's pre-existing default behavior.
+interface RefreshOutcome {
+  accessToken: string | null;
+  failureReason?: "no-refresh-token" | "rejected" | "network-error";
+}
+const refreshWithOutcomeMock = vi.fn<() => Promise<RefreshOutcome>>(() =>
+  Promise.resolve({ accessToken: null, failureReason: "network-error" })
+);
 vi.mock("@/lib/token-refresh", () => ({
-  refreshAccessToken: () => refreshAccessTokenMock(),
+  refreshWithOutcome: () => refreshWithOutcomeMock(),
 }));
 
 import {
@@ -106,8 +118,9 @@ describe("connectLiveSocket", () => {
 
   beforeEach(() => {
     currentToken = "test-token";
-    refreshAccessTokenMock.mockClear();
-    refreshAccessTokenMock.mockResolvedValue(null);
+    currentExpiresAt = null;
+    refreshWithOutcomeMock.mockClear();
+    refreshWithOutcomeMock.mockResolvedValue({ accessToken: null, failureReason: "network-error" });
     vi.useFakeTimers();
   });
 
@@ -438,8 +451,8 @@ describe("connectLiveSocket", () => {
       sockets.push(s);
       return s;
     };
-    let resolveRefresh: (token: string | null) => void = () => {};
-    refreshAccessTokenMock.mockReturnValue(
+    let resolveRefresh: (outcome: RefreshOutcome) => void = () => {};
+    refreshWithOutcomeMock.mockReturnValue(
       new Promise((resolve) => {
         resolveRefresh = resolve;
       })
@@ -450,7 +463,7 @@ describe("connectLiveSocket", () => {
     sockets[0].open();
 
     sockets[0].serverClose(4401, "token expired");
-    expect(refreshAccessTokenMock).toHaveBeenCalledTimes(1);
+    expect(refreshWithOutcomeMock).toHaveBeenCalledTimes(1);
 
     // The reconnect loop must wait for the refresh to settle before it opens
     // a second socket — otherwise the second attempt races the refresh and
@@ -458,7 +471,77 @@ describe("connectLiveSocket", () => {
     await Promise.resolve();
     expect(sockets).toHaveLength(1);
 
-    resolveRefresh("fresh-token");
+    resolveRefresh({ accessToken: "fresh-token" });
+    await vi.advanceTimersByTimeAsync(35_000);
+    await vi.waitFor(() => expect(sockets.length).toBeGreaterThanOrEqual(2));
+  });
+
+  it("gives up (no reconnect) when a post-4401 refresh fails for a non-network reason", async () => {
+    const sockets: FakeSocket[] = [];
+    const factory = (url: string) => {
+      const s = new FakeSocket(url);
+      sockets.push(s);
+      return s;
+    };
+    const onDisabled = vi.fn();
+    refreshWithOutcomeMock.mockResolvedValue({ accessToken: null, failureReason: "rejected" });
+
+    connectLiveSocket("acme", noopCallbacks({ onDisabled }), factory);
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0].open();
+
+    sockets[0].serverClose(4401, "token expired");
+    await vi.waitFor(() => expect(onDisabled).toHaveBeenCalledTimes(1));
+
+    // token-refresh.ts's own escalation already cleared the session and
+    // redirected — the socket loop must not keep hammering a token it
+    // knows is dead (spec Evidence: 139 useless reconnects in 70 minutes).
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sockets).toHaveLength(1);
+  });
+
+  it("reconnects without refreshing on a 4401 close while the token is still valid", async () => {
+    // A server-initiated 4401 on a token that has not expired (transient
+    // server state, proxy hiccup, restart) must reconnect with the current
+    // token — not run the refresh-or-give-up path, which is reserved for a
+    // token we can't prove is still live. Regression guard for live-updates
+    // e2e "reconnect after a server-initiated close (4401-style)".
+    currentExpiresAt = Date.now() + 60_000; // token still has a minute left
+    const sockets: FakeSocket[] = [];
+    const factory = (url: string) => {
+      const s = new FakeSocket(url);
+      sockets.push(s);
+      return s;
+    };
+    const onDisabled = vi.fn();
+
+    connectLiveSocket("acme", noopCallbacks({ onDisabled }), factory);
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0].open();
+
+    sockets[0].serverClose(4401, "token expired");
+    await vi.advanceTimersByTimeAsync(35_000);
+
+    // A fresh socket opens (reconnect), no give-up, and refresh was never asked.
+    await vi.waitFor(() => expect(sockets.length).toBeGreaterThanOrEqual(2));
+    expect(onDisabled).not.toHaveBeenCalled();
+    expect(refreshWithOutcomeMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps reconnecting with backoff when a post-4401 refresh fails on a network error", async () => {
+    const sockets: FakeSocket[] = [];
+    const factory = (url: string) => {
+      const s = new FakeSocket(url);
+      sockets.push(s);
+      return s;
+    };
+    refreshWithOutcomeMock.mockResolvedValue({ accessToken: null, failureReason: "network-error" });
+
+    connectLiveSocket("acme", noopCallbacks(), factory);
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0].open();
+
+    sockets[0].serverClose(4401, "token expired");
     await vi.advanceTimersByTimeAsync(35_000);
     await vi.waitFor(() => expect(sockets.length).toBeGreaterThanOrEqual(2));
   });
@@ -501,5 +584,104 @@ describe("connectLiveSocket", () => {
 
     await vi.advanceTimersByTimeAsync(60_000);
     expect(sockets).toHaveLength(1);
+  });
+});
+
+describe("connectLiveSocket pre-dial expiry check", () => {
+  beforeEach(() => {
+    currentToken = "test-token";
+    currentExpiresAt = null;
+    refreshWithOutcomeMock.mockClear();
+    refreshWithOutcomeMock.mockResolvedValue({ accessToken: null, failureReason: "network-error" });
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("dials immediately with the stored token when its expiry is unknown (legacy/no metadata)", async () => {
+    const sockets: FakeSocket[] = [];
+    const factory = (url: string) => {
+      const s = new FakeSocket(url);
+      sockets.push(s);
+      return s;
+    };
+    currentExpiresAt = null;
+
+    connectLiveSocket("acme", noopCallbacks(), factory);
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+
+    expect(refreshWithOutcomeMock).not.toHaveBeenCalled();
+    sockets[0].open();
+    expect(sockets[0].sent).toEqual([JSON.stringify({ type: "auth", token: "test-token" })]);
+  });
+
+  it("dials immediately when the stored expiry is still in the future", async () => {
+    const sockets: FakeSocket[] = [];
+    const factory = (url: string) => {
+      const s = new FakeSocket(url);
+      sockets.push(s);
+      return s;
+    };
+    currentExpiresAt = Date.now() + 60_000;
+
+    connectLiveSocket("acme", noopCallbacks(), factory);
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+
+    expect(refreshWithOutcomeMock).not.toHaveBeenCalled();
+  });
+
+  it("refreshes before dialing when the stored token's expiry is already past, then dials with the fresh token", async () => {
+    const sockets: FakeSocket[] = [];
+    const factory = (url: string) => {
+      const s = new FakeSocket(url);
+      sockets.push(s);
+      return s;
+    };
+    currentExpiresAt = Date.now() - 1_000;
+    refreshWithOutcomeMock.mockResolvedValue({ accessToken: "fresh-token" });
+
+    connectLiveSocket("acme", noopCallbacks(), factory);
+    await vi.waitFor(() => expect(refreshWithOutcomeMock).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+
+    sockets[0].open();
+    expect(sockets[0].sent).toEqual([JSON.stringify({ type: "auth", token: "fresh-token" })]);
+  });
+
+  it("gives up without ever dialing when the pre-dial refresh fails for a non-network reason", async () => {
+    const sockets: FakeSocket[] = [];
+    const factory = (url: string) => {
+      const s = new FakeSocket(url);
+      sockets.push(s);
+      return s;
+    };
+    const onDisabled = vi.fn();
+    currentExpiresAt = Date.now() - 1_000;
+    refreshWithOutcomeMock.mockResolvedValue({ accessToken: null, failureReason: "no-refresh-token" });
+
+    connectLiveSocket("acme", noopCallbacks({ onDisabled }), factory);
+    await vi.waitFor(() => expect(onDisabled).toHaveBeenCalledTimes(1));
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sockets).toHaveLength(0);
+  });
+
+  it("retries with backoff (does not give up) when the pre-dial refresh fails on a network error", async () => {
+    const sockets: FakeSocket[] = [];
+    const factory = (url: string) => {
+      const s = new FakeSocket(url);
+      sockets.push(s);
+      return s;
+    };
+    currentExpiresAt = Date.now() - 1_000;
+    refreshWithOutcomeMock.mockResolvedValueOnce({ accessToken: null, failureReason: "network-error" });
+    refreshWithOutcomeMock.mockResolvedValue({ accessToken: "fresh-token" });
+
+    connectLiveSocket("acme", noopCallbacks(), factory);
+    await vi.advanceTimersByTimeAsync(35_000);
+    await vi.waitFor(() => expect(sockets.length).toBeGreaterThanOrEqual(1));
+    expect(refreshWithOutcomeMock.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 });

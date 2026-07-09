@@ -223,6 +223,9 @@ type Config struct {
 	Microsoft   MicrosoftOAuthConfig `koanf:"microsoft"`
 	GitLab      GitLabOAuthConfig    `koanf:"gitlab"`
 	Discord     DiscordOAuthConfig   `koanf:"discord"`
+	OIDC        OIDCOAuthConfig      `koanf:"oidc"`
+	SAML        SAMLConfig           `koanf:"saml"`
+	LDAP        LDAPConfig           `koanf:"ldap"`
 	Node        NodeConfig           `koanf:"node"`
 	Profiler    ProfilerConfig       `koanf:"profiler"`
 	Runtime     RuntimeConfig        `koanf:"runtime"`
@@ -365,12 +368,21 @@ type AggregationConfig struct {
 
 // AuthConfig contains authentication configuration.
 type AuthConfig struct {
-	JWTSecret                string         `koanf:"jwt_secret"`
-	AccessTokenExpiry        time.Duration  `koanf:"access_token_expiry"`
-	RefreshTokenExpiry       time.Duration  `koanf:"refresh_token_expiry"`
-	RegistrationEmailPattern string         `koanf:"registration_email_pattern"`
-	WebAuthn                 WebAuthnConfig `koanf:"webauthn"`
-	Password                 PasswordConfig `koanf:"password"`
+	JWTSecret                string        `koanf:"jwt_secret"`
+	AccessTokenExpiry        time.Duration `koanf:"access_token_expiry"`
+	RefreshTokenExpiry       time.Duration `koanf:"refresh_token_expiry"`
+	RegistrationEmailPattern string        `koanf:"registration_email_pattern"`
+	// SessionMaxDuration is a hard absolute cap on session lifetime,
+	// measured from login — unlike RefreshTokenExpiry (a sliding *idle*
+	// window), this bounds total session length even under continuous
+	// activity. Zero (the default) means unlimited: today's behavior, only
+	// the sliding window applies. Overlaid from the
+	// systemconfig.KeySessionMaxDuration system parameter at startup; an
+	// org-scoped override of the same parameter key takes precedence over
+	// this value (see handlers/auth.Service.resolveSessionMaxDuration).
+	SessionMaxDuration time.Duration  `koanf:"session_max_duration"`
+	WebAuthn           WebAuthnConfig `koanf:"webauthn"`
+	Password           PasswordConfig `koanf:"password"`
 }
 
 // PasswordConfig selects the password-hashing algorithm and its cost
@@ -716,6 +728,9 @@ func Load() (*Config, error) {
 		Microsoft: MicrosoftOAuthConfig{Enabled: false},
 		Slack:     SlackConfig{Enabled: false},
 		Discord:   DiscordOAuthConfig{Enabled: false},
+		OIDC:      OIDCOAuthConfig{Enabled: false},
+		SAML:      SAMLConfig{Enabled: false},
+		LDAP:      LDAPConfig{Enabled: false},
 		Node: NodeConfig{
 			Role:   NodeRoleAll,
 			Region: "",
@@ -826,6 +841,7 @@ func Load() (*Config, error) {
 	}
 
 	applyRateLimitingEnv(&cfg.Server.RateLimiting)
+	applyAuthEnv(&cfg.Auth)
 	applyPasswordHashingEnv(&cfg.Auth.Password)
 	applyFileStorageEnv(&cfg.FileStorage)
 	applyWebPushEnv(&cfg.WebPush)
@@ -1029,6 +1045,26 @@ func applyRealtimeEnv(cfg *RealtimeConfig) {
 	if v := os.Getenv("SP_REALTIME_MAX_SUBSCRIPTIONS_PER_CONNECTION"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.MaxSubscriptionsPerConnection = n
+		}
+	}
+}
+
+// applyAuthEnv reads the multi-word SP_AUTH_* token-lifetime knobs koanf's
+// env loader cannot bind (it collapses underscores to dots, so
+// SP_AUTH_ACCESS_TOKEN_EXPIRY would map to auth.access.token.expiry and miss
+// the snake_case koanf tag "access_token_expiry"). Used by
+// e2e/session-continuity.spec.ts and similar manual test setups that need a
+// short-lived access/refresh token without touching the YAML config. See
+// project_koanf_env_quirk.
+func applyAuthEnv(cfg *AuthConfig) {
+	if v := os.Getenv("SP_AUTH_ACCESS_TOKEN_EXPIRY"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.AccessTokenExpiry = d
+		}
+	}
+	if v := os.Getenv("SP_AUTH_REFRESH_TOKEN_EXPIRY"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.RefreshTokenExpiry = d
 		}
 	}
 }

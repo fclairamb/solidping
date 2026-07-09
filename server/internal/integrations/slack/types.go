@@ -190,6 +190,13 @@ type SlackUser struct { //nolint:revive // prefix is intentional disambiguation
 	Deleted  bool   `json:"deleted"`
 }
 
+// ResponseMetadata carries the cursor-pagination metadata Slack returns on
+// list APIs (conversations.list, users.list). An empty NextCursor means the
+// last page has been reached.
+type ResponseMetadata struct {
+	NextCursor string `json:"next_cursor"` //nolint:tagliatelle
+}
+
 // View represents a Slack modal view.
 type View struct {
 	ID              string     `json:"id"`

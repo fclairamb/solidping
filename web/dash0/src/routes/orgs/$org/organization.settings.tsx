@@ -26,6 +26,7 @@ function SettingsPage() {
   const { org } = Route.useParams();
   const { data: settings, isLoading } = useOrgSettings(org);
   const updateSettings = useUpdateOrgSettings(org);
+  const updateSessionSettings = useUpdateOrgSettings(org);
 
   const [emailPattern, setEmailPattern] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -33,9 +34,20 @@ function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [testEmail, setTestEmail] = useState("");
 
+  // Hours, as a string so the field can be legitimately empty ("inherit the
+  // platform default") rather than coerced to 0.
+  const [sessionHours, setSessionHours] = useState("");
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const [sessionSaved, setSessionSaved] = useState(false);
+
   useEffect(() => {
     if (settings) {
       setEmailPattern(settings.registrationEmailPattern || "");
+      setSessionHours(
+        settings.sessionMaxDurationSeconds != null
+          ? String(Math.round(settings.sessionMaxDurationSeconds / 3600))
+          : "",
+      );
     }
   }, [settings]);
 
@@ -64,10 +76,40 @@ function SettingsPage() {
     }
   };
 
+  const handleSaveSessionDuration = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSessionError(null);
+    setSessionSaved(false);
+
+    const trimmed = sessionHours.trim();
+    const hours = trimmed === "" ? 0 : Number(trimmed);
+
+    if (trimmed !== "" && (!Number.isFinite(hours) || hours < 0)) {
+      setSessionError(t("settings.unexpectedError"));
+      return;
+    }
+
+    try {
+      await updateSessionSettings.mutateAsync({
+        // A value <= 0 clears the override (see UpdateOrgSettingsRequest) —
+        // an empty field means "inherit the platform default".
+        sessionMaxDurationSeconds: Math.round(hours * 3600),
+      });
+      setSessionSaved(true);
+      setTimeout(() => setSessionSaved(false), 3000);
+    } catch (err) {
+      setSessionError(
+        err instanceof ApiError ? err.message : t("settings.unexpectedError"),
+      );
+    }
+  };
+
   let testResult: "match" | "no-match" | null = null;
   if (emailPattern && testEmail) {
     try {
-      testResult = new RegExp(emailPattern).test(testEmail) ? "match" : "no-match";
+      testResult = new RegExp(emailPattern).test(testEmail)
+        ? "match"
+        : "no-match";
     } catch {
       testResult = "no-match";
     }
@@ -82,92 +124,163 @@ function SettingsPage() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t("settings.autoJoin")}</CardTitle>
-        <CardDescription>
-          {t("settings.autoJoinFullDescription")}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSave} className="space-y-4">
-          {error && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          {saved && (
-            <Alert>
-              <Check className="h-4 w-4" />
-              <AlertDescription>{t("settings.saved")}</AlertDescription>
-            </Alert>
-          )}
-
-          <div className="space-y-2">
-            <Label htmlFor="emailPattern">{t("settings.emailPattern")}</Label>
-            <Input
-              id="emailPattern"
-              type="text"
-              placeholder={t("settings.emailPlaceholder")}
-              value={emailPattern}
-              onChange={(e) => {
-                setEmailPattern(e.target.value);
-                setFieldError(null);
-              }}
-              disabled={updateSettings.isPending}
-              aria-invalid={fieldError != null}
-            />
-            {fieldError && (
-              <p className="text-xs text-destructive">{fieldError}</p>
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("settings.autoJoin")}</CardTitle>
+          <CardDescription>
+            {t("settings.autoJoinFullDescription")}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSave} className="space-y-4">
+            {error && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
             )}
-            <p className="text-xs text-muted-foreground"
-              dangerouslySetInnerHTML={{ __html: t("settings.autoJoinHelp") }}
-            />
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="testEmail">
-              {t("settings.testAgainstEmail", "Test against email")}
-            </Label>
-            <Input
-              id="testEmail"
-              type="email"
-              value={testEmail}
-              onChange={(e) => setTestEmail(e.target.value)}
-              placeholder="user@example.com"
-            />
-            {testResult && (
+            {saved && (
+              <Alert>
+                <Check className="h-4 w-4" />
+                <AlertDescription>{t("settings.saved")}</AlertDescription>
+              </Alert>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="emailPattern">{t("settings.emailPattern")}</Label>
+              <Input
+                id="emailPattern"
+                type="text"
+                placeholder={t("settings.emailPlaceholder")}
+                value={emailPattern}
+                onChange={(e) => {
+                  setEmailPattern(e.target.value);
+                  setFieldError(null);
+                }}
+                disabled={updateSettings.isPending}
+                aria-invalid={fieldError != null}
+              />
+              {fieldError && (
+                <p className="text-xs text-destructive">{fieldError}</p>
+              )}
               <p
-                className={`text-xs ${
-                  testResult === "match"
-                    ? "text-green-600"
-                    : "text-muted-foreground"
-                }`}
-              >
-                {testResult === "match"
-                  ? t("settings.testMatch", "✓ matches the pattern")
-                  : t("settings.testNoMatch", "✗ does not match the pattern")}
-              </p>
-            )}
-          </div>
+                className="text-xs text-muted-foreground"
+                dangerouslySetInnerHTML={{ __html: t("settings.autoJoinHelp") }}
+              />
+            </div>
 
-          <Button
-            type="submit"
-            disabled={updateSettings.isPending}
-          >
-            {updateSettings.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {tc("saving")}
-              </>
-            ) : (
-              tc("save")
+            <div className="space-y-2">
+              <Label htmlFor="testEmail">
+                {t("settings.testAgainstEmail", "Test against email")}
+              </Label>
+              <Input
+                id="testEmail"
+                type="email"
+                value={testEmail}
+                onChange={(e) => setTestEmail(e.target.value)}
+                placeholder="user@example.com"
+              />
+              {testResult && (
+                <p
+                  className={`text-xs ${
+                    testResult === "match"
+                      ? "text-green-600"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  {testResult === "match"
+                    ? t("settings.testMatch", "✓ matches the pattern")
+                    : t("settings.testNoMatch", "✗ does not match the pattern")}
+                </p>
+              )}
+            </div>
+
+            <Button
+              type="submit"
+              disabled={updateSettings.isPending}
+              data-testid="auto-join-pattern-save"
+            >
+              {updateSettings.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {tc("saving")}
+                </>
+              ) : (
+                tc("save")
+              )}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>{t("settings.sessionDuration")}</CardTitle>
+          <CardDescription>
+            {t("settings.sessionDurationFullDescription")}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSaveSessionDuration} className="space-y-4">
+            {sessionError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{sessionError}</AlertDescription>
+              </Alert>
             )}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+
+            {sessionSaved && (
+              <Alert>
+                <Check className="h-4 w-4" />
+                <AlertDescription>{t("settings.saved")}</AlertDescription>
+              </Alert>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="sessionHours">
+                {t("settings.sessionDurationHoursLabel")}
+              </Label>
+              <Input
+                id="sessionHours"
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                placeholder={t("settings.sessionDurationPlaceholder")}
+                value={sessionHours}
+                onChange={(e) => {
+                  setSessionHours(e.target.value);
+                  setSessionError(null);
+                }}
+                disabled={updateSessionSettings.isPending}
+                aria-invalid={sessionError != null}
+                className="max-w-xs"
+                data-testid="session-duration-hours"
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("settings.sessionDurationHelp")}
+              </p>
+            </div>
+
+            <Button
+              type="submit"
+              disabled={updateSessionSettings.isPending}
+              data-testid="session-duration-save"
+            >
+              {updateSessionSettings.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {tc("saving")}
+                </>
+              ) : (
+                tc("save")
+              )}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </>
   );
 }

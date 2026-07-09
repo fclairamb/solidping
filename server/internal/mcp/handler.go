@@ -107,12 +107,15 @@ func NewHandler(
 	rtPub *realtime.Publisher,
 ) *Handler {
 	handler := &Handler{
-		checksSvc:      checks.NewService(dbService, eventNotifier, creds, entSvc),
-		checkTypesSvc:  checkTypesSvc,
-		resultsSvc:     results.NewService(dbService),
-		incidentsSvc:   incidents.NewService(dbService, jobSvc, clock.Real{}, rtPub),
-		eventsSvc:      events.NewService(dbService),
-		statusPagesSvc: statuspages.NewService(dbService),
+		checksSvc:     checks.NewService(dbService, eventNotifier, creds, entSvc),
+		checkTypesSvc: checkTypesSvc,
+		resultsSvc:    results.NewService(dbService),
+		incidentsSvc:  incidents.NewService(dbService, jobSvc, clock.Real{}, rtPub),
+		eventsSvc:     events.NewService(dbService),
+		// nil cfg: the MCP surface has no app config to hand; the uptime-bar
+		// safety cap this feeds falls back to the documented retention
+		// defaults (see statuspages.Service.retentionHints).
+		statusPagesSvc: statuspages.NewService(dbService, nil),
 		maintenanceSvc: maintenancewindows.NewService(dbService),
 		// nil registry/config: the MCP surface manages integrations but does
 		// not dispatch test notifications, which is the only path needing them.

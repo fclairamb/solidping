@@ -158,3 +158,55 @@ func TestHandler_AcknowledgeIncidentByLink_TamperedToken(t *testing.T) {
 	r.NoError(err)
 	r.Nil(got.AcknowledgedAt)
 }
+
+// TestHandler_AcknowledgeIncidentByLink_SuccessPageRedirectsToIncident is the
+// end-to-end companion to the ack_html.go unit tests: it drives the real
+// route (through routing, with a real DB-backed org/incident) and asserts
+// the rendered success page's redirect URL is built from this exact org
+// slug + incident UID, per spec 2026-07-08-03.
+func TestHandler_AcknowledgeIncidentByLink_SuccessPageRedirectsToIncident(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newAckHandlerFixture(t)
+	router := newAckTestRouter(f)
+
+	ackToken := incidentlinks.Sign(
+		[]byte(ackHandlerTestSecret), f.incident.UID, "alice@example.com", time.Now().Add(time.Hour))
+
+	rec := doAckRequest(t, router, "/orgs/"+f.org.Slug+"/incidents/"+f.incident.UID+"/ack?token="+ackToken)
+	r.Equal(http.StatusOK, rec.Code)
+
+	body := rec.Body.String()
+	wantURL := "/dash0/orgs/" + f.org.Slug + "/incidents/" + f.incident.UID
+	r.Contains(body, `href="`+wantURL+`"`, "the 'go now' link must point at this exact org/incident")
+	r.Contains(body, `content="3;url=`+wantURL+`"`, "the no-JS meta-refresh fallback must be present")
+	r.Contains(body, `var url="`+wantURL+`"`, "the countdown script must redirect to this exact org/incident")
+	r.Contains(body, "window.location.replace(url)")
+}
+
+// TestHandler_AcknowledgeIncidentByLink_ExpiredTokenNoRedirect confirms the
+// expired-link page never carries the redirect countdown or meta-refresh —
+// only the success page should auto-redirect.
+func TestHandler_AcknowledgeIncidentByLink_ExpiredTokenNoRedirect(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newAckHandlerFixture(t)
+	router := newAckTestRouter(f)
+
+	expiredToken := incidentlinks.Sign(
+		[]byte(ackHandlerTestSecret), f.incident.UID, "alice@example.com", time.Now().Add(-time.Hour))
+
+	rec := doAckRequest(t, router, "/orgs/"+f.org.Slug+"/incidents/"+f.incident.UID+"/ack?token="+expiredToken)
+	r.Equal(http.StatusGone, rec.Code)
+
+	body := rec.Body.String()
+	r.NotContains(body, "<script>")
+	r.NotContains(body, "meta http-equiv=\"refresh\"")
+	r.NotContains(body, "/dash0/orgs/", "expired page must not leak a redirect URL")
+
+	got, err := f.dbSvc.GetIncident(t.Context(), f.org.UID, f.incident.UID)
+	r.NoError(err)
+	r.Nil(got.AcknowledgedAt, "an expired token must not acknowledge the incident as a side effect")
+}

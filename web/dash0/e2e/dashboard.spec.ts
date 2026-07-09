@@ -13,7 +13,7 @@ const API_BASE = (
 interface MockCheck {
   uid: string;
   name: string;
-  status: "up" | "down";
+  status: "up" | "down" | "warning";
   enabled?: boolean;
   lastStatusChangeTime?: string;
 }
@@ -359,8 +359,46 @@ test.describe("Dashboard", () => {
     await expect(rows.first()).toContainText("Broken Service");
 
     // It carries a destructive status badge (down) and a "since" timestamp.
-    await expect(rows.first().getByText("down", { exact: true })).toBeVisible();
+    // StatusBadge renders the localized label ("Down"), not the raw token.
+    await expect(rows.first().getByText("Down", { exact: true })).toBeVisible();
     await expect(rows.first()).toContainText("since");
+  });
+
+  test("glance list badges render the shared StatusBadge colors, not plain gray chips", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await mockDashboard(page, {
+      checks: [
+        { uid: "d1111111-1111-1111-1111-111111111111", name: "Up Service", status: "up" },
+        { uid: "d2222222-2222-2222-2222-222222222222", name: "Warning Service", status: "warning" },
+        { uid: "d3333333-3333-3333-3333-333333333333", name: "Down Service", status: "down" },
+      ],
+      incidents: [],
+    });
+
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    const rows = page.getByTestId("glance-row");
+    await expect(rows).toHaveCount(3);
+
+    // "up" renders the success (green) badge variant with the localized label.
+    const upRow = rows.filter({ hasText: "Up Service" });
+    await expect(upRow.getByText("Up", { exact: true })).toHaveClass(/bg-green-500/);
+
+    // "warning" renders the warning (amber) badge variant — previously a plain
+    // gray "outline" chip indistinguishable from a healthy check.
+    const warningRow = rows.filter({ hasText: "Warning Service" });
+    await expect(warningRow.getByText("Warning", { exact: true })).toHaveClass(
+      /bg-yellow-500/,
+    );
+
+    // "down" renders the destructive (red) badge variant.
+    const downRow = rows.filter({ hasText: "Down Service" });
+    await expect(downRow.getByText("Down", { exact: true })).toHaveClass(
+      /bg-destructive/,
+    );
   });
 
   test("with an active incident, the incidents card renders above the glance card", async ({

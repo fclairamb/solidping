@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -39,6 +40,16 @@ const (
 	KeyEmailInsecure            ParameterKey = "email.insecure_skip_verify"
 	KeyRegistrationEmailPattern ParameterKey = "auth.registration_email_pattern"
 	KeyEmailProtocol            ParameterKey = "email.protocol"
+
+	// KeySessionMaxDuration is the global (system-wide) hard cap on session
+	// lifetime in seconds, measured from login (spec
+	// 2026-07-08-01-per-org-session-duration-and-longer-token-refresh). An
+	// org may override it with a parameter row of the same key
+	// (organization_uid set) — see handlers/auth.Service.resolveSessionMaxDuration,
+	// which resolves org parameter → this system value → 0 (unlimited).
+	// Unset/zero means unlimited, matching today's behavior (only the
+	// sliding RefreshTokenExpiry idle window applies).
+	KeySessionMaxDuration ParameterKey = "auth.session_max_duration"
 
 	KeyGoogleClientID           ParameterKey = "auth.google.client_id"
 	KeyGoogleClientSecret       ParameterKey = "auth.google.client_secret"
@@ -68,6 +79,44 @@ const (
 	KeyAggregationRetentionRaw  ParameterKey = "aggregation.retention_raw"
 	KeyAggregationRetentionHour ParameterKey = "aggregation.retention_hour"
 	KeyAggregationRetentionDay  ParameterKey = "aggregation.retention_day"
+
+	// Generic OAuth2/OIDC provider keys (spec 2026-07-08-08, part 1). Global-only,
+	// single instance — see config.OIDCOAuthConfig.
+	KeyOIDCEnabled      ParameterKey = "auth.oidc.enabled"
+	KeyOIDCDisplayName  ParameterKey = "auth.oidc.display_name"
+	KeyOIDCIssuerURL    ParameterKey = "auth.oidc.issuer_url"
+	KeyOIDCClientID     ParameterKey = "auth.oidc.client_id"
+	KeyOIDCClientSecret ParameterKey = "auth.oidc.client_secret"
+	KeyOIDCScopes       ParameterKey = "auth.oidc.scopes"
+	KeyOIDCEmailClaim   ParameterKey = "auth.oidc.email_claim"
+	KeyOIDCNameClaim    ParameterKey = "auth.oidc.name_claim"
+	KeyOIDCAvatarClaim  ParameterKey = "auth.oidc.avatar_claim"
+
+	// SAML 2.0 Service Provider keys (spec 2026-07-08-08, part 2). Global-only,
+	// single instance, SP-initiated only — see config.SAMLConfig. None of these
+	// are secrets: SAML trust is certificate-based, not a shared client secret.
+	KeySAMLEnabled        ParameterKey = "auth.saml.enabled"
+	KeySAMLDisplayName    ParameterKey = "auth.saml.display_name"
+	KeySAMLIDPMetadataURL ParameterKey = "auth.saml.idp_metadata_url"
+	KeySAMLIDPMetadataXML ParameterKey = "auth.saml.idp_metadata_xml"
+	KeySAMLSPEntityID     ParameterKey = "auth.saml.sp_entity_id"
+	KeySAMLEmailAttribute ParameterKey = "auth.saml.email_attribute"
+	KeySAMLNameAttribute  ParameterKey = "auth.saml.name_attribute"
+
+	// LDAP / Active Directory bind-authentication keys (spec 2026-07-08-08,
+	// part 3). Global-only, single connector — see config.LDAPConfig. Only
+	// bind_password is a secret: it's the directory service account's
+	// credential, analogous to an OAuth client secret.
+	KeyLDAPEnabled            ParameterKey = "auth.ldap.enabled"
+	KeyLDAPServerURL          ParameterKey = "auth.ldap.server_url"
+	KeyLDAPStartTLS           ParameterKey = "auth.ldap.start_tls"
+	KeyLDAPInsecureSkipVerify ParameterKey = "auth.ldap.insecure_skip_verify"
+	KeyLDAPBindDN             ParameterKey = "auth.ldap.bind_dn"
+	KeyLDAPBindPassword       ParameterKey = "auth.ldap.bind_password"
+	KeyLDAPBaseDN             ParameterKey = "auth.ldap.base_dn"
+	KeyLDAPUserFilter         ParameterKey = "auth.ldap.user_filter"
+	KeyLDAPEmailAttribute     ParameterKey = "auth.ldap.email_attribute"
+	KeyLDAPNameAttribute      ParameterKey = "auth.ldap.name_attribute"
 
 	// Password-hashing policy keys. These mutate cfg.Auth.Password.* and take
 	// effect after a restart, when the policy is re-resolved from the overlaid
@@ -285,6 +334,19 @@ func getKnownParameters() []ParameterDefinition {
 			ApplyFunc: func(cfg *config.Config, value any) {
 				if v, ok := value.(string); ok {
 					cfg.Auth.RegistrationEmailPattern = v
+				}
+			},
+		},
+		{
+			Key:    KeySessionMaxDuration,
+			EnvVar: "SP_AUTH_SESSION_MAX_DURATION",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				// Seconds; 0 (or unset) means unlimited. Negative values are
+				// treated as unset rather than clamped, since a negative cap
+				// has no sensible meaning.
+				if seconds, ok := parseInt(value); ok && seconds >= 0 {
+					cfg.Auth.SessionMaxDuration = time.Duration(seconds) * time.Second
 				}
 			},
 		},
@@ -538,6 +600,256 @@ func getKnownParameters() []ParameterDefinition {
 			Secret: false,
 			ApplyFunc: func(cfg *config.Config, value any) {
 				cfg.Discord.Enabled = parseBool(value, cfg.Discord.Enabled)
+			},
+		},
+		{
+			Key:    KeyOIDCEnabled,
+			EnvVar: "SP_OIDC_ENABLED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.OIDC.Enabled = parseBool(value, cfg.OIDC.Enabled)
+			},
+		},
+		{
+			Key:    KeyOIDCDisplayName,
+			EnvVar: "SP_OIDC_DISPLAY_NAME",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.OIDC.DisplayName = v
+				}
+			},
+		},
+		{
+			Key:    KeyOIDCIssuerURL,
+			EnvVar: "SP_OIDC_ISSUER_URL",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.OIDC.IssuerURL = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			Key:    KeyOIDCClientID,
+			EnvVar: "SP_OIDC_CLIENT_ID",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.OIDC.ClientID = v
+				}
+			},
+		},
+		{
+			Key:    KeyOIDCClientSecret,
+			EnvVar: "SP_OIDC_CLIENT_SECRET",
+			Secret: true,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.OIDC.ClientSecret = v
+				}
+			},
+		},
+		{
+			Key:    KeyOIDCScopes,
+			EnvVar: "SP_OIDC_SCOPES",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.OIDC.Scopes = v
+				}
+			},
+		},
+		{
+			Key:    KeyOIDCEmailClaim,
+			EnvVar: "SP_OIDC_EMAIL_CLAIM",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.OIDC.EmailClaim = v
+				}
+			},
+		},
+		{
+			Key:    KeyOIDCNameClaim,
+			EnvVar: "SP_OIDC_NAME_CLAIM",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.OIDC.NameClaim = v
+				}
+			},
+		},
+		{
+			Key:    KeyOIDCAvatarClaim,
+			EnvVar: "SP_OIDC_AVATAR_CLAIM",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.OIDC.AvatarClaim = v
+				}
+			},
+		},
+		{
+			Key:    KeySAMLEnabled,
+			EnvVar: "SP_SAML_ENABLED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.SAML.Enabled = parseBool(value, cfg.SAML.Enabled)
+			},
+		},
+		{
+			Key:    KeySAMLDisplayName,
+			EnvVar: "SP_SAML_DISPLAY_NAME",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.SAML.DisplayName = v
+				}
+			},
+		},
+		{
+			Key:    KeySAMLIDPMetadataURL,
+			EnvVar: "SP_SAML_IDP_METADATA_URL",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.SAML.IDPMetadataURL = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			Key:    KeySAMLIDPMetadataXML,
+			EnvVar: "SP_SAML_IDP_METADATA_XML",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.SAML.IDPMetadataXML = v
+				}
+			},
+		},
+		{
+			Key:    KeySAMLSPEntityID,
+			EnvVar: "SP_SAML_SP_ENTITY_ID",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.SAML.SPEntityID = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			Key:    KeySAMLEmailAttribute,
+			EnvVar: "SP_SAML_EMAIL_ATTRIBUTE",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.SAML.EmailAttribute = v
+				}
+			},
+		},
+		{
+			Key:    KeySAMLNameAttribute,
+			EnvVar: "SP_SAML_NAME_ATTRIBUTE",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.SAML.NameAttribute = v
+				}
+			},
+		},
+		{
+			Key:    KeyLDAPEnabled,
+			EnvVar: "SP_LDAP_ENABLED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.LDAP.Enabled = parseBool(value, cfg.LDAP.Enabled)
+			},
+		},
+		{
+			Key:    KeyLDAPServerURL,
+			EnvVar: "SP_LDAP_SERVER_URL",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.LDAP.ServerURL = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			Key:    KeyLDAPStartTLS,
+			EnvVar: "SP_LDAP_START_TLS",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.LDAP.StartTLS = parseBool(value, cfg.LDAP.StartTLS)
+			},
+		},
+		{
+			Key:    KeyLDAPInsecureSkipVerify,
+			EnvVar: "SP_LDAP_INSECURE_SKIP_VERIFY",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.LDAP.InsecureSkipVerify = parseBool(value, cfg.LDAP.InsecureSkipVerify)
+			},
+		},
+		{
+			Key:    KeyLDAPBindDN,
+			EnvVar: "SP_LDAP_BIND_DN",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.LDAP.BindDN = v
+				}
+			},
+		},
+		{
+			Key:    KeyLDAPBindPassword,
+			EnvVar: "SP_LDAP_BIND_PASSWORD",
+			Secret: true,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.LDAP.BindPassword = v
+				}
+			},
+		},
+		{
+			Key:    KeyLDAPBaseDN,
+			EnvVar: "SP_LDAP_BASE_DN",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.LDAP.BaseDN = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			Key:    KeyLDAPUserFilter,
+			EnvVar: "SP_LDAP_USER_FILTER",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.LDAP.UserFilter = v
+				}
+			},
+		},
+		{
+			Key:    KeyLDAPEmailAttribute,
+			EnvVar: "SP_LDAP_EMAIL_ATTRIBUTE",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.LDAP.EmailAttribute = v
+				}
+			},
+		},
+		{
+			Key:    KeyLDAPNameAttribute,
+			EnvVar: "SP_LDAP_NAME_ATTRIBUTE",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.LDAP.NameAttribute = v
+				}
 			},
 		},
 		{

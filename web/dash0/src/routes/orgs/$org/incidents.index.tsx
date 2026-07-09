@@ -40,7 +40,14 @@ export const Route = createFileRoute("/orgs/$org/incidents/")({
     state: (STATE_FILTER_VALUES.includes(search.state as StateFilter)
       ? search.state
       : "all") as StateFilter,
-    showSuppressed: search.showSuppressed === "true" ? true : undefined,
+    // TanStack Router's default search parser already coerces "true"/"false"
+    // query-string values to native booleans before validateSearch runs, so a
+    // bare `=== "true"` string comparison silently always evaluates to false
+    // (see login.tsx's `session_expired` fix for the same bug class).
+    showSuppressed:
+      search.showSuppressed === true || search.showSuppressed === "true"
+        ? true
+        : undefined,
   }),
   component: IncidentsIndexPage,
 });

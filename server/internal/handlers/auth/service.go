@@ -27,6 +27,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
 
@@ -116,8 +117,18 @@ var (
 
 // Service provides authentication business logic.
 type Service struct {
-	db           db.Service
-	cfg          config.AuthConfig
+	db db.Service
+	// cfg is a boot-time-FROZEN value copy of config.AuthConfig, taken in
+	// NewService BEFORE InitializeSystemConfig applies the system-parameter
+	// overlay (see server/main.go boot order). Read it ONLY for fields the
+	// overlay never mutates — AccessTokenExpiry and RefreshTokenExpiry. Every
+	// field the overlay CAN mutate (JWTSecret, RegistrationEmailPattern,
+	// SessionMaxDuration) must be read live via fullCfg.Auth instead, or it
+	// stays frozen at its pre-overlay (usually empty/default) value forever.
+	cfg config.AuthConfig
+	// fullCfg is the LIVE shared *config.Config pointer. The systemconfig
+	// overlay and ensureJWTSecret mutate fullCfg.Auth after NewService, so
+	// reads through it see the post-overlay values.
 	fullCfg      *config.Config
 	jobsSvc      jobsvc.Service
 	entitlements EntitlementsChecker
@@ -271,7 +282,7 @@ type Disable2FARequest struct {
 // MeResponse contains the current user's information.
 type MeResponse struct {
 	User                      *UserInfo                  `json:"user"`
-	Organization              *OrganizationInfo          `json:"organization"`
+	Organization              *OrganizationInfo          `json:"organization,omitempty"`
 	Organizations             []OrganizationSummary      `json:"organizations"`
 	TOTPEnabled               bool                       `json:"totpEnabled"`
 	PasskeyCount              int                        `json:"passkeyCount"`
@@ -434,41 +445,46 @@ func (s *Service) enqueueEmail(
 // Login authenticates a user and returns access and refresh tokens.
 // orgSlug is treated as a preference — the system will try to honor it but will
 // gracefully fall back to available organizations if the user is not a member.
+//
+// Credential verification order (spec 2026-07-08-08, part 3 — LDAP bind
+// auth): a local password hash, when the user has one, is always tried
+// first and is the ONLY mechanism attempted for that user — LDAP is never
+// consulted, even on a wrong password. This is deliberate on two counts:
+// it's what keeps the bootstrap super-admin (and anyone else with a local
+// password) able to log in regardless of LDAP being disabled,
+// misconfigured, or unreachable, and it avoids bouncing a merely mistyped
+// local password off the directory, which can trip an Active Directory
+// account-lockout policy on repeated failures. Only a user with NO local
+// password hash — a brand-new identity, or one previously provisioned by
+// LDAP/OIDC/SAML — falls through to the LDAP bind, when configured. See
+// authenticateViaLDAP (ldap_service.go) for why that fallback can never be
+// used to hijack an existing local account.
 func (s *Service) Login(
 	ctx context.Context, orgSlug, email, password string, authContext Context,
 ) (*LoginResponse, error) {
-	// Get user by email (global user lookup)
+	// Get user by email (global user lookup). sql.ErrNoRows is not fatal
+	// here — it just means the LDAP branch below may be auto-provisioning a
+	// brand-new identity.
 	user, err := s.db.GetUserByEmail(ctx, email)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrInvalidCredentials
-		}
-
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
 
-	// Verify password
-	if user.PasswordHash == nil || *user.PasswordHash == "" {
-		return nil, ErrInvalidCredentials
-	}
+	authMethod := "password"
 
-	// Support plaintext passwords for development (prefix: $plaintext$)
-	if plaintextPassword, found := strings.CutPrefix(*user.PasswordHash, "$plaintext$"); found {
-		if plaintextPassword != password {
-			return nil, ErrInvalidCredentials
+	switch {
+	case user != nil && user.PasswordHash != nil && *user.PasswordHash != "":
+		if verifyErr := s.verifyLocalPassword(ctx, user, password); verifyErr != nil {
+			return nil, verifyErr
 		}
-	} else {
-		// Verify the stored hash (algorithm is read from the stored marker).
-		if !passwords.Verify(password, *user.PasswordHash) {
-			return nil, ErrInvalidCredentials
+	default:
+		ldapUser, ldapErr := s.authenticateViaLDAP(ctx, orgSlug, email, password)
+		if ldapErr != nil {
+			return nil, ldapErr
 		}
 
-		// Rehash-on-login: if the stored hash's algorithm or cost no longer
-		// matches the configured policy, transparently re-hash the just-verified
-		// plaintext and persist it. Best-effort only — the user is already
-		// authenticated, so a rehash error never affects the login result; it is
-		// logged and retried on the next login.
-		s.maybeRehashPassword(ctx, user, password)
+		user = ldapUser
+		authMethod = "ldap"
 	}
 
 	// Resolve organization treating orgSlug as a preference
@@ -495,7 +511,7 @@ func (s *Service) Login(
 		}, nil
 	}
 
-	return s.completeLogin(ctx, user, resolvedOrg, role, loginAction, orgSummaries, "password", authContext)
+	return s.completeLogin(ctx, user, resolvedOrg, role, loginAction, orgSummaries, authMethod, authContext)
 }
 
 // maybeRehashPassword transparently upgrades a user's stored password hash when
@@ -582,7 +598,7 @@ func (s *Service) completeLogin(
 	}
 
 	refreshToken := models.NewUserToken(user.UID, &resolvedOrg.UID, refreshTokenValue, models.TokenTypeRefresh)
-	expiresAt := now.Add(s.cfg.RefreshTokenExpiry)
+	expiresAt := s.refreshTokenExpiry(ctx, resolvedOrg.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
 
@@ -1000,6 +1016,77 @@ func (s *Service) roleForOrg(ctx context.Context, user *models.User, orgUID stri
 	return string(membership.Role), nil
 }
 
+// resolveSessionMaxDuration returns the effective hard cap on session
+// lifetime for orgUID: an org-scoped auth.session_max_duration parameter
+// override (spec B.2), falling back to the system-wide value in
+// s.fullCfg.Auth.SessionMaxDuration (systemconfig.KeySessionMaxDuration —
+// applied onto the LIVE *config.Config by the startup overlay and editable
+// at runtime via PUT /api/v1/system/parameters, effective on restart). It
+// MUST be read from fullCfg, not the frozen s.cfg copy: the overlay runs
+// after NewService, so s.cfg.SessionMaxDuration is stale (this was the
+// original bug — a system-wide cap set via env/DB was silently ignored).
+// Falls back to 0 (no cap — today's behavior, only the sliding
+// RefreshTokenExpiry idle window applies). orgUID may be empty (no org
+// resolved yet) — that's simply "no org override to check."
+//
+// A per-call DB read for the org override is fine: this is only invoked at
+// refresh-token mint/slide time, which is rare compared to request volume.
+// Cache like patCacheDuration if that ever shows up in a profile.
+func (s *Service) resolveSessionMaxDuration(ctx context.Context, orgUID string) time.Duration {
+	if orgUID != "" {
+		param, err := s.db.GetOrgParameter(ctx, orgUID, string(systemconfig.KeySessionMaxDuration))
+		if err != nil {
+			slog.WarnContext(ctx, "failed to read org session_max_duration override; falling back to system default",
+				"error", err, "orgUID", orgUID)
+		} else if seconds, ok := parseParamSeconds(param); ok && seconds > 0 {
+			return time.Duration(seconds) * time.Second
+		}
+	}
+
+	return s.fullCfg.Auth.SessionMaxDuration
+}
+
+// parseParamSeconds extracts an integer seconds value from a parameter row's
+// JSON value (stored as {"value": <number>} by Set{Org,System}Parameter).
+// Returns false for a nil param (no override set) or an unparseable value.
+func parseParamSeconds(param *models.Parameter) (int, bool) {
+	if param == nil {
+		return 0, false
+	}
+
+	switch v := param.Value["value"].(type) {
+	case float64:
+		return int(v), true
+	case int:
+		return v, true
+	default:
+		return 0, false
+	}
+}
+
+// refreshTokenExpiry computes a refresh-token row's expires_at for a mint
+// (loginTime == now) or slide (loginTime == the row's original CreatedAt)
+// operation: now + cfg.RefreshTokenExpiry (the sliding idle window this
+// already was), capped to loginTime + session_max_duration when an org or
+// system override sets an absolute maximum session lifetime (spec B.3 —
+// "measured from login", so sliding can never extend a session past the
+// cap). This is the single replacement for every direct
+// s.cfg.RefreshTokenExpiry read at mint/slide sites.
+func (s *Service) refreshTokenExpiry(ctx context.Context, orgUID string, loginTime, now time.Time) time.Time {
+	slidingExpiry := now.Add(s.cfg.RefreshTokenExpiry)
+
+	maxDuration := s.resolveSessionMaxDuration(ctx, orgUID)
+	if maxDuration <= 0 {
+		return slidingExpiry
+	}
+
+	if hardCap := loginTime.Add(maxDuration); hardCap.Before(slidingExpiry) {
+		return hardCap
+	}
+
+	return slidingExpiry
+}
+
 // slideSessionExpiry extends a refresh-token row's expires_at to
 // now + refresh_token_expiry on activity, so an active session never hits
 // the idle TTL. Gated by the same hourly write granularity already used for
@@ -1014,7 +1101,12 @@ func (s *Service) slideSessionExpiry(ctx context.Context, token *models.UserToke
 		return
 	}
 
-	newExpiresAt := now.Add(s.cfg.RefreshTokenExpiry)
+	orgUID := ""
+	if token.OrganizationUID != nil {
+		orgUID = *token.OrganizationUID
+	}
+
+	newExpiresAt := s.refreshTokenExpiry(ctx, orgUID, token.CreatedAt, now)
 	update := models.UserTokenUpdate{LastActiveAt: &now, ExpiresAt: &newExpiresAt}
 
 	if updateErr := s.db.UpdateUserToken(ctx, token.UID, update); updateErr != nil {
@@ -1111,7 +1203,7 @@ func (s *Service) ValidateToken(ctx context.Context, tokenString string) (*Claim
 			return nil, fmt.Errorf("%w: %v", ErrUnexpectedSigningMethod, token.Header["alg"])
 		}
 
-		return []byte(s.cfg.JWTSecret), nil
+		return []byte(s.fullCfg.Auth.JWTSecret), nil
 	})
 	if err != nil {
 		return nil, ErrInvalidToken
@@ -1250,6 +1342,16 @@ func (s *Service) cleanupExpiredPATCache() {
 // GetUserInfo returns information about the current user.
 // orgSlug is extracted from the JWT claims.
 func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse, error) {
+	// Zero-org session: the token carries no org slug — the user belongs to no
+	// organization yet (a fresh sign-up who hasn't created/joined one, or a
+	// user removed from their last org). This is a legitimate state, exactly as
+	// completeLogin's resolvedOrg==nil branch treats it, so resolve the user's
+	// info WITHOUT an org rather than 401ing on a GetOrganizationBySlug("")
+	// miss (which would silently destroy the session on the next page load).
+	if claims.OrgSlug == "" {
+		return s.getUserInfoNoOrg(ctx, claims)
+	}
+
 	org, err := s.db.GetOrganizationBySlug(ctx, claims.OrgSlug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1311,6 +1413,57 @@ func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse,
 			Slug: org.Slug,
 			Name: org.Name,
 		},
+		Organizations:             orgs,
+		TOTPEnabled:               user.TOTPEnabled,
+		PasskeyCount:              len(passkeys),
+		HasPassword:               hasPassword,
+		PendingMembershipRequests: pending,
+	}, nil
+}
+
+// getUserInfoNoOrg builds the /auth/me response for a zero-org session (empty
+// OrgSlug claim). It skips the org / membership-role lookups entirely and
+// returns a nil Organization. The role is derived from the user alone: a plain
+// no-org user has an empty role (mirroring the login response's no-org branch,
+// which the dashboard's /no-org page already renders correctly), while a
+// superadmin keeps their global role.
+func (s *Service) getUserInfoNoOrg(ctx context.Context, claims *Claims) (*MeResponse, error) {
+	user, err := s.db.GetUser(ctx, claims.UserUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+
+		return nil, err
+	}
+
+	role := ""
+	if user.SuperAdmin {
+		role = RoleSuperAdmin
+	}
+
+	orgs, err := s.getOrganizationsForUser(ctx, claims.UserUID)
+	if err != nil {
+		return nil, err
+	}
+
+	pending, err := s.listPendingMembershipRequests(ctx, claims.UserUID)
+	if err != nil {
+		return nil, err
+	}
+
+	passkeys, _ := s.db.ListUserPasskeysByUser(ctx, user.UID)
+	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
+
+	return &MeResponse{
+		User: &UserInfo{
+			UID:       user.UID,
+			Email:     user.Email,
+			Name:      user.Name,
+			AvatarURL: user.AvatarURL,
+			Role:      role,
+		},
+		Organization:              nil,
 		Organizations:             orgs,
 		TOTPEnabled:               user.TOTPEnabled,
 		PasskeyCount:              len(passkeys),
@@ -1634,7 +1787,7 @@ func (s *Service) SwitchOrg(
 
 	// Store refresh token in database
 	refreshToken := models.NewUserToken(user.UID, &org.UID, refreshTokenValue, models.TokenTypeRefresh)
-	expiresAt := now.Add(s.cfg.RefreshTokenExpiry)
+	expiresAt := s.refreshTokenExpiry(ctx, org.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
 	refreshToken.Properties = models.JSONMap{
@@ -1747,7 +1900,7 @@ func (s *Service) generateAccessToken(userUID, orgSlug, role, refreshUID string)
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	return token.SignedString([]byte(s.cfg.JWTSecret))
+	return token.SignedString([]byte(s.fullCfg.Auth.JWTSecret))
 }
 
 // GenerateMCPAccessToken mints a short-lived, audience-bound JWT access token
@@ -1780,7 +1933,7 @@ func (s *Service) GenerateMCPAccessToken(
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	return token.SignedString([]byte(s.cfg.JWTSecret))
+	return token.SignedString([]byte(s.fullCfg.Auth.JWTSecret))
 }
 
 const refreshTokenSize = 32
@@ -1832,7 +1985,7 @@ func (s *Service) GenerateTokensForOAuth(
 	// Store refresh token in database
 	now := time.Now()
 	refreshToken := models.NewUserToken(user.UID, &org.UID, refreshTokenValue, models.TokenTypeRefresh)
-	expiresAt := now.Add(s.cfg.RefreshTokenExpiry)
+	expiresAt := s.refreshTokenExpiry(ctx, org.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
 	refreshToken.Properties = models.JSONMap{
@@ -1903,8 +2056,12 @@ func hashResetToken(token string) string {
 
 // Register creates a pending registration entry and sends a confirmation email.
 func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterResponse, error) {
-	// Check if registration is enabled
-	pattern := s.cfg.RegistrationEmailPattern
+	// Check if registration is enabled. Read the LIVE value: the
+	// registration_email_pattern is applied by the systemconfig overlay AFTER
+	// this Service was constructed, so the frozen s.cfg copy is stale (it would
+	// report "disabled" even when an operator enabled registration via env or
+	// the system-parameter API). This mirrors how auth.Handler reads it live.
+	pattern := s.fullCfg.Auth.RegistrationEmailPattern
 	if pattern == "" {
 		return nil, ErrRegistrationDisabled
 	}
@@ -2075,7 +2232,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	}
 
 	refreshToken := models.NewUserToken(user.UID, &org.UID, refreshTokenValue, models.TokenTypeRefresh)
-	expiresAt := now.Add(s.cfg.RefreshTokenExpiry)
+	expiresAt := s.refreshTokenExpiry(ctx, org.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
 	refreshToken.Properties = models.JSONMap{keyCreatedWith: map[string]any{"method": "registration"}}
@@ -2433,17 +2590,30 @@ type CreateOrgRequest struct {
 	Slug string `json:"slug"`
 }
 
-// OrgResponse contains the response for org creation.
+// OrgResponse contains the response for org creation. It carries a fresh
+// org-scoped session (accessToken/refreshToken/expiresIn/tokenType)
+// alongside the org identity — the caller who creates their first org has no
+// other way to obtain a token whose orgSlug claim matches the new org (see
+// the 2026-07-08 "create-org missing org-scoped token" spec).
 type OrgResponse struct {
-	UID  string `json:"uid"`
-	Slug string `json:"slug"`
-	Name string `json:"name"`
+	UID          string `json:"uid"`
+	Slug         string `json:"slug"`
+	Name         string `json:"name"`
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+	ExpiresIn    int    `json:"expiresIn"`
+	TokenType    string `json:"tokenType"`
 }
 
 var orgSlugRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$`)
 
-// CreateOrg creates a new organization and makes the user an admin.
-func (s *Service) CreateOrg(ctx context.Context, userUID string, req CreateOrgRequest) (*OrgResponse, error) {
+// CreateOrg creates a new organization, makes the user an admin, and mints a
+// session scoped to the new org — mirroring SwitchOrg, since this is
+// structurally the same "hand the caller a token for an org other than the
+// one in their current claims" problem.
+func (s *Service) CreateOrg(
+	ctx context.Context, userUID string, req CreateOrgRequest, authContext Context,
+) (*OrgResponse, error) {
 	// Validate slug
 	if !orgSlugRegex.MatchString(req.Slug) {
 		return nil, ErrInvalidOrgSlug
@@ -2469,26 +2639,59 @@ func (s *Service) CreateOrg(ctx context.Context, userUID string, req CreateOrgRe
 	org.CreatedAt = now
 	org.UpdatedAt = now
 
-	if err := s.db.CreateOrganization(ctx, org); err != nil {
-		return nil, fmt.Errorf("failed to create organization: %w", err)
+	if createOrgErr := s.db.CreateOrganization(ctx, org); createOrgErr != nil {
+		return nil, fmt.Errorf("failed to create organization: %w", createOrgErr)
 	}
 
 	// Make user admin
 	member := models.NewOrganizationMember(org.UID, userUID, models.MemberRoleAdmin)
 	member.JoinedAt = &now
 
-	if err := s.db.CreateOrganizationMember(ctx, member); err != nil {
-		return nil, fmt.Errorf("failed to create membership: %w", err)
+	if createMemberErr := s.db.CreateOrganizationMember(ctx, member); createMemberErr != nil {
+		return nil, fmt.Errorf("failed to create membership: %w", createMemberErr)
 	}
 
 	activation.Emit(ctx, s.db, org.UID,
 		models.EventTypeOrgActivationSignupCompleted,
 		activation.SourceRegularForm, userUID)
 
+	// Mint a session scoped to the new org, exactly like SwitchOrg: a fresh
+	// refresh-token row plus an access token whose orgSlug claim is the new
+	// org's slug. Without this, the caller's existing token (orgSlug "" for
+	// a zero-org user, or their previous org otherwise) 403s on every
+	// org-scoped call to the org they just created.
+	refreshTokenValue, err := s.generateRefreshToken()
+	if err != nil {
+		return nil, err
+	}
+
+	refreshToken := models.NewUserToken(userUID, &org.UID, refreshTokenValue, models.TokenTypeRefresh)
+	expiresAt := s.refreshTokenExpiry(ctx, org.UID, now, now)
+	refreshToken.ExpiresAt = &expiresAt
+	refreshToken.LastActiveAt = &now
+	refreshToken.Properties = models.JSONMap{
+		keyCreatedWith: authContext.ToMap(),
+	}
+
+	if createTokenErr := s.db.CreateUserToken(ctx, refreshToken); createTokenErr != nil {
+		return nil, createTokenErr
+	}
+
+	s.enforceSessionCap(ctx, userUID)
+
+	accessToken, err := s.generateAccessToken(userUID, org.Slug, string(models.MemberRoleAdmin), refreshToken.UID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &OrgResponse{
-		UID:  org.UID,
-		Slug: org.Slug,
-		Name: org.Name,
+		UID:          org.UID,
+		Slug:         org.Slug,
+		Name:         org.Name,
+		AccessToken:  accessToken,
+		RefreshToken: refreshTokenValue,
+		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
+		TokenType:    tokenTypeBearer,
 	}, nil
 }
 
@@ -2828,7 +3031,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 	}
 
 	refreshToken := models.NewUserToken(user.UID, &matchedOrg.UID, refreshTokenValue, models.TokenTypeRefresh)
-	expiresAt := now.Add(s.cfg.RefreshTokenExpiry)
+	expiresAt := s.refreshTokenExpiry(ctx, matchedOrg.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
 	refreshToken.Properties = models.JSONMap{keyCreatedWith: map[string]any{"method": "invitation"}}
@@ -2872,6 +3075,14 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 // OrgSettingsResponse contains org settings.
 type OrgSettingsResponse struct {
 	RegistrationEmailPattern string `json:"registrationEmailPattern"`
+	// SessionMaxDurationSeconds is this org's auth.session_max_duration
+	// override, in seconds, or nil when the org has no override and
+	// inherits the system-wide value (spec B.2/B.4). The UI shows the
+	// effective/inherited value separately via
+	// GET /api/v1/system/parameters (super-admin) — this field is only the
+	// org-level override itself, so the settings page can distinguish "not
+	// set" from "explicitly set to the same number".
+	SessionMaxDurationSeconds *int `json:"sessionMaxDurationSeconds,omitempty"`
 }
 
 // GetOrgSettings returns settings for an organization.
@@ -2893,12 +3104,30 @@ func (s *Service) GetOrgSettings(ctx context.Context, orgSlug string) (*OrgSetti
 		}
 	}
 
-	return &OrgSettingsResponse{RegistrationEmailPattern: pattern}, nil
+	sessionParam, err := s.db.GetOrgParameter(ctx, org.UID, string(systemconfig.KeySessionMaxDuration))
+	if err != nil {
+		return nil, err
+	}
+
+	var sessionMaxDurationSeconds *int
+	if seconds, ok := parseParamSeconds(sessionParam); ok {
+		sessionMaxDurationSeconds = &seconds
+	}
+
+	return &OrgSettingsResponse{
+		RegistrationEmailPattern:  pattern,
+		SessionMaxDurationSeconds: sessionMaxDurationSeconds,
+	}, nil
 }
 
 // UpdateOrgSettingsRequest contains the request data for updating org settings.
 type UpdateOrgSettingsRequest struct {
 	RegistrationEmailPattern *string `json:"registrationEmailPattern"`
+	// SessionMaxDurationSeconds, when present: a value <= 0 clears the org
+	// override (the org falls back to the system-wide value); a positive
+	// value sets/replaces it. Omit the field entirely to leave the
+	// override untouched.
+	SessionMaxDurationSeconds *int `json:"sessionMaxDurationSeconds"`
 }
 
 // UpdateOrgSettings updates settings for an organization.
@@ -2916,6 +3145,12 @@ func (s *Service) UpdateOrgSettings(
 		}
 	}
 
+	if req.SessionMaxDurationSeconds != nil {
+		if updateErr := s.updateSessionMaxDuration(ctx, org.UID, *req.SessionMaxDurationSeconds); updateErr != nil {
+			return nil, updateErr
+		}
+	}
+
 	return s.GetOrgSettings(ctx, orgSlug)
 }
 
@@ -2929,6 +3164,17 @@ func (s *Service) updateEmailPattern(ctx context.Context, orgUID, pattern string
 	}
 
 	return s.db.SetOrgParameter(ctx, orgUID, "registration.email_pattern", pattern, false)
+}
+
+// updateSessionMaxDuration sets or clears the org's auth.session_max_duration
+// override. seconds <= 0 clears it (the org reverts to inheriting the
+// system-wide value); a positive value sets/replaces it.
+func (s *Service) updateSessionMaxDuration(ctx context.Context, orgUID string, seconds int) error {
+	if seconds <= 0 {
+		return s.db.DeleteOrgParameter(ctx, orgUID, string(systemconfig.KeySessionMaxDuration))
+	}
+
+	return s.db.SetOrgParameter(ctx, orgUID, string(systemconfig.KeySessionMaxDuration), seconds, false)
 }
 
 // scopesFromProperties extracts the scopes list previously stored on a
@@ -3043,7 +3289,7 @@ func (s *Service) generate2FATempToken(userUID, orgSlug, role string) (string, e
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	return token.SignedString([]byte(s.cfg.JWTSecret))
+	return token.SignedString([]byte(s.fullCfg.Auth.JWTSecret))
 }
 
 // validate2FATempToken parses and validates a 2FA temporary token.
@@ -3053,7 +3299,7 @@ func (s *Service) validate2FATempToken(tempToken string) (*TwoFAClaims, error) {
 			return nil, fmt.Errorf("%w: %v", ErrUnexpectedSigningMethod, token.Header["alg"])
 		}
 
-		return []byte(s.cfg.JWTSecret), nil
+		return []byte(s.fullCfg.Auth.JWTSecret), nil
 	})
 	if err != nil {
 		return nil, ErrInvalidToken
@@ -3322,7 +3568,7 @@ func (s *Service) completeLoginAfter2FA(
 	}
 
 	refreshToken := models.NewUserToken(user.UID, &org.UID, refreshTokenValue, models.TokenTypeRefresh)
-	expiresAt := now.Add(s.cfg.RefreshTokenExpiry)
+	expiresAt := s.refreshTokenExpiry(ctx, org.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
 	refreshToken.Properties = models.JSONMap{

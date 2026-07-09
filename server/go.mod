@@ -13,6 +13,8 @@ require (
 	github.com/beevik/ntp v1.5.0
 	github.com/chromedp/chromedp v0.15.1
 	github.com/coder/websocket v1.8.15
+	github.com/coreos/go-oidc/v3 v3.20.0
+	github.com/crewjam/saml v0.5.1
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/docker/go-units v0.5.0
 	github.com/dop251/goja v0.0.0-20260701091749-b07b74453ea9
@@ -21,6 +23,9 @@ require (
 	github.com/fergusstrange/embedded-postgres v1.34.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/getsentry/sentry-go v0.47.0
+	github.com/go-asn1-ber/asn1-ber v1.5.8-0.20250403174932-29230038a667
+	github.com/go-jose/go-jose/v4 v4.1.4
+	github.com/go-ldap/ldap/v3 v3.4.13
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/go-webauthn/webauthn v0.17.4
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -28,6 +33,7 @@ require (
 	github.com/gookit/color v1.6.1
 	github.com/gosnmp/gosnmp v1.43.2
 	github.com/jedib0t/go-pretty/v6 v6.8.2
+	github.com/jimlambrt/gldap v0.1.14
 	github.com/jlaffaye/ftp v0.2.1
 	github.com/jonboulle/clockwork v0.5.0
 	github.com/knadh/koanf/parsers/json v1.0.0
@@ -81,6 +87,7 @@ require (
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.54.0
 	golang.org/x/net v0.57.0
+	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.22.0
 	golang.org/x/sys v0.47.0
 	golang.org/x/term v0.45.0
@@ -94,6 +101,7 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
+	github.com/Azure/go-ntlmssp v0.1.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/PuerkitoBio/goquery v1.12.0 // indirect
 	github.com/andybalholm/cascadia v1.3.4 // indirect
@@ -112,6 +120,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.37.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.44.0 // indirect
 	github.com/aws/smithy-go v1.27.3 // indirect
+	github.com/beevik/etree v1.5.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/boombuler/barcode v1.1.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
@@ -151,7 +160,7 @@ require (
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.4.0 // indirect
 	github.com/goccy/go-json v0.10.6 // indirect
-	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
@@ -160,6 +169,7 @@ require (
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
+	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
 	github.com/inbucket/html2text v1.0.0 // indirect
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect
@@ -176,6 +186,7 @@ require (
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/likexian/gokit v0.25.16 // indirect
 	github.com/mailru/easyjson v0.9.1 // indirect
+	github.com/mattermost/xml-roundtrip-validator v0.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/mattn/go-runewidth v0.0.24 // indirect
@@ -207,6 +218,7 @@ require (
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/russellhaering/goxmldsig v1.4.0 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/speakeasy-api/jsonpath v0.6.3 // indirect
@@ -236,7 +248,6 @@ require (
 	go.yaml.in/yaml/v4 v4.0.0-rc.5 // indirect
 	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90 // indirect
 	golang.org/x/mod v0.37.0 // indirect
-	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/tools v0.47.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260618152121-87f3d3e198d3 // indirect

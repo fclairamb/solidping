@@ -1,6 +1,7 @@
 package jobtypes
 
 import (
+	"log/slog"
 	"testing"
 	"time"
 
@@ -9,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
 const (
@@ -857,4 +860,105 @@ func TestAggregateResults_WithMetrics(t *testing.T) {
 	counts, ok := compacted.Metrics["status_val"].(map[string]int64)
 	require.True(t, ok)
 	assert.Equal(t, int64(2), counts["200"])
+}
+
+// TestAggregatePeriod_KeepsLifecycleMarkerRows exercises aggregatePeriod
+// end-to-end against an in-memory SQLite DB (spec 2026-07-08-04): a raw
+// window mixing lifecycle-marker rows (created, running) with measurable
+// rows (up) must roll up and delete only the measurable rows, while the
+// lifecycle-marker rows survive as period_type=raw. Before the fix, the
+// UID-collection step deleted every source row indiscriminately.
+func TestAggregatePeriod_KeepsLifecycleMarkerRows(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("agg-lifecycle-org", "")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "agg-lifecycle-check", "http")
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	// CreateCheck auto-seeds a "created" marker at the real current
+	// wall-clock time; remove it so it doesn't leak into (or out of) our
+	// synthetic old-hour window below.
+	seeded, err := dbSvc.ListResults(ctx, &models.ListResultsFilter{
+		OrganizationUID: org.UID,
+		CheckUIDs:       []string{check.UID},
+		Limit:           10,
+	})
+	r.NoError(err)
+
+	seededUIDs := make([]string, 0, len(seeded.Results))
+	for _, row := range seeded.Results {
+		seededUIDs = append(seededUIDs, row.UID)
+	}
+
+	if len(seededUIDs) > 0 {
+		_, delErr := dbSvc.DeleteResults(ctx, org.UID, seededUIDs)
+		r.NoError(delErr)
+	}
+
+	// An old, fully-elapsed hour bucket so the default retention (1 hour)
+	// marks it as ready to aggregate.
+	baseHour := time.Now().UTC().Add(-3 * time.Hour).Truncate(time.Hour)
+
+	newRaw := func(status models.ResultStatus, offset time.Duration) *models.Result {
+		res := models.NewResult(org.UID, check.UID, status, 0.1)
+		res.PeriodStart = baseHour.Add(offset)
+		r.NoError(dbSvc.CreateResult(ctx, res))
+
+		return res
+	}
+
+	createdRow := newRaw(models.ResultStatusCreated, 1*time.Minute)
+	runningRow := newRaw(models.ResultStatusRunning, 2*time.Minute)
+	up1 := newRaw(models.ResultStatusUp, 3*time.Minute)
+	up2 := newRaw(models.ResultStatusUp, 4*time.Minute)
+
+	jctx := &jobdef.JobContext{
+		DBService: dbSvc,
+		Logger:    slog.Default(),
+	}
+
+	run := &AggregationJobRun{}
+	aggregated, aggErr := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
+	r.NoError(aggErr)
+	r.True(aggregated, "expected an hour aggregation to be produced from the raw window")
+
+	// The measurable rows were rolled up and must be deleted.
+	_, err = dbSvc.GetResult(ctx, up1.UID)
+	r.Error(err, "measurable raw row must be deleted after aggregation")
+	_, err = dbSvc.GetResult(ctx, up2.UID)
+	r.Error(err, "measurable raw row must be deleted after aggregation")
+
+	// The lifecycle-marker rows must survive untouched, still period_type=raw.
+	keptCreated, err := dbSvc.GetResult(ctx, createdRow.UID)
+	r.NoError(err, "created marker row must NOT be deleted by aggregation")
+	r.Equal(int(models.ResultStatusCreated), *keptCreated.Status)
+	r.Equal(periodRaw, keptCreated.PeriodType)
+
+	keptRunning, err := dbSvc.GetResult(ctx, runningRow.UID)
+	r.NoError(err, "running marker row must NOT be deleted by aggregation")
+	r.Equal(int(models.ResultStatusRunning), *keptRunning.Status)
+	r.Equal(periodRaw, keptRunning.PeriodType)
+
+	// The new hour aggregation reflects only the 2 measurable rows — keeping
+	// the lifecycle rows changes no rollup numbers.
+	hourRows, err := dbSvc.ListResults(ctx, &models.ListResultsFilter{
+		OrganizationUID: org.UID,
+		CheckUIDs:       []string{check.UID},
+		PeriodTypes:     []string{periodHour},
+		Limit:           10,
+	})
+	r.NoError(err)
+	r.Len(hourRows.Results, 1)
+	r.NotNil(hourRows.Results[0].TotalChecks)
+	r.Equal(2, *hourRows.Results[0].TotalChecks)
 }

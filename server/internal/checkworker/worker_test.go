@@ -196,10 +196,20 @@ func TestCalculateNextScheduledAt_PhaseLocked(t *testing.T) {
 		checkJob := newJobWithCheck(&scheduledAt, jobPeriod, basePeriod, regionOf("eu-2"))
 
 		got := runner.calculateNextScheduledAt(checkJob)
-		want := scheduling.NextAligned(time.Now(), basePeriod, jobPeriod, checkUID, regionOf("eu-2"), regions)
+		after := time.Now()
+		want := scheduling.NextAligned(after, basePeriod, jobPeriod, checkUID, regionOf("eu-2"), regions)
 
-		assert.WithinDuration(t, want, got, 2*time.Second)
+		// The method reads its own clock, so `want` (from a later sample) can
+		// land one full period after `got` if the phase-aligned second ticks
+		// between the two reads — a fixed small tolerance would flake there.
+		// Delegation to the pure function is proven by phase equality (exact,
+		// boundary-immune) plus a within-one-period distance bound.
+		phaseOf := func(tt time.Time) int64 { return tt.Unix() % int64(jobPeriod/time.Second) }
+		assert.Equal(t, phaseOf(want), phaseOf(got), "method must land on the pure function's phase")
+		assert.LessOrEqual(t, (got.Sub(want)).Abs(), jobPeriod,
+			"method and pure function may differ by at most one period (boundary tick between clock reads)")
 		assert.True(t, got.After(now))
+		assert.LessOrEqual(t, got.Sub(after), jobPeriod, "next tick is at most one job period out")
 	})
 
 	t.Run("LateRun_ResumesOnPhase_NotNowPlusPeriod", func(t *testing.T) { //nolint:paralleltest // Shares runner instance
@@ -255,8 +265,18 @@ func TestCalculateNextScheduledAt_PhaseLocked(t *testing.T) {
 		}
 
 		got := runner.calculateNextScheduledAt(checkJob)
+		after := time.Now()
+
 		assert.True(t, got.After(now))
-		assert.LessOrEqual(t, got.Sub(now), basePeriod)
+		// NextAligned guarantees next − now ∈ [1s, period] against the clock
+		// the method itself reads (worker.go), which is strictly later than
+		// this test's `now`. When the call lands inside the check's phase
+		// second (fnv64a(checkUID) % 60s truncates to :30 for this UID), the
+		// result is a full period after the internal clock — measured from the
+		// earlier `now` that exceeds basePeriod by the nanoseconds between the
+		// two clock reads, so the test failed during second :30 of any minute.
+		// Bound against a clock sampled after the call: exact in every second.
+		assert.LessOrEqual(t, got.Sub(after), basePeriod)
 	})
 
 	t.Run("JitterDeterminism_DiffChecksGetDiffPhases", func(t *testing.T) { //nolint:paralleltest // shares runner
@@ -277,7 +297,13 @@ func TestCalculateNextScheduledAt_PhaseLocked(t *testing.T) {
 		nextA2 := runner.calculateNextScheduledAt(jobA)
 		nextB := runner.calculateNextScheduledAt(jobB)
 
-		assert.WithinDuration(t, nextA1, nextA2, 2*time.Second, "same check must be deterministic across calls")
+		// Determinism means "same phase", not "same instant": if check-aaaa's
+		// phase second ticks between the two calls, nextA2 is a full period
+		// after nextA1 and a small WithinDuration tolerance would flake.
+		phaseOf := func(tt time.Time) int64 { return tt.Unix() % int64(basePeriod/time.Second) }
+		assert.Equal(t, phaseOf(nextA1), phaseOf(nextA2), "same check must land on the same phase across calls")
+		assert.LessOrEqual(t, (nextA2.Sub(nextA1)).Abs(), basePeriod,
+			"adjacent calls may differ by at most one period (boundary tick between clock reads)")
 		_ = nextB // different UID may or may not collide; determinism (not spread) is what's load-bearing here
 	})
 }
@@ -1446,11 +1472,33 @@ func (c *hangingChecker) Execute(_ context.Context, _ checkerdef.Config) (*check
 // though the test itself proceeds as soon as the watchdog abandons it —
 // otherwise the goroutine would leak for the lifetime of the whole test
 // binary and trip the package's goleak.VerifyTestMain (leak_test.go).
+//
+// The cleanup also waits for the unblocked child to actually exit: its
+// deferred DecCheckRunnerAbandonedActive fires whenever the scheduler next
+// runs the goroutine, and letting the test end before that leaks the
+// decrement into the following test's before/after snapshots of the
+// package-global gauge (their exact-delta assertions then fail — verified by
+// injecting a 120ms delay after <-unblock, which reliably broke the two
+// tests that run after newHangingChecker users). Draining here keeps the
+// gauge quiescent at test boundaries.
 func newHangingChecker(t *testing.T) *hangingChecker {
 	t.Helper()
 
+	gaugeBaseline := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
 	unblock := make(chan struct{})
-	t.Cleanup(func() { close(unblock) })
+	t.Cleanup(func() {
+		close(unblock)
+		deadline := time.Now().Add(5 * time.Second)
+		for testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive) > gaugeBaseline {
+			if time.Now().After(deadline) {
+				t.Errorf("abandoned checker goroutine did not exit within 5s; CheckRunnerAbandonedActive still %v (baseline %v)",
+					testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive), gaugeBaseline)
+
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	})
 
 	return &hangingChecker{unblock: unblock}
 }

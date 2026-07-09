@@ -15,7 +15,12 @@
     "testMatch": "✓ matches the pattern",
     "testNoMatch": "✗ does not match the pattern",
     "saved": "Settings saved.",
-    "unexpectedError": "An unexpected error occurred"
+    "unexpectedError": "An unexpected error occurred",
+    "sessionDuration": "Session length",
+    "sessionDurationFullDescription": "Set a hard limit on how long a login session can last, regardless of activity. Leave empty to use the platform default (no limit unless one is set system-wide).",
+    "sessionDurationHoursLabel": "Maximum session length (hours)",
+    "sessionDurationPlaceholder": "Unlimited",
+    "sessionDurationHelp": "Once set, a session is force-expired this many hours after login even if the user stays active — separate from the 7-day inactivity timeout."
   },
   "usage": {
     "title": "Usage",

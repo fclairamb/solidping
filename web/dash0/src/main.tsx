@@ -6,8 +6,9 @@ import { routeTree } from "./routeTree.gen";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ErrorBoundary, RouteErrorFallback } from "@/components/shared/error-boundary";
-import { ApiError, NetworkError, setToken } from "@/api/client";
+import { ApiError, NetworkError } from "@/api/client";
 import { installErrorCollector } from "@/components/feedback/errorCollector";
+import { applyOAuthHandoff, parseOAuthHandoff } from "@/lib/oauth-handoff";
 import "@fontsource-variable/inter/index.css";
 import "./i18n";
 import "./index.css";
@@ -17,27 +18,22 @@ installErrorCollector();
 // Get base URL from Vite config (empty string means root "/")
 const basepath = import.meta.env.VITE_BASE_URL || "";
 
-// OAuth sign-in handoff. External providers (Slack, Google, …) redirect back to
-// `/orgs/<slug>?access_token=…&org=<slug>`. We persist the token synchronously
-// here — before the router or any React Query mounts. Doing it later (in a
-// component effect) loses a race: org-scoped queries fire un-authenticated,
-// 401, and apiFetch's global handler redirects to /login before the token is
-// stored, bouncing the user straight back out of the sign-in they just
-// completed.
+// OAuth sign-in handoff. External providers (Slack, GitHub, Google) redirect
+// back to `/orgs/<slug>?access_token=…&refresh_token=…&expires_in=…&org=<slug>`.
+// We persist the full session synchronously here — before the router or any
+// React Query mounts. Doing it later (in a component effect) loses a race:
+// org-scoped queries fire un-authenticated, 401, and apiFetch's global
+// handler redirects to /login before the token is stored, bouncing the user
+// straight back out of the sign-in they just completed. See
+// lib/oauth-handoff.ts for why refresh_token/expires_in must not be dropped.
 (() => {
-  const params = new URLSearchParams(window.location.search);
-  const accessToken = params.get("access_token");
-  if (!accessToken) return;
+  const handoff = parseOAuthHandoff(window.location.search);
+  if (!handoff) return;
 
-  setToken(accessToken);
-
-  const orgSlug = params.get("org");
-  if (orgSlug) {
-    localStorage.setItem("solidping_org", orgSlug);
-  }
+  applyOAuthHandoff(handoff);
 
   // Drop the token from the URL and land on the resolved org dashboard.
-  const dest = orgSlug ? `${basepath}/orgs/${orgSlug}` : window.location.pathname;
+  const dest = handoff.org ? `${basepath}/orgs/${handoff.org}` : window.location.pathname;
   window.history.replaceState(null, "", dest);
 })();
 

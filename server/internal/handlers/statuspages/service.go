@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
@@ -74,12 +75,28 @@ func validateHistoryPeriod(period *string) error {
 
 // Service provides business logic for status page management.
 type Service struct {
-	db db.Service
+	db  db.Service
+	cfg *config.Config
 }
 
-// NewService creates a new status pages service.
-func NewService(dbService db.Service) *Service {
-	return &Service{db: dbService}
+// NewService creates a new status pages service. cfg may be nil (e.g. the MCP
+// handler doesn't have an app config to hand) — the uptime-bar query's safety
+// cap then falls back to the documented retention defaults instead of the
+// org's actual configured values.
+func NewService(dbService db.Service, cfg *config.Config) *Service {
+	return &Service{db: dbService, cfg: cfg}
+}
+
+// retentionHints returns the org's configured raw/hour retention (hours of
+// raw kept / days of hourly rollups kept), or (0, 0) when cfg is nil — which
+// uptimebar.BucketAvailability treats as "use the documented defaults" when
+// sizing its safety cap.
+func (s *Service) retentionHints() (int, int) {
+	if s.cfg == nil {
+		return 0, 0
+	}
+
+	return s.cfg.Aggregation.RetentionRaw, s.cfg.Aggregation.RetentionHour
 }
 
 // --- Response types ---
@@ -1014,8 +1031,11 @@ func (s *Service) enrichWithAvailability(
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	historyStart := todayStart.AddDate(0, 0, -(page.HistoryDays - 1))
 
+	retentionRawHours, retentionHourDays := s.retentionHints()
+
 	bucketsByCheck, err := uptimebar.BucketAvailability(
 		ctx, s.db, orgUID, checkUIDs, 24*time.Hour, historyStart, page.HistoryDays,
+		retentionRawHours, retentionHourDays,
 	)
 	if err != nil {
 		return
@@ -1092,8 +1112,11 @@ func (s *Service) enrichHourly(
 	// 23 hours earlier. -(n-1) keeps the current hour inside the window.
 	bucketStart := now.Truncate(time.Hour).Add(-time.Duration(hourlyBucketCount-1) * time.Hour)
 
+	retentionRawHours, retentionHourDays := s.retentionHints()
+
 	bucketsByCheck, err := uptimebar.BucketAvailability(
 		ctx, s.db, orgUID, checkUIDs, time.Hour, bucketStart, hourlyBucketCount,
+		retentionRawHours, retentionHourDays,
 	)
 	if err != nil {
 		return

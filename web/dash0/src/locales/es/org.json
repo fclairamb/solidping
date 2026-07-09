@@ -15,7 +15,12 @@
     "testMatch": "✓ coincide con el patrón",
     "testNoMatch": "✗ no coincide con el patrón",
     "saved": "Ajustes guardados.",
-    "unexpectedError": "Se ha producido un error inesperado"
+    "unexpectedError": "Se ha producido un error inesperado",
+    "sessionDuration": "Duración de la sesión",
+    "sessionDurationFullDescription": "Establezca un límite estricto para la duración de una sesión de inicio de sesión, independientemente de la actividad. Déjelo vacío para usar el valor predeterminado de la plataforma (sin límite salvo que se establezca uno global).",
+    "sessionDurationHoursLabel": "Duración máxima de la sesión (horas)",
+    "sessionDurationPlaceholder": "Ilimitada",
+    "sessionDurationHelp": "Una vez establecida, la sesión expira forzosamente tras este número de horas desde el inicio de sesión, incluso si el usuario permanece activo, independientemente del tiempo de inactividad de 7 días."
   },
   "usage": {
     "title": "Uso",

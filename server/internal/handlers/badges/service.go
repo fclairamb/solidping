@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
@@ -49,11 +50,27 @@ type BadgeOptions struct {
 // Service provides badge generation functionality.
 type Service struct {
 	dbSvc db.Service
+	cfg   *config.Config
 }
 
-// NewService creates a new badge service.
-func NewService(dbSvc db.Service) *Service {
-	return &Service{dbSvc: dbSvc}
+// NewService creates a new badge service. cfg may be nil (e.g. surfaces that
+// don't have an app config to hand, like the MCP handler) — the uptime-bar
+// query's safety cap then falls back to the documented retention defaults
+// instead of the org's actual configured values.
+func NewService(dbSvc db.Service, cfg *config.Config) *Service {
+	return &Service{dbSvc: dbSvc, cfg: cfg}
+}
+
+// retentionHints returns the org's configured raw/hour retention (hours of
+// raw kept / days of hourly rollups kept), or (0, 0) when cfg is nil — which
+// uptimebar.BucketAvailability treats as "use the documented defaults" when
+// sizing its safety cap.
+func (s *Service) retentionHints() (int, int) {
+	if s.cfg == nil {
+		return 0, 0
+	}
+
+	return s.cfg.Aggregation.RetentionRaw, s.cfg.Aggregation.RetentionHour
 }
 
 func isAllowedComponent(token string) bool {
@@ -261,8 +278,11 @@ func (s *Service) bucketStatsForPeriod(
 	bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(n-1) * bucketDuration)
 	win := barWindow{bucketStart: bucketStart, n: n, bucketDuration: bucketDuration}
 
+	retentionRawHours, retentionHourDays := s.retentionHints()
+
 	byCheck, err := uptimebar.BucketAvailability(
 		ctx, s.dbSvc, orgUID, []string{checkUID}, bucketDuration, bucketStart, n,
+		retentionRawHours, retentionHourDays,
 	)
 	if err != nil {
 		return nil, barWindow{}, err

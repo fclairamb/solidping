@@ -110,6 +110,11 @@ const (
 	ProviderTypeDiscord   ProviderType = "discord"
 	ProviderTypeSAML      ProviderType = "saml"
 	ProviderTypeOIDC      ProviderType = "oidc"
+	// ProviderTypeLDAP identifies a user auto-provisioned or linked via an
+	// LDAP/Active Directory bind (spec 2026-07-08-08, part 3). Users linked
+	// this way always have a nil User.PasswordHash — see
+	// Service.findOrCreateLDAPUser in internal/handlers/auth/ldap_service.go.
+	ProviderTypeLDAP ProviderType = "ldap"
 )
 
 // UserProvider links a user to an external auth provider.

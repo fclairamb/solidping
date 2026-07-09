@@ -1,0 +1,328 @@
+# Enterprise auth protocols: LDAP, generic OAuth2/OIDC, and SAML login support
+
+## Problem
+
+SolidPing's login story today is email/password, passkeys, and a fixed set of
+six hardcoded social OAuth providers (Google, GitHub, GitLab, Microsoft, Slack,
+Discord — `server/internal/handlers/auth/{google,github,gitlab,microsoft,slack,discord}_service.go`,
+wired in `server/internal/app/server.go:484-530`). Organizations that run their
+own identity infrastructure cannot plug it in:
+
+- **Generic OAuth2/OIDC**: there is no way to connect an arbitrary
+  OAuth2/OIDC identity provider (Keycloak, Authentik, Okta, Auth0, a corporate
+  Azure AD tenant beyond the hardcoded Microsoft app…). `ProviderTypeOIDC`
+  exists only as an enum constant (`server/internal/db/models/auth.go:112`) —
+  no handler, no config, no route. Each of the six existing providers is a
+  bespoke `*_service.go` pair; adding an IdP means writing code.
+- **SAML**: same situation — `ProviderTypeSAML` is a bare constant
+  (`server/internal/db/models/auth.go:111`) with zero implementation. SAML is
+  still the lingua franca of enterprise SSO (Okta, ADFS, Ping, Shibboleth).
+- **LDAP**: entirely absent — no code, config key, enum, or dependency.
+  Self-hosted deployments with an existing LDAP/Active Directory often want
+  bind-based password verification against the directory instead of local
+  password hashes.
+
+The groundwork for OAuth-shaped providers is well established (per-provider
+config structs in `server/internal/config/*_oauth.go`, system-parameter overlay
+keys in `server/internal/systemconfig/systemconfig.go:54-73`, the
+`GET /api/v1/auth/providers` discovery endpoint in
+`server/internal/handlers/auth/providers_available.go`, login-page buttons in
+`web/dash0/src/routes/orgs/$org/login.tsx`, super-admin config UI in
+`web/dash0/src/routes/orgs/$org/server.auth.tsx`, `UserProvider` identity
+linking, and the `maxSsoUsers` entitlement enforced via
+`CheckSSOMembership` in `server/internal/entitlements/service.go:185`).
+SAML and LDAP do not fit that redirect/callback shape and are greenfield.
+
+## Proposal
+
+Add three new authentication mechanisms, reusing the existing provider
+plumbing wherever it fits:
+
+### 1. Generic OAuth2/OIDC provider (likely first — cheapest, broadest reach)
+
+- New config struct `server/internal/config/oidc_oauth.go` (or a generic
+  `custom_oauth.go`): issuer URL (with OIDC discovery), client id/secret,
+  scopes, optional claim mappings (email, name, avatar), `enabled`.
+- Declare the keys in `systemconfig.go` so they are editable as system
+  parameters, and add the provider to the `providers[]` array in
+  `server.auth.tsx`.
+- New `oidc.go`/`oidc_service.go` handler pair following the existing
+  `/auth/oidc/login` + `/auth/oidc/callback` shape, resolving/creating users
+  through `UserProvider` with `ProviderTypeOIDC`, and going through the same
+  `ensureMembership` + `CheckSSOMembership` entitlement path as the social
+  providers.
+- Surface it on the login page via the existing `useProviders()` discovery,
+  with a configurable display name/label (the button should say
+  "Continue with <Company IdP>", not "OIDC").
+
+### 2. SAML 2.0 Service Provider
+
+- SP-initiated login: `GET /api/v1/auth/saml/login` → redirect to the IdP with
+  an AuthnRequest; ACS endpoint `POST /api/v1/auth/saml/acs` consumes the
+  assertion, maps NameID/attributes to email/name, resolves via `UserProvider`
+  with `ProviderTypeSAML`, and issues the normal JWT/refresh session.
+- Serve SP metadata at a well-known path so IdP admins can configure their
+  side by URL.
+- Config: IdP metadata URL (or pasted metadata XML), SP entity ID, attribute
+  mappings, signing/encryption certificates. Use a maintained Go library
+  (e.g. `crewjam/saml`) rather than hand-rolling XML-DSig.
+- Reuse `oauthstate`-style relay-state handling for `returnTo`.
+
+### 3. LDAP / Active Directory bind authentication
+
+- LDAP is not redirect/callback — it plugs into the **password login path**
+  (`POST /api/v1/auth/login`, `handler.go`/`service.go` in
+  `server/internal/handlers/auth/`): when LDAP is enabled, verify the
+  submitted password with an LDAP bind (search-then-bind: service account DN +
+  user filter, e.g. `(mail=%s)` / `(sAMAccountName=%s)`) instead of — or as a
+  fallback ordering question with — the local `PasswordHash`.
+- Config: server URL (ldap:// / ldaps:// + StartTLS option), bind DN +
+  password (secret), base DN, user search filter, attribute mappings
+  (email, display name), group filter (see open questions).
+- On first successful bind, auto-provision the `User` (with nil
+  `PasswordHash`) and a `UserProvider` row with a new `ProviderTypeLDAP`
+  constant, so LDAP users count toward `maxSsoUsers` like other SSO users.
+
+### Cross-cutting
+
+- **Scope of configuration**: the existing six providers are configured
+  globally via system parameters (super-admin). Enterprise SSO is usually
+  **per-org** — `OrganizationProvider` (`server/internal/db/models/auth.go:11`)
+  already exists with an AES-GCM-encrypted `MetadataPrivate` envelope and is
+  the natural home for org-scoped IdP config. Decide global-only first pass
+  vs. per-org from the start (see open questions).
+- All three paths must respect the `maxSsoUsers` entitlement
+  (`CheckSSOMembership`) and record identities in `UserProvider`.
+- Login page (`login.tsx`) gains buttons/fields per newly enabled mechanism
+  via the providers discovery endpoint; LDAP mode may simply change what the
+  email/password form validates against (no visible button needed).
+- E2E coverage: OIDC can be tested against a lightweight in-repo fake IdP;
+  LDAP against a testcontainers OpenLDAP/glauth; SAML at minimum with
+  library-level unit tests plus a mocked IdP flow.
+
+## Open questions
+
+- **Per-org vs. global config**: first pass global-only (system parameters,
+  matching the existing pattern) or per-org from day one via
+  `OrganizationProvider`? Per-org is the real enterprise ask but touches org
+  settings UI, admin permissions, and multi-IdP discovery on the login page.
+- **Multiple instances**: one generic OIDC + one SAML + one LDAP connector,
+  or N configurable instances of each? Suggest exactly one of each per scope
+  for the first pass.
+- **LDAP fallback ordering**: when LDAP is enabled, do local-password users
+  (e.g. the bootstrap admin) still authenticate locally? Suggested: try local
+  hash first if the user has one, else LDAP — and never lock out the
+  super-admin.
+- **Group/role mapping**: map IdP groups (LDAP groups, SAML attributes, OIDC
+  claims) to `OrganizationMember.Role`? Suggest out of scope for the first
+  pass; default role on auto-provision like the social providers do.
+- **IdP-initiated SAML**: support it, or SP-initiated only (safer, simpler)?
+- **SLO (single logout)**: out of scope for the first pass?
+- **SCIM / directory sync**: explicitly out of scope here; this spec is
+  login-time provisioning only.
+
+## Implementation Plan — Part 1: Generic OAuth2/OIDC
+
+This spec is implemented in three staged passes (OIDC, then SAML, then LDAP).
+This section covers **part 1 only** — generic OAuth2/OIDC. Parts 2 (SAML) and
+3 (LDAP) will each add their own plan section below when implemented.
+
+Resolved for this pass (cross-cutting decisions adopted, not re-litigated):
+global-only config via system parameters (no `OrganizationProvider`), exactly
+one OIDC connector instance, no group/role mapping (default role like social
+providers), standard OIDC discovery for issuer configuration.
+
+1. **Config** — `server/internal/config/oidc_oauth.go`: `OIDCOAuthConfig`
+   (`Enabled`, `DisplayName`, `IssuerURL`, `ClientID`, `ClientSecret`,
+   `Scopes`, `EmailClaim`/`NameClaim`/`AvatarClaim` mappings with standard-claim
+   fallbacks). Wired into `config.Config` as `OIDC`.
+2. **System parameters** — register `auth.oidc.*` keys in
+   `systemconfig.go`'s `getKnownParameters()`, following the existing
+   provider key pattern (secret flag on `client_secret` only).
+3. **Handler pair** — `server/internal/handlers/auth/oidc.go` +
+   `oidc_service.go`, modeled on `google.go`/`google_service.go`:
+   - `GET /api/v1/auth/oidc/login` and `GET /api/v1/auth/oidc/callback`,
+     reusing the shared `OAuthState`/`ErrInvalidOAuthState` machinery.
+   - Real OIDC discovery + ID token validation via
+     `github.com/coreos/go-oidc/v3` (issuer, audience, signature via JWKS,
+     expiry) — a new dependency added deliberately instead of hand-rolling
+     JWT/JWKS verification, since that is the security-critical part of this
+     feature.
+   - `findOrCreateUser`/`ensureMembership` mirror the social providers
+     exactly, including the `CheckSSOSlot` (`maxSsoUsers`) enforcement call.
+4. **Routing** — wire `/auth/oidc/{login,callback}` in `server.go` alongside
+   the six existing providers, gated on `Enabled && IssuerURL != "" &&
+   ClientID != ""`.
+5. **Discovery + admin UI** — add the provider to
+   `providers_available.go` (using `DisplayName`, default "SSO") and to
+   `server.auth.tsx`'s `providers[]` array (new fields: display name, issuer
+   URL, scopes, claim mappings).
+6. **Login page** — no code change needed beyond the icon map: `login.tsx`
+   already renders providers generically from `useProviders()`; added a
+   generic shield icon for `type: "oidc"`.
+7. **Tests** — Go service-level tests with an in-repo fake OIDC IdP
+   (`httptest.Server` serving discovery + JWKS + token + userinfo), covering:
+   happy-path login (creates `User` + `UserProvider(ProviderTypeOIDC)` +
+   session), and negative paths (wrong issuer, wrong audience, expired token,
+   bad signature) — plus a `maxSsoUsers`/`CheckSSOMembership` enforcement
+   test using a stub `EntitlementsChecker`.
+
+## Implementation Plan — Part 2: SAML 2.0 SP
+
+This section covers **part 2 only** — SAML 2.0 Service Provider. Part 1
+(generic OIDC) is merged; part 3 (LDAP) follows in a later pass.
+
+Resolved for this pass (cross-cutting decisions adopted, not re-litigated):
+global-only config via system parameters, exactly one SAML connector
+instance, SP-initiated only (no IdP-initiated), no SLO, no group/role mapping
+(default role like the other SSO providers).
+
+1. **Library** — `github.com/crewjam/saml` (v0.5.1). Provides
+   `saml.ServiceProvider` (AuthnRequest generation, full assertion validation:
+   signature, `Conditions` `NotBefore`/`NotOnOrAfter`, `Audience` restriction,
+   `SubjectConfirmationData` `Recipient`/`NotOnOrAfter`, `InResponseTo`
+   replay check) and `samlsp.ParseMetadata`/`FetchMetadata` for IdP metadata
+   ingestion from pasted XML or a URL. No hand-rolled XML-DSig.
+2. **Config** — `server/internal/config/saml_auth.go`: `SAMLConfig`
+   (`Enabled`, `DisplayName`, `IDPMetadataURL`, `IDPMetadataXML`,
+   `SPEntityID` override, `EmailAttribute`/`NameAttribute` mappings). Wired
+   into `config.Config` as `SAML`. At least one of `IDPMetadataURL` /
+   `IDPMetadataXML` must be set for login/ACS to work; the metadata endpoint
+   itself only requires `Enabled` (chicken-and-egg: an admin needs the SP's
+   own metadata *before* they can configure the IdP side).
+3. **System parameters** — register `auth.saml.*` keys in
+   `systemconfig.go`, following the existing provider key pattern. None of
+   the SAML fields are secrets (trust is via certificates, not a shared
+   client secret) — `Secret: false` throughout.
+4. **SP key/certificate** — a self-signed RSA keypair is generated on first
+   use and persisted via `db.GetAppSetting`/`SetAppSetting`
+   (`saml.sp_certificate_pem` / `saml.sp_private_key_pem`), mirroring the
+   VAPID-key pattern in `internal/webpush/vapid.go`. It signs nothing by
+   default (AuthnRequests are unsigned — see self-review) but is required by
+   the library to publish an `EntityDescriptor` and to decrypt encrypted
+   assertions if the IdP chooses to encrypt.
+5. **Handler pair** — `server/internal/handlers/auth/saml.go` +
+   `saml_service.go`, modeled on `oidc.go`/`oidc_service.go`:
+   - `GET /api/v1/auth/saml/login` builds a signed-nowhere-but-tracked
+     `AuthnRequest`, stores `{RequestID, RedirectURI, OrgSlug}` under a
+     random nonce via the shared `db.SetStateEntry` (same TTL'd
+     key/value store `OAuthState` uses), and 302s to the IdP's
+     HTTP-Redirect SSO endpoint with that nonce as `RelayState`.
+   - `POST /api/v1/auth/saml/acs` reads `RelayState`, looks up and
+     consumes (one-time use) the stored request state, then calls
+     `sp.ParseResponse(req, []string{state.RequestID})` — this single
+     library call performs the full validation rigor: signature,
+     `Conditions`, `Audience`, `Recipient`, and `InResponseTo` matched
+     against the request ID we actually issued (replay/CSRF protection).
+     Maps NameID/attributes to email/name, resolves via `UserProvider`
+     with `ProviderTypeSAML`, goes through the same `ensureMembership` +
+     `CheckSSOSlot` (`maxSsoUsers`) path as OIDC/social providers, then
+     issues the normal session and redirects with tokens in the query
+     string (mirrors `oidc.go`'s `buildSuccessRedirect`).
+   - `GET /api/v1/auth/saml/metadata` serves the SP's own
+     `EntityDescriptor` XML (entity ID, ACS URL, certificate) so IdP
+     admins can configure their side by URL.
+6. **Routing** — wire `/auth/saml/{login,acs,metadata}` in `server.go`
+   alongside the other providers, gated on `Enabled` (metadata) /
+   `Enabled && (IDPMetadataURL != "" || IDPMetadataXML != "")` (login/ACS).
+7. **Discovery + login page** — SAML's redirect-out/redirect-back shape is
+   identical to the OAuth providers from the frontend's point of view (full
+   page redirect to `/api/v1/auth/saml/login?org=...&redirect_uri=...`, then
+   back with tokens in the query string), even though the wire protocol
+   underneath differs — so it fits the existing generic provider-button
+   shape in `providers_available.go`/`login.tsx` as `type: "saml"` rather
+   than needing a bespoke UI element. Admin UI: new SAML card in
+   `server.auth.tsx` (display name, IdP metadata URL, IdP metadata XML
+   textarea, SP entity ID override, email/name attribute mappings), plus a
+   read-only display of this SP's ACS/metadata URLs for the admin to hand to
+   their IdP.
+8. **Tests** — `saml_service_test.go`: a real `saml.IdentityProvider` (the
+   library's own IdP implementation, not a hand-rolled fixture) wired to a
+   `SessionProvider` stub that returns a fixed session, run behind an
+   `httptest.Server`, drives the full SP-initiated redirect leg for real
+   through `GenerateAuthnRequest`/`HandleACS`. Covers: SP metadata
+   well-formedness (entity ID/ACS URL present); happy path (creates `User` +
+   `UserProvider(ProviderTypeSAML)` + session); wrong-audience (fake IdP
+   asserts a different SP entity ID); expired assertion
+   (`IdentityProvider.ValidDuration` negative); untrusted signer (a second,
+   unpublished IdP keypair signs the response); replay / mismatched
+   `InResponseTo` (an assertion from one login attempt validated against a
+   different attempt's stored state); `maxSsoUsers` enforcement via the same
+   stub `EntitlementsChecker` pattern as the OIDC tests.
+
+## Implementation Plan — Part 3: LDAP/AD Bind Auth
+
+This section covers **part 3 only** — LDAP/Active Directory bind
+authentication. Parts 1 (generic OIDC) and 2 (SAML) are merged.
+
+Resolved for this pass (cross-cutting decisions adopted, not re-litigated):
+global-only config via system parameters, exactly one LDAP connector
+instance, no group/role mapping (default role like the other SSO
+providers), fallback ordering local-password-first (LDAP only attempted for
+a user with no local `PasswordHash`), and the super-admin must never be
+locked out.
+
+1. **Config** — `server/internal/config/ldap_auth.go`: `LDAPConfig`
+   (`Enabled`, `ServerURL`, `StartTLS`, `InsecureSkipVerify`, `BindDN`,
+   `BindPassword`, `BaseDN`, `UserFilter`, `EmailAttribute`,
+   `NameAttribute`). Wired into `config.Config` as `LDAP`.
+2. **System parameters** — register `auth.ldap.*` keys in
+   `systemconfig.go`'s `getKnownParameters()`, following the existing
+   provider key pattern (`bind_password` is the only `Secret: true` field —
+   analogous to an OAuth client secret).
+3. **Model** — `models.ProviderTypeLDAP` added to `db/models/auth.go`.
+   `user_providers.provider_type`'s CHECK constraint didn't anticipate
+   `'ldap'` (unlike `'oidc'`/`'saml'`, already present in the v0.1.0
+   baseline) — widened via migration `004_v0_3_0` (SQLite: table rebuild,
+   since SQLite can't alter CHECK constraints, same technique `002_v0_2_0`
+   used for `user_tokens.type`; Postgres: drop+re-add constraint).
+4. **LDAP client** — `server/internal/handlers/auth/ldap_service.go`:
+   `LDAPService.Authenticate` performs search-then-bind against
+   `github.com/go-ldap/ldap/v3` (a maintained client, not a hand-rolled wire
+   protocol): dial (`ldap://`/`ldaps://` + optional StartTLS), bind as the
+   service account (or anonymously when `BindDN` is blank), search via
+   `buildUserFilter` — the submitted identifier is always
+   `ldap.EscapeFilter`-escaped before substitution into the (admin-supplied)
+   filter template, neutralizing LDAP injection regardless of template
+   shape — then bind as the found entry's DN with the submitted password.
+   An explicit `password == ""` guard runs first, before any network I/O,
+   independent of go-ldap's own default empty-password refusal and of
+   whatever the directory itself would do — preventing the RFC 4513
+   "unauthenticated bind" vulnerability from ever being reachable.
+5. **Login-path integration** — `Service.Login` (service.go) restructured:
+   a user's local password hash, when set, is always tried first (via the
+   extracted `verifyLocalPassword`) and is the *only* mechanism attempted
+   for that user, even on a wrong password — LDAP is never consulted. Only
+   a user with no local password hash falls through to
+   `authenticateViaLDAP`, which performs the bind, finds/auto-provisions the
+   local `User` (nil `PasswordHash`) + `UserProvider(ProviderTypeLDAP)`, and
+   calls the same `ensureLDAPMembership`/`CheckSSOSlot` (`maxSsoUsers`) path
+   OIDC/SAML use. This ordering structurally prevents an LDAP bind from
+   ever hijacking an existing locally-secured account (that user never
+   reaches the LDAP branch at all), and keeps the bootstrap super-admin able
+   to log in regardless of LDAP state/availability/misconfiguration.
+6. **No new routes/frontend** — LDAP has no redirect/callback shape; it
+   plugs into the existing `POST /api/v1/auth/login` endpoint, so no
+   handler/routing changes in `server.go` and no login-page changes (per
+   the spec: "LDAP mode may simply change what the email/password form
+   validates against").
+7. **Tests** — `ldap_service_test.go` + `ldap_fake_directory_test.go`: a
+   custom in-process fake LDAP directory (`github.com/jimlambrt/gldap`,
+   *not* its own `testdirectory` sub-package, whose built-in search matches
+   filters against entry DNs with a crude substring check rather than real
+   per-attribute boolean logic) with a real filter evaluator walking the
+   same compiled filter tree `ldap.CompileFilter` produces. Covers:
+   `buildUserFilter` escaping proven via real `CompileFilter`/
+   `DecompileFilter` round-trips; happy path (auto-provisions `User` + nil
+   `PasswordHash` + `UserProvider(ProviderTypeLDAP)` + session); wrong
+   password; user not found; two LDAP-injection payloads (bare wildcard and
+   the classic paren/pipe payload) proven not to authenticate as another
+   user, with a raw-filter sanity check confirming the wildcard bypass is
+   real for that filter shape before showing escaping neutralizes it; the
+   empty-password guard proven to reject before any network I/O and even
+   when the fake directory is configured to honor an RFC 4513
+   unauthenticated bind; local-password-first fallback ordering (LDAP
+   pointed at an unreachable address, proving it's never attempted); the
+   super-admin never locked out with LDAP enabled and unreachable; and
+   `maxSsoUsers` enforcement via the same stub `EntitlementsChecker` pattern
+   as OIDC/SAML.

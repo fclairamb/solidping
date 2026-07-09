@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
@@ -29,7 +30,7 @@ func setupStatusPagesTest(t *testing.T) (context.Context, *Service, *models.Orga
 	org := models.NewOrganization("acme", "Acme")
 	require.NoError(t, dbService.CreateOrganization(ctx, org))
 
-	return ctx, NewService(dbService), org
+	return ctx, NewService(dbService, &config.Config{}), org
 }
 
 // TestBuildAvailabilityData_UTCBucketing pins that daily buckets are keyed by
@@ -691,7 +692,7 @@ func TestBadgeStatusPageParity_SameBucketsForSameData(t *testing.T) {
 	// Badge path: GenerateBadge with the uptime-bar component drives the badge's
 	// fetchBucketData → uptimebar.BucketAvailability over the same 24h window.
 	// We read the badge's per-bucket source via its public bucketing seam below.
-	badgeSvc := badges.NewService(svc.db)
+	badgeSvc := badges.NewService(svc.db, svc.cfg)
 	badgeBuckets, err := badges.BucketAvailabilityForPeriod(ctx, badgeSvc, org.UID, check.UID, "24h")
 	r.NoError(err)
 

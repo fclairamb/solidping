@@ -536,6 +536,29 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		discordAuth.GET("/callback", discordOAuthHandler.Callback)
 	}
 
+	// Generic OIDC routes (org-scoped, public)
+	if s.config.OIDC.Enabled && s.config.OIDC.IssuerURL != "" && s.config.OIDC.ClientID != "" {
+		oidcOAuthService := auth.NewOIDCOAuthService(s.dbService, s.config, s.authService)
+		oidcOAuthHandler := auth.NewOIDCOAuthHandler(oidcOAuthService, s.config)
+		oidcAuth := api.NewGroup("/auth/oidc")
+		oidcAuth.GET("/login", oidcOAuthHandler.Login)
+		oidcAuth.GET("/callback", oidcOAuthHandler.Callback)
+	}
+
+	// SAML 2.0 SP routes (org-scoped, public). Metadata is served whenever
+	// SAML is enabled at all — even before an IdP is configured — since an
+	// admin typically needs this SP's own metadata first, to configure their
+	// IdP, before they have IdP metadata to paste back; login/ACS need the
+	// IdP side configured too (checked again inside the service).
+	if s.config.SAML.Enabled {
+		samlService := auth.NewSAMLService(s.dbService, s.config, s.authService)
+		samlHandler := auth.NewSAMLHandler(samlService, s.config)
+		samlAuth := api.NewGroup("/auth/saml")
+		samlAuth.GET("/login", samlHandler.Login)
+		samlAuth.POST("/acs", samlHandler.ACS)
+		samlAuth.GET("/metadata", samlHandler.Metadata)
+	}
+
 	// Auth providers endpoint (public)
 	providersHandler := auth.NewProvidersHandler(s.config, passkeyService.Enabled)
 	api.GET("/auth/providers", providersHandler.ListProviders)
@@ -703,7 +726,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	}
 
 	// Badge routes (public, no authentication required)
-	badgesService := badges.NewService(s.dbService)
+	badgesService := badges.NewService(s.dbService, s.config)
 	badgesHandler := badges.NewHandler(badgesService, s.config)
 	api.GET("/orgs/:org/checks/:check/badges/:components", badgesHandler.GetBadge)
 
@@ -1016,7 +1039,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgStatusUpdates.DELETE("/:uid", statusUpdatesHandler.DeleteStatusUpdate)
 
 	// Status pages routes (authentication required)
-	statusPagesService := statuspages.NewService(s.dbService)
+	statusPagesService := statuspages.NewService(s.dbService, s.config)
 	statusPagesHandler := statuspages.NewHandler(statusPagesService, s.config)
 	orgStatusPages := api.NewGroup("/orgs/:org/status-pages").Use(authMiddleware.RequireAuth)
 	orgStatusPages.GET("", statusPagesHandler.ListStatusPages)
@@ -1158,6 +1181,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	if s.config.RunMode == "test" {
 		api.GET("/test/state-entries", testHandler.ListStateEntries)
+		api.POST("/test/users", testHandler.CreateUser)
 		api.POST("/test/checks/bulk", testHandler.BulkCreateChecks)
 		api.DELETE("/test/checks/bulk", testHandler.BulkDeleteChecks)
 		api.POST("/test/generate-data", testHandler.GenerateData)
