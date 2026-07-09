@@ -117,8 +117,18 @@ var (
 
 // Service provides authentication business logic.
 type Service struct {
-	db           db.Service
-	cfg          config.AuthConfig
+	db db.Service
+	// cfg is a boot-time-FROZEN value copy of config.AuthConfig, taken in
+	// NewService BEFORE InitializeSystemConfig applies the system-parameter
+	// overlay (see server/main.go boot order). Read it ONLY for fields the
+	// overlay never mutates — AccessTokenExpiry and RefreshTokenExpiry. Every
+	// field the overlay CAN mutate (JWTSecret, RegistrationEmailPattern,
+	// SessionMaxDuration) must be read live via fullCfg.Auth instead, or it
+	// stays frozen at its pre-overlay (usually empty/default) value forever.
+	cfg config.AuthConfig
+	// fullCfg is the LIVE shared *config.Config pointer. The systemconfig
+	// overlay and ensureJWTSecret mutate fullCfg.Auth after NewService, so
+	// reads through it see the post-overlay values.
 	fullCfg      *config.Config
 	jobsSvc      jobsvc.Service
 	entitlements EntitlementsChecker
@@ -1008,14 +1018,16 @@ func (s *Service) roleForOrg(ctx context.Context, user *models.User, orgUID stri
 
 // resolveSessionMaxDuration returns the effective hard cap on session
 // lifetime for orgUID: an org-scoped auth.session_max_duration parameter
-// override (spec B.2), falling back to the system-wide value already
-// overlaid onto s.cfg (config.AuthConfig) at startup
-// (systemconfig.KeySessionMaxDuration — editable at runtime via
-// PUT /api/v1/system/parameters, effective on restart like every other
-// system parameter), falling back to 0 (no cap —
-// today's behavior, only the sliding RefreshTokenExpiry idle window
-// applies). orgUID may be empty (no org resolved yet) — that's simply
-// "no org override to check."
+// override (spec B.2), falling back to the system-wide value in
+// s.fullCfg.Auth.SessionMaxDuration (systemconfig.KeySessionMaxDuration —
+// applied onto the LIVE *config.Config by the startup overlay and editable
+// at runtime via PUT /api/v1/system/parameters, effective on restart). It
+// MUST be read from fullCfg, not the frozen s.cfg copy: the overlay runs
+// after NewService, so s.cfg.SessionMaxDuration is stale (this was the
+// original bug — a system-wide cap set via env/DB was silently ignored).
+// Falls back to 0 (no cap — today's behavior, only the sliding
+// RefreshTokenExpiry idle window applies). orgUID may be empty (no org
+// resolved yet) — that's simply "no org override to check."
 //
 // A per-call DB read for the org override is fine: this is only invoked at
 // refresh-token mint/slide time, which is rare compared to request volume.
@@ -1031,7 +1043,7 @@ func (s *Service) resolveSessionMaxDuration(ctx context.Context, orgUID string) 
 		}
 	}
 
-	return s.cfg.SessionMaxDuration
+	return s.fullCfg.Auth.SessionMaxDuration
 }
 
 // parseParamSeconds extracts an integer seconds value from a parameter row's
@@ -1191,7 +1203,7 @@ func (s *Service) ValidateToken(ctx context.Context, tokenString string) (*Claim
 			return nil, fmt.Errorf("%w: %v", ErrUnexpectedSigningMethod, token.Header["alg"])
 		}
 
-		return []byte(s.cfg.JWTSecret), nil
+		return []byte(s.fullCfg.Auth.JWTSecret), nil
 	})
 	if err != nil {
 		return nil, ErrInvalidToken
@@ -1888,7 +1900,7 @@ func (s *Service) generateAccessToken(userUID, orgSlug, role, refreshUID string)
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	return token.SignedString([]byte(s.cfg.JWTSecret))
+	return token.SignedString([]byte(s.fullCfg.Auth.JWTSecret))
 }
 
 // GenerateMCPAccessToken mints a short-lived, audience-bound JWT access token
@@ -1921,7 +1933,7 @@ func (s *Service) GenerateMCPAccessToken(
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	return token.SignedString([]byte(s.cfg.JWTSecret))
+	return token.SignedString([]byte(s.fullCfg.Auth.JWTSecret))
 }
 
 const refreshTokenSize = 32
@@ -2044,8 +2056,12 @@ func hashResetToken(token string) string {
 
 // Register creates a pending registration entry and sends a confirmation email.
 func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterResponse, error) {
-	// Check if registration is enabled
-	pattern := s.cfg.RegistrationEmailPattern
+	// Check if registration is enabled. Read the LIVE value: the
+	// registration_email_pattern is applied by the systemconfig overlay AFTER
+	// this Service was constructed, so the frozen s.cfg copy is stale (it would
+	// report "disabled" even when an operator enabled registration via env or
+	// the system-parameter API). This mirrors how auth.Handler reads it live.
+	pattern := s.fullCfg.Auth.RegistrationEmailPattern
 	if pattern == "" {
 		return nil, ErrRegistrationDisabled
 	}
@@ -3273,7 +3289,7 @@ func (s *Service) generate2FATempToken(userUID, orgSlug, role string) (string, e
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	return token.SignedString([]byte(s.cfg.JWTSecret))
+	return token.SignedString([]byte(s.fullCfg.Auth.JWTSecret))
 }
 
 // validate2FATempToken parses and validates a 2FA temporary token.
@@ -3283,7 +3299,7 @@ func (s *Service) validate2FATempToken(tempToken string) (*TwoFAClaims, error) {
 			return nil, fmt.Errorf("%w: %v", ErrUnexpectedSigningMethod, token.Header["alg"])
 		}
 
-		return []byte(s.cfg.JWTSecret), nil
+		return []byte(s.fullCfg.Auth.JWTSecret), nil
 	})
 	if err != nil {
 		return nil, ErrInvalidToken
