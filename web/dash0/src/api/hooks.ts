@@ -1796,8 +1796,14 @@ export function useRegister() {
 export function useConfirmRegistration() {
   return useMutation({
     mutationFn: (data: { token: string }) =>
+      // Login-shaped response — the backend mints a full session (refresh
+      // token + expiry included) just like password/OAuth login, so both
+      // fields must be captured here and passed to setSession, not dropped
+      // (2026-07-08 funnel audit).
       apiFetch<{
         accessToken: string;
+        refreshToken?: string;
+        expiresIn?: number;
         user: { email: string; name?: string; avatarUrl?: string; role: string };
         organization?: { uid: string; slug: string; name?: string };
       }>("/api/v1/auth/confirm-registration", {
@@ -1845,7 +1851,10 @@ export function useUpdateProfile() {
   });
 }
 
-// Organization creation hook
+// Organization creation hook. The response carries a fresh session
+// (accessToken/refreshToken/expiresIn/tokenType) scoped to the new org —
+// the caller must adopt it (see api/client.ts setSession) before navigating
+// into the org, or every org-scoped call 403s.
 export function useCreateOrg() {
   return useMutation({
     mutationFn: (data: { name: string; slug: string }) =>
@@ -1854,6 +1863,9 @@ export function useCreateOrg() {
         slug: string;
         name: string;
         accessToken: string;
+        refreshToken: string;
+        expiresIn: number;
+        tokenType: string;
       }>("/api/v1/orgs", {
         method: "POST",
         body: JSON.stringify(data),
@@ -2122,6 +2134,10 @@ export function useAcceptInvite() {
 // Org settings hooks
 export interface OrgSettings {
   registrationEmailPattern: string;
+  // Org-level auth.session_max_duration override, in seconds. Absent/null
+  // when the org has no override and inherits the system-wide default (see
+  // server OrgSettingsResponse — spec 2026-07-08-01 B.4).
+  sessionMaxDurationSeconds?: number | null;
 }
 
 export function useOrgSettings(org: string) {
@@ -2132,10 +2148,17 @@ export function useOrgSettings(org: string) {
   });
 }
 
+export interface UpdateOrgSettingsRequest {
+  registrationEmailPattern?: string;
+  // A value <= 0 clears the override (org reverts to inheriting the
+  // system-wide value); omit the field entirely to leave it untouched.
+  sessionMaxDurationSeconds?: number;
+}
+
 export function useUpdateOrgSettings(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { registrationEmailPattern: string }) =>
+    mutationFn: (data: UpdateOrgSettingsRequest) =>
       apiFetch<OrgSettings>(`/api/v1/orgs/${org}/settings`, {
         method: "PATCH",
         body: JSON.stringify(data),

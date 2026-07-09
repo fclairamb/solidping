@@ -640,7 +640,12 @@ func (h *Handler) CreateOrg(writer http.ResponseWriter, req bunrouter.Request) e
 		})
 	}
 
-	resp, err := h.svc.CreateOrg(req.Context(), claims.UserUID, createReq)
+	authContext := Context{
+		UserAgent:  req.Header.Get("User-Agent"),
+		RemoteAddr: base.ExtractRemoteAddr(req),
+	}
+
+	resp, err := h.svc.CreateOrg(req.Context(), claims.UserUID, createReq, authContext)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrInvalidOrgSlug):
@@ -653,6 +658,16 @@ func (h *Handler) CreateOrg(writer http.ResponseWriter, req bunrouter.Request) e
 			return h.WriteInternalError(writer, err)
 		}
 	}
+
+	// Set access token cookie, matching every other login-shaped response
+	// (Login, SwitchOrg, Verify2FA, …) — CreateOrg now mints a fresh session
+	// too.
+	http.SetCookie(writer, &http.Cookie{
+		Name:   CookieAuthToken,
+		Value:  resp.AccessToken,
+		Path:   "/",
+		MaxAge: resp.ExpiresIn,
+	})
 
 	return h.WriteJSON(writer, http.StatusCreated, resp)
 }

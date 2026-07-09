@@ -59,7 +59,9 @@ func newWSFixture(t *testing.T, opts wsFixtureOpts) *wsFixture {
 		AccessTokenExpiry:  time.Hour,
 		RefreshTokenExpiry: 7 * 24 * time.Hour,
 	}
-	authService := auth.NewService(dbSvc, authCfg, nil, nil, nil)
+	// fullCfg must be non-nil: the auth Service reads JWTSecret live via
+	// fullCfg.Auth when it mints/validates the session tokens this fixture uses.
+	authService := auth.NewService(dbSvc, authCfg, &config.Config{Auth: authCfg}, nil, nil)
 
 	if opts.authGrace <= 0 {
 		opts.authGrace = time.Second
@@ -658,7 +660,9 @@ func TestServe_TokenExpiryCloses4401(t *testing.T) {
 		AccessTokenExpiry:  tokenTTL,
 		RefreshTokenExpiry: time.Hour,
 	}
-	shortAuthService := auth.NewService(fx.dbSvc, shortCfg, nil, nil, nil)
+	// Shares the same JWT secret as the fixture; fullCfg must be non-nil so the
+	// Service can sign/validate the short-lived token live via fullCfg.Auth.
+	shortAuthService := auth.NewService(fx.dbSvc, shortCfg, &config.Config{Auth: shortCfg}, nil, nil)
 	resp, err := shortAuthService.Login(t.Context(), "test", "member@example.com", "pw", auth.Context{})
 	r.NoError(err)
 

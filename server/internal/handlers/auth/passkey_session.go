@@ -56,7 +56,7 @@ func (s *Service) sealPasskeySession(
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	signed, err := token.SignedString([]byte(s.cfg.JWTSecret))
+	signed, err := token.SignedString([]byte(s.fullCfg.Auth.JWTSecret))
 	if err != nil {
 		return "", fmt.Errorf("sign passkey session: %w", err)
 	}
@@ -76,7 +76,7 @@ func (s *Service) unsealPasskeySession(
 ) (*passkeySessionClaims, *webauthn.SessionData, error) {
 	parsed, err := jwt.ParseWithClaims(tokenString, &passkeySessionClaims{},
 		func(_ *jwt.Token) (any, error) {
-			return []byte(s.cfg.JWTSecret), nil
+			return []byte(s.fullCfg.Auth.JWTSecret), nil
 		})
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {

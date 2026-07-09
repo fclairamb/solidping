@@ -81,7 +81,14 @@ export const Route = createFileRoute("/orgs/$org/checks/$checkUid/")({
     graphPeriod: (["hour", "day", "week", "month"].includes(search.graphPeriod as string)
       ? search.graphPeriod
       : undefined) as "hour" | "day" | "week" | "month" | undefined,
-    graphFull: search.graphFull === "true" ? true : undefined,
+    // TanStack Router's default search parser already coerces "true"/"false"
+    // query-string values to native booleans before validateSearch runs, so a
+    // bare `=== "true"` string comparison silently always evaluates to false
+    // (see login.tsx's `session_expired` fix for the same bug class).
+    graphFull:
+      search.graphFull === true || search.graphFull === "true"
+        ? true
+        : undefined,
     graphRegion:
       typeof search.graphRegion === "string" ? search.graphRegion : undefined,
     // Independent from graphRegion: the chart isolates a region's view, the

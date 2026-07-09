@@ -7,6 +7,7 @@ import { useResult } from "@/api/hooks";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/shared/status-badge";
 
 interface PinnedResultBoxProps {
   org: string;
@@ -143,9 +144,7 @@ export function PinnedResultBox({
           {data.status && (
             <div className="flex items-baseline justify-between gap-2">
               <span className="text-xs text-muted-foreground">{t("detail.resultBox.status")}</span>
-              <Badge variant="outline" className="capitalize text-xs">
-                {data.status}
-              </Badge>
+              <StatusBadge status={data.status} className="text-xs" />
             </div>
           )}
           {data.periodType && data.periodType !== "raw" && (

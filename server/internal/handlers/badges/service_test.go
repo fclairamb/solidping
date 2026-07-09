@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 )
@@ -747,7 +748,7 @@ func setupBadgeResultsTest(t *testing.T) (context.Context, *Service, *models.Org
 	check := models.NewCheck(org.UID, "API", "http")
 	require.NoError(t, dbService.CreateCheck(ctx, check))
 
-	return ctx, NewService(dbService), org, check
+	return ctx, NewService(dbService, &config.Config{}), org, check
 }
 
 // TestFetchBucketData_MixesRawAndRollup verifies that the badge, via the shared

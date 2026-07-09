@@ -12,10 +12,11 @@ import {
   setSession,
   clearToken,
   getToken,
+  getRefreshToken,
   getExpiresAt,
   getExpiresInSeconds,
 } from "@/api/client";
-import { refreshAccessToken, shouldRefreshNow } from "@/lib/token-refresh";
+import { refreshAccessToken, refreshWithOutcome, shouldRefreshNow } from "@/lib/token-refresh";
 
 interface User {
   email: string;
@@ -107,7 +108,10 @@ interface MeResponse {
     avatarUrl?: string;
     role: string;
   };
-  organization: {
+  // Optional — a zero-org session (a user who belongs to no organization yet)
+  // gets a 200 from /auth/me with no organization. Mirrors the sibling
+  // AuthResponse.organization above, which is already optional.
+  organization?: {
     uid: string;
     slug: string;
     name?: string;
@@ -140,6 +144,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!token) {
       setIsLoading(false);
       return;
+    }
+
+    // Legacy/partial session: an access token with no expiry metadata (a
+    // session predating expires_at tracking, or one of the funnel-audit
+    // paths that used to drop it — see api/client.ts setSession) can't be
+    // scheduled by the proactive timer (shouldRefreshNow needs both fields)
+    // and won't reliably 401 soon on its own. Refresh once, up front, so it
+    // either lands on solid footing (full session with a refresh token) or
+    // is cleared immediately instead of coasting until a surprise 401 (spec
+    // A.4).
+    //
+    // Only force this when there's actually a refresh token to spend. A
+    // zero-org session (a user with no organization) has no refresh token by
+    // design, so an unconditional up-front refresh would escalate
+    // ("no-refresh-token" → clear + redirect) and log out a perfectly valid
+    // session. With no refresh token we let /auth/me below be the arbiter: a
+    // 200 (including one with no org) keeps the session, a 401/403 still
+    // clears it in the catch. This defers the "give up" decision to real
+    // evidence instead of blindly killing a session that /auth/me can still
+    // validate — the genuinely-dead case is still cleared, just by /auth/me.
+    if (getExpiresAt() === null && getRefreshToken() !== null) {
+      const outcome = await refreshWithOutcome();
+      if (!outcome.accessToken && outcome.failureReason !== "network-error") {
+        // escalate() inside token-refresh.ts already cleared the session
+        // and redirected to login — nothing left to validate.
+        setIsLoading(false);
+        return;
+      }
     }
 
     try {

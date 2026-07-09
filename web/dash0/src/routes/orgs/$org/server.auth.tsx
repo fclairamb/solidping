@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -32,7 +33,25 @@ type FieldKind =
   | "signingSecret"
   | "botToken"
   | "redirectUrl"
-  | "tenantId";
+  | "tenantId"
+  | "displayName"
+  | "issuerUrl"
+  | "scopes"
+  | "emailClaim"
+  | "nameClaim"
+  | "avatarClaim"
+  | "idpMetadataUrl"
+  | "idpMetadataXml"
+  | "spEntityId"
+  | "emailAttribute"
+  | "nameAttribute"
+  | "serverUrl"
+  | "startTls"
+  | "insecureSkipVerify"
+  | "bindDn"
+  | "bindPassword"
+  | "baseDn"
+  | "userFilter";
 
 interface ProviderConfig {
   name: string;
@@ -42,6 +61,21 @@ interface ProviderConfig {
     labelKey: FieldKind;
     secret: boolean;
     // Optional muted hint rendered under the input, keyed under server:auth.fieldHelp.
+    helpKey?: FieldKind;
+    // Render a multi-line Textarea instead of a single-line Input — used for
+    // pasted IdP metadata XML.
+    multiline?: boolean;
+  }[];
+  // Field(s) whose presence (any one of them) gates the Enabled switch.
+  // Defaults to ["clientId"] when omitted — SAML has no client id, so it
+  // gates on either IdP metadata field instead.
+  requiredForEnable?: FieldKind[];
+  // Additional boolean toggles beyond the main Enabled switch (e.g. LDAP's
+  // StartTLS / skip-certificate-verification options). Rendered as inline
+  // switches above the field list; persisted as their own system parameter.
+  switches?: {
+    key: string;
+    labelKey: FieldKind;
     helpKey?: FieldKind;
   }[];
 }
@@ -105,6 +139,124 @@ const providers: ProviderConfig[] = [
       { key: "auth.discord.redirect_url", labelKey: "redirectUrl", secret: false },
     ],
   },
+  {
+    name: "Generic OIDC",
+    enabledKey: "auth.oidc.enabled",
+    fields: [
+      {
+        key: "auth.oidc.display_name",
+        labelKey: "displayName",
+        secret: false,
+        helpKey: "displayName",
+      },
+      {
+        key: "auth.oidc.issuer_url",
+        labelKey: "issuerUrl",
+        secret: false,
+        helpKey: "issuerUrl",
+      },
+      { key: "auth.oidc.client_id", labelKey: "clientId", secret: false },
+      { key: "auth.oidc.client_secret", labelKey: "clientSecret", secret: true },
+      { key: "auth.oidc.scopes", labelKey: "scopes", secret: false, helpKey: "scopes" },
+      {
+        key: "auth.oidc.email_claim",
+        labelKey: "emailClaim",
+        secret: false,
+        helpKey: "emailClaim",
+      },
+      {
+        key: "auth.oidc.name_claim",
+        labelKey: "nameClaim",
+        secret: false,
+        helpKey: "nameClaim",
+      },
+      {
+        key: "auth.oidc.avatar_claim",
+        labelKey: "avatarClaim",
+        secret: false,
+        helpKey: "avatarClaim",
+      },
+    ],
+  },
+  {
+    name: "SAML 2.0",
+    enabledKey: "auth.saml.enabled",
+    // Neither metadata field alone is required — either fetching from a URL
+    // or pasting the XML directly is enough to enable the connector.
+    requiredForEnable: ["idpMetadataUrl", "idpMetadataXml"],
+    fields: [
+      {
+        key: "auth.saml.display_name",
+        labelKey: "displayName",
+        secret: false,
+        helpKey: "displayName",
+      },
+      {
+        key: "auth.saml.idp_metadata_url",
+        labelKey: "idpMetadataUrl",
+        secret: false,
+        helpKey: "idpMetadataUrl",
+      },
+      {
+        key: "auth.saml.idp_metadata_xml",
+        labelKey: "idpMetadataXml",
+        secret: false,
+        helpKey: "idpMetadataXml",
+        multiline: true,
+      },
+      {
+        key: "auth.saml.sp_entity_id",
+        labelKey: "spEntityId",
+        secret: false,
+        helpKey: "spEntityId",
+      },
+      {
+        key: "auth.saml.email_attribute",
+        labelKey: "emailAttribute",
+        secret: false,
+        helpKey: "emailAttribute",
+      },
+      {
+        key: "auth.saml.name_attribute",
+        labelKey: "nameAttribute",
+        secret: false,
+        helpKey: "nameAttribute",
+      },
+    ],
+  },
+  {
+    name: "LDAP",
+    enabledKey: "auth.ldap.enabled",
+    // No client id for LDAP — gate on the server URL instead.
+    requiredForEnable: ["serverUrl"],
+    switches: [
+      { key: "auth.ldap.start_tls", labelKey: "startTls", helpKey: "startTls" },
+      {
+        key: "auth.ldap.insecure_skip_verify",
+        labelKey: "insecureSkipVerify",
+        helpKey: "insecureSkipVerify",
+      },
+    ],
+    fields: [
+      {
+        key: "auth.ldap.server_url",
+        labelKey: "serverUrl",
+        secret: false,
+        helpKey: "serverUrl",
+      },
+      { key: "auth.ldap.bind_dn", labelKey: "bindDn", secret: false, helpKey: "bindDn" },
+      { key: "auth.ldap.bind_password", labelKey: "bindPassword", secret: true },
+      { key: "auth.ldap.base_dn", labelKey: "baseDn", secret: false, helpKey: "baseDn" },
+      {
+        key: "auth.ldap.user_filter",
+        labelKey: "userFilter",
+        secret: false,
+        helpKey: "userFilter",
+      },
+      { key: "auth.ldap.email_attribute", labelKey: "emailAttribute", secret: false },
+      { key: "auth.ldap.name_attribute", labelKey: "nameAttribute", secret: false },
+    ],
+  },
 ];
 
 function AuthSettingsPage() {
@@ -114,6 +266,7 @@ function AuthSettingsPage() {
 
   const [values, setValues] = useState<Record<string, string>>({});
   const [enabled, setEnabled] = useState<Record<string, boolean>>({});
+  const [switchValues, setSwitchValues] = useState<Record<string, boolean>>({});
   const [editingSecrets, setEditingSecrets] = useState<Set<string>>(new Set());
   const [visibleSecrets, setVisibleSecrets] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -123,6 +276,7 @@ function AuthSettingsPage() {
     if (params) {
       const newValues: Record<string, string> = {};
       const newEnabled: Record<string, boolean> = {};
+      const newSwitchValues: Record<string, boolean> = {};
       for (const provider of providers) {
         for (const field of provider.fields) {
           const param = params.find((p: SystemParameter) => p.key === field.key);
@@ -131,9 +285,14 @@ function AuthSettingsPage() {
         const enabledParam = params.find((p: SystemParameter) => p.key === provider.enabledKey);
         newEnabled[provider.enabledKey] =
           enabledParam?.value === undefined ? false : Boolean(enabledParam.value);
+        for (const sw of provider.switches ?? []) {
+          const swParam = params.find((p: SystemParameter) => p.key === sw.key);
+          newSwitchValues[sw.key] = swParam?.value === undefined ? false : Boolean(swParam.value);
+        }
       }
       setValues(newValues);
       setEnabled(newEnabled);
+      setSwitchValues(newSwitchValues);
     }
   }, [params]);
 
@@ -141,8 +300,10 @@ function AuthSettingsPage() {
     params?.find((p: SystemParameter) => p.key === key)?.secret ?? false;
 
   const isConfigured = (provider: ProviderConfig) => {
-    const clientIdField = provider.fields.find((f) => f.labelKey === "clientId");
-    return clientIdField ? Boolean((values[clientIdField.key] || "").trim()) : false;
+    const requiredKinds = provider.requiredForEnable ?? ["clientId"];
+    const requiredFields = provider.fields.filter((f) => requiredKinds.includes(f.labelKey));
+    if (requiredFields.length === 0) return false;
+    return requiredFields.some((f) => Boolean((values[f.key] || "").trim()));
   };
 
   const persistedEnabled = (provider: ProviderConfig): boolean => {
@@ -161,11 +322,25 @@ function AuthSettingsPage() {
       return (values[field.key] ?? "") !== original;
     });
 
+  const persistedSwitch = (key: string): boolean => {
+    const param = params?.find((p: SystemParameter) => p.key === key);
+    return param?.value === undefined ? false : Boolean(param.value);
+  };
+
+  const isSwitchesDirty = (provider: ProviderConfig): boolean =>
+    (provider.switches ?? []).some(
+      (sw) => (switchValues[sw.key] ?? false) !== persistedSwitch(sw.key)
+    );
+
   const isDirty = (provider: ProviderConfig): boolean =>
-    isEnabledDirty(provider) || isCredentialDirty(provider);
+    isEnabledDirty(provider) || isCredentialDirty(provider) || isSwitchesDirty(provider);
 
   const handleToggleEnabled = (provider: ProviderConfig, next: boolean) => {
     setEnabled((prev) => ({ ...prev, [provider.enabledKey]: next }));
+  };
+
+  const handleToggleSwitch = (key: string, next: boolean) => {
+    setSwitchValues((prev) => ({ ...prev, [key]: next }));
   };
 
   const handleSave = async (providerName: string) => {
@@ -195,6 +370,17 @@ function AuthSettingsPage() {
             value: enabled[provider.enabledKey] ?? false,
           })
         );
+      }
+
+      for (const sw of provider.switches ?? []) {
+        if ((switchValues[sw.key] ?? false) !== persistedSwitch(sw.key)) {
+          writes.push(
+            setParam.mutateAsync({
+              key: sw.key,
+              value: switchValues[sw.key] ?? false,
+            })
+          );
+        }
       }
 
       await Promise.all(writes);
@@ -292,6 +478,49 @@ function AuthSettingsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
+              {provider.name === "SAML 2.0" && (
+                <div
+                  className="rounded-md border bg-muted/50 p-3 text-xs space-y-1"
+                  data-testid="saml-sp-info"
+                >
+                  <p className="text-muted-foreground">{t("server:auth.samlSpInfo")}</p>
+                  <p>
+                    <span className="text-muted-foreground">
+                      {t("server:auth.samlMetadataUrlLabel")}:
+                    </span>{" "}
+                    <code>{`${window.location.origin}/api/v1/auth/saml/metadata`}</code>
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">{t("server:auth.samlAcsUrlLabel")}:</span>{" "}
+                    <code>{`${window.location.origin}/api/v1/auth/saml/acs`}</code>
+                  </p>
+                </div>
+              )}
+              {(provider.switches ?? []).length > 0 && (
+                <div className="space-y-3">
+                  {provider.switches!.map((sw) => (
+                    <div key={sw.key} className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          id={sw.key}
+                          checked={switchValues[sw.key] ?? false}
+                          disabled={setParam.isPending}
+                          onCheckedChange={(next) => handleToggleSwitch(sw.key, next)}
+                          data-testid={`provider-switch-${sw.key}`}
+                        />
+                        <Label htmlFor={sw.key} className="text-sm font-normal">
+                          {t(`server:auth.fields.${sw.labelKey}`)}
+                        </Label>
+                      </div>
+                      {sw.helpKey && (
+                        <p className="text-xs text-muted-foreground">
+                          {t(`server:auth.fieldHelp.${sw.helpKey}`)}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
               {provider.fields.map((field) => {
                 const label = t(`server:auth.fields.${field.labelKey}`);
                 return (
@@ -319,24 +548,42 @@ function AuthSettingsPage() {
                   ) : (
                     <div className="flex items-center gap-2">
                       <div className="relative flex-1">
-                        <Input
-                          id={field.key}
-                          data-testid={`provider-field-${field.key}`}
-                          type={
-                            field.secret && !visibleSecrets.has(field.key)
-                              ? "password"
-                              : "text"
-                          }
-                          placeholder={field.labelKey === "tenantId" ? "common" : label}
-                          value={values[field.key] ?? ""}
-                          onChange={(e) =>
-                            setValues((prev) => ({
-                              ...prev,
-                              [field.key]: e.target.value,
-                            }))
-                          }
-                          disabled={setParam.isPending}
-                        />
+                        {field.multiline ? (
+                          <Textarea
+                            id={field.key}
+                            data-testid={`provider-field-${field.key}`}
+                            rows={4}
+                            className="font-mono text-xs"
+                            placeholder={label}
+                            value={values[field.key] ?? ""}
+                            onChange={(e) =>
+                              setValues((prev) => ({
+                                ...prev,
+                                [field.key]: e.target.value,
+                              }))
+                            }
+                            disabled={setParam.isPending}
+                          />
+                        ) : (
+                          <Input
+                            id={field.key}
+                            data-testid={`provider-field-${field.key}`}
+                            type={
+                              field.secret && !visibleSecrets.has(field.key)
+                                ? "password"
+                                : "text"
+                            }
+                            placeholder={field.labelKey === "tenantId" ? "common" : label}
+                            value={values[field.key] ?? ""}
+                            onChange={(e) =>
+                              setValues((prev) => ({
+                                ...prev,
+                                [field.key]: e.target.value,
+                              }))
+                            }
+                            disabled={setParam.isPending}
+                          />
+                        )}
                         {field.secret && (
                           <Button
                             type="button"

@@ -21,7 +21,13 @@ import { join } from "node:path";
 
 const PROJECT_ROOT = join(import.meta.dirname, "../../..");
 const PID_FILE = join(import.meta.dirname, ".test-server.pid");
-const SERVER_URL = "http://localhost:4000/api/mgmt/health";
+// Honor E2E_BASE_URL (side-car test server) like playwright.config.ts does;
+// fall back to the CI default. Without this, the readiness check below
+// silently polls :4000 instead of the actual target server.
+const API_BASE = process.env.E2E_BASE_URL
+  ? new URL(process.env.E2E_BASE_URL).origin
+  : "http://localhost:4000";
+const SERVER_URL = `${API_BASE}/api/mgmt/health`;
 const MAX_RETRIES = 30; // 30 seconds
 const RETRY_DELAY = 1000; // 1 second
 

@@ -5,8 +5,8 @@
 // scope, so the consumer invalidates the matching query caches and refetches
 // over the normal REST API.
 
-import { getToken, msSinceLastApiActivity } from "@/api/client";
-import { refreshAccessToken } from "@/lib/token-refresh";
+import { getExpiresAt, getToken, msSinceLastApiActivity } from "@/api/client";
+import { refreshWithOutcome } from "@/lib/token-refresh";
 
 /** Scopes the client can subscribe to. `check` is the only per-uid entity;
  * the rest are org-collection scopes (the org is implied by the socket). */
@@ -197,11 +197,34 @@ export function connectLiveSocket(
   const run = async () => {
     let attempt = 0;
     while (!signal.aborted) {
-      const token = getToken();
+      let token = getToken();
       if (!token) {
         // Not authenticated (yet) — wait and re-check without hammering.
         await sleep(backoffDelay(attempt), signal);
         continue;
+      }
+
+      const expiresAt = getExpiresAt();
+      if (expiresAt !== null && expiresAt <= Date.now()) {
+        // Known-dead token (exp already past — e.g. this tab was suspended
+        // through one or more access-token lifetimes). Refresh before
+        // dialing instead of burning a socket attempt on a token the server
+        // will just 4401 (see spec Evidence: 139 dead-token attempts in one
+        // 70-minute HAR capture).
+        const refreshed = await refreshWithOutcome();
+        if (!refreshed.accessToken) {
+          if (refreshed.failureReason === "network-error") {
+            attempt += 1;
+            await sleep(backoffDelay(attempt), signal);
+            continue;
+          }
+          // A non-network failure has already cleared the session and
+          // redirected to login (token-refresh.ts's escalate()) — give up
+          // instead of reconnecting with a token already known to be dead.
+          callbacks.onDisabled();
+          return;
+        }
+        token = refreshed.accessToken;
       }
 
       await waitForApiQuiet(signal);
@@ -292,13 +315,33 @@ function connectOnce(
       callbacks.onDisconnected();
 
       if (ev.code === CLOSE_TOKEN_EXPIRED) {
-        // Best-effort: refresh before the run() loop's next getToken() read.
-        // If the refresh itself fails (no refresh token, revoked session),
-        // the loop simply reconnects with the same dead token and the
-        // server will 4401 it again — no worse than today, and the
-        // reactive apiFetch 401 path elsewhere will already be steering the
-        // user to login by then.
-        void refreshAccessToken().finally(() => finish("disconnected"));
+        const expiresAt = getExpiresAt();
+        if (expiresAt !== null && expiresAt > Date.now()) {
+          // The access token still has time left on it, yet the server sent a
+          // 4401: this is a transient/server-side close (proxy hiccup, restart,
+          // an out-of-band revocation a fresh dial may not repeat), not a dead
+          // session. Reconnect with the current token rather than tearing the
+          // session down — if it later genuinely expires, the run() loop's
+          // pre-dial check refreshes it (and gives up there if that refresh is
+          // refused). Only a token we can't prove is still live gets the
+          // refresh-or-give-up treatment below.
+          finish("disconnected");
+          return;
+        }
+        // Token is expired (or its liveness is unknown): refresh before the
+        // run() loop's next getToken() read, so the next attempt carries a live
+        // token instead of looping on the dead one. A refresh that fails for a
+        // non-network reason (no refresh token, revoked session) means the
+        // session is genuinely over — give up instead of retrying the same dead
+        // token at the backoff cap forever (see spec Evidence: 139 useless
+        // reconnects in 70 minutes from one zombie tab). token-refresh.ts's
+        // escalate() has already cleared the session and redirected to login in
+        // that case.
+        void refreshWithOutcome().then((outcome) => {
+          finish(outcome.accessToken || outcome.failureReason === "network-error"
+            ? "disconnected"
+            : "disabled");
+        });
         return;
       }
 

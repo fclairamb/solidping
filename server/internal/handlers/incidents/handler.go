@@ -201,7 +201,7 @@ func (h *Handler) AcknowledgeIncidentByLink(writer http.ResponseWriter, req bunr
 	token := req.URL.Query().Get("token")
 
 	if token == "" {
-		writeAckHTML(writer, http.StatusBadRequest, ackHTMLMissingToken)
+		writeAckHTML(writer, http.StatusBadRequest, ackHTMLMissingToken, orgSlug, incidentUID)
 
 		return nil
 	}
@@ -210,7 +210,7 @@ func (h *Handler) AcknowledgeIncidentByLink(writer http.ResponseWriter, req bunr
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrAckTokenExpired):
-			writeAckHTML(writer, http.StatusGone, ackHTMLExpired)
+			writeAckHTML(writer, http.StatusGone, ackHTMLExpired, orgSlug, incidentUID)
 		case errors.Is(err, ErrAckTokenSignature),
 			errors.Is(err, ErrAckTokenIncidentMismatch),
 			errors.Is(err, ErrAckTokenMalformed),
@@ -220,9 +220,9 @@ func (h *Handler) AcknowledgeIncidentByLink(writer http.ResponseWriter, req bunr
 			// token pasted into an ack URL. Same "invalid" bucket as a
 			// tampered token: both are client errors, not server errors, and
 			// telling them apart would leak which failure mode succeeded.
-			writeAckHTML(writer, http.StatusBadRequest, ackHTMLInvalid)
+			writeAckHTML(writer, http.StatusBadRequest, ackHTMLInvalid, orgSlug, incidentUID)
 		default:
-			writeAckHTML(writer, http.StatusInternalServerError, ackHTMLError)
+			writeAckHTML(writer, http.StatusInternalServerError, ackHTMLError, orgSlug, incidentUID)
 		}
 
 		return nil
@@ -233,10 +233,16 @@ func (h *Handler) AcknowledgeIncidentByLink(writer http.ResponseWriter, req bunr
 	// into the event payload either way.
 	ackedBy := h.svc.lookupUserUIDByEmail(req.Context(), payload.RecipientEmail)
 
+	// orgSlug/incidentUID are only safe to build a redirect URL from once we
+	// reach this point: incidentUID was just verified against the token by
+	// VerifyAckToken above, and tryEmailAck's DB ack below only succeeds if
+	// this exact (orgSlug, incidentUID) pair resolves to a real incident —
+	// so a mismatched org in the URL path fails the ack and falls into the
+	// non-redirecting error page instead.
 	if h.svc.tryEmailAck(req.Context(), orgSlug, incidentUID, ackedBy, payload.RecipientEmail) {
-		writeAckHTML(writer, http.StatusOK, ackHTMLSuccess)
+		writeAckHTML(writer, http.StatusOK, ackHTMLSuccess, orgSlug, incidentUID)
 	} else {
-		writeAckHTML(writer, http.StatusInternalServerError, ackHTMLError)
+		writeAckHTML(writer, http.StatusInternalServerError, ackHTMLError, orgSlug, incidentUID)
 	}
 
 	return nil

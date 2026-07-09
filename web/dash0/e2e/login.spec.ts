@@ -177,6 +177,42 @@ test.describe("Login Flow", () => {
   });
 });
 
+test.describe("Login: deep-link returnTo", () => {
+  test("returns the user to the original deep link (with query string) after login", async ({
+    page,
+  }) => {
+    // Visit a protected deep link while logged out. `?status=down` is a search
+    // param the checks route preserves, so it must survive the round-trip.
+    await page.goto("orgs/test/checks?status=down");
+    await page.waitForLoadState("networkidle");
+
+    // The route guard redirects to the org login page, carrying the original
+    // URL (path + query) as the returnTo search param.
+    await expect(page).toHaveURL(/\/orgs\/test\/login/);
+    const loginUrl = new URL(page.url());
+    const returnTo = loginUrl.searchParams.get("returnTo");
+    expect(returnTo).toContain("/orgs/test/checks");
+    expect(returnTo).toContain("status=down");
+
+    // Log in with the test password credentials.
+    await expect(page.getByTestId("login-title")).toBeVisible();
+    await page.getByTestId("login-email").fill("test@test.com");
+    await page.getByTestId("login-password").fill("test");
+    await page.getByTestId("login-submit").click();
+
+    // Land back on the original deep link — NOT the org root — including the
+    // query string. This is the regression this spec fixes.
+    await page.waitForURL(/\/orgs\/test\/checks/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+
+    const finalUrl = new URL(page.url());
+    expect(finalUrl.pathname).toContain("/orgs/test/checks");
+    // Guard against the pre-fix behavior of landing on the org root.
+    expect(finalUrl.pathname).not.toMatch(/\/orgs\/test\/?$/);
+    expect(finalUrl.searchParams.get("status")).toBe("down");
+  });
+});
+
 const LAST_AUTH_METHOD_KEY = "solidping_last_auth_method";
 
 // Fetches /auth/providers so the config-dependent tests can decide whether

@@ -30,8 +30,10 @@ test.describe("Membership requests", () => {
     const pattern = page.locator("#emailPattern");
     await pattern.fill(".*");
 
-    // Save → server rejects with INVALID_AUTO_JOIN_REGEX.
-    await page.getByRole("button", { name: /save/i }).click();
+    // Save → server rejects with INVALID_AUTO_JOIN_REGEX. Target the
+    // auto-join form's own submit button by testid — the settings page also
+    // has a session-length "Save" button, so a name-based locator is ambiguous.
+    await page.getByTestId("auto-join-pattern-save").click();
 
     // Inline error must surface (server message under the field, no toast).
     await expect(

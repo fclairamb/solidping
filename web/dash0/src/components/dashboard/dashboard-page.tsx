@@ -37,7 +37,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UptimeStrip, type UptimeBucket } from "@/components/ui/uptime-strip";
@@ -52,6 +51,7 @@ import {
 import { MyOnCallWidget } from "@/components/dashboard/my-on-call";
 import { EmptyStateOnboarding } from "@/components/dashboard/empty-state-onboarding";
 import { PageHeader } from "@/components/shared/page-header";
+import { StatusBadge } from "@/components/shared/status-badge";
 
 const CHECK_POLL_MS = 30_000;
 const INCIDENT_POLL_MS = 30_000;
@@ -647,14 +647,6 @@ function KpiTile({ label, value, icon, sub, valueClassName, className }: KpiTile
   );
 }
 
-function statusBadgeVariant(
-  status?: string,
-): "default" | "destructive" | "secondary" | "outline" {
-  if (status === "down" || status === "error") return "destructive";
-  if (status === "validating" || status === "timeout") return "secondary";
-  return "outline";
-}
-
 interface SectionErrorProps {
   onRetry: () => void;
 }
@@ -722,14 +714,10 @@ function ChecksGlanceList({
                       isDisabled ? "opacity-60" : ""
                     }`}
                   >
-                    <Badge
-                      variant={statusBadgeVariant(status)}
+                    <StatusBadge
+                      status={status}
                       className="text-xs uppercase shrink-0"
-                    >
-                      {status === "validating"
-                        ? t("checks:status.validating")
-                        : status || "?"}
-                    </Badge>
+                    />
                     <span className="font-medium truncate min-w-0 max-w-[40%] sm:max-w-[30%]">
                       {check.name || check.slug || check.uid}
                     </span>

@@ -31,10 +31,6 @@ export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 
-export function setToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
-}
-
 export function getRefreshToken(): string | null {
   return localStorage.getItem(REFRESH_TOKEN_KEY);
 }
@@ -61,9 +57,12 @@ export function getExpiresInSeconds(): number | null {
 /**
  * Persists the whole session — access token, refresh token, and the
  * computed absolute expiry — in one call. Every login-shaped response
- * (password, 2FA, passkey, OAuth, Slack, switch-org, refresh) must funnel
- * through here instead of calling setToken alone, or the refresh token and
- * expiry tracking silently go missing for that path.
+ * (password, 2FA, passkey, OAuth, Slack, switch-org, confirm-registration,
+ * refresh) must funnel through here — there is no lower-level "just the
+ * access token" setter left to fall back on (see the 2026-07-08 funnel
+ * audit: the OAuth handoff in main.tsx and confirm-registration used to
+ * call a since-removed `setToken` and silently dropped the refresh token +
+ * expiry for that login path).
  */
 export function setSession(
   accessToken: string,
@@ -125,7 +124,14 @@ function extractOrgFromPath(path: string): string | null {
   return match ? match[1] : null;
 }
 
-function redirectToExpiredLogin(): void {
+/**
+ * Sends the browser to the org login page with `session_expired=true` and a
+ * `returnTo` back to the current page. Idempotent (no-ops if already on the
+ * login page) so it's safe to call from multiple failure paths without
+ * coordinating who "owns" the redirect — both `handleResponse` below and
+ * token-refresh.ts's immediate-escalation cases call this.
+ */
+export function redirectToExpiredLogin(): void {
   const currentPath = window.location.pathname;
   if (!currentPath.endsWith("/login")) {
     const basepath = import.meta.env.VITE_BASE_URL || "";

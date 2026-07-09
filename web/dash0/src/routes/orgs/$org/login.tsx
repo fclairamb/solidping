@@ -34,10 +34,27 @@ import {
   getAuthProviders,
 } from "@/api/passkeys";
 import { classifyPasskeyError } from "@/lib/passkey-error";
+import {
+  resolveDestination,
+  type LoginDestination,
+} from "@/lib/login-destination";
+
+// App base path (build-time constant). `returnTo` values captured on the way
+// into /login already include it, so the destination resolver matches against
+// `${BASE_PATH}/orgs/`.
+const BASE_PATH = import.meta.env.VITE_BASE_URL || "";
 
 export const Route = createFileRoute("/orgs/$org/login")({
   validateSearch: (search: Record<string, unknown>) => ({
-    session_expired: search.session_expired === "true",
+    // TanStack Router's default search parser already coerces "true"/"false"
+    // query-string values to native booleans before validateSearch runs, so
+    // a bare `=== "true"` string comparison silently always evaluates to
+    // false — the same bug class already worked around in jobs.*.tsx's
+    // `allOrgs` param. Without this, a full-page redirect to
+    // `?session_expired=true` (api/client.ts's redirectToExpiredLogin, used
+    // by every escalating refresh failure) landed on the login page with
+    // the "your session expired" banner silently suppressed.
+    session_expired: search.session_expired === true || search.session_expired === "true",
     returnTo: typeof search.returnTo === "string" ? search.returnTo : undefined,
   }),
   component: LoginPage,
@@ -158,6 +175,46 @@ function DiscordIcon({ className }: { className?: string }) {
   );
 }
 
+function OIDCIcon({ className }: { className?: string }) {
+  // Generic shield glyph for the configurable OIDC/SSO connector — unlike the
+  // other providers this isn't a fixed brand, so no brand mark applies.
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 2.5l7.5 3.2v5.2c0 5.1-3.2 8.9-7.5 10.6-4.3-1.7-7.5-5.5-7.5-10.6V5.7L12 2.5z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  );
+}
+
+function SAMLIcon({ className }: { className?: string }) {
+  // Generic key glyph for the configurable SAML SP connector — same
+  // rationale as OIDCIcon: this isn't a fixed brand, so a neutral mark
+  // distinct from the OIDC shield keeps the two SSO mechanisms visually
+  // distinguishable on the login page.
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="8" cy="15" r="3.5" />
+      <path d="M10.5 12.5L19 4M19 4h-3.5M19 4v3.5" />
+    </svg>
+  );
+}
+
 const PROVIDER_ICONS: Record<string, React.FC<{ className?: string }>> = {
   google: GoogleIcon,
   slack: SlackIcon,
@@ -165,6 +222,8 @@ const PROVIDER_ICONS: Record<string, React.FC<{ className?: string }>> = {
   microsoft: MicrosoftIcon,
   gitlab: GitLabIcon,
   discord: DiscordIcon,
+  oidc: OIDCIcon,
+  saml: SAMLIcon,
 };
 
 function LoginPage() {
@@ -219,12 +278,31 @@ function LoginPage() {
     };
   }, []);
 
-  // Redirect if already authenticated (but not when showing org picker)
+  // Send a resolved login destination on its way. An in-app `returnTo`
+  // (`{ href }`) needs a full navigation because it's an arbitrary path
+  // outside this route's param shape; the org-root fallback (`{ to, params }`)
+  // is a plain SPA navigate. `replace` keeps /login out of history.
+  const goToDestination = useCallback(
+    (dest: LoginDestination, replace = false) => {
+      if ("href" in dest) {
+        if (replace) window.location.replace(dest.href);
+        else window.location.href = dest.href;
+      } else {
+        navigate({ to: dest.to, params: dest.params, replace });
+      }
+    },
+    [navigate],
+  );
+
+  // Redirect if already authenticated (but not when showing org picker). When
+  // a valid `returnTo` deep link is present, honor it instead of the org root
+  // — this also matches routeResult's default case, so the two paths racing on
+  // the same isAuthenticated flip now agree on the destination.
   useEffect(() => {
     if (isAuthenticated && !showOrgPicker) {
-      navigate({ to: "/orgs/$org", params: { org }, replace: true });
+      goToDestination(resolveDestination(org, returnTo, BASE_PATH), true);
     }
-  }, [isAuthenticated, navigate, org, showOrgPicker]);
+  }, [isAuthenticated, showOrgPicker, org, returnTo, goToDestination]);
 
   const routeResult = useCallback(
     (result: LoginResult) => {
@@ -251,19 +329,19 @@ function LoginPage() {
           break;
         case "orgRedirect":
           if (result.resolvedOrg) {
-            navigate({ to: "/orgs/$org", params: { org: result.resolvedOrg } });
+            goToDestination(
+              resolveDestination(result.resolvedOrg, returnTo, BASE_PATH),
+            );
           }
           break;
         default:
-          if (returnTo && returnTo.includes("/orgs/")) {
-            window.location.href = returnTo;
-          } else {
-            navigate({ to: "/orgs/$org", params: { org: result.resolvedOrg || org } });
-          }
+          goToDestination(
+            resolveDestination(result.resolvedOrg || org, returnTo, BASE_PATH),
+          );
           break;
       }
     },
-    [navigate, org, returnTo],
+    [navigate, org, returnTo, goToDestination],
   );
 
   const reportError = useCallback(
@@ -399,7 +477,10 @@ function LoginPage() {
       if (orgSlug !== org) {
         await switchOrg(orgSlug);
       }
-      navigate({ to: "/orgs/$org", params: { org: orgSlug } });
+      // Honor the deep link only when it targets the org just picked; picking
+      // a different org falls back to that org's root (see the spec's
+      // org-mismatch rule / Open-questions default).
+      goToDestination(resolveDestination(orgSlug, returnTo, BASE_PATH));
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);

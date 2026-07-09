@@ -14,8 +14,10 @@ package uptimebar
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -102,15 +104,131 @@ func (b *BucketStats) accumulateAgg(result *models.Result) {
 	}
 }
 
+// Defaults used by safetyRowCap when the caller doesn't have a real retention
+// config to hand (e.g. a test exercising the bucketing logic in isolation).
+// These mirror config.AggregationConfig's documented defaults (see
+// config.go's Load) — never used on the production call path, which always
+// passes the org's actual configured retention.
+const (
+	defaultRetentionRawHours = 24
+	defaultRetentionHourDays = 30
+)
+
+// capMaxRegionsPerCheck generously bounds the number of distinct regions
+// safetyRowCap assumes per check when sizing the query's row cap. Real
+// deployments run a handful of regions (2-5 is typical for a multi-region
+// check); this is padded well past that so the cap never bites under any
+// realistic multi-region topology — it only engages when retention is
+// misconfigured or the aggregation job has been unhealthy for a long stretch.
+const capMaxRegionsPerCheck = 20
+
+// capSafetyMargin pads safetyRowCap's computed bound to absorb rounding and
+// tier-boundary edge cases (e.g. a bucket that straddles the raw/hour
+// boundary while the aggregation job is mid-rollup).
+const capSafetyMargin = 500
+
+// safetyRowCap computes a generous upper bound on the number of rows
+// BucketAvailability's query should ever need to return for a healthy
+// deployment. It is derived from the actual retention configuration — the
+// same tier-boundary reasoning jobtypes.calculateAggregationBoundary /
+// retentionFromConfig use — rather than a fixed magic number, so it doesn't
+// reintroduce the "only the newest few days render" truncation bug for any
+// reasonable configuration. It exists purely to bound the pathological case:
+// retention misconfigured to an extreme value, or the aggregation job
+// stalled/crashed so raw rows pile up indefinitely instead of rolling up.
+//
+// Per check-region, the query can only need, within the requested window:
+//   - raw rows for min(window, RetentionRaw) hours at the platform's fastest
+//     allowed check period (checkerdef.GlobalMinPeriod),
+//   - hour rollups for min(window, RetentionHour) days (one row/hour), and
+//   - day rollups for the window's own span in days (one row/day — this tier
+//     can never exceed the window regardless of RetentionDay).
+//
+// That per-check-region figure is padded by a generous per-check region count
+// (capMaxRegionsPerCheck) and multiplied by the number of checks in the
+// query, since a single batched query (status page) can span many checks.
+func safetyRowCap(
+	checkCount, n int, bucketDuration time.Duration,
+	retentionRawHours, retentionHourDays int,
+) int {
+	if retentionRawHours < 1 {
+		retentionRawHours = defaultRetentionRawHours
+	}
+
+	if retentionHourDays < 1 {
+		retentionHourDays = defaultRetentionHourDays
+	}
+
+	if checkCount < 1 {
+		checkCount = 1
+	}
+
+	windowSpan := time.Duration(n) * bucketDuration
+
+	windowDays := int(windowSpan / (24 * time.Hour))
+	if windowSpan%(24*time.Hour) != 0 {
+		windowDays++
+	}
+
+	if windowDays < 1 {
+		windowDays = 1
+	}
+
+	// Raw tier: bounded by whichever is smaller — the requested window or
+	// RetentionRaw — since rows older than RetentionRaw hours are rolled up
+	// (and deleted) and rows outside the window aren't queried at all.
+	rawTierHours := retentionRawHours
+	if windowHours := int(windowSpan / time.Hour); windowHours < rawTierHours {
+		rawTierHours = windowHours
+	}
+
+	if rawTierHours < 1 {
+		rawTierHours = 1
+	}
+
+	rawRowsPerRegion := rawTierHours * int(time.Hour/checkerdef.GlobalMinPeriod)
+
+	// Hour tier: one row per hour, bounded by whichever is smaller — the
+	// window or RetentionHour.
+	hourTierDays := retentionHourDays
+	if windowDays < hourTierDays {
+		hourTierDays = windowDays
+	}
+
+	hourRowsPerRegion := hourTierDays * 24
+
+	// Day tier: one row per day; can never exceed the window itself.
+	dayRowsPerRegion := windowDays
+
+	perRegion := rawRowsPerRegion + hourRowsPerRegion + dayRowsPerRegion
+
+	return perRegion*capMaxRegionsPerCheck*checkCount + capSafetyMargin
+}
+
 // BucketAvailability runs ONE raw+hour+day query over
 // [bucketStart, bucketStart+n*bucketDuration) for all checks and returns
 // per-check, per-bucket stats keyed by the bucket's truncated start time. Buckets
 // with no rows are simply absent from the inner map — the caller renders them as
 // "no data". checkUIDs may name several checks (status page) or exactly one
 // (badge); the single batched query keeps a busy page to one round-trip.
+//
+// retentionRawHours/retentionHourDays are the org's configured
+// Aggregation.RetentionRaw/RetentionHour (hours of raw kept / days of hourly
+// rollups kept) — pass 0 to fall back to the documented config defaults (see
+// safetyRowCap). They size a generous safety cap on the query's row count: the
+// window is already bounded by PeriodStartAfter, but a single bucket can be
+// fed by many rows (every not-yet-rolled-up raw row per probe per region, plus
+// up to RetentionHour days of hourly rollups), so an UNBOUNDED query risks
+// scanning without limit if retention is misconfigured or the aggregation job
+// is unhealthy. The cap is sized so it never bites under realistic
+// configurations (see safetyRowCap) — if it ever does engage, a warning is
+// logged and the partial result is returned rather than erroring, matching
+// the "generous cap + log + return partial" pattern used by the Slack client's
+// list pagination (see internal/integrations/slack/client.go's paginate).
 func BucketAvailability(
 	ctx context.Context, db ResultsLister, orgUID string, checkUIDs []string,
 	bucketDuration time.Duration, bucketStart time.Time, n int,
+	retentionRawHours, retentionHourDays int,
 ) (map[string]map[time.Time]BucketStats, error) {
 	out := make(map[string]map[time.Time]BucketStats, len(checkUIDs))
 
@@ -120,15 +238,14 @@ func BucketAvailability(
 
 	start := bucketStart.UTC()
 
+	limit := safetyRowCap(len(checkUIDs), n, bucketDuration, retentionRawHours, retentionHourDays)
+
 	filter := &models.ListResultsFilter{
 		OrganizationUID:  orgUID,
 		CheckUIDs:        checkUIDs,
 		PeriodTypes:      []string{models.PeriodTypeRaw, models.PeriodTypeHour, models.PeriodTypeDay},
 		PeriodStartAfter: &start,
-		// Bound the fetch: at most n buckets per check, and the raw tier is itself
-		// bounded by RetentionRaw (~24h) regardless of the window length, so older
-		// buckets come from hour/day rollups rather than raw.
-		Limit: n * len(checkUIDs),
+		Limit:            limit,
 	}
 
 	resp, err := db.ListResults(ctx, filter)
@@ -138,6 +255,15 @@ func BucketAvailability(
 
 	if resp == nil {
 		return out, nil
+	}
+
+	if len(resp.Results) >= limit {
+		slog.WarnContext(ctx, "uptimebar bucket-availability query hit its safety row cap; "+
+			"returning partial data",
+			"organization_uid", orgUID,
+			"check_uids", checkUIDs,
+			"limit", limit,
+		)
 	}
 
 	for _, result := range resp.Results {

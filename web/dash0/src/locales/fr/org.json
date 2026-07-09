@@ -15,7 +15,12 @@
     "testMatch": "✓ correspond au modèle",
     "testNoMatch": "✗ ne correspond pas au modèle",
     "saved": "Paramètres enregistrés.",
-    "unexpectedError": "Une erreur inattendue s'est produite"
+    "unexpectedError": "Une erreur inattendue s'est produite",
+    "sessionDuration": "Durée de session",
+    "sessionDurationFullDescription": "Définissez une limite stricte sur la durée d'une session de connexion, quelle que soit l'activité. Laissez vide pour utiliser la valeur par défaut de la plateforme (illimitée sauf limite définie globalement).",
+    "sessionDurationHoursLabel": "Durée maximale de session (heures)",
+    "sessionDurationPlaceholder": "Illimitée",
+    "sessionDurationHelp": "Une fois définie, la session expire de force ce nombre d'heures après la connexion, même si l'utilisateur reste actif — indépendamment du délai d'inactivité de 7 jours."
   },
   "usage": {
     "title": "Utilisation",
