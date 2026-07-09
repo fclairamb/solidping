@@ -34,6 +34,15 @@ import {
   getAuthProviders,
 } from "@/api/passkeys";
 import { classifyPasskeyError } from "@/lib/passkey-error";
+import {
+  resolveDestination,
+  type LoginDestination,
+} from "@/lib/login-destination";
+
+// App base path (build-time constant). `returnTo` values captured on the way
+// into /login already include it, so the destination resolver matches against
+// `${BASE_PATH}/orgs/`.
+const BASE_PATH = import.meta.env.VITE_BASE_URL || "";
 
 export const Route = createFileRoute("/orgs/$org/login")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -269,12 +278,31 @@ function LoginPage() {
     };
   }, []);
 
-  // Redirect if already authenticated (but not when showing org picker)
+  // Send a resolved login destination on its way. An in-app `returnTo`
+  // (`{ href }`) needs a full navigation because it's an arbitrary path
+  // outside this route's param shape; the org-root fallback (`{ to, params }`)
+  // is a plain SPA navigate. `replace` keeps /login out of history.
+  const goToDestination = useCallback(
+    (dest: LoginDestination, replace = false) => {
+      if ("href" in dest) {
+        if (replace) window.location.replace(dest.href);
+        else window.location.href = dest.href;
+      } else {
+        navigate({ to: dest.to, params: dest.params, replace });
+      }
+    },
+    [navigate],
+  );
+
+  // Redirect if already authenticated (but not when showing org picker). When
+  // a valid `returnTo` deep link is present, honor it instead of the org root
+  // — this also matches routeResult's default case, so the two paths racing on
+  // the same isAuthenticated flip now agree on the destination.
   useEffect(() => {
     if (isAuthenticated && !showOrgPicker) {
-      navigate({ to: "/orgs/$org", params: { org }, replace: true });
+      goToDestination(resolveDestination(org, returnTo, BASE_PATH), true);
     }
-  }, [isAuthenticated, navigate, org, showOrgPicker]);
+  }, [isAuthenticated, showOrgPicker, org, returnTo, goToDestination]);
 
   const routeResult = useCallback(
     (result: LoginResult) => {
@@ -301,19 +329,19 @@ function LoginPage() {
           break;
         case "orgRedirect":
           if (result.resolvedOrg) {
-            navigate({ to: "/orgs/$org", params: { org: result.resolvedOrg } });
+            goToDestination(
+              resolveDestination(result.resolvedOrg, returnTo, BASE_PATH),
+            );
           }
           break;
         default:
-          if (returnTo && returnTo.includes("/orgs/")) {
-            window.location.href = returnTo;
-          } else {
-            navigate({ to: "/orgs/$org", params: { org: result.resolvedOrg || org } });
-          }
+          goToDestination(
+            resolveDestination(result.resolvedOrg || org, returnTo, BASE_PATH),
+          );
           break;
       }
     },
-    [navigate, org, returnTo],
+    [navigate, org, returnTo, goToDestination],
   );
 
   const reportError = useCallback(
@@ -449,7 +477,10 @@ function LoginPage() {
       if (orgSlug !== org) {
         await switchOrg(orgSlug);
       }
-      navigate({ to: "/orgs/$org", params: { org: orgSlug } });
+      // Honor the deep link only when it targets the org just picked; picking
+      // a different org falls back to that org's root (see the spec's
+      // org-mismatch rule / Open-questions default).
+      goToDestination(resolveDestination(orgSlug, returnTo, BASE_PATH));
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
