@@ -113,7 +113,7 @@ func (s *OIDCOAuthService) GenerateOAuthState(ctx context.Context, redirectURI, 
 		return "", fmt.Errorf("failed to marshal state: %w", err)
 	}
 
-	stateValue := &models.JSONMap{"state": string(stateJSON)}
+	stateValue := &models.JSONMap{keyState: string(stateJSON)}
 	ttl := oidcOAuthStateTTL
 
 	if err := s.db.SetStateEntry(ctx, nil, oidcOAuthStatePrefix+nonce, stateValue, &ttl); err != nil {
@@ -133,7 +133,7 @@ func (s *OIDCOAuthService) ValidateOAuthState(ctx context.Context, stateParam st
 	// Delete state (one-time use)
 	_, _ = s.db.DeleteStateEntry(ctx, nil, oidcOAuthStatePrefix+stateParam)
 
-	stateJSON, ok := (*entry.Value)["state"].(string)
+	stateJSON, ok := (*entry.Value)[keyState].(string)
 	if !ok {
 		return nil, ErrInvalidOAuthState
 	}
@@ -255,8 +255,8 @@ func (s *OIDCOAuthService) HandleCallback(ctx context.Context, code, orgSlug str
 	}
 
 	var claims map[string]any
-	if err := idToken.Claims(&claims); err != nil {
-		return nil, fmt.Errorf("%w: failed to parse claims: %w", ErrOIDCTokenInvalid, err)
+	if claimsErr := idToken.Claims(&claims); claimsErr != nil {
+		return nil, fmt.Errorf("%w: failed to parse claims: %w", ErrOIDCTokenInvalid, claimsErr)
 	}
 
 	userInfo := s.mapClaims(idToken.Subject, claims)
