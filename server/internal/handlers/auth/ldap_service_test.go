@@ -441,6 +441,87 @@ func TestLogin_LDAPHappyPath_AutoProvisionsUserAndSession(t *testing.T) {
 	require.Equal(t, user.UID, member.UserUID)
 }
 
+// TestLogin_LDAPRepeatLoginReusesSameUser proves a second LDAP login for the
+// same directory entry finds the existing User/UserProvider(LDAP) row
+// (matched by DN via GetUserProviderByProviderID) rather than creating a
+// duplicate User — mirrors oidc_service_test.go's
+// TestOIDCHandleCallback_ExistingUserLogsInAgain.
+func TestLogin_LDAPRepeatLoginReusesSameUser(t *testing.T) {
+	t.Parallel()
+
+	dir := startFakeLDAPDirectory(t)
+	dir.setServiceAccount()
+	dir.setEntries(newFakeLDAPEntry(
+		"cn=repeat,ou=people,dc=example,dc=org", "correct-password",
+		map[string][]string{"mail": {"repeat@example.com"}, "cn": {"Repeat User"}},
+	))
+
+	svc, dbSvc, ctx := setupLDAPLoginTestService(t, newFakeLDAPConfig(dir, ""), nil)
+
+	org := models.NewOrganization("ldap-repeat-org", "LDAP Repeat Org")
+	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+	first, err := svc.Login(ctx, org.Slug, "repeat@example.com", "correct-password", Context{})
+	require.NoError(t, err)
+
+	second, err := svc.Login(ctx, org.Slug, "repeat@example.com", "correct-password", Context{})
+	require.NoError(t, err)
+
+	require.Equal(t, first.User.UID, second.User.UID)
+
+	users, err := dbSvc.GetUserByEmail(ctx, "repeat@example.com")
+	require.NoError(t, err)
+	require.Equal(t, first.User.UID, users.UID)
+}
+
+// TestLogin_LDAPLinksExistingPasswordlessUserByEmail proves the identity-
+// linking safety argument documented on authenticateViaLDAP: an existing
+// user auto-provisioned by a DIFFERENT passwordless mechanism (here, a
+// stand-in for OIDC/SAML — nil PasswordHash, a UserProvider(ProviderTypeOIDC)
+// row) is found and REUSED by email when its email matches a successful LDAP
+// bind, gaining an additional UserProvider(ProviderTypeLDAP) row rather than
+// a duplicate User being created. This can only ever apply to passwordless
+// accounts — see TestLogin_LocalPasswordTakesPriorityOverLDAP for the
+// structural guarantee that a user with a local password never reaches this
+// code path at all.
+func TestLogin_LDAPLinksExistingPasswordlessUserByEmail(t *testing.T) {
+	t.Parallel()
+
+	dir := startFakeLDAPDirectory(t)
+	dir.setServiceAccount()
+
+	entryDN := "cn=oidcuser,ou=people,dc=example,dc=org"
+	dir.setEntries(newFakeLDAPEntry(
+		entryDN, "correct-password",
+		map[string][]string{"mail": {"oidcuser@example.com"}, "cn": {"OIDC User"}},
+	))
+
+	svc, dbSvc, ctx := setupLDAPLoginTestService(t, newFakeLDAPConfig(dir, ""), nil)
+
+	org := models.NewOrganization("ldap-link-org", "LDAP Link Org")
+	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+	existing := models.NewUser("oidcuser@example.com")
+	existing.Name = "OIDC User"
+	require.NoError(t, dbSvc.CreateUser(ctx, existing))
+
+	oidcProvider := models.NewUserProvider(existing.UID, models.ProviderTypeOIDC, "some-oidc-subject")
+	require.NoError(t, dbSvc.CreateUserProvider(ctx, oidcProvider))
+
+	resp, err := svc.Login(ctx, org.Slug, "oidcuser@example.com", "correct-password", Context{})
+	require.NoError(t, err)
+	require.Equal(t, existing.UID, resp.User.UID, "must reuse the existing user, not create a duplicate")
+
+	ldapProvider, err := dbSvc.GetUserProviderByProviderID(ctx, models.ProviderTypeLDAP, entryDN)
+	require.NoError(t, err)
+	require.Equal(t, existing.UID, ldapProvider.UserUID)
+
+	// The pre-existing OIDC link must be untouched, not replaced.
+	stillOIDC, err := dbSvc.GetUserProviderByProviderID(ctx, models.ProviderTypeOIDC, "some-oidc-subject")
+	require.NoError(t, err)
+	require.Equal(t, existing.UID, stillOIDC.UserUID)
+}
+
 func TestLogin_LDAPWrongPassword_Rejected(t *testing.T) {
 	t.Parallel()
 
