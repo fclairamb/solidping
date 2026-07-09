@@ -249,3 +249,80 @@ instance, SP-initiated only (no IdP-initiated), no SLO, no group/role mapping
    `InResponseTo` (an assertion from one login attempt validated against a
    different attempt's stored state); `maxSsoUsers` enforcement via the same
    stub `EntitlementsChecker` pattern as the OIDC tests.
+
+## Implementation Plan — Part 3: LDAP/AD Bind Auth
+
+This section covers **part 3 only** — LDAP/Active Directory bind
+authentication. Parts 1 (generic OIDC) and 2 (SAML) are merged.
+
+Resolved for this pass (cross-cutting decisions adopted, not re-litigated):
+global-only config via system parameters, exactly one LDAP connector
+instance, no group/role mapping (default role like the other SSO
+providers), fallback ordering local-password-first (LDAP only attempted for
+a user with no local `PasswordHash`), and the super-admin must never be
+locked out.
+
+1. **Config** — `server/internal/config/ldap_auth.go`: `LDAPConfig`
+   (`Enabled`, `ServerURL`, `StartTLS`, `InsecureSkipVerify`, `BindDN`,
+   `BindPassword`, `BaseDN`, `UserFilter`, `EmailAttribute`,
+   `NameAttribute`). Wired into `config.Config` as `LDAP`.
+2. **System parameters** — register `auth.ldap.*` keys in
+   `systemconfig.go`'s `getKnownParameters()`, following the existing
+   provider key pattern (`bind_password` is the only `Secret: true` field —
+   analogous to an OAuth client secret).
+3. **Model** — `models.ProviderTypeLDAP` added to `db/models/auth.go`.
+   `user_providers.provider_type`'s CHECK constraint didn't anticipate
+   `'ldap'` (unlike `'oidc'`/`'saml'`, already present in the v0.1.0
+   baseline) — widened via migration `004_v0_3_0` (SQLite: table rebuild,
+   since SQLite can't alter CHECK constraints, same technique `002_v0_2_0`
+   used for `user_tokens.type`; Postgres: drop+re-add constraint).
+4. **LDAP client** — `server/internal/handlers/auth/ldap_service.go`:
+   `LDAPService.Authenticate` performs search-then-bind against
+   `github.com/go-ldap/ldap/v3` (a maintained client, not a hand-rolled wire
+   protocol): dial (`ldap://`/`ldaps://` + optional StartTLS), bind as the
+   service account (or anonymously when `BindDN` is blank), search via
+   `buildUserFilter` — the submitted identifier is always
+   `ldap.EscapeFilter`-escaped before substitution into the (admin-supplied)
+   filter template, neutralizing LDAP injection regardless of template
+   shape — then bind as the found entry's DN with the submitted password.
+   An explicit `password == ""` guard runs first, before any network I/O,
+   independent of go-ldap's own default empty-password refusal and of
+   whatever the directory itself would do — preventing the RFC 4513
+   "unauthenticated bind" vulnerability from ever being reachable.
+5. **Login-path integration** — `Service.Login` (service.go) restructured:
+   a user's local password hash, when set, is always tried first (via the
+   extracted `verifyLocalPassword`) and is the *only* mechanism attempted
+   for that user, even on a wrong password — LDAP is never consulted. Only
+   a user with no local password hash falls through to
+   `authenticateViaLDAP`, which performs the bind, finds/auto-provisions the
+   local `User` (nil `PasswordHash`) + `UserProvider(ProviderTypeLDAP)`, and
+   calls the same `ensureLDAPMembership`/`CheckSSOSlot` (`maxSsoUsers`) path
+   OIDC/SAML use. This ordering structurally prevents an LDAP bind from
+   ever hijacking an existing locally-secured account (that user never
+   reaches the LDAP branch at all), and keeps the bootstrap super-admin able
+   to log in regardless of LDAP state/availability/misconfiguration.
+6. **No new routes/frontend** — LDAP has no redirect/callback shape; it
+   plugs into the existing `POST /api/v1/auth/login` endpoint, so no
+   handler/routing changes in `server.go` and no login-page changes (per
+   the spec: "LDAP mode may simply change what the email/password form
+   validates against").
+7. **Tests** — `ldap_service_test.go` + `ldap_fake_directory_test.go`: a
+   custom in-process fake LDAP directory (`github.com/jimlambrt/gldap`,
+   *not* its own `testdirectory` sub-package, whose built-in search matches
+   filters against entry DNs with a crude substring check rather than real
+   per-attribute boolean logic) with a real filter evaluator walking the
+   same compiled filter tree `ldap.CompileFilter` produces. Covers:
+   `buildUserFilter` escaping proven via real `CompileFilter`/
+   `DecompileFilter` round-trips; happy path (auto-provisions `User` + nil
+   `PasswordHash` + `UserProvider(ProviderTypeLDAP)` + session); wrong
+   password; user not found; two LDAP-injection payloads (bare wildcard and
+   the classic paren/pipe payload) proven not to authenticate as another
+   user, with a raw-filter sanity check confirming the wildcard bypass is
+   real for that filter shape before showing escaping neutralizes it; the
+   empty-password guard proven to reject before any network I/O and even
+   when the fake directory is configured to honor an RFC 4513
+   unauthenticated bind; local-password-first fallback ordering (LDAP
+   pointed at an unreachable address, proving it's never attempted); the
+   super-admin never locked out with LDAP enabled and unreachable; and
+   `maxSsoUsers` enforcement via the same stub `EntitlementsChecker` pattern
+   as OIDC/SAML.
