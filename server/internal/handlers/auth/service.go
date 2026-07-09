@@ -435,41 +435,46 @@ func (s *Service) enqueueEmail(
 // Login authenticates a user and returns access and refresh tokens.
 // orgSlug is treated as a preference — the system will try to honor it but will
 // gracefully fall back to available organizations if the user is not a member.
+//
+// Credential verification order (spec 2026-07-08-08, part 3 — LDAP bind
+// auth): a local password hash, when the user has one, is always tried
+// first and is the ONLY mechanism attempted for that user — LDAP is never
+// consulted, even on a wrong password. This is deliberate on two counts:
+// it's what keeps the bootstrap super-admin (and anyone else with a local
+// password) able to log in regardless of LDAP being disabled,
+// misconfigured, or unreachable, and it avoids bouncing a merely mistyped
+// local password off the directory, which can trip an Active Directory
+// account-lockout policy on repeated failures. Only a user with NO local
+// password hash — a brand-new identity, or one previously provisioned by
+// LDAP/OIDC/SAML — falls through to the LDAP bind, when configured. See
+// authenticateViaLDAP (ldap_service.go) for why that fallback can never be
+// used to hijack an existing local account.
 func (s *Service) Login(
 	ctx context.Context, orgSlug, email, password string, authContext Context,
 ) (*LoginResponse, error) {
-	// Get user by email (global user lookup)
+	// Get user by email (global user lookup). sql.ErrNoRows is not fatal
+	// here — it just means the LDAP branch below may be auto-provisioning a
+	// brand-new identity.
 	user, err := s.db.GetUserByEmail(ctx, email)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrInvalidCredentials
-		}
-
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
 
-	// Verify password
-	if user.PasswordHash == nil || *user.PasswordHash == "" {
-		return nil, ErrInvalidCredentials
-	}
+	authMethod := "password"
 
-	// Support plaintext passwords for development (prefix: $plaintext$)
-	if plaintextPassword, found := strings.CutPrefix(*user.PasswordHash, "$plaintext$"); found {
-		if plaintextPassword != password {
-			return nil, ErrInvalidCredentials
+	switch {
+	case user != nil && user.PasswordHash != nil && *user.PasswordHash != "":
+		if verifyErr := s.verifyLocalPassword(ctx, user, password); verifyErr != nil {
+			return nil, verifyErr
 		}
-	} else {
-		// Verify the stored hash (algorithm is read from the stored marker).
-		if !passwords.Verify(password, *user.PasswordHash) {
-			return nil, ErrInvalidCredentials
+	default:
+		ldapUser, ldapErr := s.authenticateViaLDAP(ctx, orgSlug, email, password)
+		if ldapErr != nil {
+			return nil, ldapErr
 		}
 
-		// Rehash-on-login: if the stored hash's algorithm or cost no longer
-		// matches the configured policy, transparently re-hash the just-verified
-		// plaintext and persist it. Best-effort only — the user is already
-		// authenticated, so a rehash error never affects the login result; it is
-		// logged and retried on the next login.
-		s.maybeRehashPassword(ctx, user, password)
+		user = ldapUser
+		authMethod = "ldap"
 	}
 
 	// Resolve organization treating orgSlug as a preference
@@ -496,7 +501,7 @@ func (s *Service) Login(
 		}, nil
 	}
 
-	return s.completeLogin(ctx, user, resolvedOrg, role, loginAction, orgSummaries, "password", authContext)
+	return s.completeLogin(ctx, user, resolvedOrg, role, loginAction, orgSummaries, authMethod, authContext)
 }
 
 // maybeRehashPassword transparently upgrades a user's stored password hash when
