@@ -2513,17 +2513,30 @@ type CreateOrgRequest struct {
 	Slug string `json:"slug"`
 }
 
-// OrgResponse contains the response for org creation.
+// OrgResponse contains the response for org creation. It carries a fresh
+// org-scoped session (accessToken/refreshToken/expiresIn/tokenType)
+// alongside the org identity — the caller who creates their first org has no
+// other way to obtain a token whose orgSlug claim matches the new org (see
+// the 2026-07-08 "create-org missing org-scoped token" spec).
 type OrgResponse struct {
-	UID  string `json:"uid"`
-	Slug string `json:"slug"`
-	Name string `json:"name"`
+	UID          string `json:"uid"`
+	Slug         string `json:"slug"`
+	Name         string `json:"name"`
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+	ExpiresIn    int    `json:"expiresIn"`
+	TokenType    string `json:"tokenType"`
 }
 
 var orgSlugRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$`)
 
-// CreateOrg creates a new organization and makes the user an admin.
-func (s *Service) CreateOrg(ctx context.Context, userUID string, req CreateOrgRequest) (*OrgResponse, error) {
+// CreateOrg creates a new organization, makes the user an admin, and mints a
+// session scoped to the new org — mirroring SwitchOrg, since this is
+// structurally the same "hand the caller a token for an org other than the
+// one in their current claims" problem.
+func (s *Service) CreateOrg(
+	ctx context.Context, userUID string, req CreateOrgRequest, authContext Context,
+) (*OrgResponse, error) {
 	// Validate slug
 	if !orgSlugRegex.MatchString(req.Slug) {
 		return nil, ErrInvalidOrgSlug
@@ -2565,10 +2578,43 @@ func (s *Service) CreateOrg(ctx context.Context, userUID string, req CreateOrgRe
 		models.EventTypeOrgActivationSignupCompleted,
 		activation.SourceRegularForm, userUID)
 
+	// Mint a session scoped to the new org, exactly like SwitchOrg: a fresh
+	// refresh-token row plus an access token whose orgSlug claim is the new
+	// org's slug. Without this, the caller's existing token (orgSlug "" for
+	// a zero-org user, or their previous org otherwise) 403s on every
+	// org-scoped call to the org they just created.
+	refreshTokenValue, err := s.generateRefreshToken()
+	if err != nil {
+		return nil, err
+	}
+
+	refreshToken := models.NewUserToken(userUID, &org.UID, refreshTokenValue, models.TokenTypeRefresh)
+	expiresAt := s.refreshTokenExpiry(ctx, org.UID, now, now)
+	refreshToken.ExpiresAt = &expiresAt
+	refreshToken.LastActiveAt = &now
+	refreshToken.Properties = models.JSONMap{
+		keyCreatedWith: authContext.ToMap(),
+	}
+
+	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
+		return nil, err
+	}
+
+	s.enforceSessionCap(ctx, userUID)
+
+	accessToken, err := s.generateAccessToken(userUID, org.Slug, string(models.MemberRoleAdmin), refreshToken.UID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &OrgResponse{
-		UID:  org.UID,
-		Slug: org.Slug,
-		Name: org.Name,
+		UID:          org.UID,
+		Slug:         org.Slug,
+		Name:         org.Name,
+		AccessToken:  accessToken,
+		RefreshToken: refreshTokenValue,
+		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
+		TokenType:    tokenTypeBearer,
 	}, nil
 }
 
