@@ -344,3 +344,152 @@ func TestOIDCHandleCallback_EnforcesMaxSSOUsers(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, members)
 }
+
+// createExistingLocalUser simulates a pre-existing, password-based account
+// (e.g. the documented default super-admin) that a malicious/misconfigured
+// OIDC IdP might try to take over by asserting the same email address.
+func createExistingLocalUser(ctx context.Context, t *testing.T, svc *OIDCOAuthService, email string) *models.User {
+	t.Helper()
+
+	hash := "not-a-real-hash"
+	user := models.NewUser(email)
+	user.Name = "Existing Local User"
+	user.PasswordHash = &hash
+
+	require.NoError(t, svc.db.CreateUser(ctx, user))
+
+	return user
+}
+
+// TestOIDCHandleCallback_UnverifiedEmailDoesNotAutoLink is the regression test
+// for the account-takeover vulnerability: findOrCreateUser used to fall
+// through to GetUserByEmail (and then link + issue a session) whenever
+// email_verified was absent, false, or a non-boolean value, because mapClaims
+// defaulted EmailVerified to true unless the claim was literally a JSON
+// boolean. A malicious/misconfigured IdP could exploit this to assert any
+// existing user's email - including the documented default super-admin
+// admin@solidping.com - and obtain a fully valid session with no password
+// check.
+func TestOIDCHandleCallback_UnverifiedEmailDoesNotAutoLink(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name           string
+		targetEmail    string
+		mutateClaims   func(c jwt.MapClaims)
+		wantErrIs      error
+		superAdminUser bool
+	}{
+		{
+			name:        "email_verified claim absent",
+			targetEmail: "victim@example.com",
+			mutateClaims: func(c jwt.MapClaims) {
+				delete(c, oidcClaimEmailVerified)
+			},
+			wantErrIs: ErrEmailNotVerified,
+		},
+		{
+			name:        "email_verified claim is a non-boolean string",
+			targetEmail: "victim2@example.com",
+			mutateClaims: func(c jwt.MapClaims) {
+				c[oidcClaimEmailVerified] = "false"
+			},
+			wantErrIs: ErrEmailNotVerified,
+		},
+		{
+			name:        "email_verified explicitly false",
+			targetEmail: "victim3@example.com",
+			mutateClaims: func(c jwt.MapClaims) {
+				c[oidcClaimEmailVerified] = false
+			},
+			wantErrIs: ErrEmailNotVerified,
+		},
+		{
+			name:        "documented default super-admin email, unverified",
+			targetEmail: "admin@solidping.com",
+			mutateClaims: func(c jwt.MapClaims) {
+				delete(c, oidcClaimEmailVerified)
+			},
+			wantErrIs:      ErrEmailNotVerified,
+			superAdminUser: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			idp := newFakeOIDCIdP(t)
+			svc, ctx := setupOIDCTestService(t, idp, nil)
+			org := setupOIDCTestOrg(ctx, t, svc)
+
+			existing := createExistingLocalUser(ctx, t, svc, tc.targetEmail)
+			if tc.superAdminUser {
+				existing.SuperAdmin = true
+				require.NoError(t, svc.db.UpdateUser(ctx, existing.UID, &models.UserUpdate{
+					SuperAdmin: &existing.SuperAdmin,
+				}))
+			}
+
+			idp.nextIDToken = idp.issueIDToken(t, func(c jwt.MapClaims) {
+				c[keyEmail] = tc.targetEmail
+				tc.mutateClaims(c)
+			})
+
+			result, err := svc.HandleCallback(ctx, "fake-code", org.Slug)
+			require.Error(t, err)
+			require.ErrorIs(t, err, tc.wantErrIs)
+			assert.Nil(t, result)
+
+			// No session/takeover: no OIDC provider link was created for the
+			// pre-existing account, and it gained no new org membership.
+			_, err = svc.db.GetUserProviderByProviderID(ctx, models.ProviderTypeOIDC, "oidc-user-123")
+			require.Error(t, err)
+
+			members, err := svc.db.ListMembersByOrg(ctx, org.UID)
+			require.NoError(t, err)
+			assert.Empty(t, members)
+
+			// The existing account itself must be completely untouched.
+			unchanged, err := svc.db.GetUserByEmail(ctx, tc.targetEmail)
+			require.NoError(t, err)
+			assert.Equal(t, existing.UID, unchanged.UID)
+			assert.Equal(t, existing.PasswordHash, unchanged.PasswordHash)
+		})
+	}
+}
+
+// TestOIDCHandleCallback_VerifiedEmailStillLinksToExistingUser is the
+// regression guard for the legitimate path: an IdP that properly asserts
+// email_verified as a real JSON boolean `true` must still be able to link its
+// asserted identity to a pre-existing local user by email (e.g. a user who
+// signed up with a password and later enables SSO with a matching, verified
+// IdP account).
+func TestOIDCHandleCallback_VerifiedEmailStillLinksToExistingUser(t *testing.T) {
+	t.Parallel()
+
+	idp := newFakeOIDCIdP(t)
+	svc, ctx := setupOIDCTestService(t, idp, nil)
+	org := setupOIDCTestOrg(ctx, t, svc)
+
+	const email = "legit-user@example.com"
+
+	existing := createExistingLocalUser(ctx, t, svc, email)
+
+	idp.nextIDToken = idp.issueIDToken(t, func(c jwt.MapClaims) {
+		c[keyEmail] = email
+		c[oidcClaimEmailVerified] = true
+	})
+
+	result, err := svc.HandleCallback(ctx, "fake-code", org.Slug)
+	require.NoError(t, err)
+	assert.Equal(t, existing.UID, result.UserUID)
+
+	provider, err := svc.db.GetUserProviderByProviderID(ctx, models.ProviderTypeOIDC, "oidc-user-123")
+	require.NoError(t, err)
+	assert.Equal(t, existing.UID, provider.UserUID)
+
+	member, err := svc.db.GetMemberByUserAndOrg(ctx, existing.UID, org.UID)
+	require.NoError(t, err)
+	assert.Equal(t, existing.UID, member.UserUID)
+}
