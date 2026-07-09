@@ -8,7 +8,11 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ErrorBoundary, RouteErrorFallback } from "@/components/shared/error-boundary";
 import { ApiError, NetworkError } from "@/api/client";
 import { installErrorCollector } from "@/components/feedback/errorCollector";
-import { applyOAuthHandoff, parseOAuthHandoff } from "@/lib/oauth-handoff";
+import {
+  applyOAuthHandoff,
+  parseOAuthHandoff,
+  resolveHandoffDestination,
+} from "@/lib/oauth-handoff";
 import "@fontsource-variable/inter/index.css";
 import "./i18n";
 import "./index.css";
@@ -32,8 +36,15 @@ const basepath = import.meta.env.VITE_BASE_URL || "";
 
   applyOAuthHandoff(handoff);
 
-  // Drop the token from the URL and land on the resolved org dashboard.
-  const dest = handoff.org ? `${basepath}/orgs/${handoff.org}` : window.location.pathname;
+  // Drop the token from the URL. Preserve the deep `returnTo` path the backend
+  // already redirected us to (now in window.location.pathname) when it passes
+  // the shared safe-path / org-match guards, falling back to the org root
+  // otherwise — instead of unconditionally discarding it for the org root.
+  const dest = resolveHandoffDestination(
+    handoff.org,
+    window.location.pathname,
+    basepath,
+  );
   window.history.replaceState(null, "", dest);
 })();
 
