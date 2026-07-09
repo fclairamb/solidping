@@ -50,6 +50,7 @@ const (
 	apiKeyText    = "text"
 	apiKeyUser    = "user"
 	apiKeyView    = "view"
+	apiKeyName    = "name"
 )
 
 // Client is a Slack API client.
@@ -238,7 +239,7 @@ func (c *Client) AddReaction(ctx context.Context, channel, timestamp, emoji stri
 	return c.callAPI(ctx, "reactions.add", map[string]any{
 		apiKeyChannel: channel,
 		"timestamp":   timestamp,
-		"name":        emoji,
+		apiKeyName:    emoji,
 	}, nil)
 }
 
