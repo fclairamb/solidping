@@ -103,6 +103,21 @@ const (
 	KeySAMLEmailAttribute ParameterKey = "auth.saml.email_attribute"
 	KeySAMLNameAttribute  ParameterKey = "auth.saml.name_attribute"
 
+	// LDAP / Active Directory bind-authentication keys (spec 2026-07-08-08,
+	// part 3). Global-only, single connector — see config.LDAPConfig. Only
+	// bind_password is a secret: it's the directory service account's
+	// credential, analogous to an OAuth client secret.
+	KeyLDAPEnabled            ParameterKey = "auth.ldap.enabled"
+	KeyLDAPServerURL          ParameterKey = "auth.ldap.server_url"
+	KeyLDAPStartTLS           ParameterKey = "auth.ldap.start_tls"
+	KeyLDAPInsecureSkipVerify ParameterKey = "auth.ldap.insecure_skip_verify"
+	KeyLDAPBindDN             ParameterKey = "auth.ldap.bind_dn"
+	KeyLDAPBindPassword       ParameterKey = "auth.ldap.bind_password"
+	KeyLDAPBaseDN             ParameterKey = "auth.ldap.base_dn"
+	KeyLDAPUserFilter         ParameterKey = "auth.ldap.user_filter"
+	KeyLDAPEmailAttribute     ParameterKey = "auth.ldap.email_attribute"
+	KeyLDAPNameAttribute      ParameterKey = "auth.ldap.name_attribute"
+
 	// Password-hashing policy keys. These mutate cfg.Auth.Password.* and take
 	// effect after a restart, when the policy is re-resolved from the overlaid
 	// config (see app.Server.InitializeSystemConfig). Numeric values arrive as
@@ -740,6 +755,100 @@ func getKnownParameters() []ParameterDefinition {
 			ApplyFunc: func(cfg *config.Config, value any) {
 				if v, ok := value.(string); ok {
 					cfg.SAML.NameAttribute = v
+				}
+			},
+		},
+		{
+			Key:    KeyLDAPEnabled,
+			EnvVar: "SP_LDAP_ENABLED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.LDAP.Enabled = parseBool(value, cfg.LDAP.Enabled)
+			},
+		},
+		{
+			Key:    KeyLDAPServerURL,
+			EnvVar: "SP_LDAP_SERVER_URL",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.LDAP.ServerURL = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			Key:    KeyLDAPStartTLS,
+			EnvVar: "SP_LDAP_START_TLS",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.LDAP.StartTLS = parseBool(value, cfg.LDAP.StartTLS)
+			},
+		},
+		{
+			Key:    KeyLDAPInsecureSkipVerify,
+			EnvVar: "SP_LDAP_INSECURE_SKIP_VERIFY",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.LDAP.InsecureSkipVerify = parseBool(value, cfg.LDAP.InsecureSkipVerify)
+			},
+		},
+		{
+			Key:    KeyLDAPBindDN,
+			EnvVar: "SP_LDAP_BIND_DN",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.LDAP.BindDN = v
+				}
+			},
+		},
+		{
+			Key:    KeyLDAPBindPassword,
+			EnvVar: "SP_LDAP_BIND_PASSWORD",
+			Secret: true,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.LDAP.BindPassword = v
+				}
+			},
+		},
+		{
+			Key:    KeyLDAPBaseDN,
+			EnvVar: "SP_LDAP_BASE_DN",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.LDAP.BaseDN = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			Key:    KeyLDAPUserFilter,
+			EnvVar: "SP_LDAP_USER_FILTER",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.LDAP.UserFilter = v
+				}
+			},
+		},
+		{
+			Key:    KeyLDAPEmailAttribute,
+			EnvVar: "SP_LDAP_EMAIL_ATTRIBUTE",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.LDAP.EmailAttribute = v
+				}
+			},
+		},
+		{
+			Key:    KeyLDAPNameAttribute,
+			EnvVar: "SP_LDAP_NAME_ATTRIBUTE",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.LDAP.NameAttribute = v
 				}
 			},
 		},

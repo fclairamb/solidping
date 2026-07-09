@@ -225,6 +225,7 @@ type Config struct {
 	Discord     DiscordOAuthConfig   `koanf:"discord"`
 	OIDC        OIDCOAuthConfig      `koanf:"oidc"`
 	SAML        SAMLConfig           `koanf:"saml"`
+	LDAP        LDAPConfig           `koanf:"ldap"`
 	Node        NodeConfig           `koanf:"node"`
 	Profiler    ProfilerConfig       `koanf:"profiler"`
 	Runtime     RuntimeConfig        `koanf:"runtime"`
@@ -729,6 +730,7 @@ func Load() (*Config, error) {
 		Discord:   DiscordOAuthConfig{Enabled: false},
 		OIDC:      OIDCOAuthConfig{Enabled: false},
 		SAML:      SAMLConfig{Enabled: false},
+		LDAP:      LDAPConfig{Enabled: false},
 		Node: NodeConfig{
 			Role:   NodeRoleAll,
 			Region: "",
