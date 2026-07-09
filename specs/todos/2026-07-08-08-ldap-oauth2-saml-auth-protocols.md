@@ -166,3 +166,86 @@ providers), standard OIDC discovery for issuer configuration.
    session), and negative paths (wrong issuer, wrong audience, expired token,
    bad signature) — plus a `maxSsoUsers`/`CheckSSOMembership` enforcement
    test using a stub `EntitlementsChecker`.
+
+## Implementation Plan — Part 2: SAML 2.0 SP
+
+This section covers **part 2 only** — SAML 2.0 Service Provider. Part 1
+(generic OIDC) is merged; part 3 (LDAP) follows in a later pass.
+
+Resolved for this pass (cross-cutting decisions adopted, not re-litigated):
+global-only config via system parameters, exactly one SAML connector
+instance, SP-initiated only (no IdP-initiated), no SLO, no group/role mapping
+(default role like the other SSO providers).
+
+1. **Library** — `github.com/crewjam/saml` (v0.5.1). Provides
+   `saml.ServiceProvider` (AuthnRequest generation, full assertion validation:
+   signature, `Conditions` `NotBefore`/`NotOnOrAfter`, `Audience` restriction,
+   `SubjectConfirmationData` `Recipient`/`NotOnOrAfter`, `InResponseTo`
+   replay check) and `samlsp.ParseMetadata`/`FetchMetadata` for IdP metadata
+   ingestion from pasted XML or a URL. No hand-rolled XML-DSig.
+2. **Config** — `server/internal/config/saml_auth.go`: `SAMLConfig`
+   (`Enabled`, `DisplayName`, `IDPMetadataURL`, `IDPMetadataXML`,
+   `SPEntityID` override, `EmailAttribute`/`NameAttribute` mappings). Wired
+   into `config.Config` as `SAML`. At least one of `IDPMetadataURL` /
+   `IDPMetadataXML` must be set for login/ACS to work; the metadata endpoint
+   itself only requires `Enabled` (chicken-and-egg: an admin needs the SP's
+   own metadata *before* they can configure the IdP side).
+3. **System parameters** — register `auth.saml.*` keys in
+   `systemconfig.go`, following the existing provider key pattern. None of
+   the SAML fields are secrets (trust is via certificates, not a shared
+   client secret) — `Secret: false` throughout.
+4. **SP key/certificate** — a self-signed RSA keypair is generated on first
+   use and persisted via `db.GetAppSetting`/`SetAppSetting`
+   (`saml.sp_certificate_pem` / `saml.sp_private_key_pem`), mirroring the
+   VAPID-key pattern in `internal/webpush/vapid.go`. It signs nothing by
+   default (AuthnRequests are unsigned — see self-review) but is required by
+   the library to publish an `EntityDescriptor` and to decrypt encrypted
+   assertions if the IdP chooses to encrypt.
+5. **Handler pair** — `server/internal/handlers/auth/saml.go` +
+   `saml_service.go`, modeled on `oidc.go`/`oidc_service.go`:
+   - `GET /api/v1/auth/saml/login` builds a signed-nowhere-but-tracked
+     `AuthnRequest`, stores `{RequestID, RedirectURI, OrgSlug}` under a
+     random nonce via the shared `db.SetStateEntry` (same TTL'd
+     key/value store `OAuthState` uses), and 302s to the IdP's
+     HTTP-Redirect SSO endpoint with that nonce as `RelayState`.
+   - `POST /api/v1/auth/saml/acs` reads `RelayState`, looks up and
+     consumes (one-time use) the stored request state, then calls
+     `sp.ParseResponse(req, []string{state.RequestID})` — this single
+     library call performs the full validation rigor: signature,
+     `Conditions`, `Audience`, `Recipient`, and `InResponseTo` matched
+     against the request ID we actually issued (replay/CSRF protection).
+     Maps NameID/attributes to email/name, resolves via `UserProvider`
+     with `ProviderTypeSAML`, goes through the same `ensureMembership` +
+     `CheckSSOSlot` (`maxSsoUsers`) path as OIDC/social providers, then
+     issues the normal session and redirects with tokens in the query
+     string (mirrors `oidc.go`'s `buildSuccessRedirect`).
+   - `GET /api/v1/auth/saml/metadata` serves the SP's own
+     `EntityDescriptor` XML (entity ID, ACS URL, certificate) so IdP
+     admins can configure their side by URL.
+6. **Routing** — wire `/auth/saml/{login,acs,metadata}` in `server.go`
+   alongside the other providers, gated on `Enabled` (metadata) /
+   `Enabled && (IDPMetadataURL != "" || IDPMetadataXML != "")` (login/ACS).
+7. **Discovery + login page** — SAML's redirect-out/redirect-back shape is
+   identical to the OAuth providers from the frontend's point of view (full
+   page redirect to `/api/v1/auth/saml/login?org=...&redirect_uri=...`, then
+   back with tokens in the query string), even though the wire protocol
+   underneath differs — so it fits the existing generic provider-button
+   shape in `providers_available.go`/`login.tsx` as `type: "saml"` rather
+   than needing a bespoke UI element. Admin UI: new SAML card in
+   `server.auth.tsx` (display name, IdP metadata URL, IdP metadata XML
+   textarea, SP entity ID override, email/name attribute mappings), plus a
+   read-only display of this SP's ACS/metadata URLs for the admin to hand to
+   their IdP.
+8. **Tests** — `saml_service_test.go`: a real `saml.IdentityProvider` (the
+   library's own IdP implementation, not a hand-rolled fixture) wired to a
+   `SessionProvider` stub that returns a fixed session, run behind an
+   `httptest.Server`, drives the full SP-initiated redirect leg for real
+   through `GenerateAuthnRequest`/`HandleACS`. Covers: SP metadata
+   well-formedness (entity ID/ACS URL present); happy path (creates `User` +
+   `UserProvider(ProviderTypeSAML)` + session); wrong-audience (fake IdP
+   asserts a different SP entity ID); expired assertion
+   (`IdentityProvider.ValidDuration` negative); untrusted signer (a second,
+   unpublished IdP keypair signs the response); replay / mismatched
+   `InResponseTo` (an assertion from one login attempt validated against a
+   different attempt's stored state); `maxSsoUsers` enforcement via the same
+   stub `EntitlementsChecker` pattern as the OIDC tests.
