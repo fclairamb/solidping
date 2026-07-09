@@ -420,13 +420,13 @@ func (c *Client) ListChannels(ctx context.Context) ([]Channel, error) {
 		// De-duplicate by Slack ID: a repeating cursor or overlapping pages
 		// must never surface the same channel twice in the picker.
 		for i := range result.Channels {
-			ch := result.Channels[i]
-			if _, ok := seen[ch.ID]; ok {
+			channel := result.Channels[i]
+			if _, ok := seen[channel.ID]; ok {
 				continue
 			}
 
-			seen[ch.ID] = struct{}{}
-			channels = append(channels, ch)
+			seen[channel.ID] = struct{}{}
+			channels = append(channels, channel)
 		}
 
 		return result.ResponseMetadata.NextCursor, nil
@@ -467,17 +467,17 @@ func (c *Client) ListUsers(ctx context.Context) ([]SlackUser, error) {
 		// Filter out bots/deleted members and de-duplicate by Slack ID so a
 		// repeating cursor or overlapping pages cannot surface duplicates.
 		for i := range result.Members {
-			u := result.Members[i]
-			if u.IsBot || u.Deleted {
+			member := result.Members[i]
+			if member.IsBot || member.Deleted {
 				continue
 			}
 
-			if _, ok := seen[u.ID]; ok {
+			if _, ok := seen[member.ID]; ok {
 				continue
 			}
 
-			seen[u.ID] = struct{}{}
-			users = append(users, u)
+			seen[member.ID] = struct{}{}
+			users = append(users, member)
 		}
 
 		return result.ResponseMetadata.NextCursor, nil
