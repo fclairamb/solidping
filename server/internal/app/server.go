@@ -1181,6 +1181,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	if s.config.RunMode == "test" {
 		api.GET("/test/state-entries", testHandler.ListStateEntries)
+		api.POST("/test/users", testHandler.CreateUser)
 		api.POST("/test/checks/bulk", testHandler.BulkCreateChecks)
 		api.DELETE("/test/checks/bulk", testHandler.BulkDeleteChecks)
 		api.POST("/test/generate-data", testHandler.GenerateData)

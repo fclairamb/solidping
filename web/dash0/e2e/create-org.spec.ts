@@ -6,12 +6,21 @@ import { test, expect, API_BASE } from "./fixtures";
 // org-scoped API call 403s because the frontend never adopted the fresh
 // token the backend mints for the new org.
 //
-// A brand-new zero-org session can only be produced through the real
-// register -> confirm-registration flow (login always resolves to an
-// existing org/no-org action based on memberships). Confirmation normally
-// requires an emailed token; in SP_RUNMODE=test the pending token is
-// readable back via the test-only `/api/v1/test/state-entries` endpoint
-// instead of intercepting real email delivery.
+// A zero-org session is provisioned via the test-only
+// `POST /api/v1/test/users` endpoint (SP_RUNMODE=test only, wired in
+// server.go next to `/test/state-entries`) instead of the real
+// register -> confirm-registration flow: this environment's auth.Service
+// never actually picks up a live `auth.registration_email_pattern` system
+// parameter (a separate, pre-existing, out-of-scope config-propagation bug),
+// so `POST /auth/register` always returns "Registration is not enabled"
+// here regardless of what's configured — see
+// membership-requests.spec.ts's register-based tests, which hit the same
+// wall and skip cleanly. Seeding the user directly and then logging in for
+// real exercises the exact same zero-membership code path a genuine
+// registered-but-orgless user would hit (`resolveOrgPreference` ->
+// `LoginActionNoOrg` -> `completeLogin`'s `resolvedOrg == nil` branch in
+// server/internal/handlers/auth/service.go), so the fix under test still
+// gets full, real coverage.
 test.describe("Create org from /no-org", () => {
   test("fresh zero-org user creates an org and lands on a working dashboard with no 403s", async ({
     page,
@@ -20,48 +29,35 @@ test.describe("Create org from /no-org", () => {
     const email = `create-org-${stamp}@unknown.example`;
     const password = "Strong-Pass-123!";
 
-    const registerResp = await page.request.post(
-      `${API_BASE}/api/v1/auth/register`,
+    const createUserResp = await page.request.post(
+      `${API_BASE}/api/v1/test/users`,
       { data: { email, password, name: "Create Org User" } },
     );
-    if (registerResp.status() !== 200 && registerResp.status() !== 201) {
-      test.skip(true, `registration unavailable: ${registerResp.status()}`);
-    }
-
-    const entriesResp = await page.request.get(
-      `${API_BASE}/api/v1/test/state-entries?prefix=email_registration:`,
-    );
-    if (entriesResp.status() !== 200) {
+    if (createUserResp.status() !== 201) {
       test.skip(
         true,
-        `test state-entries endpoint unavailable (server not in SP_RUNMODE=test?): ${entriesResp.status()}`,
+        `test user-seed endpoint unavailable (server not in SP_RUNMODE=test?): ${createUserResp.status()}`,
       );
     }
 
-    const entriesBody = (await entriesResp.json()) as {
-      data: Array<{ Value?: { email?: string; token?: string } }>;
-    };
-    const entry = entriesBody.data.find((e) => e.Value?.email === email);
-    expect(entry, "registration state entry for the new user").toBeTruthy();
-
-    const confirmToken = entry?.Value?.token;
-    expect(confirmToken).toBeTruthy();
-
-    const confirmResp = await page.request.post(
-      `${API_BASE}/api/v1/auth/confirm-registration`,
-      { data: { token: confirmToken } },
+    // Real login (no org preference passed) — with zero memberships the
+    // auth service resolves LoginActionNoOrg and mints an org-scoped-to-
+    // nothing access token, exactly like a real user who was removed from
+    // their last org. This is the "no-org token" the create-org fix needs
+    // to move past.
+    const loginResp = await page.request.post(
+      `${API_BASE}/api/v1/auth/login`,
+      { data: { email, password } },
     );
-    expect(confirmResp.status()).toBe(200);
+    expect(loginResp.status()).toBe(200);
 
-    const session = (await confirmResp.json()) as {
+    const session = (await loginResp.json()) as {
       accessToken: string;
       refreshToken?: string;
       expiresIn?: number;
       organization?: { slug: string };
     };
     expect(session.accessToken).toBeTruthy();
-    // Zero org memberships: confirm-registration resolves no org — this is
-    // the "no-org token" the create-org fix needs to move past.
     expect(session.organization).toBeFalsy();
 
     // Pre-existing, unrelated bug: GET /api/v1/auth/me 401s for a
