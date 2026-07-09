@@ -128,7 +128,12 @@ func (s *LDAPService) Authenticate(ctx context.Context, identifier, password str
 		return nil, fmt.Errorf("%w: user bind: %w", ErrLDAPBindFailed, err)
 	}
 
-	return s.mapEntry(entry), nil
+	info := s.mapEntry(entry)
+	if info.Email == "" {
+		return nil, ErrLDAPNoEmail
+	}
+
+	return info, nil
 }
 
 // dial opens a connection to the configured directory, applying StartTLS
@@ -361,18 +366,27 @@ func (s *Service) ldapEnabled() bool {
 // attribute for the entry just proven to belong to the caller.
 func (s *Service) authenticateViaLDAP(ctx context.Context, orgSlug, identifier, password string) (*models.User, error) {
 	if !s.ldapEnabled() {
-		return nil, ErrLDAPNotConfigured
+		return nil, ErrInvalidCredentials
 	}
 
 	info, err := NewLDAPService(s.fullCfg).Authenticate(ctx, identifier, password)
 	if err != nil {
-		return nil, err
+		// Every Authenticate failure (LDAP not configured, empty password,
+		// directory unreachable, user not found/ambiguous, wrong password)
+		// is a credential-verification failure from the caller's point of
+		// view. Map it to the same generic ErrInvalidCredentials a wrong
+		// local password would produce: this is anti-enumeration (don't
+		// reveal whether a given identifier exists in the directory, or
+		// that the directory is unreachable/misconfigured) and it lets the
+		// existing 401 mapping in handler.go's handleAuthError apply
+		// uniformly across every credential path, local or LDAP.
+		return nil, ErrInvalidCredentials
 	}
 
-	if info.Email == "" {
-		return nil, ErrLDAPNoEmail
-	}
-
+	// From here on the bind has already succeeded — the caller's identity
+	// is verified. A failure below is a real internal/quota failure, not a
+	// credential problem, so it propagates as-is rather than being folded
+	// into ErrInvalidCredentials.
 	user, err := s.findOrCreateLDAPUser(ctx, info)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find/create LDAP user: %w", err)

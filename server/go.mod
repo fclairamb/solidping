@@ -168,6 +168,7 @@ require (
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
+	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
 	github.com/inbucket/html2text v1.0.0 // indirect
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect
@@ -175,6 +176,7 @@ require (
 	github.com/jcmturner/gofork v1.7.6 // indirect
 	github.com/jcmturner/gokrb5/v8 v8.4.4 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
+	github.com/jimlambrt/gldap v0.1.14 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
