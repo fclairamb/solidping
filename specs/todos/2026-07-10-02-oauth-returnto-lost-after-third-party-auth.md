@@ -77,3 +77,38 @@ Notes / open questions:
   asserts the final URL is the deep path, not `/orgs/{org}`.
 - Add a negative test: an unsafe/cross-org `returnTo` still falls back to the org
   root.
+
+## Implementation Plan
+
+1. **Extract a pure handoff-destination helper** in
+   `web/dash0/src/lib/oauth-handoff.ts`:
+   `resolveHandoffDestination(org, pathname, basepath) => string`. It reuses
+   `resolveDestination()` from `login-destination.ts` (a pure module with no
+   router/DOM imports, safe to load before React mounts) and converts its
+   `LoginDestination` union into a plain URL string:
+   - `{ href }` → `href` (the honored deep `returnTo`, already in
+     `window.location.pathname`).
+   - `{ to, params: { org } }` → `${basepath}/orgs/${org}` (the org-root
+     fallback for unsafe / cross-org / non-org paths).
+   - When `org` is absent (nothing to resolve against), keep the current
+     `pathname` — preserving today's `handoff.org ? … : pathname` fallback.
+
+2. **Rewrite the `main.tsx` IIFE** (line ~36) to call
+   `resolveHandoffDestination(handoff.org, window.location.pathname, basepath)`
+   instead of the naive `handoff.org ? \`${basepath}/orgs/${handoff.org}\` :
+   pathname` ternary. This makes the pre-React handoff honor the deep path when
+   it passes the same-origin / safe-path / org-match guards, and fall back to
+   the org root otherwise.
+
+3. **Providers**: all social providers share `buildSuccessRedirect`, which
+   always sets `org`, so they all funnel through `resolveDestination`. Discord's
+   `redirect_uri` default of `/` still carries `org`, so pathname `/` fails the
+   guards and correctly falls back to the org root (not `/`).
+
+4. **OrgLayout dormant effect** (`oauth-handoff.ts:14` note): the IIFE still
+   strips the token params via `replaceState` before React mounts, so the
+   second handoff effect stays dormant — unchanged by this fix.
+
+5. **Tests**: unit-test `resolveHandoffDestination` in
+   `oauth-handoff.test.ts` — deep path preserved (positive), cross-org / unsafe
+   / non-org paths fall back to org root (negative), and no-org keeps pathname.
