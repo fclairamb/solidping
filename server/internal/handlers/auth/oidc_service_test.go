@@ -22,10 +22,14 @@ import (
 )
 
 const (
-	fakeIdPClientID     = "test-client-id"
-	fakeIdPClientSecret = "test-client-secret"
-	fakeIdPKeyID        = "test-key-1"
+	fakeIDPClientID     = "test-client-id"
+	fakeIDPClientSecret = "test-client-secret"
+	fakeIDPKeyID        = "test-key-1"
 )
+
+// errSSOQuotaTest is a static sentinel used by TestOIDCHandleCallback_EnforcesMaxSSOUsers
+// to simulate an org that has reached its maxSsoUsers cap.
+var errSSOQuotaTest = errors.New("sso membership quota exceeded")
 
 // fakeOIDCIdP is a minimal in-repo OIDC identity provider used to drive
 // end-to-end tests of the generic OIDC connector without any external
@@ -64,7 +68,7 @@ func newFakeOIDCIdP(t *testing.T) *fakeOIDCIdP {
 	mux.HandleFunc("/jwks", func(w http.ResponseWriter, _ *http.Request) {
 		jwk := josejwk.JSONWebKey{
 			Key:       &idp.privKey.PublicKey,
-			KeyID:     fakeIdPKeyID,
+			KeyID:     fakeIDPKeyID,
 			Algorithm: "RS256",
 			Use:       "sig",
 		}
@@ -88,36 +92,36 @@ func newFakeOIDCIdP(t *testing.T) *fakeOIDCIdP {
 	return idp
 }
 
+// baseClaims returns a valid claim set for the fake IdP's user. Tests mutate
+// a copy via issueIDToken/issueIDTokenSignedByOtherKey to exercise negative
+// validation paths (wrong issuer, wrong audience, expired, bad signature).
+func (idp *fakeOIDCIdP) baseClaims() jwt.MapClaims {
+	now := time.Now()
+
+	return jwt.MapClaims{
+		"iss":                  idp.server.URL,
+		"aud":                  fakeIDPClientID,
+		"sub":                  "oidc-user-123",
+		keyEmail:               "test@example.com",
+		oidcClaimEmailVerified: true,
+		keyName:                "Test User",
+		"picture":              "https://example.com/avatar.png",
+		"iat":                  now.Unix(),
+		"exp":                  now.Add(time.Hour).Unix(),
+	}
+}
+
 // issueIDToken signs an ID token with the fake IdP's key. mutate lets tests
-// override individual claims (issuer, audience, expiry) to exercise the
-// negative validation paths.
+// override individual claims to exercise the negative validation paths.
 func (idp *fakeOIDCIdP) issueIDToken(t *testing.T, mutate func(jwt.MapClaims)) string {
 	t.Helper()
 
-	now := time.Now()
-	claims := jwt.MapClaims{
-		"iss":            idp.server.URL,
-		"aud":            fakeIdPClientID,
-		"sub":            "oidc-user-123",
-		"email":          "test@example.com",
-		"email_verified": true,
-		"name":           "Test User",
-		"picture":        "https://example.com/avatar.png",
-		"iat":            now.Unix(),
-		"exp":            now.Add(time.Hour).Unix(),
-	}
-
+	claims := idp.baseClaims()
 	if mutate != nil {
 		mutate(claims)
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-	token.Header["kid"] = fakeIdPKeyID
-
-	signed, err := token.SignedString(idp.privKey)
-	require.NoError(t, err)
-
-	return signed
+	return idp.signClaims(t, idp.privKey, claims)
 }
 
 // issueIDTokenSignedByOtherKey signs a token with a different (unpublished)
@@ -128,26 +132,21 @@ func (idp *fakeOIDCIdP) issueIDTokenSignedByOtherKey(t *testing.T, mutate func(j
 	otherKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	now := time.Now()
-	claims := jwt.MapClaims{
-		"iss":            idp.server.URL,
-		"aud":            fakeIdPClientID,
-		"sub":            "oidc-user-123",
-		"email":          "test@example.com",
-		"email_verified": true,
-		"name":           "Test User",
-		"iat":            now.Unix(),
-		"exp":            now.Add(time.Hour).Unix(),
-	}
-
+	claims := idp.baseClaims()
 	if mutate != nil {
 		mutate(claims)
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-	token.Header["kid"] = fakeIdPKeyID
+	return idp.signClaims(t, otherKey, claims)
+}
 
-	signed, err := token.SignedString(otherKey)
+func (idp *fakeOIDCIdP) signClaims(t *testing.T, key *rsa.PrivateKey, claims jwt.MapClaims) string {
+	t.Helper()
+
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	token.Header["kid"] = fakeIDPKeyID
+
+	signed, err := token.SignedString(key)
 	require.NoError(t, err)
 
 	return signed
@@ -182,8 +181,8 @@ func setupOIDCTestService(
 		OIDC: config.OIDCOAuthConfig{
 			Enabled:      true,
 			IssuerURL:    idp.server.URL,
-			ClientID:     fakeIdPClientID,
-			ClientSecret: fakeIdPClientSecret,
+			ClientID:     fakeIDPClientID,
+			ClientSecret: fakeIDPClientSecret,
 		},
 		Auth: config.AuthConfig{
 			JWTSecret:          "test-jwt-secret",
@@ -265,11 +264,13 @@ func TestOIDCHandleCallback_RejectsInvalidTokens(t *testing.T) {
 
 	cases := []struct {
 		name  string
-		token func(idp *fakeOIDCIdP, t *testing.T) string
+		token func(t *testing.T, idp *fakeOIDCIdP) string
 	}{
 		{
 			name: "wrong issuer",
-			token: func(idp *fakeOIDCIdP, t *testing.T) string {
+			token: func(t *testing.T, idp *fakeOIDCIdP) string {
+				t.Helper()
+
 				return idp.issueIDToken(t, func(c jwt.MapClaims) {
 					c["iss"] = "https://not-the-real-idp.example.com"
 				})
@@ -277,7 +278,9 @@ func TestOIDCHandleCallback_RejectsInvalidTokens(t *testing.T) {
 		},
 		{
 			name: "wrong audience",
-			token: func(idp *fakeOIDCIdP, t *testing.T) string {
+			token: func(t *testing.T, idp *fakeOIDCIdP) string {
+				t.Helper()
+
 				return idp.issueIDToken(t, func(c jwt.MapClaims) {
 					c["aud"] = "some-other-client-id"
 				})
@@ -285,7 +288,9 @@ func TestOIDCHandleCallback_RejectsInvalidTokens(t *testing.T) {
 		},
 		{
 			name: "expired token",
-			token: func(idp *fakeOIDCIdP, t *testing.T) string {
+			token: func(t *testing.T, idp *fakeOIDCIdP) string {
+				t.Helper()
+
 				return idp.issueIDToken(t, func(c jwt.MapClaims) {
 					c["iat"] = time.Now().Add(-2 * time.Hour).Unix()
 					c["exp"] = time.Now().Add(-time.Hour).Unix()
@@ -294,7 +299,9 @@ func TestOIDCHandleCallback_RejectsInvalidTokens(t *testing.T) {
 		},
 		{
 			name: "bad signature (unpublished key)",
-			token: func(idp *fakeOIDCIdP, t *testing.T) string {
+			token: func(t *testing.T, idp *fakeOIDCIdP) string {
+				t.Helper()
+
 				return idp.issueIDTokenSignedByOtherKey(t, nil)
 			},
 		},
@@ -308,7 +315,7 @@ func TestOIDCHandleCallback_RejectsInvalidTokens(t *testing.T) {
 			svc, ctx := setupOIDCTestService(t, idp, nil)
 			org := setupOIDCTestOrg(ctx, t, svc)
 
-			idp.nextIDToken = tc.token(idp, t)
+			idp.nextIDToken = tc.token(t, idp)
 
 			_, err := svc.HandleCallback(ctx, "fake-code", org.Slug)
 			require.Error(t, err)
@@ -321,15 +328,14 @@ func TestOIDCHandleCallback_EnforcesMaxSSOUsers(t *testing.T) {
 	t.Parallel()
 
 	idp := newFakeOIDCIdP(t)
-	quotaErr := errors.New("sso membership quota exceeded")
-	svc, ctx := setupOIDCTestService(t, idp, &stubEntitlementsChecker{err: quotaErr})
+	svc, ctx := setupOIDCTestService(t, idp, &stubEntitlementsChecker{err: errSSOQuotaTest})
 	org := setupOIDCTestOrg(ctx, t, svc)
 
 	idp.nextIDToken = idp.issueIDToken(t, nil)
 
 	_, err := svc.HandleCallback(ctx, "fake-code", org.Slug)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, quotaErr)
+	require.ErrorIs(t, err, errSSOQuotaTest)
 
 	// The membership must not have been created since the quota check
 	// (CheckSSOSlot -> entitlements.CheckSSOMembership) failed before

@@ -35,11 +35,15 @@ const (
 	oidcOAuthStateTTL    = 10 * time.Minute
 	oidcDiscoveryTimeout = 15 * time.Second
 
-	// Standard OIDC claim names used when the corresponding *Claim config
-	// field is left blank.
-	oidcDefaultEmailClaim  = "email"
-	oidcDefaultNameClaim   = "name"
+	// oidcDefaultAvatarClaim is the standard OIDC claim name used when
+	// AvatarClaim is left blank. The email/name equivalents reuse the
+	// package's existing keyEmail/keyName constants (both already "email"
+	// and "name" respectively) rather than redeclaring them.
 	oidcDefaultAvatarClaim = "picture"
+
+	// oidcClaimEmailVerified is the standard OIDC claim indicating whether
+	// the IdP has verified the user's email address.
+	oidcClaimEmailVerified = "email_verified"
 )
 
 // OIDCOAuthResult contains the result of a successful generic OIDC flow.
@@ -208,7 +212,7 @@ func (s *OIDCOAuthService) oauth2Config(ctx context.Context) (*oauth2.Config, er
 func (s *OIDCOAuthService) scopes() []string {
 	fields := strings.Fields(s.cfg.OIDC.Scopes)
 	if len(fields) == 0 {
-		return []string{oidc.ScopeOpenID, "email", "profile"}
+		return []string{oidc.ScopeOpenID, keyEmail, "profile"}
 	}
 
 	for _, sc := range fields {
@@ -310,12 +314,12 @@ func (s *OIDCOAuthService) HandleCallback(ctx context.Context, code, orgSlug str
 func (s *OIDCOAuthService) mapClaims(subject string, claims map[string]any) *oidcUserInfo {
 	emailClaim := s.cfg.OIDC.EmailClaim
 	if emailClaim == "" {
-		emailClaim = oidcDefaultEmailClaim
+		emailClaim = keyEmail
 	}
 
 	nameClaim := s.cfg.OIDC.NameClaim
 	if nameClaim == "" {
-		nameClaim = oidcDefaultNameClaim
+		nameClaim = keyName
 	}
 
 	avatarClaim := s.cfg.OIDC.AvatarClaim
@@ -331,7 +335,7 @@ func (s *OIDCOAuthService) mapClaims(subject string, claims map[string]any) *oid
 		EmailVerified: true,
 	}
 
-	if v, ok := claims["email_verified"]; ok {
+	if v, ok := claims[oidcClaimEmailVerified]; ok {
 		info.hasEmailVerifiedClaim = true
 		if b, ok := v.(bool); ok {
 			info.EmailVerified = b
