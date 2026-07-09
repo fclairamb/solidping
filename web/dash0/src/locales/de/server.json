@@ -67,6 +67,9 @@
     "enabled": "Aktiviert",
     "unsavedChanges": "Nicht gespeicherte Änderungen",
     "helpText": "Änderungen an den Anmeldedaten werden nach einem Server-Neustart wirksam. Der Schalter \"Aktiviert\" wirkt nach dem Speichern sofort auf die Anmeldeseite.",
+    "samlSpInfo": "Geben Sie diese URLs an Ihren IdP-Administrator weiter, um die SAML-Verbindung zu konfigurieren.",
+    "samlMetadataUrlLabel": "SP-Metadaten-/Entitäts-ID-URL",
+    "samlAcsUrlLabel": "ACS-URL (Assertion Consumer Service)",
     "fields": {
       "clientId": "Client ID",
       "clientSecret": "Client Secret",
@@ -80,7 +83,12 @@
       "scopes": "Scopes",
       "emailClaim": "E-Mail-Claim",
       "nameClaim": "Name-Claim",
-      "avatarClaim": "Avatar-Claim"
+      "avatarClaim": "Avatar-Claim",
+      "idpMetadataUrl": "IdP-Metadaten-URL",
+      "idpMetadataXml": "IdP-Metadaten-XML",
+      "spEntityId": "SP-Entitäts-ID (Override)",
+      "emailAttribute": "E-Mail-Attribut",
+      "nameAttribute": "Name-Attribut"
     },
     "fieldHelp": {
       "tenantId": "Die ID Ihres Entra-Verzeichnisses (Mandant) oder eine verifizierte Domäne. Leer lassen für \"common\" (mandantenübergreifend). Verwenden Sie \"organizations\" oder \"consumers\", um Kontotypen einzuschränken.",
@@ -89,7 +97,12 @@
       "scopes": "Durch Leerzeichen getrennte OAuth2-Scopes. \"openid\" ist immer enthalten. Standardmäßig \"openid email profile\", wenn leer.",
       "emailClaim": "ID-Token-Claim für die E-Mail-Adresse des Benutzers. Standardmäßig \"email\".",
       "nameClaim": "ID-Token-Claim für den Anzeigenamen des Benutzers. Standardmäßig \"name\".",
-      "avatarClaim": "ID-Token-Claim für die Avatar-URL des Benutzers. Standardmäßig \"picture\"."
+      "avatarClaim": "ID-Token-Claim für die Avatar-URL des Benutzers. Standardmäßig \"picture\".",
+      "idpMetadataUrl": "Die Metadaten-URL des Identitätsanbieters, abgerufen (und zwischengespeichert), um dessen SSO-Endpunkt und Signaturzertifikat zu ermitteln. Leer lassen, wenn Sie das Metadaten-XML unten direkt einfügen.",
+      "idpMetadataXml": "Eingefügtes IdP-Metadaten-XML, das anstelle des Abrufs der obigen URL verwendet wird, wenn gesetzt. Hat Vorrang vor der URL, wenn beide angegeben sind.",
+      "spEntityId": "Überschreibt die Entitäts-ID dieses SP, wie sie in seinen eigenen Metadaten angegeben wird. Standardmäßig die Metadaten-URL unten, wenn leer.",
+      "emailAttribute": "Assertion-Attribut für die E-Mail-Adresse des Benutzers. Standardmäßig gängige Attributnamen (email, mail, ...) und dann die NameID, wenn sie wie eine E-Mail-Adresse aussieht.",
+      "nameAttribute": "Assertion-Attribut für den Anzeigenamen des Benutzers. Standardmäßig gängige Attributnamen (cn, displayName, ...)."
     }
   },
   "hashing": {

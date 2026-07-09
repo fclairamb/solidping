@@ -67,6 +67,9 @@
     "enabled": "Activado",
     "unsavedChanges": "Cambios sin guardar",
     "helpText": "Los cambios de credenciales surten efecto tras reiniciar el servidor. El interruptor Activado se aplica inmediatamente a la página de inicio de sesión una vez guardado.",
+    "samlSpInfo": "Facilite estas URL al administrador de su IdP para configurar la conexión SAML.",
+    "samlMetadataUrlLabel": "URL de metadatos del SP / ID de entidad",
+    "samlAcsUrlLabel": "URL ACS (Assertion Consumer Service)",
     "fields": {
       "clientId": "Client ID",
       "clientSecret": "Client Secret",
@@ -80,7 +83,12 @@
       "scopes": "Ámbitos",
       "emailClaim": "Claim de Email",
       "nameClaim": "Claim de Nombre",
-      "avatarClaim": "Claim de Avatar"
+      "avatarClaim": "Claim de Avatar",
+      "idpMetadataUrl": "URL de metadatos del IdP",
+      "idpMetadataXml": "XML de metadatos del IdP",
+      "spEntityId": "ID de entidad del SP (anulación)",
+      "emailAttribute": "Atributo de Email",
+      "nameAttribute": "Atributo de Nombre"
     },
     "fieldHelp": {
       "tenantId": "El ID de su directorio (inquilino) de Entra, o un dominio verificado. Déjelo en blanco para \"common\" (multiinquilino). Use \"organizations\" o \"consumers\" para restringir los tipos de cuenta.",
@@ -89,7 +97,12 @@
       "scopes": "Lista de ámbitos OAuth2 separados por espacios. \"openid\" siempre se incluye. Por defecto \"openid email profile\" si está vacío.",
       "emailClaim": "Claim del token de identidad usado para el email. Por defecto \"email\".",
       "nameClaim": "Claim del token de identidad usado para el nombre. Por defecto \"name\".",
-      "avatarClaim": "Claim del token de identidad usado para la URL del avatar. Por defecto \"picture\"."
+      "avatarClaim": "Claim del token de identidad usado para la URL del avatar. Por defecto \"picture\".",
+      "idpMetadataUrl": "La URL de metadatos del proveedor de identidad, obtenida (y almacenada en caché) para conocer su punto de conexión SSO y su certificado de firma. Déjelo en blanco si pega el XML de metadatos directamente abajo.",
+      "idpMetadataXml": "XML de metadatos del IdP pegado, usado en lugar de obtener la URL anterior cuando se indica. Tiene prioridad sobre la URL si se proporcionan ambos.",
+      "spEntityId": "Anula el ID de entidad de este SP tal como se anuncia en sus propios metadatos. Por defecto, la URL de metadatos de abajo si está vacío.",
+      "emailAttribute": "Atributo de la aserción usado para el email del usuario. Por defecto, nombres de atributos comunes (email, mail, ...) y luego el NameID si parece una dirección de email.",
+      "nameAttribute": "Atributo de la aserción usado para el nombre para mostrar. Por defecto, nombres de atributos comunes (cn, displayName, ...)."
     }
   },
   "hashing": {

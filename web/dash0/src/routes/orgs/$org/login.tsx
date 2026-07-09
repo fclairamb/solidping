@@ -185,6 +185,27 @@ function OIDCIcon({ className }: { className?: string }) {
   );
 }
 
+function SAMLIcon({ className }: { className?: string }) {
+  // Generic key glyph for the configurable SAML SP connector — same
+  // rationale as OIDCIcon: this isn't a fixed brand, so a neutral mark
+  // distinct from the OIDC shield keeps the two SSO mechanisms visually
+  // distinguishable on the login page.
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="8" cy="15" r="3.5" />
+      <path d="M10.5 12.5L19 4M19 4h-3.5M19 4v3.5" />
+    </svg>
+  );
+}
+
 const PROVIDER_ICONS: Record<string, React.FC<{ className?: string }>> = {
   google: GoogleIcon,
   slack: SlackIcon,
@@ -193,6 +214,7 @@ const PROVIDER_ICONS: Record<string, React.FC<{ className?: string }>> = {
   gitlab: GitLabIcon,
   discord: DiscordIcon,
   oidc: OIDCIcon,
+  saml: SAMLIcon,
 };
 
 function LoginPage() {

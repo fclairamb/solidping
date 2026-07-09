@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -38,7 +39,12 @@ type FieldKind =
   | "scopes"
   | "emailClaim"
   | "nameClaim"
-  | "avatarClaim";
+  | "avatarClaim"
+  | "idpMetadataUrl"
+  | "idpMetadataXml"
+  | "spEntityId"
+  | "emailAttribute"
+  | "nameAttribute";
 
 interface ProviderConfig {
   name: string;
@@ -49,7 +55,14 @@ interface ProviderConfig {
     secret: boolean;
     // Optional muted hint rendered under the input, keyed under server:auth.fieldHelp.
     helpKey?: FieldKind;
+    // Render a multi-line Textarea instead of a single-line Input — used for
+    // pasted IdP metadata XML.
+    multiline?: boolean;
   }[];
+  // Field(s) whose presence (any one of them) gates the Enabled switch.
+  // Defaults to ["clientId"] when omitted — SAML has no client id, so it
+  // gates on either IdP metadata field instead.
+  requiredForEnable?: FieldKind[];
 }
 
 const providers: ProviderConfig[] = [
@@ -150,6 +163,52 @@ const providers: ProviderConfig[] = [
       },
     ],
   },
+  {
+    name: "SAML 2.0",
+    enabledKey: "auth.saml.enabled",
+    // Neither metadata field alone is required — either fetching from a URL
+    // or pasting the XML directly is enough to enable the connector.
+    requiredForEnable: ["idpMetadataUrl", "idpMetadataXml"],
+    fields: [
+      {
+        key: "auth.saml.display_name",
+        labelKey: "displayName",
+        secret: false,
+        helpKey: "displayName",
+      },
+      {
+        key: "auth.saml.idp_metadata_url",
+        labelKey: "idpMetadataUrl",
+        secret: false,
+        helpKey: "idpMetadataUrl",
+      },
+      {
+        key: "auth.saml.idp_metadata_xml",
+        labelKey: "idpMetadataXml",
+        secret: false,
+        helpKey: "idpMetadataXml",
+        multiline: true,
+      },
+      {
+        key: "auth.saml.sp_entity_id",
+        labelKey: "spEntityId",
+        secret: false,
+        helpKey: "spEntityId",
+      },
+      {
+        key: "auth.saml.email_attribute",
+        labelKey: "emailAttribute",
+        secret: false,
+        helpKey: "emailAttribute",
+      },
+      {
+        key: "auth.saml.name_attribute",
+        labelKey: "nameAttribute",
+        secret: false,
+        helpKey: "nameAttribute",
+      },
+    ],
+  },
 ];
 
 function AuthSettingsPage() {
@@ -186,8 +245,10 @@ function AuthSettingsPage() {
     params?.find((p: SystemParameter) => p.key === key)?.secret ?? false;
 
   const isConfigured = (provider: ProviderConfig) => {
-    const clientIdField = provider.fields.find((f) => f.labelKey === "clientId");
-    return clientIdField ? Boolean((values[clientIdField.key] || "").trim()) : false;
+    const requiredKinds = provider.requiredForEnable ?? ["clientId"];
+    const requiredFields = provider.fields.filter((f) => requiredKinds.includes(f.labelKey));
+    if (requiredFields.length === 0) return false;
+    return requiredFields.some((f) => Boolean((values[f.key] || "").trim()));
   };
 
   const persistedEnabled = (provider: ProviderConfig): boolean => {
@@ -337,6 +398,24 @@ function AuthSettingsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
+              {provider.name === "SAML 2.0" && (
+                <div
+                  className="rounded-md border bg-muted/50 p-3 text-xs space-y-1"
+                  data-testid="saml-sp-info"
+                >
+                  <p className="text-muted-foreground">{t("server:auth.samlSpInfo")}</p>
+                  <p>
+                    <span className="text-muted-foreground">
+                      {t("server:auth.samlMetadataUrlLabel")}:
+                    </span>{" "}
+                    <code>{`${window.location.origin}/api/v1/auth/saml/metadata`}</code>
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">{t("server:auth.samlAcsUrlLabel")}:</span>{" "}
+                    <code>{`${window.location.origin}/api/v1/auth/saml/acs`}</code>
+                  </p>
+                </div>
+              )}
               {provider.fields.map((field) => {
                 const label = t(`server:auth.fields.${field.labelKey}`);
                 return (
@@ -364,24 +443,42 @@ function AuthSettingsPage() {
                   ) : (
                     <div className="flex items-center gap-2">
                       <div className="relative flex-1">
-                        <Input
-                          id={field.key}
-                          data-testid={`provider-field-${field.key}`}
-                          type={
-                            field.secret && !visibleSecrets.has(field.key)
-                              ? "password"
-                              : "text"
-                          }
-                          placeholder={field.labelKey === "tenantId" ? "common" : label}
-                          value={values[field.key] ?? ""}
-                          onChange={(e) =>
-                            setValues((prev) => ({
-                              ...prev,
-                              [field.key]: e.target.value,
-                            }))
-                          }
-                          disabled={setParam.isPending}
-                        />
+                        {field.multiline ? (
+                          <Textarea
+                            id={field.key}
+                            data-testid={`provider-field-${field.key}`}
+                            rows={4}
+                            className="font-mono text-xs"
+                            placeholder={label}
+                            value={values[field.key] ?? ""}
+                            onChange={(e) =>
+                              setValues((prev) => ({
+                                ...prev,
+                                [field.key]: e.target.value,
+                              }))
+                            }
+                            disabled={setParam.isPending}
+                          />
+                        ) : (
+                          <Input
+                            id={field.key}
+                            data-testid={`provider-field-${field.key}`}
+                            type={
+                              field.secret && !visibleSecrets.has(field.key)
+                                ? "password"
+                                : "text"
+                            }
+                            placeholder={field.labelKey === "tenantId" ? "common" : label}
+                            value={values[field.key] ?? ""}
+                            onChange={(e) =>
+                              setValues((prev) => ({
+                                ...prev,
+                                [field.key]: e.target.value,
+                              }))
+                            }
+                            disabled={setParam.isPending}
+                          />
+                        )}
                         {field.secret && (
                           <Button
                             type="button"

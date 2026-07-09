@@ -67,6 +67,9 @@
     "enabled": "Enabled",
     "unsavedChanges": "Unsaved changes",
     "helpText": "Credential changes take effect after a server restart. The Enabled toggle takes effect immediately for the login page once saved.",
+    "samlSpInfo": "Give these URLs to your IdP administrator to configure the SAML connection.",
+    "samlMetadataUrlLabel": "SP metadata / entity ID URL",
+    "samlAcsUrlLabel": "ACS (Assertion Consumer Service) URL",
     "fields": {
       "clientId": "Client ID",
       "clientSecret": "Client Secret",
@@ -80,7 +83,12 @@
       "scopes": "Scopes",
       "emailClaim": "Email Claim",
       "nameClaim": "Name Claim",
-      "avatarClaim": "Avatar Claim"
+      "avatarClaim": "Avatar Claim",
+      "idpMetadataUrl": "IdP Metadata URL",
+      "idpMetadataXml": "IdP Metadata XML",
+      "spEntityId": "SP Entity ID Override",
+      "emailAttribute": "Email Attribute",
+      "nameAttribute": "Name Attribute"
     },
     "fieldHelp": {
       "tenantId": "Your Entra directory (tenant) ID, or a verified domain. Leave blank for \"common\" (multi-tenant). Use \"organizations\" or \"consumers\" to restrict account types.",
@@ -89,7 +97,12 @@
       "scopes": "Space-separated OAuth2 scopes. \"openid\" is always included. Defaults to \"openid email profile\" when blank.",
       "emailClaim": "ID token claim used for the user's email. Defaults to \"email\".",
       "nameClaim": "ID token claim used for the user's display name. Defaults to \"name\".",
-      "avatarClaim": "ID token claim used for the user's avatar URL. Defaults to \"picture\"."
+      "avatarClaim": "ID token claim used for the user's avatar URL. Defaults to \"picture\".",
+      "idpMetadataUrl": "The identity provider's metadata URL, fetched (and cached) to learn its SSO endpoint and signing certificate. Leave blank if you paste the metadata XML directly below.",
+      "idpMetadataXml": "Pasted IdP metadata XML, used instead of fetching the URL above when set. Takes precedence over the URL when both are provided.",
+      "spEntityId": "Overrides this SP's entity ID as advertised in its own metadata. Defaults to the metadata URL below when blank.",
+      "emailAttribute": "Assertion attribute used for the user's email. Falls back to common attribute names (email, mail, ...) and then to the NameID when it looks like an email address.",
+      "nameAttribute": "Assertion attribute used for the user's display name. Falls back to common attribute names (cn, displayName, ...)."
     }
   },
   "hashing": {
