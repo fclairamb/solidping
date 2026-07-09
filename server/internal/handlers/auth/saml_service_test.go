@@ -244,6 +244,46 @@ func TestSAMLMetadata_WellFormed(t *testing.T) {
 		descriptor.SPSSODescriptors[0].AssertionConsumerServices[0].Location)
 }
 
+// TestSAMLMetadata_AvailableBeforeIdPConfigured is the regression test for
+// the chicken-and-egg design decision documented on spBase/serviceProvider:
+// the SP metadata endpoint only requires SAML.Enabled, not an IdP metadata
+// URL/XML, since an admin typically needs this SP's own metadata *first* to
+// configure their IdP, before they have IdP metadata to paste back. Login
+// and ACS, by contrast, do require the IdP side (see
+// TestSAMLGenerateAuthnRequest_NotConfigured).
+func TestSAMLMetadata_AvailableBeforeIdPConfigured(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	dbService, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	require.NoError(t, err)
+	require.NoError(t, dbService.Initialize(ctx))
+	t.Cleanup(func() { _ = dbService.Close() })
+
+	cfg := &config.Config{
+		SAML: config.SAMLConfig{Enabled: true}, // no IDPMetadataURL/XML set
+		Auth: config.AuthConfig{JWTSecret: "test-jwt-secret"},
+		Server: config.ServerConfig{
+			BaseURL: "http://localhost:4000",
+		},
+	}
+	authService := NewService(dbService, cfg.Auth, cfg, nil, nil)
+	svc := NewSAMLService(dbService, cfg, authService)
+
+	data, err := svc.Metadata(ctx)
+	require.NoError(t, err)
+
+	var descriptor saml.EntityDescriptor
+	require.NoError(t, xml.Unmarshal(data, &descriptor))
+	assert.Equal(t, "http://localhost:4000/api/v1/auth/saml/metadata", descriptor.EntityID)
+
+	// But login must still refuse until the IdP side is configured too.
+	_, err = svc.GenerateAuthnRequest(ctx, "/", "test-org")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrSAMLNotConfigured)
+}
+
 func TestSAMLHandleACS_HappyPath(t *testing.T) {
 	t.Parallel()
 
