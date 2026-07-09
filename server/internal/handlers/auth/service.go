@@ -2562,16 +2562,16 @@ func (s *Service) CreateOrg(
 	org.CreatedAt = now
 	org.UpdatedAt = now
 
-	if err := s.db.CreateOrganization(ctx, org); err != nil {
-		return nil, fmt.Errorf("failed to create organization: %w", err)
+	if createOrgErr := s.db.CreateOrganization(ctx, org); createOrgErr != nil {
+		return nil, fmt.Errorf("failed to create organization: %w", createOrgErr)
 	}
 
 	// Make user admin
 	member := models.NewOrganizationMember(org.UID, userUID, models.MemberRoleAdmin)
 	member.JoinedAt = &now
 
-	if err := s.db.CreateOrganizationMember(ctx, member); err != nil {
-		return nil, fmt.Errorf("failed to create membership: %w", err)
+	if createMemberErr := s.db.CreateOrganizationMember(ctx, member); createMemberErr != nil {
+		return nil, fmt.Errorf("failed to create membership: %w", createMemberErr)
 	}
 
 	activation.Emit(ctx, s.db, org.UID,
@@ -2596,8 +2596,8 @@ func (s *Service) CreateOrg(
 		keyCreatedWith: authContext.ToMap(),
 	}
 
-	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
-		return nil, err
+	if createTokenErr := s.db.CreateUserToken(ctx, refreshToken); createTokenErr != nil {
+		return nil, createTokenErr
 	}
 
 	s.enforceSessionCap(ctx, userUID)
