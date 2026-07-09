@@ -1,0 +1,116 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  isSafeReturnTo,
+  resolveDestination,
+  returnToOrg,
+} from "./login-destination";
+
+const BASE = "/dash0";
+
+describe("resolveDestination", () => {
+  it("honors a returnTo whose org matches the resolved org", () => {
+    expect(
+      resolveDestination("test", "/dash0/orgs/test/checks?q=1", BASE),
+    ).toEqual({ href: "/dash0/orgs/test/checks?q=1" });
+  });
+
+  it("preserves the query string of the deep link", () => {
+    expect(
+      resolveDestination(
+        "test",
+        "/dash0/orgs/test/incidents?state=open&sort=desc",
+        BASE,
+      ),
+    ).toEqual({
+      href: "/dash0/orgs/test/incidents?state=open&sort=desc",
+    });
+  });
+
+  it("falls back to the org root when the returnTo org differs", () => {
+    expect(
+      resolveDestination("test", "/dash0/orgs/other/checks", BASE),
+    ).toEqual({ to: "/orgs/$org", params: { org: "test" } });
+  });
+
+  it("falls back to the org root when returnTo is missing", () => {
+    expect(resolveDestination("test", undefined, BASE)).toEqual({
+      to: "/orgs/$org",
+      params: { org: "test" },
+    });
+    expect(resolveDestination("test", null, BASE)).toEqual({
+      to: "/orgs/$org",
+      params: { org: "test" },
+    });
+    expect(resolveDestination("test", "", BASE)).toEqual({
+      to: "/orgs/$org",
+      params: { org: "test" },
+    });
+  });
+
+  it("rejects an absolute http(s) URL even if it targets the right org", () => {
+    expect(
+      resolveDestination("test", "https://evil.com/dash0/orgs/test/checks", BASE),
+    ).toEqual({ to: "/orgs/$org", params: { org: "test" } });
+    expect(
+      resolveDestination("test", "http://evil.com/dash0/orgs/test", BASE),
+    ).toEqual({ to: "/orgs/$org", params: { org: "test" } });
+  });
+
+  it("rejects a protocol-relative //host URL", () => {
+    expect(
+      resolveDestination("test", "//evil.com/dash0/orgs/test/checks", BASE),
+    ).toEqual({ to: "/orgs/$org", params: { org: "test" } });
+  });
+
+  it("rejects a backslash-obfuscated URL", () => {
+    expect(
+      resolveDestination("test", "/\\evil.com/dash0/orgs/test", BASE),
+    ).toEqual({ to: "/orgs/$org", params: { org: "test" } });
+  });
+
+  it("rejects a path outside the /orgs/ subtree", () => {
+    expect(
+      resolveDestination("test", "/dash0/settings", BASE),
+    ).toEqual({ to: "/orgs/$org", params: { org: "test" } });
+  });
+
+  it("works with an empty base path", () => {
+    expect(resolveDestination("test", "/orgs/test/checks", "")).toEqual({
+      href: "/orgs/test/checks",
+    });
+    expect(resolveDestination("test", "//evil.com/orgs/test", "")).toEqual({
+      to: "/orgs/$org",
+      params: { org: "test" },
+    });
+  });
+});
+
+describe("isSafeReturnTo", () => {
+  it("accepts an in-app org path under the base path", () => {
+    expect(isSafeReturnTo("/dash0/orgs/test/checks", BASE)).toBe(true);
+  });
+
+  it("rejects absolute, protocol-relative and scheme'd values", () => {
+    expect(isSafeReturnTo("https://evil.com/dash0/orgs/x", BASE)).toBe(false);
+    expect(isSafeReturnTo("//evil.com/dash0/orgs/x", BASE)).toBe(false);
+    expect(isSafeReturnTo("javascript:alert(1)", BASE)).toBe(false);
+    expect(isSafeReturnTo("/\\evil.com", BASE)).toBe(false);
+  });
+
+  it("rejects an in-app path outside /orgs/", () => {
+    expect(isSafeReturnTo("/dash0/no-org", BASE)).toBe(false);
+  });
+});
+
+describe("returnToOrg", () => {
+  it("reads the slug after /orgs/, stripping base path and query", () => {
+    expect(returnToOrg("/dash0/orgs/test/checks?q=1", BASE)).toBe("test");
+    expect(returnToOrg("/dash0/orgs/acme", BASE)).toBe("acme");
+    expect(returnToOrg("/orgs/test/checks", "")).toBe("test");
+  });
+
+  it("returns null when there is no org segment", () => {
+    expect(returnToOrg("/dash0/settings", BASE)).toBeNull();
+  });
+});
