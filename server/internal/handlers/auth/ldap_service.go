@@ -110,9 +110,9 @@ func (s *LDAPService) Authenticate(ctx context.Context, identifier, password str
 	if err != nil {
 		return nil, fmt.Errorf("%w: dial: %w", ErrLDAPBindFailed, err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
-	if err := s.bindServiceAccount(conn); err != nil {
+	if err = s.bindServiceAccount(conn); err != nil {
 		return nil, err
 	}
 
@@ -124,7 +124,7 @@ func (s *LDAPService) Authenticate(ctx context.Context, identifier, password str
 	// The actual credential check. password is guaranteed non-empty by the
 	// guard above, and entry.DN came from our own search, not from
 	// unescaped user input — see searchUser/buildUserFilter.
-	if err := conn.Bind(entry.DN, password); err != nil {
+	if err = conn.Bind(entry.DN, password); err != nil {
 		return nil, fmt.Errorf("%w: user bind: %w", ErrLDAPBindFailed, err)
 	}
 
@@ -140,31 +140,31 @@ func (s *LDAPService) Authenticate(ctx context.Context, identifier, password str
 // when requested for a plain "ldap://" URL ("ldaps://" URLs are already TLS
 // via DialWithTLSConfig).
 func (s *LDAPService) dial() (*ldap.Conn, error) {
-	c := s.cfg.LDAP
+	ldapCfg := s.cfg.LDAP
 
 	dialOpts := []ldap.DialOpt{ldap.DialWithDialer(&net.Dialer{Timeout: ldapDialTimeout})}
 
-	isLDAPS := strings.HasPrefix(strings.ToLower(c.ServerURL), "ldaps://")
+	isLDAPS := strings.HasPrefix(strings.ToLower(ldapCfg.ServerURL), "ldaps://")
 	if isLDAPS {
 		dialOpts = append(dialOpts, ldap.DialWithTLSConfig(&tls.Config{
-			InsecureSkipVerify: c.InsecureSkipVerify,
-			ServerName:         hostnameOf(c.ServerURL),
+			InsecureSkipVerify: ldapCfg.InsecureSkipVerify,
+			ServerName:         hostnameOf(ldapCfg.ServerURL),
 		}))
 	}
 
-	conn, err := ldap.DialURL(c.ServerURL, dialOpts...)
+	conn, err := ldap.DialURL(ldapCfg.ServerURL, dialOpts...)
 	if err != nil {
 		return nil, err
 	}
 
-	if c.StartTLS && !isLDAPS {
+	if ldapCfg.StartTLS && !isLDAPS {
 		tlsConfig := &tls.Config{
-			InsecureSkipVerify: c.InsecureSkipVerify,
-			ServerName:         hostnameOf(c.ServerURL),
+			InsecureSkipVerify: ldapCfg.InsecureSkipVerify,
+			ServerName:         hostnameOf(ldapCfg.ServerURL),
 		}
 
 		if err := conn.StartTLS(tlsConfig); err != nil {
-			conn.Close()
+			_ = conn.Close()
 
 			return nil, err
 		}
@@ -282,7 +282,7 @@ func (s *LDAPService) mapEntry(entry *ldap.Entry) *LDAPUserInfo {
 // string-formatting it into the filter would let an attacker inject filter
 // syntax — e.g. a value like "*)(uid=*))(|(uid=*" — to widen or redirect the
 // search to match an entry other than the one they're supposed to be
-// authenticating as, the LDAP analogue of SQL injection. ldap.EscapeFilter
+// authenticating as, the LDAP analog of SQL injection. ldap.EscapeFilter
 // neutralizes every RFC 4515 metacharacter (parentheses, "*", backslash, and
 // NUL) by hex-escaping it, so the identifier can only ever be matched as a
 // single literal value — it can never introduce new filter clauses,
@@ -456,7 +456,9 @@ func (s *Service) findOrCreateLDAPUser(ctx context.Context, info *LDAPUserInfo) 
 // already directly reachable here (Login's LDAP fallback runs on Service
 // itself, unlike OIDC/SAML which are separate types holding an authService
 // reference).
-func (s *Service) ensureLDAPMembership(ctx context.Context, orgUID, userUID string) (*models.OrganizationMember, error) {
+func (s *Service) ensureLDAPMembership(
+	ctx context.Context, orgUID, userUID string,
+) (*models.OrganizationMember, error) {
 	member, err := s.db.GetMemberByUserAndOrg(ctx, userUID, orgUID)
 	if err == nil {
 		return member, nil

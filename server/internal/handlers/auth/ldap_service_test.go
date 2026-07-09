@@ -119,7 +119,7 @@ func TestLDAPService_Authenticate_HappyPath(t *testing.T) {
 	t.Parallel()
 
 	dir := startFakeLDAPDirectory(t)
-	dir.setServiceAccount(ldapTestServiceDN, ldapTestServicePassword)
+	dir.setServiceAccount()
 	dir.setEntries(newFakeLDAPEntry(
 		"cn=alice,ou=people,dc=example,dc=org",
 		"alice-password",
@@ -139,7 +139,7 @@ func TestLDAPService_Authenticate_WrongPassword(t *testing.T) {
 	t.Parallel()
 
 	dir := startFakeLDAPDirectory(t)
-	dir.setServiceAccount(ldapTestServiceDN, ldapTestServicePassword)
+	dir.setServiceAccount()
 	dir.setEntries(newFakeLDAPEntry(
 		"cn=alice,ou=people,dc=example,dc=org",
 		"alice-password",
@@ -157,7 +157,7 @@ func TestLDAPService_Authenticate_UserNotFound(t *testing.T) {
 	t.Parallel()
 
 	dir := startFakeLDAPDirectory(t)
-	dir.setServiceAccount(ldapTestServiceDN, ldapTestServicePassword)
+	dir.setServiceAccount()
 	dir.setEntries() // empty directory
 
 	svc := NewLDAPService(&config.Config{LDAP: newFakeLDAPConfig(dir, "")})
@@ -206,7 +206,7 @@ func TestLDAPService_Authenticate_EmptyPasswordGuard_EvenWhenDirectoryAllowsUnau
 	t.Parallel()
 
 	dir := startFakeLDAPDirectory(t)
-	dir.setServiceAccount(ldapTestServiceDN, ldapTestServicePassword)
+	dir.setServiceAccount()
 	dir.setAllowUnauthenticatedBind(true)
 
 	victimDN := "cn=victim,ou=people,dc=example,dc=org"
@@ -222,7 +222,7 @@ func TestLDAPService_Authenticate_EmptyPasswordGuard_EvenWhenDirectoryAllowsUnau
 	conn, err := ldap.DialURL(dir.serverURL())
 	require.NoError(t, err)
 
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	_, err = conn.SimpleBind(&ldap.SimpleBindRequest{
 		Username:           victimDN,
@@ -258,7 +258,7 @@ func TestLDAPInjection_BareWildcardDoesNotAuthenticateAsAnotherUser(t *testing.T
 	t.Parallel()
 
 	dir := startFakeLDAPDirectory(t)
-	dir.setServiceAccount(ldapTestServiceDN, ldapTestServicePassword)
+	dir.setServiceAccount()
 
 	victimDN := "cn=victim,ou=people,dc=example,dc=org"
 	dir.setEntries(newFakeLDAPEntry(
@@ -310,7 +310,7 @@ func TestLDAPInjection_ParenAndPipeInjectionDoesNotBypassSearch(t *testing.T) {
 	t.Parallel()
 
 	dir := startFakeLDAPDirectory(t)
-	dir.setServiceAccount(ldapTestServiceDN, ldapTestServicePassword)
+	dir.setServiceAccount()
 	dir.setEntries(newFakeLDAPEntry(
 		"cn=victim,ou=people,dc=example,dc=org", "victim-real-password",
 		map[string][]string{
@@ -352,7 +352,7 @@ func searchFakeDirectoryRaw(t *testing.T, dir *fakeLDAPDirectory, filter string)
 	conn, err := ldap.DialURL(dir.serverURL())
 	require.NoError(t, err)
 
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	require.NoError(t, conn.Bind(ldapTestServiceDN, ldapTestServicePassword))
 
@@ -407,7 +407,7 @@ func TestLogin_LDAPHappyPath_AutoProvisionsUserAndSession(t *testing.T) {
 	t.Parallel()
 
 	dir := startFakeLDAPDirectory(t)
-	dir.setServiceAccount(ldapTestServiceDN, ldapTestServicePassword)
+	dir.setServiceAccount()
 
 	entryDN := "cn=newuser,ou=people,dc=example,dc=org"
 	dir.setEntries(newFakeLDAPEntry(
@@ -445,7 +445,7 @@ func TestLogin_LDAPWrongPassword_Rejected(t *testing.T) {
 	t.Parallel()
 
 	dir := startFakeLDAPDirectory(t)
-	dir.setServiceAccount(ldapTestServiceDN, ldapTestServicePassword)
+	dir.setServiceAccount()
 	dir.setEntries(newFakeLDAPEntry(
 		"cn=someone,ou=people,dc=example,dc=org", "correct-password",
 		map[string][]string{"mail": {"someone@example.com"}, "cn": {"Someone"}},
@@ -538,7 +538,8 @@ func TestLogin_SuperAdminNeverLockedOut_LDAPEnabledAndUnreachable(t *testing.T) 
 	require.NoError(t, dbSvc.CreateOrganizationMember(ctx, member))
 
 	resp, err := svc.Login(ctx, defaults.Organization, defaults.Email, defaults.Password, Context{})
-	require.NoError(t, err, "the super-admin must always be able to log in locally, even with LDAP enabled and unreachable")
+	require.NoError(t, err, "the super-admin must always be able to log in locally, "+
+		"even with LDAP enabled and unreachable")
 	require.NotEmpty(t, resp.AccessToken)
 }
 
@@ -551,7 +552,7 @@ func TestLogin_LDAP_EnforcesMaxSSOUsers(t *testing.T) {
 	t.Parallel()
 
 	dir := startFakeLDAPDirectory(t)
-	dir.setServiceAccount(ldapTestServiceDN, ldapTestServicePassword)
+	dir.setServiceAccount()
 	dir.setEntries(newFakeLDAPEntry(
 		"cn=quotauser,ou=people,dc=example,dc=org", "correct-password",
 		map[string][]string{"mail": {"quotauser@example.com"}, "cn": {"Quota User"}},

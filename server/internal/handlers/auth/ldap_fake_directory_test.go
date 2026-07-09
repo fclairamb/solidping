@@ -89,9 +89,11 @@ func startFakeLDAPDirectory(t *testing.T) *fakeLDAPDirectory {
 func freeTCPPort(t *testing.T) int {
 	t.Helper()
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	var listenConfig net.ListenConfig
+
+	listener, err := listenConfig.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	tcpAddr, ok := listener.Addr().(*net.TCPAddr)
 	require.True(t, ok)
@@ -103,12 +105,15 @@ func (d *fakeLDAPDirectory) serverURL() string {
 	return "ldap://" + d.addr
 }
 
-func (d *fakeLDAPDirectory) setServiceAccount(dn, password string) {
+// setServiceAccount registers the directory's bind-search service account,
+// using the package's shared ldapTestServiceDN/ldapTestServicePassword
+// constants (every test in this package uses the same ones).
+func (d *fakeLDAPDirectory) setServiceAccount() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	d.serviceBindDN = dn
-	d.serviceBindPassword = password
+	d.serviceBindDN = ldapTestServiceDN
+	d.serviceBindPassword = ldapTestServicePassword
 }
 
 func (d *fakeLDAPDirectory) setEntries(entries ...*fakeLDAPEntry) {
@@ -225,6 +230,7 @@ func (d *fakeLDAPDirectory) handleSearch(w *gldap.ResponseWriter, r *gldap.Reque
 // general-purpose LDAP filter engine (no substrings/ranges/extensible
 // match).
 func evalLDAPFilter(pkt *ber.Packet, attrs map[string][]string) bool {
+	//nolint:exhaustive // test double only implements the node types the tests exercise; see doc comment above.
 	switch pkt.Tag {
 	case ldap.FilterAnd:
 		for _, child := range pkt.Children {
