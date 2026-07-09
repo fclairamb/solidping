@@ -402,6 +402,45 @@ func TestSwitchOrgUserInfo(t *testing.T) {
 	})
 }
 
+// TestCreateOrgMintsScopedToken covers the 2026-07-08 "create-org missing
+// org-scoped token" fix at the service level: CreateOrg must mint a session
+// whose access token's orgSlug claim is the new org's slug, mirroring
+// SwitchOrg — not leave the caller holding whatever token they walked in
+// with (e.g. the zero-org completeLogin branch's orgSlug "" token).
+func TestCreateOrgMintsScopedToken(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	svc, dbSvc, ctx := setupAuthTestService(t)
+
+	user := models.NewUser("create-org@example.com")
+	user.Name = "Create Org User"
+	r.NoError(dbSvc.CreateUser(ctx, user))
+
+	resp, err := svc.CreateOrg(ctx, user.UID, CreateOrgRequest{Name: "New Co", Slug: "new-co"}, Context{})
+	r.NoError(err)
+	r.Equal("new-co", resp.Slug)
+	r.Equal("New Co", resp.Name)
+	r.NotEmpty(resp.UID)
+
+	// A session, not just org identity: accessToken/refreshToken/expiresIn/
+	// tokenType, exactly like SwitchOrg's response shape.
+	r.NotEmpty(resp.AccessToken)
+	r.NotEmpty(resp.RefreshToken)
+	r.Positive(resp.ExpiresIn)
+	r.Equal(tokenTypeBearer, resp.TokenType)
+
+	// Decode the minted access token and confirm its orgSlug claim matches
+	// the new org — this is the exact claim middleware/auth.go's
+	// RequireOrgAccess compares against orgSlug in the URL.
+	claims, err := svc.ValidateToken(ctx, resp.AccessToken)
+	r.NoError(err)
+	r.Equal("new-co", claims.OrgSlug)
+	r.Equal(string(models.MemberRoleAdmin), claims.Role)
+	r.Equal(user.UID, claims.UserUID)
+}
+
 func TestRefreshUserInfo(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
