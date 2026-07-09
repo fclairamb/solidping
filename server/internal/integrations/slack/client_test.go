@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -40,7 +42,7 @@ type fakeSlackList struct {
 	pages map[string]map[string]any
 
 	mu       sync.Mutex
-	payloads []map[string]any
+	payloads []map[string]string
 }
 
 // newFakeSlackList starts an httptest fake Slack serving the given pages for
@@ -56,12 +58,28 @@ func newFakeSlackList(t *testing.T, path string, pages map[string]map[string]any
 }
 
 func (f *fakeSlackList) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	var payload map[string]any
-	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-		f.t.Errorf("fake slack: decode payload: %v", err)
+	// Slack's cursor-paginated read methods (conversations.list, users.list)
+	// only read form-encoded params — a JSON body is silently ignored. Enforce
+	// form encoding here so a regression back to a JSON body fails loudly
+	// instead of silently serving Slack's defaults (limit 100, first page,
+	// public channels only).
+	if ct := req.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/x-www-form-urlencoded") {
+		f.t.Errorf("fake slack: expected form-encoded request, got Content-Type %q", ct)
+		writeSlackJSON(f.t, w, map[string]any{"ok": false, "error": "not_form_encoded"})
+
+		return
+	}
+
+	if err := req.ParseForm(); err != nil {
+		f.t.Errorf("fake slack: parse form: %v", err)
 		writeSlackJSON(f.t, w, map[string]any{"ok": false, "error": "invalid_payload"})
 
 		return
+	}
+
+	payload := make(map[string]string, len(req.PostForm))
+	for key := range req.PostForm {
+		payload[key] = req.PostForm.Get(key)
 	}
 
 	f.mu.Lock()
@@ -74,7 +92,7 @@ func (f *fakeSlackList) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	cursor, _ := payload["cursor"].(string)
+	cursor := payload["cursor"]
 
 	page, ok := f.pages[cursor]
 	if !ok {
@@ -87,7 +105,7 @@ func (f *fakeSlackList) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 // recordedPayloads returns a copy of the request payloads seen so far.
-func (f *fakeSlackList) recordedPayloads() []map[string]any {
+func (f *fakeSlackList) recordedPayloads() []map[string]string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -118,10 +136,10 @@ func newCappedFakeSlack(t *testing.T, itemsField string) (*atomic.Int64, *Client
 
 // requirePageSizeLimit asserts that a recorded request payload carries the
 // standard page-size limit.
-func requirePageSizeLimit(r *require.Assertions, payload map[string]any) {
-	limit, ok := payload["limit"].(float64)
+func requirePageSizeLimit(r *require.Assertions, payload map[string]string) {
+	limit, ok := payload["limit"]
 	r.True(ok, "limit must be sent on every page")
-	r.Equal(listPageSize, int(limit))
+	r.Equal(strconv.Itoa(listPageSize), limit)
 }
 
 func TestNewClientTargetsRealSlackAPI(t *testing.T) {
@@ -182,15 +200,12 @@ func TestListChannelsPaginatesAcrossAllPages(t *testing.T) {
 	cursors := make([]string, 0, len(payloads))
 
 	for _, payload := range payloads {
-		cursor, _ := payload["cursor"].(string)
+		cursor := payload["cursor"]
 		cursors = append(cursors, cursor)
 
 		requirePageSizeLimit(r, payload)
 		r.Equal("public_channel,private_channel", payload["types"])
-
-		excludeArchived, ok := payload["exclude_archived"].(bool)
-		r.True(ok)
-		r.True(excludeArchived)
+		r.Equal("true", payload["exclude_archived"])
 	}
 
 	r.Equal([]string{"", "cursor-2", "cursor-3"}, cursors)
@@ -279,7 +294,7 @@ func TestListUsersPaginatesAndFiltersAcrossPages(t *testing.T) {
 	cursors := make([]string, 0, len(payloads))
 
 	for _, payload := range payloads {
-		cursor, _ := payload["cursor"].(string)
+		cursor := payload["cursor"]
 		cursors = append(cursors, cursor)
 
 		requirePageSizeLimit(r, payload)

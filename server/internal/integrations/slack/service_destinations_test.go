@@ -1,7 +1,6 @@
 package slack
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -45,10 +44,10 @@ func TestGetDestinationsAggregatesAndSorts(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/conversations.list", func(w http.ResponseWriter, req *http.Request) {
 		// Two pages, both unsorted: sorting must happen over the aggregate.
-		var payload map[string]any
-		_ = json.NewDecoder(req.Body).Decode(&payload)
+		// conversations.list is form-encoded, so read the cursor from the form.
+		_ = req.ParseForm()
 
-		if cursor, _ := payload["cursor"].(string); cursor == "" {
+		if cursor := req.PostForm.Get("cursor"); cursor == "" {
 			writeSlackJSON(t, w, map[string]any{
 				"channels": []map[string]any{
 					{"id": "C1", "name": "zulu"},
