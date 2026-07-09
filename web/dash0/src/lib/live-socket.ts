@@ -315,14 +315,28 @@ function connectOnce(
       callbacks.onDisconnected();
 
       if (ev.code === CLOSE_TOKEN_EXPIRED) {
-        // Refresh before the run() loop's next getToken() read, so the next
-        // attempt carries a live token instead of looping on the dead one.
-        // A refresh that fails for a non-network reason (no refresh token,
-        // revoked session) means the session is genuinely over — give up
-        // instead of retrying the same dead token at the backoff cap
-        // forever (see spec Evidence: 139 useless reconnects in 70 minutes
-        // from one zombie tab). token-refresh.ts's escalate() has already
-        // cleared the session and redirected to login in that case.
+        const expiresAt = getExpiresAt();
+        if (expiresAt !== null && expiresAt > Date.now()) {
+          // The access token still has time left on it, yet the server sent a
+          // 4401: this is a transient/server-side close (proxy hiccup, restart,
+          // an out-of-band revocation a fresh dial may not repeat), not a dead
+          // session. Reconnect with the current token rather than tearing the
+          // session down — if it later genuinely expires, the run() loop's
+          // pre-dial check refreshes it (and gives up there if that refresh is
+          // refused). Only a token we can't prove is still live gets the
+          // refresh-or-give-up treatment below.
+          finish("disconnected");
+          return;
+        }
+        // Token is expired (or its liveness is unknown): refresh before the
+        // run() loop's next getToken() read, so the next attempt carries a live
+        // token instead of looping on the dead one. A refresh that fails for a
+        // non-network reason (no refresh token, revoked session) means the
+        // session is genuinely over — give up instead of retrying the same dead
+        // token at the backoff cap forever (see spec Evidence: 139 useless
+        // reconnects in 70 minutes from one zombie tab). token-refresh.ts's
+        // escalate() has already cleared the session and redirected to login in
+        // that case.
         void refreshWithOutcome().then((outcome) => {
           finish(outcome.accessToken || outcome.failureReason === "network-error"
             ? "disconnected"

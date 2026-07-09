@@ -500,6 +500,34 @@ describe("connectLiveSocket", () => {
     expect(sockets).toHaveLength(1);
   });
 
+  it("reconnects without refreshing on a 4401 close while the token is still valid", async () => {
+    // A server-initiated 4401 on a token that has not expired (transient
+    // server state, proxy hiccup, restart) must reconnect with the current
+    // token — not run the refresh-or-give-up path, which is reserved for a
+    // token we can't prove is still live. Regression guard for live-updates
+    // e2e "reconnect after a server-initiated close (4401-style)".
+    currentExpiresAt = Date.now() + 60_000; // token still has a minute left
+    const sockets: FakeSocket[] = [];
+    const factory = (url: string) => {
+      const s = new FakeSocket(url);
+      sockets.push(s);
+      return s;
+    };
+    const onDisabled = vi.fn();
+
+    connectLiveSocket("acme", noopCallbacks({ onDisabled }), factory);
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0].open();
+
+    sockets[0].serverClose(4401, "token expired");
+    await vi.advanceTimersByTimeAsync(35_000);
+
+    // A fresh socket opens (reconnect), no give-up, and refresh was never asked.
+    await vi.waitFor(() => expect(sockets.length).toBeGreaterThanOrEqual(2));
+    expect(onDisabled).not.toHaveBeenCalled();
+    expect(refreshWithOutcomeMock).not.toHaveBeenCalled();
+  });
+
   it("keeps reconnecting with backoff when a post-4401 refresh fails on a network error", async () => {
     const sockets: FakeSocket[] = [];
     const factory = (url: string) => {
