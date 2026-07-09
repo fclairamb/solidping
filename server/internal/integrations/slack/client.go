@@ -343,8 +343,16 @@ func FetchOpenIDUserInfo(ctx context.Context, userAccessToken string) (*OpenIDUs
 // next cursor; an empty next cursor ends the loop. If maxListPages is reached
 // while Slack still returns a cursor, a warning is logged and the pages
 // fetched so far are kept rather than looping forever.
+//
+// The loop also stops if the cursor stops advancing — either Slack hands back
+// the same cursor it was given (next == cursor) or a cursor already followed
+// on an earlier page (tracked in seen). Both mean no forward progress:
+// continuing would only re-fetch pages already seen, which is what causes the
+// same channels to be appended maxListPages times (conversations.list is known
+// to do this on its final page). See the duplicate-destinations spec.
 func paginate(ctx context.Context, method string, fetchPage func(cursor string) (string, error)) error {
 	cursor := ""
+	seen := make(map[string]struct{})
 
 	for range maxListPages {
 		next, err := fetchPage(cursor)
@@ -356,6 +364,19 @@ func paginate(ctx context.Context, method string, fetchPage func(cursor string) 
 			return nil
 		}
 
+		if next == cursor {
+			// Non-advancing cursor: Slack returned the same cursor it was
+			// handed. Stop rather than re-fetch the same page forever.
+			return nil
+		}
+
+		if _, ok := seen[next]; ok {
+			// Repeating cursor: we already followed this cursor on an earlier
+			// page, so pagination is cycling. Stop.
+			return nil
+		}
+
+		seen[next] = struct{}{}
 		cursor = next
 	}
 
@@ -374,6 +395,7 @@ func (c *Client) ListChannels(ctx context.Context) ([]Channel, error) {
 	const method = "conversations.list"
 
 	channels := make([]Channel, 0, listPageSize)
+	seen := make(map[string]struct{})
 
 	err := paginate(ctx, method, func(cursor string) (string, error) {
 		payload := map[string]any{
@@ -395,7 +417,17 @@ func (c *Client) ListChannels(ctx context.Context) ([]Channel, error) {
 			return "", err
 		}
 
-		channels = append(channels, result.Channels...)
+		// De-duplicate by Slack ID: a repeating cursor or overlapping pages
+		// must never surface the same channel twice in the picker.
+		for i := range result.Channels {
+			ch := result.Channels[i]
+			if _, ok := seen[ch.ID]; ok {
+				continue
+			}
+
+			seen[ch.ID] = struct{}{}
+			channels = append(channels, ch)
+		}
 
 		return result.ResponseMetadata.NextCursor, nil
 	})
@@ -412,6 +444,7 @@ func (c *Client) ListUsers(ctx context.Context) ([]SlackUser, error) {
 	const method = "users.list"
 
 	users := make([]SlackUser, 0, listPageSize)
+	seen := make(map[string]struct{})
 
 	err := paginate(ctx, method, func(cursor string) (string, error) {
 		payload := map[string]any{
@@ -431,11 +464,20 @@ func (c *Client) ListUsers(ctx context.Context) ([]SlackUser, error) {
 			return "", err
 		}
 
+		// Filter out bots/deleted members and de-duplicate by Slack ID so a
+		// repeating cursor or overlapping pages cannot surface duplicates.
 		for i := range result.Members {
 			u := result.Members[i]
-			if !u.IsBot && !u.Deleted {
-				users = append(users, u)
+			if u.IsBot || u.Deleted {
+				continue
 			}
+
+			if _, ok := seen[u.ID]; ok {
+				continue
+			}
+
+			seen[u.ID] = struct{}{}
+			users = append(users, u)
 		}
 
 		return result.ResponseMetadata.NextCursor, nil
