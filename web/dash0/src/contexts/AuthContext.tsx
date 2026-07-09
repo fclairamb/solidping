@@ -12,6 +12,7 @@ import {
   setSession,
   clearToken,
   getToken,
+  getRefreshToken,
   getExpiresAt,
   getExpiresInSeconds,
 } from "@/api/client";
@@ -107,7 +108,10 @@ interface MeResponse {
     avatarUrl?: string;
     role: string;
   };
-  organization: {
+  // Optional — a zero-org session (a user who belongs to no organization yet)
+  // gets a 200 from /auth/me with no organization. Mirrors the sibling
+  // AuthResponse.organization above, which is already optional.
+  organization?: {
     uid: string;
     slug: string;
     name?: string;
@@ -150,7 +154,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // either lands on solid footing (full session with a refresh token) or
     // is cleared immediately instead of coasting until a surprise 401 (spec
     // A.4).
-    if (getExpiresAt() === null) {
+    //
+    // Only force this when there's actually a refresh token to spend. A
+    // zero-org session (a user with no organization) has no refresh token by
+    // design, so an unconditional up-front refresh would escalate
+    // ("no-refresh-token" → clear + redirect) and log out a perfectly valid
+    // session. With no refresh token we let /auth/me below be the arbiter: a
+    // 200 (including one with no org) keeps the session, a 401/403 still
+    // clears it in the catch. This defers the "give up" decision to real
+    // evidence instead of blindly killing a session that /auth/me can still
+    // validate — the genuinely-dead case is still cleared, just by /auth/me.
+    if (getExpiresAt() === null && getRefreshToken() !== null) {
       const outcome = await refreshWithOutcome();
       if (!outcome.accessToken && outcome.failureReason !== "network-error") {
         // escalate() inside token-refresh.ts already cleared the session
