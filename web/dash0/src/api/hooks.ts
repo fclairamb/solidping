@@ -1851,9 +1851,10 @@ export function useUpdateProfile() {
   });
 }
 
-// Organization creation hook. The response never carries a fresh token (see
-// server/internal/handlers/auth/service.go OrgResponse) — the caller's
-// existing access token is used as-is, unlike the other login-shaped paths.
+// Organization creation hook. The response carries a fresh session
+// (accessToken/refreshToken/expiresIn/tokenType) scoped to the new org —
+// the caller must adopt it (see api/client.ts setSession) before navigating
+// into the org, or every org-scoped call 403s.
 export function useCreateOrg() {
   return useMutation({
     mutationFn: (data: { name: string; slug: string }) =>
@@ -1861,6 +1862,10 @@ export function useCreateOrg() {
         uid: string;
         slug: string;
         name: string;
+        accessToken: string;
+        refreshToken: string;
+        expiresIn: number;
+        tokenType: string;
       }>("/api/v1/orgs", {
         method: "POST",
         body: JSON.stringify(data),

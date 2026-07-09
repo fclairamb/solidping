@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
 import { AuroraPanel } from "@/components/ui/aurora-panel";
 import { AlertCircle, Loader2, X } from "lucide-react";
-import { ApiError } from "@/api/client";
+import { ApiError, setSession } from "@/api/client";
 import {
   useCreateOrg,
   useCreateMembershipRequest,
@@ -83,6 +83,7 @@ function CreateOrgCard() {
   const { t } = useTranslation("auth");
   const navigate = useNavigate();
   const createOrg = useCreateOrg();
+  const { refreshUser } = useAuth();
 
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -102,6 +103,14 @@ function CreateOrgCard() {
     setError(null);
     try {
       const result = await createOrg.mutateAsync({ name, slug });
+      // The pre-creation token is scoped to no org (orgSlug "") — adopt the
+      // fresh org-scoped session the server just minted before navigating,
+      // or every org-scoped call on the new org 403s.
+      setSession(result.accessToken, result.refreshToken, result.expiresIn);
+      // Best-effort: sync AuthContext's user/organizations (e.g. the sidebar
+      // org switcher) with the new org. Navigation proceeds even if this
+      // fails — the new token is already good enough for the dashboard.
+      await refreshUser().catch(() => {});
       navigate({ to: "/orgs/$org", params: { org: result.slug } });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("unexpectedError"));
