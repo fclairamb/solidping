@@ -545,6 +545,20 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		oidcAuth.GET("/callback", oidcOAuthHandler.Callback)
 	}
 
+	// SAML 2.0 SP routes (org-scoped, public). Metadata is served whenever
+	// SAML is enabled at all — even before an IdP is configured — since an
+	// admin typically needs this SP's own metadata first, to configure their
+	// IdP, before they have IdP metadata to paste back; login/ACS need the
+	// IdP side configured too (checked again inside the service).
+	if s.config.SAML.Enabled {
+		samlService := auth.NewSAMLService(s.dbService, s.config, s.authService)
+		samlHandler := auth.NewSAMLHandler(samlService, s.config)
+		samlAuth := api.NewGroup("/auth/saml")
+		samlAuth.GET("/login", samlHandler.Login)
+		samlAuth.POST("/acs", samlHandler.ACS)
+		samlAuth.GET("/metadata", samlHandler.Metadata)
+	}
+
 	// Auth providers endpoint (public)
 	providersHandler := auth.NewProvidersHandler(s.config, passkeyService.Enabled)
 	api.GET("/auth/providers", providersHandler.ListProviders)

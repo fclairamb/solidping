@@ -105,6 +105,25 @@ func (h *ProvidersHandler) ListProviders(writer http.ResponseWriter, _ bunrouter
 		})
 	}
 
+	// SAML's wire protocol differs from the OAuth-shaped providers above
+	// (POST-back ACS instead of a GET callback, a metadata endpoint instead
+	// of a client id/secret pair), but from the login page's point of view
+	// it's the same shape: a full-page redirect to
+	// /api/v1/auth/saml/login?org=...&redirect_uri=... and back with tokens
+	// in the query string. It therefore fits this same discovery list rather
+	// than needing a bespoke UI element.
+	if h.cfg.SAML.Enabled && (h.cfg.SAML.IDPMetadataURL != "" || h.cfg.SAML.IDPMetadataXML != "") {
+		name := h.cfg.SAML.DisplayName
+		if name == "" {
+			name = "SSO"
+		}
+
+		providers = append(providers, ProviderInfo{
+			Name: name,
+			Type: "saml",
+		})
+	}
+
 	return h.WriteJSON(writer, http.StatusOK, ProvidersResponse{
 		Data:                providers,
 		RegistrationEnabled: h.cfg.Auth.RegistrationEmailPattern != "",
