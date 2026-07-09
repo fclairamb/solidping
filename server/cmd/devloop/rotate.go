@@ -23,6 +23,13 @@ const (
 // path.1. The writer never returns an error: on open or write failure it warns
 // once on stderr and degrades to a no-op, because file logging must never take
 // down the dev loop.
+//
+// The active file is preferentially cut at a line boundary, so it may overshoot
+// maxSize by the remainder of the current line — but never past a hard ceiling
+// of 2*maxSize, at which point it is force-cut mid-line. That ceiling is what
+// keeps a runaway child (e.g. a backend hot-looping on an error with no newline,
+// or emitting one unbounded line) from growing the log without limit: total
+// on-disk size stays bounded by 2*maxSize*(backups+1) whatever the child does.
 type rotatingWriter struct {
 	mu      sync.Mutex
 	path    string
@@ -67,10 +74,13 @@ func (w *rotatingWriter) Write(data []byte) (int, error) {
 	return total, nil
 }
 
-// rotationCut returns the index just past the newline at which the active file
-// must rotate, or -1 when data fits under the cap or contains no line boundary
-// past it (a torn line is never split across files; the file may overshoot the
-// cap by the remainder of the current line).
+// rotationCut returns the index at which the active file must rotate, or -1 when
+// the whole chunk can be appended to the current file. Rotation is preferred at
+// the first line boundary at or after maxSize so a line is not split across
+// files. A stream that emits no newline within reach is tolerated only until the
+// active file would reach the hard ceiling (2*maxSize), past which it is force-
+// cut mid-line — otherwise a newline-less or pathologically long line would grow
+// the file without bound.
 func (w *rotatingWriter) rotationCut(data []byte) int {
 	remaining := w.maxSize - w.size
 	if int64(len(data)) < remaining {
@@ -80,11 +90,19 @@ func (w *rotatingWriter) rotationCut(data []byte) int {
 	if searchFrom < 0 {
 		searchFrom = 0
 	}
-	idx := bytes.IndexByte(data[searchFrom:], '\n')
-	if idx < 0 {
+	if idx := bytes.IndexByte(data[searchFrom:], '\n'); idx >= 0 {
+		return int(searchFrom) + idx + 1
+	}
+	// No line boundary within reach: keep the line intact until the hard ceiling,
+	// then force a mid-line cut so a newline-less stream can't grow unbounded.
+	hardRemaining := 2*w.maxSize - w.size
+	if int64(len(data)) < hardRemaining {
 		return -1
 	}
-	return int(searchFrom) + idx + 1
+	if hardRemaining < 1 {
+		hardRemaining = 1 // always make progress toward a rotation
+	}
+	return int(hardRemaining)
 }
 
 func (w *rotatingWriter) writeFile(data []byte) {

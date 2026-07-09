@@ -100,6 +100,43 @@ func TestRotatingWriterSplitsLargeWriteAtLineBoundaries(t *testing.T) {
 	r.Equal(strings.TrimSuffix(testLine(0), "\n"), backup2[0])
 }
 
+func TestRotatingWriterHardCapsNewlinelessStream(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "backend.log")
+
+	// A child hot-looping with no newline in its output (the failure mode that
+	// grew logs/backend.log into the tens of GB): every write must still leave
+	// the active file bounded by the hard ceiling of 2*maxSize, and the whole
+	// family (active + backups) bounded regardless of how much is thrown at it.
+	const maxSize = 100
+	writer := newRotatingWriter(path, maxSize, 2)
+
+	chunk := []byte(strings.Repeat("x", 40)) // no '\n' anywhere, ever
+	for range 1000 {
+		n, err := writer.Write(chunk)
+		r.NoError(err)
+		r.Equal(len(chunk), n)
+
+		info, err := os.Stat(path)
+		r.NoError(err)
+		r.LessOrEqual(info.Size(), int64(2*maxSize), "active file must never exceed the hard ceiling")
+	}
+
+	// 40 KB written; without the hard cap the active file would be ~40 KB. The
+	// whole family stays bounded by 2*maxSize per file (active + 2 backups).
+	entries, err := os.ReadDir(dir)
+	r.NoError(err)
+	var totalOnDisk int64
+	for _, entry := range entries {
+		info, err := entry.Info()
+		r.NoError(err)
+		totalOnDisk += info.Size()
+	}
+	r.LessOrEqual(totalOnDisk, int64(2*maxSize*3), "log family must stay bounded across rotations")
+}
+
 func TestRotatingWriterStartsFreshAndKeepsPreviousTail(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
