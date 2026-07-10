@@ -115,10 +115,28 @@ func (s *Service) ListPublicStatusUpdates(
 		return []*db.PublicStatusUpdate{}, nil
 	}
 
+	type rowResult struct {
+		UID          string    `bun:"uid"`
+		SectionUID   *string   `bun:"section_uid"`
+		CheckUID     *string   `bun:"check_uid"`
+		IncidentUID  *string   `bun:"incident_uid"`
+		Title        string    `bun:"title"`
+		BodyMarkdown string    `bun:"body_markdown"`
+		LinkURL      *string   `bun:"link_url"`
+		Kind         string    `bun:"kind"`
+		PublishedAt  time.Time `bun:"published_at"`
+	}
+
+	var rowResults []rowResult
+
+	// Use a bun-style `?` placeholder (not a Postgres `$1`): bun formats the
+	// query itself and only substitutes `?`, so a literal `$1` would reach
+	// Postgres unbound → "there is no parameter $1" (SQLSTATE 42P02). The
+	// history-window `historyDays` is an int, so fmt.Sprintf interpolation is safe.
 	rawQuery := fmt.Sprintf(
 		`SELECT uid, section_uid, check_uid, incident_uid, title, body_markdown, link_url, kind, published_at
 		 FROM status_updates
-		 WHERE status_page_uid = $1
+		 WHERE status_page_uid = ?
 		   AND deleted_at IS NULL
 		   AND published_at >= NOW() - INTERVAL '%d days'
 		 ORDER BY published_at DESC
@@ -126,7 +144,7 @@ func (s *Service) ListPublicStatusUpdates(
 		historyDays,
 	)
 
-	rows, err := s.db.QueryContext(ctx, rawQuery, statusPageUID)
+	err := s.db.NewRaw(rawQuery, statusPageUID).Scan(ctx, &rowResults)
 	if err != nil {
 		// Graceful degradation: table may not exist yet.
 		if strings.Contains(err.Error(), "does not exist") ||
@@ -136,25 +154,22 @@ func (s *Service) ListPublicStatusUpdates(
 
 		return nil, err
 	}
-	defer rows.Close() //nolint:errcheck
 
-	var updates []*db.PublicStatusUpdate
-
-	for rows.Next() {
-		entry := &db.PublicStatusUpdate{}
-		if scanErr := rows.Scan(
-			&entry.UID, &entry.SectionUID, &entry.CheckUID, &entry.IncidentUID,
-			&entry.Title, &entry.BodyMarkdown, &entry.LinkURL, &entry.Kind, &entry.PublishedAt,
-		); scanErr != nil {
-			return nil, scanErr
+	result := make([]*db.PublicStatusUpdate, len(rowResults))
+	for idx := range rowResults {
+		entry := &rowResults[idx]
+		result[idx] = &db.PublicStatusUpdate{
+			UID:          entry.UID,
+			SectionUID:   entry.SectionUID,
+			CheckUID:     entry.CheckUID,
+			IncidentUID:  entry.IncidentUID,
+			Title:        entry.Title,
+			BodyMarkdown: entry.BodyMarkdown,
+			LinkURL:      entry.LinkURL,
+			Kind:         entry.Kind,
+			PublishedAt:  entry.PublishedAt,
 		}
-
-		updates = append(updates, entry)
 	}
 
-	if rowsErr := rows.Err(); rowsErr != nil {
-		return nil, rowsErr
-	}
-
-	return updates, nil
+	return result, nil
 }
