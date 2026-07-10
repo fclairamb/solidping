@@ -25,7 +25,7 @@ const portPublicStatusUpdates = 15448
 // the mismatch shipped. This proves the placeholder now binds and the window /
 // soft-delete predicates work end to end.
 //
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with the other embedded-Postgres tests in this package
+//nolint:paralleltest // shares dev-machine resources (embedded-postgres pwfile extraction) with its siblings
 func TestListPublicStatusUpdates_WindowAndSoftDelete_Postgres(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
