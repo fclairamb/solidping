@@ -3,7 +3,6 @@ import {
   ArrowUpRight,
   Bell,
   BellRing,
-  Bot,
   Bug,
   LayoutDashboard,
   ListChecks,
@@ -116,11 +115,6 @@ const navItems = [
     titleKey: "myPages",
     path: "/orgs/$org/me/notifications" as const,
     icon: BellRing,
-  },
-  {
-    titleKey: "ai",
-    path: "/orgs/$org/mcp" as const,
-    icon: Bot,
   },
 ];
 

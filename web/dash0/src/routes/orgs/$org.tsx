@@ -14,7 +14,6 @@ import {
   BadgeCheck,
   Bell,
   BellRing,
-  Bot,
   Loader2,
   Bug,
   Building,
@@ -137,7 +136,6 @@ function Breadcrumbs({ org }: { org: string }) {
   const isEscalation = matches.some((m) => m.routeId.startsWith("/orgs/$org/escalation-policies"));
   const isDependencies = matches.some((m) => m.routeId.startsWith("/orgs/$org/dependencies"));
   const isDesignReference = matches.some((m) => m.routeId.startsWith("/orgs/$org/design-reference"));
-  const isMcp = routeIds.has("/orgs/$org/mcp");
   const isDiscovery = matches.some((m) => m.routeId.startsWith("/orgs/$org/discovery"));
   const isJobs = matches.some((m) => m.routeId.startsWith("/orgs/$org/jobs"));
   const isCheckJobDetail = routeIds.has("/orgs/$org/jobs/check/$checkJobUid");
@@ -395,6 +393,7 @@ function Breadcrumbs({ org }: { org: string }) {
     const isTokens = routeIds.has("/orgs/$org/account/tokens");
     const isSessions = routeIds.has("/orgs/$org/account/sessions");
     const isSecurity = routeIds.has("/orgs/$org/account/security");
+    const isAi = routeIds.has("/orgs/$org/account/mcp");
     const subLabel = isProfile
       ? t("profile")
       : isTokens
@@ -403,7 +402,9 @@ function Breadcrumbs({ org }: { org: string }) {
           ? t("sessions")
           : isSecurity
             ? t("security")
-            : null;
+            : isAi
+              ? t("ai")
+              : null;
     return (
       <>
         {subLabel ? (
@@ -664,15 +665,6 @@ function Breadcrumbs({ org }: { org: string }) {
       <span className={activeClass}>
         <Palette className={iconClass} />
         {t("designReference")}
-      </span>
-    );
-  }
-
-  if (isMcp) {
-    return (
-      <span className={activeClass}>
-        <Bot className={iconClass} />
-        {t("ai")}
       </span>
     );
   }

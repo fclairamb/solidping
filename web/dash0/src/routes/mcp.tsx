@@ -10,8 +10,9 @@ type McpRedirectSearch = {
 // browser hitting GET /api/v1/mcp to /dash0/mcp?from=get without knowing the
 // org (the request is unauthenticated), so this route — like the root
 // redirect in index.tsx — resolves the org from the auth context and
-// forwards, preserving the query string. Logged-out users then go through
-// the normal login-with-returnTo flow via the /orgs/$org guard.
+// forwards to the Account MCP page, preserving the query string. Logged-out
+// users then go through the normal login-with-returnTo flow via the
+// /orgs/$org guard.
 export const Route = createFileRoute("/mcp")({
   validateSearch: (search: Record<string, unknown>): McpRedirectSearch => ({
     from: typeof search.from === "string" ? search.from : undefined,
@@ -30,6 +31,6 @@ function McpRedirect() {
   }
 
   return (
-    <Navigate to="/orgs/$org/mcp" params={{ org: org || "default" }} search={search} />
+    <Navigate to="/orgs/$org/account/mcp" params={{ org: org || "default" }} search={search} />
   );
 }
