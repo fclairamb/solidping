@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/fclairamb/solidping/compare/v0.2.2...v0.2.3) (2026-07-10)
+
+
+### Bug Fixes
+
+* batch 2026-07-10 — Slack destinations (form-encoding + dedup), OAuth returnTo, realtimews org check ([#119](https://github.com/fclairamb/solidping/issues/119)) ([46df1de](https://github.com/fclairamb/solidping/commit/46df1deea992db3e1a64751a94ca3549cb10f4f0))
+
 ## [0.2.2](https://github.com/fclairamb/solidping/compare/v0.2.1...v0.2.2) (2026-07-09)
 
 
