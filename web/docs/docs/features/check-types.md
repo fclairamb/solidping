@@ -5,7 +5,7 @@ title: Check Types
 
 # Check Types
 
-SolidPing supports **36 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
+SolidPing supports **38 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
 
 ## Network Checks
 
@@ -146,6 +146,27 @@ wss://hostname/path  # With TLS
 |--------|-------------|---------|
 | URL | WebSocket endpoint | `wss://api.example.com/ws` |
 | Timeout | Connection timeout | `10s` |
+
+### RDP (Remote Desktop)
+
+Monitor Remote Desktop Protocol servers. Unlike a plain TCP/3389 port probe, this checker performs the **pre-auth RDP negotiation handshake** (X.224 Connection Request/Confirm, MS-RDPBCGR): a valid answer proves the RDP listener (TermService, xrdp, …) actually parsed the request — not just that a firewall forwards the port. The handshake needs **no credentials** and stops before any authentication.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| Host | RDP server hostname or IP | - (required) |
+| Port | TCP port | `3389` |
+| Timeout | Check timeout (max `60s`) | `5s` |
+| Require NLA | Mark **down** unless the server selects Network Level Authentication (CredSSP) — catches NLA silently disabled by policy | off |
+| Cert warning (days) | Mark **warning** when the server certificate expires in at most this many days. `0` = off | off |
+| Cert critical (days) | Mark **down** when the server certificate expires in at most this many days. Must be ≤ Cert warning. `0` = off | off |
+
+- **Default verdict** = TCP connect + a valid X.224 Connection Confirm. A negotiation failure (`RDP_NEG_FAILURE`, e.g. `HYBRID_REQUIRED_BY_SERVER`) or a non-RDP answer yields **down**.
+- The negotiated **security protocol** (`rdp`, `tls`, `nla`, `nla_ex`, `rdstls`) and the server's negotiation flags are reported in the check output.
+- When a TLS-based protocol is selected, the checker completes one TLS handshake to read the **server certificate** (subject, issuer, expiry, self-signed flag). RDP certificates are routinely self-signed or from an internal CA, so only the leaf's expiry is inspected — the chain is deliberately not validated. An already-expired certificate is always **down**.
+
+:::note Network access
+RDP hosts are typically reachable only from inside a network — run the check from a worker with network access to the host. The handshake is pre-auth and closes cleanly, so it generates connection events but no authentication-failure noise in Windows event logs.
+:::
 
 ## Security & Certificates
 
