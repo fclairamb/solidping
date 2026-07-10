@@ -3,6 +3,8 @@ package middleware
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -43,7 +45,9 @@ const (
 	HeaderConcurrencyQueuedMs = "X-Concurrency-Queued-Ms"
 )
 
-// ipEntry holds per-IP rate-limiter and concurrency state.
+// ipEntry holds per-bucket rate-limiter and concurrency state. A bucket is
+// keyed either by client IP (anonymous traffic) or by a hash of the
+// presented bearer token (authenticated traffic) — see bucketFor.
 //
 // sem is the active-slot semaphore (capacity = MaxConcurrent).
 // rateQueue and concurQueue are admission semaphores for the waiting rooms —
@@ -57,10 +61,27 @@ type ipEntry struct {
 	lastSeen    time.Time
 }
 
-// RateLimiter provides per-IP rate limiting and concurrency limiting middleware.
+// entryIdleTTL is how long an idle bucket (and an IP's token-key registry)
+// survives before the cleanup loop evicts it.
+const entryIdleTTL = 5 * time.Minute
+
+// tokenSet tracks the distinct token bucket keys recently seen from one
+// client IP, capping how many live token buckets a single IP can mint
+// (cfg.TokenBucketsPerIP). Guarded by mu; pruned lazily on cap pressure and
+// evicted wholesale by cleanupLoop once idle.
+type tokenSet struct {
+	mu       sync.Mutex
+	keys     map[string]time.Time // token bucket key -> last seen
+	lastSeen time.Time
+}
+
+// RateLimiter provides per-client rate limiting and concurrency limiting
+// middleware. Buckets are per bearer token for authenticated traffic and
+// per IP for anonymous traffic.
 type RateLimiter struct {
-	entries sync.Map
-	cfg     config.RateLimitConfig
+	entries   sync.Map // bucket key -> *ipEntry
+	tokenSets sync.Map // client IP -> *tokenSet
+	cfg       config.RateLimitConfig
 }
 
 // NewRateLimiter creates a RateLimiter and starts its background cleanup goroutine.
@@ -72,8 +93,8 @@ func NewRateLimiter(cfg config.RateLimitConfig, ctx context.Context) *RateLimite
 	return rl
 }
 
-func (rl *RateLimiter) getEntry(ip string) *ipEntry {
-	if val, ok := rl.entries.Load(ip); ok {
+func (rl *RateLimiter) getEntry(key string) *ipEntry {
+	if val, ok := rl.entries.Load(key); ok {
 		entry, ok2 := val.(*ipEntry)
 		if ok2 {
 			entry.lastSeen = time.Now()
@@ -109,14 +130,15 @@ func (rl *RateLimiter) getEntry(ip string) *ipEntry {
 		concurQueue: concurQueue,
 		lastSeen:    time.Now(),
 	}
-	actual, _ := rl.entries.LoadOrStore(ip, entry)
+	actual, _ := rl.entries.LoadOrStore(key, entry)
 	if typedEntry, ok := actual.(*ipEntry); ok {
 		return typedEntry
 	}
 	return entry
 }
 
-// cleanupLoop evicts entries idle for more than 5 minutes, running every 2 minutes.
+// cleanupLoop evicts buckets and token-key registries idle for more than
+// entryIdleTTL, running every 2 minutes.
 func (rl *RateLimiter) cleanupLoop(ctx context.Context) {
 	ticker := time.NewTicker(2 * time.Minute)
 	defer ticker.Stop()
@@ -125,10 +147,24 @@ func (rl *RateLimiter) cleanupLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			cutoff := time.Now().Add(-5 * time.Minute)
+			cutoff := time.Now().Add(-entryIdleTTL)
 			rl.entries.Range(func(k, val any) bool {
 				if entry, ok := val.(*ipEntry); ok && entry.lastSeen.Before(cutoff) {
 					rl.entries.Delete(k)
+				}
+				return true
+			})
+			rl.tokenSets.Range(func(k, val any) bool {
+				set, ok := val.(*tokenSet)
+				if !ok {
+					rl.tokenSets.Delete(k)
+					return true
+				}
+				set.mu.Lock()
+				idle := set.lastSeen.Before(cutoff)
+				set.mu.Unlock()
+				if idle {
+					rl.tokenSets.Delete(k)
 				}
 				return true
 			})
@@ -207,6 +243,84 @@ func extractIP(req *http.Request, trustedProxies int) string {
 	return host
 }
 
+// Bucket-kind labels for the caller's rate/concurrency bucket, reported by
+// /api/mgmt/limits.
+const (
+	// BucketKindIP marks a bucket keyed by client IP (anonymous traffic, or
+	// token traffic past the per-IP token-bucket cap).
+	BucketKindIP = "ip"
+	// BucketKindToken marks a bucket keyed by a hash of the presented
+	// bearer token (authenticated traffic).
+	BucketKindToken = "token"
+)
+
+// admitTokenKey records tokenKey as live for ip and reports whether the IP
+// is still under its token-bucket cap. Keys idle for more than entryIdleTTL
+// are pruned lazily when the cap is hit, so token rotation (e.g. hourly JWT
+// refresh) doesn't permanently consume cap slots.
+func (rl *RateLimiter) admitTokenKey(ip, tokenKey string) bool {
+	val, _ := rl.tokenSets.LoadOrStore(ip, &tokenSet{keys: make(map[string]time.Time)})
+	set, ok := val.(*tokenSet)
+	if !ok {
+		return false
+	}
+
+	now := time.Now()
+	set.mu.Lock()
+	defer set.mu.Unlock()
+	set.lastSeen = now
+
+	if _, seen := set.keys[tokenKey]; seen {
+		set.keys[tokenKey] = now
+		return true
+	}
+	if len(set.keys) >= rl.cfg.TokenBucketsPerIP {
+		cutoff := now.Add(-entryIdleTTL)
+		for k, last := range set.keys {
+			if last.Before(cutoff) {
+				delete(set.keys, k)
+			}
+		}
+	}
+	if len(set.keys) >= rl.cfg.TokenBucketsPerIP {
+		return false
+	}
+	set.keys[tokenKey] = now
+	return true
+}
+
+// bucketFor resolves the rate/concurrency bucket for a request, returning
+// the bucket key, its kind (BucketKindIP or BucketKindToken), and the
+// resolved client IP.
+//
+// Authenticated traffic is keyed by a stable hash of the presented bearer
+// token rather than by client IP, so a team behind one shared NAT/VPN
+// egress doesn't collapse into a single bucket. The token is NOT verified
+// here — the limiter runs before auth — which is acceptable for rate
+// limiting: the goal is fair-share isolation, not authentication. To keep
+// "mint a random token, get a fresh bucket" from becoming an IP-limit
+// bypass, each client IP may hold at most cfg.TokenBucketsPerIP live token
+// buckets; tokens beyond the cap (and anonymous or malformed-auth requests)
+// fall back to the shared per-IP bucket, so a single IP is bounded to
+// (cap+1)x the per-IP allowance. The "t:" key prefix cannot collide with an
+// IP key: 't' is not a valid IPv4/IPv6 character.
+func (rl *RateLimiter) bucketFor(req *http.Request) (key, kind, ip string) {
+	ip = extractIP(req, rl.cfg.TrustedProxies)
+	if rl.cfg.TokenBucketsPerIP <= 0 {
+		return ip, BucketKindIP, ip
+	}
+	token := extractToken(req)
+	if token == "" {
+		return ip, BucketKindIP, ip
+	}
+	sum := sha256.Sum256([]byte(token))
+	tokenKey := "t:" + hex.EncodeToString(sum[:8])
+	if !rl.admitTokenKey(ip, tokenKey) {
+		return ip, BucketKindIP, ip
+	}
+	return tokenKey, BucketKindToken, ip
+}
+
 func writeLimitError(writer http.ResponseWriter, code base.ErrorCode, title, detail string) {
 	writer.Header().Set("Content-Type", "application/json")
 	if code == base.ErrorCodeRateLimited {
@@ -258,8 +372,8 @@ func (rl *RateLimiter) RateLimit(next bunrouter.HandlerFunc) bunrouter.HandlerFu
 			return next(writer, req)
 		}
 
-		ip := extractIP(req.Request, rl.cfg.TrustedProxies)
-		entry := rl.getEntry(ip)
+		key, _, _ := rl.bucketFor(req.Request)
+		entry := rl.getEntry(key)
 
 		if entry.limiter.Allow() {
 			return next(writer, req)
@@ -346,16 +460,25 @@ func (rl *RateLimiter) ExtractIP(req *http.Request) string {
 	return extractIP(req, rl.cfg.TrustedProxies)
 }
 
-// StateFor returns a snapshot of the per-IP rate-limit and concurrency state
-// without consuming a token or acquiring a semaphore slot. If the IP has no
-// entry yet, it returns the "fresh IP" defaults (full burst, zero in-flight).
-func (rl *RateLimiter) StateFor(ip string) IPState {
+// CallerBucket resolves the caller's bucket exactly like the limiting
+// middlewares do, returning the bucket key (for StateFor), its kind
+// (BucketKindIP or BucketKindToken), and the resolved client IP. Exposed for
+// the /api/mgmt/limits introspection handler.
+func (rl *RateLimiter) CallerBucket(req *http.Request) (key, kind, ip string) {
+	return rl.bucketFor(req)
+}
+
+// StateFor returns a snapshot of a bucket's rate-limit and concurrency state
+// without consuming a token or acquiring a semaphore slot. If the bucket has
+// no entry yet, it returns the "fresh bucket" defaults (full burst, zero
+// in-flight).
+func (rl *RateLimiter) StateFor(key string) IPState {
 	state := IPState{
 		Remaining: float64(rl.cfg.Burst),
 		InFlight:  0,
 	}
 
-	val, ok := rl.entries.Load(ip)
+	val, ok := rl.entries.Load(key)
 	if !ok {
 		return state
 	}
@@ -388,8 +511,8 @@ func (rl *RateLimiter) ConcurrencyLimit(next bunrouter.HandlerFunc) bunrouter.Ha
 			return next(writer, req)
 		}
 
-		ip := extractIP(req.Request, rl.cfg.TrustedProxies)
-		entry := rl.getEntry(ip)
+		key, _, _ := rl.bucketFor(req.Request)
+		entry := rl.getEntry(key)
 
 		select {
 		case entry.sem <- struct{}{}:

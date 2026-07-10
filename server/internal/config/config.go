@@ -489,6 +489,14 @@ type RateLimitConfig struct {
 	// Set to 1 if behind a single nginx/ingress that sets X-Forwarded-For.
 	TrustedProxies int `koanf:"trusted_proxies"`
 
+	// TokenBucketsPerIP caps how many distinct bearer-token buckets a single
+	// client IP may hold live at once. Authenticated requests are keyed by a
+	// hash of their (unverified) bearer token so users behind a shared
+	// NAT/VPN egress each get their own bucket; the cap keeps "mint a fresh
+	// token, get a fresh bucket" bounded to at most this multiple of the
+	// per-IP allowance. 0 disables token keying (all requests keyed by IP).
+	TokenBucketsPerIP int `koanf:"token_buckets_per_ip"`
+
 	// RateQueue is the per-IP waiting-room size for requests that lost the
 	// fast-path token race. Up to this many requests may wait for the next
 	// token refill before being rejected with 429. 0 disables the slow lane
@@ -662,6 +670,7 @@ func Load() (*Config, error) {
 				Burst:             60,
 				MaxConcurrent:     20,
 				TrustedProxies:    0,
+				TokenBucketsPerIP: 50,
 				RateQueue:         10,
 				ConcurrencyQueue:  10,
 				MaxQueueWait:      30 * time.Second,
@@ -917,6 +926,7 @@ func applyRateLimitingEnv(cfg *RateLimitConfig) {
 	intEnv("SP_SERVER_RATE_LIMITING_BURST", &cfg.Burst)
 	intEnv("SP_SERVER_RATE_LIMITING_MAX_CONCURRENT", &cfg.MaxConcurrent)
 	intEnv("SP_SERVER_RATE_LIMITING_TRUSTED_PROXIES", &cfg.TrustedProxies)
+	intEnv("SP_SERVER_RATE_LIMITING_TOKEN_BUCKETS_PER_IP", &cfg.TokenBucketsPerIP)
 	intEnv("SP_SERVER_RATE_LIMITING_RATE_QUEUE", &cfg.RateQueue)
 	intEnv("SP_SERVER_RATE_LIMITING_CONCURRENCY_QUEUE", &cfg.ConcurrencyQueue)
 	durEnv("SP_SERVER_RATE_LIMITING_MAX_QUEUE_WAIT", &cfg.MaxQueueWait)
