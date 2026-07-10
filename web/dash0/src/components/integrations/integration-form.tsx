@@ -80,7 +80,10 @@ export function IntegrationForm({ type, initial, initialName, onChange, org, cha
   const { t } = useTranslation("integrations");
   const [name, setName] = useState(initial?.name || initialName || "");
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
-  const [isDefault, setIsDefault] = useState(initial?.isDefault ?? false);
+  // Create flow (initial === null) starts enabled: most users setting up a
+  // notification channel want it wired into new checks by default. Edit flows
+  // pass a real `initial`, so the stored value is respected.
+  const [isDefault, setIsDefault] = useState(initial?.isDefault ?? true);
   const [settings, setSettings] = useState<Record<string, unknown>>(
     initial?.settings || {},
   );
