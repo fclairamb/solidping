@@ -456,6 +456,52 @@ func TestApplySchedulingLaneEnv(t *testing.T) {
 	r.Equal(7, cfg.FastLaneReserved)
 }
 
+// TestApplySchedulingCheckTimeoutEnv confirms SP_SCHEDULING_CHECK_TIMEOUT_MS
+// lands on the snake_case-tagged CheckTimeoutMs field despite koanf's env
+// underscore→dot collapse (spec 2026-07-10-11). Uses t.Setenv, incompatible
+// with t.Parallel.
+func TestApplySchedulingCheckTimeoutEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_SCHEDULING_CHECK_TIMEOUT_MS", "9000")
+
+	cfg := SchedulingConfig{CheckTimeoutMs: 15000}
+	applySchedulingEnv(&cfg)
+
+	r.InEpsilon(9000.0, cfg.CheckTimeoutMs, 1e-9)
+}
+
+// TestApplySchedulingCheckTimeoutEnv_InvalidKeepsExisting confirms a
+// non-numeric env value leaves the existing default untouched.
+func TestApplySchedulingCheckTimeoutEnv_InvalidKeepsExisting(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_SCHEDULING_CHECK_TIMEOUT_MS", "not-a-number")
+
+	cfg := SchedulingConfig{CheckTimeoutMs: 15000}
+	applySchedulingEnv(&cfg)
+
+	r.InEpsilon(15000.0, cfg.CheckTimeoutMs, 1e-9)
+}
+
+// TestLoad_SchedulingCheckTimeoutDefault confirms Load() defaults the global
+// check timeout to 15000ms (spec 2026-07-10-11) with no config file or env
+// override in play, and that SP_SCHEDULING_CHECK_TIMEOUT_MS overrides it.
+func TestLoad_SchedulingCheckTimeoutDefault(t *testing.T) {
+	r := require.New(t)
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.InEpsilon(15000.0, cfg.Server.Scheduling.CheckTimeoutMs, 1e-9,
+		"default global check timeout is 15000ms")
+
+	t.Setenv("SP_SCHEDULING_CHECK_TIMEOUT_MS", "20000")
+	cfg, err = Load()
+	r.NoError(err)
+	r.InEpsilon(20000.0, cfg.Server.Scheduling.CheckTimeoutMs, 1e-9,
+		"SP_SCHEDULING_CHECK_TIMEOUT_MS overrides the default")
+}
+
 // TestValidateLaneThresholds covers the fast<slow lane-band validation (spec
 // 2026-07-01-03): inverted or degenerate bands are startup errors, disabled
 // classification (slow=0) is accepted, negatives are rejected.

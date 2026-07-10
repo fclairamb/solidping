@@ -1513,6 +1513,31 @@ func (panickingChecker) Execute(context.Context, checkerdef.Config) (*checkerdef
 	panic("simulated checker panic")
 }
 
+// deadlineRecordingChecker records the context deadline its Execute observes,
+// then returns immediately with StatusUp. Used to assert executeJob builds the
+// execution context with a checkTimeout + 1s deadline (spec 2026-07-10-11). The
+// channel send/receive inside runCheckerGuarded → executeJob establishes
+// happens-before with the test's read, but atomics keep the race detector
+// unambiguously happy regardless.
+type deadlineRecordingChecker struct {
+	deadlineUnixNano atomic.Int64
+	observed         atomic.Bool
+}
+
+func (c *deadlineRecordingChecker) Type() checkerdef.CheckType {
+	return checkerdef.CheckType("test-deadline")
+}
+func (c *deadlineRecordingChecker) Validate(*checkerdef.CheckSpec) error { return nil }
+
+func (c *deadlineRecordingChecker) Execute(ctx context.Context, _ checkerdef.Config) (*checkerdef.Result, error) {
+	if dl, ok := ctx.Deadline(); ok {
+		c.deadlineUnixNano.Store(dl.UnixNano())
+		c.observed.Store(true)
+	}
+
+	return &checkerdef.Result{Status: checkerdef.StatusUp}, nil
+}
+
 // withShortAbandonGrace overrides abandonGrace for the duration of the test
 // so hang/panic watchdog tests don't have to wait out the real 5s grace.
 func withShortAbandonGrace(t *testing.T, grace time.Duration) {
@@ -1673,6 +1698,55 @@ func TestRunCheckerGuarded_WellBehavedCtxHonoringChecker_WatchdogDoesNotFire(t *
 
 	abandonedAfter := testutil.ToFloat64(prommetrics.CheckRunnerAbandoned.WithLabelValues(checkJob.Type))
 	assert.InDelta(t, abandonedBefore, abandonedAfter, metricDelta, "abandoned counter must not move")
+}
+
+// TestExecuteJob_ExecutionContextIsCheckTimeoutPlusOneSecond drives the real
+// executeJob path and asserts the execution context handed to the checker has a
+// deadline of checkTimeout + 1s (spec 2026-07-10-11). The +1s margin lets a
+// checker that honors its own timeout report a clean StatusTimeout before the
+// hard context cancellation; without it, the context and the checker's internal
+// timeout race and the result is a generic context-deadline-exceeded.
+//
+//nolint:paralleltest // Test uses shared database state
+func TestExecuteJob_ExecutionContextIsCheckTimeoutPlusOneSecond(t *testing.T) {
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	org := models.NewOrganization("test-org", "")
+	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+	worker := models.NewWorker("test-worker", "Test Worker")
+	_, err := dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
+	require.NoError(t, err)
+	runner.setWorker(worker)
+
+	const dlType = checkerdef.CheckType("test-deadline")
+	recorder := &deadlineRecordingChecker{}
+	runner.getChecker, runner.parseConfig = stubResolvers(dlType, recorder)
+
+	// Flat 3s check timeout (cost-aware off, CostTimeoutFactor 0), so
+	// executeJob derives checkTimeout = 3s deterministically regardless of the
+	// job's cost EWMA and the execution context deadline is start + 4s.
+	const checkTimeout = 3 * time.Second
+	runner.schedParams = scheduling.Params{CheckTimeout: checkTimeout}
+
+	check := models.NewCheck(org.UID, "deadline-"+uuid.New().String()[:8], string(dlType))
+	require.NoError(t, dbSvc.CreateCheck(ctx, check))
+	checkJob := new(models.CheckJob)
+	require.NoError(t, dbSvc.DB().NewSelect().Model(checkJob).Where("check_uid = ?", check.UID).Scan(ctx))
+	claimJobForTest(t, dbSvc, ctx, checkJob, worker.UID)
+
+	start := time.Now()
+	require.NoError(t, runner.executeJob(ctx, runner.logger, checkJob))
+
+	require.True(t, recorder.observed.Load(), "the checker must observe a context deadline")
+	deadline := time.Unix(0, recorder.deadlineUnixNano.Load())
+	observed := deadline.Sub(start)
+
+	assert.InDelta(t, (checkTimeout + time.Second).Seconds(), observed.Seconds(), 0.5,
+		"execution context deadline must be checkTimeout + 1s")
+	assert.Greater(t, observed, checkTimeout,
+		"the +1s margin must be present so a ctx-honoring checker can report StatusTimeout before the hard cancel")
 }
 
 // stubResolvers builds getChecker/parseConfig overrides that resolve exactly
