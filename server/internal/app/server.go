@@ -153,6 +153,7 @@ type Server struct {
 	slackSocketSupervisor *slack.SlackSocketSupervisor
 	rateLimiter           *middleware.RateLimiter // For the /api/mgmt/limits introspection handler
 	realtimeHub           *realtime.Hub           // Live hint stream fan-out (nil when realtime disabled)
+	statusPagesService    *statuspages.Service    // Public status-page lookups for status0 OG-metadata injection
 	cancelCtx             context.CancelFunc
 	workersWg             sync.WaitGroup // Tracks workers
 }
@@ -1047,6 +1048,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Status pages routes (authentication required)
 	statusPagesService := statuspages.NewService(s.dbService, s.config)
+	// Retained on the server so serveStatus0Static can resolve pages for
+	// per-page Open Graph / Twitter Card metadata injection.
+	s.statusPagesService = statusPagesService
 	statusPagesHandler := statuspages.NewHandler(statusPagesService, s.config)
 	orgStatusPages := api.NewGroup("/orgs/:org/status-pages").Use(authMiddleware.RequireAuth)
 	orgStatusPages.GET("", statusPagesHandler.ListStatusPages)
@@ -1764,10 +1768,12 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req bunrouter.Re
 	filePath := path.Join("status0res", reqPath)
 
 	maxAgeSeconds := 31536000 // 1 year for assets
+	servingIndexFallback := false
 
 	data, err := status0Files.ReadFile(filePath)
 	if err != nil {
 		maxAgeSeconds = 60
+		servingIndexFallback = true
 		filePath = path.Join("status0res", "index.html")
 
 		data, err = status0Files.ReadFile(filePath)
@@ -1776,6 +1782,16 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req bunrouter.Re
 			http.Error(writer, "File not found", http.StatusNotFound)
 
 			return nil
+		}
+	}
+
+	// For a status-page path served via the SPA index.html fallback, inject
+	// per-page Open Graph / Twitter Card metadata so shared links get a rich
+	// preview. Non-status-page paths and missing/disabled/private pages keep
+	// the generic head (no page-existence leak).
+	if servingIndexFallback {
+		if meta, ok := s.status0MetaForPath(req, reqPath); ok {
+			data = []byte(injectStatus0Meta(string(data), meta))
 		}
 	}
 
