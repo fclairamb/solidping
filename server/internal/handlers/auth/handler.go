@@ -80,6 +80,20 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 	}
 }
 
+// setAccessTokenCookie sets the SPA session cookie so cookie-authenticated
+// surfaces (the embedded MCP OAuth authorize/consent flow) work without a
+// refresh bounce. Every login-shaped response — password login, SSO
+// callbacks, refresh, org switch, 2FA — must set it through this helper so
+// the cookie shape stays defined in one place.
+func setAccessTokenCookie(writer http.ResponseWriter, accessToken string, expiresIn int) {
+	http.SetCookie(writer, &http.Cookie{
+		Name:   CookieAuthToken,
+		Value:  accessToken,
+		Path:   "/",
+		MaxAge: expiresIn,
+	})
+}
+
 // Login handles user login with email and password.
 // Org is read from the request body (optional).
 func (h *Handler) Login(writer http.ResponseWriter, req bunrouter.Request) error {
@@ -112,13 +126,7 @@ func (h *Handler) Login(writer http.ResponseWriter, req bunrouter.Request) error
 		return h.handleAuthError(writer, err)
 	}
 
-	// Set access token cookie
-	http.SetCookie(writer, &http.Cookie{
-		Name:   CookieAuthToken,
-		Value:  resp.AccessToken,
-		Path:   "/",
-		MaxAge: resp.ExpiresIn,
-	})
+	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
@@ -201,12 +209,7 @@ func (h *Handler) Refresh(writer http.ResponseWriter, req bunrouter.Request) err
 	// Re-set the access token cookie exactly like Login does — without this,
 	// cookie-authenticated surfaces silently lapse after the first hour even
 	// though the bearer-token session keeps refreshing.
-	http.SetCookie(writer, &http.Cookie{
-		Name:   CookieAuthToken,
-		Value:  resp.AccessToken,
-		Path:   "/",
-		MaxAge: resp.ExpiresIn,
-	})
+	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]interface{}{
 		"accessToken": resp.AccessToken,
@@ -374,13 +377,7 @@ func (h *Handler) SwitchOrg(writer http.ResponseWriter, req bunrouter.Request) e
 		return h.handleAuthError(writer, err)
 	}
 
-	// Set access token cookie
-	http.SetCookie(writer, &http.Cookie{
-		Name:   CookieAuthToken,
-		Value:  resp.AccessToken,
-		Path:   "/",
-		MaxAge: resp.ExpiresIn,
-	})
+	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
@@ -533,12 +530,7 @@ func (h *Handler) ConfirmRegistration(writer http.ResponseWriter, req bunrouter.
 	}
 
 	if resp.AccessToken != "" {
-		http.SetCookie(writer, &http.Cookie{
-			Name:   CookieAuthToken,
-			Value:  resp.AccessToken,
-			Path:   "/",
-			MaxAge: resp.ExpiresIn,
-		})
+		setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -662,12 +654,7 @@ func (h *Handler) CreateOrg(writer http.ResponseWriter, req bunrouter.Request) e
 	// Set access token cookie, matching every other login-shaped response
 	// (Login, SwitchOrg, Verify2FA, …) — CreateOrg now mints a fresh session
 	// too.
-	http.SetCookie(writer, &http.Cookie{
-		Name:   CookieAuthToken,
-		Value:  resp.AccessToken,
-		Path:   "/",
-		MaxAge: resp.ExpiresIn,
-	})
+	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
 
 	return h.WriteJSON(writer, http.StatusCreated, resp)
 }
@@ -802,12 +789,7 @@ func (h *Handler) AcceptInvite(writer http.ResponseWriter, req bunrouter.Request
 	}
 
 	if resp.AccessToken != "" {
-		http.SetCookie(writer, &http.Cookie{
-			Name:   CookieAuthToken,
-			Value:  resp.AccessToken,
-			Path:   "/",
-			MaxAge: resp.ExpiresIn,
-		})
+		setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -994,13 +976,7 @@ func (h *Handler) Verify2FA(writer http.ResponseWriter, req bunrouter.Request) e
 		return h.handle2FAError(writer, err)
 	}
 
-	// Set access token cookie
-	http.SetCookie(writer, &http.Cookie{
-		Name:   CookieAuthToken,
-		Value:  resp.AccessToken,
-		Path:   "/",
-		MaxAge: resp.ExpiresIn,
-	})
+	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
@@ -1035,13 +1011,7 @@ func (h *Handler) Recovery2FA(writer http.ResponseWriter, req bunrouter.Request)
 		return h.handle2FAError(writer, err)
 	}
 
-	// Set access token cookie
-	http.SetCookie(writer, &http.Cookie{
-		Name:   CookieAuthToken,
-		Value:  resp.AccessToken,
-		Path:   "/",
-		MaxAge: resp.ExpiresIn,
-	})
+	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }

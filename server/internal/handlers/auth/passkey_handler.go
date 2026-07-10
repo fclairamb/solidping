@@ -145,12 +145,7 @@ func (h *PasskeyHandler) LoginFinish(writer http.ResponseWriter, req bunrouter.R
 		return h.translatePasskeyError(writer, err)
 	}
 
-	http.SetCookie(writer, &http.Cookie{
-		Name:   CookieAuthToken,
-		Value:  resp.AccessToken,
-		Path:   "/",
-		MaxAge: resp.ExpiresIn,
-	})
+	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
