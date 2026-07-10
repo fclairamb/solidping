@@ -586,8 +586,8 @@ test.describe("Badges", () => {
     const urlText = await page.getByTestId("badge-embed-url").textContent();
     expect(urlText).toContain(`/checks/${target.slug}/badges/`);
 
-    // The dropdown trigger shows the deep-linked check's name (merge path:
-    // it isn't in the first list page but is merged into the options).
+    // The picker trigger shows the deep-linked check's name (resolved via the
+    // direct check fetch, not the picker's own search results).
     await expect(page.getByTestId("badge-check-select")).toContainText(
       targetName,
       { timeout: 5000 }
