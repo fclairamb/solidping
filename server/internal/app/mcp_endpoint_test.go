@@ -38,7 +38,22 @@ const (
 	mcpE2EOrg      = "mcp-e2e"
 	mcpE2EEmail    = "mcp-e2e@example.com"
 	mcpE2EPassword = "mcp-e2e-password-1234"
+
+	mcpInitializeRPC = `{"jsonrpc":"2.0","id":1,"method":"initialize",` +
+		`"params":{"protocolVersion":"2025-03-26",` +
+		`"clientInfo":{"name":"walkthrough","version":"1.0"}}}`
+	mcpToolsListRPC = `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`
+	mcpToolsCallRPC = `{"jsonrpc":"2.0","id":3,"method":"tools/call",` +
+		`"params":{"name":"list_checks","arguments":{}}}`
 )
+
+// httpResult is a fully-consumed HTTP response (body already read and
+// closed), so helpers can hand results around without tripping bodyclose.
+type httpResult struct {
+	status int
+	header http.Header
+	body   []byte
+}
 
 // mcpTestEnv is a fully wired server (real NewServer + real SetupRoutes over
 // in-memory SQLite) listening on an httptest socket, with one seeded org and
@@ -99,19 +114,20 @@ func newMCPTestEnv(t *testing.T) *mcpTestEnv {
 	return &mcpTestEnv{ts: ts, client: client}
 }
 
-// do sends a request and returns the response with its fully-read body.
-func (e *mcpTestEnv) do(t *testing.T, req *http.Request) (*http.Response, []byte) {
+// do sends a request and returns the fully-consumed response.
+func (e *mcpTestEnv) do(t *testing.T, req *http.Request) httpResult {
 	t.Helper()
 	resp, err := e.client.Do(req)
 	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
 
-	return resp, body
+	return httpResult{status: resp.StatusCode, header: resp.Header, body: body}
 }
 
-func (e *mcpTestEnv) get(t *testing.T, path string, headers map[string]string) (*http.Response, []byte) {
+func (e *mcpTestEnv) get(t *testing.T, path string, headers map[string]string) httpResult {
 	t.Helper()
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, e.ts.URL+path, nil)
 	require.NoError(t, err)
@@ -133,13 +149,13 @@ func (e *mcpTestEnv) login(t *testing.T) string {
 	r.NoError(err)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, respBody := e.do(t, req)
-	r.Equal(http.StatusOK, resp.StatusCode, "login failed: %s", respBody)
+	res := e.do(t, req)
+	r.Equal(http.StatusOK, res.status, "login failed: %s", res.body)
 
 	var loginResp struct {
 		AccessToken string `json:"accessToken"`
 	}
-	r.NoError(json.Unmarshal(respBody, &loginResp))
+	r.NoError(json.Unmarshal(res.body, &loginResp))
 	r.NotEmpty(loginResp.AccessToken)
 
 	return loginResp.AccessToken
@@ -149,7 +165,7 @@ func (e *mcpTestEnv) login(t *testing.T) string {
 // response and decoded body.
 func (e *mcpTestEnv) mcpCall(
 	t *testing.T, bearer, sessionID, rpcBody string,
-) (*http.Response, map[string]any) {
+) (httpResult, map[string]any) {
 	t.Helper()
 	r := require.New(t)
 
@@ -162,14 +178,14 @@ func (e *mcpTestEnv) mcpCall(
 		req.Header.Set("Mcp-Session-Id", sessionID)
 	}
 
-	resp, body := e.do(t, req)
+	res := e.do(t, req)
 
 	decoded := map[string]any{}
-	if len(bytes.TrimSpace(body)) > 0 {
-		r.NoError(json.Unmarshal(body, &decoded), "body: %s", body)
+	if len(bytes.TrimSpace(res.body)) > 0 {
+		r.NoError(json.Unmarshal(res.body, &decoded), "body: %s", res.body)
 	}
 
-	return resp, decoded
+	return res, decoded
 }
 
 func TestMCPEndpointGetAndAPIFallthrough(t *testing.T) {
@@ -180,26 +196,26 @@ func TestMCPEndpointGetAndAPIFallthrough(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 
-		resp, _ := env.get(t, "/api/v1/mcp", map[string]string{
+		res := env.get(t, "/api/v1/mcp", map[string]string{
 			"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 		})
-		r.Equal(http.StatusFound, resp.StatusCode)
-		r.Equal("/dash0/mcp?from=get", resp.Header.Get("Location"))
+		r.Equal(http.StatusFound, res.status)
+		r.Equal("/dash0/mcp?from=get", res.header.Get("Location"))
 	})
 
 	t.Run("SSE-probing GET gets the spec 405 with Allow", func(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 
-		resp, body := env.get(t, "/api/v1/mcp", map[string]string{
+		res := env.get(t, "/api/v1/mcp", map[string]string{
 			"Accept": "text/event-stream",
 		})
-		r.Equal(http.StatusMethodNotAllowed, resp.StatusCode)
-		r.Contains(resp.Header.Get("Allow"), "POST")
-		r.Contains(resp.Header.Get("Content-Type"), "application/json")
+		r.Equal(http.StatusMethodNotAllowed, res.status)
+		r.Contains(res.header.Get("Allow"), "POST")
+		r.Contains(res.header.Get("Content-Type"), "application/json")
 
 		var errResp base.ErrorResponse
-		r.NoError(json.Unmarshal(body, &errResp))
+		r.NoError(json.Unmarshal(res.body, &errResp))
 		r.Equal(string(base.ErrorCodeMethodNotAllowed), errResp.Code)
 	})
 
@@ -207,15 +223,15 @@ func TestMCPEndpointGetAndAPIFallthrough(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 
-		resp, body := env.get(t, "/api/v1/definitely-not-a-route", map[string]string{
+		res := env.get(t, "/api/v1/definitely-not-a-route", map[string]string{
 			"Accept": "text/html,application/xhtml+xml",
 		})
-		r.Equal(http.StatusNotFound, resp.StatusCode)
-		r.Contains(resp.Header.Get("Content-Type"), "application/json")
-		r.NotContains(strings.ToLower(string(body)), "<!doctype html")
+		r.Equal(http.StatusNotFound, res.status)
+		r.Contains(res.header.Get("Content-Type"), "application/json")
+		r.NotContains(strings.ToLower(string(res.body)), "<!doctype html")
 
 		var errResp base.ErrorResponse
-		r.NoError(json.Unmarshal(body, &errResp))
+		r.NoError(json.Unmarshal(res.body, &errResp))
 		r.Equal(string(base.ErrorCodeNotFound), errResp.Code)
 	})
 
@@ -223,12 +239,12 @@ func TestMCPEndpointGetAndAPIFallthrough(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 
-		resp, _ := env.get(t, "/some/marketing/page", map[string]string{"Accept": "text/html"})
+		res := env.get(t, "/some/marketing/page", map[string]string{"Accept": "text/html"})
 		// The SPA catch-all answers 200 HTML (embedded app shell); the exact
 		// body depends on the embedded build, only the contrast with the API
 		// namespace matters here.
-		r.Equal(http.StatusOK, resp.StatusCode)
-		r.NotContains(resp.Header.Get("Content-Type"), "application/json")
+		r.Equal(http.StatusOK, res.status)
+		r.NotContains(res.header.Get("Content-Type"), "application/json")
 	})
 
 	t.Run("unauthenticated POST keeps the OAuth discovery challenge", func(t *testing.T) {
@@ -241,42 +257,46 @@ func TestMCPEndpointGetAndAPIFallthrough(t *testing.T) {
 		r.NoError(err)
 		req.Header.Set("Content-Type", "application/json")
 
-		resp, _ := env.do(t, req)
-		r.Equal(http.StatusUnauthorized, resp.StatusCode)
-		r.Contains(resp.Header.Get("WWW-Authenticate"), `resource_metadata=`)
+		res := env.do(t, req)
+		r.Equal(http.StatusUnauthorized, res.status)
+		r.Contains(res.header.Get("WWW-Authenticate"), `resource_metadata=`)
 	})
 }
 
 // TestMCPClientWalkthroughOAuth exercises the documented client connect flow
 // end to end over real HTTP: discovery -> DCR -> authorize/consent -> PKCE
 // token exchange -> initialize -> tools/list -> tools/call -> DELETE session.
+//
+//nolint:maintidx // deliberate single linear walk-through of the whole client flow
 func TestMCPClientWalkthroughOAuth(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	env := newMCPTestEnv(t)
 
 	// --- Discovery: protected-resource metadata names the authorization server.
-	resp, body := env.get(t, "/.well-known/oauth-protected-resource", nil)
-	r.Equal(http.StatusOK, resp.StatusCode)
+	res := env.get(t, "/.well-known/oauth-protected-resource", nil)
+	r.Equal(http.StatusOK, res.status)
 
+	//nolint:tagliatelle // RFC 9728 wire format requires snake_case field names.
 	var prm struct {
 		Resource             string   `json:"resource"`
 		AuthorizationServers []string `json:"authorization_servers"`
 	}
-	r.NoError(json.Unmarshal(body, &prm))
+	r.NoError(json.Unmarshal(res.body, &prm))
 	r.Equal(env.ts.URL+"/api/v1/mcp", prm.Resource)
 	r.Len(prm.AuthorizationServers, 1)
 
 	// --- Discovery: authorization-server metadata names every flow endpoint.
-	resp, body = env.get(t, "/.well-known/oauth-authorization-server", nil)
-	r.Equal(http.StatusOK, resp.StatusCode)
+	res = env.get(t, "/.well-known/oauth-authorization-server", nil)
+	r.Equal(http.StatusOK, res.status)
 
+	//nolint:tagliatelle // RFC 8414 wire format requires snake_case field names.
 	var asm struct {
 		AuthorizationEndpoint string `json:"authorization_endpoint"`
 		TokenEndpoint         string `json:"token_endpoint"`
 		RegistrationEndpoint  string `json:"registration_endpoint"`
 	}
-	r.NoError(json.Unmarshal(body, &asm))
+	r.NoError(json.Unmarshal(res.body, &asm))
 	r.NotEmpty(asm.AuthorizationEndpoint)
 	r.NotEmpty(asm.TokenEndpoint)
 	r.NotEmpty(asm.RegistrationEndpoint)
@@ -284,19 +304,22 @@ func TestMCPClientWalkthroughOAuth(t *testing.T) {
 	// --- Dynamic client registration (public client, loopback redirect).
 	redirectURI := "http://127.0.0.1:19999/callback"
 	regBody := fmt.Sprintf(
-		`{"client_name":"walkthrough","redirect_uris":[%q],"grant_types":["authorization_code","refresh_token"],"token_endpoint_auth_method":"none"}`,
+		`{"client_name":"walkthrough","redirect_uris":[%q],`+
+			`"grant_types":["authorization_code","refresh_token"],`+
+			`"token_endpoint_auth_method":"none"}`,
 		redirectURI)
 	req, err := http.NewRequestWithContext(
 		t.Context(), http.MethodPost, asm.RegistrationEndpoint, strings.NewReader(regBody))
 	r.NoError(err)
 	req.Header.Set("Content-Type", "application/json")
-	resp, body = env.do(t, req)
-	r.Equal(http.StatusCreated, resp.StatusCode, "register: %s", body)
+	res = env.do(t, req)
+	r.Equal(http.StatusCreated, res.status, "register: %s", res.body)
 
+	//nolint:tagliatelle // RFC 7591 wire format requires snake_case field names.
 	var reg struct {
 		ClientID string `json:"client_id"`
 	}
-	r.NoError(json.Unmarshal(body, &reg))
+	r.NoError(json.Unmarshal(res.body, &reg))
 	r.NotEmpty(reg.ClientID)
 
 	// --- Authorize: a logged-in session gets bounced to the consent screen.
@@ -318,9 +341,9 @@ func TestMCPClientWalkthroughOAuth(t *testing.T) {
 		t.Context(), http.MethodGet, asm.AuthorizationEndpoint+"?"+authQuery.Encode(), nil)
 	r.NoError(err)
 	req.Header.Set("Authorization", "Bearer "+sessionToken)
-	resp, _ = env.do(t, req)
-	r.Equal(http.StatusFound, resp.StatusCode)
-	r.Contains(resp.Header.Get("Location"), "/oauth/consent?")
+	res = env.do(t, req)
+	r.Equal(http.StatusFound, res.status)
+	r.Contains(res.header.Get("Location"), "/oauth/consent?")
 
 	// --- The user approves the consent screen -> code lands on redirect_uri.
 	req, err = http.NewRequestWithContext(
@@ -329,12 +352,12 @@ func TestMCPClientWalkthroughOAuth(t *testing.T) {
 	r.NoError(err)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Authorization", "Bearer "+sessionToken)
-	resp, body = env.do(t, req)
-	r.Equal(http.StatusFound, resp.StatusCode, "approve: %s", body)
+	res = env.do(t, req)
+	r.Equal(http.StatusFound, res.status, "approve: %s", res.body)
 
-	loc, err := url.Parse(resp.Header.Get("Location"))
+	loc, err := url.Parse(res.header.Get("Location"))
 	r.NoError(err)
-	r.True(strings.HasPrefix(resp.Header.Get("Location"), "http://127.0.0.1:19999/callback"))
+	r.True(strings.HasPrefix(res.header.Get("Location"), "http://127.0.0.1:19999/callback"))
 	code := loc.Query().Get("code")
 	r.NotEmpty(code)
 	r.Equal("walkthrough-state", loc.Query().Get("state"))
@@ -351,30 +374,29 @@ func TestMCPClientWalkthroughOAuth(t *testing.T) {
 		t.Context(), http.MethodPost, asm.TokenEndpoint, strings.NewReader(tokenForm.Encode()))
 	r.NoError(err)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, body = env.do(t, req)
-	r.Equal(http.StatusOK, resp.StatusCode, "token: %s", body)
+	res = env.do(t, req)
+	r.Equal(http.StatusOK, res.status, "token: %s", res.body)
 
+	//nolint:tagliatelle // RFC 6749 wire format requires snake_case field names.
 	var tok struct {
 		AccessToken string `json:"access_token"`
 		TokenType   string `json:"token_type"`
 	}
-	r.NoError(json.Unmarshal(body, &tok))
+	r.NoError(json.Unmarshal(res.body, &tok))
 	r.NotEmpty(tok.AccessToken)
 
 	// --- MCP: initialize opens a session.
-	resp, rpc := env.mcpCall(t, tok.AccessToken, "",
-		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","clientInfo":{"name":"walkthrough","version":"1.0"}}}`)
-	r.Equal(http.StatusOK, resp.StatusCode)
-	sessionID := resp.Header.Get("Mcp-Session-Id")
+	res, rpc := env.mcpCall(t, tok.AccessToken, "", mcpInitializeRPC)
+	r.Equal(http.StatusOK, res.status)
+	sessionID := res.header.Get("Mcp-Session-Id")
 	r.NotEmpty(sessionID)
 	result, ok := rpc["result"].(map[string]any)
 	r.True(ok, "initialize result: %v", rpc)
 	r.NotEmpty(result["protocolVersion"])
 
 	// --- tools/list names the catalog.
-	resp, rpc = env.mcpCall(t, tok.AccessToken, sessionID,
-		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
-	r.Equal(http.StatusOK, resp.StatusCode)
+	res, rpc = env.mcpCall(t, tok.AccessToken, sessionID, mcpToolsListRPC)
+	r.Equal(http.StatusOK, res.status)
 	result, ok = rpc["result"].(map[string]any)
 	r.True(ok, "tools/list result: %v", rpc)
 	tools, ok := result["tools"].([]any)
@@ -392,9 +414,8 @@ func TestMCPClientWalkthroughOAuth(t *testing.T) {
 	r.Contains(toolNames, "list_checks")
 
 	// --- one tools/call round-trip (read tool on the empty seeded org).
-	resp, rpc = env.mcpCall(t, tok.AccessToken, sessionID,
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_checks","arguments":{}}}`)
-	r.Equal(http.StatusOK, resp.StatusCode)
+	res, rpc = env.mcpCall(t, tok.AccessToken, sessionID, mcpToolsCallRPC)
+	r.Equal(http.StatusOK, res.status)
 	result, ok = rpc["result"].(map[string]any)
 	r.True(ok, "tools/call result: %v", rpc)
 	r.NotEqual(true, result["isError"], "tools/call errored: %v", result)
@@ -405,8 +426,8 @@ func TestMCPClientWalkthroughOAuth(t *testing.T) {
 	r.NoError(err)
 	req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
 	req.Header.Set("Mcp-Session-Id", sessionID)
-	resp, _ = env.do(t, req)
-	r.Equal(http.StatusNoContent, resp.StatusCode)
+	res = env.do(t, req)
+	r.Equal(http.StatusNoContent, res.status)
 
 	// A second DELETE proves the session really terminated.
 	req, err = http.NewRequestWithContext(
@@ -414,8 +435,8 @@ func TestMCPClientWalkthroughOAuth(t *testing.T) {
 	r.NoError(err)
 	req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
 	req.Header.Set("Mcp-Session-Id", sessionID)
-	resp, _ = env.do(t, req)
-	r.Equal(http.StatusNotFound, resp.StatusCode)
+	res = env.do(t, req)
+	r.Equal(http.StatusNotFound, res.status)
 }
 
 // TestMCPClientWalkthroughPAT covers the documented alternative: mint a PAT
@@ -434,26 +455,25 @@ func TestMCPClientWalkthroughPAT(t *testing.T) {
 	r.NoError(err)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+sessionToken)
-	resp, body := env.do(t, req)
-	r.Equal(http.StatusCreated, resp.StatusCode, "create PAT: %s", body)
+	res := env.do(t, req)
+	r.Equal(http.StatusCreated, res.status, "create PAT: %s", res.body)
 
 	var pat struct {
 		Token string `json:"token"`
 	}
-	r.NoError(json.Unmarshal(body, &pat))
+	r.NoError(json.Unmarshal(res.body, &pat))
 	r.NotEmpty(pat.Token)
 
 	// PAT straight to POST: initialize then tools/list.
-	resp, rpc := env.mcpCall(t, pat.Token, "",
-		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","clientInfo":{"name":"pat-walkthrough","version":"1.0"}}}`)
-	r.Equal(http.StatusOK, resp.StatusCode)
-	r.NotEmpty(resp.Header.Get("Mcp-Session-Id"))
+	res, rpc := env.mcpCall(t, pat.Token, "", mcpInitializeRPC)
+	r.Equal(http.StatusOK, res.status)
+	sessionID := res.header.Get("Mcp-Session-Id")
+	r.NotEmpty(sessionID)
 	_, ok := rpc["result"].(map[string]any)
 	r.True(ok, "initialize result: %v", rpc)
 
-	resp, rpc = env.mcpCall(t, pat.Token, resp.Header.Get("Mcp-Session-Id"),
-		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
-	r.Equal(http.StatusOK, resp.StatusCode)
+	res, rpc = env.mcpCall(t, pat.Token, sessionID, mcpToolsListRPC)
+	r.Equal(http.StatusOK, res.status)
 	result, ok := rpc["result"].(map[string]any)
 	r.True(ok, "tools/list result: %v", rpc)
 	r.NotEmpty(result["tools"])
