@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.3](https://github.com/fclairamb/solidping/compare/v0.2.2...v0.2.3) (2026-07-10)
+
+
+### Bug Fixes
+
+* **slack:** send `conversations.list`/`users.list` parameters form-encoded so Slack honors `types`/`limit`/`cursor`. Sending them in a JSON body made Slack fall back to defaults (100 items, first page only, public channels only), so the destination picker silently dropped private channels (e.g. `#solidping-dev`) and every channel past the first 100 ([#119](https://github.com/fclairamb/solidping/issues/119)) ([46df1de](https://github.com/fclairamb/solidping/commit/46df1deea992db3e1a64751a94ca3549cb10f4f0))
+* **slack:** de-duplicate destination channels and users by ID and stop pagination on a non-advancing/repeating cursor, fixing the picker listing each channel dozens of times ([#119](https://github.com/fclairamb/solidping/issues/119)) ([46df1de](https://github.com/fclairamb/solidping/commit/46df1deea992db3e1a64751a94ca3549cb10f4f0))
+* **dash0:** preserve the deep `returnTo` destination through third-party (OAuth/SSO) login instead of always landing on the organization root ([#119](https://github.com/fclairamb/solidping/issues/119)) ([46df1de](https://github.com/fclairamb/solidping/commit/46df1deea992db3e1a64751a94ca3549cb10f4f0))
+* **realtimews:** align the WebSocket handshake organization check with the REST middleware, denying cross-org database super-admin access ([#119](https://github.com/fclairamb/solidping/issues/119)) ([46df1de](https://github.com/fclairamb/solidping/commit/46df1deea992db3e1a64751a94ca3549cb10f4f0))
+
 ## [0.2.2](https://github.com/fclairamb/solidping/compare/v0.2.1...v0.2.2) (2026-07-09)
 
 
