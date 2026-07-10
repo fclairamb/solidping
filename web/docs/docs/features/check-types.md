@@ -210,6 +210,10 @@ Check whether an IP address or hostname is listed on DNS-based blocklists (DNSBL
 
 Hostnames are resolved to IPv4 before lookup. The check **fails** when the target is listed on at least one blocklist, and **succeeds** when it is clean. If every queried zone errors out, the result is inconclusive (timeout).
 
+**Error/status codes.** DNSBLs reserve the `127.255.255.0/24` range for error and status replies rather than real listings — Spamhaus, for example, returns `127.255.255.254` when a query arrives via a public/open resolver (refused) and `127.255.255.255` when a rate limit is exceeded. SolidPing treats any `127.255.255.x` answer as an error code, **not** a listing: the affected zone is reported as inconclusive and the raw code is surfaced under `error_codes` in the check output.
+
+**Spamhaus from cloud IPs.** Because workers run on public cloud (and use the provider's shared resolvers), the public `zen.spamhaus.org` zone will typically be **refused** with `127.255.255.254`. For reliable Spamhaus results, use the Spamhaus [Data Query Service (DQS)](https://www.spamhaus.com/product/data-query-service/): configure the DQS account-key blocklist zones and a dedicated resolver via the **Blocklists** and **Nameserver** options rather than querying the public `zen.spamhaus.org` zone.
+
 ## Database Checks
 
 ### PostgreSQL
