@@ -104,11 +104,7 @@ func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 	}
 
 	// 2. Query each IP against each zone, classifying with inverted DNS semantics.
-	listedSet := map[string]bool{}
-	cleanSet := map[string]bool{}
-	inconclusiveSet := map[string]bool{}
-	returnCodes := map[string][]string{}
-	errorCodes := map[string][]string{}
+	res := newZoneResults()
 
 	for _, ip := range ips {
 		reversed := reverseIP(ip)
@@ -124,32 +120,20 @@ func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 			case lookupErr == nil && len(addrs) > 0:
 				// A non-empty answer may still be an error/status reply
 				// (127.255.255.x), which must not count as a listing.
-				listings, errCodes := partitionDNSBLAddrs(addrs)
-
-				if len(listings) > 0 {
-					listedSet[zone] = true
-					returnCodes[zone] = appendUnique(returnCodes[zone], listings)
-				} else {
-					// Only error/status codes → cannot conclude a listing.
-					inconclusiveSet[zone] = true
-				}
-
-				if len(errCodes) > 0 {
-					errorCodes[zone] = appendUnique(errorCodes[zone], errCodes)
-				}
+				res.recordAnswer(zone, addrs)
 			case isNotFound(lookupErr):
-				cleanSet[zone] = true
+				res.clean[zone] = true
 			default:
-				inconclusiveSet[zone] = true
+				res.inconclusive[zone] = true
 			}
 		}
 	}
 
 	duration := time.Since(start)
 
-	listedOn := sortedKeysExcept(listedSet, nil)
-	clean := sortedKeysExcept(cleanSet, listedSet)
-	inconclusive := sortedKeysExcept(inconclusiveSet, mergeSets(listedSet, cleanSet))
+	listedOn := sortedKeysExcept(res.listed, nil)
+	clean := sortedKeysExcept(res.clean, res.listed)
+	inconclusive := sortedKeysExcept(res.inconclusive, mergeSets(res.listed, res.clean))
 
 	status := classifyStatus(len(listedOn), len(clean), len(inconclusive))
 
@@ -170,14 +154,14 @@ func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 		},
 	}
 
-	if len(returnCodes) > 0 {
-		result.Output["return_codes"] = returnCodes
+	if len(res.returnCodes) > 0 {
+		result.Output["return_codes"] = res.returnCodes
 	}
 
 	// Surface reserved 127.255.255.x error/status codes (e.g. .254 = query via
 	// public resolver refused) so operators see why a zone was inconclusive.
-	if len(errorCodes) > 0 {
-		result.Output["error_codes"] = errorCodes
+	if len(res.errorCodes) > 0 {
+		result.Output["error_codes"] = res.errorCodes
 	}
 
 	if cfg.Nameserver != "" {
@@ -185,6 +169,47 @@ func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 	}
 
 	return result, nil
+}
+
+// zoneResults accumulates per-zone classification while querying DNSBL zones.
+// listed/clean/inconclusive are zone sets; returnCodes holds genuine listing
+// addresses and errorCodes holds reserved 127.255.255.x error/status replies.
+type zoneResults struct {
+	listed       map[string]bool
+	clean        map[string]bool
+	inconclusive map[string]bool
+	returnCodes  map[string][]string
+	errorCodes   map[string][]string
+}
+
+// newZoneResults returns a zoneResults with all maps initialized.
+func newZoneResults() *zoneResults {
+	return &zoneResults{
+		listed:       map[string]bool{},
+		clean:        map[string]bool{},
+		inconclusive: map[string]bool{},
+		returnCodes:  map[string][]string{},
+		errorCodes:   map[string][]string{},
+	}
+}
+
+// recordAnswer classifies a non-empty zone answer. Genuine 127.0.0.x listings
+// mark the zone listed and are recorded under returnCodes; a set containing only
+// reserved 127.255.255.x error codes marks the zone inconclusive instead. Any
+// error codes are always surfaced under errorCodes.
+func (r *zoneResults) recordAnswer(zone string, addrs []string) {
+	listings, errCodes := partitionDNSBLAddrs(addrs)
+
+	if len(listings) > 0 {
+		r.listed[zone] = true
+		r.returnCodes[zone] = appendUnique(r.returnCodes[zone], listings)
+	} else {
+		r.inconclusive[zone] = true
+	}
+
+	if len(errCodes) > 0 {
+		r.errorCodes[zone] = appendUnique(r.errorCodes[zone], errCodes)
+	}
 }
 
 // classifyStatus maps zone counts to a check status per the spec table:
