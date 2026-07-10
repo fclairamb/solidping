@@ -243,7 +243,17 @@
     "blocklists": "Blocklist zones",
     "blocklistsHelp": "Optional. One DNS blocklist zone per line (or comma-separated). Leave empty to use the defaults (Spamhaus, SpamCop, Barracuda, UCEPROTECT).",
     "nameserver": "Custom resolver",
-    "nameserverHelp": "Optional host:port of a recursive resolver. Public resolvers (8.8.8.8, 1.1.1.1) are blocked by Spamhaus, so use a local resolver if needed."
+    "nameserverHelp": "Optional host:port of a recursive resolver. Public resolvers (8.8.8.8, 1.1.1.1) are blocked by Spamhaus, so use a local resolver if needed.",
+    "title": "Blocklist status",
+    "description": "How the target resolved against each DNS blocklist zone.",
+    "listedOn": "Listed on",
+    "clean": "Clean",
+    "inconclusive": "Inconclusive",
+    "errorCodes": "Diagnostic responses",
+    "errTypo": "Typo / malformed DNSBL zone name",
+    "errPublicResolver": "Query via public/open resolver — refused",
+    "errRateLimit": "Query volume / rate limit exceeded",
+    "errGeneric": "DNSBL error response ({{code}})"
   },
   "sip": {
     "transport": "Transport",

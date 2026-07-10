@@ -72,6 +72,7 @@ import { QueryErrorView } from "@/components/shared/error-views";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { SslChainCard } from "@/components/checks/ssl-chain-card";
 import { DockerRestartLoopCard } from "@/components/checks/docker-restart-loop-card";
+import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
 import { ResponseTimeChart, chartFetchParams, formatMs } from "@/components/checks/response-time-chart";
 import { AvailabilityTable } from "@/components/checks/availability-table";
 import { DependenciesCard } from "@/components/checks/dependencies-card";
@@ -1111,9 +1112,15 @@ function CheckDetailPage() {
                       </div>
                       <div className="bg-muted rounded-md p-3 text-sm font-mono max-h-32 overflow-auto">
                         {Object.entries(check.lastResult.output)
-                          // The SSL chain + soonest-expiring details get a
-                          // dedicated table below; don't repeat them as raw JSON.
-                          .filter(([key]) => key !== "chain" && key !== "soonestExpiring")
+                          // The SSL chain + soonest-expiring details, and the
+                          // DNSBL zone/code fields, get a dedicated card below;
+                          // don't repeat them as raw JSON.
+                          .filter(
+                            ([key]) =>
+                              key !== "chain" &&
+                              key !== "soonestExpiring" &&
+                              !(DNSBL_OUTPUT_KEYS as readonly string[]).includes(key),
+                          )
                           .map(([key, value]) => (
                             <div key={key} className="flex gap-2">
                               <span className="text-muted-foreground">
@@ -1143,6 +1150,10 @@ function CheckDetailPage() {
 
       {check.type === "docker" && (
         <DockerRestartLoopCard output={check.lastResult?.output as Record<string, unknown> | undefined} />
+      )}
+
+      {check.type === "dnsbl" && (
+        <DnsblCard output={check.lastResult?.output as Record<string, unknown> | undefined} />
       )}
 
       <DependenciesCard org={org} checkUid={checkUid} />
