@@ -419,11 +419,21 @@ func (h *Handler) ExportChecks(writer http.ResponseWriter, req bunrouter.Request
 		return h.handleListError(writer, err)
 	}
 
+	// Render the v2 wire format: pretty-printed, with the defaults block and
+	// duration strings. The document is meant to be read and diffed by humans.
+	body, err := MarshalExportDocument(doc)
+	if err != nil {
+		return h.WriteInternalError(writer, err)
+	}
+
 	// Set download headers
 	writer.Header().Set("Content-Disposition",
 		"attachment; filename=\"solidping-checks-"+orgSlug+".json\"")
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write(body)
 
-	return h.WriteJSON(writer, http.StatusOK, doc)
+	return nil
 }
 
 // ImportChecks handles importing checks from a JSON export document.

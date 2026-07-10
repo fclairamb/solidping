@@ -1207,6 +1207,7 @@ type UpsertCheckRequest struct {
 	CheckGroupUID *string           `json:"checkGroupUid"`
 	Type          string            `json:"type"`
 	Config        map[string]any    `json:"config"`
+	Regions       []string          `json:"regions,omitempty"`
 	Enabled       *bool             `json:"enabled"`
 	Internal      *bool             `json:"internal,omitempty"`
 	Period        *string           `json:"period"`
@@ -1216,6 +1217,13 @@ type UpsertCheckRequest struct {
 	// 2026-05-08-02. 0 means "open / resolve immediately on first signal".
 	ConfirmationPeriodSeconds *int `json:"confirmationPeriodSeconds,omitempty"`
 	RecoveryPeriodSeconds     *int `json:"recoveryPeriodSeconds,omitempty"`
+
+	// Adaptive resolution / flapping settings. nil leaves the value untouched
+	// (create → system default; update → unchanged).
+	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
+	FlappingWindowSeconds    *int `json:"flappingWindowSeconds,omitempty"`
+	FlapBackoffFactor        *int `json:"flapBackoffFactor,omitempty"`
+	MaxRecoveryMultiplier    *int `json:"maxRecoveryMultiplier,omitempty"`
 
 	DependsOn *[]ExportedDependency `json:"dependsOn,omitempty"`
 }
@@ -1423,14 +1431,23 @@ func (s *Service) UpsertCheck(
 	if existingCheck != nil {
 		// Check exists - update it
 		updateReq := UpdateCheckRequest{
-			Name:          &req.Name,
-			Description:   &req.Description,
-			CheckGroupUID: req.CheckGroupUID,
-			Config:        &req.Config,
-			Enabled:       req.Enabled,
-			Internal:      req.Internal,
-			Period:        req.Period,
-			Labels:        &req.Labels,
+			Name:                      &req.Name,
+			Description:               &req.Description,
+			CheckGroupUID:             req.CheckGroupUID,
+			Config:                    &req.Config,
+			Enabled:                   req.Enabled,
+			Internal:                  req.Internal,
+			Period:                    req.Period,
+			Labels:                    &req.Labels,
+			ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
+			RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,
+			ReopenCooldownMultiplier:  req.ReopenCooldownMultiplier,
+			FlappingWindowSeconds:     req.FlappingWindowSeconds,
+			FlapBackoffFactor:         req.FlapBackoffFactor,
+			MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,
+		}
+		if len(req.Regions) > 0 {
+			updateReq.Regions = &req.Regions
 		}
 
 		updatedCheck, updateErr := s.UpdateCheck(ctx, orgSlug, slug, &updateReq)
@@ -1447,16 +1464,23 @@ func (s *Service) UpsertCheck(
 
 	// Check doesn't exist - create it
 	createReq := CreateCheckRequest{
-		Name:          req.Name,
-		Slug:          slug,
-		Description:   req.Description,
-		CheckGroupUID: req.CheckGroupUID,
-		Type:          req.Type,
-		Config:        req.Config,
-		Enabled:       req.Enabled,
-		Internal:      req.Internal,
-		Period:        req.Period,
-		Labels:        req.Labels,
+		Name:                      req.Name,
+		Slug:                      slug,
+		Description:               req.Description,
+		CheckGroupUID:             req.CheckGroupUID,
+		Type:                      req.Type,
+		Config:                    req.Config,
+		Regions:                   req.Regions,
+		Enabled:                   req.Enabled,
+		Internal:                  req.Internal,
+		Period:                    req.Period,
+		Labels:                    req.Labels,
+		ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
+		RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,
+		ReopenCooldownMultiplier:  req.ReopenCooldownMultiplier,
+		FlappingWindowSeconds:     req.FlappingWindowSeconds,
+		FlapBackoffFactor:         req.FlapBackoffFactor,
+		MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,
 	}
 
 	check, err := s.CreateCheck(ctx, orgSlug, createReq)
@@ -2194,21 +2218,31 @@ func (s *Service) emitEvent(
 
 // Export/Import types
 
-// ExportDocument represents the top-level JSON export format.
+// SecretsMarkerStripped is the value of ExportDocument.Secrets when the export
+// had every secret-bearing config key removed. It is a string enum (rather than
+// a bool) so a future trusted-transport export can add "included".
+const SecretsMarkerStripped = "stripped"
+
+// ExportDocument represents the top-level JSON export format. It is the canonical
+// in-memory representation shared by export, import, and apply; the JSON tags
+// carry the v1 shape (for backward-compatible v1 decode), while v2 in/out is
+// handled by the wire layer in export_v2.go and the custom UnmarshalJSON below.
 type ExportDocument struct {
-	Version      int           `json:"version"`
-	ExportedAt   string        `json:"exportedAt"`
-	Organization string        `json:"organization"`
-	Checks       []ExportCheck `json:"checks"`
-	// SecretsStripped is true to flag that secret-bearing keys (passwords,
-	// tokens, private keys, ...) were removed from every check's Config.
-	// Importers must accept the stripped shape and the operator will
-	// re-enter secrets after import. Underscore prefix is intentional —
-	// it marks the field as a meta hint distinct from check-config keys.
-	SecretsStripped bool `json:"_secretsStripped"` //nolint:tagliatelle // intentional underscore-prefixed meta field
+	Version      int    `json:"version"`
+	ExportedAt   string `json:"exportedAt"`
+	Organization string `json:"organization"`
+	// Secrets flags whether secret-bearing keys (passwords, tokens, private
+	// keys, ...) were removed from every check's Config. "stripped" means the
+	// operator re-enters secrets after import. Serialized as the v2 `secrets`
+	// marker; import accepts the legacy `_secretsStripped` bool too (see
+	// UnmarshalJSON).
+	Secrets string        `json:"secrets,omitempty"`
+	Checks  []ExportCheck `json:"checks"`
 }
 
-// ExportCheck represents a single check in the export format.
+// ExportCheck represents a single check in the export format. The alerting
+// fields are pointers so import can distinguish "absent" (resolve to the
+// document default, then the system default) from an explicit value.
 type ExportCheck struct {
 	Name string `json:"name"`
 	Slug string `json:"slug"`
@@ -2225,13 +2259,13 @@ type ExportCheck struct {
 	Internal                  bool                 `json:"internal,omitempty"`
 	Period                    string               `json:"period,omitempty"`
 	Group                     string               `json:"group,omitempty"`
-	ConfirmationPeriodSeconds int                  `json:"confirmationPeriodSeconds,omitempty"`
-	EscalationThreshold       int                  `json:"escalationThreshold,omitempty"`
-	RecoveryPeriodSeconds     int                  `json:"recoveryPeriodSeconds,omitempty"`
+	ConfirmationPeriodSeconds *int                 `json:"confirmationPeriodSeconds,omitempty"`
+	EscalationThreshold       *int                 `json:"escalationThreshold,omitempty"`
+	RecoveryPeriodSeconds     *int                 `json:"recoveryPeriodSeconds,omitempty"`
 	ReopenCooldownMultiplier  *int                 `json:"reopenCooldownMultiplier,omitempty"`
-	FlappingWindowSeconds     int                  `json:"flappingWindowSeconds,omitempty"`
-	FlapBackoffFactor         int                  `json:"flapBackoffFactor,omitempty"`
-	MaxRecoveryMultiplier     int                  `json:"maxRecoveryMultiplier,omitempty"`
+	FlappingWindowSeconds     *int                 `json:"flappingWindowSeconds,omitempty"`
+	FlapBackoffFactor         *int                 `json:"flapBackoffFactor,omitempty"`
+	MaxRecoveryMultiplier     *int                 `json:"maxRecoveryMultiplier,omitempty"`
 	DependsOn                 []ExportedDependency `json:"dependsOn,omitempty"`
 }
 
@@ -2354,13 +2388,13 @@ func (s *Service) ExportChecks(
 			Enabled:                   check.Enabled,
 			Internal:                  check.Internal,
 			Period:                    periodStr,
-			ConfirmationPeriodSeconds: check.ConfirmationPeriodSeconds,
-			EscalationThreshold:       check.EscalationThreshold,
-			RecoveryPeriodSeconds:     check.RecoveryPeriodSeconds,
+			ConfirmationPeriodSeconds: intPtr(check.ConfirmationPeriodSeconds),
+			EscalationThreshold:       intPtr(check.EscalationThreshold),
+			RecoveryPeriodSeconds:     intPtr(check.RecoveryPeriodSeconds),
 			ReopenCooldownMultiplier:  check.ReopenCooldownMultiplier,
-			FlappingWindowSeconds:     check.FlappingWindowSeconds,
-			FlapBackoffFactor:         check.FlapBackoffFactor,
-			MaxRecoveryMultiplier:     check.MaxRecoveryMultiplier,
+			FlappingWindowSeconds:     intPtr(check.FlappingWindowSeconds),
+			FlapBackoffFactor:         intPtr(check.FlapBackoffFactor),
+			MaxRecoveryMultiplier:     intPtr(check.MaxRecoveryMultiplier),
 		}
 
 		if check.Name != nil {
@@ -2395,14 +2429,36 @@ func (s *Service) ExportChecks(
 		exportChecks = append(exportChecks, exported)
 	}
 
+	// Deterministic ordering: group (empty group last), then slug. Keeps
+	// git-committed exports diff-clean and groups related checks together.
+	sort.SliceStable(exportChecks, func(i, j int) bool {
+		groupI, groupJ := exportChecks[i].Group, exportChecks[j].Group
+		if groupI != groupJ {
+			switch {
+			case groupI == "":
+				return false
+			case groupJ == "":
+				return true
+			default:
+				return groupI < groupJ
+			}
+		}
+
+		return exportChecks[i].Slug < exportChecks[j].Slug
+	})
+
 	return &ExportDocument{
-		Version:         1,
-		ExportedAt:      time.Now().UTC().Format(time.RFC3339),
-		Organization:    orgSlug,
-		Checks:          exportChecks,
-		SecretsStripped: true,
+		Version:      ExportVersionV2,
+		ExportedAt:   time.Now().UTC().Format(time.RFC3339),
+		Organization: orgSlug,
+		Checks:       exportChecks,
+		Secrets:      SecretsMarkerStripped,
 	}, nil
 }
+
+// intPtr returns a pointer to v. Used by the exporter to populate the
+// pointer-typed ExportCheck alerting fields from concrete model values.
+func intPtr(v int) *int { return &v }
 
 // stripSecretKeysForExport returns the check's Config with every key
 // declared as secret by the checker (and every key already in
@@ -2443,7 +2499,7 @@ func stripSecretKeysForExport(check *models.Check) map[string]any {
 func (s *Service) ImportChecks(
 	ctx context.Context, orgSlug string, doc *ExportDocument, dryRun bool,
 ) (*ImportResult, error) {
-	if doc.Version != 1 {
+	if !isSupportedExportVersion(doc.Version) {
 		return nil, ErrUnsupportedExportVersion
 	}
 
@@ -2738,16 +2794,25 @@ func (s *Service) importSingleCheck(
 		checkGroupUID = &group.UID
 	}
 
-	// Build upsert request
+	// Build upsert request. The alerting fields are already resolved
+	// (check value → document default → absent) by the time the document is
+	// decoded, so a nil pointer here means "use the system default".
 	upsertReq := UpsertCheckRequest{
-		Name:          exportedCheck.Name,
-		Description:   exportedCheck.Description,
-		CheckGroupUID: checkGroupUID,
-		Type:          exportedCheck.Type,
-		Config:        exportedCheck.Config,
-		Enabled:       &exportedCheck.Enabled,
-		Internal:      &exportedCheck.Internal,
-		Labels:        exportedCheck.Labels,
+		Name:                      exportedCheck.Name,
+		Description:               exportedCheck.Description,
+		CheckGroupUID:             checkGroupUID,
+		Type:                      exportedCheck.Type,
+		Config:                    exportedCheck.Config,
+		Regions:                   exportedCheck.Regions,
+		Enabled:                   &exportedCheck.Enabled,
+		Internal:                  &exportedCheck.Internal,
+		Labels:                    exportedCheck.Labels,
+		ConfirmationPeriodSeconds: exportedCheck.ConfirmationPeriodSeconds,
+		RecoveryPeriodSeconds:     exportedCheck.RecoveryPeriodSeconds,
+		ReopenCooldownMultiplier:  exportedCheck.ReopenCooldownMultiplier,
+		FlappingWindowSeconds:     exportedCheck.FlappingWindowSeconds,
+		FlapBackoffFactor:         exportedCheck.FlapBackoffFactor,
+		MaxRecoveryMultiplier:     exportedCheck.MaxRecoveryMultiplier,
 	}
 	if exportedCheck.Period != "" {
 		upsertReq.Period = &exportedCheck.Period

@@ -175,6 +175,14 @@ func (d *Duration) Scan(value any) error {
 		return nil
 	}
 
+	// Try parsing as a Go-style duration string (e.g. "30s", "2m", "6h", "1m30s").
+	// This is the canonical form emitted by the check export v2 format; kept last
+	// so ISO8601 and the HH:MM:SS DB representation take precedence.
+	if duration, err := time.ParseDuration(str); err == nil {
+		*d = Duration(duration)
+		return nil
+	}
+
 	return fmt.Errorf("%w: %s", ErrInvalidDurationFormat, str)
 }
 
