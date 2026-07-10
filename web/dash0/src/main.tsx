@@ -36,13 +36,15 @@ const basepath = import.meta.env.VITE_BASE_URL || "";
 
   applyOAuthHandoff(handoff);
 
-  // Drop the token from the URL. Preserve the deep `returnTo` path the backend
-  // already redirected us to (now in window.location.pathname) when it passes
-  // the shared safe-path / org-match guards, falling back to the org root
-  // otherwise — instead of unconditionally discarding it for the org root.
+  // Drop the token params from the URL. Preserve the deep `returnTo` path the
+  // backend already redirected us to (now in window.location.pathname) when it
+  // passes the shared safe-path / org-match guards, falling back to the org
+  // root otherwise — and keep any non-token query params (e.g. an MCP OAuth
+  // consent `returnTo` threaded through the SSO round-trip) riding along.
   const dest = resolveHandoffDestination(
     handoff.org,
     window.location.pathname,
+    window.location.search,
     basepath,
   );
   window.history.replaceState(null, "", dest);

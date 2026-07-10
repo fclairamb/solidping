@@ -439,6 +439,72 @@ func TestMCPClientWalkthroughOAuth(t *testing.T) {
 	r.Equal(http.StatusNotFound, res.status)
 }
 
+// TestAuthorizeUnauthenticatedLoginRedirect pins the login bounce for a
+// session-less /authorize request: the Location must target the dashboard
+// login with a RELATIVE returnTo (path + query, no scheme/host). The
+// dashboard's open-redirect guard (web/dash0 lib/login-destination.ts
+// isOAuthAuthorizeReturnTo) only honors that exact relative shape — an
+// absolute returnTo is rejected there and dead-ends the MCP connect flow.
+func TestAuthorizeUnauthenticatedLoginRedirect(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	env := newMCPTestEnv(t)
+
+	// Dynamic client registration (public client, loopback redirect).
+	redirectURI := "http://127.0.0.1:19998/callback"
+	regBody := fmt.Sprintf(
+		`{"client_name":"login-redirect","redirect_uris":[%q],`+
+			`"grant_types":["authorization_code"],`+
+			`"token_endpoint_auth_method":"none"}`,
+		redirectURI)
+	req, err := http.NewRequestWithContext(
+		t.Context(), http.MethodPost, env.ts.URL+"/api/v1/oauth/register", strings.NewReader(regBody))
+	r.NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	res := env.do(t, req)
+	r.Equal(http.StatusCreated, res.status, "register: %s", res.body)
+
+	//nolint:tagliatelle // RFC 7591 wire format requires snake_case field names.
+	var reg struct {
+		ClientID string `json:"client_id"`
+	}
+	r.NoError(json.Unmarshal(res.body, &reg))
+
+	verifier := "login-redirect-code-verifier-0123456789abcdefghij"
+	sum := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
+
+	authQuery := url.Values{}
+	authQuery.Set("client_id", reg.ClientID)
+	authQuery.Set("redirect_uri", redirectURI)
+	authQuery.Set("response_type", "code")
+	authQuery.Set("scope", "mcp")
+	authQuery.Set("state", "login-redirect-state")
+	authQuery.Set("code_challenge", challenge)
+	authQuery.Set("code_challenge_method", "S256")
+
+	// No cookie, no bearer — the browser hits /authorize cold.
+	res = env.get(t, "/api/v1/oauth/authorize?"+authQuery.Encode(), nil)
+	r.Equal(http.StatusFound, res.status)
+
+	loc, err := url.Parse(res.header.Get("Location"))
+	r.NoError(err)
+	r.Equal("/dash0/login", loc.Path)
+
+	returnTo := loc.Query().Get("returnTo")
+	r.NotEmpty(returnTo)
+	// Relative, path-anchored, and pointing straight back at /authorize with
+	// the original query intact.
+	r.True(strings.HasPrefix(returnTo, "/api/v1/oauth/authorize?"),
+		"returnTo must be the relative authorize path, got %q", returnTo)
+	returnToURL, err := url.Parse(returnTo)
+	r.NoError(err)
+	r.Empty(returnToURL.Scheme, "returnTo must not carry a scheme: %q", returnTo)
+	r.Empty(returnToURL.Host, "returnTo must not carry a host: %q", returnTo)
+	r.Equal(reg.ClientID, returnToURL.Query().Get("client_id"))
+	r.Equal(challenge, returnToURL.Query().Get("code_challenge"))
+}
+
 // TestMCPClientWalkthroughPAT covers the documented alternative: mint a PAT
 // with the mcp scope and go straight to POST with a bearer header.
 func TestMCPClientWalkthroughPAT(t *testing.T) {

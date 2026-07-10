@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isOAuthAuthorizeReturnTo,
   isSafeReturnTo,
   resolveDestination,
   returnToOrg,
@@ -8,11 +9,59 @@ import {
 
 const BASE = "/dash0";
 
+describe("isOAuthAuthorizeReturnTo", () => {
+  it("accepts the bare authorize path and the path with a query string", () => {
+    expect(isOAuthAuthorizeReturnTo("/api/v1/oauth/authorize")).toBe(true);
+    expect(
+      isOAuthAuthorizeReturnTo(
+        "/api/v1/oauth/authorize?client_id=abc&code_challenge=xyz",
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects absolute and protocol-relative forms (open-redirect guard)", () => {
+    expect(
+      isOAuthAuthorizeReturnTo("https://evil.com/api/v1/oauth/authorize"),
+    ).toBe(false);
+    expect(
+      isOAuthAuthorizeReturnTo("//evil.com/api/v1/oauth/authorize"),
+    ).toBe(false);
+  });
+
+  it("rejects lookalike paths and subpaths", () => {
+    expect(isOAuthAuthorizeReturnTo("/api/v1/oauth/authorizeX")).toBe(false);
+    expect(isOAuthAuthorizeReturnTo("/api/v1/oauth/authorize/extra")).toBe(
+      false,
+    );
+    expect(isOAuthAuthorizeReturnTo("/api/v1/oauth/token")).toBe(false);
+  });
+
+  it("rejects empty / missing values", () => {
+    expect(isOAuthAuthorizeReturnTo(undefined)).toBe(false);
+    expect(isOAuthAuthorizeReturnTo(null)).toBe(false);
+    expect(isOAuthAuthorizeReturnTo("")).toBe(false);
+  });
+});
+
 describe("resolveDestination", () => {
   it("honors a returnTo whose org matches the resolved org", () => {
     expect(
       resolveDestination("test", "/dash0/orgs/test/checks?q=1", BASE),
     ).toEqual({ href: "/dash0/orgs/test/checks?q=1" });
+  });
+
+  it("honors an MCP OAuth authorize returnTo regardless of org (the consent bounce)", () => {
+    // The embedded authorization server derives the org from the session
+    // claims, so the org-match rule does not apply to this shape — any
+    // logged-in org may resume the consent flow.
+    const authorize =
+      "/api/v1/oauth/authorize?client_id=abc&redirect_uri=x&code_challenge=y";
+    expect(resolveDestination("test", authorize, BASE)).toEqual({
+      href: authorize,
+    });
+    expect(resolveDestination("other-org", authorize, BASE)).toEqual({
+      href: authorize,
+    });
   });
 
   it("preserves the query string of the deep link", () => {
