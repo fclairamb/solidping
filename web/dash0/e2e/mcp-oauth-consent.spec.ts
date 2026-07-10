@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { createHash, randomBytes } from "node:crypto";
+import { createServer, type Server } from "node:http";
 import { test, API_BASE } from "./fixtures";
 
 /**
@@ -59,12 +60,27 @@ function authorizeUrl(clientId: string, pkce: PkcePair, state: string): string {
   return `${API_BASE}/api/v1/oauth/authorize?${params.toString()}`;
 }
 
-/** Intercept the (unroutable) loopback redirect_uri so the browser lands. */
-async function interceptCallback(page: Page): Promise<void> {
-  await page.route(`${CALLBACK_ORIGIN}/**`, (route) =>
-    route.fulfill({ status: 200, contentType: "text/html", body: "ok" }),
+// A real loopback listener for the client's redirect_uri — the browser must
+// actually land there to prove the server's 302 carries the code. (page.route
+// interception is unreliable for cross-origin top-level navigations out of a
+// form-POST redirect chain, so we serve the callback for real.)
+let callbackServer: Server;
+
+test.beforeAll(async () => {
+  callbackServer = createServer((_req, res) => {
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end("<title>callback</title>ok");
+  });
+  await new Promise<void>((resolve) =>
+    callbackServer.listen(39777, "127.0.0.1", resolve),
   );
-}
+});
+
+test.afterAll(async () => {
+  await new Promise<void>((resolve, reject) =>
+    callbackServer.close((err) => (err ? reject(err) : resolve())),
+  );
+});
 
 /** Approve the consent screen and return the code+state from the callback. */
 async function approveConsent(
@@ -127,7 +143,6 @@ test.describe("MCP OAuth consent flow", () => {
   }) => {
     const clientId = await registerClient(page);
     const pkce = newPkcePair();
-    await interceptCallback(page);
 
     await page.goto(authorizeUrl(clientId, pkce, "state-cookie"));
 
@@ -149,7 +164,6 @@ test.describe("MCP OAuth consent flow", () => {
     // dashboard.
     const clientId = await registerClient(page);
     const pkce = newPkcePair();
-    await interceptCallback(page);
 
     await page.context().clearCookies();
 
@@ -167,7 +181,6 @@ test.describe("MCP OAuth consent flow", () => {
   }) => {
     const clientId = await registerClient(page);
     const pkce = newPkcePair();
-    await interceptCallback(page);
 
     await page.goto(authorizeUrl(clientId, pkce, "state-login"));
 
@@ -181,6 +194,11 @@ test.describe("MCP OAuth consent flow", () => {
     await page.getByTestId("login-password").fill("test");
     await page.getByTestId("login-submit").click();
 
+    // The test user belongs to several orgs → the org picker shows. Picking
+    // one goes through switchOrg (which sets the session cookie) and must
+    // then resume the OAuth returnTo like every other login-success path.
+    await page.getByTestId("org-picker-test").click();
+
     const { code, state } = await approveConsent(page);
     expect(code).toBeTruthy();
     expect(state).toBe("state-login");
@@ -193,7 +211,6 @@ test.describe("MCP OAuth consent flow", () => {
   }) => {
     const clientId = await registerClient(page);
     const pkce = newPkcePair();
-    await interceptCallback(page);
 
     await page.goto(authorizeUrl(clientId, pkce, "state-deny"));
 

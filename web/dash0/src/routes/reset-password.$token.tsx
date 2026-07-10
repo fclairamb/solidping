@@ -69,6 +69,7 @@ function ResetPasswordPage() {
               <p className="text-muted-foreground">{t("canNowLogin")}</p>
               <Link
                 to="/login"
+                search={{ returnTo: undefined }}
                 className="text-primary underline-offset-4 hover:underline text-sm"
               >
                 {t("signIn")}
