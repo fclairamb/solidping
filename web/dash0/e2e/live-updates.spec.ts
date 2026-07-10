@@ -23,6 +23,10 @@ async function getAuthToken(page: Page): Promise<string> {
 interface HeartbeatCheck {
   uid: string;
   name: string;
+  /** Server-generated slug (e.g. "heartbeat-heartbeat-2") — the incidents
+   * list renders the incident title ("<slug> is down") and the check slug,
+   * never the check *name*, so incident-row assertions must match on this. */
+  slug: string;
   hbToken: string;
 }
 
@@ -46,7 +50,7 @@ async function createHeartbeatCheck(
   });
   expect(resp.status()).toBe(201);
   const body = await resp.json();
-  return { uid: body.uid, name, hbToken };
+  return { uid: body.uid, name, slug: body.slug, hbToken };
 }
 
 async function sendHeartbeat(
@@ -86,6 +90,42 @@ async function waitForLiveSubscribed(page: Page): Promise<WebSocket> {
     ws.on("framereceived", (frame) => {
       const text = typeof frame.payload === "string" ? frame.payload : "";
       if (text.includes('"type":"subscribed"')) {
+        clearTimeout(timer);
+        resolve();
+      }
+    });
+  });
+  return ws;
+}
+
+/** Like waitForLiveSubscribed, but for one *specific* entity scope: resolves
+ * only on that entity's `subscribed` ack. On a list page the page component
+ * is the sole subscriber of its collection scope, so this doubles as the
+ * regression guard that the page actually registers its scope — a refactor
+ * that drops the useLiveSubscription call times out here, it can't pass by
+ * riding on some other component's subscription. */
+async function waitForScopeSubscribed(
+  page: Page,
+  entity: "checks" | "incidents" | "events" | "jobs",
+): Promise<WebSocket> {
+  const ws = await page.waitForEvent("websocket", {
+    predicate: (socket) => socket.url().includes("/events/ws"),
+    timeout: 15000,
+  });
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(
+      () =>
+        reject(
+          new Error(`timed out waiting for a subscribed ack for entity "${entity}"`),
+        ),
+      15000,
+    );
+    ws.on("framereceived", (frame) => {
+      const text = typeof frame.payload === "string" ? frame.payload : "";
+      if (
+        text.includes('"type":"subscribed"') &&
+        text.includes(`"entity":"${entity}"`)
+      ) {
         clearTimeout(timer);
         resolve();
       }
@@ -245,6 +285,90 @@ test.describe("Live dashboard updates", () => {
       await expect(
         page.getByTestId("active-incidents").getByText(check.name),
       ).toBeVisible({ timeout: 4000 });
+    } finally {
+      await deleteCheck(page, token, check.uid);
+    }
+  });
+
+  test("the incidents list page subscribes to the incidents scope and updates live (filtered state=active)", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const check = await createHeartbeatCheck(
+      page,
+      token,
+      `E2E Live Incidents List ${Date.now()}`,
+    );
+
+    try {
+      await sendHeartbeat(page, check, "up");
+
+      // The `state=active` variant exercises a filtered query: the incidents
+      // org-root invalidation matches every options variant, so the filtered
+      // list must refetch live exactly like the default one.
+      const subscribed = waitForScopeSubscribed(page, "incidents");
+      await page.goto("orgs/test/incidents?state=active");
+      await subscribed;
+      await expect(page.getByTestId("incidents-state-filter")).toBeVisible();
+
+      // Fail the check: with a zero confirmation window the incident opens
+      // on this heartbeat and must appear in the table without any reload —
+      // the page has no fast poll, so only the live hint can deliver this.
+      // Match on the full title ("<slug> is down"): the row shows the
+      // incident title and the check slug, not the check name — and a bare
+      // slug is a substring prefix of its "-2"/"-3" siblings, which would
+      // trip Playwright's strict mode when several such incidents exist.
+      const incidentTitle = `${check.slug} is down`;
+      await sendHeartbeat(page, check, "down");
+      await expect(
+        page.getByTestId("incident-row").filter({ hasText: incidentTitle }),
+      ).toBeVisible({ timeout: 6000 });
+
+      // Recovery resolves the incident: it must drop off the active-only
+      // view live too.
+      await sendHeartbeat(page, check, "up");
+      await expect(
+        page.getByTestId("incident-row").filter({ hasText: incidentTitle }),
+      ).toBeHidden({ timeout: 6000 });
+    } finally {
+      await deleteCheck(page, token, check.uid);
+    }
+  });
+
+  test("the checks list page subscribes to the checks scope and flips a row's status live", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const check = await createHeartbeatCheck(
+      page,
+      token,
+      `E2E Live Checks List ${Date.now()}`,
+    );
+
+    try {
+      await sendHeartbeat(page, check, "up");
+
+      const subscribed = waitForScopeSubscribed(page, "checks");
+      await page.goto("orgs/test/checks");
+      await subscribed;
+
+      // Narrow the paginated list to just this check — the shared test org
+      // can hold more checks than one page (20), and the search-filtered
+      // infinite query must be invalidated by hints all the same.
+      await page.getByPlaceholder("Search checks...").fill(check.name);
+      const row = page.getByRole("row").filter({ hasText: check.name });
+      await expect(row).toBeVisible();
+      await expect(row.getByText("Up", { exact: true })).toBeVisible();
+
+      // Fail the check: the row's status badge must flip to Down without a
+      // reload. The status transition publishes a `checks`-kind hint, which
+      // must reach the infinite checks queries this page renders from.
+      await sendHeartbeat(page, check, "down");
+      await expect(row.getByText("Down", { exact: true })).toBeVisible({
+        timeout: 6000,
+      });
     } finally {
       await deleteCheck(page, token, check.uid);
     }
