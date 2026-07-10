@@ -154,17 +154,17 @@ func (rl *RateLimiter) cleanupLoop(ctx context.Context) {
 				}
 				return true
 			})
-			rl.tokenSets.Range(func(k, val any) bool {
+			rl.tokenSets.Range(func(key, val any) bool {
 				set, ok := val.(*tokenSet)
 				if !ok {
-					rl.tokenSets.Delete(k)
+					rl.tokenSets.Delete(key)
 					return true
 				}
 				set.mu.Lock()
 				idle := set.lastSeen.Before(cutoff)
 				set.mu.Unlock()
 				if idle {
-					rl.tokenSets.Delete(k)
+					rl.tokenSets.Delete(key)
 				}
 				return true
 			})
@@ -290,8 +290,8 @@ func (rl *RateLimiter) admitTokenKey(ip, tokenKey string) bool {
 }
 
 // bucketFor resolves the rate/concurrency bucket for a request, returning
-// the bucket key, its kind (BucketKindIP or BucketKindToken), and the
-// resolved client IP.
+// (bucketKey, bucketKind, clientIP) — the kind is BucketKindIP or
+// BucketKindToken.
 //
 // Authenticated traffic is keyed by a stable hash of the presented bearer
 // token rather than by client IP, so a team behind one shared NAT/VPN
@@ -304,8 +304,8 @@ func (rl *RateLimiter) admitTokenKey(ip, tokenKey string) bool {
 // fall back to the shared per-IP bucket, so a single IP is bounded to
 // (cap+1)x the per-IP allowance. The "t:" key prefix cannot collide with an
 // IP key: 't' is not a valid IPv4/IPv6 character.
-func (rl *RateLimiter) bucketFor(req *http.Request) (key, kind, ip string) {
-	ip = extractIP(req, rl.cfg.TrustedProxies)
+func (rl *RateLimiter) bucketFor(req *http.Request) (string, string, string) {
+	ip := extractIP(req, rl.cfg.TrustedProxies)
 	if rl.cfg.TokenBucketsPerIP <= 0 {
 		return ip, BucketKindIP, ip
 	}
@@ -461,10 +461,10 @@ func (rl *RateLimiter) ExtractIP(req *http.Request) string {
 }
 
 // CallerBucket resolves the caller's bucket exactly like the limiting
-// middlewares do, returning the bucket key (for StateFor), its kind
-// (BucketKindIP or BucketKindToken), and the resolved client IP. Exposed for
+// middlewares do, returning (bucketKey, bucketKind, clientIP) — the key
+// feeds StateFor, the kind is BucketKindIP or BucketKindToken. Exposed for
 // the /api/mgmt/limits introspection handler.
-func (rl *RateLimiter) CallerBucket(req *http.Request) (key, kind, ip string) {
+func (rl *RateLimiter) CallerBucket(req *http.Request) (string, string, string) {
 	return rl.bucketFor(req)
 }
 
