@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"crypto/tls"
 	"net/http"
 	"strings"
@@ -66,7 +67,8 @@ func TestRequestScheme(t *testing.T) {
 			t.Parallel()
 			r := require.New(t)
 
-			req, err := http.NewRequest(http.MethodGet, "http://example.com/status0/acme", nil)
+			req, err := http.NewRequestWithContext(
+				context.Background(), http.MethodGet, "http://example.com/status0/acme", nil)
 			r.NoError(err)
 
 			if testCase.forwardedProt != "" {
@@ -86,7 +88,8 @@ func TestRequestOrigin(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	req, err := http.NewRequest(http.MethodGet, "http://status.example.com/status0/acme", nil)
+	req, err := http.NewRequestWithContext(
+		context.Background(), http.MethodGet, "http://status.example.com/status0/acme", nil)
 	r.NoError(err)
 	req.Header.Set("X-Forwarded-Proto", "https")
 

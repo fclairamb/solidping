@@ -1587,7 +1587,7 @@ func (s *Server) serveAppRedirect(
 
 	//nolint:exhaustruct // Only Scheme and Host are needed for reverse proxy
 	targetURL := &url.URL{
-		Scheme: "http",
+		Scheme: schemeHTTP,
 		Host:   rule.TargetHost,
 	}
 

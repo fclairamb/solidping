@@ -24,6 +24,9 @@ const (
 	ogDefaultImagePath = "/status0/og-default.png"
 	// ogTwitterCard is "summary_large_image" because a 1200×630 image ships.
 	ogTwitterCard = "summary_large_image"
+
+	schemeHTTP  = "http"
+	schemeHTTPS = "https"
 )
 
 // status0TitleTagRegexp matches the static <title>…</title> in the status0
@@ -49,7 +52,7 @@ type ogMetadata struct {
 //
 // The root, empty segments, and any path with three or more segments return
 // ok=false so their served head stays generic.
-func statusPagePathParts(reqPath string) (org, slug string, ok bool) {
+func statusPagePathParts(reqPath string) (string, string, bool) {
 	trimmed := strings.Trim(reqPath, "/")
 	if trimmed == "" {
 		return "", "", false
@@ -86,10 +89,10 @@ func requestScheme(req *http.Request) string {
 	}
 
 	if req.TLS != nil {
-		return "https"
+		return schemeHTTPS
 	}
 
-	return "http"
+	return schemeHTTP
 }
 
 // requestOrigin builds the "scheme://host" origin for a request, used to make
@@ -102,12 +105,12 @@ func requestOrigin(req *http.Request) string {
 // Card / description meta tags for a status page. Every dynamic value is
 // HTML-escaped.
 func buildStatus0MetaTags(meta ogMetadata) string {
-	var b strings.Builder
+	var builder strings.Builder
 
 	writeTag := func(tag string) {
-		b.WriteString("    ")
-		b.WriteString(tag)
-		b.WriteString("\n")
+		builder.WriteString("    ")
+		builder.WriteString(tag)
+		builder.WriteString("\n")
 	}
 
 	title := html.EscapeString(meta.Title)
@@ -136,7 +139,7 @@ func buildStatus0MetaTags(meta ogMetadata) string {
 		writeTag(`<meta name="twitter:image" content="` + html.EscapeString(meta.Image) + `" />`)
 	}
 
-	return b.String()
+	return builder.String()
 }
 
 // injectStatus0Meta rewrites a status0 index.html head with per-page metadata:
