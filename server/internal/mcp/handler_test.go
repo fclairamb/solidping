@@ -605,3 +605,173 @@ func TestHandle_MCPReadRefusesMutationTools(t *testing.T) {
 		})
 	}
 }
+
+// --- HandleGet (browser redirect / SSE 405) tests ---
+
+func TestHandleGet_ContentNegotiation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		accept       string
+		wantStatus   int
+		wantLocation string
+	}{
+		{
+			name:         "no accept header redirects to dashboard",
+			accept:       "",
+			wantStatus:   http.StatusFound,
+			wantLocation: dashboardMCPPath,
+		},
+		{
+			name:         "browser accept list redirects to dashboard",
+			accept:       "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+			wantStatus:   http.StatusFound,
+			wantLocation: dashboardMCPPath,
+		},
+		{
+			name:         "wildcard only redirects (wildcards never mean SSE)",
+			accept:       "*/*",
+			wantStatus:   http.StatusFound,
+			wantLocation: dashboardMCPPath,
+		},
+		{
+			name:       "event-stream accept gets 405",
+			accept:     "text/event-stream",
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:       "event-stream with params gets 405",
+			accept:     "text/event-stream;q=0.9",
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:       "event-stream among other types gets 405",
+			accept:     "application/json, text/event-stream",
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:       "event-stream case-insensitive gets 405",
+			accept:     "Text/Event-Stream",
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			handler := newTestHandler()
+			rec, req := makeRequest(t, http.MethodGet, "", nil)
+			if testCase.accept != "" {
+				req.Header.Set("Accept", testCase.accept)
+			}
+
+			r.NoError(handler.HandleGet(rec, req))
+			r.Equal(testCase.wantStatus, rec.Code)
+
+			if testCase.wantStatus == http.StatusFound {
+				r.Equal(testCase.wantLocation, rec.Header().Get("Location"))
+				return
+			}
+
+			// Spec answer for an MCP client probing GET: 405 with Allow
+			// advertising POST, and the standard JSON error shape.
+			r.Contains(rec.Header().Get("Allow"), "POST")
+			r.Equal("application/json", rec.Header().Get("Content-Type"))
+
+			var errResp base.ErrorResponse
+			r.NoError(json.Unmarshal(rec.Body.Bytes(), &errResp))
+			r.Equal(string(base.ErrorCodeMethodNotAllowed), errResp.Code)
+		})
+	}
+}
+
+// --- HandleDelete (session termination) tests ---
+
+func TestHandleDelete_TerminatesOwnSession(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	handler := newTestHandler()
+	handler.sessions.Store("sess-1", &session{
+		id:       "sess-1",
+		orgSlug:  "test-org",
+		lastUsed: time.Now(),
+	})
+
+	rec, req := makeRequest(t, http.MethodDelete, "", defaultClaims())
+	req.Header.Set("Mcp-Session-Id", "sess-1")
+
+	r.NoError(handler.HandleDelete(rec, req))
+	r.Equal(http.StatusNoContent, rec.Code)
+
+	_, loaded := handler.sessions.Load("sess-1")
+	r.False(loaded, "session should have been terminated")
+}
+
+func TestHandleDelete_MissingSessionHeader(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	handler := newTestHandler()
+	rec, req := makeRequest(t, http.MethodDelete, "", defaultClaims())
+
+	r.NoError(handler.HandleDelete(rec, req))
+	r.Equal(http.StatusBadRequest, rec.Code)
+
+	var errResp base.ErrorResponse
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &errResp))
+	r.Equal(string(base.ErrorCodeValidationError), errResp.Code)
+}
+
+func TestHandleDelete_UnknownSession(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	handler := newTestHandler()
+	rec, req := makeRequest(t, http.MethodDelete, "", defaultClaims())
+	req.Header.Set("Mcp-Session-Id", "no-such-session")
+
+	r.NoError(handler.HandleDelete(rec, req))
+	r.Equal(http.StatusNotFound, rec.Code)
+
+	var errResp base.ErrorResponse
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &errResp))
+	r.Equal(string(base.ErrorCodeNotFound), errResp.Code)
+}
+
+func TestHandleDelete_CrossOrgSessionLooksUnknown(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	handler := newTestHandler()
+	handler.sessions.Store("other-org-sess", &session{
+		id:       "other-org-sess",
+		orgSlug:  "another-org",
+		lastUsed: time.Now(),
+	})
+
+	rec, req := makeRequest(t, http.MethodDelete, "", defaultClaims())
+	req.Header.Set("Mcp-Session-Id", "other-org-sess")
+
+	r.NoError(handler.HandleDelete(rec, req))
+	r.Equal(http.StatusNotFound, rec.Code)
+
+	// The foreign session must survive the attempt.
+	_, loaded := handler.sessions.Load("other-org-sess")
+	r.True(loaded, "cross-org session must not be terminated")
+}
+
+func TestHandleDelete_RejectsUnauthenticated(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	handler := newTestHandler()
+	rec, req := makeRequest(t, http.MethodDelete, "", nil)
+	req.Header.Set("Mcp-Session-Id", "sess-1")
+
+	r.NoError(handler.HandleDelete(rec, req))
+	r.Equal(http.StatusUnauthorized, rec.Code)
+}
