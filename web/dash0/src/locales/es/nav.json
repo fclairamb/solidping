@@ -125,7 +125,8 @@
     "groupOrganization": "Organización",
     "groupChecks": "Comprobaciones",
     "newCheck": "Nueva comprobación",
-    "newCheckDescription": "Crear una nueva comprobación de monitorización"
+    "newCheckDescription": "Crear una nueva comprobación de monitorización",
+    "aiDescription": "Conectar asistentes de IA vía MCP"
   },
   "security": "Seguridad"
 }
