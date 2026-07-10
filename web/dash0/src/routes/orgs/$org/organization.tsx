@@ -28,7 +28,6 @@ function OrganizationLayout() {
       badge: pendingCount,
     },
     { label: t("nav:usage", "Usage"), path: "/orgs/$org/organization/usage" },
-    { label: t("nav:ai", "AI assistants"), path: "/orgs/$org/organization/ai" },
     { label: t("nav:settings"), path: "/orgs/$org/organization/settings" },
   ];
 

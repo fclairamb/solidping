@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as NoOrgRouteImport } from './routes/no-org'
+import { Route as McpRouteImport } from './routes/mcp'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as IndexRouteImport } from './routes/index'
@@ -26,6 +27,7 @@ import { Route as OrgsOrgRegisterRouteImport } from './routes/orgs/$org/register
 import { Route as OrgsOrgOrganizationRouteImport } from './routes/orgs/$org/organization'
 import { Route as OrgsOrgOnCallRouteImport } from './routes/orgs/$org/on-call'
 import { Route as OrgsOrgMeRouteImport } from './routes/orgs/$org/me'
+import { Route as OrgsOrgMcpRouteImport } from './routes/orgs/$org/mcp'
 import { Route as OrgsOrgMaintenanceWindowsRouteImport } from './routes/orgs/$org/maintenance-windows'
 import { Route as OrgsOrgLoginRouteImport } from './routes/orgs/$org/login'
 import { Route as OrgsOrgJobsRouteImport } from './routes/orgs/$org/jobs'
@@ -117,6 +119,11 @@ const NoOrgRoute = NoOrgRouteImport.update({
   path: '/no-org',
   getParentRoute: () => rootRouteImport,
 } as any)
+const McpRoute = McpRouteImport.update({
+  id: '/mcp',
+  path: '/mcp',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -196,6 +203,11 @@ const OrgsOrgOnCallRoute = OrgsOrgOnCallRouteImport.update({
 const OrgsOrgMeRoute = OrgsOrgMeRouteImport.update({
   id: '/me',
   path: '/me',
+  getParentRoute: () => OrgsOrgRoute,
+} as any)
+const OrgsOrgMcpRoute = OrgsOrgMcpRouteImport.update({
+  id: '/mcp',
+  path: '/mcp',
   getParentRoute: () => OrgsOrgRoute,
 } as any)
 const OrgsOrgMaintenanceWindowsRoute =
@@ -663,6 +675,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/mcp': typeof McpRoute
   '/no-org': typeof NoOrgRoute
   '/confirm-registration/$token': typeof ConfirmRegistrationTokenRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -681,6 +694,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/jobs': typeof OrgsOrgJobsRouteWithChildren
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
   '/orgs/$org/maintenance-windows': typeof OrgsOrgMaintenanceWindowsRouteWithChildren
+  '/orgs/$org/mcp': typeof OrgsOrgMcpRoute
   '/orgs/$org/me': typeof OrgsOrgMeRouteWithChildren
   '/orgs/$org/on-call': typeof OrgsOrgOnCallRouteWithChildren
   '/orgs/$org/organization': typeof OrgsOrgOrganizationRouteWithChildren
@@ -767,6 +781,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/mcp': typeof McpRoute
   '/no-org': typeof NoOrgRoute
   '/confirm-registration/$token': typeof ConfirmRegistrationTokenRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -776,6 +791,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/design-reference': typeof OrgsOrgDesignReferenceRoute
   '/orgs/$org/events': typeof OrgsOrgEventsRoute
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
+  '/orgs/$org/mcp': typeof OrgsOrgMcpRoute
   '/orgs/$org/me': typeof OrgsOrgMeRouteWithChildren
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
   '/orgs/$org': typeof OrgsOrgIndexRoute
@@ -852,6 +868,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/mcp': typeof McpRoute
   '/no-org': typeof NoOrgRoute
   '/confirm-registration/$token': typeof ConfirmRegistrationTokenRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -870,6 +887,7 @@ export interface FileRoutesById {
   '/orgs/$org/jobs': typeof OrgsOrgJobsRouteWithChildren
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
   '/orgs/$org/maintenance-windows': typeof OrgsOrgMaintenanceWindowsRouteWithChildren
+  '/orgs/$org/mcp': typeof OrgsOrgMcpRoute
   '/orgs/$org/me': typeof OrgsOrgMeRouteWithChildren
   '/orgs/$org/on-call': typeof OrgsOrgOnCallRouteWithChildren
   '/orgs/$org/organization': typeof OrgsOrgOrganizationRouteWithChildren
@@ -958,6 +976,7 @@ export interface FileRouteTypes {
     | '/'
     | '/forgot-password'
     | '/login'
+    | '/mcp'
     | '/no-org'
     | '/confirm-registration/$token'
     | '/invite/$token'
@@ -976,6 +995,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/jobs'
     | '/orgs/$org/login'
     | '/orgs/$org/maintenance-windows'
+    | '/orgs/$org/mcp'
     | '/orgs/$org/me'
     | '/orgs/$org/on-call'
     | '/orgs/$org/organization'
@@ -1062,6 +1082,7 @@ export interface FileRouteTypes {
     | '/'
     | '/forgot-password'
     | '/login'
+    | '/mcp'
     | '/no-org'
     | '/confirm-registration/$token'
     | '/invite/$token'
@@ -1071,6 +1092,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/design-reference'
     | '/orgs/$org/events'
     | '/orgs/$org/login'
+    | '/orgs/$org/mcp'
     | '/orgs/$org/me'
     | '/orgs/$org/register'
     | '/orgs/$org'
@@ -1146,6 +1168,7 @@ export interface FileRouteTypes {
     | '/'
     | '/forgot-password'
     | '/login'
+    | '/mcp'
     | '/no-org'
     | '/confirm-registration/$token'
     | '/invite/$token'
@@ -1164,6 +1187,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/jobs'
     | '/orgs/$org/login'
     | '/orgs/$org/maintenance-windows'
+    | '/orgs/$org/mcp'
     | '/orgs/$org/me'
     | '/orgs/$org/on-call'
     | '/orgs/$org/organization'
@@ -1251,6 +1275,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
+  McpRoute: typeof McpRoute
   NoOrgRoute: typeof NoOrgRoute
   ConfirmRegistrationTokenRoute: typeof ConfirmRegistrationTokenRoute
   InviteTokenRoute: typeof InviteTokenRoute
@@ -1266,6 +1291,13 @@ declare module '@tanstack/react-router' {
       path: '/no-org'
       fullPath: '/no-org'
       preLoaderRoute: typeof NoOrgRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mcp': {
+      id: '/mcp'
+      path: '/mcp'
+      fullPath: '/mcp'
+      preLoaderRoute: typeof McpRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -1378,6 +1410,13 @@ declare module '@tanstack/react-router' {
       path: '/me'
       fullPath: '/orgs/$org/me'
       preLoaderRoute: typeof OrgsOrgMeRouteImport
+      parentRoute: typeof OrgsOrgRoute
+    }
+    '/orgs/$org/mcp': {
+      id: '/orgs/$org/mcp'
+      path: '/mcp'
+      fullPath: '/orgs/$org/mcp'
+      preLoaderRoute: typeof OrgsOrgMcpRouteImport
       parentRoute: typeof OrgsOrgRoute
     }
     '/orgs/$org/maintenance-windows': {
@@ -2356,6 +2395,7 @@ interface OrgsOrgRouteChildren {
   OrgsOrgJobsRoute: typeof OrgsOrgJobsRouteWithChildren
   OrgsOrgLoginRoute: typeof OrgsOrgLoginRoute
   OrgsOrgMaintenanceWindowsRoute: typeof OrgsOrgMaintenanceWindowsRouteWithChildren
+  OrgsOrgMcpRoute: typeof OrgsOrgMcpRoute
   OrgsOrgMeRoute: typeof OrgsOrgMeRouteWithChildren
   OrgsOrgOnCallRoute: typeof OrgsOrgOnCallRouteWithChildren
   OrgsOrgOrganizationRoute: typeof OrgsOrgOrganizationRouteWithChildren
@@ -2383,6 +2423,7 @@ const OrgsOrgRouteChildren: OrgsOrgRouteChildren = {
   OrgsOrgJobsRoute: OrgsOrgJobsRouteWithChildren,
   OrgsOrgLoginRoute: OrgsOrgLoginRoute,
   OrgsOrgMaintenanceWindowsRoute: OrgsOrgMaintenanceWindowsRouteWithChildren,
+  OrgsOrgMcpRoute: OrgsOrgMcpRoute,
   OrgsOrgMeRoute: OrgsOrgMeRouteWithChildren,
   OrgsOrgOnCallRoute: OrgsOrgOnCallRouteWithChildren,
   OrgsOrgOrganizationRoute: OrgsOrgOrganizationRouteWithChildren,
@@ -2405,6 +2446,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
+  McpRoute: McpRoute,
   NoOrgRoute: NoOrgRoute,
   ConfirmRegistrationTokenRoute: ConfirmRegistrationTokenRoute,
   InviteTokenRoute: InviteTokenRoute,
