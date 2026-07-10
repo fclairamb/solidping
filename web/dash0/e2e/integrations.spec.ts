@@ -167,6 +167,9 @@ test.describe("Notification Channels", () => {
     // Pick webhook type
     await page.getByRole("button", { name: /^webhook\b/i }).click();
 
+    // The "Default for new checks" toggle must start enabled on the create flow.
+    await expect(page.locator("#ch-default")).toBeChecked();
+
     const channelName = `E2E Webhook ${Date.now()}`;
     await page.getByLabel("Name").fill(channelName);
     await page
