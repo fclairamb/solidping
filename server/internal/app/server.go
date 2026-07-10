@@ -1350,18 +1350,28 @@ type LimitsConcurrency struct {
 }
 
 // LimitsResponse is the body of GET /api/mgmt/limits.
+//
+// CallerIP echoes the client IP the limiter resolved for this request
+// (respecting trusted_proxies), and CallerBucket says which bucket the
+// caller's traffic is accounted against — "ip" or "token" — so diagnosing a
+// bucketing misconfiguration is a single curl instead of a log dive.
 type LimitsResponse struct {
-	RateLimit   LimitsRateLimit   `json:"rateLimit"`
-	Concurrency LimitsConcurrency `json:"concurrency"`
+	RateLimit    LimitsRateLimit   `json:"rateLimit"`
+	Concurrency  LimitsConcurrency `json:"concurrency"`
+	CallerIP     string            `json:"callerIp"`
+	CallerBucket string            `json:"callerBucket"`
 }
 
 func (s *Server) getLimits(writer http.ResponseWriter, req bunrouter.Request) error {
 	cfg := s.rateLimiter.Config()
-	state := s.rateLimiter.StateFor(s.rateLimiter.ExtractIP(req.Request))
+	key, kind, ip := s.rateLimiter.CallerBucket(req.Request)
+	state := s.rateLimiter.StateFor(key)
 
 	resp := LimitsResponse{
-		RateLimit:   LimitsRateLimit{Enabled: cfg.RequestsPerMinute > 0},
-		Concurrency: LimitsConcurrency{Enabled: cfg.MaxConcurrent > 0},
+		RateLimit:    LimitsRateLimit{Enabled: cfg.RequestsPerMinute > 0},
+		Concurrency:  LimitsConcurrency{Enabled: cfg.MaxConcurrent > 0},
+		CallerIP:     ip,
+		CallerBucket: kind,
 	}
 	if resp.RateLimit.Enabled {
 		resp.RateLimit.RequestsPerMinute = cfg.RequestsPerMinute
