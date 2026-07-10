@@ -85,6 +85,15 @@ const (
 	flagRedirectedAuthenticationModeSupport uint8 = 0x10
 )
 
+// RDP_NEG_RSP flag names as reported in check output (§2.2.1.2.1).
+const (
+	flagNameExtendedClientData    = "EXTENDED_CLIENT_DATA_SUPPORTED"
+	flagNameDynVCGFXProtocol      = "DYNVC_GFX_PROTOCOL_SUPPORTED"
+	flagNameNegRspReserved        = "NEGRSP_FLAG_RESERVED"
+	flagNameRestrictedAdminMode   = "RESTRICTED_ADMIN_MODE_SUPPORTED"
+	flagNameRedirectedAuthUseMode = "REDIRECTED_AUTHENTICATION_MODE_SUPPORTED"
+)
+
 // Parse errors returned by parseConnectionConfirm.
 var (
 	errResponseTooShort   = errors.New("response too short for an RDP connection confirm")
@@ -100,27 +109,23 @@ var (
 // carrying an RDP_NEG_REQ (§2.2.1.1): TPKT header + X.224 CR TPDU + the
 // 8-byte negotiation request advertising every TLS-capable protocol.
 func buildConnectionRequest() []byte {
-	packet := make([]byte, 0, tpktHeaderLen+1+x224FixedLen+negStructLen)
+	const totalLen = tpktHeaderLen + 1 + x224FixedLen + negStructLen // 19
+	const lengthIndicator = x224FixedLen + negStructLen              // 14
 
-	// TPKT header (RFC 1006): version, reserved, total length (big-endian).
-	totalLen := tpktHeaderLen + 1 + x224FixedLen + negStructLen // 19
-	packet = append(packet, tpktVersion, 0x00, byte(totalLen>>8), byte(totalLen&0xFF))
-
-	// X.224 CR TPDU: LI counts everything after itself.
-	li := x224FixedLen + negStructLen // 14
-	packet = append(packet,
-		byte(li),
+	return []byte{
+		// TPKT header (RFC 1006): version, reserved, total length (big-endian).
+		tpktVersion, 0x00, byte(totalLen >> 8), byte(totalLen & 0xFF),
+		// X.224 CR TPDU: the length indicator counts everything after itself.
+		lengthIndicator,
 		x224CRCode, // CR TPDU code
 		0x00, 0x00, // DST-REF
 		0x00, 0x00, // SRC-REF
 		0x00, // class 0
-	)
-
-	// RDP_NEG_REQ (§2.2.1.1.1): type, flags, length (LE), requestedProtocols (LE).
-	packet = append(packet, typeRDPNegReq, 0x00, negStructLen, 0x00)
-	packet = binary.LittleEndian.AppendUint32(packet, requestedProtocols)
-
-	return packet
+		// RDP_NEG_REQ (§2.2.1.1.1): type, flags, length (LE), requestedProtocols (LE).
+		typeRDPNegReq, 0x00, negStructLen, 0x00,
+		byte(requestedProtocols), byte(requestedProtocols >> 8),
+		byte(requestedProtocols >> 16), byte(requestedProtocols >> 24),
+	}
 }
 
 // negotiationResult is the parsed outcome of an X.224 Connection Confirm.
@@ -257,11 +262,11 @@ func serverFlagNames(flags uint8) []string {
 		bit  uint8
 		name string
 	}{
-		{flagExtendedClientDataSupported, "EXTENDED_CLIENT_DATA_SUPPORTED"},
-		{flagDynVCGFXProtocolSupported, "DYNVC_GFX_PROTOCOL_SUPPORTED"},
-		{flagNegRspReserved, "NEGRSP_FLAG_RESERVED"},
-		{flagRestrictedAdminModeSupported, "RESTRICTED_ADMIN_MODE_SUPPORTED"},
-		{flagRedirectedAuthenticationModeSupport, "REDIRECTED_AUTHENTICATION_MODE_SUPPORTED"},
+		{flagExtendedClientDataSupported, flagNameExtendedClientData},
+		{flagDynVCGFXProtocolSupported, flagNameDynVCGFXProtocol},
+		{flagNegRspReserved, flagNameNegRspReserved},
+		{flagRestrictedAdminModeSupported, flagNameRestrictedAdminMode},
+		{flagRedirectedAuthenticationModeSupport, flagNameRedirectedAuthUseMode},
 	}
 
 	result := make([]string, 0, len(named))

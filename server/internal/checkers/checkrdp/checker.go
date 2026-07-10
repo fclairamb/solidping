@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -98,14 +99,14 @@ func (c *RDPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 
 	conn, err := dialTarget(ctx, cfg.Host, port, metrics)
 	if err != nil {
-		return errorResult(ctx, start, metrics, output, fmt.Sprintf("connection failed: %v", err)), nil
+		return errorResult(ctx, err, start, metrics, output, fmt.Sprintf("connection failed: %v", err)), nil
 	}
 
 	defer func() { _ = conn.Close() }()
 
-	negotiation, err := negotiate(ctx, conn, metrics)
+	negotiation, err := negotiate(conn, metrics)
 	if err != nil {
-		return errorResult(ctx, start, metrics, output, fmt.Sprintf("RDP negotiation failed: %v", err)), nil
+		return errorResult(ctx, err, start, metrics, output, fmt.Sprintf("RDP negotiation failed: %v", err)), nil
 	}
 
 	return c.classify(ctx, conn, cfg, start, negotiation, metrics, output), nil
@@ -135,7 +136,7 @@ func dialTarget(ctx context.Context, host string, port int, metrics map[string]a
 // negotiate writes the Connection Request and reads + parses the Connection
 // Confirm, never reading past the declared (capped) TPKT length. It records
 // handshake_ms on success.
-func negotiate(_ context.Context, conn net.Conn, metrics map[string]any) (*negotiationResult, error) {
+func negotiate(conn net.Conn, metrics map[string]any) (*negotiationResult, error) {
 	handshakeStart := time.Now()
 
 	if _, err := conn.Write(buildConnectionRequest()); err != nil {
@@ -189,7 +190,7 @@ func (c *RDPChecker) classify(
 	if negotiation.Failure {
 		output["failure_code"] = failureCodeName(negotiation.FailureCode)
 
-		return errorResult(ctx, start, metrics, output,
+		return errorResult(ctx, nil, start, metrics, output,
 			"server rejected negotiation: "+failureCodeName(negotiation.FailureCode))
 	}
 
@@ -200,9 +201,8 @@ func (c *RDPChecker) classify(
 	}
 
 	if cfg.RequireNLA && !isNLA(negotiation.SelectedProtocol) {
-		output[checkerdef.OutputKeyError] = fmt.Sprintf(
-			"NLA required but server selected %s", protocolName(negotiation.SelectedProtocol),
-		)
+		output[checkerdef.OutputKeyError] = "NLA required but server selected " +
+			protocolName(negotiation.SelectedProtocol)
 
 		return &checkerdef.Result{
 			Status: checkerdef.StatusDown, Duration: time.Since(start), Metrics: metrics, Output: output,
@@ -233,20 +233,22 @@ func (c *RDPChecker) inspectCertificate(
 ) *checkerdef.Result {
 	tlsStart := time.Now()
 
+	// InsecureSkipVerify is leaf-only inspection by design: RDP certificates
+	// are routinely self-signed, so chain validation would false-alarm.
 	tlsConn := tls.Client(conn, &tls.Config{
 		ServerName:         cfg.Host,
-		InsecureSkipVerify: true, //nolint:gosec // Leaf-only inspection by design: RDP certs are routinely self-signed.
+		InsecureSkipVerify: true,
 	})
 
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
-		return errorResult(ctx, start, metrics, output, fmt.Sprintf("TLS handshake failed: %v", err))
+		return errorResult(ctx, err, start, metrics, output, fmt.Sprintf("TLS handshake failed: %v", err))
 	}
 
 	metrics["tls_handshake_ms"] = durationMs(time.Since(tlsStart))
 
 	state := tlsConn.ConnectionState()
 	if len(state.PeerCertificates) == 0 {
-		return errorResult(ctx, start, metrics, output, "no peer certificates presented")
+		return errorResult(ctx, nil, start, metrics, output, "no peer certificates presented")
 	}
 
 	leaf := state.PeerCertificates[0]
@@ -295,13 +297,15 @@ func certDaysRemaining(cert *x509.Certificate) int {
 	return int(time.Until(cert.NotAfter).Hours() / 24)
 }
 
-// errorResult maps a failure to Timeout (when the context deadline fired) or
-// Down (refused, reset, malformed, non-RDP, negotiation failure).
+// errorResult maps a failure to Timeout (when the context deadline fired, or
+// when the connection deadline derived from it did — the two timers race by a
+// hair, so both count) or Down (refused, reset, malformed, non-RDP,
+// negotiation failure).
 func errorResult(
-	ctx context.Context, start time.Time, metrics, output map[string]any, msg string,
+	ctx context.Context, err error, start time.Time, metrics, output map[string]any, msg string,
 ) *checkerdef.Result {
 	status := checkerdef.StatusDown
-	if ctx.Err() != nil {
+	if isTimeout(ctx, err) {
 		status = checkerdef.StatusTimeout
 		msg = "timeout: " + msg
 	}
@@ -314,6 +318,20 @@ func errorResult(
 		Metrics:  metrics,
 		Output:   output,
 	}
+}
+
+// isTimeout reports whether the failure was a deadline expiry — either the
+// context itself, or an i/o timeout from the connection deadline that was set
+// from that same context (SetDeadline can fire marginally before the context
+// timer is marked done).
+func isTimeout(ctx context.Context, err error) bool {
+	if ctx.Err() != nil {
+		return true
+	}
+
+	var netErr net.Error
+
+	return errors.As(err, &netErr) && netErr.Timeout()
 }
 
 // durationMs converts a duration to milliseconds as a float.

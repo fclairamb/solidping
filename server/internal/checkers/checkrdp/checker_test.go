@@ -65,7 +65,7 @@ func startFakeRDP(t *testing.T, opts fakeServerOpts) (string, int) {
 	t.Helper()
 	r := require.New(t)
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	r.NoError(err)
 
 	done := make(chan struct{})
@@ -75,8 +75,8 @@ func startFakeRDP(t *testing.T, opts fakeServerOpts) (string, int) {
 	})
 
 	go func() {
-		conn, err := listener.Accept()
-		if err != nil {
+		conn, acceptErr := listener.Accept()
+		if acceptErr != nil {
 			return
 		}
 
@@ -84,7 +84,7 @@ func startFakeRDP(t *testing.T, opts fakeServerOpts) (string, int) {
 
 		// Read the client's 19-byte Connection Request.
 		request := make([]byte, len(buildConnectionRequest()))
-		if _, err := io.ReadFull(conn, request); err != nil {
+		if _, readErr := io.ReadFull(conn, request); readErr != nil {
 			return
 		}
 
@@ -95,7 +95,7 @@ func startFakeRDP(t *testing.T, opts fakeServerOpts) (string, int) {
 		}
 
 		if opts.response != nil {
-			if _, err := conn.Write(opts.response); err != nil {
+			if _, writeErr := conn.Write(opts.response); writeErr != nil {
 				return
 			}
 		}
@@ -105,7 +105,7 @@ func startFakeRDP(t *testing.T, opts fakeServerOpts) (string, int) {
 				Certificates: []tls.Certificate{*opts.tlsCert},
 				MinVersion:   tls.VersionTLS12,
 			})
-			if err := tlsConn.Handshake(); err != nil {
+			if handshakeErr := tlsConn.HandshakeContext(context.Background()); handshakeErr != nil {
 				return
 			}
 		}
@@ -163,7 +163,7 @@ func TestExecute_NegRspNLA_Up(t *testing.T) {
 
 	r.Equal(checkerdef.StatusUp, result.Status)
 	r.Equal("nla", result.Output["selected_protocol"])
-	r.Equal([]string{"RESTRICTED_ADMIN_MODE_SUPPORTED"}, result.Output["server_flags"])
+	r.Equal([]string{flagNameRestrictedAdminMode}, result.Output["server_flags"])
 	r.Equal("rdp-test", result.Output["cert_subject"])
 	r.Equal("rdp-test", result.Output["cert_issuer"])
 	r.Equal(true, result.Output["cert_self_signed"])
@@ -295,7 +295,7 @@ func TestExecute_ConnectionRefused_Down(t *testing.T) {
 	r := require.New(t)
 
 	// Grab a port that nothing listens on.
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	r.NoError(err)
 
 	host, portStr, err := net.SplitHostPort(listener.Addr().String())
@@ -345,18 +345,18 @@ func TestExecute_TLSHandshakeFails_Down(t *testing.T) {
 	// connection and the context deadline fires — but the server holding the
 	// socket without TLS records is indistinguishable from silence, so cut
 	// the connection instead by closing right after the response.
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	r.NoError(err)
 	t.Cleanup(func() { _ = listener.Close() })
 
 	go func() {
-		conn, err := listener.Accept()
-		if err != nil {
+		conn, acceptErr := listener.Accept()
+		if acceptErr != nil {
 			return
 		}
 
 		request := make([]byte, len(buildConnectionRequest()))
-		if _, err := io.ReadFull(conn, request); err != nil {
+		if _, readErr := io.ReadFull(conn, request); readErr != nil {
 			_ = conn.Close()
 
 			return
@@ -388,7 +388,7 @@ func TestRDPChecker_ValidateNameSlugAutofill(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	spec := &checkerdef.CheckSpec{Config: map[string]any{"host": "rdp.example.internal"}}
+	spec := &checkerdef.CheckSpec{Config: map[string]any{"host": sampleHost}}
 	r.NoError((&RDPChecker{}).Validate(spec))
 	r.Equal("RDP: rdp.example.internal", spec.Name)
 	r.Equal("rdp-rdp-example-internal", spec.Slug)
@@ -402,9 +402,9 @@ func TestRDPConfig_Validate(t *testing.T) {
 		config  map[string]any
 		wantErr string
 	}{
-		{name: "valid minimal", config: map[string]any{"host": "rdp.example.internal"}},
+		{name: "valid minimal", config: map[string]any{"host": sampleHost}},
 		{name: "valid full", config: map[string]any{
-			"host": "rdp.example.internal", "port": 3390, "timeout": "10s",
+			"host": sampleHost, "port": 3390, "timeout": "10s",
 			"require_nla": true, "warning_days": 30, "critical_days": 7,
 		}},
 		{name: "missing host", config: map[string]any{}, wantErr: "host"},
@@ -445,7 +445,7 @@ func TestRDPConfig_ValidateAppliesPortDefault(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	cfg := &RDPConfig{Host: "rdp.example.internal"}
+	cfg := &RDPConfig{Host: sampleHost}
 	r.NoError(cfg.Validate())
 	r.Equal(defaultPort, cfg.Port)
 }
@@ -484,7 +484,7 @@ func TestRDPConfig_GetConfigRoundTrip(t *testing.T) {
 	r := require.New(t)
 
 	original := &RDPConfig{
-		Host:         "rdp.example.internal",
+		Host:         sampleHost,
 		Port:         3390,
 		Timeout:      10 * time.Second,
 		RequireNLA:   true,

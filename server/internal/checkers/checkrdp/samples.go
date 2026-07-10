@@ -6,7 +6,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
-const samplePeriod = 5 * time.Minute
+const (
+	samplePeriod = 5 * time.Minute
+	// sampleHost is a placeholder: there is no public RDP endpoint to sample.
+	sampleHost = "rdp.example.internal"
+)
 
 // GetSampleConfigs returns sample RDP check configurations. There is no
 // public RDP endpoint to point at, so the samples use placeholder internal
@@ -19,7 +23,7 @@ func (c *RDPChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checker
 			Slug:   "rdp-server",
 			Period: samplePeriod,
 			Config: (&RDPConfig{
-				Host:       "rdp.example.internal",
+				Host:       sampleHost,
 				Port:       defaultPort,
 				Timeout:    defaultTimeout,
 				RequireNLA: true,

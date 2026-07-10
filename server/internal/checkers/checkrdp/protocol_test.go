@@ -245,16 +245,16 @@ func TestServerFlagNames(t *testing.T) {
 
 	r.Empty(serverFlagNames(0))
 	r.Equal(
-		[]string{"EXTENDED_CLIENT_DATA_SUPPORTED", "RESTRICTED_ADMIN_MODE_SUPPORTED"},
+		[]string{flagNameExtendedClientData, flagNameRestrictedAdminMode},
 		serverFlagNames(flagExtendedClientDataSupported|flagRestrictedAdminModeSupported),
 	)
 	r.Equal(
 		[]string{
-			"EXTENDED_CLIENT_DATA_SUPPORTED",
-			"DYNVC_GFX_PROTOCOL_SUPPORTED",
-			"NEGRSP_FLAG_RESERVED",
-			"RESTRICTED_ADMIN_MODE_SUPPORTED",
-			"REDIRECTED_AUTHENTICATION_MODE_SUPPORTED",
+			flagNameExtendedClientData,
+			flagNameDynVCGFXProtocol,
+			flagNameNegRspReserved,
+			flagNameRestrictedAdminMode,
+			flagNameRedirectedAuthUseMode,
 		},
 		serverFlagNames(0x1F),
 	)
