@@ -18,6 +18,7 @@
 // left in place as harmless defense-in-depth.
 
 import { setSession } from "@/api/client";
+import { resolveDestination } from "./login-destination";
 
 export interface OAuthHandoff {
   accessToken: string;
@@ -57,4 +58,34 @@ export function applyOAuthHandoff(handoff: OAuthHandoff): void {
   if (handoff.org) {
     localStorage.setItem("solidping_org", handoff.org);
   }
+}
+
+/**
+ * Decides where the browser should land after an OAuth handoff, once the
+ * token-bearing query string is dropped. Reuses {@link resolveDestination}'s
+ * safe-path / same-origin / org-match guards — the same funnel every other
+ * login path uses — so a deep `returnTo` the backend already honored (and
+ * which is therefore reflected in `window.location.pathname`) is preserved
+ * instead of unconditionally bouncing to the org root.
+ *
+ * - When the handoff carries an `org`, run the guards: a matching in-app deep
+ *   path is kept, anything unsafe / cross-org / non-org falls back to that
+ *   org's root (`{basepath}/orgs/{org}`). This covers providers like Discord
+ *   whose `redirect_uri` defaults to `/` — the `/` pathname fails the guards
+ *   and lands on the org root rather than `/`.
+ * - When no `org` was handed off there is nothing to resolve against, so keep
+ *   the current pathname (mirrors the previous `handoff.org ? … : pathname`
+ *   fallback).
+ *
+ * `login-destination.ts` is a pure module (no router/DOM imports), so this is
+ * safe to call from main.tsx's pre-React IIFE, before the router mounts.
+ */
+export function resolveHandoffDestination(
+  org: string | undefined,
+  pathname: string,
+  basepath: string,
+): string {
+  if (!org) return pathname;
+  const dest = resolveDestination(org, pathname, basepath);
+  return "href" in dest ? dest.href : `${basepath}/orgs/${dest.params.org}`;
 }

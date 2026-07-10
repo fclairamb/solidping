@@ -8,7 +8,11 @@ vi.mock("@/api/client", () => ({
     setSessionMock(accessToken, refreshToken, expiresIn),
 }));
 
-import { applyOAuthHandoff, parseOAuthHandoff } from "./oauth-handoff";
+import {
+  applyOAuthHandoff,
+  parseOAuthHandoff,
+  resolveHandoffDestination,
+} from "./oauth-handoff";
 
 describe("parseOAuthHandoff", () => {
   it("returns null when there is no access_token param (the common case)", () => {
@@ -83,5 +87,64 @@ describe("applyOAuthHandoff", () => {
 
     expect(setSessionMock).toHaveBeenCalledWith("at-1", undefined, undefined);
     expect(store["solidping_org"]).toBeUndefined();
+  });
+});
+
+describe("resolveHandoffDestination", () => {
+  const BASE = "/dash0";
+
+  it("preserves a deep returnTo path whose org matches the handoff org", () => {
+    // The core regression: after the provider round-trip the browser lands on
+    // the deep path (already in window.location.pathname); it must be kept,
+    // not replaced by the org root.
+    expect(
+      resolveHandoffDestination("acme", "/dash0/orgs/acme/checks/foo", BASE),
+    ).toBe("/dash0/orgs/acme/checks/foo");
+  });
+
+  it("keeps the org root when the deep path already is the org root", () => {
+    expect(resolveHandoffDestination("acme", "/dash0/orgs/acme", BASE)).toBe(
+      "/dash0/orgs/acme",
+    );
+  });
+
+  it("falls back to the org root for a cross-org returnTo path", () => {
+    expect(
+      resolveHandoffDestination("acme", "/dash0/orgs/other/checks", BASE),
+    ).toBe("/dash0/orgs/acme");
+  });
+
+  it("falls back to the org root for a non-org path (Discord's redirect_uri=/)", () => {
+    // Discord defaults redirect_uri to "/" but buildSuccessRedirect still sets
+    // org, so we land the user on the org root — never on "/".
+    expect(resolveHandoffDestination("acme", "/", BASE)).toBe(
+      "/dash0/orgs/acme",
+    );
+    expect(resolveHandoffDestination("acme", "/dash0", BASE)).toBe(
+      "/dash0/orgs/acme",
+    );
+  });
+
+  it("falls back to the org root for an unsafe protocol-relative path", () => {
+    expect(
+      resolveHandoffDestination("acme", "//evil.com/dash0/orgs/acme", BASE),
+    ).toBe("/dash0/orgs/acme");
+  });
+
+  it("keeps the current pathname when no org was handed off", () => {
+    // Nothing to resolve against — mirrors the previous fallback so behaviour
+    // is unchanged for the (unexpected) org-less redirect.
+    expect(
+      resolveHandoffDestination(undefined, "/dash0/orgs/acme/checks", BASE),
+    ).toBe("/dash0/orgs/acme/checks");
+  });
+
+  it("works with an empty base path", () => {
+    expect(
+      resolveHandoffDestination("acme", "/orgs/acme/incidents", ""),
+    ).toBe("/orgs/acme/incidents");
+    expect(resolveHandoffDestination("acme", "/orgs/other", "")).toBe(
+      "/orgs/acme",
+    );
   });
 });

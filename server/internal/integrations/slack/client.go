@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -343,8 +344,16 @@ func FetchOpenIDUserInfo(ctx context.Context, userAccessToken string) (*OpenIDUs
 // next cursor; an empty next cursor ends the loop. If maxListPages is reached
 // while Slack still returns a cursor, a warning is logged and the pages
 // fetched so far are kept rather than looping forever.
+//
+// The loop also stops if the cursor stops advancing — either Slack hands back
+// the same cursor it was given (next == cursor) or a cursor already followed
+// on an earlier page (tracked in seen). Both mean no forward progress:
+// continuing would only re-fetch pages already seen, which is what causes the
+// same channels to be appended maxListPages times (conversations.list is known
+// to do this on its final page). See the duplicate-destinations spec.
 func paginate(ctx context.Context, method string, fetchPage func(cursor string) (string, error)) error {
 	cursor := ""
+	seen := make(map[string]struct{})
 
 	for range maxListPages {
 		next, err := fetchPage(cursor)
@@ -356,6 +365,19 @@ func paginate(ctx context.Context, method string, fetchPage func(cursor string) 
 			return nil
 		}
 
+		if next == cursor {
+			// Non-advancing cursor: Slack returned the same cursor it was
+			// handed. Stop rather than re-fetch the same page forever.
+			return nil
+		}
+
+		if _, ok := seen[next]; ok {
+			// Repeating cursor: we already followed this cursor on an earlier
+			// page, so pagination is cycling. Stop.
+			return nil
+		}
+
+		seen[next] = struct{}{}
 		cursor = next
 	}
 
@@ -374,15 +396,17 @@ func (c *Client) ListChannels(ctx context.Context) ([]Channel, error) {
 	const method = "conversations.list"
 
 	channels := make([]Channel, 0, listPageSize)
+	seen := make(map[string]struct{})
 
 	err := paginate(ctx, method, func(cursor string) (string, error) {
-		payload := map[string]any{
-			"types":            "public_channel,private_channel",
-			"exclude_archived": true,
-			"limit":            listPageSize,
-		}
+		// Form-encoded, not JSON: conversations.list ignores JSON-body args.
+		params := url.Values{}
+		params.Set("types", "public_channel,private_channel")
+		params.Set("exclude_archived", "true")
+		params.Set("limit", strconv.Itoa(listPageSize))
+
 		if cursor != "" {
-			payload["cursor"] = cursor
+			params.Set("cursor", cursor)
 		}
 
 		var result struct {
@@ -391,11 +415,21 @@ func (c *Client) ListChannels(ctx context.Context) ([]Channel, error) {
 			ResponseMetadata ResponseMetadata `json:"response_metadata"` //nolint:tagliatelle // Slack API field
 		}
 
-		if err := c.callAPI(ctx, method, payload, &result); err != nil {
+		if err := c.callFormAPI(ctx, method, params, &result); err != nil {
 			return "", err
 		}
 
-		channels = append(channels, result.Channels...)
+		// De-duplicate by Slack ID: a repeating cursor or overlapping pages
+		// must never surface the same channel twice in the picker.
+		for i := range result.Channels {
+			channel := result.Channels[i]
+			if _, ok := seen[channel.ID]; ok {
+				continue
+			}
+
+			seen[channel.ID] = struct{}{}
+			channels = append(channels, channel)
+		}
 
 		return result.ResponseMetadata.NextCursor, nil
 	})
@@ -412,13 +446,15 @@ func (c *Client) ListUsers(ctx context.Context) ([]SlackUser, error) {
 	const method = "users.list"
 
 	users := make([]SlackUser, 0, listPageSize)
+	seen := make(map[string]struct{})
 
 	err := paginate(ctx, method, func(cursor string) (string, error) {
-		payload := map[string]any{
-			"limit": listPageSize,
-		}
+		// Form-encoded, not JSON: users.list ignores JSON-body args.
+		params := url.Values{}
+		params.Set("limit", strconv.Itoa(listPageSize))
+
 		if cursor != "" {
-			payload["cursor"] = cursor
+			params.Set("cursor", cursor)
 		}
 
 		var result struct {
@@ -427,15 +463,24 @@ func (c *Client) ListUsers(ctx context.Context) ([]SlackUser, error) {
 			ResponseMetadata ResponseMetadata `json:"response_metadata"` //nolint:tagliatelle // Slack API field
 		}
 
-		if err := c.callAPI(ctx, method, payload, &result); err != nil {
+		if err := c.callFormAPI(ctx, method, params, &result); err != nil {
 			return "", err
 		}
 
+		// Filter out bots/deleted members and de-duplicate by Slack ID so a
+		// repeating cursor or overlapping pages cannot surface duplicates.
 		for i := range result.Members {
-			u := result.Members[i]
-			if !u.IsBot && !u.Deleted {
-				users = append(users, u)
+			member := result.Members[i]
+			if member.IsBot || member.Deleted {
+				continue
 			}
+
+			if _, ok := seen[member.ID]; ok {
+				continue
+			}
+
+			seen[member.ID] = struct{}{}
+			users = append(users, member)
 		}
 
 		return result.ResponseMetadata.NextCursor, nil
@@ -447,14 +492,17 @@ func (c *Client) ListUsers(ctx context.Context) ([]SlackUser, error) {
 	return users, nil
 }
 
-// callAPI makes a Slack API call.
+// callAPI makes a Slack API call with a JSON-encoded body. This is the right
+// transport for Slack's write methods (chat.*, views.*, reactions.*), which
+// accept application/json. It is NOT suitable for the cursor-paginated read
+// methods (conversations.list, users.list) — see callFormAPI.
 func (c *Client) callAPI(ctx context.Context, method string, payload map[string]any, result any) error {
-	url := fmt.Sprintf("%s/%s", c.baseURL, method)
-
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
+
+	url := fmt.Sprintf("%s/%s", c.baseURL, method)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
@@ -462,6 +510,33 @@ func (c *Client) callAPI(ctx context.Context, method string, payload map[string]
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+
+	return c.do(req, result)
+}
+
+// callFormAPI makes a Slack API call with form-encoded (application/x-www-form-urlencoded)
+// parameters. Slack's cursor-paginated read methods (conversations.list,
+// users.list) silently IGNORE arguments sent in a JSON body and fall back to
+// defaults — limit 100 (not the requested 200), the first page only (cursor
+// ignored, so later pages are never fetched), and public channels only (the
+// `types` filter is dropped, hiding private channels). They must be called
+// form-encoded so types/limit/cursor/exclude_archived are honored.
+func (c *Client) callFormAPI(ctx context.Context, method string, params url.Values, result any) error {
+	url := fmt.Sprintf("%s/%s", c.baseURL, method)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(params.Encode()))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	return c.do(req, result)
+}
+
+// do sets auth on a prepared Slack request, sends it, checks the `ok` flag, and
+// unmarshals the body into result when provided. Shared by callAPI/callFormAPI.
+func (c *Client) do(req *http.Request, result any) error {
 	req.Header.Set("Authorization", "Bearer "+c.token)
 
 	resp, err := c.httpClient.Do(req)

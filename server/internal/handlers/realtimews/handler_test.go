@@ -474,6 +474,49 @@ func TestServe_ForeignOrgClosesForbidden(t *testing.T) {
 	r.Equal(realtimews.CloseForbidden, websocket.CloseStatus(readErr))
 }
 
+// TestServe_DBSuperAdminForeignOrgClosesForbidden locks in the alignment
+// between the WS handshake's org check and middleware.RequireOrgAccess (REST).
+// A *DB* super-admin (user.SuperAdmin) whose access token is scoped to a
+// different org with a non-super-admin role is 403'd by the REST middleware
+// (only a *claims* super-admin may cross orgs there); the WS handshake used to
+// let this exact shape through because it skipped the whole org check for any
+// DB super-admin. Both paths now reject it identically.
+func TestServe_DBSuperAdminForeignOrgClosesForbidden(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	fx := newWSFixture(t, wsFixtureOpts{})
+	// Org "test" (baked into fx.wsURL) must exist so the handshake reaches the
+	// org-mismatch check rather than the "organization not found" branch.
+	fx.seedOrgAndUser(t)
+
+	// A DB super-admin whose *claims* are scoped to a different org ("other")
+	// with role "admin" (not "superadmin"). Login always upgrades a
+	// super-admin's claim role to superadmin, so mint the token via
+	// GenerateTokensForOAuth, which honors the role passed verbatim — this is
+	// the one credential shape the REST middleware rejects but the WS handshake
+	// historically allowed.
+	otherOrg := models.NewOrganization("other", "Other Org")
+	r.NoError(fx.dbSvc.CreateOrganization(t.Context(), otherOrg))
+
+	user := models.NewUser("dbadmin@example.com")
+	pwd := "$plaintext$pw"
+	user.PasswordHash = &pwd
+	user.SuperAdmin = true
+	r.NoError(fx.dbSvc.CreateUser(t.Context(), user))
+
+	resp, err := fx.authService.GenerateTokensForOAuth(t.Context(), user, otherOrg, "admin")
+	r.NoError(err)
+
+	conn := fx.dialPreAuth(t, resp.AccessToken)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	_, _, readErr := conn.Read(ctx)
+	r.Error(readErr)
+	r.Equal(realtimews.CloseForbidden, websocket.CloseStatus(readErr))
+}
+
 func TestServe_DisabledClosesImmediately4404(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
