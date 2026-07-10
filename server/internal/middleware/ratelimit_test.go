@@ -176,30 +176,56 @@ func TestConcurrencyLimit_ExcludedPaths(t *testing.T) {
 	close(release)
 }
 
+// newBunRequestXFF builds a request from a fixed RemoteAddr carrying the
+// given X-Forwarded-For header, mimicking a client behind a reverse proxy.
+func newBunRequestXFF(xff string) bunrouter.Request {
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodGet, "/api/v1/orgs/default/checks", http.NoBody,
+	)
+	req.RemoteAddr = "192.168.1.1:12345"
+	req.Header.Set("X-Forwarded-For", xff)
+	return bunrouter.NewRequest(req)
+}
+
 func TestExtractIP_TrustedProxies(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	// With TrustedProxies=1 the middleware should read X-Forwarded-For.
+	// With TrustedProxies=1 the middleware must bucket by the XFF client, not
+	// by the shared RemoteAddr. Burst 2 with no slow lane so exhaustion is
+	// observable: if extraction were broken (everything collapsing into the
+	// RemoteAddr bucket), the second identity's requests would 429.
 	cfg := config.RateLimitConfig{
-		RequestsPerMinute: 5,
-		Burst:             5,
+		RequestsPerMinute: 2,
+		Burst:             2,
 		TrustedProxies:    1,
+		RateQueue:         0,
 	}
 	rl := middleware.NewRateLimiter(cfg, context.Background())
 	handler := rl.RateLimit(okHandler())
 
-	// Requests from different XFF IPs but same RemoteAddr should each have their own bucket.
-	for _, xff := range []string{"10.0.0.1", "10.0.0.2"} {
+	// Exhaust the first XFF identity's bucket.
+	for i := range 2 {
 		w := httptest.NewRecorder()
-		req := httptest.NewRequestWithContext(
-			context.Background(), http.MethodGet, "/api/v1/orgs/default/checks", http.NoBody,
-		)
-		req.RemoteAddr = "192.168.1.1:12345"
-		req.Header.Set("X-Forwarded-For", xff)
-		_ = handler(w, bunrouter.NewRequest(req))
-		r.Equal(http.StatusOK, w.Code, "request from %s should pass", xff)
+		_ = handler(w, newBunRequestXFF("10.0.0.1"))
+		r.Equal(http.StatusOK, w.Code, "request %d from 10.0.0.1 should pass", i)
 	}
+	w := httptest.NewRecorder()
+	_ = handler(w, newBunRequestXFF("10.0.0.1"))
+	r.Equal(http.StatusTooManyRequests, w.Code, "10.0.0.1 must be exhausted")
+
+	// A different XFF identity from the same RemoteAddr has its own bucket.
+	w = httptest.NewRecorder()
+	_ = handler(w, newBunRequestXFF("10.0.0.2"))
+	r.Equal(http.StatusOK, w.Code, "10.0.0.2 must have its own fresh bucket")
+
+	// A spoofed-looking two-entry header behind one trusted hop buckets by
+	// the last (proxy-appended) entry: 10.0.0.1 is still exhausted even when
+	// the client prepends a decoy.
+	w = httptest.NewRecorder()
+	_ = handler(w, newBunRequestXFF("6.6.6.6, 10.0.0.1"))
+	r.Equal(http.StatusTooManyRequests, w.Code,
+		"a prepended decoy entry must not grant 10.0.0.1 a fresh bucket")
 }
 
 func TestRateLimit_Disabled(t *testing.T) {
