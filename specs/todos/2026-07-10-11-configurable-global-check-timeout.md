@@ -88,3 +88,53 @@ Add a single config knob for the global check timeout:
    that + 1s, so an explicit per-check timeout keeps working. If the flat
    interpretation is preferred, the per-checker `maxTimeout` validation
    caps should be revisited to not exceed the global.
+
+## Implementation Plan
+
+Decisions taken (per the Proposal section, which is authoritative over the
+Open questions):
+
+- **OQ1** — flat interpretation: the new global default is **15s**, replacing
+  the hardcoded 30s. No 30s validation cap is added.
+- **OQ2** — flat interpretation: the global check timeout is applied flatly;
+  per-checker `maxTimeout` caps and per-check `config.Timeout` fields are left
+  untouched (no DB change, matching the Proposal's "No DB change"). The
+  `max(global, per-check)` variant is left as a documented open question.
+
+### Step 1 — scheduling math (`scheduling.go`)
+- Change `DefaultExecutionTimeout` `30s → 15s`. `MaxDeprioritizeOffset`
+  auto-derives to `2 × 15s = 30s` (still structurally bounded, well under the
+  claim window); update its comment.
+- Add `CheckTimeout time.Duration` to `scheduling.Params` (0 = unset → falls
+  back to `DefaultExecutionTimeout`).
+- Add `func (p Params) EffectiveCheckTimeout() time.Duration` returning
+  `CheckTimeout` when > 0 else `DefaultExecutionTimeout`.
+- `ExecutionTimeout()`: the flat fallback and the upper clamp bound both become
+  `EffectiveCheckTimeout()` instead of the hardcoded `DefaultExecutionTimeout`.
+
+### Step 2 — config knob (`config.go`)
+- Add `CheckTimeoutMs float64 \`koanf:"check_timeout_ms"\`` to
+  `SchedulingConfig`.
+- Default `CheckTimeoutMs: 15000` in `Load()`.
+- Read `SP_SCHEDULING_CHECK_TIMEOUT_MS` in `applySchedulingEnv` (koanf
+  multi-word env quirk).
+
+### Step 3 — thread into the worker (`worker.go`)
+- `schedulingParamsFromConfig`: populate `CheckTimeout: millis(cfg.CheckTimeoutMs)`.
+- `executeJob`: `checkTimeout := ExecutionTimeout(cost)`; the execution context
+  becomes `context.WithTimeout(background, checkTimeout + 1*time.Second)`; the
+  value passed to `runCheckerGuarded` (the checker's effective budget) stays
+  `checkTimeout`, no +1s.
+- `costSampleMs`: pin the timeout cost sample to
+  `r.schedParams.EffectiveCheckTimeout()` (derives from the effective configured
+  timeout) instead of the raw constant.
+
+### Step 4 — tests
+- `config_test.go`: default 15000, YAML/struct override, and
+  `SP_SCHEDULING_CHECK_TIMEOUT_MS` env override.
+- `scheduling_test.go`: `ExecutionTimeout` upper clamp follows the configured
+  `CheckTimeout`; 0/unset falls back to the default; update the existing
+  assertions that hardcoded 30s to the new 15s default.
+- `worker_test.go`: a fake checker records its context deadline; assert the
+  execution context deadline is `checkTimeout + 1s` while the timeout budget
+  passed to the checker path stays `checkTimeout`.
