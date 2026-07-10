@@ -572,8 +572,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService,
 		s.services.Credentials, s.services.Entitlements, s.services.Realtime,
 	)
-	mcpGroup := api.NewGroup("/mcp").Use(authMiddleware.RequireMCPAuth)
-	mcpGroup.POST("", s.mcpHandler.Handle)
+	mcpGroup := api.NewGroup("/mcp")
+	// GET is deliberately outside RequireMCPAuth: a browser opening the
+	// endpoint has no token and gets a helpful redirect to the dashboard MCP
+	// page, while an MCP client probing with Accept: text/event-stream gets
+	// the spec-mandated 405 (we don't serve server-initiated SSE streams).
+	mcpGroup.GET("", s.mcpHandler.HandleGet)
+	mcpAuthed := mcpGroup.Use(authMiddleware.RequireMCPAuth)
+	mcpAuthed.POST("", s.mcpHandler.Handle)
+	mcpAuthed.DELETE("", s.mcpHandler.HandleDelete)
 
 	// OAuth 2.1 authorization server for the MCP resource (spec
 	// 2026-06-20-03). Discovery docs are served at the site root where MCP
@@ -1519,6 +1526,15 @@ func writeDocsFile(writer http.ResponseWriter, name string, data []byte, status 
 
 // serveAppRoot determines whether to proxy to dev server or serve static files.
 func (s *Server) serveAppRoot(writer http.ResponseWriter, req bunrouter.Request) error {
+	// Nothing under /api/ ever serves the SPA: an unmatched path in the API
+	// namespace answers with the standard JSON error shape so non-browser
+	// clients (MCP probes included) never receive text/html.
+	if strings.HasPrefix(req.URL.Path, "/api/") {
+		handlerBase := base.NewHandlerBase(s.config)
+
+		return handlerBase.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "API route not found")
+	}
+
 	// Redirect root to dash0 dashboard
 	if req.URL.Path == "/" {
 		http.Redirect(writer, req.Request, "/dash0/", http.StatusFound)
