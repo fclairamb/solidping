@@ -72,6 +72,7 @@ function seedQueries(client: QueryClient): void {
     ["backgroundJobs", ORG, {}],
     // Other org + non-org keys must never be touched.
     ["checks", "other-org", {}],
+    ["checks", "infinite", "other-org", {}],
     ["features"],
   ];
   for (const key of keys) {
@@ -195,6 +196,34 @@ describe("LiveRegistry scope-accurate invalidation", () => {
     expect(stale).not.toContain(JSON.stringify(["incidents", ORG, {}]));
   });
 
+  it("subscribed ack on the checks scope also invalidates the paginated (infinite) checks list", () => {
+    // The checks *list page* fetches exclusively through useInfiniteChecks,
+    // whose key is ["checks", "infinite", org, options] — org one segment
+    // deeper than the flat orgRoot shape. This locks in the infiniteOrgRoot
+    // mapping; without it, the list page's live subscription would send the
+    // subscribe frame yet never refresh anything the page renders.
+    const { client, conn, registry } = setup();
+    registry.addScope({ entity: "checks" });
+    registry.start();
+    conn.open();
+    conn.subscribed({ entity: "checks" });
+
+    expect(staleKeys(client)).toContain(JSON.stringify(["checks", "infinite", ORG, {}]));
+  });
+
+  it("a 'checks' kind hint (status transition) invalidates the infinite checks list", () => {
+    const { client, conn, registry } = setup();
+    registry.addScope({ entity: "checks" });
+    registry.start();
+    conn.open();
+    conn.subscribed({ entity: "checks" });
+    client.getQueryCache().getAll().forEach((q) => client.resetQueries({ queryKey: q.queryKey }));
+
+    vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
+    conn.update({ entity: "checks" }, ["checks"]);
+    expect(staleKeys(client)).toContain(JSON.stringify(["checks", "infinite", ORG, {}]));
+  });
+
   it("update on a check scope invalidates only that check's queries, not another check's", () => {
     const { client, conn, registry } = setup();
     registry.addScope({ entity: "check", uid: "uid-1" });
@@ -250,6 +279,9 @@ describe("LiveRegistry scope-accurate invalidation", () => {
     conn.update({ entity: "checks" }, ["results"]);
     const stale = staleKeys(client);
     expect(stale).toContain(JSON.stringify(["checks", ORG, { limit: 1000 }]));
+    // The paginated list (checks index page) embeds last-result cells too —
+    // a steady-state (no-transition) run must refresh it as well.
+    expect(stale).toContain(JSON.stringify(["checks", "infinite", ORG, {}]));
   });
 
   it("empty kinds on update means 'all' for that scope's roots", () => {
@@ -291,6 +323,9 @@ describe("LiveRegistry scope-accurate invalidation", () => {
     conn.subscribed({ entity: "checks" });
 
     expect(staleKeys(client)).not.toContain(JSON.stringify(["checks", "other-org", {}]));
+    expect(staleKeys(client)).not.toContain(
+      JSON.stringify(["checks", "infinite", "other-org", {}]),
+    );
   });
 });
 
