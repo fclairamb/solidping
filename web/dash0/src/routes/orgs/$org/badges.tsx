@@ -11,9 +11,10 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useChecks, useCheck, type Check } from "@/api/hooks";
+import { useCheck, type Check } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
+import { CheckPicker } from "@/components/shared/check-picker";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
@@ -333,10 +334,8 @@ function BadgesPage() {
   const { org } = Route.useParams();
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
-  // Raise to the endpoint max so the dropdown covers up to 100 checks (default is 20).
-  const { data: checks = [], isLoading, error } = useChecks(org, { limit: 100 });
   // Resolve the selected check directly (by uid or slug) so a deep-link to a check
-  // outside the loaded list page still works. Auto-disabled when no check param.
+  // outside the picker's current matches still works. Auto-disabled when no check param.
   const { data: directCheck, isLoading: directLoading } = useCheck(
     org,
     search.check ?? ""
@@ -362,18 +361,7 @@ function BadgesPage() {
     activeTokens.includes("response-time") ||
     showRowControls;
 
-  const selectedCheck = search.check
-    ? checks.find((c) => c.uid === search.check) ??
-      checks.find((c) => c.slug === search.check) ??
-      directCheck
-    : undefined;
-
-  // Always include the resolved check as a dropdown option so the Radix Select
-  // trigger shows its name even when it sorts outside the loaded list page.
-  const checkOptions =
-    selectedCheck && !checks.some((c) => c.uid === selectedCheck.uid)
-      ? [selectedCheck, ...checks]
-      : checks;
+  const selectedCheck = search.check ? directCheck : undefined;
 
   // A check param is set but nothing resolved and the direct fetch is no longer
   // in flight → stale/unknown check (e.g. deleted, or a broken bookmark).
@@ -395,9 +383,10 @@ function BadgesPage() {
     });
   };
 
-  const handleCheckChange = (uid: string) => {
-    const check = checkOptions.find((c) => c.uid === uid);
-    updateSearch({ check: check?.slug || uid });
+  // Write the check slug (fallback uid) to the ?check= search param; clearing
+  // the picker removes the param entirely.
+  const handleCheckChange = (uid: string | undefined, check?: Check) => {
+    updateSearch({ check: uid ? check?.slug || uid : undefined });
   };
 
   const handleComponentToggle = (token: string, checked: boolean) => {
@@ -456,27 +445,20 @@ function BadgesPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>{t("check")}</Label>
-              {isLoading ? (
-                <Skeleton className="h-10 w-full" />
-              ) : error ? (
-                <p className="text-sm text-destructive">{t("loadFailed")}</p>
-              ) : (
-                <Select
-                  value={selectedCheck?.uid ?? ""}
-                  onValueChange={handleCheckChange}
-                >
-                  <SelectTrigger data-testid="badge-check-select">
-                    <SelectValue placeholder={t("selectCheck")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {checkOptions.map((check) => (
-                      <SelectItem key={check.uid} value={check.uid}>
-                        {check.name || check.slug || check.uid.slice(0, 8)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+              <CheckPicker
+                org={org}
+                value={selectedCheck?.uid}
+                selectedLabel={
+                  selectedCheck
+                    ? selectedCheck.name ||
+                      selectedCheck.slug ||
+                      selectedCheck.uid.slice(0, 8)
+                    : undefined
+                }
+                placeholder={t("selectCheck")}
+                onChange={handleCheckChange}
+                triggerTestId="badge-check-select"
+              />
             </div>
 
             <div className="space-y-2">

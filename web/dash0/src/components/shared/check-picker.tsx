@@ -16,6 +16,8 @@ export interface CheckPickerProps {
   placeholder?: string;
   disabled?: boolean;
   selectedLabel?: string;
+  /** Optional data-testid for the trigger button (e.g. "badge-check-select"). */
+  triggerTestId?: string;
 }
 
 const SEARCH_DEBOUNCE_MS = 150;
@@ -29,6 +31,7 @@ export function CheckPicker({
   placeholder,
   disabled,
   selectedLabel,
+  triggerTestId,
 }: CheckPickerProps) {
   const { t } = useTranslation(["dependencies", "common"]);
   const [open, setOpen] = useState(false);
@@ -77,6 +80,7 @@ export function CheckPicker({
           type="button"
           variant="outline"
           disabled={disabled}
+          data-testid={triggerTestId}
           className={cn(
             "h-9 w-full justify-between text-left font-normal",
             !value && "text-muted-foreground",
