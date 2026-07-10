@@ -2,9 +2,14 @@ package config
 
 import (
 	"log/slog"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -454,6 +459,25 @@ func TestApplySchedulingLaneEnv(t *testing.T) {
 	r.InEpsilon(3000.0, cfg.LaneSlowThresholdMs, 1e-9)
 	r.InEpsilon(1500.0, cfg.LaneFastThresholdMs, 1e-9)
 	r.Equal(7, cfg.FastLaneReserved)
+}
+
+// TestSchedulingCheckTimeoutYAMLBinding confirms scheduling.check_timeout_ms
+// binds from YAML through koanf onto CheckTimeoutMs via its koanf tag (spec
+// 2026-07-10-11), using the same tag-based Unmarshal the real Load() uses.
+func TestSchedulingCheckTimeoutYAMLBinding(t *testing.T) {
+	t.Parallel()
+
+	yamlDoc := "server:\n  scheduling:\n    check_timeout_ms: 12500\n"
+	path := filepath.Join(t.TempDir(), "config.yml")
+	require.NoError(t, os.WriteFile(path, []byte(yamlDoc), 0o600))
+
+	k := koanf.New(".")
+	require.NoError(t, k.Load(file.Provider(path), yaml.Parser()))
+
+	var cfg Config
+	require.NoError(t, k.Unmarshal("", &cfg))
+	require.InEpsilon(t, 12500.0, cfg.Server.Scheduling.CheckTimeoutMs, 1e-9,
+		"scheduling.check_timeout_ms must bind from YAML")
 }
 
 // TestApplySchedulingCheckTimeoutEnv confirms SP_SCHEDULING_CHECK_TIMEOUT_MS
