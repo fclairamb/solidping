@@ -23,9 +23,12 @@ package scheduling
 
 import "time"
 
-// DefaultExecutionTimeout is the historical flat per-check execution ceiling.
-// The cost-aware timeout never exceeds it.
-const DefaultExecutionTimeout = 30 * time.Second
+// DefaultExecutionTimeout is the fallback flat per-check execution ceiling used
+// when no global check timeout is configured (Params.CheckTimeout == 0). The
+// cost-aware timeout never exceeds the effective ceiling
+// (Params.EffectiveCheckTimeout). It is also the EWMA-pin ceiling and the basis
+// of MaxDeprioritizeOffset, so all three stay consistent with the default.
+const DefaultExecutionTimeout = 15 * time.Second
 
 // CostOffsetWeight is the multiplier applied to cost_ewma_ms in the
 // deprioritization offset:
@@ -45,7 +48,7 @@ const CostOffsetWeight = 2
 // far past the 5-min claim window; spec 2026-07-01-02). Being bounded well
 // under the claim window is also the anti-starvation guarantee: a job
 // MaxDeprioritizeOffset overdue sorts ahead of any on-time job.
-const MaxDeprioritizeOffset = CostOffsetWeight * DefaultExecutionTimeout // 60s = weight × execution ceiling
+const MaxDeprioritizeOffset = CostOffsetWeight * DefaultExecutionTimeout // 30s = weight × execution ceiling
 
 // Check lanes (spec 2026-07-01-03): every check_jobs row carries a lane
 // smallint. Fast jobs may occupy any free runner slot; slow jobs are capped at
@@ -87,9 +90,16 @@ type Params struct {
 	// applies.
 	TierCreditMax time.Duration
 
+	// CheckTimeout is the configured global per-check execution ceiling
+	// (config scheduling.check_timeout_ms). It is the flat timeout when the
+	// cost-aware timeout is off, and the upper clamp bound when it is on. 0 =
+	// unset, falling back to DefaultExecutionTimeout (15s). Read the effective
+	// value via EffectiveCheckTimeout.
+	CheckTimeout time.Duration
+
 	// CostTimeoutFactor multiplies cost_ewma_ms to derive the per-check
-	// execution timeout (clamped to [CostTimeoutFloor, DefaultExecutionTimeout]).
-	// 0 disables the cost-aware timeout (the flat 30s ceiling is used).
+	// execution timeout (clamped to [CostTimeoutFloor, EffectiveCheckTimeout]).
+	// 0 disables the cost-aware timeout (the flat configured ceiling is used).
 	CostTimeoutFactor float64
 
 	// CostTimeoutFloor is the minimum cost-aware timeout, so a fast or
@@ -209,30 +219,45 @@ func msToDuration(ms float64) time.Duration {
 	return time.Duration(ms * float64(time.Millisecond))
 }
 
+// EffectiveCheckTimeout is the configured global per-check execution ceiling,
+// falling back to DefaultExecutionTimeout (15s) when CheckTimeout is unset (0).
+// It is the flat timeout when the cost-aware timeout is off, the upper clamp
+// bound when it is on, and the ceiling a timed-out check's cost EWMA is pinned
+// to.
+func (p Params) EffectiveCheckTimeout() time.Duration {
+	if p.CheckTimeout > 0 {
+		return p.CheckTimeout
+	}
+
+	return DefaultExecutionTimeout
+}
+
 // ExecutionTimeout returns the per-check execution ceiling. With the cost-aware
 // timeout enabled (CostTimeoutFactor > 0) it is clamp(factor × cost,
-// floor, 30s); otherwise the flat DefaultExecutionTimeout. A job with no cost
-// signal yet (cost 0, never ran) gets the full DefaultExecutionTimeout — NOT
-// the floor (spec 2026-07-01-04 D4): giving a first run only the floor would
-// time out a legitimately slow check (e.g. a fresh browser probe), pin its
-// cost EWMA to the ceiling, and poison the signal before it ever measured
-// honestly.
+// floor, EffectiveCheckTimeout); otherwise the flat EffectiveCheckTimeout. A
+// job with no cost signal yet (cost 0, never ran) gets the full
+// EffectiveCheckTimeout — NOT the floor (spec 2026-07-01-04 D4): giving a first
+// run only the floor would time out a legitimately slow check (e.g. a fresh
+// browser probe), pin its cost EWMA to the ceiling, and poison the signal
+// before it ever measured honestly.
 func (p Params) ExecutionTimeout(costEWMAMs float64) time.Duration {
+	ceiling := p.EffectiveCheckTimeout()
+
 	if p.CostTimeoutFactor <= 0 || costEWMAMs <= 0 {
-		return DefaultExecutionTimeout
+		return ceiling
 	}
 
 	want := time.Duration(p.CostTimeoutFactor * costEWMAMs * float64(time.Millisecond))
 
 	floor := p.CostTimeoutFloor
 	if floor <= 0 {
-		floor = DefaultExecutionTimeout
+		floor = ceiling
 	}
 	if want < floor {
 		want = floor
 	}
-	if want > DefaultExecutionTimeout {
-		want = DefaultExecutionTimeout
+	if want > ceiling {
+		want = ceiling
 	}
 
 	return want

@@ -551,6 +551,13 @@ type SchedulingConfig struct {
 	// (effective == scheduled_at), so small per-run variance never reorders fast
 	// checks. Default 2000 (see Load); 0 disables the dead-band (any offset applies).
 	SlowThresholdMs float64 `koanf:"slow_threshold_ms"`
+	// CheckTimeoutMs is the global per-check execution ceiling in milliseconds.
+	// It is the flat timeout when the cost-aware timeout is off, and the upper
+	// clamp bound when it is on. The execution context is this + 1s so a checker
+	// that honors its own timeout reports a clean StatusTimeout before the hard
+	// context cancellation. Default 15000 (see Load); 0 falls back to the 15s
+	// built-in default.
+	CheckTimeoutMs float64 `koanf:"check_timeout_ms"`
 	// TierCreditSeconds is the deadline credit per unit of plan_weight (paid
 	// jobs sort earlier under contention). 0 disables the credit.
 	TierCreditSeconds float64 `koanf:"tier_credit_seconds"`
@@ -558,9 +565,10 @@ type SchedulingConfig struct {
 	// separate cap.
 	TierCreditMaxSeconds float64 `koanf:"tier_credit_max_seconds"`
 	// CostTimeoutFactor multiplies cost_ewma_ms to derive the per-check
-	// execution timeout, clamped to [floor, 30s]. Default 3 (see Load; on by
-	// default per spec 2026-07-01-04 D4). 0 disables (flat 30s timeout). A job
-	// that never ran (cost 0) always keeps the full 30s regardless of the floor.
+	// execution timeout, clamped to [floor, check_timeout_ms]. Default 3 (see
+	// Load; on by default per spec 2026-07-01-04 D4). 0 disables (flat
+	// check_timeout_ms). A job that never ran (cost 0) always keeps the full
+	// ceiling regardless of the floor.
 	CostTimeoutFactor float64 `koanf:"cost_timeout_factor"`
 	// CostTimeoutFloorMs is the minimum cost-aware timeout in ms, so a fast
 	// check is never given an unreasonably short ceiling. Default 5000 (see
@@ -648,12 +656,19 @@ func Load() (*Config, error) {
 				// the real scheduled_at (pure FIFO) so small per-run variance never
 				// reorders fast checks. Tier weighting stays opt-in (0).
 				SlowThresholdMs: 2000,
+				// Global per-check execution ceiling (spec 2026-07-10-11):
+				// 15s by default. The execution context is this + 1s so a
+				// checker's own timeout fires first and reports a clean
+				// StatusTimeout. Override via config or
+				// SP_SCHEDULING_CHECK_TIMEOUT_MS; 0 falls back to the 15s
+				// built-in default.
+				CheckTimeoutMs: 15000,
 				// Cost-aware timeout is ON by default (spec 2026-07-01-04 D4):
-				// timeout = clamp(3 × cost_ewma, 5s, 30s). A 200ms check's
-				// worst-case slot occupancy drops 30s → 5s while measured slow
-				// checks keep the full ceiling. A never-run job (cost 0) gets
-				// the full 30s, not the floor, so first runs measure honestly.
-				// Set cost_timeout_factor to 0 to disable.
+				// timeout = clamp(3 × cost_ewma, 5s, check_timeout_ms). A 200ms check's
+				// worst-case slot occupancy drops to the 5s floor while measured
+				// slow checks keep the full ceiling. A never-run job (cost 0)
+				// gets the full ceiling, not the floor, so first runs measure
+				// honestly. Set cost_timeout_factor to 0 to disable.
 				CostTimeoutFactor:  3,
 				CostTimeoutFloorMs: 5000,
 				// Fast/slow lane hysteresis band + reservation (spec
@@ -1107,6 +1122,7 @@ func applySchedulingEnv(cfg *SchedulingConfig) {
 	}
 
 	parseFloat("SP_SCHEDULING_SLOW_THRESHOLD_MS", &cfg.SlowThresholdMs)
+	parseFloat("SP_SCHEDULING_CHECK_TIMEOUT_MS", &cfg.CheckTimeoutMs)
 	parseFloat("SP_SCHEDULING_TIER_CREDIT_SECONDS", &cfg.TierCreditSeconds)
 	parseFloat("SP_SCHEDULING_TIER_CREDIT_MAX_SECONDS", &cfg.TierCreditMaxSeconds)
 	parseFloat("SP_SCHEDULING_COST_TIMEOUT_FACTOR", &cfg.CostTimeoutFactor)

@@ -247,6 +247,7 @@ func schedulingParamsFromConfig(cfg config.SchedulingConfig) scheduling.Params {
 
 	return scheduling.Params{
 		SlowThresholdMs:     cfg.SlowThresholdMs,
+		CheckTimeout:        millis(cfg.CheckTimeoutMs),
 		TierCreditPerWeight: secs(cfg.TierCreditSeconds),
 		TierCreditMax:       secs(cfg.TierCreditMaxSeconds),
 		CostTimeoutFactor:   cfg.CostTimeoutFactor,
@@ -755,16 +756,23 @@ func (r *CheckWorker) executeJob(
 	// 4. Execute check with a cost-aware timeout.
 	// Use background context so the check can complete even during shutdown —
 	// only the timeout should cancel the check, not the runner shutdown. The
-	// ceiling is clamp(factor × cost_ewma, floor, 30s): a 200ms-p95 check no
-	// longer reserves 30s of worst-case occupancy, while chronic 30s offenders
-	// still hit the ceiling. With the cost-aware timeout disabled this is the
-	// historical flat 30s.
-	execTimeout := r.schedParams.ExecutionTimeout(checkJob.CostEWMAMs)
-	execCtx, cancel := context.WithTimeout(context.Background(), execTimeout)
+	// ceiling is clamp(factor × cost_ewma, floor, check_timeout): a 200ms-p95
+	// check no longer reserves the full ceiling of worst-case occupancy, while
+	// chronic offenders still hit it. With the cost-aware timeout disabled this
+	// is the flat configured check timeout (default 15s).
+	//
+	// The execution *context* deadline is checkTimeout + 1s (spec 2026-07-10-11):
+	// the +1s margin lets a checker that honors its own timeout report a clean
+	// StatusTimeout result before the hard context cancellation, instead of the
+	// generic context-deadline-exceeded. The budget handed down to the checker
+	// stays checkTimeout (no +1s), so the checker-level timeout always fires
+	// first.
+	checkTimeout := r.schedParams.ExecutionTimeout(checkJob.CostEWMAMs)
+	execCtx, cancel := context.WithTimeout(context.Background(), checkTimeout+time.Second)
 	defer cancel()
 
 	execStart := time.Now()
-	result, err := r.runCheckerGuarded(execCtx, logger, checker, checkConfig, checkJob, execTimeout, startTime)
+	result, err := r.runCheckerGuarded(execCtx, logger, checker, checkConfig, checkJob, checkTimeout, startTime)
 	prommetrics.RecordCheckStage("execute", time.Since(execStart).Seconds())
 	if err != nil {
 		duration := time.Since(startTime)
@@ -976,7 +984,7 @@ func (r *CheckWorker) abandonCheckerExecution(
 // scored by the partial duration measured before the deadline fired.
 func (r *CheckWorker) costSampleMs(result checkerdef.Result) float64 {
 	if result.Status == checkerdef.StatusTimeout {
-		return float64(scheduling.DefaultExecutionTimeout.Milliseconds())
+		return float64(r.schedParams.EffectiveCheckTimeout().Milliseconds())
 	}
 
 	return float64(result.Duration.Milliseconds())
