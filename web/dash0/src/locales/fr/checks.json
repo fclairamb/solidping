@@ -189,6 +189,8 @@
     "sipDescription": "Vérifier la joignabilité et l'enregistrement d'un serveur SIP",
     "ntp": "NTP",
     "ntpDescription": "Surveiller les serveurs de temps NTP",
+    "rdp": "RDP",
+    "rdpDescription": "Surveiller les serveurs RDP (Bureau à distance)",
     "sleep": "Sleep",
     "sleepDescription": "Attendre une durée fixe (synthétique/test, sans I/O réseau)"
   },

@@ -187,6 +187,8 @@
     "sipDescription": "Comprobar la accesibilidad y el registro de un servidor SIP",
     "ntp": "NTP",
     "ntpDescription": "Monitorizar servidores de tiempo NTP",
+    "rdp": "RDP",
+    "rdpDescription": "Monitorizar servidores RDP (Escritorio remoto)",
     "sleep": "Sleep",
     "sleepDescription": "Esperar una duración fija (sintético/pruebas, sin E/S de red)"
   },

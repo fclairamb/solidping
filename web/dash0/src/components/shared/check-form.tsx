@@ -53,7 +53,7 @@ import { FreeboxLanDiscovery } from "@/components/shared/freebox-lan-discovery";
 import type { FreeboxLanHost } from "@/api/hooks";
 import { X } from "lucide-react";
 
-type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "sleep";
+type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "rdp" | "sleep";
 
 // Fallback defaults when API data isn't available
 const defaultPeriodSeconds: Record<string, number> = {
@@ -103,6 +103,7 @@ const checkTypes: { value: CheckType; label: string; description: string; synthe
   { value: "dnsbl", label: "DNSBL", description: "Check if an IP/domain is on DNS blocklists" },
   { value: "sip", label: "SIP", description: "Check SIP server reachability and registration" },
   { value: "ntp", label: "NTP", description: "Monitor NTP time servers" },
+  { value: "rdp", label: "RDP", description: "Monitor RDP (Remote Desktop) servers" },
   { value: "sleep", label: "Sleep", description: "Sleep for a fixed duration (synthetic/testing, no network I/O)", synthetic: true },
 ];
 
@@ -528,6 +529,19 @@ export function CheckForm({
   const [ntpMaxStratum, setNtpMaxStratum] = useState(
     getConfigField(initialData?.config, "max_stratum"),
   );
+  // rdp state — host/port reuse the shared inputs. Require NLA enforces
+  // CredSSP (Network Level Authentication) selection; the optional SSL-style
+  // certificate warning/critical days grade the server certificate expiry
+  // when a TLS-based protocol is negotiated (0/empty = off).
+  const [rdpRequireNLA, setRdpRequireNLA] = useState(
+    getConfigField(initialData?.config, "require_nla") === "true",
+  );
+  const [rdpWarningDays, setRdpWarningDays] = useState(
+    getConfigField(initialData?.config, "warning_days"),
+  );
+  const [rdpCriticalDays, setRdpCriticalDays] = useState(
+    getConfigField(initialData?.config, "critical_days"),
+  );
   // sleep state — synthetic/testing checker, no network I/O. sleepStatus
   // mirrors the snmpOperator/sipMode pattern: state defaults to the backend's
   // implicit default ("up") and is only added to the submitted config when it
@@ -658,6 +672,9 @@ export function CheckForm({
     setSipTransport(getConfigField(cfg, "transport") || "udp");
     setSipMode(getConfigField(cfg, "mode") || "options");
     setSipExpectStatus(getConfigField(cfg, "expect_status"));
+    setRdpRequireNLA(getConfigField(cfg, "require_nla") === "true");
+    setRdpWarningDays(getConfigField(cfg, "warning_days"));
+    setRdpCriticalDays(getConfigField(cfg, "critical_days"));
     setSleepMs(getConfigField(cfg, "sleep_ms"));
     setJitterMs(getConfigField(cfg, "jitter_ms"));
     setSleepStatus(getConfigField(cfg, "status") || "up");
@@ -702,6 +719,13 @@ export function CheckForm({
         if (ntpOffsetWarnMs) cfg.offset_warn_ms = parseInt(ntpOffsetWarnMs, 10);
         if (ntpOffsetCritMs) cfg.offset_crit_ms = parseInt(ntpOffsetCritMs, 10);
         if (ntpMaxStratum) cfg.max_stratum = parseInt(ntpMaxStratum, 10);
+        break;
+      case "rdp":
+        if (host) cfg.host = host;
+        if (port) cfg.port = parseInt(port, 10);
+        if (rdpRequireNLA) cfg.require_nla = true;
+        if (rdpWarningDays) cfg.warning_days = parseInt(rdpWarningDays, 10);
+        if (rdpCriticalDays) cfg.critical_days = parseInt(rdpCriticalDays, 10);
         break;
       case "tcp":
       case "udp":
@@ -887,6 +911,7 @@ export function CheckForm({
     dnsblTarget, dnsblBlocklists, dnsblNameserver,
     sipTransport, sipMode, sipExpectStatus,
     ntpVersion, ntpOffsetWarnMs, ntpOffsetCritMs, ntpMaxStratum,
+    rdpRequireNLA, rdpWarningDays, rdpCriticalDays,
     sleepMs, jitterMs, sleepStatus]);
 
   const fieldErrors = useCheckValidation(org, type, currentConfig, 300);
@@ -945,6 +970,14 @@ export function CheckForm({
         if (ntpOffsetWarnMs) config.offset_warn_ms = parseInt(ntpOffsetWarnMs, 10);
         if (ntpOffsetCritMs) config.offset_crit_ms = parseInt(ntpOffsetCritMs, 10);
         if (ntpMaxStratum) config.max_stratum = parseInt(ntpMaxStratum, 10);
+        break;
+      case "rdp":
+        if (!host) { setError("Host is required"); return; }
+        config.host = host;
+        if (port) config.port = parseInt(port, 10);
+        if (rdpRequireNLA) config.require_nla = true;
+        if (rdpWarningDays) config.warning_days = parseInt(rdpWarningDays, 10);
+        if (rdpCriticalDays) config.critical_days = parseInt(rdpCriticalDays, 10);
         break;
       case "tcp":
       case "udp":
@@ -1403,6 +1436,39 @@ export function CheckForm({
               <Input id="ntpMaxStratum" type="number" min={1} max={15} placeholder="off" value={ntpMaxStratum} onChange={(e) => setNtpMaxStratum(e.target.value)} data-testid="check-ntp-max-stratum-input" />
               <p className="text-xs text-muted-foreground">Down when the server's stratum exceeds this (1–15).</p>
             </div>
+          </>
+        );
+      case "rdp":
+        return (
+          <>
+            <div className="space-y-2">
+              <Label>Host</Label>
+              <div className="flex gap-2">
+                <Input id="host" type="text" placeholder="rdp.example.internal" value={host} onChange={(e) => setHost(e.target.value)}
+                  className={cn("flex-1", getFieldError(fieldErrors, "host") && "border-destructive")} data-testid="check-host-input" />
+                <Input id="port" type="number" placeholder="3389" value={port} onChange={(e) => setPort(e.target.value)}
+                  className={cn("w-24", getFieldError(fieldErrors, "port") && "border-destructive")} data-testid="check-port-input" />
+              </div>
+              {getFieldError(fieldErrors, "host") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>)}
+              {getFieldError(fieldErrors, "port") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "port")}</p>)}
+            </div>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2"><Checkbox checked={rdpRequireNLA} onCheckedChange={(v) => setRdpRequireNLA(v === true)} data-testid="check-rdp-require-nla-checkbox" /><span className="text-sm">Require NLA (Network Level Authentication)</span></label>
+              <p className="text-xs text-muted-foreground">Down when the server does not select CredSSP — catches NLA silently disabled by policy.</p>
+            </div>
+            <div className="flex gap-4">
+              <div className="space-y-2 w-40">
+                <Label htmlFor="rdpCriticalDays">Cert critical (days)</Label>
+                <Input id="rdpCriticalDays" type="number" min={0} placeholder="off" value={rdpCriticalDays} onChange={(e) => setRdpCriticalDays(e.target.value)} data-testid="check-rdp-critical-days-input" />
+                <p className="text-xs text-muted-foreground">Down (pages) when the certificate expires in at most this many days.</p>
+              </div>
+              <div className="space-y-2 w-40">
+                <Label htmlFor="rdpWarningDays">Cert warning (days)</Label>
+                <Input id="rdpWarningDays" type="number" min={0} placeholder="off" value={rdpWarningDays} onChange={(e) => setRdpWarningDays(e.target.value)} data-testid="check-rdp-warning-days-input" />
+                <p className="text-xs text-muted-foreground">Amber warning (no page). Must be ≥ Critical.</p>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">Pre-auth handshake only — no credentials are sent. Workers need network access to the RDP host (typically internal).</p>
           </>
         );
       case "websocket":

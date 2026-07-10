@@ -189,6 +189,8 @@
     "sipDescription": "Check SIP server reachability and registration",
     "ntp": "NTP",
     "ntpDescription": "Monitor NTP time servers",
+    "rdp": "RDP",
+    "rdpDescription": "Monitor RDP (Remote Desktop) servers",
     "sleep": "Sleep",
     "sleepDescription": "Sleep for a fixed duration (synthetic/testing, no network I/O)"
   },
