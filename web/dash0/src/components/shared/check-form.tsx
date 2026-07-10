@@ -483,6 +483,16 @@ export function CheckForm({
   const [dnsblNameserver, setDnsblNameserver] = useState(
     getConfigField(initialData?.config, "nameserver"),
   );
+  // dns state — the queried domain reuses the shared `host` state (backend reads
+  // it under the `host` key). dnsNameserver is the optional custom resolver
+  // (host:port), dnsRecordType the record to query (default A) so a sample's or
+  // an existing check's record type is never silently discarded on save.
+  const [dnsNameserver, setDnsNameserver] = useState(
+    getConfigField(initialData?.config, "nameserver"),
+  );
+  const [dnsRecordType, setDnsRecordType] = useState(
+    getConfigField(initialData?.config, "record_type") || "A",
+  );
   // sip state — transport (udp/tcp/tls), mode (options/register), and an
   // optional comma-separated expect_status list. host/port/domain/username/
   // password reuse the shared state above; password is a secret field rendered
@@ -669,6 +679,10 @@ export function CheckForm({
         : getConfigField(cfg, "blocklists"),
     );
     setDnsblNameserver(getConfigField(cfg, "nameserver"));
+    // DNS samples carry the queried domain under `host` (already applied above
+    // via setHost) plus an optional nameserver and a record_type.
+    setDnsNameserver(getConfigField(cfg, "nameserver"));
+    setDnsRecordType(getConfigField(cfg, "record_type") || "A");
     setSipTransport(getConfigField(cfg, "transport") || "udp");
     setSipMode(getConfigField(cfg, "mode") || "options");
     setSipExpectStatus(getConfigField(cfg, "expect_status"));
@@ -757,6 +771,12 @@ export function CheckForm({
         if (host) cfg.host = host;
         break;
       case "dns":
+        // DNS queries a domain (backend key `host`), optionally via a custom
+        // resolver, for a given record type. The visible label stays "Domain".
+        if (host) cfg.host = host;
+        if (dnsNameserver) cfg.nameserver = dnsNameserver;
+        if (dnsRecordType && dnsRecordType !== "A") cfg.record_type = dnsRecordType;
+        break;
       case "domain":
         if (domain) cfg.domain = domain;
         break;
@@ -909,6 +929,7 @@ export function CheckForm({
     freeboxConnectionUid, freeboxLinkType, freeboxMinSyncRate, freeboxMinSnrDb,
     freeboxMaxAttnDb, freeboxMaxCrcErrors, freeboxMinRxMw, freeboxMaxRxMw,
     dnsblTarget, dnsblBlocklists, dnsblNameserver,
+    dnsNameserver, dnsRecordType,
     sipTransport, sipMode, sipExpectStatus,
     ntpVersion, ntpOffsetWarnMs, ntpOffsetCritMs, ntpMaxStratum,
     rdpRequireNLA, rdpWarningDays, rdpCriticalDays,
@@ -1013,6 +1034,12 @@ export function CheckForm({
         config.host = host;
         break;
       case "dns":
+        // Backend reads the queried domain under `host`, not `domain`.
+        if (!host) { setError("Domain is required"); return; }
+        config.host = host;
+        if (dnsNameserver) config.nameserver = dnsNameserver;
+        if (dnsRecordType && dnsRecordType !== "A") config.record_type = dnsRecordType;
+        break;
       case "domain":
         if (!domain) { setError("Domain is required"); return; }
         config.domain = domain;
@@ -1672,6 +1699,38 @@ export function CheckForm({
         );
       }
       case "dns":
+        // The queried domain is bound to the shared `host` state (backend key
+        // `host`); its validation error is keyed `host` too, so it renders here.
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="domain">Domain</Label>
+              <Input id="domain" type="text" placeholder="example.com" value={host} onChange={(e) => setHost(e.target.value)}
+                className={cn(getFieldError(fieldErrors, "host") && "border-destructive")} data-testid="check-domain-input" />
+              {getFieldError(fieldErrors, "host") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>)}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="dnsRecordType">Record type</Label>
+              <Select value={dnsRecordType} onValueChange={setDnsRecordType}>
+                <SelectTrigger id="dnsRecordType" data-testid="check-dns-record-type-select"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {["A", "AAAA", "CNAME", "MX", "NS", "TXT"].map((rt) => (
+                    <SelectItem key={rt} value={rt}>{rt}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="dnsNameserver">DNS server (optional)</Label>
+              <Input id="dnsNameserver" type="text" placeholder="8.8.8.8:53 — defaults to system resolver" value={dnsNameserver}
+                onChange={(e) => setDnsNameserver(e.target.value)}
+                className={cn(getFieldError(fieldErrors, "nameserver") && "border-destructive")}
+                data-testid="check-dns-nameserver-input" />
+              <p className="text-xs text-muted-foreground">Resolver to query, in host:port form. Leave blank to use the system resolver.</p>
+              {getFieldError(fieldErrors, "nameserver") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "nameserver")}</p>)}
+            </div>
+          </>
+        );
       case "domain":
         return (
           <div className="space-y-2">
