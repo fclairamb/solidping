@@ -88,6 +88,7 @@ import { ApiError, apiFetch } from "@/api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseLabelsParam, serializeLabelsParam } from "@/lib/labels";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLiveSubscription } from "@/contexts/LiveEventsContext";
 
 interface ChecksIndexSearch {
   labels?: string;
@@ -574,6 +575,12 @@ function ChecksIndexPage() {
   const [renameValue, setRenameValue] = useState("");
   const [changeGroupCheck, setChangeGroupCheck] = useState<Check | null>(null);
   const debouncedSearch = useDebounce(search, 300);
+
+  // Live updates: `checks`/`results` hints invalidate both the flat
+  // ["checks", org] root and the infinite ["checks", "infinite", org] root
+  // (see infiniteOrgRoot in LiveEventsContext), so every group section's
+  // paginated query refreshes status and last-result cells without a reload.
+  useLiveSubscription({ entity: "checks" });
 
   const {
     data: groups,

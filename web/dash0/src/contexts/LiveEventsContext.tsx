@@ -66,6 +66,18 @@ function orgRoot(root: string): QueryRoot {
   return { root, matches: (key, org) => key[0] === root && key[1] === org };
 }
 
+/** key[1] === "infinite" && key[2] === org — a paginated org-collection
+ * query (useInfiniteChecks), whose org sits one segment deeper than the flat
+ * orgRoot shape. Without this, the checks *list page* (which fetches
+ * exclusively through the infinite key) would subscribe fine but never be
+ * invalidated by hints. */
+function infiniteOrgRoot(root: string): QueryRoot {
+  return {
+    root,
+    matches: (key, org) => key[0] === root && key[1] === "infinite" && key[2] === org,
+  };
+}
+
 /** key[1] === org && key[2] === uid — a per-check detail query (useCheck,
  * useCheckAvailability). */
 function checkDetailRoot(root: string): QueryRoot {
@@ -96,7 +108,7 @@ function resultsRoot(root: string): QueryRoot {
  * entities ignore it. */
 const DEFAULT_QUERY_ROOTS: Record<LiveEntity, Partial<Record<string, QueryRoot[]>>> = {
   checks: {
-    checks: [orgRoot("checks")],
+    checks: [orgRoot("checks"), infiniteOrgRoot("checks")],
     // A plain result write (no status transition) publishes kind "results"
     // only — never "checks" (see realtime.KindChecks: published separately,
     // only on an actual status transition). The checks list embeds
@@ -105,6 +117,7 @@ const DEFAULT_QUERY_ROOTS: Record<LiveEntity, Partial<Record<string, QueryRoot[]
     // up to the lazy poll interval on every steady-state (no-transition) run.
     results: [
       orgRoot("checks"),
+      infiniteOrgRoot("checks"),
       resultsRoot("results"),
       resultsRoot("allResults"),
       orgRoot("checkAvailability"),
