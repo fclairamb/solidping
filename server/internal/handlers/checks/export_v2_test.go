@@ -277,6 +277,42 @@ func TestImportV2WithoutDefaults(t *testing.T) {
 	r.Equal(120, got.ConfirmationPeriodSeconds)
 }
 
+// TestExportV2DeterministicOrdering verifies checks are emitted sorted by group
+// (empty group last), then slug.
+func TestExportV2DeterministicOrdering(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	svc, dbSvc, org := setupApplyService(t, true)
+	ctx := t.Context()
+
+	group := models.NewCheckGroup(org.UID, "infra", "infra")
+	r.NoError(dbSvc.CreateCheckGroup(ctx, group))
+
+	mk := func(slug string, groupUID *string) {
+		_, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+			Name: slug, Slug: slug, Type: "http",
+			Config:        map[string]any{"url": "https://example.com/" + slug},
+			CheckGroupUID: groupUID,
+		})
+		r.NoError(err)
+	}
+	// Intentionally created out of final order.
+	mk("zebra", nil)
+	mk("mango", &group.UID)
+	mk("beta", nil)
+	mk("apple", &group.UID)
+
+	doc, err := svc.ExportChecks(ctx, org.Slug, checks.ListChecksOptions{})
+	r.NoError(err)
+
+	slugs := make([]string, len(doc.Checks))
+	for i := range doc.Checks {
+		slugs[i] = doc.Checks[i].Slug
+	}
+	// Grouped ("infra") first sorted by slug, then ungrouped sorted by slug.
+	r.Equal([]string{"apple", "mango", "beta", "zebra"}, slugs)
+}
+
 // TestImportV2ChildBeforeParentOrdering verifies the two-pass importer accepts a
 // document where a child check precedes the parent it depends on.
 func TestImportV2ChildBeforeParentOrdering(t *testing.T) {
