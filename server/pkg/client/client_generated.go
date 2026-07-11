@@ -375,6 +375,15 @@ type AddMemberRequest struct {
 // AddMemberRequestRole defines model for AddMemberRequest.Role.
 type AddMemberRequestRole string
 
+// AddNotificationContactRequest defines model for AddNotificationContactRequest.
+type AddNotificationContactRequest struct {
+	Label *string `json:"label,omitempty"`
+
+	// Type Contact type (email, phone, slack_user, web_push, ...)
+	Type  string `json:"type"`
+	Value string `json:"value"`
+}
+
 // AdminJob A background-jobs queue row as returned by the admin/system views.
 type AdminJob struct {
 	Config    *map[string]interface{} `json:"config,omitempty"`
@@ -1828,6 +1837,109 @@ type MemorySubsystems struct {
 	RateLimitEntries *int `json:"rateLimitEntries,omitempty"`
 }
 
+// Notification A single notification delivery audit row.
+type Notification struct {
+	ChannelType *string                 `json:"channelType,omitempty"`
+	Connection  *NotificationConnection `json:"connection,omitempty"`
+	CreatedAt   *time.Time              `json:"createdAt,omitempty"`
+	Error       *string                 `json:"error,omitempty"`
+	EventType   *string                 `json:"eventType,omitempty"`
+	Incident    *NotificationIncident   `json:"incident,omitempty"`
+	IncidentUid *string                 `json:"incidentUid,omitempty"`
+	MessageId   *string                 `json:"messageId,omitempty"`
+	RepeatIndex *int                    `json:"repeatIndex,omitempty"`
+	SentAt      *time.Time              `json:"sentAt,omitempty"`
+	SkipReason  *string                 `json:"skipReason,omitempty"`
+	Source      *string                 `json:"source,omitempty"`
+	Status      *string                 `json:"status,omitempty"`
+	StepUid     *string                 `json:"stepUid,omitempty"`
+	Uid         *string                 `json:"uid,omitempty"`
+	User        *NotificationUser       `json:"user,omitempty"`
+}
+
+// NotificationConnection defines model for NotificationConnection.
+type NotificationConnection struct {
+	Name *string `json:"name,omitempty"`
+	Type *string `json:"type,omitempty"`
+	Uid  *string `json:"uid,omitempty"`
+}
+
+// NotificationContact defines model for NotificationContact.
+type NotificationContact struct {
+	Label      string     `json:"label"`
+	Type       string     `json:"type"`
+	Uid        string     `json:"uid"`
+	Value      string     `json:"value"`
+	VerifiedAt *time.Time `json:"verifiedAt,omitempty"`
+}
+
+// NotificationDetail defines model for NotificationDetail.
+type NotificationDetail struct {
+	CancelledAt *time.Time              `json:"cancelledAt,omitempty"`
+	ChannelType *string                 `json:"channelType,omitempty"`
+	Connection  *NotificationConnection `json:"connection,omitempty"`
+	CreatedAt   *time.Time              `json:"createdAt,omitempty"`
+
+	// DeliveryDetails Structured per-attempt delivery artifacts
+	DeliveryDetails *map[string]interface{} `json:"deliveryDetails,omitempty"`
+	Error           *string                 `json:"error,omitempty"`
+	EventType       *string                 `json:"eventType,omitempty"`
+	FailedAt        *time.Time              `json:"failedAt,omitempty"`
+	Incident        *NotificationIncident   `json:"incident,omitempty"`
+	IncidentUid     *string                 `json:"incidentUid,omitempty"`
+	JobUid          *string                 `json:"jobUid,omitempty"`
+	MessageId       *string                 `json:"messageId,omitempty"`
+	RepeatIndex     *int                    `json:"repeatIndex,omitempty"`
+	SentAt          *time.Time              `json:"sentAt,omitempty"`
+	SkipReason      *string                 `json:"skipReason,omitempty"`
+	Source          *string                 `json:"source,omitempty"`
+	Status          *string                 `json:"status,omitempty"`
+	StepUid         *string                 `json:"stepUid,omitempty"`
+	Uid             *string                 `json:"uid,omitempty"`
+	User            *NotificationUser       `json:"user,omitempty"`
+}
+
+// NotificationIncident defines model for NotificationIncident.
+type NotificationIncident struct {
+	StartedAt *time.Time `json:"startedAt,omitempty"`
+	State     *string    `json:"state,omitempty"`
+	Title     *string    `json:"title,omitempty"`
+	Uid       *string    `json:"uid,omitempty"`
+}
+
+// NotificationListResponse defines model for NotificationListResponse.
+type NotificationListResponse struct {
+	Data *[]Notification `json:"data,omitempty"`
+}
+
+// NotificationRoute defines model for NotificationRoute.
+type NotificationRoute struct {
+	Contact   NotificationContact `json:"contact"`
+	CreatedAt time.Time           `json:"createdAt"`
+	Enabled   bool                `json:"enabled"`
+	Position  int                 `json:"position"`
+	Uid       string              `json:"uid"`
+}
+
+// NotificationRouteListResponse defines model for NotificationRouteListResponse.
+type NotificationRouteListResponse struct {
+	Data            *[]NotificationRoute         `json:"data,omitempty"`
+	SlackSuggestion *NotificationSlackSuggestion `json:"slackSuggestion,omitempty"`
+}
+
+// NotificationSlackSuggestion defines model for NotificationSlackSuggestion.
+type NotificationSlackSuggestion struct {
+	ChannelUid    *string `json:"channelUid,omitempty"`
+	SlackUserId   *string `json:"slackUserId,omitempty"`
+	WorkspaceName *string `json:"workspaceName,omitempty"`
+}
+
+// NotificationUser defines model for NotificationUser.
+type NotificationUser struct {
+	Name *string `json:"name,omitempty"`
+	Uid  *string `json:"uid,omitempty"`
+}
+
 // OncallIcalFeedResponse defines model for OncallIcalFeedResponse.
 type OncallIcalFeedResponse struct {
 	Secret string `json:"secret"`
@@ -2406,6 +2518,14 @@ type UpdateMemberRequest struct {
 // UpdateMemberRequestRole defines model for UpdateMemberRequest.Role.
 type UpdateMemberRequestRole string
 
+// UpdateNotificationRouteRequest Toggle the enabled flag and/or reorder the full route list.
+type UpdateNotificationRouteRequest struct {
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// RouteUids Full ordered list of route UIDs for a reorder
+	RouteUids *[]string `json:"routeUids,omitempty"`
+}
+
 // UpdateOncallScheduleRequest defines model for UpdateOncallScheduleRequest.
 type UpdateOncallScheduleRequest struct {
 	Description    *string               `json:"description,omitempty"`
@@ -2577,6 +2697,9 @@ type CheckJobUidPath = openapi_types.UUID
 // CheckUidPath defines model for CheckUidPath.
 type CheckUidPath = string
 
+// ContactUidPath defines model for ContactUidPath.
+type ContactUidPath = string
+
 // EmailSuppressionUidPath defines model for EmailSuppressionUidPath.
 type EmailSuppressionUidPath = openapi_types.UUID
 
@@ -2616,6 +2739,24 @@ type MemberUidPath = openapi_types.UUID
 // MembershipRequestUidPath defines model for MembershipRequestUidPath.
 type MembershipRequestUidPath = openapi_types.UUID
 
+// NotificationBeforeQuery defines model for NotificationBeforeQuery.
+type NotificationBeforeQuery = time.Time
+
+// NotificationConnectionUidQuery defines model for NotificationConnectionUidQuery.
+type NotificationConnectionUidQuery = string
+
+// NotificationLimitQuery defines model for NotificationLimitQuery.
+type NotificationLimitQuery = int
+
+// NotificationStatusQuery defines model for NotificationStatusQuery.
+type NotificationStatusQuery = string
+
+// NotificationUidPath defines model for NotificationUidPath.
+type NotificationUidPath = string
+
+// NotificationUserUidQuery defines model for NotificationUserUidQuery.
+type NotificationUserUidQuery = string
+
 // OncallOverrideUidPath defines model for OncallOverrideUidPath.
 type OncallOverrideUidPath = openapi_types.UUID
 
@@ -2627,6 +2768,9 @@ type OrgPath = string
 
 // ResourceUidPath defines model for ResourceUidPath.
 type ResourceUidPath = openapi_types.UUID
+
+// RouteUidPath defines model for RouteUidPath.
+type RouteUidPath = string
 
 // ScanJobUidPath defines model for ScanJobUidPath.
 type ScanJobUidPath = openapi_types.UUID
@@ -2648,6 +2792,9 @@ type SubscriberUidPath = openapi_types.UUID
 
 // TokenUidPath defines model for TokenUidPath.
 type TokenUidPath = openapi_types.UUID
+
+// UserUidPath defines model for UserUidPath.
+type UserUidPath = string
 
 // Conflict defines model for Conflict.
 type Conflict = Error
@@ -2862,6 +3009,24 @@ type ListIncidentEventsParams struct {
 	Size *int `form:"size,omitempty" json:"size,omitempty"`
 }
 
+// ListIncidentNotificationsParams defines parameters for ListIncidentNotifications.
+type ListIncidentNotificationsParams struct {
+	// Status Filter by delivery status (e.g. sent, failed, skipped)
+	Status *NotificationStatusQuery `form:"status,omitempty" json:"status,omitempty"`
+
+	// UserUid Filter by target user UID
+	UserUid *NotificationUserUidQuery `form:"userUid,omitempty" json:"userUid,omitempty"`
+
+	// ConnectionUid Filter by connection (channel) UID
+	ConnectionUid *NotificationConnectionUidQuery `form:"connectionUid,omitempty" json:"connectionUid,omitempty"`
+
+	// Limit Maximum rows to return (default 100)
+	Limit *NotificationLimitQuery `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Before Only rows created strictly before this RFC3339 timestamp
+	Before *NotificationBeforeQuery `form:"before,omitempty" json:"before,omitempty"`
+}
+
 // ListJobsParams defines parameters for ListJobs.
 type ListJobsParams struct {
 	// Type Filter by job type
@@ -2892,6 +3057,21 @@ type ListMaintenanceWindowsParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListMyNotificationsParams defines parameters for ListMyNotifications.
+type ListMyNotificationsParams struct {
+	// Status Filter by delivery status (e.g. sent, failed, skipped)
+	Status *NotificationStatusQuery `form:"status,omitempty" json:"status,omitempty"`
+
+	// ConnectionUid Filter by connection (channel) UID
+	ConnectionUid *NotificationConnectionUidQuery `form:"connectionUid,omitempty" json:"connectionUid,omitempty"`
+
+	// Limit Maximum rows to return (default 100)
+	Limit *NotificationLimitQuery `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Before Only rows created strictly before this RFC3339 timestamp
+	Before *NotificationBeforeQuery `form:"before,omitempty" json:"before,omitempty"`
+}
+
 // ListOrgMembershipRequestsParams defines parameters for ListOrgMembershipRequests.
 type ListOrgMembershipRequestsParams struct {
 	// Status Filter by status (pending, approved, rejected, canceled)
@@ -2900,6 +3080,15 @@ type ListOrgMembershipRequestsParams struct {
 
 // ListOrgMembershipRequestsParamsStatus defines parameters for ListOrgMembershipRequests.
 type ListOrgMembershipRequestsParamsStatus string
+
+// ListNotificationsParams defines parameters for ListNotifications.
+type ListNotificationsParams struct {
+	// ConnectionUid Connection (channel) UID to filter by
+	ConnectionUid string `form:"connectionUid" json:"connectionUid"`
+
+	// Limit Maximum rows to return (default 10, max 50)
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
 
 // ListOncallOverridesParams defines parameters for ListOncallOverrides.
 type ListOncallOverridesParams struct {
@@ -2977,6 +3166,21 @@ type ListStatusUpdatesParams struct {
 type ListOrgTokensParams struct {
 	// Type Filter by token type
 	Type *string `form:"type,omitempty" json:"type,omitempty"`
+}
+
+// ListUserNotificationsParams defines parameters for ListUserNotifications.
+type ListUserNotificationsParams struct {
+	// Status Filter by delivery status (e.g. sent, failed, skipped)
+	Status *NotificationStatusQuery `form:"status,omitempty" json:"status,omitempty"`
+
+	// ConnectionUid Filter by connection (channel) UID
+	ConnectionUid *NotificationConnectionUidQuery `form:"connectionUid,omitempty" json:"connectionUid,omitempty"`
+
+	// Limit Maximum rows to return (default 100)
+	Limit *NotificationLimitQuery `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Before Only rows created strictly before this RFC3339 timestamp
+	Before *NotificationBeforeQuery `form:"before,omitempty" json:"before,omitempty"`
 }
 
 // ListSystemCheckJobsParams defines parameters for ListSystemCheckJobs.
@@ -3161,6 +3365,12 @@ type UpdateStatusUpdateJSONRequestBody = UpdateStatusUpdateRequest
 
 // CreateTokenJSONRequestBody defines body for CreateToken for application/json ContentType.
 type CreateTokenJSONRequestBody = CreateTokenRequest
+
+// AddMyNotificationContactJSONRequestBody defines body for AddMyNotificationContact for application/json ContentType.
+type AddMyNotificationContactJSONRequestBody = AddNotificationContactRequest
+
+// UpdateMyNotificationRouteJSONRequestBody defines body for UpdateMyNotificationRoute for application/json ContentType.
+type UpdateMyNotificationRouteJSONRequestBody = UpdateNotificationRouteRequest
 
 // SetSystemParameterJSONRequestBody defines body for SetSystemParameter for application/json ContentType.
 type SetSystemParameterJSONRequestBody = SetSystemParameterRequest
@@ -3546,6 +3756,12 @@ type ClientInterface interface {
 	// ListIncidentEvents request
 	ListIncidentEvents(ctx context.Context, org OrgPath, uid IncidentUidPath, params *ListIncidentEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListIncidentNotifications request
+	ListIncidentNotifications(ctx context.Context, org OrgPath, uid IncidentUidPath, params *ListIncidentNotificationsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetIncidentNotification request
+	GetIncidentNotification(ctx context.Context, org OrgPath, uid IncidentUidPath, notifUid NotificationUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ResolveIncidentWithBody request with any body
 	ResolveIncidentWithBody(ctx context.Context, org OrgPath, uid IncidentUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -3620,6 +3836,9 @@ type ClientInterface interface {
 
 	SetMaintenanceWindowChecks(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, body SetMaintenanceWindowChecksJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListMyNotifications request
+	ListMyNotifications(ctx context.Context, org OrgPath, params *ListMyNotificationsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListMembers request
 	ListMembers(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -3651,6 +3870,12 @@ type ClientInterface interface {
 	RejectMembershipRequestWithBody(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	RejectMembershipRequest(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, body RejectMembershipRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListNotifications request
+	ListNotifications(ctx context.Context, org OrgPath, params *ListNotificationsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetNotification request
+	GetNotification(ctx context.Context, org OrgPath, notifUid NotificationUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListOncallSchedules request
 	ListOncallSchedules(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3823,6 +4048,28 @@ type ClientInterface interface {
 	CreateTokenWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	CreateToken(ctx context.Context, org OrgPath, body CreateTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AddMyNotificationContactWithBody request with any body
+	AddMyNotificationContactWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AddMyNotificationContact(ctx context.Context, org OrgPath, body AddMyNotificationContactJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveMyNotificationContact request
+	RemoveMyNotificationContact(ctx context.Context, org OrgPath, contactUid ContactUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListMyNotificationRoutes request
+	ListMyNotificationRoutes(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateMyNotificationRouteWithBody request with any body
+	UpdateMyNotificationRouteWithBody(ctx context.Context, org OrgPath, routeUid RouteUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateMyNotificationRoute(ctx context.Context, org OrgPath, routeUid RouteUidPath, body UpdateMyNotificationRouteJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestMyNotificationRoute request
+	TestMyNotificationRoute(ctx context.Context, org OrgPath, routeUid RouteUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListUserNotifications request
+	ListUserNotifications(ctx context.Context, org OrgPath, uid UserUidPath, params *ListUserNotificationsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetActivationFunnel request
 	GetActivationFunnel(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5200,6 +5447,30 @@ func (c *Client) ListIncidentEvents(ctx context.Context, org OrgPath, uid Incide
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListIncidentNotifications(ctx context.Context, org OrgPath, uid IncidentUidPath, params *ListIncidentNotificationsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListIncidentNotificationsRequest(c.Server, org, uid, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetIncidentNotification(ctx context.Context, org OrgPath, uid IncidentUidPath, notifUid NotificationUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetIncidentNotificationRequest(c.Server, org, uid, notifUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ResolveIncidentWithBody(ctx context.Context, org OrgPath, uid IncidentUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewResolveIncidentRequestWithBody(c.Server, org, uid, contentType, body)
 	if err != nil {
@@ -5524,6 +5795,18 @@ func (c *Client) SetMaintenanceWindowChecks(ctx context.Context, org OrgPath, ui
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListMyNotifications(ctx context.Context, org OrgPath, params *ListMyNotificationsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListMyNotificationsRequest(c.Server, org, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListMembers(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListMembersRequest(c.Server, org)
 	if err != nil {
@@ -5658,6 +5941,30 @@ func (c *Client) RejectMembershipRequestWithBody(ctx context.Context, org OrgPat
 
 func (c *Client) RejectMembershipRequest(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, body RejectMembershipRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRejectMembershipRequestRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListNotifications(ctx context.Context, org OrgPath, params *ListNotificationsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListNotificationsRequest(c.Server, org, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetNotification(ctx context.Context, org OrgPath, notifUid NotificationUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetNotificationRequest(c.Server, org, notifUid)
 	if err != nil {
 		return nil, err
 	}
@@ -6414,6 +6721,102 @@ func (c *Client) CreateTokenWithBody(ctx context.Context, org OrgPath, contentTy
 
 func (c *Client) CreateToken(ctx context.Context, org OrgPath, body CreateTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateTokenRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AddMyNotificationContactWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddMyNotificationContactRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AddMyNotificationContact(ctx context.Context, org OrgPath, body AddMyNotificationContactJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddMyNotificationContactRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RemoveMyNotificationContact(ctx context.Context, org OrgPath, contactUid ContactUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveMyNotificationContactRequest(c.Server, org, contactUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListMyNotificationRoutes(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListMyNotificationRoutesRequest(c.Server, org)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateMyNotificationRouteWithBody(ctx context.Context, org OrgPath, routeUid RouteUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateMyNotificationRouteRequestWithBody(c.Server, org, routeUid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateMyNotificationRoute(ctx context.Context, org OrgPath, routeUid RouteUidPath, body UpdateMyNotificationRouteJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateMyNotificationRouteRequest(c.Server, org, routeUid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestMyNotificationRoute(ctx context.Context, org OrgPath, routeUid RouteUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestMyNotificationRouteRequest(c.Server, org, routeUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListUserNotifications(ctx context.Context, org OrgPath, uid UserUidPath, params *ListUserNotificationsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListUserNotificationsRequest(c.Server, org, uid, params)
 	if err != nil {
 		return nil, err
 	}
@@ -10894,6 +11297,181 @@ func NewListIncidentEventsRequest(server string, org OrgPath, uid IncidentUidPat
 	return req, nil
 }
 
+// NewListIncidentNotificationsRequest generates requests for ListIncidentNotifications
+func NewListIncidentNotificationsRequest(server string, org OrgPath, uid IncidentUidPath, params *ListIncidentNotificationsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/incidents/%s/notifications", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "status", runtime.ParamLocationQuery, *params.Status); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.UserUid != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "userUid", runtime.ParamLocationQuery, *params.UserUid); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.ConnectionUid != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "connectionUid", runtime.ParamLocationQuery, *params.ConnectionUid); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Before != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "before", runtime.ParamLocationQuery, *params.Before); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetIncidentNotificationRequest generates requests for GetIncidentNotification
+func NewGetIncidentNotificationRequest(server string, org OrgPath, uid IncidentUidPath, notifUid NotificationUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "notifUid", runtime.ParamLocationPath, notifUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/incidents/%s/notifications/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewResolveIncidentRequest calls the generic ResolveIncident builder with application/json body
 func NewResolveIncidentRequest(server string, org OrgPath, uid IncidentUidPath, body ResolveIncidentJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -11879,6 +12457,110 @@ func NewSetMaintenanceWindowChecksRequestWithBody(server string, org OrgPath, ui
 	return req, nil
 }
 
+// NewListMyNotificationsRequest generates requests for ListMyNotifications
+func NewListMyNotificationsRequest(server string, org OrgPath, params *ListMyNotificationsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/me/notifications", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "status", runtime.ParamLocationQuery, *params.Status); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.ConnectionUid != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "connectionUid", runtime.ParamLocationQuery, *params.ConnectionUid); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Before != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "before", runtime.ParamLocationQuery, *params.Before); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListMembersRequest generates requests for ListMembers
 func NewListMembersRequest(server string, org OrgPath) (*http.Request, error) {
 	var err error
@@ -12256,6 +12938,115 @@ func NewRejectMembershipRequestRequestWithBody(server string, org OrgPath, uid M
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListNotificationsRequest generates requests for ListNotifications
+func NewListNotificationsRequest(server string, org OrgPath, params *ListNotificationsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/notifications", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "connectionUid", runtime.ParamLocationQuery, params.ConnectionUid); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetNotificationRequest generates requests for GetNotification
+func NewGetNotificationRequest(server string, org OrgPath, notifUid NotificationUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "notifUid", runtime.ParamLocationPath, notifUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/notifications/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -14709,6 +15500,334 @@ func NewCreateTokenRequestWithBody(server string, org OrgPath, contentType strin
 	return req, nil
 }
 
+// NewAddMyNotificationContactRequest calls the generic AddMyNotificationContact builder with application/json body
+func NewAddMyNotificationContactRequest(server string, org OrgPath, body AddMyNotificationContactJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAddMyNotificationContactRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewAddMyNotificationContactRequestWithBody generates requests for AddMyNotificationContact with any type of body
+func NewAddMyNotificationContactRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/users/me/notification-contacts", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRemoveMyNotificationContactRequest generates requests for RemoveMyNotificationContact
+func NewRemoveMyNotificationContactRequest(server string, org OrgPath, contactUid ContactUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "contactUid", runtime.ParamLocationPath, contactUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/users/me/notification-contacts/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListMyNotificationRoutesRequest generates requests for ListMyNotificationRoutes
+func NewListMyNotificationRoutesRequest(server string, org OrgPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/users/me/notification-routes", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateMyNotificationRouteRequest calls the generic UpdateMyNotificationRoute builder with application/json body
+func NewUpdateMyNotificationRouteRequest(server string, org OrgPath, routeUid RouteUidPath, body UpdateMyNotificationRouteJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateMyNotificationRouteRequestWithBody(server, org, routeUid, "application/json", bodyReader)
+}
+
+// NewUpdateMyNotificationRouteRequestWithBody generates requests for UpdateMyNotificationRoute with any type of body
+func NewUpdateMyNotificationRouteRequestWithBody(server string, org OrgPath, routeUid RouteUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "routeUid", runtime.ParamLocationPath, routeUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/users/me/notification-routes/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewTestMyNotificationRouteRequest generates requests for TestMyNotificationRoute
+func NewTestMyNotificationRouteRequest(server string, org OrgPath, routeUid RouteUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "routeUid", runtime.ParamLocationPath, routeUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/users/me/notification-routes/%s/test", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListUserNotificationsRequest generates requests for ListUserNotifications
+func NewListUserNotificationsRequest(server string, org OrgPath, uid UserUidPath, params *ListUserNotificationsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/users/%s/notifications", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "status", runtime.ParamLocationQuery, *params.Status); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.ConnectionUid != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "connectionUid", runtime.ParamLocationQuery, *params.ConnectionUid); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Before != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "before", runtime.ParamLocationQuery, *params.Before); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetActivationFunnelRequest generates requests for GetActivationFunnel
 func NewGetActivationFunnelRequest(server string) (*http.Request, error) {
 	var err error
@@ -15692,6 +16811,12 @@ type ClientWithResponsesInterface interface {
 	// ListIncidentEventsWithResponse request
 	ListIncidentEventsWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, params *ListIncidentEventsParams, reqEditors ...RequestEditorFn) (*ListIncidentEventsResult, error)
 
+	// ListIncidentNotificationsWithResponse request
+	ListIncidentNotificationsWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, params *ListIncidentNotificationsParams, reqEditors ...RequestEditorFn) (*ListIncidentNotificationsResult, error)
+
+	// GetIncidentNotificationWithResponse request
+	GetIncidentNotificationWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, notifUid NotificationUidPath, reqEditors ...RequestEditorFn) (*GetIncidentNotificationResult, error)
+
 	// ResolveIncidentWithBodyWithResponse request with any body
 	ResolveIncidentWithBodyWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResolveIncidentResult, error)
 
@@ -15766,6 +16891,9 @@ type ClientWithResponsesInterface interface {
 
 	SetMaintenanceWindowChecksWithResponse(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, body SetMaintenanceWindowChecksJSONRequestBody, reqEditors ...RequestEditorFn) (*SetMaintenanceWindowChecksResult, error)
 
+	// ListMyNotificationsWithResponse request
+	ListMyNotificationsWithResponse(ctx context.Context, org OrgPath, params *ListMyNotificationsParams, reqEditors ...RequestEditorFn) (*ListMyNotificationsResult, error)
+
 	// ListMembersWithResponse request
 	ListMembersWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListMembersResult, error)
 
@@ -15797,6 +16925,12 @@ type ClientWithResponsesInterface interface {
 	RejectMembershipRequestWithBodyWithResponse(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RejectMembershipRequestResult, error)
 
 	RejectMembershipRequestWithResponse(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, body RejectMembershipRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*RejectMembershipRequestResult, error)
+
+	// ListNotificationsWithResponse request
+	ListNotificationsWithResponse(ctx context.Context, org OrgPath, params *ListNotificationsParams, reqEditors ...RequestEditorFn) (*ListNotificationsResult, error)
+
+	// GetNotificationWithResponse request
+	GetNotificationWithResponse(ctx context.Context, org OrgPath, notifUid NotificationUidPath, reqEditors ...RequestEditorFn) (*GetNotificationResult, error)
 
 	// ListOncallSchedulesWithResponse request
 	ListOncallSchedulesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListOncallSchedulesResult, error)
@@ -15969,6 +17103,28 @@ type ClientWithResponsesInterface interface {
 	CreateTokenWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTokenResult, error)
 
 	CreateTokenWithResponse(ctx context.Context, org OrgPath, body CreateTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTokenResult, error)
+
+	// AddMyNotificationContactWithBodyWithResponse request with any body
+	AddMyNotificationContactWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddMyNotificationContactResult, error)
+
+	AddMyNotificationContactWithResponse(ctx context.Context, org OrgPath, body AddMyNotificationContactJSONRequestBody, reqEditors ...RequestEditorFn) (*AddMyNotificationContactResult, error)
+
+	// RemoveMyNotificationContactWithResponse request
+	RemoveMyNotificationContactWithResponse(ctx context.Context, org OrgPath, contactUid ContactUidPath, reqEditors ...RequestEditorFn) (*RemoveMyNotificationContactResult, error)
+
+	// ListMyNotificationRoutesWithResponse request
+	ListMyNotificationRoutesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListMyNotificationRoutesResult, error)
+
+	// UpdateMyNotificationRouteWithBodyWithResponse request with any body
+	UpdateMyNotificationRouteWithBodyWithResponse(ctx context.Context, org OrgPath, routeUid RouteUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateMyNotificationRouteResult, error)
+
+	UpdateMyNotificationRouteWithResponse(ctx context.Context, org OrgPath, routeUid RouteUidPath, body UpdateMyNotificationRouteJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateMyNotificationRouteResult, error)
+
+	// TestMyNotificationRouteWithResponse request
+	TestMyNotificationRouteWithResponse(ctx context.Context, org OrgPath, routeUid RouteUidPath, reqEditors ...RequestEditorFn) (*TestMyNotificationRouteResult, error)
+
+	// ListUserNotificationsWithResponse request
+	ListUserNotificationsWithResponse(ctx context.Context, org OrgPath, uid UserUidPath, params *ListUserNotificationsParams, reqEditors ...RequestEditorFn) (*ListUserNotificationsResult, error)
 
 	// GetActivationFunnelWithResponse request
 	GetActivationFunnelWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetActivationFunnelResult, error)
@@ -18068,6 +19224,54 @@ func (r ListIncidentEventsResult) StatusCode() int {
 	return 0
 }
 
+type ListIncidentNotificationsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NotificationListResponse
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListIncidentNotificationsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListIncidentNotificationsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetIncidentNotificationResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NotificationDetail
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetIncidentNotificationResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetIncidentNotificationResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ResolveIncidentResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -18547,6 +19751,30 @@ func (r SetMaintenanceWindowChecksResult) StatusCode() int {
 	return 0
 }
 
+type ListMyNotificationsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NotificationListResponse
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListMyNotificationsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListMyNotificationsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListMembersResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -18734,6 +19962,55 @@ func (r RejectMembershipRequestResult) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r RejectMembershipRequestResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListNotificationsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NotificationListResponse
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListNotificationsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListNotificationsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetNotificationResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NotificationDetail
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetNotificationResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetNotificationResult) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -19845,6 +21122,152 @@ func (r CreateTokenResult) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r CreateTokenResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AddMyNotificationContactResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *NotificationRoute
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r AddMyNotificationContactResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AddMyNotificationContactResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RemoveMyNotificationContactResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveMyNotificationContactResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveMyNotificationContactResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListMyNotificationRoutesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NotificationRouteListResponse
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListMyNotificationRoutesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListMyNotificationRoutesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateMyNotificationRouteResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NotificationRoute
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateMyNotificationRouteResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateMyNotificationRouteResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type TestMyNotificationRouteResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+	JSON422      *ValidationError
+}
+
+// Status returns HTTPResponse.Status
+func (r TestMyNotificationRouteResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestMyNotificationRouteResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListUserNotificationsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NotificationListResponse
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListUserNotificationsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListUserNotificationsResult) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -21222,6 +22645,24 @@ func (c *ClientWithResponses) ListIncidentEventsWithResponse(ctx context.Context
 	return ParseListIncidentEventsResult(rsp)
 }
 
+// ListIncidentNotificationsWithResponse request returning *ListIncidentNotificationsResult
+func (c *ClientWithResponses) ListIncidentNotificationsWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, params *ListIncidentNotificationsParams, reqEditors ...RequestEditorFn) (*ListIncidentNotificationsResult, error) {
+	rsp, err := c.ListIncidentNotifications(ctx, org, uid, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListIncidentNotificationsResult(rsp)
+}
+
+// GetIncidentNotificationWithResponse request returning *GetIncidentNotificationResult
+func (c *ClientWithResponses) GetIncidentNotificationWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, notifUid NotificationUidPath, reqEditors ...RequestEditorFn) (*GetIncidentNotificationResult, error) {
+	rsp, err := c.GetIncidentNotification(ctx, org, uid, notifUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetIncidentNotificationResult(rsp)
+}
+
 // ResolveIncidentWithBodyWithResponse request with arbitrary body returning *ResolveIncidentResult
 func (c *ClientWithResponses) ResolveIncidentWithBodyWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResolveIncidentResult, error) {
 	rsp, err := c.ResolveIncidentWithBody(ctx, org, uid, contentType, body, reqEditors...)
@@ -21458,6 +22899,15 @@ func (c *ClientWithResponses) SetMaintenanceWindowChecksWithResponse(ctx context
 	return ParseSetMaintenanceWindowChecksResult(rsp)
 }
 
+// ListMyNotificationsWithResponse request returning *ListMyNotificationsResult
+func (c *ClientWithResponses) ListMyNotificationsWithResponse(ctx context.Context, org OrgPath, params *ListMyNotificationsParams, reqEditors ...RequestEditorFn) (*ListMyNotificationsResult, error) {
+	rsp, err := c.ListMyNotifications(ctx, org, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListMyNotificationsResult(rsp)
+}
+
 // ListMembersWithResponse request returning *ListMembersResult
 func (c *ClientWithResponses) ListMembersWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListMembersResult, error) {
 	rsp, err := c.ListMembers(ctx, org, reqEditors...)
@@ -21560,6 +23010,24 @@ func (c *ClientWithResponses) RejectMembershipRequestWithResponse(ctx context.Co
 		return nil, err
 	}
 	return ParseRejectMembershipRequestResult(rsp)
+}
+
+// ListNotificationsWithResponse request returning *ListNotificationsResult
+func (c *ClientWithResponses) ListNotificationsWithResponse(ctx context.Context, org OrgPath, params *ListNotificationsParams, reqEditors ...RequestEditorFn) (*ListNotificationsResult, error) {
+	rsp, err := c.ListNotifications(ctx, org, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListNotificationsResult(rsp)
+}
+
+// GetNotificationWithResponse request returning *GetNotificationResult
+func (c *ClientWithResponses) GetNotificationWithResponse(ctx context.Context, org OrgPath, notifUid NotificationUidPath, reqEditors ...RequestEditorFn) (*GetNotificationResult, error) {
+	rsp, err := c.GetNotification(ctx, org, notifUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetNotificationResult(rsp)
 }
 
 // ListOncallSchedulesWithResponse request returning *ListOncallSchedulesResult
@@ -22110,6 +23578,76 @@ func (c *ClientWithResponses) CreateTokenWithResponse(ctx context.Context, org O
 		return nil, err
 	}
 	return ParseCreateTokenResult(rsp)
+}
+
+// AddMyNotificationContactWithBodyWithResponse request with arbitrary body returning *AddMyNotificationContactResult
+func (c *ClientWithResponses) AddMyNotificationContactWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddMyNotificationContactResult, error) {
+	rsp, err := c.AddMyNotificationContactWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAddMyNotificationContactResult(rsp)
+}
+
+func (c *ClientWithResponses) AddMyNotificationContactWithResponse(ctx context.Context, org OrgPath, body AddMyNotificationContactJSONRequestBody, reqEditors ...RequestEditorFn) (*AddMyNotificationContactResult, error) {
+	rsp, err := c.AddMyNotificationContact(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAddMyNotificationContactResult(rsp)
+}
+
+// RemoveMyNotificationContactWithResponse request returning *RemoveMyNotificationContactResult
+func (c *ClientWithResponses) RemoveMyNotificationContactWithResponse(ctx context.Context, org OrgPath, contactUid ContactUidPath, reqEditors ...RequestEditorFn) (*RemoveMyNotificationContactResult, error) {
+	rsp, err := c.RemoveMyNotificationContact(ctx, org, contactUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveMyNotificationContactResult(rsp)
+}
+
+// ListMyNotificationRoutesWithResponse request returning *ListMyNotificationRoutesResult
+func (c *ClientWithResponses) ListMyNotificationRoutesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListMyNotificationRoutesResult, error) {
+	rsp, err := c.ListMyNotificationRoutes(ctx, org, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListMyNotificationRoutesResult(rsp)
+}
+
+// UpdateMyNotificationRouteWithBodyWithResponse request with arbitrary body returning *UpdateMyNotificationRouteResult
+func (c *ClientWithResponses) UpdateMyNotificationRouteWithBodyWithResponse(ctx context.Context, org OrgPath, routeUid RouteUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateMyNotificationRouteResult, error) {
+	rsp, err := c.UpdateMyNotificationRouteWithBody(ctx, org, routeUid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateMyNotificationRouteResult(rsp)
+}
+
+func (c *ClientWithResponses) UpdateMyNotificationRouteWithResponse(ctx context.Context, org OrgPath, routeUid RouteUidPath, body UpdateMyNotificationRouteJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateMyNotificationRouteResult, error) {
+	rsp, err := c.UpdateMyNotificationRoute(ctx, org, routeUid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateMyNotificationRouteResult(rsp)
+}
+
+// TestMyNotificationRouteWithResponse request returning *TestMyNotificationRouteResult
+func (c *ClientWithResponses) TestMyNotificationRouteWithResponse(ctx context.Context, org OrgPath, routeUid RouteUidPath, reqEditors ...RequestEditorFn) (*TestMyNotificationRouteResult, error) {
+	rsp, err := c.TestMyNotificationRoute(ctx, org, routeUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestMyNotificationRouteResult(rsp)
+}
+
+// ListUserNotificationsWithResponse request returning *ListUserNotificationsResult
+func (c *ClientWithResponses) ListUserNotificationsWithResponse(ctx context.Context, org OrgPath, uid UserUidPath, params *ListUserNotificationsParams, reqEditors ...RequestEditorFn) (*ListUserNotificationsResult, error) {
+	rsp, err := c.ListUserNotifications(ctx, org, uid, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListUserNotificationsResult(rsp)
 }
 
 // GetActivationFunnelWithResponse request returning *GetActivationFunnelResult
@@ -25575,6 +27113,86 @@ func ParseListIncidentEventsResult(rsp *http.Response) (*ListIncidentEventsResul
 	return response, nil
 }
 
+// ParseListIncidentNotificationsResult parses an HTTP response from a ListIncidentNotificationsWithResponse call
+func ParseListIncidentNotificationsResult(rsp *http.Response) (*ListIncidentNotificationsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListIncidentNotificationsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NotificationListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetIncidentNotificationResult parses an HTTP response from a GetIncidentNotificationWithResponse call
+func ParseGetIncidentNotificationResult(rsp *http.Response) (*GetIncidentNotificationResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetIncidentNotificationResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NotificationDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseResolveIncidentResult parses an HTTP response from a ResolveIncidentWithResponse call
 func ParseResolveIncidentResult(rsp *http.Response) (*ResolveIncidentResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -26368,6 +27986,46 @@ func ParseSetMaintenanceWindowChecksResult(rsp *http.Response) (*SetMaintenanceW
 	return response, nil
 }
 
+// ParseListMyNotificationsResult parses an HTTP response from a ListMyNotificationsWithResponse call
+func ParseListMyNotificationsResult(rsp *http.Response) (*ListMyNotificationsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListMyNotificationsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NotificationListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListMembersResult parses an HTTP response from a ListMembersWithResponse call
 func ParseListMembersResult(rsp *http.Response) (*ListMembersResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -26682,6 +28340,93 @@ func ParseRejectMembershipRequestResult(rsp *http.Response) (*RejectMembershipRe
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListNotificationsResult parses an HTTP response from a ListNotificationsWithResponse call
+func ParseListNotificationsResult(rsp *http.Response) (*ListNotificationsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListNotificationsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NotificationListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetNotificationResult parses an HTTP response from a GetNotificationWithResponse call
+func ParseGetNotificationResult(rsp *http.Response) (*GetNotificationResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetNotificationResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NotificationDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound
@@ -28578,6 +30323,260 @@ func ParseCreateTokenResult(rsp *http.Response) (*CreateTokenResult, error) {
 			return nil, err
 		}
 		response.JSON201 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAddMyNotificationContactResult parses an HTTP response from a AddMyNotificationContactWithResponse call
+func ParseAddMyNotificationContactResult(rsp *http.Response) (*AddMyNotificationContactResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AddMyNotificationContactResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest NotificationRoute
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRemoveMyNotificationContactResult parses an HTTP response from a RemoveMyNotificationContactWithResponse call
+func ParseRemoveMyNotificationContactResult(rsp *http.Response) (*RemoveMyNotificationContactResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveMyNotificationContactResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListMyNotificationRoutesResult parses an HTTP response from a ListMyNotificationRoutesWithResponse call
+func ParseListMyNotificationRoutesResult(rsp *http.Response) (*ListMyNotificationRoutesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListMyNotificationRoutesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NotificationRouteListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateMyNotificationRouteResult parses an HTTP response from a UpdateMyNotificationRouteWithResponse call
+func ParseUpdateMyNotificationRouteResult(rsp *http.Response) (*UpdateMyNotificationRouteResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateMyNotificationRouteResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NotificationRoute
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestMyNotificationRouteResult parses an HTTP response from a TestMyNotificationRouteWithResponse call
+func ParseTestMyNotificationRouteResult(rsp *http.Response) (*TestMyNotificationRouteResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestMyNotificationRouteResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListUserNotificationsResult parses an HTTP response from a ListUserNotificationsWithResponse call
+func ParseListUserNotificationsResult(rsp *http.Response) (*ListUserNotificationsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListUserNotificationsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NotificationListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 

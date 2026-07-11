@@ -27,6 +27,8 @@ tags:
     description: Incident management and tracking
   - name: Channels
     description: Notification channels / integrations and per-check bindings
+  - name: Notifications
+    description: Per-incident/user/org notification delivery audit and per-user notification routes and contacts
   - name: Events
     description: Audit events and activity log
   - name: Members
@@ -1532,6 +1534,292 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IncidentDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Notification delivery audit (read) APIs
+  /api/v1/orgs/{org}/notifications:
+    get:
+      tags: [Notifications]
+      summary: List notification deliveries by connection
+      description: >-
+        Lists notification delivery audit rows for the org, filtered by a
+        connection (channel). `connectionUid` is required.
+      operationId: listNotifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: connectionUid
+          in: query
+          required: true
+          description: Connection (channel) UID to filter by
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum rows to return (default 10, max 50)
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of notification deliveries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationListResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/notifications/{notifUid}:
+    get:
+      tags: [Notifications]
+      summary: Get a notification delivery by UID
+      operationId: getNotification
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/NotificationUidPath"
+      responses:
+        "200":
+          description: Notification delivery detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/incidents/{uid}/notifications:
+    get:
+      tags: [Notifications]
+      summary: List notification deliveries for an incident
+      operationId: listIncidentNotifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidPath"
+        - $ref: "#/components/parameters/NotificationStatusQuery"
+        - $ref: "#/components/parameters/NotificationUserUidQuery"
+        - $ref: "#/components/parameters/NotificationConnectionUidQuery"
+        - $ref: "#/components/parameters/NotificationLimitQuery"
+        - $ref: "#/components/parameters/NotificationBeforeQuery"
+      responses:
+        "200":
+          description: List of notification deliveries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/incidents/{uid}/notifications/{notifUid}:
+    get:
+      tags: [Notifications]
+      summary: Get an incident notification delivery by UID
+      operationId: getIncidentNotification
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidPath"
+        - $ref: "#/components/parameters/NotificationUidPath"
+      responses:
+        "200":
+          description: Notification delivery detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/me/notifications:
+    get:
+      tags: [Notifications]
+      summary: List the caller's notification deliveries
+      operationId: listMyNotifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/NotificationStatusQuery"
+        - $ref: "#/components/parameters/NotificationConnectionUidQuery"
+        - $ref: "#/components/parameters/NotificationLimitQuery"
+        - $ref: "#/components/parameters/NotificationBeforeQuery"
+      responses:
+        "200":
+          description: List of notification deliveries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/users/{uid}/notifications:
+    get:
+      tags: [Notifications]
+      summary: List a user's notification deliveries
+      description: >-
+        Admins may query any user; non-admin members may only query
+        themselves (403 otherwise).
+      operationId: listUserNotifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/UserUidPath"
+        - $ref: "#/components/parameters/NotificationStatusQuery"
+        - $ref: "#/components/parameters/NotificationConnectionUidQuery"
+        - $ref: "#/components/parameters/NotificationLimitQuery"
+        - $ref: "#/components/parameters/NotificationBeforeQuery"
+      responses:
+        "200":
+          description: List of notification deliveries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Per-user notification routes and contacts
+  /api/v1/orgs/{org}/users/me/notification-routes:
+    get:
+      tags: [Notifications]
+      summary: List the caller's notification routes
+      operationId: listMyNotificationRoutes
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of notification routes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationRouteListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/users/me/notification-routes/{routeUid}:
+    patch:
+      tags: [Notifications]
+      summary: Update one of the caller's notification routes
+      description: Toggle the enabled flag and/or reorder the full route list.
+      operationId: updateMyNotificationRoute
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/RouteUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateNotificationRouteRequest"
+      responses:
+        "200":
+          description: Updated notification route
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationRoute"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/users/me/notification-routes/{routeUid}/test:
+    post:
+      tags: [Notifications]
+      summary: Send a test notification through one of the caller's routes
+      operationId: testMyNotificationRoute
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/RouteUidPath"
+      responses:
+        "204":
+          description: Test notification dispatched
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/orgs/{org}/users/me/notification-contacts:
+    post:
+      tags: [Notifications]
+      summary: Add a notification contact (and its route) for the caller
+      operationId: addMyNotificationContact
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddNotificationContactRequest"
+      responses:
+        "201":
+          description: Contact added; the created route is returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationRoute"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/users/me/notification-contacts/{contactUid}:
+    delete:
+      tags: [Notifications]
+      summary: Remove one of the caller's notification contacts
+      operationId: removeMyNotificationContact
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ContactUidPath"
+      responses:
+        "204":
+          description: Contact removed
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -4957,6 +5245,79 @@ components:
         format: uuid
       description: Email suppression UID
 
+    NotificationUidPath:
+      name: notifUid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Notification delivery UID
+
+    UserUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: User UID
+
+    RouteUidPath:
+      name: routeUid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Notification route UID
+
+    ContactUidPath:
+      name: contactUid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Notification contact UID
+
+    NotificationStatusQuery:
+      name: status
+      in: query
+      required: false
+      description: Filter by delivery status (e.g. sent, failed, skipped)
+      schema:
+        type: string
+
+    NotificationUserUidQuery:
+      name: userUid
+      in: query
+      required: false
+      description: Filter by target user UID
+      schema:
+        type: string
+
+    NotificationConnectionUidQuery:
+      name: connectionUid
+      in: query
+      required: false
+      description: Filter by connection (channel) UID
+      schema:
+        type: string
+
+    NotificationLimitQuery:
+      name: limit
+      in: query
+      required: false
+      description: Maximum rows to return (default 100)
+      schema:
+        type: integer
+
+    NotificationBeforeQuery:
+      name: before
+      in: query
+      required: false
+      description: Only rows created strictly before this RFC3339 timestamp
+      schema:
+        type: string
+        format: date-time
+
   responses:
     NotFound:
       description: Resource not found
@@ -6311,6 +6672,181 @@ components:
         role:
           type: string
           enum: [admin, user, viewer]
+
+    # Notification schemas
+    NotificationListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Notification"
+
+    Notification:
+      type: object
+      description: A single notification delivery audit row.
+      properties:
+        uid:
+          type: string
+        incidentUid:
+          type: string
+        eventType:
+          type: string
+        source:
+          type: string
+        stepUid:
+          type: string
+        repeatIndex:
+          type: integer
+        channelType:
+          type: string
+        status:
+          type: string
+        skipReason:
+          type: string
+        error:
+          type: string
+        messageId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        sentAt:
+          type: string
+          format: date-time
+        user:
+          $ref: "#/components/schemas/NotificationUser"
+        connection:
+          $ref: "#/components/schemas/NotificationConnection"
+        incident:
+          $ref: "#/components/schemas/NotificationIncident"
+
+    NotificationUser:
+      type: object
+      properties:
+        uid:
+          type: string
+        name:
+          type: string
+
+    NotificationConnection:
+      type: object
+      properties:
+        uid:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+
+    NotificationIncident:
+      type: object
+      properties:
+        uid:
+          type: string
+        title:
+          type: string
+        state:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+
+    NotificationDetail:
+      type: object
+      description: A notification delivery row with the extra lifecycle fields.
+      allOf:
+        - $ref: "#/components/schemas/Notification"
+        - type: object
+          properties:
+            failedAt:
+              type: string
+              format: date-time
+            cancelledAt:
+              type: string
+              format: date-time
+            jobUid:
+              type: string
+            deliveryDetails:
+              type: object
+              additionalProperties: true
+              description: Structured per-attempt delivery artifacts
+
+    NotificationRouteListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/NotificationRoute"
+        slackSuggestion:
+          $ref: "#/components/schemas/NotificationSlackSuggestion"
+
+    NotificationRoute:
+      type: object
+      required: [uid, enabled, position, contact, createdAt]
+      properties:
+        uid:
+          type: string
+        enabled:
+          type: boolean
+        position:
+          type: integer
+        contact:
+          $ref: "#/components/schemas/NotificationContact"
+        createdAt:
+          type: string
+          format: date-time
+
+    NotificationContact:
+      type: object
+      required: [uid, type, value, label]
+      properties:
+        uid:
+          type: string
+        type:
+          type: string
+        value:
+          type: string
+        label:
+          type: string
+        verifiedAt:
+          type: string
+          format: date-time
+
+    NotificationSlackSuggestion:
+      type: object
+      properties:
+        slackUserId:
+          type: string
+        workspaceName:
+          type: string
+        channelUid:
+          type: string
+
+    AddNotificationContactRequest:
+      type: object
+      required: [type, value]
+      properties:
+        type:
+          type: string
+          description: Contact type (email, phone, slack_user, web_push, ...)
+        value:
+          type: string
+        label:
+          type: string
+
+    UpdateNotificationRouteRequest:
+      type: object
+      description: Toggle the enabled flag and/or reorder the full route list.
+      properties:
+        enabled:
+          type: boolean
+        routeUids:
+          type: array
+          description: Full ordered list of route UIDs for a reorder
+          items:
+            type: string
 
     # Channel schemas
     Channel:
