@@ -26,7 +26,11 @@ func TestValidateConfigTimeout(t *testing.T) {
 		{name: "1s floor is valid", config: map[string]any{configKeyTimeout: "1s"}},
 		{name: "10s is valid", config: map[string]any{configKeyTimeout: "10s"}},
 		{name: "30s boundary is valid", config: map[string]any{configKeyTimeout: "30s"}},
-		{name: "sub-second is rejected by the 1s floor", config: map[string]any{configKeyTimeout: "500ms"}, wantErr: "must be >= 1s and <= 30s"},
+		{
+			name:    "sub-second is rejected by the 1s floor",
+			config:  map[string]any{configKeyTimeout: "500ms"},
+			wantErr: "must be >= 1s and <= 30s",
+		},
 		{name: "31s exceeds the cap", config: map[string]any{configKeyTimeout: "31s"}, wantErr: "must be >= 1s and <= 30s"},
 		{name: "1m exceeds the cap", config: map[string]any{configKeyTimeout: "1m"}, wantErr: "must be >= 1s and <= 30s"},
 		{name: "zero is rejected", config: map[string]any{configKeyTimeout: "0s"}, wantErr: "must be >= 1s and <= 30s"},
