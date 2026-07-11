@@ -62,7 +62,6 @@ func TestServiceCreateScheduleHappyPath(t *testing.T) {
 	startAt := time.Date(2026, 5, 4, 9, 0, 0, 0, time.UTC)
 	schedule, err := svc.CreateSchedule(t.Context(), &oncallschedules.CreateScheduleInput{
 		OrganizationUID: org.UID,
-		Slug:            "platform",
 		Name:            "Platform",
 		Timezone:        "Europe/Paris",
 		RotationType:    models.RotationTypeWeekly,
@@ -72,7 +71,7 @@ func TestServiceCreateScheduleHappyPath(t *testing.T) {
 		UserUIDs:        []string{alice.UID, bob.UID},
 	})
 	r.NoError(err)
-	r.Equal("platform", schedule.Slug)
+	r.Equal("Platform", schedule.Name)
 
 	roster, err := svc.ListUsers(t.Context(), schedule.UID)
 	r.NoError(err)
@@ -83,7 +82,7 @@ func TestServiceCreateScheduleHappyPath(t *testing.T) {
 	r.Equal(1, roster[1].Position)
 }
 
-func TestServiceGetScheduleByUidOrSlug(t *testing.T) {
+func TestServiceGetScheduleByUID(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -95,7 +94,6 @@ func TestServiceGetScheduleByUidOrSlug(t *testing.T) {
 	startAt := time.Date(2026, 5, 4, 9, 0, 0, 0, time.UTC)
 	schedule, err := svc.CreateSchedule(t.Context(), &oncallschedules.CreateScheduleInput{
 		OrganizationUID: org.UID,
-		Slug:            "platform",
 		Name:            "Platform",
 		Timezone:        "Europe/Paris",
 		RotationType:    models.RotationTypeWeekly,
@@ -106,38 +104,30 @@ func TestServiceGetScheduleByUidOrSlug(t *testing.T) {
 	})
 	r.NoError(err)
 
-	t.Run("by slug", func(t *testing.T) {
-		t.Parallel()
-
-		got, err := svc.GetScheduleByUidOrSlug(t.Context(), org.UID, "platform")
-		require.NoError(t, err)
-		require.Equal(t, schedule.UID, got.UID)
-	})
-
 	t.Run("by uid", func(t *testing.T) {
 		t.Parallel()
 
-		got, err := svc.GetScheduleByUidOrSlug(t.Context(), org.UID, schedule.UID)
+		got, err := svc.GetScheduleByUID(t.Context(), org.UID, schedule.UID)
 		require.NoError(t, err)
 		require.Equal(t, schedule.UID, got.UID)
 	})
 
-	t.Run("unknown slug returns not found", func(t *testing.T) {
+	t.Run("slug-shaped identifier returns not found", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := svc.GetScheduleByUidOrSlug(t.Context(), org.UID, "nope")
+		_, err := svc.GetScheduleByUID(t.Context(), org.UID, "platform")
 		require.ErrorIs(t, err, oncallschedules.ErrScheduleNotFound)
 	})
 
 	t.Run("unknown uid returns not found", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := svc.GetScheduleByUidOrSlug(t.Context(), org.UID, "00000000-0000-0000-0000-000000000000")
+		_, err := svc.GetScheduleByUID(t.Context(), org.UID, "00000000-0000-0000-0000-000000000000")
 		require.ErrorIs(t, err, oncallschedules.ErrScheduleNotFound)
 	})
 }
 
-func TestServiceUpdateAndDeleteByUidOrSlug(t *testing.T) {
+func TestServiceUpdateAndDeleteByUID(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -149,7 +139,6 @@ func TestServiceUpdateAndDeleteByUidOrSlug(t *testing.T) {
 	startAt := time.Date(2026, 5, 4, 9, 0, 0, 0, time.UTC)
 	schedule, err := svc.CreateSchedule(t.Context(), &oncallschedules.CreateScheduleInput{
 		OrganizationUID: org.UID,
-		Slug:            "platform",
 		Name:            "Platform",
 		Timezone:        "Europe/Paris",
 		RotationType:    models.RotationTypeWeekly,
@@ -160,25 +149,17 @@ func TestServiceUpdateAndDeleteByUidOrSlug(t *testing.T) {
 	})
 	r.NoError(err)
 
-	// Resolve by uid, update via the resolved UID — exercises the
-	// uid-addressable update path end to end.
-	resolved, err := svc.GetScheduleByUidOrSlug(t.Context(), org.UID, schedule.UID)
-	r.NoError(err)
-
 	newName := "Platform Team"
-	updated, err := svc.UpdateSchedule(t.Context(), org.UID, resolved.UID, &oncallschedules.UpdateScheduleInput{
+	updated, err := svc.UpdateSchedule(t.Context(), org.UID, schedule.UID, &oncallschedules.UpdateScheduleInput{
 		Name: &newName,
 	})
 	r.NoError(err)
 	r.Equal("Platform Team", updated.Name)
 
-	// Delete by the resolved uid, then confirm 404 on subsequent lookups.
-	r.NoError(svc.DeleteSchedule(t.Context(), org.UID, resolved.UID))
+	// Delete by uid, then confirm 404 on subsequent lookups.
+	r.NoError(svc.DeleteSchedule(t.Context(), org.UID, schedule.UID))
 
-	_, err = svc.GetScheduleByUidOrSlug(t.Context(), org.UID, schedule.UID)
-	r.ErrorIs(err, oncallschedules.ErrScheduleNotFound)
-
-	_, err = svc.GetScheduleByUidOrSlug(t.Context(), org.UID, "platform")
+	_, err = svc.GetScheduleByUID(t.Context(), org.UID, schedule.UID)
 	r.ErrorIs(err, oncallschedules.ErrScheduleNotFound)
 }
 
@@ -190,7 +171,6 @@ func TestServiceCreateScheduleWeeklyRequiresWeekday(t *testing.T) {
 
 	_, err := svc.CreateSchedule(t.Context(), &oncallschedules.CreateScheduleInput{
 		OrganizationUID: org.UID,
-		Slug:            "x",
 		Name:            "X",
 		Timezone:        "Europe/Paris",
 		RotationType:    models.RotationTypeWeekly,
@@ -209,7 +189,6 @@ func TestServiceCreateScheduleDailyRejectsWeekday(t *testing.T) {
 	mon := 0
 	_, err := svc.CreateSchedule(t.Context(), &oncallschedules.CreateScheduleInput{
 		OrganizationUID: org.UID,
-		Slug:            "x",
 		Name:            "X",
 		Timezone:        "Europe/Paris",
 		RotationType:    models.RotationTypeDaily,
@@ -228,7 +207,6 @@ func TestServiceCreateScheduleRejectsBadTimezone(t *testing.T) {
 
 	_, err := svc.CreateSchedule(t.Context(), &oncallschedules.CreateScheduleInput{
 		OrganizationUID: org.UID,
-		Slug:            "x",
 		Name:            "X",
 		Timezone:        "Not/A/Real/Zone",
 		RotationType:    models.RotationTypeDaily,
@@ -250,7 +228,6 @@ func TestServiceResolveBeforeStartAt(t *testing.T) {
 	mon := 0
 	schedule, err := svc.CreateSchedule(t.Context(), &oncallschedules.CreateScheduleInput{
 		OrganizationUID: org.UID,
-		Slug:            "future",
 		Name:            "Future",
 		Timezone:        "Europe/Paris",
 		RotationType:    models.RotationTypeWeekly,
@@ -275,7 +252,6 @@ func TestServiceResolveEmptyRoster(t *testing.T) {
 	startAt := time.Date(2026, 5, 4, 9, 0, 0, 0, time.UTC)
 	schedule, err := svc.CreateSchedule(t.Context(), &oncallschedules.CreateScheduleInput{
 		OrganizationUID: org.UID,
-		Slug:            "empty",
 		Name:            "Empty",
 		Timezone:        "Europe/Paris",
 		RotationType:    models.RotationTypeWeekly,
@@ -304,7 +280,6 @@ func TestServiceResolveOverrideWins(t *testing.T) {
 	startAt := time.Date(2026, 5, 4, 9, 0, 0, 0, time.UTC)
 	schedule, err := svc.CreateSchedule(t.Context(), &oncallschedules.CreateScheduleInput{
 		OrganizationUID: org.UID,
-		Slug:            "platform",
 		Name:            "Platform",
 		Timezone:        "Europe/Paris",
 		RotationType:    models.RotationTypeWeekly,
@@ -356,7 +331,6 @@ func TestServiceResolveOverlappingOverridesMostRecentWins(t *testing.T) {
 	startAt := time.Date(2026, 5, 4, 9, 0, 0, 0, time.UTC)
 	schedule, err := svc.CreateSchedule(t.Context(), &oncallschedules.CreateScheduleInput{
 		OrganizationUID: org.UID,
-		Slug:            "platform",
 		Name:            "Platform",
 		Timezone:        "Europe/Paris",
 		RotationType:    models.RotationTypeWeekly,
@@ -409,7 +383,6 @@ func TestServiceResolveSkipsSoftDeletedUser(t *testing.T) {
 	startAt := time.Date(2026, 5, 4, 9, 0, 0, 0, time.UTC)
 	schedule, err := svc.CreateSchedule(t.Context(), &oncallschedules.CreateScheduleInput{
 		OrganizationUID: org.UID,
-		Slug:            "platform",
 		Name:            "Platform",
 		Timezone:        "Europe/Paris",
 		RotationType:    models.RotationTypeWeekly,
@@ -439,7 +412,6 @@ func TestServiceCreateOverrideEndBeforeStart(t *testing.T) {
 	mon := 0
 	schedule, err := svc.CreateSchedule(t.Context(), &oncallschedules.CreateScheduleInput{
 		OrganizationUID: org.UID,
-		Slug:            "x",
 		Name:            "X",
 		Timezone:        "Europe/Paris",
 		RotationType:    models.RotationTypeWeekly,
@@ -471,7 +443,6 @@ func TestServiceICalFeedEnableDisableRotate(t *testing.T) {
 	mon := 0
 	schedule, err := svc.CreateSchedule(t.Context(), &oncallschedules.CreateScheduleInput{
 		OrganizationUID: org.UID,
-		Slug:            "x",
 		Name:            "X",
 		Timezone:        "Europe/Paris",
 		RotationType:    models.RotationTypeWeekly,
@@ -517,7 +488,6 @@ func TestServicePreviewProducesContiguousSlots(t *testing.T) {
 	startAt := time.Date(2026, 5, 4, 9, 0, 0, 0, time.UTC)
 	schedule, err := svc.CreateSchedule(t.Context(), &oncallschedules.CreateScheduleInput{
 		OrganizationUID: org.UID,
-		Slug:            "platform",
 		Name:            "Platform",
 		Timezone:        "Europe/Paris",
 		RotationType:    models.RotationTypeWeekly,

@@ -74,12 +74,12 @@ func testService(t *testing.T, svc db.Service) {
 		testStatusPageSubscribers(ctx, t, svc)
 	})
 
-	t.Run("EscalationPolicyByUidOrSlug", func(t *testing.T) {
-		testEscalationPolicyByUIDOrSlug(ctx, t, svc)
+	t.Run("EscalationPolicyByUID", func(t *testing.T) {
+		testEscalationPolicyByUID(ctx, t, svc)
 	})
 
-	t.Run("OnCallScheduleByUidOrSlug", func(t *testing.T) {
-		testOnCallScheduleByUIDOrSlug(ctx, t, svc)
+	t.Run("OnCallScheduleByUID", func(t *testing.T) {
+		testOnCallScheduleByUID(ctx, t, svc)
 	})
 
 	t.Run("AppSettings", func(t *testing.T) {
@@ -261,51 +261,45 @@ func testIncidentNotificationDeliveryDetails(ctx context.Context, t *testing.T, 
 	r.Equal(models.IncidentNotificationStatusSent, gotNil.Status)
 }
 
-func testEscalationPolicyByUIDOrSlug(ctx context.Context, t *testing.T, svc db.Service) {
+func testEscalationPolicyByUID(ctx context.Context, t *testing.T, svc db.Service) {
 	t.Helper()
 
-	org := models.NewOrganization("esc-uid-or-slug", "")
+	org := models.NewOrganization("esc-by-uid", "")
 	require.NoError(t, svc.CreateOrganization(ctx, org))
 
-	policy := models.NewEscalationPolicy(org.UID, "primary", "Primary")
+	policy := models.NewEscalationPolicy(org.UID, "Primary")
 	require.NoError(t, svc.CreateEscalationPolicy(ctx, policy))
 
-	bySlug, err := svc.GetEscalationPolicyByUidOrSlug(ctx, org.UID, "primary")
-	require.NoError(t, err)
-	require.Equal(t, policy.UID, bySlug.UID)
-
-	byUID, err := svc.GetEscalationPolicyByUidOrSlug(ctx, org.UID, policy.UID)
+	byUID, err := svc.GetEscalationPolicy(ctx, org.UID, policy.UID)
 	require.NoError(t, err)
 	require.Equal(t, policy.UID, byUID.UID)
 
-	_, err = svc.GetEscalationPolicyByUidOrSlug(ctx, org.UID, "missing")
+	// A slug-shaped (non-UUID) identifier resolves to no rows, not a 500.
+	_, err = svc.GetEscalationPolicy(ctx, org.UID, "primary")
 	require.Error(t, err)
 
-	_, err = svc.GetEscalationPolicyByUidOrSlug(ctx, org.UID, "00000000-0000-0000-0000-000000000000")
+	_, err = svc.GetEscalationPolicy(ctx, org.UID, "00000000-0000-0000-0000-000000000000")
 	require.Error(t, err)
 }
 
-func testOnCallScheduleByUIDOrSlug(ctx context.Context, t *testing.T, svc db.Service) {
+func testOnCallScheduleByUID(ctx context.Context, t *testing.T, svc db.Service) {
 	t.Helper()
 
-	org := models.NewOrganization("oncall-uid-or-slug", "")
+	org := models.NewOrganization("oncall-by-uid", "")
 	require.NoError(t, svc.CreateOrganization(ctx, org))
 
-	schedule := models.NewOnCallSchedule(org.UID, "primary", "Primary", "UTC", models.RotationTypeDaily)
+	schedule := models.NewOnCallSchedule(org.UID, "Primary", "UTC", models.RotationTypeDaily)
 	require.NoError(t, svc.CreateOnCallSchedule(ctx, schedule))
 
-	bySlug, err := svc.GetOnCallScheduleByUidOrSlug(ctx, org.UID, "primary")
-	require.NoError(t, err)
-	require.Equal(t, schedule.UID, bySlug.UID)
-
-	byUID, err := svc.GetOnCallScheduleByUidOrSlug(ctx, org.UID, schedule.UID)
+	byUID, err := svc.GetOnCallSchedule(ctx, org.UID, schedule.UID)
 	require.NoError(t, err)
 	require.Equal(t, schedule.UID, byUID.UID)
 
-	_, err = svc.GetOnCallScheduleByUidOrSlug(ctx, org.UID, "missing")
+	// A slug-shaped (non-UUID) identifier resolves to no rows, not a 500.
+	_, err = svc.GetOnCallSchedule(ctx, org.UID, "primary")
 	require.Error(t, err)
 
-	_, err = svc.GetOnCallScheduleByUidOrSlug(ctx, org.UID, "00000000-0000-0000-0000-000000000000")
+	_, err = svc.GetOnCallSchedule(ctx, org.UID, "00000000-0000-0000-0000-000000000000")
 	require.Error(t, err)
 }
 

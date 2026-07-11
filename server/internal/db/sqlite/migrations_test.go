@@ -461,3 +461,72 @@ func TestMigrationIntegrationsSchemaFinalState(t *testing.T) {
 	).Scan(ctx, &name))
 	r.Equal("Hook", name, "row must be readable from integrations table")
 }
+
+// TestMigrationDropsEscalationOnCallSlug verifies the v0.4.0 migration rebuilds
+// escalation_policies and on_call_schedules without the slug column (both are
+// addressed by uid only now), while their org index survives the rebuild.
+func TestMigrationDropsEscalationOnCallSlug(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	svc, err := New(ctx, Config{InMemory: true})
+	r.NoError(err)
+	t.Cleanup(func() { _ = svc.Close() })
+
+	r.NoError(svc.Initialize(ctx))
+
+	hasColumn := func(table, col string) bool {
+		type columnInfo struct {
+			Name string `bun:"name"`
+		}
+		var columns []columnInfo
+		r.NoError(svc.db.NewRaw("SELECT name FROM pragma_table_info(?)", table).Scan(ctx, &columns))
+		for _, c := range columns {
+			if c.Name == col {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	indexExists := func(name string) bool {
+		var count int
+		r.NoError(svc.db.NewRaw(
+			"SELECT count(*) FROM sqlite_master WHERE type='index' AND name=?", name,
+		).Scan(ctx, &count))
+
+		return count == 1
+	}
+
+	for _, table := range []string{"escalation_policies", "on_call_schedules"} {
+		r.False(hasColumn(table, "slug"), "%s.slug must be dropped after migration", table)
+		r.True(hasColumn(table, "uid"), "%s.uid must still exist", table)
+		r.True(hasColumn(table, "name"), "%s.name must still exist", table)
+	}
+
+	r.True(indexExists("idx_escalation_policies_org"), "escalation policies org index must survive the rebuild")
+	r.True(indexExists("idx_on_call_schedules_org"), "on-call schedules org index must survive the rebuild")
+
+	// A row can still be inserted and read back after the rebuild.
+	orgUID := uuid.New().String()
+	_, err = svc.db.NewRaw(
+		"INSERT INTO organizations (uid, slug, name) VALUES (?, ?, ?)", orgUID, "slug-drop-org", "Slug Drop Org",
+	).Exec(ctx)
+	r.NoError(err)
+
+	policyUID := uuid.New().String()
+	_, err = svc.db.NewRaw(
+		"INSERT INTO escalation_policies (uid, organization_uid, name) VALUES (?, ?, ?)",
+		policyUID, orgUID, "Primary",
+	).Exec(ctx)
+	r.NoError(err)
+
+	var policyName string
+	r.NoError(svc.db.NewRaw(
+		"SELECT name FROM escalation_policies WHERE uid = ?", policyUID,
+	).Scan(ctx, &policyName))
+	r.Equal("Primary", policyName)
+}

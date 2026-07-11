@@ -48,7 +48,7 @@ func TestScheduleEscalationCycleSchedulesAtCumulativeDelays(t *testing.T) {
 	ctx := context.Background()
 	dbSvc, jobs, org := setupRuntime(t)
 
-	policy := models.NewEscalationPolicy(org.UID, "test", "test")
+	policy := models.NewEscalationPolicy(org.UID, "test")
 	r.NoError(dbSvc.CreateEscalationPolicy(ctx, policy))
 
 	steps := []*models.EscalationPolicyStep{
@@ -125,7 +125,7 @@ func TestCancelPendingForIncidentDropsEscalationSteps(t *testing.T) {
 	ctx := context.Background()
 	dbSvc, jobs, org := setupRuntime(t)
 
-	policy := models.NewEscalationPolicy(org.UID, "cancel-test", "cancel test")
+	policy := models.NewEscalationPolicy(org.UID, "cancel test")
 	r.NoError(dbSvc.CreateEscalationPolicy(ctx, policy))
 
 	steps := []*models.EscalationPolicyStep{

@@ -381,19 +381,6 @@ func (m *mockDBService) GetOnCallSchedule(
 	return nil, errMockNotImplemented
 }
 
-func (m *mockDBService) GetOnCallScheduleBySlug(
-	_ context.Context, _, _ string,
-) (*models.OnCallSchedule, error) {
-	return nil, errMockNotImplemented
-}
-
-//nolint:revive // ByUidOrSlug matches the db.Service interface naming
-func (m *mockDBService) GetOnCallScheduleByUidOrSlug(
-	_ context.Context, _, _ string,
-) (*models.OnCallSchedule, error) {
-	return nil, errMockNotImplemented
-}
-
 func (m *mockDBService) GetOnCallScheduleByICalSecret(
 	_ context.Context, _ string,
 ) (*models.OnCallSchedule, error) {
@@ -455,19 +442,6 @@ func (m *mockDBService) CreateEscalationPolicy(_ context.Context, _ *models.Esca
 }
 
 func (m *mockDBService) GetEscalationPolicy(
-	_ context.Context, _, _ string,
-) (*models.EscalationPolicy, error) {
-	return nil, errMockNotImplemented
-}
-
-func (m *mockDBService) GetEscalationPolicyBySlug(
-	_ context.Context, _, _ string,
-) (*models.EscalationPolicy, error) {
-	return nil, errMockNotImplemented
-}
-
-//nolint:revive // ByUidOrSlug matches the db.Service interface naming
-func (m *mockDBService) GetEscalationPolicyByUidOrSlug(
 	_ context.Context, _, _ string,
 ) (*models.EscalationPolicy, error) {
 	return nil, errMockNotImplemented
