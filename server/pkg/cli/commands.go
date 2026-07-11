@@ -790,5 +790,126 @@ func GetCommands() []*cli.Command {
 				},
 			},
 		},
+		{
+			Name:    "discovery",
+			Aliases: []string{"discover"},
+			Usage:   "Network discovery scans and suggested checks",
+			Flags:   GetGlobalFlags(),
+			Commands: []*cli.Command{
+				{
+					Name:   "types",
+					Usage:  "List registered discovery types",
+					Action: discoveryTypesAction,
+				},
+				{
+					Name:  "scans",
+					Usage: "Manage discovery scans",
+					Commands: []*cli.Command{
+						{
+							Name:   flagList,
+							Usage:  "List discovery scans",
+							Action: discoveryScansListAction,
+						},
+						{
+							Name:  "create",
+							Usage: "Start a new discovery scan",
+							Flags: []cli.Flag{
+								&cli.StringFlag{
+									Name:     flagType,
+									Usage:    "Discovery type (see `sp discovery types`)",
+									Required: true,
+								},
+								&cli.StringFlag{
+									Name:  "params",
+									Usage: "Type-specific parameters as a JSON object",
+								},
+							},
+							Action: discoveryScansCreateAction,
+						},
+						{
+							Name:      flagGet,
+							Usage:     "Get a discovery scan by UID",
+							ArgsUsage: argUID,
+							Action:    discoveryScansGetAction,
+						},
+						{
+							Name:      "cancel",
+							Usage:     "Cancel a running discovery scan",
+							ArgsUsage: argUID,
+							Action:    discoveryScansCancelAction,
+						},
+					},
+				},
+				{
+					Name:  flagCheck,
+					Usage: "Manage suggested checks from scans",
+					Commands: []*cli.Command{
+						{
+							Name:  flagList,
+							Usage: "List discovered (suggested) checks",
+							Flags: []cli.Flag{
+								&cli.StringFlag{
+									Name:  "job-uid",
+									Usage: "Filter to one scan's checks",
+								},
+								&cli.StringFlag{
+									Name:  "group",
+									Usage: "Narrow to one group (groupKey)",
+								},
+								&cli.StringFlag{
+									Name:  "source",
+									Usage: "Comma-separated discovery sources (e.g., lan,freebox)",
+								},
+								&cli.BoolFlag{
+									Name:  "promoted",
+									Usage: "Filter by promotion state",
+								},
+							},
+							Action: discoveryChecksListAction,
+						},
+						{
+							Name:      "promote",
+							Usage:     "Promote discovered checks into real checks",
+							ArgsUsage: "<uid> [<uid>...]",
+							Action:    discoveryChecksPromoteAction,
+						},
+						{
+							Name:      "dismiss",
+							Usage:     "Dismiss a discovered check",
+							ArgsUsage: argUID,
+							Action:    discoveryChecksDismissAction,
+						},
+					},
+				},
+			},
+		},
+		{
+			Name:    "heartbeat",
+			Aliases: []string{"hb"},
+			Usage:   "Heartbeat ingestion for cron-style checks",
+			Flags:   GetGlobalFlags(),
+			Commands: []*cli.Command{
+				{
+					Name:      "send",
+					Usage:     "Send a heartbeat ping for a check identifier",
+					ArgsUsage: "<identifier>",
+					Flags: []cli.Flag{
+						&cli.StringFlag{
+							Name:  "token",
+							Usage: "Heartbeat token (required if the check has one configured)",
+						},
+						&cli.StringFlag{
+							Name:  flagStatus,
+							Usage: "Reported status: running, up, down, error",
+						},
+						&cli.StringFlag{
+							Name:  "message",
+							Usage: "Optional message to record with the heartbeat",
+						},
+					},
+					Action: heartbeatSendAction,
+				},
+			},
+		},
 	}
 }
