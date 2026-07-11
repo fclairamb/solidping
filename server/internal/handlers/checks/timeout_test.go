@@ -9,8 +9,10 @@ import (
 )
 
 // TestValidateConfigTimeout pins the uniform per-check timeout rule (spec
-// 2026-07-11-05): present values must be duration strings in (0, 30s];
-// absent keys are fine; sub-second values are allowed (no floor beyond > 0).
+// 2026-07-11-05 + explicit 1–30s range from spec 2026-07-11-09): present
+// values must be duration strings in [1s, 30s]; absent keys are fine (the
+// uniform 15s default applies); sub-second values are now rejected by the 1s
+// floor.
 func TestValidateConfigTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -21,13 +23,14 @@ func TestValidateConfigTimeout(t *testing.T) {
 	}{
 		{name: "absent key is valid", config: map[string]any{"url": "https://example.com"}},
 		{name: "nil value is treated as absent", config: map[string]any{configKeyTimeout: nil}},
+		{name: "1s floor is valid", config: map[string]any{configKeyTimeout: "1s"}},
 		{name: "10s is valid", config: map[string]any{configKeyTimeout: "10s"}},
 		{name: "30s boundary is valid", config: map[string]any{configKeyTimeout: "30s"}},
-		{name: "sub-second is valid (no floor beyond > 0)", config: map[string]any{configKeyTimeout: "500ms"}},
-		{name: "31s exceeds the cap", config: map[string]any{configKeyTimeout: "31s"}, wantErr: "must be > 0 and <= 30s"},
-		{name: "1m exceeds the cap", config: map[string]any{configKeyTimeout: "1m"}, wantErr: "must be > 0 and <= 30s"},
-		{name: "zero is rejected", config: map[string]any{configKeyTimeout: "0s"}, wantErr: "must be > 0 and <= 30s"},
-		{name: "negative is rejected", config: map[string]any{configKeyTimeout: "-5s"}, wantErr: "must be > 0 and <= 30s"},
+		{name: "sub-second is rejected by the 1s floor", config: map[string]any{configKeyTimeout: "500ms"}, wantErr: "must be >= 1s and <= 30s"},
+		{name: "31s exceeds the cap", config: map[string]any{configKeyTimeout: "31s"}, wantErr: "must be >= 1s and <= 30s"},
+		{name: "1m exceeds the cap", config: map[string]any{configKeyTimeout: "1m"}, wantErr: "must be >= 1s and <= 30s"},
+		{name: "zero is rejected", config: map[string]any{configKeyTimeout: "0s"}, wantErr: "must be >= 1s and <= 30s"},
+		{name: "negative is rejected", config: map[string]any{configKeyTimeout: "-5s"}, wantErr: "must be >= 1s and <= 30s"},
 		{
 			name:    "empty string is rejected",
 			config:  map[string]any{configKeyTimeout: ""},
