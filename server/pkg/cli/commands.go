@@ -344,6 +344,37 @@ func GetCommands() []*cli.Command {
 					},
 				},
 				{
+					Name:  "channels",
+					Usage: "Manage the notification channels bound to a check",
+					Commands: []*cli.Command{
+						{
+							Name:      flagList,
+							Usage:     "List channels bound to a check",
+							ArgsUsage: argUIDSlug,
+							Action:    checksChannelsListAction,
+						},
+						{
+							Name:      "set",
+							Usage:     "Replace the full set of channels bound to a check",
+							ArgsUsage: "<uid|slug> [<connection-uid>...]",
+							Action:    checksChannelsSetAction,
+						},
+						{
+							Name:      flagAdd,
+							Usage:     "Bind a single channel to a check",
+							ArgsUsage: "<uid|slug> <connection-uid>",
+							Action:    checksChannelsAddAction,
+						},
+						{
+							Name:      flagRemove,
+							Aliases:   []string{"rm"},
+							Usage:     "Unbind a single channel from a check",
+							ArgsUsage: "<uid|slug> <connection-uid>",
+							Action:    checksChannelsRemoveAction,
+						},
+					},
+				},
+				{
 					Name:  "export",
 					Usage: "Export all checks as a portable JSON document (admin-only)",
 					Flags: []cli.Flag{
@@ -570,6 +601,111 @@ func GetCommands() []*cli.Command {
 						},
 					},
 					Action: incidentsResolveAction,
+				},
+			},
+		},
+		{
+			Name:    "channels",
+			Aliases: []string{"channel"},
+			Usage:   "Manage notification channels (integrations)",
+			Flags:   GetGlobalFlags(),
+			Commands: []*cli.Command{
+				{
+					Name:  flagList,
+					Usage: "List notification channels",
+					Flags: []cli.Flag{
+						&cli.StringFlag{
+							Name:  flagType,
+							Usage: "Filter by channel type (e.g., slack, webhook)",
+						},
+					},
+					Action: channelsListAction,
+				},
+				{
+					Name:  cmdCreate,
+					Usage: "Create a notification channel",
+					Flags: []cli.Flag{
+						&cli.StringFlag{
+							Name:     flagType,
+							Usage:    "Channel type (slack, discord, webhook, email, ...)",
+							Required: true,
+						},
+						&cli.StringFlag{
+							Name:     flagName,
+							Usage:    usageHumanReadableName,
+							Required: true,
+						},
+						&cli.StringFlag{
+							Name:  flagSettings,
+							Usage: "Channel settings as a JSON object",
+						},
+						&cli.BoolFlag{
+							Name:  flagDisabled,
+							Usage: "Create the channel disabled",
+						},
+						&cli.BoolFlag{
+							Name:  flagDefault,
+							Usage: "Mark the channel as a default target",
+						},
+					},
+					Action: channelsCreateAction,
+				},
+				{
+					Name:      flagGet,
+					Usage:     "Get channel details",
+					ArgsUsage: argUID,
+					Action:    channelsGetAction,
+				},
+				{
+					Name:      cmdUpdate,
+					Usage:     "Update a channel",
+					ArgsUsage: argUID,
+					Flags: []cli.Flag{
+						&cli.StringFlag{
+							Name:  flagName,
+							Usage: usageHumanReadableName,
+						},
+						&cli.StringFlag{
+							Name:  flagSettings,
+							Usage: "Channel settings as a JSON object",
+						},
+						&cli.BoolFlag{
+							Name:  flagEnabled,
+							Usage: "Enable the channel",
+						},
+						&cli.BoolFlag{
+							Name:  flagDisabled,
+							Usage: "Disable the channel",
+						},
+						&cli.BoolFlag{
+							Name:  flagDefault,
+							Usage: "Mark the channel as a default target",
+						},
+						&cli.BoolFlag{
+							Name:  flagNoDefault,
+							Usage: "Unmark the channel as a default target",
+						},
+					},
+					Action: channelsUpdateAction,
+				},
+				{
+					Name:      flagRemove,
+					Aliases:   []string{"rm", "delete"},
+					Usage:     "Remove a channel",
+					ArgsUsage: argUID,
+					Action:    channelsRemoveAction,
+				},
+				{
+					Name:      "rotate-secret",
+					Usage:     "Rotate a webhook channel's signing secret",
+					ArgsUsage: argUID,
+					Action:    channelsRotateSecretAction,
+				},
+				{
+					Name:      "test",
+					Usage:     "Send a sample notification through a channel",
+					ArgsUsage: argUID,
+					Action:    channelsTestAction,
 				},
 			},
 		},
