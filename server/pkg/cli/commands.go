@@ -15,20 +15,27 @@ func GetCommands() []*cli.Command {
 			Flags: GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
-					Name:  "login",
-					Usage: "Login and obtain session token",
+					Name: "login",
+					Usage: "Login via browser (default), or with --email/--password " +
+						"or a pasted --token",
 					Flags: []cli.Flag{
 						&cli.StringFlag{
 							Name:    "email",
 							Aliases: []string{"e"},
-							Usage:   "Email for authentication",
+							Usage:   "Email for non-interactive password login",
 							Sources: cli.EnvVars("SOLIDPING_EMAIL"),
 						},
 						&cli.StringFlag{
 							Name:    "password",
 							Aliases: []string{"p"},
-							Usage:   "Password for authentication",
+							Usage:   "Password for non-interactive password login",
 							Sources: cli.EnvVars("SOLIDPING_PASSWORD"),
+						},
+						&cli.StringFlag{
+							Name:    "token",
+							Aliases: []string{"t"},
+							Usage:   "Save a pasted Personal Access Token (headless machines)",
+							Sources: cli.EnvVars("SP_TOKEN"),
 						},
 					},
 					Action: authLoginAction,
