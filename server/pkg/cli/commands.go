@@ -723,7 +723,7 @@ func GetCommands() []*cli.Command {
 					Action:    channelsRotateSecretAction,
 				},
 				{
-					Name:      "test",
+					Name:      cmdTest,
 					Usage:     "Send a sample notification through a channel",
 					ArgsUsage: argUID,
 					Action:    channelsTestAction,
@@ -1062,7 +1062,7 @@ func GetCommands() []*cli.Command {
 							Action: systemEmailInboxStatusAction,
 						},
 						{
-							Name:   "test",
+							Name:   cmdTest,
 							Usage:  "Test the email-inbox connection",
 							Action: systemEmailInboxTestAction,
 						},
@@ -1476,6 +1476,9 @@ func GetCommands() []*cli.Command {
 		checkTypesCommand(),
 		oncallCommand(),
 		escalationPoliciesCommand(),
+		notificationsCommand(),
+		notificationRoutesCommand(),
+		notificationContactsCommand(),
 		orgsCommand(),
 		invitationsCommand(),
 		membershipRequestsCommand(),
@@ -1877,6 +1880,116 @@ func oncallICalCommand() *cli.Command {
 				Usage:     "Fetch the raw public iCal feed by its secret",
 				ArgsUsage: "<secret>",
 				Action:    oncallICalFeedAction,
+			},
+		},
+	}
+}
+
+// notificationsCommand builds the "notifications" command group. It reads the
+// notification-delivery audit at org, per-incident, per-user, and caller scopes.
+func notificationsCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "notifications",
+		Aliases: []string{"notification", "notif"},
+		Usage:   "Inspect notification deliveries (org, incident, user, or self scope)",
+		Flags:   GetGlobalFlags(),
+		Commands: []*cli.Command{
+			{
+				Name: flagList,
+				Usage: "List notification deliveries. Defaults to the caller; " +
+					"use --incident, --connection, or --user to change scope",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: flagIncident, Usage: "Scope to an incident UID"},
+					&cli.StringFlag{Name: flagConnection, Usage: "Scope to a connection (channel) UID"},
+					&cli.StringFlag{Name: flagUser, Usage: "Scope to a user UID (admin only)"},
+					&cli.StringFlag{Name: flagStatus, Usage: "Filter by status (sent, failed, skipped, ...)"},
+					&cli.IntFlag{Name: flagLimit, Usage: "Maximum rows to return"},
+					&cli.StringFlag{Name: flagBefore, Usage: "Only rows before this " + usageRFC3339},
+				},
+				Action: notificationsListAction,
+			},
+			{
+				Name:      flagGet,
+				Usage:     "Get a notification delivery by UID",
+				ArgsUsage: argUID,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: flagIncident, Usage: "Scope the lookup to an incident UID"},
+				},
+				Action: notificationsGetAction,
+			},
+		},
+	}
+}
+
+// notificationRoutesCommand builds the "notification-routes" command group for
+// the caller's own delivery routes.
+func notificationRoutesCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "notification-routes",
+		Aliases: []string{"notification-route"},
+		Usage:   "Manage your own notification routes",
+		Flags:   GetGlobalFlags(),
+		Commands: []*cli.Command{
+			{
+				Name:   flagList,
+				Usage:  "List your notification routes",
+				Action: notificationRoutesListAction,
+			},
+			{
+				Name:      cmdUpdate,
+				Usage:     "Enable/disable a route or reorder the full route list",
+				ArgsUsage: argUID,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{Name: flagEnabled, Usage: "Enable the route"},
+					&cli.BoolFlag{Name: flagDisabled, Usage: "Disable the route"},
+					&cli.StringFlag{Name: flagOrder, Usage: "Full ordered list of route UIDs (comma-separated)"},
+				},
+				Action: notificationRoutesUpdateAction,
+			},
+			{
+				Name:      cmdTest,
+				Usage:     "Send a test notification through a route",
+				ArgsUsage: argUID,
+				Action:    notificationRoutesTestAction,
+			},
+		},
+	}
+}
+
+// notificationContactsCommand builds the "notification-contacts" command group
+// for the caller's own delivery contacts.
+func notificationContactsCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "notification-contacts",
+		Aliases: []string{"notification-contact"},
+		Usage:   "Manage your own notification contacts",
+		Flags:   GetGlobalFlags(),
+		Commands: []*cli.Command{
+			{
+				Name:   flagList,
+				Usage:  "List your notification contacts",
+				Action: notificationContactsListAction,
+			},
+			{
+				Name:  flagAdd,
+				Usage: "Add a notification contact",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     flagType,
+						Usage:    "Contact type (email, phone, slack_user, web_push, ...)",
+						Required: true,
+					},
+					&cli.StringFlag{Name: flagValue, Usage: "Contact value (address, number, ...)", Required: true},
+					&cli.StringFlag{Name: flagLabel, Usage: "Optional label"},
+				},
+				Action: notificationContactsAddAction,
+			},
+			{
+				Name:      flagRemove,
+				Aliases:   []string{"rm", cmdDelete},
+				Usage:     "Remove a notification contact",
+				ArgsUsage: argUID,
+				Action:    notificationContactsRemoveAction,
 			},
 		},
 	}

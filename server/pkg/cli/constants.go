@@ -35,6 +35,7 @@ const (
 	cmdCreate       = "create"
 	cmdUpdate       = "update"
 	cmdSet          = "set"
+	cmdTest         = "test"
 	cmdDelete       = "delete"
 	cmdCancel       = "cancel"
 	cmdConfig       = "config"
