@@ -414,7 +414,7 @@ function CheckDetailPage() {
     error,
     refetch,
     isRefetching,
-  } = useCheck(org, checkUid, { with: "last_result,last_status_change" });
+  } = useCheck(org, checkUid);
 
   const periodMs = useMemo(
     () => parsePeriodMs(check?.period),
@@ -463,7 +463,6 @@ function CheckDetailPage() {
 
   // Re-fetch check (with lastResult) at the same interval
   useCheck(org, checkUid, {
-    with: "last_result,last_status_change",
     refetchInterval,
   });
 

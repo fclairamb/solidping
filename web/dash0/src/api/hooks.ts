@@ -291,7 +291,6 @@ export function useCheck(
   org: string,
   uid: string,
   options?: {
-    with?: string;
     refetchInterval?: number;
     /**
      * Pass "always" when the consumer seeds local state from the response
@@ -302,14 +301,17 @@ export function useCheck(
   }
 ) {
   return useQuery({
-    queryKey: ["check", org, uid, { with: options?.with }],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (options?.with) params.set("with", options.with);
-      const query = params.toString();
-      const path = `/api/v1/orgs/${org}/checks/${uid}${query ? `?${query}` : ""}`;
-      return apiFetch<Check>(path);
-    },
+    // One canonical cache entry per check, keyed by org+uid only — every
+    // consumer (breadcrumb, detail page, edit form, badge picker) shares it,
+    // so a live invalidation produces exactly one HTTP request. The `with`
+    // embed is always requested so the superset payload (name + lastResult +
+    // lastStatusChange) satisfies every consumer; extra embeds are ignored by
+    // those that only need `name`.
+    queryKey: ["check", org, uid],
+    queryFn: async () =>
+      apiFetch<Check>(
+        `/api/v1/orgs/${org}/checks/${uid}?with=last_result,last_status_change`
+      ),
     enabled: !!org && !!uid,
     refetchInterval: options?.refetchInterval,
     refetchOnMount: options?.refetchOnMount,
