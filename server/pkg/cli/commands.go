@@ -1052,7 +1052,7 @@ func GetCommands() []*cli.Command {
 					Usage: "Inspect and control the JMAP email inbox (super-admin)",
 					Commands: []*cli.Command{
 						{
-							Name:   "config",
+							Name:   cmdConfig,
 							Usage:  "Show the saved email-inbox configuration",
 							Action: systemEmailInboxConfigAction,
 						},

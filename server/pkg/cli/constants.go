@@ -37,6 +37,7 @@ const (
 	cmdSet          = "set"
 	cmdDelete       = "delete"
 	cmdCancel       = "cancel"
+	cmdConfig       = "config"
 	argChildParent  = "<child-slug> <parent-slug>"
 
 	colTimestamp = "TIMESTAMP"

@@ -156,7 +156,8 @@ func renderLimits(limits *client.LimitsResponse) {
 	}
 
 	if limits.RateLimit.CallerRemaining != nil {
-		output.PrintMessage(os.Stdout, "  Caller remaining:   "+strconv.FormatFloat(*limits.RateLimit.CallerRemaining, 'f', 1, 64))
+		remaining := strconv.FormatFloat(*limits.RateLimit.CallerRemaining, 'f', 1, 64)
+		output.PrintMessage(os.Stdout, "  Caller remaining:   "+remaining)
 	}
 
 	output.PrintMessage(os.Stdout, "Concurrency:")
@@ -291,7 +292,7 @@ func renderCostDistribution(dist *client.CostDistribution) {
 	renderPercentiles("delay_ewma_ms", dist.DelayEwmaMs)
 }
 
-// renderPercentiles prints a labelled p50/p90/p99/max row.
+// renderPercentiles prints a labeled p50/p90/p99/max row.
 func renderPercentiles(label string, pct *client.CostDistributionPercentiles) {
 	if pct == nil {
 		return

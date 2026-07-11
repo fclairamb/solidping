@@ -48,7 +48,7 @@ func TestCLICoverage_ServerMgmt(t *testing.T) {
 	r.NotNil(memResp.JSON200)
 	r.NotNil(memResp.JSON200.Data.Runtime)
 	r.NotNil(memResp.JSON200.Data.Runtime.NumGoroutine)
-	r.Greater(*memResp.JSON200.Data.Runtime.NumGoroutine, 0)
+	r.Positive(*memResp.JSON200.Data.Runtime.NumGoroutine)
 	r.NotNil(memResp.JSON200.Data.Build)
 	r.NotNil(memResp.JSON200.Data.Build.GoVersion)
 	r.NotEmpty(*memResp.JSON200.Data.Build.GoVersion)
