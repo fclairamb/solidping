@@ -3,6 +3,7 @@ package notifier
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/uptrace/bun"
 )
@@ -19,6 +20,16 @@ type EventNotifier interface {
 	// Consumers can select on this channel to wake up when events occur.
 	Listen(eventType string) <-chan string
 
+	// Unlisten deregisters a channel previously returned by Listen for the given
+	// event type, so it stops receiving payloads and its listener slot is
+	// reclaimed. Callers that subscribe per-call (e.g. GetJobWait, which Listens
+	// on every invocation) MUST Unlisten — otherwise one channel leaks per call
+	// and the listener slices grow without bound (see the 2026-07-11 realtime
+	// silence incident). Deregister-only: the channel is left for GC rather than
+	// closed, so there is no double-close race with Close(). Passing a channel
+	// that was never registered (or was already unlistened) is a safe no-op.
+	Unlisten(eventType string, ch <-chan string)
+
 	// Close releases resources used by the notifier.
 	Close() error
 }
@@ -33,6 +44,18 @@ type EventNotifier interface {
 // the -race scheduler let two back-to-back hints outrun the draining
 // goroutine.
 const ListenerBuffer = 16
+
+// listenerGrowthWarnThreshold is the per-event-type listener-slice length above
+// which Listen emits a rate-limited warning. Under healthy operation each event
+// type has only a handful of long-lived listeners; a slice this large means a
+// consumer is subscribing without ever unsubscribing (the leak that silenced
+// the realtime WS on 2026-07-11). The Prometheus gauge solidping_event_listeners
+// carries the exact number; this warning surfaces it in the logs early.
+const listenerGrowthWarnThreshold = 1000
+
+// listenerGrowthWarnInterval rate-limits the abnormal-growth warning so a
+// runaway subscriber cannot flood the logs.
+const listenerGrowthWarnInterval = time.Minute
 
 // ListenerCounter is implemented by notifiers that can report how many listener
 // channels are currently registered. Both LocalEventNotifier and

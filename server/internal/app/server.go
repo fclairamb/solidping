@@ -261,7 +261,8 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 
 	// GetJobWait subscribes internally via notifier.Listen("job.created") on each
-	// call, so no external wakeup channel is needed here.
+	// call (and Unlistens on return, so subscriptions do not leak), so no external
+	// wakeup channel is needed here.
 	jobService := jobsvc.NewService(dbService.DB(), dbService, eventNotifier, svcList.Realtime)
 	svcList.Jobs = jobService
 

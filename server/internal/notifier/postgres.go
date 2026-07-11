@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lib/pq"
@@ -27,6 +28,9 @@ type PgEventNotifier struct {
 	closeOnce      sync.Once
 	wg             sync.WaitGroup
 	logger         *slog.Logger
+	// lastGrowthWarn rate-limits the abnormal-listener-growth warning emitted by
+	// Listen. Guarded by mu (written under the write lock in Listen).
+	lastGrowthWarn time.Time
 }
 
 // NewPgEventNotifier creates a new PostgreSQL LISTEN/NOTIFY based notifier.
@@ -91,6 +95,10 @@ func (n *PgEventNotifier) listenLoop() {
 	ticker := time.NewTicker(90 * time.Second)
 	defer ticker.Stop()
 
+	// pingInFlight guards the keepalive ping so ticks cannot stack an unbounded
+	// pile of goroutines when the listener pipeline stalls (see the ticker case).
+	var pingInFlight atomic.Bool
+
 	for {
 		select {
 		case notification := <-n.listener.Notify:
@@ -118,12 +126,23 @@ func (n *PgEventNotifier) listenLoop() {
 				}
 			}
 		case <-ticker.C:
-			// Periodic ping to keep connection alive and detect issues early
-			go func() {
-				if err := n.listener.Ping(); err != nil {
-					n.logger.Warn("postgres listener ping failed", "error", err)
-				}
-			}()
+			// Periodic ping to keep connection alive and detect issues early.
+			// Non-stacking: pq.Listener.Ping serializes on the listener mutex, so
+			// if the pipeline is wedged the ping blocks indefinitely. Only spawn a
+			// new ping when the previous one has returned; otherwise skip the tick
+			// and surface the stall as a rate-limited warning. This bounds the
+			// ping goroutines to at most one, instead of the one-per-tick pile-up
+			// (364 stuck goroutines in 9h) seen during the 2026-07-11 incident.
+			if pingInFlight.CompareAndSwap(false, true) {
+				go func() {
+					defer pingInFlight.Store(false)
+					if err := n.listener.Ping(); err != nil {
+						n.logger.Warn("postgres listener ping failed", "error", err)
+					}
+				}()
+			} else {
+				n.logger.Warn("postgres listener ping still in flight; skipping tick (listener pipeline may be stalled)")
+			}
 		case <-n.done:
 			// Shutdown signal received, exit the loop
 			return
@@ -168,7 +187,47 @@ func (n *PgEventNotifier) Listen(eventType string) <-chan string {
 
 	ch := make(chan string, ListenerBuffer) // buffered: see ListenerBuffer
 	n.listeners[eventType] = append(n.listeners[eventType], ch)
+	n.warnIfGrowingLocked(eventType)
 	return ch
+}
+
+// warnIfGrowingLocked emits a rate-limited warning when a single event type's
+// listener slice grows past listenerGrowthWarnThreshold — the signature of a
+// consumer that Listens without ever Unlistening. Must be called with n.mu held
+// for writing (it reads/writes lastGrowthWarn).
+func (n *PgEventNotifier) warnIfGrowingLocked(eventType string) {
+	count := len(n.listeners[eventType])
+	if count < listenerGrowthWarnThreshold {
+		return
+	}
+	if now := time.Now(); now.Sub(n.lastGrowthWarn) >= listenerGrowthWarnInterval {
+		n.lastGrowthWarn = now
+		n.logger.Warn("event-notifier listener slice growing abnormally; possible listener leak",
+			slog.String("event_type", eventType),
+			slog.Int("count", count))
+	}
+}
+
+// Unlisten deregisters a channel previously returned by Listen. See the
+// EventNotifier interface for the contract. Deregister-only: the channel is not
+// closed here (Close closes every remaining channel), which avoids a
+// double-close race. The underlying pq.Listener LISTEN is intentionally left in
+// place — the set of event types is small and fixed, so re-subscribing is not
+// worth the churn. Unknown channels are a no-op.
+func (n *PgEventNotifier) Unlisten(eventType string, ch <-chan string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	channels := n.listeners[eventType]
+	for i, c := range channels {
+		if c == ch {
+			last := len(channels) - 1
+			channels[i] = channels[last]
+			channels[last] = nil // release the reference for GC
+			n.listeners[eventType] = channels[:last]
+			return
+		}
+	}
 }
 
 // ReconnectEvents registers and returns a channel signaled each time the
