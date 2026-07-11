@@ -97,13 +97,13 @@ func (n *LocalEventNotifier) warnIfGrowingLocked(eventType string) {
 // EventNotifier interface for the contract. Deregister-only: the channel is not
 // closed here (Close closes every remaining channel), which avoids a
 // double-close race. Unknown channels are a no-op.
-func (n *LocalEventNotifier) Unlisten(eventType string, ch <-chan string) {
+func (n *LocalEventNotifier) Unlisten(eventType string, target <-chan string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
 	channels := n.listeners[eventType]
 	for i, c := range channels {
-		if c == ch {
+		if c == target {
 			last := len(channels) - 1
 			channels[i] = channels[last]
 			channels[last] = nil // release the reference for GC

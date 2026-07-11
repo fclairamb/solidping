@@ -28,7 +28,7 @@ type EventNotifier interface {
 	// silence incident). Deregister-only: the channel is left for GC rather than
 	// closed, so there is no double-close race with Close(). Passing a channel
 	// that was never registered (or was already unlistened) is a safe no-op.
-	Unlisten(eventType string, ch <-chan string)
+	Unlisten(eventType string, target <-chan string)
 
 	// Close releases resources used by the notifier.
 	Close() error

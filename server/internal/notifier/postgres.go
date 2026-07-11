@@ -214,13 +214,13 @@ func (n *PgEventNotifier) warnIfGrowingLocked(eventType string) {
 // double-close race. The underlying pq.Listener LISTEN is intentionally left in
 // place — the set of event types is small and fixed, so re-subscribing is not
 // worth the churn. Unknown channels are a no-op.
-func (n *PgEventNotifier) Unlisten(eventType string, ch <-chan string) {
+func (n *PgEventNotifier) Unlisten(eventType string, target <-chan string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
 	channels := n.listeners[eventType]
 	for i, c := range channels {
-		if c == ch {
+		if c == target {
 			last := len(channels) - 1
 			channels[i] = channels[last]
 			channels[last] = nil // release the reference for GC
