@@ -197,6 +197,51 @@ func TestCLICoverage_OrgDependencyGraph(t *testing.T) {
 	r.GreaterOrEqual(len(*resp.JSON200.Data.Edges), 1)
 }
 
+// TestCLICoverage_UpdateCheckDependency covers the updateCheckDependency
+// PATCH-single-edge operation. The edge is created through the real
+// create-dependency handler, then patched via the generated client.
+func TestCLICoverage_UpdateCheckDependency(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ts := NewTestServer(t)
+	ctx := t.Context()
+
+	parentUID := "40000000-0000-0000-0000-000000000050"
+	childUID := "40000000-0000-0000-0000-000000000051"
+	cliCovSeedCheck(ctx, t, ts, parentUID, "cli-depupd-parent", "http",
+		models.JSONMap{"url": "https://parent.example.com"})
+	cliCovSeedCheck(ctx, t, ts, childUID, "cli-depupd-child", "http",
+		models.JSONMap{"url": "https://child.example.com"})
+
+	apiClient := cliCovAuthedClient(ctx, t, ts)
+
+	edge, err := apiClient.AddCheckDependency(ctx, TestOrgSlug, "cli-depupd-child", client.CreateDependencyBody{
+		ParentCheckUID: parentUID,
+		Kind:           "hard",
+	})
+	r.NoError(err)
+	r.NotNil(edge)
+	r.Equal("hard", edge.Kind)
+	r.Nil(edge.Description)
+
+	depUID := uuid.MustParse(edge.UID)
+	newKind := client.UpdateDependencyRequestKindSoft
+	newDesc := "patched via cli test"
+	resp, err := apiClient.UpdateCheckDependencyWithResponse(
+		ctx, TestOrgSlug, "cli-depupd-child", depUID, client.UpdateCheckDependencyJSONRequestBody{
+			Kind:        &newKind,
+			Description: &newDesc,
+		})
+	r.NoError(err)
+	r.Equal(200, resp.StatusCode())
+	r.NotNil(resp.JSON200)
+	r.Equal(edge.UID, resp.JSON200.Uid.String())
+	r.Equal("soft", string(resp.JSON200.Kind))
+	r.NotNil(resp.JSON200.Description)
+	r.Equal(newDesc, *resp.JSON200.Description)
+}
+
 // TestCLICoverage_GetOrgResult covers the single-result getOrgResult operation.
 func TestCLICoverage_GetOrgResult(t *testing.T) {
 	t.Parallel()
