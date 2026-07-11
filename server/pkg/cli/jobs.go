@@ -229,16 +229,16 @@ func jobAdminListFlags() []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{Name: flagStatus, Usage: "Filter by job status"},
 		&cli.StringFlag{Name: flagType, Usage: "Filter by job type"},
-		&cli.IntFlag{Name: flagLimit, Usage: "Maximum results (1-200)"},
-		&cli.IntFlag{Name: flagOffset, Usage: "Result offset"},
+		&cli.IntFlag{Name: flagLimit, Usage: usageResultsLimit},
+		&cli.IntFlag{Name: flagOffset, Usage: usageFileOffset},
 	}
 }
 
 // checkJobPaginationFlags is the shared flag set for the check-jobs list commands.
 func checkJobPaginationFlags() []cli.Flag {
 	return []cli.Flag{
-		&cli.IntFlag{Name: flagLimit, Usage: "Maximum results (1-200)"},
-		&cli.IntFlag{Name: flagOffset, Usage: "Result offset"},
+		&cli.IntFlag{Name: flagLimit, Usage: usageResultsLimit},
+		&cli.IntFlag{Name: flagOffset, Usage: usageFileOffset},
 	}
 }
 

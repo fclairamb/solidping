@@ -46,6 +46,7 @@ const (
 	usageOptionalDescription = "Optional description"
 	usagePaginationCursor    = "Pagination cursor for next page"
 	usageResultsPerPage      = "Results per page (max 100)"
+	usageResultsLimit        = "Maximum results (1-200)"
 
 	keySuccess = "success"
 	keyMessage = "message"
