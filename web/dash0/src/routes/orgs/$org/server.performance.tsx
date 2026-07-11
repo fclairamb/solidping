@@ -23,11 +23,13 @@ import {
 } from "@/components/ui/table";
 import { AlertCircle, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { regionDisplayLabel } from "@/lib/region-label";
 import { ApiError } from "@/api/client";
 import {
   useSystemParameters,
   useSetSystemParameter,
   useSchedulingLaneLoad,
+  useRegions,
   type WorkerLaneLoad,
 } from "@/api/hooks";
 
@@ -255,7 +257,11 @@ function LaneLoadCard({
   fastReserved: number;
 }) {
   const { t } = useTranslation(["server"]);
+  const { org } = Route.useParams();
   const { data: workers, isLoading } = useSchedulingLaneLoad();
+  // Worker rows carry the raw region slug; resolve it to the friendly
+  // "{emoji} {name}" label from the region definitions (raw-slug fallback).
+  const { data: regionsData } = useRegions(org);
 
   const seconds = (ms: number) =>
     ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
@@ -303,7 +309,11 @@ function LaneLoadCard({
               <div key={w.workerUid} className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">{w.name}</span>
-                  {w.region && <Badge variant="outline">{w.region}</Badge>}
+                  {w.region && (
+                    <Badge variant="outline" data-testid="worker-region-badge">
+                      {regionDisplayLabel(regionsData?.regions, w.region)}
+                    </Badge>
+                  )}
                 </div>
                 <div className="rounded-md border overflow-x-auto">
                   <Table>

@@ -36,10 +36,12 @@ import {
   useJobsStats,
   useBackgroundJobs,
   useCheckSchedule,
+  useRegions,
   type BackgroundJob,
   type CheckJobState,
   type CheckScheduleJob,
 } from "@/api/hooks";
+import { regionDisplayLabel } from "@/lib/region-label";
 
 const PAGE_SIZE = 50;
 
@@ -477,6 +479,9 @@ function CheckScheduleTable({
   loading: boolean;
 }) {
   const { t } = useTranslation("jobs");
+  // Job rows carry the raw region slug; show the friendly "{emoji} {name}"
+  // label from the region definitions (raw-slug fallback).
+  const { data: regionsData } = useRegions(org);
 
   if (loading) {
     return (
@@ -520,7 +525,9 @@ function CheckScheduleTable({
                 </Link>
               </TableCell>
               <TableCell className="text-xs text-muted-foreground">
-                {row.region ?? t("labels.none")}
+                {row.region
+                  ? regionDisplayLabel(regionsData?.regions, row.region)
+                  : t("labels.none")}
               </TableCell>
               {allOrgs && (
                 <TableCell className="text-xs text-muted-foreground">

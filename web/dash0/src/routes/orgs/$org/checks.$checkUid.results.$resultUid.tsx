@@ -14,7 +14,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
-import { useResult, type OrgResultDetail, type ResultFallbackInfo } from "@/api/hooks";
+import { useResult, useRegions, type OrgResultDetail, type ResultFallbackInfo } from "@/api/hooks";
+import { regionDisplayLabel } from "@/lib/region-label";
 
 export const Route = createFileRoute(
   "/orgs/$org/checks/$checkUid/results/$resultUid",
@@ -100,6 +101,9 @@ function ResultDetailPage() {
   const { org, checkUid, resultUid } = Route.useParams();
   const { region } = Route.useSearch();
   const { data, isLoading, error, refetch } = useResult(org, checkUid, resultUid, { region });
+  // The result carries the raw region slug; show the friendly
+  // "{emoji} {name}" label from the region definitions (raw-slug fallback).
+  const { data: regionsData } = useRegions(org);
 
   if (isLoading) {
     return (
@@ -233,7 +237,9 @@ function ResultDetailPage() {
           {data.region && (
             <div>
               <span className="text-muted-foreground">{t("checks:resultDetail.region")}: </span>
-              <code className="font-mono">{data.region}</code>
+              <code className="font-mono">
+                {regionDisplayLabel(regionsData?.regions, data.region)}
+              </code>
             </div>
           )}
           {data.durationMs !== undefined && (

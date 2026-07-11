@@ -40,6 +40,7 @@ import { Button } from "@/components/ui/button";
 import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { regionDisplayLabel } from "@/lib/region-label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Card,
@@ -989,14 +990,11 @@ function CheckDetailPage() {
                   {t("checks:detail.regionsLabel")}
                 </div>
                 <div className="flex gap-1 flex-wrap">
-                  {check.regions.map((slug) => {
-                    const region = regionsData?.regions?.find((r) => r.slug === slug);
-                    return (
-                      <Badge key={slug} variant="outline">
-                        {region ? `${region.emoji} ${region.name}` : slug}
-                      </Badge>
-                    );
-                  })}
+                  {check.regions.map((slug) => (
+                    <Badge key={slug} variant="outline">
+                      {regionDisplayLabel(regionsData?.regions, slug)}
+                    </Badge>
+                  ))}
                 </div>
               </div>
             )}
@@ -1177,21 +1175,18 @@ function CheckDetailPage() {
               >
                 {t("checks:detail.results.filterAll")}
               </Button>
-              {observedRegions.map((slug) => {
-                const region = regionsData?.regions?.find((r) => r.slug === slug);
-                return (
-                  <Button
-                    key={slug}
-                    variant={effectiveResultsRegion === slug ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setResultsRegion(slug)}
-                    className="px-2 text-xs"
-                    data-testid={`results-region-chip-${slug}`}
-                  >
-                    {region ? `${region.emoji} ${region.name}` : slug}
-                  </Button>
-                );
-              })}
+              {observedRegions.map((slug) => (
+                <Button
+                  key={slug}
+                  variant={effectiveResultsRegion === slug ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setResultsRegion(slug)}
+                  className="px-2 text-xs"
+                  data-testid={`results-region-chip-${slug}`}
+                >
+                  {regionDisplayLabel(regionsData?.regions, slug)}
+                </Button>
+              ))}
             </div>
           )}
         </CardHeader>
@@ -1278,9 +1273,6 @@ function CheckDetailPage() {
                     >
                       {result.region ? (
                         (() => {
-                          const region = regionsData?.regions?.find(
-                            (r) => r.slug === result.region,
-                          );
                           const slug = result.region;
                           return (
                             // A real <button> styled with badgeVariants (not
@@ -1300,7 +1292,7 @@ function CheckDetailPage() {
                                 setResultsRegion(slug);
                               }}
                             >
-                              {region ? `${region.emoji} ${region.name}` : slug}
+                              {regionDisplayLabel(regionsData?.regions, slug)}
                             </button>
                           );
                         })()
