@@ -13,6 +13,12 @@
     "advancedHint": "Need more control?",
     "advancedLink": "Open the full check editor",
     "unexpectedError": "An unexpected error occurred.",
+    "or": "or",
+    "mcp": {
+      "title": "Let AI set everything up",
+      "description": "Connect Claude, Cursor or VS Code to SolidPing's MCP server and ask it to create and configure all your checks for you.",
+      "cta": "Set up MCP"
+    },
     "quick": {
       "http": "HTTP",
       "icmp": "Ping",

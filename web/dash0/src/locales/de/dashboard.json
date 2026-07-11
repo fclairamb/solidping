@@ -13,6 +13,12 @@
     "advancedHint": "Mehr Kontrolle?",
     "advancedLink": "Vollständigen Editor öffnen",
     "unexpectedError": "Ein unerwarteter Fehler ist aufgetreten.",
+    "or": "oder",
+    "mcp": {
+      "title": "Lassen Sie die KI alles einrichten",
+      "description": "Verbinden Sie Claude, Cursor oder VS Code mit dem MCP-Server von SolidPing und lassen Sie alle Ihre Prüfungen erstellen und konfigurieren.",
+      "cta": "MCP einrichten"
+    },
     "quick": {
       "http": "HTTP",
       "icmp": "Ping",

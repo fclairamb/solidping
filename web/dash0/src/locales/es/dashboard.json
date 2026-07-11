@@ -13,6 +13,12 @@
     "advancedHint": "¿Más control?",
     "advancedLink": "Abrir el editor completo",
     "unexpectedError": "Se ha producido un error inesperado.",
+    "or": "o",
+    "mcp": {
+      "title": "Deja que la IA lo configure todo",
+      "description": "Conecta Claude, Cursor o VS Code al servidor MCP de SolidPing y pídele que cree y configure todas tus comprobaciones.",
+      "cta": "Configurar MCP"
+    },
     "quick": {
       "http": "HTTP",
       "icmp": "Ping",

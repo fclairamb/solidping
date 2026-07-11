@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
-import { Globe, Network, Shield, Loader2, Plus } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { ArrowRight, Bot, Globe, Network, Shield, Loader2, Plus } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,8 +53,9 @@ const QUICK_DEFS: Record<
 // EmptyStateOnboarding renders the focused "create your first check" hero
 // shown on the org dashboard when there are zero checks. Three quick-start
 // chips (HTTP / Ping / SSL) let a user create the first check with a single
-// input, no other fields. The full editor is one click away if they want
-// the long form.
+// input, no other fields. Two secondary paths sit below: connect an AI
+// assistant through MCP (links to the per-client setup page under Account)
+// and the full check editor for those who want the long form.
 export function EmptyStateOnboarding({ org }: EmptyStateOnboardingProps) {
   const { t } = useTranslation("dashboard");
   const [tab, setTab] = useState<QuickType>("http");
@@ -165,6 +167,53 @@ export function EmptyStateOnboarding({ org }: EmptyStateOnboardingProps) {
             )}
           </Button>
         </form>
+
+        {/* Secondary path: connect an AI assistant through MCP and let it do
+            the whole onboarding. Kept visually subordinate to the one-field
+            quick-create form above — a divider plus a bordered sub-card
+            linking to the existing per-client MCP setup page. */}
+        <div
+          className="flex w-full max-w-md items-center gap-3"
+          aria-hidden="true"
+        >
+          <div className="h-px flex-1 bg-border" />
+          <span className="text-xs uppercase text-muted-foreground">
+            {t("welcome.or", "or")}
+          </span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+
+        <div className="flex w-full max-w-md flex-col gap-3 rounded-md border bg-card p-4 text-left sm:flex-row sm:items-center">
+          <div className="flex flex-1 items-start gap-3">
+            <Bot className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+            <div>
+              <p className="text-sm font-medium">
+                {t("welcome.mcp.title", "Let AI set everything up")}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {t(
+                  "welcome.mcp.description",
+                  "Connect Claude, Cursor or VS Code to SolidPing's MCP server and ask it to create and configure all your checks for you.",
+                )}
+              </p>
+            </div>
+          </div>
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+          >
+            <Link
+              to="/orgs/$org/account/mcp"
+              params={{ org }}
+              data-testid="quick-start-mcp-link"
+            >
+              {t("welcome.mcp.cta", "Set up MCP")}
+              <ArrowRight className="ml-1 h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
 
         <p className="text-xs text-muted-foreground">
           {t("welcome.advancedHint", "Need more control?")} {" "}

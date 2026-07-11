@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  Bot,
   Check,
   CheckCircle2,
   Copy,
@@ -1054,6 +1055,46 @@ function ButtonsBadgesSection() {
             </div>
           }
           importLine={`import { Card, CardContent } from "@/components/ui/card";\nimport { Badge } from "@/components/ui/badge";\nimport { parseUserAgent } from "@/lib/user-agent";\n\n<Card className={session.isCurrent ? "border-primary" : undefined}>\n  <CardContent className="flex items-start justify-between gap-3 p-4">\n    {/* device icon + browser/OS + badges + revoke button */}\n  </CardContent>\n</Card>`}
+        />
+
+        <h3 className="text-sm font-medium">Secondary-path divider + sub-card</h3>
+        <p className="text-sm text-muted-foreground">
+          When a page has one primary action and a clearly subordinate
+          alternative path (e.g. the empty-state onboarding hero&apos;s
+          &quot;let AI set everything up&quot; MCP link under the quick-create
+          form), separate them with a hairline &quot;or&quot; divider followed
+          by a bordered sub-card: icon + title/description on the left, an
+          outline <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Button asChild</code>{" "}
+          CTA on the right. Stacks vertically below <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code>.
+          The divider is decorative — mark it{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">aria-hidden</code>.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-md space-y-4">
+              <div className="flex items-center gap-3" aria-hidden="true">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-xs uppercase text-muted-foreground">or</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+              <div className="flex flex-col gap-3 rounded-md border bg-card p-4 text-left sm:flex-row sm:items-center">
+                <div className="flex flex-1 items-start gap-3">
+                  <Bot className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                  <div>
+                    <p className="text-sm font-medium">Let AI set everything up</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Connect an AI assistant and ask it to do the work for you.
+                    </p>
+                  </div>
+                </div>
+                <Button variant="outline" size="sm" className="shrink-0">
+                  Set up MCP
+                  <ArrowRight className="ml-1 h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          }
+          importLine={`import { Button } from "@/components/ui/button";\nimport { Link } from "@tanstack/react-router";\n\n<div className="flex items-center gap-3" aria-hidden="true">\n  <div className="h-px flex-1 bg-border" />\n  <span className="text-xs uppercase text-muted-foreground">{t("welcome.or")}</span>\n  <div className="h-px flex-1 bg-border" />\n</div>\n<div className="flex flex-col gap-3 rounded-md border bg-card p-4 text-left sm:flex-row sm:items-center">\n  {/* icon + title/description */}\n  <Button asChild variant="outline" size="sm" className="shrink-0">\n    <Link to="/orgs/$org/account/mcp" params={{ org }}>…</Link>\n  </Button>\n</div>`}
         />
       </div>
     </Section>
