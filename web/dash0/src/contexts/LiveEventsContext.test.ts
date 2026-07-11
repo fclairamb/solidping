@@ -60,8 +60,8 @@ function seedQueries(client: QueryClient): void {
   const keys: unknown[][] = [
     ["checks", ORG, { limit: 1000 }],
     ["checks", "infinite", ORG, {}],
-    ["check", ORG, "uid-1", {}],
-    ["check", ORG, "uid-2", {}],
+    ["check", ORG, "uid-1"],
+    ["check", ORG, "uid-2"],
     ["results", ORG, { checkUid: "uid-1" }],
     ["results", ORG, { checkUid: "uid-2" }],
     ["allResults", ORG, {}],
@@ -232,8 +232,8 @@ describe("LiveRegistry scope-accurate invalidation", () => {
     conn.subscribed({ entity: "check", uid: "uid-1" });
 
     const before = staleKeys(client);
-    expect(before).toContain(JSON.stringify(["check", ORG, "uid-1", {}]));
-    expect(before).not.toContain(JSON.stringify(["check", ORG, "uid-2", {}]));
+    expect(before).toContain(JSON.stringify(["check", ORG, "uid-1"]));
+    expect(before).not.toContain(JSON.stringify(["check", ORG, "uid-2"]));
 
     client.getQueryCache().getAll().forEach((q) => client.resetQueries({ queryKey: q.queryKey }));
 
@@ -243,7 +243,7 @@ describe("LiveRegistry scope-accurate invalidation", () => {
     // results for uid-1 (nested checkUid) invalidated, uid-2's left alone.
     expect(stale).toContain(JSON.stringify(["results", ORG, { checkUid: "uid-1" }]));
     expect(stale).not.toContain(JSON.stringify(["results", ORG, { checkUid: "uid-2" }]));
-    expect(stale).not.toContain(JSON.stringify(["check", ORG, "uid-2", {}]));
+    expect(stale).not.toContain(JSON.stringify(["check", ORG, "uid-2"]));
   });
 
   it("a 'results' kind update on a check scope also invalidates that check's own detail query", () => {
@@ -263,8 +263,8 @@ describe("LiveRegistry scope-accurate invalidation", () => {
     vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
     conn.update({ entity: "check", uid: "uid-1" }, ["results"]);
     const stale = staleKeys(client);
-    expect(stale).toContain(JSON.stringify(["check", ORG, "uid-1", {}]));
-    expect(stale).not.toContain(JSON.stringify(["check", ORG, "uid-2", {}]));
+    expect(stale).toContain(JSON.stringify(["check", ORG, "uid-1"]));
+    expect(stale).not.toContain(JSON.stringify(["check", ORG, "uid-2"]));
   });
 
   it("a 'results' kind update on the checks collection scope also invalidates the checks list", () => {
@@ -409,7 +409,7 @@ describe("LiveRegistry hint damping (refetch storm protection)", () => {
 
     vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
     const stale = staleKeys(client);
-    expect(stale).toContain(JSON.stringify(["check", ORG, "uid-1", {}])); // incidents root
+    expect(stale).toContain(JSON.stringify(["check", ORG, "uid-1"])); // incidents root
     expect(stale).toContain(JSON.stringify(["results", ORG, { checkUid: "uid-1" }])); // results root
   });
 
