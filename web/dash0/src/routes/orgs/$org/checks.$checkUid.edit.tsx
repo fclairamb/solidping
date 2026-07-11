@@ -16,10 +16,6 @@ import { QueryErrorView } from "@/components/shared/error-views";
 import { CheckForm } from "@/components/shared/check-form";
 
 export const Route = createFileRoute("/orgs/$org/checks/$checkUid/edit")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    // `?section=<name>` deep-link: expand + scroll that collapsible on load.
-    section: typeof search.section === "string" ? search.section : undefined,
-  }),
   component: CheckEditPage,
 });
 
@@ -27,7 +23,6 @@ function CheckEditPage() {
   const { t } = useTranslation("checks");
   const navigate = useNavigate();
   const { org, checkUid } = Route.useParams();
-  const { section } = Route.useSearch();
   // refetchOnMount "always": the form below seeds its field state ONCE from
   // initialData, so it must never seed from a stale cache entry (e.g.
   // re-opening the editor right after a save, when react-query returns the
@@ -89,7 +84,6 @@ function CheckEditPage() {
       org={org}
       mode="edit"
       initialData={check}
-      initialSection={section}
       checkGroups={checkGroups}
       availableRegions={regionsData?.regions}
       defaultRegions={regionsData?.defaultRegions}

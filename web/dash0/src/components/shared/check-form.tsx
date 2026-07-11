@@ -49,6 +49,7 @@ import {
 import { Link } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
 import { CheckPicker } from "@/components/shared/check-picker";
+import { requiredFieldError } from "@/components/checks/form/serialize";
 import { FreeboxLanDiscovery } from "@/components/shared/freebox-lan-discovery";
 import type { FreeboxLanHost } from "@/api/hooks";
 import { X } from "lucide-react";
@@ -980,272 +981,23 @@ export function CheckForm({
     setError(null);
     setSubmitAttempts((n) => n + 1);
 
-    const config: Record<string, unknown> = {};
-
-    switch (type) {
-      case "http":
-        if (!url) { setError("URL is required"); return; }
-        config.url = url;
-        if (method && method !== "GET") config.method = method;
-        {
-          const statusCode = parseInt(expectedStatus, 10);
-          if (!isNaN(statusCode) && statusCode !== 200) config.expectedStatus = statusCode;
-        }
-        if (username) config.username = username;
-        if (password) config.password = password;
-        {
-          const shMap: Record<string, string> = {};
-          for (const { key, value } of secretHeaders) {
-            if (key) shMap[key] = value;
-          }
-          if (Object.keys(shMap).length > 0) config.secretHeaders = shMap;
-          else config.secretHeaders = {};
-        }
-        break;
-      case "websocket":
-        if (!url) { setError("URL is required"); return; }
-        config.url = url;
-        if (wsSend) config.send = wsSend;
-        if (wsExpect) config.expect = wsExpect;
-        break;
-      case "ssl":
-        if (!host) { setError("Host is required"); return; }
-        config.host = host;
-        if (port) config.port = parseInt(port, 10);
-        if (serverName) config.serverName = serverName;
-        if (criticalDays) config.criticalDays = parseInt(criticalDays, 10);
-        if (warningDays) config.warningDays = parseInt(warningDays, 10);
-        break;
-      case "ntp":
-        if (!host) { setError("Host is required"); return; }
-        config.host = host;
-        if (port) config.port = parseInt(port, 10);
-        if (ntpVersion) config.version = parseInt(ntpVersion, 10);
-        if (ntpOffsetWarnMs) config.offset_warn_ms = parseInt(ntpOffsetWarnMs, 10);
-        if (ntpOffsetCritMs) config.offset_crit_ms = parseInt(ntpOffsetCritMs, 10);
-        if (ntpMaxStratum) config.max_stratum = parseInt(ntpMaxStratum, 10);
-        break;
-      case "rdp":
-        if (!host) { setError("Host is required"); return; }
-        config.host = host;
-        if (port) config.port = parseInt(port, 10);
-        if (rdpRequireNLA) config.require_nla = true;
-        if (rdpWarningDays) config.warning_days = parseInt(rdpWarningDays, 10);
-        if (rdpCriticalDays) config.critical_days = parseInt(rdpCriticalDays, 10);
-        break;
-      case "tcp":
-      case "udp":
-      case "ftp":
-        if (!host) { setError("Host is required"); return; }
-        config.host = host;
-        if (port) config.port = parseInt(port, 10);
-        if (type === "ftp") {
-          config.username = username || "anonymous";
-          if (password) config.password = password;
-        }
-        break;
-      case "ssh":
-      case "sftp":
-        if (!host) { setError("Host is required"); return; }
-        config.host = host;
-        if (port) config.port = parseInt(port, 10);
-        if (username) config.username = username;
-        if (password) config.password = password;
-        break;
-      case "pop3":
-      case "imap":
-        if (!host) { setError("Host is required"); return; }
-        config.host = host;
-        if (port) config.port = parseInt(port, 10);
-        if (tls) config.tls = true;
-        if (startTLS) config.starttls = true;
-        if (username) config.username = username;
-        if (password) config.password = password;
-        break;
-      case "icmp":
-        if (!host) { setError("Host is required"); return; }
-        config.host = host;
-        break;
-      case "dns":
-        // Backend reads the queried domain under `host`, not `domain`.
-        if (!host) { setError("Domain is required"); return; }
-        config.host = host;
-        if (dnsNameserver) config.nameserver = dnsNameserver;
-        if (dnsRecordType && dnsRecordType !== "A") config.record_type = dnsRecordType;
-        break;
-      case "domain":
-        if (!domain) { setError("Domain is required"); return; }
-        config.domain = domain;
-        break;
-      case "smtp":
-        if (!host) { setError("Host is required"); return; }
-        config.host = host;
-        if (port) config.port = parseInt(port, 10);
-        if (startTLS) config.starttls = true;
-        if (tlsVerify) config.tls_verify = true;
-        if (ehloDomain) config.ehlo_domain = ehloDomain;
-        if (expectGreeting) config.expect_greeting = expectGreeting;
-        if (checkAuth) config.check_auth = true;
-        if (username) config.username = username;
-        if (password) config.password = password;
-        break;
-      case "postgresql":
-      case "mysql":
-      case "mssql":
-      case "oracle":
-        if (!host) { setError("Host is required"); return; }
-        config.host = host;
-        if (port) config.port = parseInt(port, 10);
-        if (username) config.username = username;
-        if (password) config.password = password;
-        if (database) config.database = database;
-        if (query) config.query = query;
-        break;
-      case "redis":
-        if (!host) { setError("Host is required"); return; }
-        config.host = host;
-        if (port) config.port = parseInt(port, 10);
-        if (password) config.password = password;
-        if (database) config.database = parseInt(database, 10);
-        break;
-      case "mongodb":
-        if (!host) { setError("Host is required"); return; }
-        config.host = host;
-        if (port) config.port = parseInt(port, 10);
-        if (username) config.username = username;
-        if (password) config.password = password;
-        if (database) config.database = database;
-        break;
-      case "rabbitmq":
-        if (!host) { setError("Host is required"); return; }
-        config.host = host;
-        if (port) config.port = parseInt(port, 10);
-        if (username) config.username = username;
-        if (password) config.password = password;
-        if (vhost) config.vhost = vhost;
-        if (queue) config.queue = queue;
-        if (tlsVerify) config.tls = true;
-        break;
-      case "js":
-        if (!script) { setError("Script is required"); return; }
-        config.script = script;
-        break;
-      case "grpc":
-        if (!host) { setError("Host is required"); return; }
-        config.host = host;
-        if (port) config.port = parseInt(port, 10);
-        if (serviceName) config.serviceName = serviceName;
-        if (tls) config.tls = true;
-        break;
-      case "kafka":
-        if (!brokers) { setError("Brokers are required"); return; }
-        config.brokers = brokers.split(",").map((b) => b.trim()).filter(Boolean);
-        if (topic) config.topic = topic;
-        if (username) config.saslUsername = username;
-        if (password) config.saslPassword = password;
-        if (username || password) config.saslMechanism = "PLAIN";
-        if (tls) config.tls = true;
-        if (produceTest) config.produceTest = true;
-        break;
-      case "mqtt":
-        if (!host) { setError("Host is required"); return; }
-        config.host = host;
-        if (port) config.port = parseInt(port, 10);
-        if (username) config.username = username;
-        if (password) config.password = password;
-        if (topic) config.topic = topic;
-        if (tls) config.tls = true;
-        break;
-      case "a2s":
-        if (!host) { setError("Host is required"); return; }
-        config.host = host;
-        if (port) config.port = parseInt(port, 10);
-        if (minPlayers) config.minPlayers = parseInt(minPlayers, 10);
-        if (maxPlayersField) config.maxPlayers = parseInt(maxPlayersField, 10);
-        break;
-      case "minecraft":
-        if (!host) { setError("Host is required"); return; }
-        config.host = host;
-        if (port) config.port = parseInt(port, 10);
-        if (edition && edition !== "java") config.edition = edition;
-        if (minPlayers) config.minPlayers = parseInt(minPlayers, 10);
-        if (maxPlayersField) config.maxPlayers = parseInt(maxPlayersField, 10);
-        break;
-      case "snmp":
-        if (!host) { setError("Host is required"); return; }
-        config.host = host;
-        if (port) config.port = parseInt(port, 10);
-        if (oid) config.oid = oid;
-        if (community) config.community = community;
-        if (expectedValue) config.expectedValue = expectedValue;
-        if (snmpOperator && snmpOperator !== "equals") config.operator = snmpOperator;
-        break;
-      case "docker":
-        if (!containerName && !containerId) { setError("Container name or ID is required"); return; }
-        if (containerName) config.containerName = containerName;
-        if (containerId) config.containerId = containerId;
-        if (host) config.host = host;
-        if (restartLoopMinRestarts) config.restartLoopMinRestarts = parseInt(restartLoopMinRestarts, 10);
-        if (restartLoopWindowSeconds) config.restartLoopWindow = `${parseInt(restartLoopWindowSeconds, 10)}s`;
-        break;
-      case "browser":
-        if (!url) { setError("URL is required"); return; }
-        config.url = url;
-        if (waitSelector) config.waitSelector = waitSelector;
-        if (keyword) config.keyword = keyword;
-        break;
-      case "freebox_line":
-        if (!freeboxConnectionUid) { setError("Freebox connection is required"); return; }
-        if (freeboxLinkType !== "xdsl" && freeboxLinkType !== "ftth") {
-          setError("Link type must be xdsl or ftth"); return;
-        }
-        config.connectionUid = freeboxConnectionUid;
-        config.linkType = freeboxLinkType;
-        if (freeboxMinSyncRate) config.minSyncRateDownKbps = parseInt(freeboxMinSyncRate, 10);
-        if (freeboxMinSnrDb) config.minSnrMarginDownDb = parseInt(freeboxMinSnrDb, 10);
-        if (freeboxMaxAttnDb) config.maxAttenuationDb = parseInt(freeboxMaxAttnDb, 10);
-        if (freeboxMaxCrcErrors) config.maxCrcErrorsPerRun = parseInt(freeboxMaxCrcErrors, 10);
-        if (freeboxMinRxMw) config.minRxPowerMw = parseFloat(freeboxMinRxMw);
-        if (freeboxMaxRxMw) config.maxRxPowerMw = parseFloat(freeboxMaxRxMw);
-        break;
-      case "dnsbl":
-        if (!dnsblTarget) { setError("Target IP or hostname is required"); return; }
-        config.target = dnsblTarget;
-        {
-          const zones = splitBlocklists(dnsblBlocklists);
-          if (zones.length > 0) config.blocklists = zones;
-        }
-        if (dnsblNameserver) config.nameserver = dnsblNameserver;
-        break;
-      case "sip":
-        if (!host) { setError("Host is required"); return; }
-        config.host = host;
-        if (port) config.port = parseInt(port, 10);
-        if (sipTransport && sipTransport !== "udp") config.transport = sipTransport;
-        if (sipMode && sipMode !== "options") config.mode = sipMode;
-        if (domain) config.domain = domain;
-        if (sipMode === "register") {
-          if (!username) { setError("Username is required for register mode"); return; }
-          // Allow an empty password on edit when one is already stored (encrypted).
-          if (!password && !initialData?.configPrivateKeys?.includes("password")) {
-            setError("Password is required for register mode"); return;
-          }
-          if (username) config.username = username;
-          if (password) config.password = password;
-        } else if (sipExpectStatus) {
-          config.expect_status = sipExpectStatus;
-        }
-        break;
-      case "sleep":
-        if (!sleepMs) { setError("Sleep duration is required"); return; }
-        config.sleep_ms = parseInt(sleepMs, 10);
-        if (jitterMs) config.jitter_ms = parseInt(jitterMs, 10);
-        if (sleepStatus && sleepStatus !== "up") config.status = sleepStatus;
-        break;
-      case "heartbeat":
-      case "email":
-        // No config fields needed - token is auto-generated by the backend
-        break;
+    // Serialize ONCE: reuse `currentConfig` (the same object the live preview
+    // and validation use) as the submitted payload, so preview and payload can
+    // never drift apart. Submit-only concerns are layered on top.
+    const config: Record<string, unknown> = { ...currentConfig };
+    // HTTP clears previously-stored secret headers on edit by sending an
+    // explicit empty object; `currentConfig` omits the key when empty.
+    if (type === "http" && config.secretHeaders === undefined) {
+      config.secretHeaders = {};
+    }
+    const requiredError = requiredFieldError(
+      type,
+      config,
+      initialData?.configPrivateKeys,
+    );
+    if (requiredError) {
+      setError(requiredError);
+      return;
     }
 
     // Optional per-check timeout — written as a "Ns" duration string when
