@@ -322,6 +322,42 @@ type AvailabilityPeriod struct {
 	WindowStart *time.Time `json:"windowStart,omitempty"`
 }
 
+// Channel defines model for Channel.
+type Channel struct {
+	CreatedAt time.Time `json:"createdAt"`
+	Enabled   bool      `json:"enabled"`
+	IsDefault bool      `json:"isDefault"`
+	Name      string    `json:"name"`
+
+	// Settings Public (non-secret) settings for the channel
+	Settings *map[string]interface{} `json:"settings,omitempty"`
+
+	// SettingsPrivateKeys Names of settings stored encrypted (values omitted)
+	SettingsPrivateKeys *[]string `json:"settingsPrivateKeys,omitempty"`
+
+	// Type Channel type (slack, discord, webhook, email, ...)
+	Type      string             `json:"type"`
+	Uid       openapi_types.UUID `json:"uid"`
+	UpdatedAt time.Time          `json:"updatedAt"`
+}
+
+// ChannelListResponse defines model for ChannelListResponse.
+type ChannelListResponse struct {
+	Data *[]Channel `json:"data,omitempty"`
+}
+
+// ChannelTestResult defines model for ChannelTestResult.
+type ChannelTestResult struct {
+	// Detail Optional human-readable success note
+	Detail     *string `json:"detail,omitempty"`
+	DurationMs int64   `json:"durationMs"`
+	Error      *string `json:"error,omitempty"`
+
+	// StatusCode HTTP status for HTTP-based channels; 0 otherwise
+	StatusCode int  `json:"statusCode"`
+	Success    bool `json:"success"`
+}
+
 // Check defines model for Check.
 type Check struct {
 	Config    *map[string]interface{} `json:"config,omitempty"`
@@ -379,6 +415,20 @@ type CheckType string
 // CheckAvailabilityResponse defines model for CheckAvailabilityResponse.
 type CheckAvailabilityResponse struct {
 	Data *[]AvailabilityPeriod `json:"data,omitempty"`
+}
+
+// CheckChannel defines model for CheckChannel.
+type CheckChannel struct {
+	Enabled   bool               `json:"enabled"`
+	IsDefault bool               `json:"isDefault"`
+	Name      string             `json:"name"`
+	Type      string             `json:"type"`
+	Uid       openapi_types.UUID `json:"uid"`
+}
+
+// CheckChannelListResponse defines model for CheckChannelListResponse.
+type CheckChannelListResponse struct {
+	Data *[]CheckChannel `json:"data,omitempty"`
 }
 
 // CheckListItem defines model for CheckListItem.
@@ -500,6 +550,17 @@ type CostDistributionPercentiles struct {
 // CostDistributionResponse defines model for CostDistributionResponse.
 type CostDistributionResponse struct {
 	Data *CostDistribution `json:"data,omitempty"`
+}
+
+// CreateChannelRequest defines model for CreateChannelRequest.
+type CreateChannelRequest struct {
+	Enabled   *bool                   `json:"enabled,omitempty"`
+	IsDefault *bool                   `json:"isDefault,omitempty"`
+	Name      string                  `json:"name"`
+	Settings  *map[string]interface{} `json:"settings,omitempty"`
+
+	// Type Channel type (slack, discord, webhook, email, ...)
+	Type string `json:"type"`
 }
 
 // CreateCheckRequest defines model for CreateCheckRequest.
@@ -1129,6 +1190,11 @@ type ResultFallbackInfo struct {
 // ResultFallbackInfoReason defines model for ResultFallbackInfo.Reason.
 type ResultFallbackInfoReason string
 
+// SetCheckChannelsRequest defines model for SetCheckChannelsRequest.
+type SetCheckChannelsRequest struct {
+	ConnectionUids []openapi_types.UUID `json:"connectionUids"`
+}
+
 // SetSystemParameterRequest defines model for SetSystemParameterRequest.
 type SetSystemParameterRequest struct {
 	// Secret Whether this is a secret parameter (optional, defaults to false)
@@ -1190,6 +1256,14 @@ type Token struct {
 // TokenListResponse defines model for TokenListResponse.
 type TokenListResponse struct {
 	Data *[]Token `json:"data,omitempty"`
+}
+
+// UpdateChannelRequest defines model for UpdateChannelRequest.
+type UpdateChannelRequest struct {
+	Enabled   *bool                   `json:"enabled,omitempty"`
+	IsDefault *bool                   `json:"isDefault,omitempty"`
+	Name      *string                 `json:"name,omitempty"`
+	Settings  *map[string]interface{} `json:"settings,omitempty"`
 }
 
 // UpdateCheckRequest defines model for UpdateCheckRequest.
@@ -1324,6 +1398,9 @@ type WorkerLaneLoad struct {
 	WorkerUid string        `json:"workerUid"`
 }
 
+// ChannelUidPath defines model for ChannelUidPath.
+type ChannelUidPath = openapi_types.UUID
+
 // CheckUidPath defines model for CheckUidPath.
 type CheckUidPath = string
 
@@ -1366,6 +1443,12 @@ type GetCostDistributionParams struct {
 // ListAllTokensParams defines parameters for ListAllTokens.
 type ListAllTokensParams struct {
 	// Type Filter by token type
+	Type *string `form:"type,omitempty" json:"type,omitempty"`
+}
+
+// ListChannelsParams defines parameters for ListChannels.
+type ListChannelsParams struct {
+	// Type Filter by channel type (e.g., "slack", "webhook")
 	Type *string `form:"type,omitempty" json:"type,omitempty"`
 }
 
@@ -1549,6 +1632,12 @@ type RefreshTokenJSONRequestBody = RefreshRequest
 // SwitchOrgJSONRequestBody defines body for SwitchOrg for application/json ContentType.
 type SwitchOrgJSONRequestBody = SwitchOrgRequest
 
+// CreateChannelJSONRequestBody defines body for CreateChannel for application/json ContentType.
+type CreateChannelJSONRequestBody = CreateChannelRequest
+
+// UpdateChannelJSONRequestBody defines body for UpdateChannel for application/json ContentType.
+type UpdateChannelJSONRequestBody = UpdateChannelRequest
+
 // CreateCheckJSONRequestBody defines body for CreateCheck for application/json ContentType.
 type CreateCheckJSONRequestBody = CreateCheckRequest
 
@@ -1560,6 +1649,9 @@ type UpdateCheckJSONRequestBody = UpdateCheckRequest
 
 // CloneCheckJSONRequestBody defines body for CloneCheck for application/json ContentType.
 type CloneCheckJSONRequestBody = CloneCheckRequest
+
+// SetCheckChannelsJSONRequestBody defines body for SetCheckChannels for application/json ContentType.
+type SetCheckChannelsJSONRequestBody = SetCheckChannelsRequest
 
 // CreateCheckDependencyJSONRequestBody defines body for CreateCheckDependency for application/json ContentType.
 type CreateCheckDependencyJSONRequestBody = CreateDependencyRequest
@@ -1711,6 +1803,31 @@ type ClientInterface interface {
 	// RevokeToken request
 	RevokeToken(ctx context.Context, tokenUid TokenUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListChannels request
+	ListChannels(ctx context.Context, org OrgPath, params *ListChannelsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateChannelWithBody request with any body
+	CreateChannelWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateChannel(ctx context.Context, org OrgPath, body CreateChannelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteChannel request
+	DeleteChannel(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetChannel request
+	GetChannel(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateChannelWithBody request with any body
+	UpdateChannelWithBody(ctx context.Context, org OrgPath, uid ChannelUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateChannel(ctx context.Context, org OrgPath, uid ChannelUidPath, body UpdateChannelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RotateChannelSecret request
+	RotateChannelSecret(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestChannel request
+	TestChannel(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListChecks request
 	ListChecks(ctx context.Context, org OrgPath, params *ListChecksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -1748,6 +1865,20 @@ type ClientInterface interface {
 
 	// GetBadge request
 	GetBadge(ctx context.Context, org OrgPath, check string, format GetBadgeParamsFormat, params *GetBadgeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListCheckChannels request
+	ListCheckChannels(ctx context.Context, org OrgPath, check string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetCheckChannelsWithBody request with any body
+	SetCheckChannelsWithBody(ctx context.Context, org OrgPath, check string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetCheckChannels(ctx context.Context, org OrgPath, check string, body SetCheckChannelsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveCheckChannel request
+	RemoveCheckChannel(ctx context.Context, org OrgPath, check string, connection openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AddCheckChannel request
+	AddCheckChannel(ctx context.Context, org OrgPath, check string, connection openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListCheckDependencies request
 	ListCheckDependencies(ctx context.Context, org OrgPath, check string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2070,6 +2201,114 @@ func (c *Client) RevokeToken(ctx context.Context, tokenUid TokenUidPath, reqEdit
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListChannels(ctx context.Context, org OrgPath, params *ListChannelsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListChannelsRequest(c.Server, org, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateChannelWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateChannelRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateChannel(ctx context.Context, org OrgPath, body CreateChannelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateChannelRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteChannel(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteChannelRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetChannel(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetChannelRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateChannelWithBody(ctx context.Context, org OrgPath, uid ChannelUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateChannelRequestWithBody(c.Server, org, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateChannel(ctx context.Context, org OrgPath, uid ChannelUidPath, body UpdateChannelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateChannelRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RotateChannelSecret(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRotateChannelSecretRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestChannel(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestChannelRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListChecks(ctx context.Context, org OrgPath, params *ListChecksParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListChecksRequest(c.Server, org, params)
 	if err != nil {
@@ -2228,6 +2467,66 @@ func (c *Client) GetCheckAvailability(ctx context.Context, org OrgPath, check st
 
 func (c *Client) GetBadge(ctx context.Context, org OrgPath, check string, format GetBadgeParamsFormat, params *GetBadgeParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetBadgeRequest(c.Server, org, check, format, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListCheckChannels(ctx context.Context, org OrgPath, check string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCheckChannelsRequest(c.Server, org, check)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetCheckChannelsWithBody(ctx context.Context, org OrgPath, check string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetCheckChannelsRequestWithBody(c.Server, org, check, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetCheckChannels(ctx context.Context, org OrgPath, check string, body SetCheckChannelsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetCheckChannelsRequest(c.Server, org, check, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RemoveCheckChannel(ctx context.Context, org OrgPath, check string, connection openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveCheckChannelRequest(c.Server, org, check, connection)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AddCheckChannel(ctx context.Context, org OrgPath, check string, connection openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddCheckChannelRequest(c.Server, org, check, connection)
 	if err != nil {
 		return nil, err
 	}
@@ -3271,6 +3570,327 @@ func NewRevokeTokenRequest(server string, tokenUid TokenUidPath) (*http.Request,
 	return req, nil
 }
 
+// NewListChannelsRequest generates requests for ListChannels
+func NewListChannelsRequest(server string, org OrgPath, params *ListChannelsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/channels", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Type != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "type", runtime.ParamLocationQuery, *params.Type); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateChannelRequest calls the generic CreateChannel builder with application/json body
+func NewCreateChannelRequest(server string, org OrgPath, body CreateChannelJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateChannelRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewCreateChannelRequestWithBody generates requests for CreateChannel with any type of body
+func NewCreateChannelRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/channels", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteChannelRequest generates requests for DeleteChannel
+func NewDeleteChannelRequest(server string, org OrgPath, uid ChannelUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/channels/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetChannelRequest generates requests for GetChannel
+func NewGetChannelRequest(server string, org OrgPath, uid ChannelUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/channels/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateChannelRequest calls the generic UpdateChannel builder with application/json body
+func NewUpdateChannelRequest(server string, org OrgPath, uid ChannelUidPath, body UpdateChannelJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateChannelRequestWithBody(server, org, uid, "application/json", bodyReader)
+}
+
+// NewUpdateChannelRequestWithBody generates requests for UpdateChannel with any type of body
+func NewUpdateChannelRequestWithBody(server string, org OrgPath, uid ChannelUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/channels/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRotateChannelSecretRequest generates requests for RotateChannelSecret
+func NewRotateChannelSecretRequest(server string, org OrgPath, uid ChannelUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/channels/%s/rotate-secret", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewTestChannelRequest generates requests for TestChannel
+func NewTestChannelRequest(server string, org OrgPath, uid ChannelUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/channels/%s/test", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListChecksRequest generates requests for ListChecks
 func NewListChecksRequest(server string, org OrgPath, params *ListChecksParams) (*http.Request, error) {
 	var err error
@@ -3892,6 +4512,197 @@ func NewGetBadgeRequest(server string, org OrgPath, check string, format GetBadg
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListCheckChannelsRequest generates requests for ListCheckChannels
+func NewListCheckChannelsRequest(server string, org OrgPath, check string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "check", runtime.ParamLocationPath, check)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/channels", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetCheckChannelsRequest calls the generic SetCheckChannels builder with application/json body
+func NewSetCheckChannelsRequest(server string, org OrgPath, check string, body SetCheckChannelsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetCheckChannelsRequestWithBody(server, org, check, "application/json", bodyReader)
+}
+
+// NewSetCheckChannelsRequestWithBody generates requests for SetCheckChannels with any type of body
+func NewSetCheckChannelsRequestWithBody(server string, org OrgPath, check string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "check", runtime.ParamLocationPath, check)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/channels", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRemoveCheckChannelRequest generates requests for RemoveCheckChannel
+func NewRemoveCheckChannelRequest(server string, org OrgPath, check string, connection openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "check", runtime.ParamLocationPath, check)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "connection", runtime.ParamLocationPath, connection)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/channels/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAddCheckChannelRequest generates requests for AddCheckChannel
+func NewAddCheckChannelRequest(server string, org OrgPath, check string, connection openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "check", runtime.ParamLocationPath, check)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "connection", runtime.ParamLocationPath, connection)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/channels/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -6261,6 +7072,31 @@ type ClientWithResponsesInterface interface {
 	// RevokeTokenWithResponse request
 	RevokeTokenWithResponse(ctx context.Context, tokenUid TokenUidPath, reqEditors ...RequestEditorFn) (*RevokeTokenResult, error)
 
+	// ListChannelsWithResponse request
+	ListChannelsWithResponse(ctx context.Context, org OrgPath, params *ListChannelsParams, reqEditors ...RequestEditorFn) (*ListChannelsResult, error)
+
+	// CreateChannelWithBodyWithResponse request with any body
+	CreateChannelWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateChannelResult, error)
+
+	CreateChannelWithResponse(ctx context.Context, org OrgPath, body CreateChannelJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateChannelResult, error)
+
+	// DeleteChannelWithResponse request
+	DeleteChannelWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*DeleteChannelResult, error)
+
+	// GetChannelWithResponse request
+	GetChannelWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*GetChannelResult, error)
+
+	// UpdateChannelWithBodyWithResponse request with any body
+	UpdateChannelWithBodyWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateChannelResult, error)
+
+	UpdateChannelWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, body UpdateChannelJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateChannelResult, error)
+
+	// RotateChannelSecretWithResponse request
+	RotateChannelSecretWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*RotateChannelSecretResult, error)
+
+	// TestChannelWithResponse request
+	TestChannelWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*TestChannelResult, error)
+
 	// ListChecksWithResponse request
 	ListChecksWithResponse(ctx context.Context, org OrgPath, params *ListChecksParams, reqEditors ...RequestEditorFn) (*ListChecksResult, error)
 
@@ -6298,6 +7134,20 @@ type ClientWithResponsesInterface interface {
 
 	// GetBadgeWithResponse request
 	GetBadgeWithResponse(ctx context.Context, org OrgPath, check string, format GetBadgeParamsFormat, params *GetBadgeParams, reqEditors ...RequestEditorFn) (*GetBadgeResult, error)
+
+	// ListCheckChannelsWithResponse request
+	ListCheckChannelsWithResponse(ctx context.Context, org OrgPath, check string, reqEditors ...RequestEditorFn) (*ListCheckChannelsResult, error)
+
+	// SetCheckChannelsWithBodyWithResponse request with any body
+	SetCheckChannelsWithBodyWithResponse(ctx context.Context, org OrgPath, check string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetCheckChannelsResult, error)
+
+	SetCheckChannelsWithResponse(ctx context.Context, org OrgPath, check string, body SetCheckChannelsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetCheckChannelsResult, error)
+
+	// RemoveCheckChannelWithResponse request
+	RemoveCheckChannelWithResponse(ctx context.Context, org OrgPath, check string, connection openapi_types.UUID, reqEditors ...RequestEditorFn) (*RemoveCheckChannelResult, error)
+
+	// AddCheckChannelWithResponse request
+	AddCheckChannelWithResponse(ctx context.Context, org OrgPath, check string, connection openapi_types.UUID, reqEditors ...RequestEditorFn) (*AddCheckChannelResult, error)
 
 	// ListCheckDependenciesWithResponse request
 	ListCheckDependenciesWithResponse(ctx context.Context, org OrgPath, check string, reqEditors ...RequestEditorFn) (*ListCheckDependenciesResult, error)
@@ -6678,6 +7528,180 @@ func (r RevokeTokenResult) StatusCode() int {
 	return 0
 }
 
+type ListChannelsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ChannelListResponse
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListChannelsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListChannelsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateChannelResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *Channel
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateChannelResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateChannelResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteChannelResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteChannelResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteChannelResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetChannelResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Channel
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetChannelResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetChannelResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateChannelResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Channel
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateChannelResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateChannelResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RotateChannelSecretResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Channel
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r RotateChannelSecretResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RotateChannelSecretResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type TestChannelResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ChannelTestResult
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r TestChannelResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestChannelResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListChecksResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -6908,6 +7932,101 @@ func (r GetBadgeResult) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetBadgeResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListCheckChannelsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *CheckChannelListResponse
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCheckChannelsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCheckChannelsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetCheckChannelsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r SetCheckChannelsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetCheckChannelsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RemoveCheckChannelResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveCheckChannelResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveCheckChannelResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AddCheckChannelResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r AddCheckChannelResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AddCheckChannelResult) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -8047,6 +9166,85 @@ func (c *ClientWithResponses) RevokeTokenWithResponse(ctx context.Context, token
 	return ParseRevokeTokenResult(rsp)
 }
 
+// ListChannelsWithResponse request returning *ListChannelsResult
+func (c *ClientWithResponses) ListChannelsWithResponse(ctx context.Context, org OrgPath, params *ListChannelsParams, reqEditors ...RequestEditorFn) (*ListChannelsResult, error) {
+	rsp, err := c.ListChannels(ctx, org, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListChannelsResult(rsp)
+}
+
+// CreateChannelWithBodyWithResponse request with arbitrary body returning *CreateChannelResult
+func (c *ClientWithResponses) CreateChannelWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateChannelResult, error) {
+	rsp, err := c.CreateChannelWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateChannelResult(rsp)
+}
+
+func (c *ClientWithResponses) CreateChannelWithResponse(ctx context.Context, org OrgPath, body CreateChannelJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateChannelResult, error) {
+	rsp, err := c.CreateChannel(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateChannelResult(rsp)
+}
+
+// DeleteChannelWithResponse request returning *DeleteChannelResult
+func (c *ClientWithResponses) DeleteChannelWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*DeleteChannelResult, error) {
+	rsp, err := c.DeleteChannel(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteChannelResult(rsp)
+}
+
+// GetChannelWithResponse request returning *GetChannelResult
+func (c *ClientWithResponses) GetChannelWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*GetChannelResult, error) {
+	rsp, err := c.GetChannel(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetChannelResult(rsp)
+}
+
+// UpdateChannelWithBodyWithResponse request with arbitrary body returning *UpdateChannelResult
+func (c *ClientWithResponses) UpdateChannelWithBodyWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateChannelResult, error) {
+	rsp, err := c.UpdateChannelWithBody(ctx, org, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateChannelResult(rsp)
+}
+
+func (c *ClientWithResponses) UpdateChannelWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, body UpdateChannelJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateChannelResult, error) {
+	rsp, err := c.UpdateChannel(ctx, org, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateChannelResult(rsp)
+}
+
+// RotateChannelSecretWithResponse request returning *RotateChannelSecretResult
+func (c *ClientWithResponses) RotateChannelSecretWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*RotateChannelSecretResult, error) {
+	rsp, err := c.RotateChannelSecret(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRotateChannelSecretResult(rsp)
+}
+
+// TestChannelWithResponse request returning *TestChannelResult
+func (c *ClientWithResponses) TestChannelWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*TestChannelResult, error) {
+	rsp, err := c.TestChannel(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestChannelResult(rsp)
+}
+
 // ListChecksWithResponse request returning *ListChecksResult
 func (c *ClientWithResponses) ListChecksWithResponse(ctx context.Context, org OrgPath, params *ListChecksParams, reqEditors ...RequestEditorFn) (*ListChecksResult, error) {
 	rsp, err := c.ListChecks(ctx, org, params, reqEditors...)
@@ -8167,6 +9365,50 @@ func (c *ClientWithResponses) GetBadgeWithResponse(ctx context.Context, org OrgP
 		return nil, err
 	}
 	return ParseGetBadgeResult(rsp)
+}
+
+// ListCheckChannelsWithResponse request returning *ListCheckChannelsResult
+func (c *ClientWithResponses) ListCheckChannelsWithResponse(ctx context.Context, org OrgPath, check string, reqEditors ...RequestEditorFn) (*ListCheckChannelsResult, error) {
+	rsp, err := c.ListCheckChannels(ctx, org, check, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCheckChannelsResult(rsp)
+}
+
+// SetCheckChannelsWithBodyWithResponse request with arbitrary body returning *SetCheckChannelsResult
+func (c *ClientWithResponses) SetCheckChannelsWithBodyWithResponse(ctx context.Context, org OrgPath, check string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetCheckChannelsResult, error) {
+	rsp, err := c.SetCheckChannelsWithBody(ctx, org, check, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetCheckChannelsResult(rsp)
+}
+
+func (c *ClientWithResponses) SetCheckChannelsWithResponse(ctx context.Context, org OrgPath, check string, body SetCheckChannelsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetCheckChannelsResult, error) {
+	rsp, err := c.SetCheckChannels(ctx, org, check, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetCheckChannelsResult(rsp)
+}
+
+// RemoveCheckChannelWithResponse request returning *RemoveCheckChannelResult
+func (c *ClientWithResponses) RemoveCheckChannelWithResponse(ctx context.Context, org OrgPath, check string, connection openapi_types.UUID, reqEditors ...RequestEditorFn) (*RemoveCheckChannelResult, error) {
+	rsp, err := c.RemoveCheckChannel(ctx, org, check, connection, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveCheckChannelResult(rsp)
+}
+
+// AddCheckChannelWithResponse request returning *AddCheckChannelResult
+func (c *ClientWithResponses) AddCheckChannelWithResponse(ctx context.Context, org OrgPath, check string, connection openapi_types.UUID, reqEditors ...RequestEditorFn) (*AddCheckChannelResult, error) {
+	rsp, err := c.AddCheckChannel(ctx, org, check, connection, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAddCheckChannelResult(rsp)
 }
 
 // ListCheckDependenciesWithResponse request returning *ListCheckDependenciesResult
@@ -8953,6 +10195,328 @@ func ParseRevokeTokenResult(rsp *http.Response) (*RevokeTokenResult, error) {
 	return response, nil
 }
 
+// ParseListChannelsResult parses an HTTP response from a ListChannelsWithResponse call
+func ParseListChannelsResult(rsp *http.Response) (*ListChannelsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListChannelsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ChannelListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateChannelResult parses an HTTP response from a CreateChannelWithResponse call
+func ParseCreateChannelResult(rsp *http.Response) (*CreateChannelResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateChannelResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Channel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteChannelResult parses an HTTP response from a DeleteChannelWithResponse call
+func ParseDeleteChannelResult(rsp *http.Response) (*DeleteChannelResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteChannelResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetChannelResult parses an HTTP response from a GetChannelWithResponse call
+func ParseGetChannelResult(rsp *http.Response) (*GetChannelResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetChannelResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Channel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateChannelResult parses an HTTP response from a UpdateChannelWithResponse call
+func ParseUpdateChannelResult(rsp *http.Response) (*UpdateChannelResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateChannelResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Channel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRotateChannelSecretResult parses an HTTP response from a RotateChannelSecretWithResponse call
+func ParseRotateChannelSecretResult(rsp *http.Response) (*RotateChannelSecretResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RotateChannelSecretResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Channel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestChannelResult parses an HTTP response from a TestChannelWithResponse call
+func ParseTestChannelResult(rsp *http.Response) (*TestChannelResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestChannelResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ChannelTestResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListChecksResult parses an HTTP response from a ListChecksWithResponse call
 func ParseListChecksResult(rsp *http.Response) (*ListChecksResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -9313,6 +10877,159 @@ func ParseGetBadgeResult(rsp *http.Response) (*GetBadgeResult, error) {
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListCheckChannelsResult parses an HTTP response from a ListCheckChannelsWithResponse call
+func ParseListCheckChannelsResult(rsp *http.Response) (*ListCheckChannelsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCheckChannelsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckChannelListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetCheckChannelsResult parses an HTTP response from a SetCheckChannelsWithResponse call
+func ParseSetCheckChannelsResult(rsp *http.Response) (*SetCheckChannelsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetCheckChannelsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRemoveCheckChannelResult parses an HTTP response from a RemoveCheckChannelWithResponse call
+func ParseRemoveCheckChannelResult(rsp *http.Response) (*RemoveCheckChannelResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveCheckChannelResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAddCheckChannelResult parses an HTTP response from a AddCheckChannelWithResponse call
+func ParseAddCheckChannelResult(rsp *http.Response) (*AddCheckChannelResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AddCheckChannelResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

@@ -25,6 +25,8 @@ tags:
     description: Check results and statistics
   - name: Incidents
     description: Incident management and tracking
+  - name: Channels
+    description: Notification channels / integrations and per-check bindings
   - name: Events
     description: Audit events and activity log
   - name: Members
@@ -1323,6 +1325,305 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # Channel APIs (notification channels / integrations)
+  /api/v1/orgs/{org}/channels:
+    get:
+      tags: [Channels]
+      summary: List notification channels
+      operationId: listChannels
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: type
+          in: query
+          description: Filter by channel type (e.g., "slack", "webhook")
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of channels
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Channels]
+      summary: Create a notification channel
+      operationId: createChannel
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChannelRequest"
+      responses:
+        "201":
+          description: Channel created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/channels/{uid}:
+    get:
+      tags: [Channels]
+      summary: Get a notification channel
+      operationId: getChannel
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ChannelUidPath"
+      responses:
+        "200":
+          description: Channel details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Channels]
+      summary: Update a notification channel
+      operationId: updateChannel
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ChannelUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateChannelRequest"
+      responses:
+        "200":
+          description: Channel updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Channels]
+      summary: Delete a notification channel
+      operationId: deleteChannel
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ChannelUidPath"
+      responses:
+        "204":
+          description: Channel deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/channels/{uid}/rotate-secret:
+    post:
+      tags: [Channels]
+      summary: Rotate a webhook channel's signing secret
+      description: >-
+        Rotates the per-channel signing secret (webhook channels only). The
+        current secret becomes the previous one (valid for a 24 h grace window)
+        and a fresh secret is generated. Returns 400 for non-webhook channels.
+      operationId: rotateChannelSecret
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ChannelUidPath"
+      responses:
+        "200":
+          description: Secret rotated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/channels/{uid}/test:
+    post:
+      tags: [Channels]
+      summary: Send a sample notification through a channel
+      description: >-
+        Sends a sample notification through the channel to verify it is wired
+        correctly. Always returns 200 for a notifiable channel; inspect the
+        `success` field to know whether delivery worked. Returns 400 for
+        data-source-only channel types.
+      operationId: testChannel
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ChannelUidPath"
+      responses:
+        "200":
+          description: Test delivery outcome
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelTestResult"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/checks/{check}/channels:
+    get:
+      tags: [Channels]
+      summary: List channels bound to a check
+      operationId: listCheckChannels
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: check
+          in: path
+          required: true
+          description: Check uid or slug
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Channels bound to the check
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckChannelListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Channels]
+      summary: Replace the full set of channels bound to a check
+      operationId: setCheckChannels
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: check
+          in: path
+          required: true
+          description: Check uid or slug
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetCheckChannelsRequest"
+      responses:
+        "204":
+          description: Channel bindings replaced
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/checks/{check}/channels/{connection}:
+    post:
+      tags: [Channels]
+      summary: Bind a single channel to a check
+      operationId: addCheckChannel
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: check
+          in: path
+          required: true
+          description: Check uid or slug
+          schema:
+            type: string
+        - name: connection
+          in: path
+          required: true
+          description: Channel (connection) uid
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "201":
+          description: Channel bound to the check
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Channels]
+      summary: Unbind a single channel from a check
+      operationId: removeCheckChannel
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: check
+          in: path
+          required: true
+          description: Check uid or slug
+          schema:
+            type: string
+        - name: connection
+          in: path
+          required: true
+          description: Channel (connection) uid
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Channel unbound from the check
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # Event APIs
   /api/v1/orgs/{org}/events:
     get:
@@ -1916,6 +2217,15 @@ components:
         type: string
         format: uuid
       description: Incident UID
+
+    ChannelUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Channel (connection) UID
 
     MemberUidPath:
       name: uid
@@ -3154,6 +3464,129 @@ components:
         role:
           type: string
           enum: [admin, user, viewer]
+
+    # Channel schemas
+    Channel:
+      type: object
+      required: [uid, type, name, enabled, isDefault, createdAt, updatedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        type:
+          type: string
+          description: Channel type (slack, discord, webhook, email, ...)
+        name:
+          type: string
+        enabled:
+          type: boolean
+        isDefault:
+          type: boolean
+        settings:
+          type: object
+          additionalProperties: true
+          description: Public (non-secret) settings for the channel
+        settingsPrivateKeys:
+          type: array
+          items:
+            type: string
+          description: Names of settings stored encrypted (values omitted)
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ChannelListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Channel"
+
+    CreateChannelRequest:
+      type: object
+      required: [type, name]
+      properties:
+        type:
+          type: string
+          description: Channel type (slack, discord, webhook, email, ...)
+        name:
+          type: string
+        enabled:
+          type: boolean
+        isDefault:
+          type: boolean
+        settings:
+          type: object
+          additionalProperties: true
+
+    UpdateChannelRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        enabled:
+          type: boolean
+        isDefault:
+          type: boolean
+        settings:
+          type: object
+          additionalProperties: true
+
+    ChannelTestResult:
+      type: object
+      required: [success, statusCode, durationMs]
+      properties:
+        success:
+          type: boolean
+        statusCode:
+          type: integer
+          description: HTTP status for HTTP-based channels; 0 otherwise
+        durationMs:
+          type: integer
+          format: int64
+        error:
+          type: string
+        detail:
+          type: string
+          description: Optional human-readable success note
+
+    CheckChannel:
+      type: object
+      required: [uid, type, name, enabled, isDefault]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        type:
+          type: string
+        name:
+          type: string
+        enabled:
+          type: boolean
+        isDefault:
+          type: boolean
+
+    CheckChannelListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckChannel"
+
+    SetCheckChannelsRequest:
+      type: object
+      required: [connectionUids]
+      properties:
+        connectionUids:
+          type: array
+          items:
+            type: string
+            format: uuid
 
     # Job schemas
     JobListResponse:
