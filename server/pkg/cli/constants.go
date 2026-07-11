@@ -31,6 +31,7 @@ const (
 	flagToken       = "token"
 	flagFile        = "file"
 	flagDescription = "description"
+	flagThresholdMs = "threshold-ms"
 	cmdCreate       = "create"
 	cmdUpdate       = "update"
 	cmdSet          = "set"

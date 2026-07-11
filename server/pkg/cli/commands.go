@@ -73,6 +73,27 @@ func GetCommands() []*cli.Command {
 					Usage:  "Get server version",
 					Action: serverVersionAction,
 				},
+				{
+					Name:   "limits",
+					Usage:  "Show rate-limit and concurrency state for the caller",
+					Action: serverLimitsAction,
+				},
+				{
+					Name:   "memory",
+					Usage:  "Show a runtime memory snapshot (super-admin)",
+					Action: serverMemoryAction,
+				},
+				{
+					Name:  "cost-distribution",
+					Usage: "Show the scheduler cost/delay distribution (super-admin)",
+					Flags: []cli.Flag{
+						&cli.IntFlag{
+							Name:  flagThresholdMs,
+							Usage: "Candidate fast/slow boundary in milliseconds (default 1000)",
+						},
+					},
+					Action: serverCostDistributionAction,
+				},
 			},
 		},
 		{
@@ -1019,6 +1040,48 @@ func GetCommands() []*cli.Command {
 							Action:    systemCheckJobsGetAction,
 						},
 					},
+				},
+				{
+					Name:      "test-email",
+					Usage:     "Send a test email using the saved SMTP settings (super-admin)",
+					ArgsUsage: "<recipient>",
+					Action:    systemTestEmailAction,
+				},
+				{
+					Name:  "email-inbox",
+					Usage: "Inspect and control the JMAP email inbox (super-admin)",
+					Commands: []*cli.Command{
+						{
+							Name:   "config",
+							Usage:  "Show the saved email-inbox configuration",
+							Action: systemEmailInboxConfigAction,
+						},
+						{
+							Name:   "status",
+							Usage:  "Show the email-inbox connection status",
+							Action: systemEmailInboxStatusAction,
+						},
+						{
+							Name:   "test",
+							Usage:  "Test the email-inbox connection",
+							Action: systemEmailInboxTestAction,
+						},
+						{
+							Name:   "sync",
+							Usage:  "Trigger an immediate email-inbox sync",
+							Action: systemEmailInboxSyncAction,
+						},
+					},
+				},
+				{
+					Name:   "activation",
+					Usage:  "Show the organization activation funnel (super-admin)",
+					Action: systemActivationAction,
+				},
+				{
+					Name:   "lane-load",
+					Usage:  "Show each worker's offered check load per lane (super-admin)",
+					Action: systemLaneLoadAction,
 				},
 			},
 		},

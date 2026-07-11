@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/urfave/cli/v3"
@@ -403,4 +404,305 @@ func systemCheckJobsGetAction(ctx context.Context, cmd *cli.Command) error {
 	renderCheckJobDetail(resp.JSON200.Data)
 
 	return nil
+}
+
+// systemTestEmailAction sends a test email to the given recipient (super-admin).
+func systemTestEmailAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	recipient := cmd.Args().First()
+	if recipient == "" {
+		return cli.Exit("Error: recipient email is required", 5)
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	body := client.SendTestEmailJSONRequestBody{Recipient: recipient}
+
+	resp, err := apiClient.SendTestEmailWithResponse(ctx, body)
+	if err != nil {
+		return cliCtx.HandleError("Failed to send test email", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to send test email", resp.StatusCode())
+	}
+
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(resp.JSON200)
+	}
+
+	if resp.JSON200.Sent {
+		output.PrintSuccess(os.Stdout, "Test email sent: "+resp.JSON200.Message)
+		return nil
+	}
+
+	output.PrintWarning(os.Stdout, "Test email not sent: "+resp.JSON200.Message)
+	return nil
+}
+
+// systemEmailInboxConfigAction shows the saved JMAP inbox configuration.
+func systemEmailInboxConfigAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	resp, err := apiClient.GetEmailInboxConfigWithResponse(ctx)
+	if err != nil {
+		return cliCtx.HandleError("Failed to get email inbox config", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to get email inbox config", resp.StatusCode())
+	}
+
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(resp.JSON200)
+	}
+
+	cfg := resp.JSON200
+	output.PrintMessage(os.Stdout, "Enabled:        "+boolLabelPtr(cfg.Enabled))
+	output.PrintMessage(os.Stdout, "Session URL:    "+safeStr(cfg.SessionUrl))
+	output.PrintMessage(os.Stdout, "Username:       "+safeStr(cfg.Username))
+	output.PrintMessage(os.Stdout, "Address domain: "+safeStr(cfg.AddressDomain))
+	output.PrintMessage(os.Stdout, "Mailbox:        "+safeStr(cfg.MailboxName))
+	output.PrintMessage(os.Stdout, "Password set:   "+boolLabelPtr(cfg.PasswordSet))
+
+	return nil
+}
+
+// systemEmailInboxStatusAction shows the email-inbox connection status.
+func systemEmailInboxStatusAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	resp, err := apiClient.GetEmailInboxStatusWithResponse(ctx)
+	if err != nil {
+		return cliCtx.HandleError("Failed to get email inbox status", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to get email inbox status", resp.StatusCode())
+	}
+
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(resp.JSON200)
+	}
+
+	status := resp.JSON200
+	output.PrintMessage(os.Stdout, "Enabled:        "+boolLabelPtr(status.Enabled))
+	output.PrintMessage(os.Stdout, "Connected:      "+boolLabelPtr(status.Connected))
+	output.PrintMessage(os.Stdout, "Mode:           "+safeStr(status.Mode))
+	output.PrintMessage(os.Stdout, "Address domain: "+safeStr(status.AddressDomain))
+
+	if status.LastError != nil && *status.LastError != "" {
+		output.PrintMessage(os.Stdout, "Last error:     "+*status.LastError)
+	}
+
+	return nil
+}
+
+// systemEmailInboxTestAction tests the email-inbox connection.
+func systemEmailInboxTestAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	resp, err := apiClient.TestEmailInboxWithResponse(ctx)
+	if err != nil {
+		return cliCtx.HandleError("Failed to test email inbox", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to test email inbox", resp.StatusCode())
+	}
+
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(resp.JSON200)
+	}
+
+	output.PrintSuccess(os.Stdout, "Email inbox connection ok")
+
+	if resp.JSON200.Mailboxes != nil {
+		for _, mbox := range *resp.JSON200.Mailboxes {
+			output.PrintMessage(os.Stdout, "  - "+mbox)
+		}
+	}
+
+	return nil
+}
+
+// systemEmailInboxSyncAction triggers an immediate email-inbox sync.
+func systemEmailInboxSyncAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	resp, err := apiClient.SyncEmailInboxWithResponse(ctx)
+	if err != nil {
+		return cliCtx.HandleError("Failed to sync email inbox", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to sync email inbox", resp.StatusCode())
+	}
+
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(resp.JSON200)
+	}
+
+	output.PrintSuccess(os.Stdout, "Email inbox sync triggered")
+	return nil
+}
+
+// systemActivationAction lists the organization activation funnel (super-admin).
+func systemActivationAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	resp, err := apiClient.GetActivationFunnelWithResponse(ctx)
+	if err != nil {
+		return cliCtx.HandleError("Failed to get activation funnel", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to get activation funnel", resp.StatusCode())
+	}
+
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(resp.JSON200)
+	}
+
+	if len(resp.JSON200.Data) == 0 {
+		output.PrintMessage(os.Stdout, "No organizations found")
+		return nil
+	}
+
+	tbl := output.NewTable(os.Stdout)
+	tbl.AppendHeader(table.Row{colSlug, colName, "SIGNUP", "1ST CHECK", "1ST RESULT", "1ST NOTIFIER", "1ST INCIDENT"})
+
+	for i := range resp.JSON200.Data {
+		row := &resp.JSON200.Data[i]
+		tbl.AppendRow(table.Row{
+			row.Slug,
+			row.Name,
+			milestone(row.SignupAt),
+			milestone(row.FirstCheckAt),
+			milestone(row.FirstResultAt),
+			milestone(row.FirstNotifierAt),
+			milestone(row.FirstIncidentAt),
+		})
+	}
+
+	tbl.Render()
+	return nil
+}
+
+// systemLaneLoadAction shows each worker's offered check load per lane.
+func systemLaneLoadAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	resp, err := apiClient.GetSchedulingLaneLoadWithResponse(ctx)
+	if err != nil {
+		return cliCtx.HandleError("Failed to get lane load", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to get lane load", resp.StatusCode())
+	}
+
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(resp.JSON200)
+	}
+
+	if len(resp.JSON200.Data) == 0 {
+		output.PrintMessage(os.Stdout, "No workers found")
+		return nil
+	}
+
+	tbl := output.NewTable(os.Stdout)
+	tbl.AppendHeader(table.Row{colName, "REGION", "FAST JOBS", "FAST DUTY%", "SLOW JOBS", "SLOW DUTY%"})
+
+	for i := range resp.JSON200.Data {
+		worker := &resp.JSON200.Data[i]
+		tbl.AppendRow(table.Row{
+			worker.Name,
+			safeStr(worker.Region),
+			worker.Fast.Jobs,
+			fmt.Sprintf("%.1f", worker.Fast.DutySumPct),
+			worker.Slow.Jobs,
+			fmt.Sprintf("%.1f", worker.Slow.DutySumPct),
+		})
+	}
+
+	tbl.Render()
+	return nil
+}
+
+// boolLabelPtr renders an optional bool pointer as yes/no, using "-" when nil.
+func boolLabelPtr(value *bool) string {
+	if value == nil {
+		return "-"
+	}
+
+	if *value {
+		return boolYes
+	}
+
+	return boolNo
+}
+
+// milestone renders an optional activation timestamp, using "-" when unset.
+func milestone(value *time.Time) string {
+	if value == nil {
+		return "-"
+	}
+
+	return value.Format(time.RFC3339)
 }
