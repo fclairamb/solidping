@@ -20,6 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { PinnedResultBox } from "@/components/checks/pinned-result-box";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { statusStyle } from "@/lib/status-style";
+import { regionDisplayLabel } from "@/lib/region-label";
 
 type TimeRange = "hour" | "day" | "week" | "month";
 
@@ -620,18 +621,8 @@ export function ResponseTimeChart({
     [domainMin, domainMax, chartData],
   );
 
-  const regionBySlug = useMemo(() => {
-    const map = new Map<string, { emoji: string; name: string }>();
-    for (const def of regionsData?.regions ?? []) {
-      map.set(def.slug, { emoji: def.emoji, name: def.name });
-    }
-    return map;
-  }, [regionsData]);
-
-  const regionLabel = (slug: string) => {
-    const def = regionBySlug.get(slug);
-    return def ? `${def.emoji} ${def.name}` : slug;
-  };
+  const regionLabel = (slug: string) =>
+    regionDisplayLabel(regionsData?.regions, slug);
 
   // Multi-series "All regions" view: only when no single region is selected
   // AND more than one region is actually observed. Selecting one region (or
