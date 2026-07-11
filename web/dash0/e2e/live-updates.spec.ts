@@ -165,11 +165,15 @@ test.describe("Live dashboard updates", () => {
         page.getByTestId("active-incidents").getByText(check.name),
       ).toBeVisible({ timeout: 4000 });
 
-      // Recovery closes the incident live too.
+      // Recovery closes the incident live too. The open invalidation just armed
+      // the per-scope refetch damper (LIVE_INVALIDATE_MIN_INTERVAL_MS = 3s in
+      // LiveEventsContext), so a resolve fired immediately after the open is
+      // coalesced into a trailing-edge refetch ~3s later. Allow headroom over
+      // that deferral plus CI refetch latency so the drop-off isn't raced.
       await sendHeartbeat(page, check, "up");
       await expect(
         page.getByTestId("active-incidents").getByText(check.name),
-      ).toBeHidden({ timeout: 4000 });
+      ).toBeHidden({ timeout: 15_000 });
     } finally {
       await deleteCheck(page, token, check.uid);
     }
@@ -352,12 +356,15 @@ test.describe("Live dashboard updates", () => {
         page.getByTestId("incident-row").filter({ hasText: incidentTitle }),
       ).toBeVisible({ timeout: 6000 });
 
-      // Recovery resolves the incident: it must drop off the active-only
-      // view live too.
+      // Recovery resolves the incident: it must drop off the active-only view
+      // live too. The open invalidation just armed the per-scope refetch damper
+      // (LIVE_INVALIDATE_MIN_INTERVAL_MS = 3s in LiveEventsContext), so this
+      // resolve — sent right after the open — is coalesced into a trailing-edge
+      // refetch ~3s later; allow headroom over that deferral plus CI latency.
       await sendHeartbeat(page, check, "up");
       await expect(
         page.getByTestId("incident-row").filter({ hasText: incidentTitle }),
-      ).toBeHidden({ timeout: 6000 });
+      ).toBeHidden({ timeout: 15_000 });
     } finally {
       await deleteCheck(page, token, check.uid);
     }

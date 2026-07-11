@@ -170,6 +170,14 @@ test.describe("Notification Channels", () => {
     // The "Default for new checks" toggle must start enabled on the create flow.
     await expect(page.locator("#ch-default")).toBeChecked();
 
+    // Turn it off for this channel: default channels are auto-attached to every
+    // check on creation (checks/service.go "Auto-attach default connections").
+    // Left on, the channel would already be bound to the check created below,
+    // and the manual toggle-on further down would *unbind* it instead — this
+    // test exercises the explicit bind/unbind flow, so it must start unbound.
+    await page.locator("#ch-default").click();
+    await expect(page.locator("#ch-default")).not.toBeChecked();
+
     const channelName = `E2E Webhook ${Date.now()}`;
     await page.getByLabel("Name").fill(channelName);
     await page
