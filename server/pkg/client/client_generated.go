@@ -619,6 +619,49 @@ type CreateJobRequest struct {
 	Type   string                  `json:"type"`
 }
 
+// CreateStatusPageRequest defines model for CreateStatusPageRequest.
+type CreateStatusPageRequest struct {
+	Description      *string `json:"description,omitempty"`
+	HistoryDays      *int    `json:"historyDays,omitempty"`
+	HistoryPeriod    *string `json:"historyPeriod,omitempty"`
+	IsDefault        *bool   `json:"isDefault,omitempty"`
+	Language         *string `json:"language,omitempty"`
+	Name             string  `json:"name"`
+	ShowAvailability *bool   `json:"showAvailability,omitempty"`
+	ShowResponseTime *bool   `json:"showResponseTime,omitempty"`
+	Slug             string  `json:"slug"`
+	Visibility       *string `json:"visibility,omitempty"`
+}
+
+// CreateStatusPageResourceRequest defines model for CreateStatusPageResourceRequest.
+type CreateStatusPageResourceRequest struct {
+	// CheckUid Check UID or slug to attach as a resource
+	CheckUid    string  `json:"checkUid"`
+	Explanation *string `json:"explanation,omitempty"`
+	Position    *int    `json:"position,omitempty"`
+	PublicName  *string `json:"publicName,omitempty"`
+}
+
+// CreateStatusPageSectionRequest defines model for CreateStatusPageSectionRequest.
+type CreateStatusPageSectionRequest struct {
+	Name     string `json:"name"`
+	Position *int   `json:"position,omitempty"`
+	Slug     string `json:"slug"`
+}
+
+// CreateStatusUpdateRequest defines model for CreateStatusUpdateRequest.
+type CreateStatusUpdateRequest struct {
+	BodyMarkdown  string              `json:"bodyMarkdown"`
+	CheckUid      *openapi_types.UUID `json:"checkUid,omitempty"`
+	IncidentUid   *openapi_types.UUID `json:"incidentUid,omitempty"`
+	Kind          string              `json:"kind"`
+	LinkUrl       *string             `json:"linkUrl,omitempty"`
+	PublishedAt   *time.Time          `json:"publishedAt,omitempty"`
+	SectionUid    *openapi_types.UUID `json:"sectionUid,omitempty"`
+	StatusPageUid openapi_types.UUID  `json:"statusPageUid"`
+	Title         string              `json:"title"`
+}
+
 // CreateTokenRequest defines model for CreateTokenRequest.
 type CreateTokenRequest struct {
 	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
@@ -1176,6 +1219,11 @@ type RefreshResponse struct {
 	ExpiresIn   *int    `json:"expiresIn,omitempty"`
 }
 
+// ReorderUidsRequest defines model for ReorderUidsRequest.
+type ReorderUidsRequest struct {
+	Uids []openapi_types.UUID `json:"uids"`
+}
+
 // ResultFallbackInfo Present when the requested raw result UID had already been rolled up into an aggregation; describes the substitution.
 type ResultFallbackInfo struct {
 	Reason *ResultFallbackInfoReason `json:"reason,omitempty"`
@@ -1213,6 +1261,121 @@ type StartDiscoveryScanRequest struct {
 
 	// Type A registered discovery type (see /discovery/types)
 	Type string `json:"type"`
+}
+
+// StatusPage defines model for StatusPage.
+type StatusPage struct {
+	CreatedAt   *time.Time `json:"createdAt,omitempty"`
+	Description *string    `json:"description,omitempty"`
+	Enabled     bool       `json:"enabled"`
+	HistoryDays int        `json:"historyDays"`
+
+	// HistoryPeriod History window (24h, 7d, 30d, 90d)
+	HistoryPeriod    string                `json:"historyPeriod"`
+	IsDefault        bool                  `json:"isDefault"`
+	Language         *string               `json:"language,omitempty"`
+	Name             string                `json:"name"`
+	RecentUpdates    *[]StatusUpdatePublic `json:"recentUpdates,omitempty"`
+	Sections         *[]StatusPageSection  `json:"sections,omitempty"`
+	ShowAvailability bool                  `json:"showAvailability"`
+	ShowResponseTime bool                  `json:"showResponseTime"`
+	Slug             string                `json:"slug"`
+	Uid              openapi_types.UUID    `json:"uid"`
+
+	// Visibility Visibility of the page (e.g. "public", "private")
+	Visibility string `json:"visibility"`
+}
+
+// StatusPageListResponse defines model for StatusPageListResponse.
+type StatusPageListResponse struct {
+	Data *[]StatusPage `json:"data,omitempty"`
+}
+
+// StatusPageResource defines model for StatusPageResource.
+type StatusPageResource struct {
+	CheckUid    openapi_types.UUID `json:"checkUid"`
+	CreatedAt   *time.Time         `json:"createdAt,omitempty"`
+	Explanation *string            `json:"explanation,omitempty"`
+	Position    int                `json:"position"`
+	PublicName  *string            `json:"publicName,omitempty"`
+	Uid         openapi_types.UUID `json:"uid"`
+}
+
+// StatusPageResourceListResponse defines model for StatusPageResourceListResponse.
+type StatusPageResourceListResponse struct {
+	Data *[]StatusPageResource `json:"data,omitempty"`
+}
+
+// StatusPageSection defines model for StatusPageSection.
+type StatusPageSection struct {
+	CreatedAt *time.Time            `json:"createdAt,omitempty"`
+	Name      string                `json:"name"`
+	Position  int                   `json:"position"`
+	Resources *[]StatusPageResource `json:"resources,omitempty"`
+	Slug      string                `json:"slug"`
+	Uid       openapi_types.UUID    `json:"uid"`
+}
+
+// StatusPageSectionListResponse defines model for StatusPageSectionListResponse.
+type StatusPageSectionListResponse struct {
+	Data *[]StatusPageSection `json:"data,omitempty"`
+}
+
+// StatusPageSubscriber defines model for StatusPageSubscriber.
+type StatusPageSubscriber struct {
+	Confirmed   bool                `json:"confirmed"`
+	CreatedAt   string              `json:"createdAt"`
+	Email       *string             `json:"email,omitempty"`
+	IncidentUid *openapi_types.UUID `json:"incidentUid,omitempty"`
+
+	// Scope Subscription scope ("page" or "incident")
+	Scope string             `json:"scope"`
+	Uid   openapi_types.UUID `json:"uid"`
+}
+
+// StatusPageSubscriberListResponse defines model for StatusPageSubscriberListResponse.
+type StatusPageSubscriberListResponse struct {
+	Data *[]StatusPageSubscriber `json:"data,omitempty"`
+	Meta *struct {
+		Count *int `json:"count,omitempty"`
+	} `json:"meta,omitempty"`
+}
+
+// StatusUpdate defines model for StatusUpdate.
+type StatusUpdate struct {
+	AuthorUid    string              `json:"authorUid"`
+	BodyMarkdown string              `json:"bodyMarkdown"`
+	CheckUid     *openapi_types.UUID `json:"checkUid,omitempty"`
+	CreatedAt    time.Time           `json:"createdAt"`
+	IncidentUid  *openapi_types.UUID `json:"incidentUid,omitempty"`
+
+	// Kind One of: investigating, identified, monitoring, resolved, maintenance, info
+	Kind          string              `json:"kind"`
+	LinkUrl       *string             `json:"linkUrl,omitempty"`
+	PublishedAt   time.Time           `json:"publishedAt"`
+	SectionUid    *openapi_types.UUID `json:"sectionUid,omitempty"`
+	StatusPageUid openapi_types.UUID  `json:"statusPageUid"`
+	Title         string              `json:"title"`
+	Uid           openapi_types.UUID  `json:"uid"`
+	UpdatedAt     time.Time           `json:"updatedAt"`
+}
+
+// StatusUpdateListResponse defines model for StatusUpdateListResponse.
+type StatusUpdateListResponse struct {
+	Data *[]StatusUpdate `json:"data,omitempty"`
+}
+
+// StatusUpdatePublic defines model for StatusUpdatePublic.
+type StatusUpdatePublic struct {
+	BodyMarkdown string              `json:"bodyMarkdown"`
+	CheckUid     *openapi_types.UUID `json:"checkUid,omitempty"`
+	IncidentUid  *openapi_types.UUID `json:"incidentUid,omitempty"`
+	Kind         string              `json:"kind"`
+	LinkUrl      *string             `json:"linkUrl,omitempty"`
+	PublishedAt  time.Time           `json:"publishedAt"`
+	SectionUid   *openapi_types.UUID `json:"sectionUid,omitempty"`
+	Title        string              `json:"title"`
+	Uid          openapi_types.UUID  `json:"uid"`
 }
 
 // SwitchOrgRequest defines model for SwitchOrgRequest.
@@ -1309,6 +1472,47 @@ type UpdateMemberRequest struct {
 
 // UpdateMemberRequestRole defines model for UpdateMemberRequest.Role.
 type UpdateMemberRequestRole string
+
+// UpdateStatusPageRequest defines model for UpdateStatusPageRequest.
+type UpdateStatusPageRequest struct {
+	Description      *string `json:"description,omitempty"`
+	Enabled          *bool   `json:"enabled,omitempty"`
+	HistoryDays      *int    `json:"historyDays,omitempty"`
+	HistoryPeriod    *string `json:"historyPeriod,omitempty"`
+	IsDefault        *bool   `json:"isDefault,omitempty"`
+	Language         *string `json:"language,omitempty"`
+	Name             *string `json:"name,omitempty"`
+	ShowAvailability *bool   `json:"showAvailability,omitempty"`
+	ShowResponseTime *bool   `json:"showResponseTime,omitempty"`
+	Slug             *string `json:"slug,omitempty"`
+	Visibility       *string `json:"visibility,omitempty"`
+}
+
+// UpdateStatusPageResourceRequest defines model for UpdateStatusPageResourceRequest.
+type UpdateStatusPageResourceRequest struct {
+	Explanation *string `json:"explanation,omitempty"`
+	Position    *int    `json:"position,omitempty"`
+	PublicName  *string `json:"publicName,omitempty"`
+}
+
+// UpdateStatusPageSectionRequest defines model for UpdateStatusPageSectionRequest.
+type UpdateStatusPageSectionRequest struct {
+	Name     *string `json:"name,omitempty"`
+	Position *int    `json:"position,omitempty"`
+	Slug     *string `json:"slug,omitempty"`
+}
+
+// UpdateStatusUpdateRequest defines model for UpdateStatusUpdateRequest.
+type UpdateStatusUpdateRequest struct {
+	BodyMarkdown *string             `json:"bodyMarkdown,omitempty"`
+	CheckUid     *openapi_types.UUID `json:"checkUid,omitempty"`
+	IncidentUid  *openapi_types.UUID `json:"incidentUid,omitempty"`
+	Kind         *string             `json:"kind,omitempty"`
+	LinkUrl      *string             `json:"linkUrl,omitempty"`
+	PublishedAt  *time.Time          `json:"publishedAt,omitempty"`
+	SectionUid   *openapi_types.UUID `json:"sectionUid,omitempty"`
+	Title        *string             `json:"title,omitempty"`
+}
 
 // UpsertCheckRequest defines model for UpsertCheckRequest.
 type UpsertCheckRequest struct {
@@ -1416,8 +1620,23 @@ type MemberUidPath = openapi_types.UUID
 // OrgPath defines model for OrgPath.
 type OrgPath = string
 
+// ResourceUidPath defines model for ResourceUidPath.
+type ResourceUidPath = openapi_types.UUID
+
 // ScanJobUidPath defines model for ScanJobUidPath.
 type ScanJobUidPath = openapi_types.UUID
+
+// SectionUidPath defines model for SectionUidPath.
+type SectionUidPath = string
+
+// StatusPageUidPath defines model for StatusPageUidPath.
+type StatusPageUidPath = string
+
+// StatusUpdateUidPath defines model for StatusUpdateUidPath.
+type StatusUpdateUidPath = openapi_types.UUID
+
+// SubscriberUidPath defines model for SubscriberUidPath.
+type SubscriberUidPath = openapi_types.UUID
 
 // TokenUidPath defines model for TokenUidPath.
 type TokenUidPath = openapi_types.UUID
@@ -1614,6 +1833,33 @@ type ListOrgResultsParams struct {
 	With *string `form:"with,omitempty" json:"with,omitempty"`
 }
 
+// GetStatusPageParams defines parameters for GetStatusPage.
+type GetStatusPageParams struct {
+	// With Comma-separated related data to include (e.g. "sections")
+	With *string `form:"with,omitempty" json:"with,omitempty"`
+}
+
+// ListStatusUpdatesParams defines parameters for ListStatusUpdates.
+type ListStatusUpdatesParams struct {
+	// StatusPage Filter by status page UID
+	StatusPage *string `form:"statusPage,omitempty" json:"statusPage,omitempty"`
+
+	// Section Filter by section UID
+	Section *string `form:"section,omitempty" json:"section,omitempty"`
+
+	// Check Filter by check UID
+	Check *string `form:"check,omitempty" json:"check,omitempty"`
+
+	// Incident Filter by incident UID
+	Incident *string `form:"incident,omitempty" json:"incident,omitempty"`
+
+	// Limit Maximum results (1-200)
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Result offset
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // ListOrgTokensParams defines parameters for ListOrgTokens.
 type ListOrgTokensParams struct {
 	// Type Filter by token type
@@ -1685,6 +1931,36 @@ type AddMemberJSONRequestBody = AddMemberRequest
 
 // UpdateMemberJSONRequestBody defines body for UpdateMember for application/json ContentType.
 type UpdateMemberJSONRequestBody = UpdateMemberRequest
+
+// CreateStatusPageJSONRequestBody defines body for CreateStatusPage for application/json ContentType.
+type CreateStatusPageJSONRequestBody = CreateStatusPageRequest
+
+// UpdateStatusPageJSONRequestBody defines body for UpdateStatusPage for application/json ContentType.
+type UpdateStatusPageJSONRequestBody = UpdateStatusPageRequest
+
+// CreateStatusPageSectionJSONRequestBody defines body for CreateStatusPageSection for application/json ContentType.
+type CreateStatusPageSectionJSONRequestBody = CreateStatusPageSectionRequest
+
+// ReorderStatusPageSectionsJSONRequestBody defines body for ReorderStatusPageSections for application/json ContentType.
+type ReorderStatusPageSectionsJSONRequestBody = ReorderUidsRequest
+
+// UpdateStatusPageSectionJSONRequestBody defines body for UpdateStatusPageSection for application/json ContentType.
+type UpdateStatusPageSectionJSONRequestBody = UpdateStatusPageSectionRequest
+
+// CreateStatusPageResourceJSONRequestBody defines body for CreateStatusPageResource for application/json ContentType.
+type CreateStatusPageResourceJSONRequestBody = CreateStatusPageResourceRequest
+
+// ReorderStatusPageResourcesJSONRequestBody defines body for ReorderStatusPageResources for application/json ContentType.
+type ReorderStatusPageResourcesJSONRequestBody = ReorderUidsRequest
+
+// UpdateStatusPageResourceJSONRequestBody defines body for UpdateStatusPageResource for application/json ContentType.
+type UpdateStatusPageResourceJSONRequestBody = UpdateStatusPageResourceRequest
+
+// CreateStatusUpdateJSONRequestBody defines body for CreateStatusUpdate for application/json ContentType.
+type CreateStatusUpdateJSONRequestBody = CreateStatusUpdateRequest
+
+// UpdateStatusUpdateJSONRequestBody defines body for UpdateStatusUpdate for application/json ContentType.
+type UpdateStatusUpdateJSONRequestBody = UpdateStatusUpdateRequest
 
 // CreateTokenJSONRequestBody defines body for CreateToken for application/json ContentType.
 type CreateTokenJSONRequestBody = CreateTokenRequest
@@ -2006,6 +2282,95 @@ type ClientInterface interface {
 
 	// ListOrgResults request
 	ListOrgResults(ctx context.Context, org OrgPath, params *ListOrgResultsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListStatusPages request
+	ListStatusPages(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateStatusPageWithBody request with any body
+	CreateStatusPageWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateStatusPage(ctx context.Context, org OrgPath, body CreateStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteStatusPage request
+	DeleteStatusPage(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetStatusPage request
+	GetStatusPage(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, params *GetStatusPageParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateStatusPageWithBody request with any body
+	UpdateStatusPageWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateStatusPage(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body UpdateStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListStatusPageSections request
+	ListStatusPageSections(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateStatusPageSectionWithBody request with any body
+	CreateStatusPageSectionWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateStatusPageSection(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body CreateStatusPageSectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReorderStatusPageSectionsWithBody request with any body
+	ReorderStatusPageSectionsWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ReorderStatusPageSections(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body ReorderStatusPageSectionsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteStatusPageSection request
+	DeleteStatusPageSection(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetStatusPageSection request
+	GetStatusPageSection(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateStatusPageSectionWithBody request with any body
+	UpdateStatusPageSectionWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateStatusPageSection(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, body UpdateStatusPageSectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListStatusPageResources request
+	ListStatusPageResources(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateStatusPageResourceWithBody request with any body
+	CreateStatusPageResourceWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateStatusPageResource(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, body CreateStatusPageResourceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReorderStatusPageResourcesWithBody request with any body
+	ReorderStatusPageResourcesWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ReorderStatusPageResources(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, body ReorderStatusPageResourcesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteStatusPageResource request
+	DeleteStatusPageResource(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, resourceUid ResourceUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateStatusPageResourceWithBody request with any body
+	UpdateStatusPageResourceWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, resourceUid ResourceUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateStatusPageResource(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, resourceUid ResourceUidPath, body UpdateStatusPageResourceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListStatusPageSubscribers request
+	ListStatusPageSubscribers(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveStatusPageSubscriber request
+	RemoveStatusPageSubscriber(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid SubscriberUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListStatusUpdates request
+	ListStatusUpdates(ctx context.Context, org OrgPath, params *ListStatusUpdatesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateStatusUpdateWithBody request with any body
+	CreateStatusUpdateWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateStatusUpdate(ctx context.Context, org OrgPath, body CreateStatusUpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteStatusUpdate request
+	DeleteStatusUpdate(ctx context.Context, org OrgPath, uid StatusUpdateUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetStatusUpdate request
+	GetStatusUpdate(ctx context.Context, org OrgPath, uid StatusUpdateUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateStatusUpdateWithBody request with any body
+	UpdateStatusUpdateWithBody(ctx context.Context, org OrgPath, uid StatusUpdateUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateStatusUpdate(ctx context.Context, org OrgPath, uid StatusUpdateUidPath, body UpdateStatusUpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListOrgTokens request
 	ListOrgTokens(ctx context.Context, org OrgPath, params *ListOrgTokensParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3079,6 +3444,402 @@ func (c *Client) UpdateMember(ctx context.Context, org OrgPath, uid MemberUidPat
 
 func (c *Client) ListOrgResults(ctx context.Context, org OrgPath, params *ListOrgResultsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListOrgResultsRequest(c.Server, org, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListStatusPages(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListStatusPagesRequest(c.Server, org)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateStatusPageWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateStatusPageRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateStatusPage(ctx context.Context, org OrgPath, body CreateStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateStatusPageRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteStatusPage(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteStatusPageRequest(c.Server, org, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetStatusPage(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, params *GetStatusPageParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetStatusPageRequest(c.Server, org, statusPageUid, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateStatusPageWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateStatusPageRequestWithBody(c.Server, org, statusPageUid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateStatusPage(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body UpdateStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateStatusPageRequest(c.Server, org, statusPageUid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListStatusPageSections(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListStatusPageSectionsRequest(c.Server, org, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateStatusPageSectionWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateStatusPageSectionRequestWithBody(c.Server, org, statusPageUid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateStatusPageSection(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body CreateStatusPageSectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateStatusPageSectionRequest(c.Server, org, statusPageUid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReorderStatusPageSectionsWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReorderStatusPageSectionsRequestWithBody(c.Server, org, statusPageUid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReorderStatusPageSections(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body ReorderStatusPageSectionsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReorderStatusPageSectionsRequest(c.Server, org, statusPageUid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteStatusPageSection(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteStatusPageSectionRequest(c.Server, org, statusPageUid, sectionUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetStatusPageSection(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetStatusPageSectionRequest(c.Server, org, statusPageUid, sectionUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateStatusPageSectionWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateStatusPageSectionRequestWithBody(c.Server, org, statusPageUid, sectionUid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateStatusPageSection(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, body UpdateStatusPageSectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateStatusPageSectionRequest(c.Server, org, statusPageUid, sectionUid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListStatusPageResources(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListStatusPageResourcesRequest(c.Server, org, statusPageUid, sectionUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateStatusPageResourceWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateStatusPageResourceRequestWithBody(c.Server, org, statusPageUid, sectionUid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateStatusPageResource(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, body CreateStatusPageResourceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateStatusPageResourceRequest(c.Server, org, statusPageUid, sectionUid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReorderStatusPageResourcesWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReorderStatusPageResourcesRequestWithBody(c.Server, org, statusPageUid, sectionUid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReorderStatusPageResources(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, body ReorderStatusPageResourcesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReorderStatusPageResourcesRequest(c.Server, org, statusPageUid, sectionUid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteStatusPageResource(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, resourceUid ResourceUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteStatusPageResourceRequest(c.Server, org, statusPageUid, sectionUid, resourceUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateStatusPageResourceWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, resourceUid ResourceUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateStatusPageResourceRequestWithBody(c.Server, org, statusPageUid, sectionUid, resourceUid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateStatusPageResource(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, resourceUid ResourceUidPath, body UpdateStatusPageResourceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateStatusPageResourceRequest(c.Server, org, statusPageUid, sectionUid, resourceUid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListStatusPageSubscribers(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListStatusPageSubscribersRequest(c.Server, org, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RemoveStatusPageSubscriber(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid SubscriberUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveStatusPageSubscriberRequest(c.Server, org, statusPageUid, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListStatusUpdates(ctx context.Context, org OrgPath, params *ListStatusUpdatesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListStatusUpdatesRequest(c.Server, org, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateStatusUpdateWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateStatusUpdateRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateStatusUpdate(ctx context.Context, org OrgPath, body CreateStatusUpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateStatusUpdateRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteStatusUpdate(ctx context.Context, org OrgPath, uid StatusUpdateUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteStatusUpdateRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetStatusUpdate(ctx context.Context, org OrgPath, uid StatusUpdateUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetStatusUpdateRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateStatusUpdateWithBody(ctx context.Context, org OrgPath, uid StatusUpdateUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateStatusUpdateRequestWithBody(c.Server, org, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateStatusUpdate(ctx context.Context, org OrgPath, uid StatusUpdateUidPath, body UpdateStatusUpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateStatusUpdateRequest(c.Server, org, uid, body)
 	if err != nil {
 		return nil, err
 	}
@@ -6719,6 +7480,1252 @@ func NewListOrgResultsRequest(server string, org OrgPath, params *ListOrgResults
 	return req, nil
 }
 
+// NewListStatusPagesRequest generates requests for ListStatusPages
+func NewListStatusPagesRequest(server string, org OrgPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateStatusPageRequest calls the generic CreateStatusPage builder with application/json body
+func NewCreateStatusPageRequest(server string, org OrgPath, body CreateStatusPageJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateStatusPageRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewCreateStatusPageRequestWithBody generates requests for CreateStatusPage with any type of body
+func NewCreateStatusPageRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteStatusPageRequest generates requests for DeleteStatusPage
+func NewDeleteStatusPageRequest(server string, org OrgPath, statusPageUid StatusPageUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "statusPageUid", runtime.ParamLocationPath, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetStatusPageRequest generates requests for GetStatusPage
+func NewGetStatusPageRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, params *GetStatusPageParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "statusPageUid", runtime.ParamLocationPath, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.With != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "with", runtime.ParamLocationQuery, *params.With); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateStatusPageRequest calls the generic UpdateStatusPage builder with application/json body
+func NewUpdateStatusPageRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, body UpdateStatusPageJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateStatusPageRequestWithBody(server, org, statusPageUid, "application/json", bodyReader)
+}
+
+// NewUpdateStatusPageRequestWithBody generates requests for UpdateStatusPage with any type of body
+func NewUpdateStatusPageRequestWithBody(server string, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "statusPageUid", runtime.ParamLocationPath, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListStatusPageSectionsRequest generates requests for ListStatusPageSections
+func NewListStatusPageSectionsRequest(server string, org OrgPath, statusPageUid StatusPageUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "statusPageUid", runtime.ParamLocationPath, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/sections", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateStatusPageSectionRequest calls the generic CreateStatusPageSection builder with application/json body
+func NewCreateStatusPageSectionRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, body CreateStatusPageSectionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateStatusPageSectionRequestWithBody(server, org, statusPageUid, "application/json", bodyReader)
+}
+
+// NewCreateStatusPageSectionRequestWithBody generates requests for CreateStatusPageSection with any type of body
+func NewCreateStatusPageSectionRequestWithBody(server string, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "statusPageUid", runtime.ParamLocationPath, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/sections", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewReorderStatusPageSectionsRequest calls the generic ReorderStatusPageSections builder with application/json body
+func NewReorderStatusPageSectionsRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, body ReorderStatusPageSectionsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewReorderStatusPageSectionsRequestWithBody(server, org, statusPageUid, "application/json", bodyReader)
+}
+
+// NewReorderStatusPageSectionsRequestWithBody generates requests for ReorderStatusPageSections with any type of body
+func NewReorderStatusPageSectionsRequestWithBody(server string, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "statusPageUid", runtime.ParamLocationPath, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/sections/reorder", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteStatusPageSectionRequest generates requests for DeleteStatusPageSection
+func NewDeleteStatusPageSectionRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "statusPageUid", runtime.ParamLocationPath, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "sectionUid", runtime.ParamLocationPath, sectionUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/sections/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetStatusPageSectionRequest generates requests for GetStatusPageSection
+func NewGetStatusPageSectionRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "statusPageUid", runtime.ParamLocationPath, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "sectionUid", runtime.ParamLocationPath, sectionUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/sections/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateStatusPageSectionRequest calls the generic UpdateStatusPageSection builder with application/json body
+func NewUpdateStatusPageSectionRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, body UpdateStatusPageSectionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateStatusPageSectionRequestWithBody(server, org, statusPageUid, sectionUid, "application/json", bodyReader)
+}
+
+// NewUpdateStatusPageSectionRequestWithBody generates requests for UpdateStatusPageSection with any type of body
+func NewUpdateStatusPageSectionRequestWithBody(server string, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "statusPageUid", runtime.ParamLocationPath, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "sectionUid", runtime.ParamLocationPath, sectionUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/sections/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListStatusPageResourcesRequest generates requests for ListStatusPageResources
+func NewListStatusPageResourcesRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "statusPageUid", runtime.ParamLocationPath, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "sectionUid", runtime.ParamLocationPath, sectionUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/sections/%s/resources", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateStatusPageResourceRequest calls the generic CreateStatusPageResource builder with application/json body
+func NewCreateStatusPageResourceRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, body CreateStatusPageResourceJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateStatusPageResourceRequestWithBody(server, org, statusPageUid, sectionUid, "application/json", bodyReader)
+}
+
+// NewCreateStatusPageResourceRequestWithBody generates requests for CreateStatusPageResource with any type of body
+func NewCreateStatusPageResourceRequestWithBody(server string, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "statusPageUid", runtime.ParamLocationPath, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "sectionUid", runtime.ParamLocationPath, sectionUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/sections/%s/resources", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewReorderStatusPageResourcesRequest calls the generic ReorderStatusPageResources builder with application/json body
+func NewReorderStatusPageResourcesRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, body ReorderStatusPageResourcesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewReorderStatusPageResourcesRequestWithBody(server, org, statusPageUid, sectionUid, "application/json", bodyReader)
+}
+
+// NewReorderStatusPageResourcesRequestWithBody generates requests for ReorderStatusPageResources with any type of body
+func NewReorderStatusPageResourcesRequestWithBody(server string, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "statusPageUid", runtime.ParamLocationPath, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "sectionUid", runtime.ParamLocationPath, sectionUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/sections/%s/resources/reorder", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteStatusPageResourceRequest generates requests for DeleteStatusPageResource
+func NewDeleteStatusPageResourceRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, resourceUid ResourceUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "statusPageUid", runtime.ParamLocationPath, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "sectionUid", runtime.ParamLocationPath, sectionUid)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam3 string
+
+	pathParam3, err = runtime.StyleParamWithLocation("simple", false, "resourceUid", runtime.ParamLocationPath, resourceUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/sections/%s/resources/%s", pathParam0, pathParam1, pathParam2, pathParam3)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateStatusPageResourceRequest calls the generic UpdateStatusPageResource builder with application/json body
+func NewUpdateStatusPageResourceRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, resourceUid ResourceUidPath, body UpdateStatusPageResourceJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateStatusPageResourceRequestWithBody(server, org, statusPageUid, sectionUid, resourceUid, "application/json", bodyReader)
+}
+
+// NewUpdateStatusPageResourceRequestWithBody generates requests for UpdateStatusPageResource with any type of body
+func NewUpdateStatusPageResourceRequestWithBody(server string, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, resourceUid ResourceUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "statusPageUid", runtime.ParamLocationPath, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "sectionUid", runtime.ParamLocationPath, sectionUid)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam3 string
+
+	pathParam3, err = runtime.StyleParamWithLocation("simple", false, "resourceUid", runtime.ParamLocationPath, resourceUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/sections/%s/resources/%s", pathParam0, pathParam1, pathParam2, pathParam3)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListStatusPageSubscribersRequest generates requests for ListStatusPageSubscribers
+func NewListStatusPageSubscribersRequest(server string, org OrgPath, statusPageUid StatusPageUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "statusPageUid", runtime.ParamLocationPath, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/subscribers", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRemoveStatusPageSubscriberRequest generates requests for RemoveStatusPageSubscriber
+func NewRemoveStatusPageSubscriberRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, uid SubscriberUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "statusPageUid", runtime.ParamLocationPath, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/subscribers/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListStatusUpdatesRequest generates requests for ListStatusUpdates
+func NewListStatusUpdatesRequest(server string, org OrgPath, params *ListStatusUpdatesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-updates", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.StatusPage != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "statusPage", runtime.ParamLocationQuery, *params.StatusPage); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Section != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "section", runtime.ParamLocationQuery, *params.Section); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Check != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "check", runtime.ParamLocationQuery, *params.Check); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Incident != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "incident", runtime.ParamLocationQuery, *params.Incident); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateStatusUpdateRequest calls the generic CreateStatusUpdate builder with application/json body
+func NewCreateStatusUpdateRequest(server string, org OrgPath, body CreateStatusUpdateJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateStatusUpdateRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewCreateStatusUpdateRequestWithBody generates requests for CreateStatusUpdate with any type of body
+func NewCreateStatusUpdateRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-updates", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteStatusUpdateRequest generates requests for DeleteStatusUpdate
+func NewDeleteStatusUpdateRequest(server string, org OrgPath, uid StatusUpdateUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-updates/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetStatusUpdateRequest generates requests for GetStatusUpdate
+func NewGetStatusUpdateRequest(server string, org OrgPath, uid StatusUpdateUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-updates/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateStatusUpdateRequest calls the generic UpdateStatusUpdate builder with application/json body
+func NewUpdateStatusUpdateRequest(server string, org OrgPath, uid StatusUpdateUidPath, body UpdateStatusUpdateJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateStatusUpdateRequestWithBody(server, org, uid, "application/json", bodyReader)
+}
+
+// NewUpdateStatusUpdateRequestWithBody generates requests for UpdateStatusUpdate with any type of body
+func NewUpdateStatusUpdateRequestWithBody(server string, org OrgPath, uid StatusUpdateUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-updates/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListOrgTokensRequest generates requests for ListOrgTokens
 func NewListOrgTokensRequest(server string, org OrgPath, params *ListOrgTokensParams) (*http.Request, error) {
 	var err error
@@ -7275,6 +9282,95 @@ type ClientWithResponsesInterface interface {
 
 	// ListOrgResultsWithResponse request
 	ListOrgResultsWithResponse(ctx context.Context, org OrgPath, params *ListOrgResultsParams, reqEditors ...RequestEditorFn) (*ListOrgResultsResult, error)
+
+	// ListStatusPagesWithResponse request
+	ListStatusPagesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListStatusPagesResult, error)
+
+	// CreateStatusPageWithBodyWithResponse request with any body
+	CreateStatusPageWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateStatusPageResult, error)
+
+	CreateStatusPageWithResponse(ctx context.Context, org OrgPath, body CreateStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateStatusPageResult, error)
+
+	// DeleteStatusPageWithResponse request
+	DeleteStatusPageWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*DeleteStatusPageResult, error)
+
+	// GetStatusPageWithResponse request
+	GetStatusPageWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, params *GetStatusPageParams, reqEditors ...RequestEditorFn) (*GetStatusPageResult, error)
+
+	// UpdateStatusPageWithBodyWithResponse request with any body
+	UpdateStatusPageWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateStatusPageResult, error)
+
+	UpdateStatusPageWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body UpdateStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateStatusPageResult, error)
+
+	// ListStatusPageSectionsWithResponse request
+	ListStatusPageSectionsWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*ListStatusPageSectionsResult, error)
+
+	// CreateStatusPageSectionWithBodyWithResponse request with any body
+	CreateStatusPageSectionWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateStatusPageSectionResult, error)
+
+	CreateStatusPageSectionWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body CreateStatusPageSectionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateStatusPageSectionResult, error)
+
+	// ReorderStatusPageSectionsWithBodyWithResponse request with any body
+	ReorderStatusPageSectionsWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReorderStatusPageSectionsResult, error)
+
+	ReorderStatusPageSectionsWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body ReorderStatusPageSectionsJSONRequestBody, reqEditors ...RequestEditorFn) (*ReorderStatusPageSectionsResult, error)
+
+	// DeleteStatusPageSectionWithResponse request
+	DeleteStatusPageSectionWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, reqEditors ...RequestEditorFn) (*DeleteStatusPageSectionResult, error)
+
+	// GetStatusPageSectionWithResponse request
+	GetStatusPageSectionWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, reqEditors ...RequestEditorFn) (*GetStatusPageSectionResult, error)
+
+	// UpdateStatusPageSectionWithBodyWithResponse request with any body
+	UpdateStatusPageSectionWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateStatusPageSectionResult, error)
+
+	UpdateStatusPageSectionWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, body UpdateStatusPageSectionJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateStatusPageSectionResult, error)
+
+	// ListStatusPageResourcesWithResponse request
+	ListStatusPageResourcesWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, reqEditors ...RequestEditorFn) (*ListStatusPageResourcesResult, error)
+
+	// CreateStatusPageResourceWithBodyWithResponse request with any body
+	CreateStatusPageResourceWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateStatusPageResourceResult, error)
+
+	CreateStatusPageResourceWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, body CreateStatusPageResourceJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateStatusPageResourceResult, error)
+
+	// ReorderStatusPageResourcesWithBodyWithResponse request with any body
+	ReorderStatusPageResourcesWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReorderStatusPageResourcesResult, error)
+
+	ReorderStatusPageResourcesWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, body ReorderStatusPageResourcesJSONRequestBody, reqEditors ...RequestEditorFn) (*ReorderStatusPageResourcesResult, error)
+
+	// DeleteStatusPageResourceWithResponse request
+	DeleteStatusPageResourceWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, resourceUid ResourceUidPath, reqEditors ...RequestEditorFn) (*DeleteStatusPageResourceResult, error)
+
+	// UpdateStatusPageResourceWithBodyWithResponse request with any body
+	UpdateStatusPageResourceWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, resourceUid ResourceUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateStatusPageResourceResult, error)
+
+	UpdateStatusPageResourceWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, resourceUid ResourceUidPath, body UpdateStatusPageResourceJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateStatusPageResourceResult, error)
+
+	// ListStatusPageSubscribersWithResponse request
+	ListStatusPageSubscribersWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*ListStatusPageSubscribersResult, error)
+
+	// RemoveStatusPageSubscriberWithResponse request
+	RemoveStatusPageSubscriberWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid SubscriberUidPath, reqEditors ...RequestEditorFn) (*RemoveStatusPageSubscriberResult, error)
+
+	// ListStatusUpdatesWithResponse request
+	ListStatusUpdatesWithResponse(ctx context.Context, org OrgPath, params *ListStatusUpdatesParams, reqEditors ...RequestEditorFn) (*ListStatusUpdatesResult, error)
+
+	// CreateStatusUpdateWithBodyWithResponse request with any body
+	CreateStatusUpdateWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateStatusUpdateResult, error)
+
+	CreateStatusUpdateWithResponse(ctx context.Context, org OrgPath, body CreateStatusUpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateStatusUpdateResult, error)
+
+	// DeleteStatusUpdateWithResponse request
+	DeleteStatusUpdateWithResponse(ctx context.Context, org OrgPath, uid StatusUpdateUidPath, reqEditors ...RequestEditorFn) (*DeleteStatusUpdateResult, error)
+
+	// GetStatusUpdateWithResponse request
+	GetStatusUpdateWithResponse(ctx context.Context, org OrgPath, uid StatusUpdateUidPath, reqEditors ...RequestEditorFn) (*GetStatusUpdateResult, error)
+
+	// UpdateStatusUpdateWithBodyWithResponse request with any body
+	UpdateStatusUpdateWithBodyWithResponse(ctx context.Context, org OrgPath, uid StatusUpdateUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateStatusUpdateResult, error)
+
+	UpdateStatusUpdateWithResponse(ctx context.Context, org OrgPath, uid StatusUpdateUidPath, body UpdateStatusUpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateStatusUpdateResult, error)
 
 	// ListOrgTokensWithResponse request
 	ListOrgTokensWithResponse(ctx context.Context, org OrgPath, params *ListOrgTokensParams, reqEditors ...RequestEditorFn) (*ListOrgTokensResult, error)
@@ -8879,6 +10975,562 @@ func (r ListOrgResultsResult) StatusCode() int {
 	return 0
 }
 
+type ListStatusPagesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *StatusPageListResponse
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListStatusPagesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListStatusPagesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateStatusPageResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *StatusPage
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateStatusPageResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateStatusPageResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteStatusPageResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteStatusPageResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteStatusPageResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetStatusPageResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *StatusPage
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetStatusPageResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetStatusPageResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateStatusPageResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *StatusPage
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateStatusPageResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateStatusPageResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListStatusPageSectionsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *StatusPageSectionListResponse
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListStatusPageSectionsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListStatusPageSectionsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateStatusPageSectionResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *StatusPageSection
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateStatusPageSectionResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateStatusPageSectionResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ReorderStatusPageSectionsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ReorderStatusPageSectionsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReorderStatusPageSectionsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteStatusPageSectionResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteStatusPageSectionResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteStatusPageSectionResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetStatusPageSectionResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *StatusPageSection
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetStatusPageSectionResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetStatusPageSectionResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateStatusPageSectionResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *StatusPageSection
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateStatusPageSectionResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateStatusPageSectionResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListStatusPageResourcesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *StatusPageResourceListResponse
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListStatusPageResourcesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListStatusPageResourcesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateStatusPageResourceResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *StatusPageResource
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateStatusPageResourceResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateStatusPageResourceResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ReorderStatusPageResourcesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ReorderStatusPageResourcesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReorderStatusPageResourcesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteStatusPageResourceResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteStatusPageResourceResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteStatusPageResourceResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateStatusPageResourceResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *StatusPageResource
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateStatusPageResourceResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateStatusPageResourceResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListStatusPageSubscribersResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *StatusPageSubscriberListResponse
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListStatusPageSubscribersResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListStatusPageSubscribersResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RemoveStatusPageSubscriberResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveStatusPageSubscriberResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveStatusPageSubscriberResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListStatusUpdatesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *StatusUpdateListResponse
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListStatusUpdatesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListStatusUpdatesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateStatusUpdateResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *StatusUpdate
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateStatusUpdateResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateStatusUpdateResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteStatusUpdateResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteStatusUpdateResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteStatusUpdateResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetStatusUpdateResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *StatusUpdate
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetStatusUpdateResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetStatusUpdateResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateStatusUpdateResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *StatusUpdate
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateStatusUpdateResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateStatusUpdateResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListOrgTokensResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -9812,6 +12464,293 @@ func (c *ClientWithResponses) ListOrgResultsWithResponse(ctx context.Context, or
 		return nil, err
 	}
 	return ParseListOrgResultsResult(rsp)
+}
+
+// ListStatusPagesWithResponse request returning *ListStatusPagesResult
+func (c *ClientWithResponses) ListStatusPagesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListStatusPagesResult, error) {
+	rsp, err := c.ListStatusPages(ctx, org, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListStatusPagesResult(rsp)
+}
+
+// CreateStatusPageWithBodyWithResponse request with arbitrary body returning *CreateStatusPageResult
+func (c *ClientWithResponses) CreateStatusPageWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateStatusPageResult, error) {
+	rsp, err := c.CreateStatusPageWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateStatusPageResult(rsp)
+}
+
+func (c *ClientWithResponses) CreateStatusPageWithResponse(ctx context.Context, org OrgPath, body CreateStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateStatusPageResult, error) {
+	rsp, err := c.CreateStatusPage(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateStatusPageResult(rsp)
+}
+
+// DeleteStatusPageWithResponse request returning *DeleteStatusPageResult
+func (c *ClientWithResponses) DeleteStatusPageWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*DeleteStatusPageResult, error) {
+	rsp, err := c.DeleteStatusPage(ctx, org, statusPageUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteStatusPageResult(rsp)
+}
+
+// GetStatusPageWithResponse request returning *GetStatusPageResult
+func (c *ClientWithResponses) GetStatusPageWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, params *GetStatusPageParams, reqEditors ...RequestEditorFn) (*GetStatusPageResult, error) {
+	rsp, err := c.GetStatusPage(ctx, org, statusPageUid, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetStatusPageResult(rsp)
+}
+
+// UpdateStatusPageWithBodyWithResponse request with arbitrary body returning *UpdateStatusPageResult
+func (c *ClientWithResponses) UpdateStatusPageWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateStatusPageResult, error) {
+	rsp, err := c.UpdateStatusPageWithBody(ctx, org, statusPageUid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateStatusPageResult(rsp)
+}
+
+func (c *ClientWithResponses) UpdateStatusPageWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body UpdateStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateStatusPageResult, error) {
+	rsp, err := c.UpdateStatusPage(ctx, org, statusPageUid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateStatusPageResult(rsp)
+}
+
+// ListStatusPageSectionsWithResponse request returning *ListStatusPageSectionsResult
+func (c *ClientWithResponses) ListStatusPageSectionsWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*ListStatusPageSectionsResult, error) {
+	rsp, err := c.ListStatusPageSections(ctx, org, statusPageUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListStatusPageSectionsResult(rsp)
+}
+
+// CreateStatusPageSectionWithBodyWithResponse request with arbitrary body returning *CreateStatusPageSectionResult
+func (c *ClientWithResponses) CreateStatusPageSectionWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateStatusPageSectionResult, error) {
+	rsp, err := c.CreateStatusPageSectionWithBody(ctx, org, statusPageUid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateStatusPageSectionResult(rsp)
+}
+
+func (c *ClientWithResponses) CreateStatusPageSectionWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body CreateStatusPageSectionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateStatusPageSectionResult, error) {
+	rsp, err := c.CreateStatusPageSection(ctx, org, statusPageUid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateStatusPageSectionResult(rsp)
+}
+
+// ReorderStatusPageSectionsWithBodyWithResponse request with arbitrary body returning *ReorderStatusPageSectionsResult
+func (c *ClientWithResponses) ReorderStatusPageSectionsWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReorderStatusPageSectionsResult, error) {
+	rsp, err := c.ReorderStatusPageSectionsWithBody(ctx, org, statusPageUid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReorderStatusPageSectionsResult(rsp)
+}
+
+func (c *ClientWithResponses) ReorderStatusPageSectionsWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body ReorderStatusPageSectionsJSONRequestBody, reqEditors ...RequestEditorFn) (*ReorderStatusPageSectionsResult, error) {
+	rsp, err := c.ReorderStatusPageSections(ctx, org, statusPageUid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReorderStatusPageSectionsResult(rsp)
+}
+
+// DeleteStatusPageSectionWithResponse request returning *DeleteStatusPageSectionResult
+func (c *ClientWithResponses) DeleteStatusPageSectionWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, reqEditors ...RequestEditorFn) (*DeleteStatusPageSectionResult, error) {
+	rsp, err := c.DeleteStatusPageSection(ctx, org, statusPageUid, sectionUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteStatusPageSectionResult(rsp)
+}
+
+// GetStatusPageSectionWithResponse request returning *GetStatusPageSectionResult
+func (c *ClientWithResponses) GetStatusPageSectionWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, reqEditors ...RequestEditorFn) (*GetStatusPageSectionResult, error) {
+	rsp, err := c.GetStatusPageSection(ctx, org, statusPageUid, sectionUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetStatusPageSectionResult(rsp)
+}
+
+// UpdateStatusPageSectionWithBodyWithResponse request with arbitrary body returning *UpdateStatusPageSectionResult
+func (c *ClientWithResponses) UpdateStatusPageSectionWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateStatusPageSectionResult, error) {
+	rsp, err := c.UpdateStatusPageSectionWithBody(ctx, org, statusPageUid, sectionUid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateStatusPageSectionResult(rsp)
+}
+
+func (c *ClientWithResponses) UpdateStatusPageSectionWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, body UpdateStatusPageSectionJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateStatusPageSectionResult, error) {
+	rsp, err := c.UpdateStatusPageSection(ctx, org, statusPageUid, sectionUid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateStatusPageSectionResult(rsp)
+}
+
+// ListStatusPageResourcesWithResponse request returning *ListStatusPageResourcesResult
+func (c *ClientWithResponses) ListStatusPageResourcesWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, reqEditors ...RequestEditorFn) (*ListStatusPageResourcesResult, error) {
+	rsp, err := c.ListStatusPageResources(ctx, org, statusPageUid, sectionUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListStatusPageResourcesResult(rsp)
+}
+
+// CreateStatusPageResourceWithBodyWithResponse request with arbitrary body returning *CreateStatusPageResourceResult
+func (c *ClientWithResponses) CreateStatusPageResourceWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateStatusPageResourceResult, error) {
+	rsp, err := c.CreateStatusPageResourceWithBody(ctx, org, statusPageUid, sectionUid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateStatusPageResourceResult(rsp)
+}
+
+func (c *ClientWithResponses) CreateStatusPageResourceWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, body CreateStatusPageResourceJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateStatusPageResourceResult, error) {
+	rsp, err := c.CreateStatusPageResource(ctx, org, statusPageUid, sectionUid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateStatusPageResourceResult(rsp)
+}
+
+// ReorderStatusPageResourcesWithBodyWithResponse request with arbitrary body returning *ReorderStatusPageResourcesResult
+func (c *ClientWithResponses) ReorderStatusPageResourcesWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReorderStatusPageResourcesResult, error) {
+	rsp, err := c.ReorderStatusPageResourcesWithBody(ctx, org, statusPageUid, sectionUid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReorderStatusPageResourcesResult(rsp)
+}
+
+func (c *ClientWithResponses) ReorderStatusPageResourcesWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, body ReorderStatusPageResourcesJSONRequestBody, reqEditors ...RequestEditorFn) (*ReorderStatusPageResourcesResult, error) {
+	rsp, err := c.ReorderStatusPageResources(ctx, org, statusPageUid, sectionUid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReorderStatusPageResourcesResult(rsp)
+}
+
+// DeleteStatusPageResourceWithResponse request returning *DeleteStatusPageResourceResult
+func (c *ClientWithResponses) DeleteStatusPageResourceWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, resourceUid ResourceUidPath, reqEditors ...RequestEditorFn) (*DeleteStatusPageResourceResult, error) {
+	rsp, err := c.DeleteStatusPageResource(ctx, org, statusPageUid, sectionUid, resourceUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteStatusPageResourceResult(rsp)
+}
+
+// UpdateStatusPageResourceWithBodyWithResponse request with arbitrary body returning *UpdateStatusPageResourceResult
+func (c *ClientWithResponses) UpdateStatusPageResourceWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, resourceUid ResourceUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateStatusPageResourceResult, error) {
+	rsp, err := c.UpdateStatusPageResourceWithBody(ctx, org, statusPageUid, sectionUid, resourceUid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateStatusPageResourceResult(rsp)
+}
+
+func (c *ClientWithResponses) UpdateStatusPageResourceWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, sectionUid SectionUidPath, resourceUid ResourceUidPath, body UpdateStatusPageResourceJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateStatusPageResourceResult, error) {
+	rsp, err := c.UpdateStatusPageResource(ctx, org, statusPageUid, sectionUid, resourceUid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateStatusPageResourceResult(rsp)
+}
+
+// ListStatusPageSubscribersWithResponse request returning *ListStatusPageSubscribersResult
+func (c *ClientWithResponses) ListStatusPageSubscribersWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*ListStatusPageSubscribersResult, error) {
+	rsp, err := c.ListStatusPageSubscribers(ctx, org, statusPageUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListStatusPageSubscribersResult(rsp)
+}
+
+// RemoveStatusPageSubscriberWithResponse request returning *RemoveStatusPageSubscriberResult
+func (c *ClientWithResponses) RemoveStatusPageSubscriberWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid SubscriberUidPath, reqEditors ...RequestEditorFn) (*RemoveStatusPageSubscriberResult, error) {
+	rsp, err := c.RemoveStatusPageSubscriber(ctx, org, statusPageUid, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveStatusPageSubscriberResult(rsp)
+}
+
+// ListStatusUpdatesWithResponse request returning *ListStatusUpdatesResult
+func (c *ClientWithResponses) ListStatusUpdatesWithResponse(ctx context.Context, org OrgPath, params *ListStatusUpdatesParams, reqEditors ...RequestEditorFn) (*ListStatusUpdatesResult, error) {
+	rsp, err := c.ListStatusUpdates(ctx, org, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListStatusUpdatesResult(rsp)
+}
+
+// CreateStatusUpdateWithBodyWithResponse request with arbitrary body returning *CreateStatusUpdateResult
+func (c *ClientWithResponses) CreateStatusUpdateWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateStatusUpdateResult, error) {
+	rsp, err := c.CreateStatusUpdateWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateStatusUpdateResult(rsp)
+}
+
+func (c *ClientWithResponses) CreateStatusUpdateWithResponse(ctx context.Context, org OrgPath, body CreateStatusUpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateStatusUpdateResult, error) {
+	rsp, err := c.CreateStatusUpdate(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateStatusUpdateResult(rsp)
+}
+
+// DeleteStatusUpdateWithResponse request returning *DeleteStatusUpdateResult
+func (c *ClientWithResponses) DeleteStatusUpdateWithResponse(ctx context.Context, org OrgPath, uid StatusUpdateUidPath, reqEditors ...RequestEditorFn) (*DeleteStatusUpdateResult, error) {
+	rsp, err := c.DeleteStatusUpdate(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteStatusUpdateResult(rsp)
+}
+
+// GetStatusUpdateWithResponse request returning *GetStatusUpdateResult
+func (c *ClientWithResponses) GetStatusUpdateWithResponse(ctx context.Context, org OrgPath, uid StatusUpdateUidPath, reqEditors ...RequestEditorFn) (*GetStatusUpdateResult, error) {
+	rsp, err := c.GetStatusUpdate(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetStatusUpdateResult(rsp)
+}
+
+// UpdateStatusUpdateWithBodyWithResponse request with arbitrary body returning *UpdateStatusUpdateResult
+func (c *ClientWithResponses) UpdateStatusUpdateWithBodyWithResponse(ctx context.Context, org OrgPath, uid StatusUpdateUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateStatusUpdateResult, error) {
+	rsp, err := c.UpdateStatusUpdateWithBody(ctx, org, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateStatusUpdateResult(rsp)
+}
+
+func (c *ClientWithResponses) UpdateStatusUpdateWithResponse(ctx context.Context, org OrgPath, uid StatusUpdateUidPath, body UpdateStatusUpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateStatusUpdateResult, error) {
+	rsp, err := c.UpdateStatusUpdate(ctx, org, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateStatusUpdateResult(rsp)
 }
 
 // ListOrgTokensWithResponse request returning *ListOrgTokensResult
@@ -12344,6 +15283,954 @@ func ParseListOrgResultsResult(rsp *http.Response) (*ListOrgResultsResult, error
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListStatusPagesResult parses an HTTP response from a ListStatusPagesWithResponse call
+func ParseListStatusPagesResult(rsp *http.Response) (*ListStatusPagesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListStatusPagesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest StatusPageListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateStatusPageResult parses an HTTP response from a CreateStatusPageWithResponse call
+func ParseCreateStatusPageResult(rsp *http.Response) (*CreateStatusPageResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateStatusPageResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest StatusPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteStatusPageResult parses an HTTP response from a DeleteStatusPageWithResponse call
+func ParseDeleteStatusPageResult(rsp *http.Response) (*DeleteStatusPageResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteStatusPageResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetStatusPageResult parses an HTTP response from a GetStatusPageWithResponse call
+func ParseGetStatusPageResult(rsp *http.Response) (*GetStatusPageResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetStatusPageResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest StatusPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateStatusPageResult parses an HTTP response from a UpdateStatusPageWithResponse call
+func ParseUpdateStatusPageResult(rsp *http.Response) (*UpdateStatusPageResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateStatusPageResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest StatusPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListStatusPageSectionsResult parses an HTTP response from a ListStatusPageSectionsWithResponse call
+func ParseListStatusPageSectionsResult(rsp *http.Response) (*ListStatusPageSectionsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListStatusPageSectionsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest StatusPageSectionListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateStatusPageSectionResult parses an HTTP response from a CreateStatusPageSectionWithResponse call
+func ParseCreateStatusPageSectionResult(rsp *http.Response) (*CreateStatusPageSectionResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateStatusPageSectionResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest StatusPageSection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReorderStatusPageSectionsResult parses an HTTP response from a ReorderStatusPageSectionsWithResponse call
+func ParseReorderStatusPageSectionsResult(rsp *http.Response) (*ReorderStatusPageSectionsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReorderStatusPageSectionsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteStatusPageSectionResult parses an HTTP response from a DeleteStatusPageSectionWithResponse call
+func ParseDeleteStatusPageSectionResult(rsp *http.Response) (*DeleteStatusPageSectionResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteStatusPageSectionResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetStatusPageSectionResult parses an HTTP response from a GetStatusPageSectionWithResponse call
+func ParseGetStatusPageSectionResult(rsp *http.Response) (*GetStatusPageSectionResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetStatusPageSectionResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest StatusPageSection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateStatusPageSectionResult parses an HTTP response from a UpdateStatusPageSectionWithResponse call
+func ParseUpdateStatusPageSectionResult(rsp *http.Response) (*UpdateStatusPageSectionResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateStatusPageSectionResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest StatusPageSection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListStatusPageResourcesResult parses an HTTP response from a ListStatusPageResourcesWithResponse call
+func ParseListStatusPageResourcesResult(rsp *http.Response) (*ListStatusPageResourcesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListStatusPageResourcesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest StatusPageResourceListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateStatusPageResourceResult parses an HTTP response from a CreateStatusPageResourceWithResponse call
+func ParseCreateStatusPageResourceResult(rsp *http.Response) (*CreateStatusPageResourceResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateStatusPageResourceResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest StatusPageResource
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReorderStatusPageResourcesResult parses an HTTP response from a ReorderStatusPageResourcesWithResponse call
+func ParseReorderStatusPageResourcesResult(rsp *http.Response) (*ReorderStatusPageResourcesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReorderStatusPageResourcesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteStatusPageResourceResult parses an HTTP response from a DeleteStatusPageResourceWithResponse call
+func ParseDeleteStatusPageResourceResult(rsp *http.Response) (*DeleteStatusPageResourceResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteStatusPageResourceResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateStatusPageResourceResult parses an HTTP response from a UpdateStatusPageResourceWithResponse call
+func ParseUpdateStatusPageResourceResult(rsp *http.Response) (*UpdateStatusPageResourceResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateStatusPageResourceResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest StatusPageResource
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListStatusPageSubscribersResult parses an HTTP response from a ListStatusPageSubscribersWithResponse call
+func ParseListStatusPageSubscribersResult(rsp *http.Response) (*ListStatusPageSubscribersResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListStatusPageSubscribersResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest StatusPageSubscriberListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRemoveStatusPageSubscriberResult parses an HTTP response from a RemoveStatusPageSubscriberWithResponse call
+func ParseRemoveStatusPageSubscriberResult(rsp *http.Response) (*RemoveStatusPageSubscriberResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveStatusPageSubscriberResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListStatusUpdatesResult parses an HTTP response from a ListStatusUpdatesWithResponse call
+func ParseListStatusUpdatesResult(rsp *http.Response) (*ListStatusUpdatesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListStatusUpdatesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest StatusUpdateListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateStatusUpdateResult parses an HTTP response from a CreateStatusUpdateWithResponse call
+func ParseCreateStatusUpdateResult(rsp *http.Response) (*CreateStatusUpdateResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateStatusUpdateResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest StatusUpdate
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteStatusUpdateResult parses an HTTP response from a DeleteStatusUpdateWithResponse call
+func ParseDeleteStatusUpdateResult(rsp *http.Response) (*DeleteStatusUpdateResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteStatusUpdateResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetStatusUpdateResult parses an HTTP response from a GetStatusUpdateWithResponse call
+func ParseGetStatusUpdateResult(rsp *http.Response) (*GetStatusUpdateResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetStatusUpdateResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest StatusUpdate
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateStatusUpdateResult parses an HTTP response from a UpdateStatusUpdateWithResponse call
+func ParseUpdateStatusUpdateResult(rsp *http.Response) (*UpdateStatusUpdateResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateStatusUpdateResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest StatusUpdate
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized

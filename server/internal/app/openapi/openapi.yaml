@@ -2176,6 +2176,588 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # Status page APIs
+  /api/v1/orgs/{org}/status-pages:
+    get:
+      tags: [StatusPages]
+      summary: List status pages
+      operationId: listStatusPages
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of status pages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [StatusPages]
+      summary: Create a status page
+      operationId: createStatusPage
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStatusPageRequest"
+      responses:
+        "201":
+          description: Status page created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}:
+    get:
+      tags: [StatusPages]
+      summary: Get a status page
+      operationId: getStatusPage
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - name: with
+          in: query
+          description: Comma-separated related data to include (e.g. "sections")
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Status page details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [StatusPages]
+      summary: Update a status page
+      operationId: updateStatusPage
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStatusPageRequest"
+      responses:
+        "200":
+          description: Status page updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [StatusPages]
+      summary: Delete a status page
+      operationId: deleteStatusPage
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      responses:
+        "204":
+          description: Status page deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections:
+    get:
+      tags: [StatusPages]
+      summary: List sections of a status page
+      operationId: listStatusPageSections
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      responses:
+        "200":
+          description: List of sections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageSectionListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [StatusPages]
+      summary: Create a section
+      operationId: createStatusPageSection
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStatusPageSectionRequest"
+      responses:
+        "201":
+          description: Section created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageSection"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections/reorder:
+    post:
+      tags: [StatusPages]
+      summary: Reorder the sections of a status page
+      operationId: reorderStatusPageSections
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReorderUidsRequest"
+      responses:
+        "204":
+          description: Sections reordered
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections/{sectionUid}:
+    get:
+      tags: [StatusPages]
+      summary: Get a section
+      operationId: getStatusPageSection
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/SectionUidPath"
+      responses:
+        "200":
+          description: Section details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageSection"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [StatusPages]
+      summary: Update a section
+      operationId: updateStatusPageSection
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/SectionUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStatusPageSectionRequest"
+      responses:
+        "200":
+          description: Section updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageSection"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [StatusPages]
+      summary: Delete a section
+      operationId: deleteStatusPageSection
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/SectionUidPath"
+      responses:
+        "204":
+          description: Section deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections/{sectionUid}/resources:
+    get:
+      tags: [StatusPages]
+      summary: List resources of a section
+      operationId: listStatusPageResources
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/SectionUidPath"
+      responses:
+        "200":
+          description: List of resources
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageResourceListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [StatusPages]
+      summary: Add a check as a resource to a section
+      operationId: createStatusPageResource
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/SectionUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStatusPageResourceRequest"
+      responses:
+        "201":
+          description: Resource created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageResource"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections/{sectionUid}/resources/reorder:
+    post:
+      tags: [StatusPages]
+      summary: Reorder the resources of a section
+      operationId: reorderStatusPageResources
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/SectionUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReorderUidsRequest"
+      responses:
+        "204":
+          description: Resources reordered
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections/{sectionUid}/resources/{resourceUid}:
+    patch:
+      tags: [StatusPages]
+      summary: Update a resource
+      operationId: updateStatusPageResource
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/SectionUidPath"
+        - $ref: "#/components/parameters/ResourceUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStatusPageResourceRequest"
+      responses:
+        "200":
+          description: Resource updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageResource"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [StatusPages]
+      summary: Remove a resource from a section
+      operationId: deleteStatusPageResource
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/SectionUidPath"
+        - $ref: "#/components/parameters/ResourceUidPath"
+      responses:
+        "204":
+          description: Resource removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers:
+    get:
+      tags: [StatusPages]
+      summary: List subscribers of a status page
+      operationId: listStatusPageSubscribers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      responses:
+        "200":
+          description: List of subscribers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageSubscriberListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers/{uid}:
+    delete:
+      tags: [StatusPages]
+      summary: Remove a subscriber from a status page
+      operationId: removeStatusPageSubscriber
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/SubscriberUidPath"
+      responses:
+        "204":
+          description: Subscriber removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Status update APIs
+  /api/v1/orgs/{org}/status-updates:
+    get:
+      tags: [StatusUpdates]
+      summary: List status updates
+      operationId: listStatusUpdates
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: statusPage
+          in: query
+          description: Filter by status page UID
+          schema:
+            type: string
+        - name: section
+          in: query
+          description: Filter by section UID
+          schema:
+            type: string
+        - name: check
+          in: query
+          description: Filter by check UID
+          schema:
+            type: string
+        - name: incident
+          in: query
+          description: Filter by incident UID
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum results (1-200)
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          description: Result offset
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of status updates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusUpdateListResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [StatusUpdates]
+      summary: Create a status update
+      operationId: createStatusUpdate
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStatusUpdateRequest"
+      responses:
+        "201":
+          description: Status update created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusUpdate"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-updates/{uid}:
+    get:
+      tags: [StatusUpdates]
+      summary: Get a status update
+      operationId: getStatusUpdate
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusUpdateUidPath"
+      responses:
+        "200":
+          description: Status update details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusUpdate"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [StatusUpdates]
+      summary: Update a status update
+      operationId: updateStatusUpdate
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusUpdateUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStatusUpdateRequest"
+      responses:
+        "200":
+          description: Status update updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusUpdate"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [StatusUpdates]
+      summary: Delete a status update
+      operationId: deleteStatusUpdate
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusUpdateUidPath"
+      responses:
+        "204":
+          description: Status update deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2253,6 +2835,49 @@ components:
         type: string
         format: uuid
       description: Discovery scan job UID
+
+    StatusPageUidPath:
+      name: statusPageUid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Status page UID or slug
+
+    SectionUidPath:
+      name: sectionUid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Section UID or slug
+
+    ResourceUidPath:
+      name: resourceUid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Resource UID
+
+    SubscriberUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Subscriber UID
+
+    StatusUpdateUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Status update UID
 
   responses:
     NotFound:
@@ -3587,6 +4212,402 @@ components:
           items:
             type: string
             format: uuid
+
+    # Status page schemas
+    StatusPage:
+      type: object
+      required:
+        - uid
+        - name
+        - slug
+        - visibility
+        - isDefault
+        - enabled
+        - showAvailability
+        - showResponseTime
+        - historyDays
+        - historyPeriod
+      properties:
+        uid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        visibility:
+          type: string
+          description: Visibility of the page (e.g. "public", "private")
+        isDefault:
+          type: boolean
+        enabled:
+          type: boolean
+        showAvailability:
+          type: boolean
+        showResponseTime:
+          type: boolean
+        historyDays:
+          type: integer
+        historyPeriod:
+          type: string
+          description: History window (24h, 7d, 30d, 90d)
+        language:
+          type: string
+        sections:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusPageSection"
+        recentUpdates:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusUpdatePublic"
+        createdAt:
+          type: string
+          format: date-time
+
+    StatusPageListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusPage"
+
+    CreateStatusPageRequest:
+      type: object
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        visibility:
+          type: string
+        isDefault:
+          type: boolean
+        showAvailability:
+          type: boolean
+        showResponseTime:
+          type: boolean
+        historyDays:
+          type: integer
+        historyPeriod:
+          type: string
+        language:
+          type: string
+
+    UpdateStatusPageRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        visibility:
+          type: string
+        isDefault:
+          type: boolean
+        enabled:
+          type: boolean
+        showAvailability:
+          type: boolean
+        showResponseTime:
+          type: boolean
+        historyDays:
+          type: integer
+        historyPeriod:
+          type: string
+        language:
+          type: string
+
+    StatusPageSection:
+      type: object
+      required: [uid, name, slug, position]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        position:
+          type: integer
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusPageResource"
+        createdAt:
+          type: string
+          format: date-time
+
+    StatusPageSectionListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusPageSection"
+
+    CreateStatusPageSectionRequest:
+      type: object
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        position:
+          type: integer
+
+    UpdateStatusPageSectionRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        position:
+          type: integer
+
+    StatusPageResource:
+      type: object
+      required: [uid, checkUid, position]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        checkUid:
+          type: string
+          format: uuid
+        publicName:
+          type: string
+        explanation:
+          type: string
+        position:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    StatusPageResourceListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusPageResource"
+
+    CreateStatusPageResourceRequest:
+      type: object
+      required: [checkUid]
+      properties:
+        checkUid:
+          type: string
+          description: Check UID or slug to attach as a resource
+        publicName:
+          type: string
+        explanation:
+          type: string
+        position:
+          type: integer
+
+    UpdateStatusPageResourceRequest:
+      type: object
+      properties:
+        publicName:
+          type: string
+        explanation:
+          type: string
+        position:
+          type: integer
+
+    ReorderUidsRequest:
+      type: object
+      required: [uids]
+      properties:
+        uids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    StatusPageSubscriber:
+      type: object
+      required: [uid, scope, confirmed, createdAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        email:
+          type: string
+        scope:
+          type: string
+          description: Subscription scope ("page" or "incident")
+        incidentUid:
+          type: string
+          format: uuid
+        confirmed:
+          type: boolean
+        createdAt:
+          type: string
+
+    StatusPageSubscriberListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusPageSubscriber"
+        meta:
+          type: object
+          properties:
+            count:
+              type: integer
+
+    # Status update schemas
+    StatusUpdate:
+      type: object
+      required:
+        - uid
+        - statusPageUid
+        - title
+        - bodyMarkdown
+        - kind
+        - publishedAt
+        - authorUid
+        - createdAt
+        - updatedAt
+      properties:
+        uid:
+          type: string
+          format: uuid
+        statusPageUid:
+          type: string
+          format: uuid
+        sectionUid:
+          type: string
+          format: uuid
+        checkUid:
+          type: string
+          format: uuid
+        incidentUid:
+          type: string
+          format: uuid
+        title:
+          type: string
+        bodyMarkdown:
+          type: string
+        linkUrl:
+          type: string
+        kind:
+          type: string
+          description: "One of: investigating, identified, monitoring, resolved, maintenance, info"
+        publishedAt:
+          type: string
+          format: date-time
+        authorUid:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    StatusUpdatePublic:
+      type: object
+      required: [uid, title, bodyMarkdown, kind, publishedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        sectionUid:
+          type: string
+          format: uuid
+        checkUid:
+          type: string
+          format: uuid
+        incidentUid:
+          type: string
+          format: uuid
+        title:
+          type: string
+        bodyMarkdown:
+          type: string
+        linkUrl:
+          type: string
+        kind:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+
+    StatusUpdateListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusUpdate"
+
+    CreateStatusUpdateRequest:
+      type: object
+      required: [statusPageUid, title, bodyMarkdown, kind]
+      properties:
+        statusPageUid:
+          type: string
+          format: uuid
+        sectionUid:
+          type: string
+          format: uuid
+        checkUid:
+          type: string
+          format: uuid
+        incidentUid:
+          type: string
+          format: uuid
+        title:
+          type: string
+        bodyMarkdown:
+          type: string
+        linkUrl:
+          type: string
+        kind:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+
+    UpdateStatusUpdateRequest:
+      type: object
+      properties:
+        sectionUid:
+          type: string
+          format: uuid
+        checkUid:
+          type: string
+          format: uuid
+        incidentUid:
+          type: string
+          format: uuid
+        title:
+          type: string
+        bodyMarkdown:
+          type: string
+        linkUrl:
+          type: string
+        kind:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
 
     # Job schemas
     JobListResponse:
