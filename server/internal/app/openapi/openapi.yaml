@@ -127,6 +127,49 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/mgmt/limits:
+    get:
+      tags: [Management]
+      summary: Rate-limit and concurrency introspection
+      description: >
+        Returns the server's rate-limit and concurrency configuration together
+        with the calling client's live counters (remaining tokens, in-flight
+        requests), the resolved caller IP and which bucket ("ip" or "token")
+        the caller's traffic is accounted against. Public, no authentication.
+      operationId: getLimits
+      responses:
+        "200":
+          description: Rate-limit and concurrency state for the caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LimitsResponse"
+
+  /api/mgmt/memory:
+    get:
+      tags: [Management]
+      summary: Runtime memory snapshot
+      description: >
+        Returns a JSON snapshot of runtime memory (heap / stack / goroutines /
+        GC), process RSS, suspect-subsystem cardinalities (DEK cache, rate-limit
+        entries, event listeners) and build facts (cgo, SQLite driver, Go
+        version). Super-admin only; the raw pprof surface stays on the
+        localhost-bound profiler server.
+      operationId: getMemory
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Memory snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemorySnapshotResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/v1/system/scheduling/lane-load:
     get:
       tags: [System]
@@ -150,6 +193,147 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LaneLoadResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  # System actions (Super Admin Only)
+  /api/v1/system/test-email:
+    post:
+      tags: [System]
+      summary: Send a test email
+      description: >
+        Sends a test email to the given recipient using the currently saved
+        SMTP parameters, and reports whether the send succeeded. Super-admin
+        only.
+      operationId: sendTestEmail
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TestEmailRequest"
+      responses:
+        "200":
+          description: Test email result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestEmailResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/email-inbox/config:
+    get:
+      tags: [System]
+      summary: Get the email-inbox (JMAP) configuration
+      description: >
+        Returns the saved JMAP inbox configuration with the password elided.
+        Super-admin only.
+      operationId: getEmailInboxConfig
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Email-inbox configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailInboxConfigResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/email-inbox/status:
+    get:
+      tags: [System]
+      summary: Get the email-inbox connection status
+      description: >
+        Reports whether the email inbox is enabled and connected, the mode, the
+        last sync time, the last error and the address domain. Super-admin only.
+      operationId: getEmailInboxStatus
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Email-inbox status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailInboxStatusResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/email-inbox/test:
+    post:
+      tags: [System]
+      summary: Test the email-inbox connection
+      description: >
+        Connects to the configured JMAP inbox and lists its resolved mailboxes.
+        Super-admin only.
+      operationId: testEmailInbox
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailInboxTestResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/email-inbox/sync:
+    post:
+      tags: [System]
+      summary: Trigger an email-inbox sync
+      description: >
+        Runs one immediate sync pass over the configured JMAP inbox.
+        Super-admin only.
+      operationId: syncEmailInbox
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailInboxSyncResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/activation:
+    get:
+      tags: [System]
+      summary: Organization activation funnel
+      description: >
+        Returns one row per organization with the timestamps for each activation
+        milestone (signup, first check, first result, first notification, first
+        incident). Super-admin only.
+      operationId: getActivationFunnel
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Activation funnel rows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivationFunnelResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -4926,6 +5110,143 @@ components:
         data:
           $ref: "#/components/schemas/CostDistribution"
 
+    LimitsRateLimit:
+      type: object
+      description: Rate-limit section of the limits response.
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+        requestsPerMinute:
+          type: integer
+        burst:
+          type: integer
+        callerRemaining:
+          type: number
+          format: double
+          description: >
+            Tokens remaining in the caller's bucket. Present only when rate
+            limiting is enabled.
+
+    LimitsConcurrency:
+      type: object
+      description: Concurrency section of the limits response.
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+        max:
+          type: integer
+        callerInFlight:
+          type: integer
+          description: >
+            In-flight requests for the caller. Present only when concurrency
+            limiting is enabled.
+
+    LimitsResponse:
+      type: object
+      required: [rateLimit, concurrency, callerIp, callerBucket]
+      properties:
+        rateLimit:
+          $ref: "#/components/schemas/LimitsRateLimit"
+        concurrency:
+          $ref: "#/components/schemas/LimitsConcurrency"
+        callerIp:
+          type: string
+          description: Client IP the limiter resolved for this request (respecting trusted proxies).
+        callerBucket:
+          type: string
+          description: Which bucket the caller's traffic is accounted against — "ip" or "token".
+
+    MemoryRuntime:
+      type: object
+      description: runtime.MemStats / goroutine slice of the memory snapshot.
+      properties:
+        heapAllocBytes:
+          type: integer
+          format: int64
+        heapInuseBytes:
+          type: integer
+          format: int64
+        heapObjects:
+          type: integer
+          format: int64
+        stackInuseBytes:
+          type: integer
+          format: int64
+        sysBytes:
+          type: integer
+          format: int64
+        numGoroutine:
+          type: integer
+        numGc:
+          type: integer
+          format: int64
+        gcPauseTotalNs:
+          type: integer
+          format: int64
+        nextGcBytes:
+          type: integer
+          format: int64
+        gcCpuFraction:
+          type: number
+          format: double
+        goMemLimitBytes:
+          type: integer
+          format: int64
+          description: Effective GOMEMLIMIT soft cap; 0 means unlimited.
+        goMaxProcs:
+          type: integer
+
+    MemoryProcess:
+      type: object
+      description: OS-level process memory.
+      properties:
+        rssBytes:
+          type: integer
+          format: int64
+
+    MemorySubsystems:
+      type: object
+      description: Cardinalities of the suspect subsystems.
+      properties:
+        dekCacheEntries:
+          type: integer
+        rateLimitEntries:
+          type: integer
+        eventListeners:
+          type: integer
+
+    MemoryBuild:
+      type: object
+      description: Build facts relevant to off-heap accounting.
+      properties:
+        cgoEnabled:
+          type: boolean
+        sqliteDriver:
+          type: string
+        goVersion:
+          type: string
+
+    MemorySnapshot:
+      type: object
+      properties:
+        runtime:
+          $ref: "#/components/schemas/MemoryRuntime"
+        process:
+          $ref: "#/components/schemas/MemoryProcess"
+        subsystems:
+          $ref: "#/components/schemas/MemorySubsystems"
+        build:
+          $ref: "#/components/schemas/MemoryBuild"
+
+    MemorySnapshotResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/MemorySnapshot"
+
     HealthResponse:
       type: object
       properties:
@@ -6808,6 +7129,126 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkerLaneLoad"
+
+    TestEmailRequest:
+      type: object
+      required: [recipient]
+      properties:
+        recipient:
+          type: string
+          description: Destination email address for the test message.
+
+    TestEmailResponse:
+      type: object
+      required: [sent, message]
+      properties:
+        sent:
+          type: boolean
+          description: Whether the test email was sent.
+        message:
+          type: string
+          description: Human-readable detail (why it failed, or a success note).
+
+    EmailInboxConfigResponse:
+      type: object
+      description: Saved JMAP inbox configuration, with the password elided.
+      properties:
+        enabled:
+          type: boolean
+        sessionUrl:
+          type: string
+        username:
+          type: string
+        addressDomain:
+          type: string
+        mailboxName:
+          type: string
+        processedMailboxName:
+          type: string
+        pollIntervalSeconds:
+          type: integer
+        processedRetentionDays:
+          type: integer
+        failedRetentionDays:
+          type: integer
+        rewriteBaseUrl:
+          type: string
+        passwordSet:
+          type: boolean
+
+    EmailInboxStatusResponse:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        connected:
+          type: boolean
+        mode:
+          type: string
+        lastSyncedAt:
+          type: string
+          format: date-time
+        lastError:
+          type: string
+        addressDomain:
+          type: string
+        accountId:
+          type: string
+
+    EmailInboxTestResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        mailboxes:
+          type: array
+          items:
+            type: string
+
+    EmailInboxSyncResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+
+    ActivationFunnelRow:
+      type: object
+      description: Per-org timestamps for each activation milestone.
+      required: [organizationUid, slug, name, orgCreatedAt]
+      properties:
+        organizationUid:
+          type: string
+        slug:
+          type: string
+        name:
+          type: string
+        signupAt:
+          type: string
+          format: date-time
+        firstCheckAt:
+          type: string
+          format: date-time
+        firstResultAt:
+          type: string
+          format: date-time
+        firstNotifierAt:
+          type: string
+          format: date-time
+        firstIncidentAt:
+          type: string
+          format: date-time
+        orgCreatedAt:
+          type: string
+          format: date-time
+
+    ActivationFunnelResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivationFunnelRow"
 
     DiscoveryType:
       type: object

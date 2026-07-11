@@ -348,6 +348,24 @@ const (
 	ListOrgMembershipRequestsParamsStatusRejected ListOrgMembershipRequestsParamsStatus = "rejected"
 )
 
+// ActivationFunnelResponse defines model for ActivationFunnelResponse.
+type ActivationFunnelResponse struct {
+	Data []ActivationFunnelRow `json:"data"`
+}
+
+// ActivationFunnelRow Per-org timestamps for each activation milestone.
+type ActivationFunnelRow struct {
+	FirstCheckAt    *time.Time `json:"firstCheckAt,omitempty"`
+	FirstIncidentAt *time.Time `json:"firstIncidentAt,omitempty"`
+	FirstNotifierAt *time.Time `json:"firstNotifierAt,omitempty"`
+	FirstResultAt   *time.Time `json:"firstResultAt,omitempty"`
+	Name            string     `json:"name"`
+	OrgCreatedAt    time.Time  `json:"orgCreatedAt"`
+	OrganizationUid string     `json:"organizationUid"`
+	SignupAt        *time.Time `json:"signupAt,omitempty"`
+	Slug            string     `json:"slug"`
+}
+
 // AddMemberRequest defines model for AddMemberRequest.
 type AddMemberRequest struct {
 	Email openapi_types.Email  `json:"email"`
@@ -1089,6 +1107,43 @@ type DiscoveryType struct {
 	Type *string `json:"type,omitempty"`
 }
 
+// EmailInboxConfigResponse Saved JMAP inbox configuration, with the password elided.
+type EmailInboxConfigResponse struct {
+	AddressDomain          *string `json:"addressDomain,omitempty"`
+	Enabled                *bool   `json:"enabled,omitempty"`
+	FailedRetentionDays    *int    `json:"failedRetentionDays,omitempty"`
+	MailboxName            *string `json:"mailboxName,omitempty"`
+	PasswordSet            *bool   `json:"passwordSet,omitempty"`
+	PollIntervalSeconds    *int    `json:"pollIntervalSeconds,omitempty"`
+	ProcessedMailboxName   *string `json:"processedMailboxName,omitempty"`
+	ProcessedRetentionDays *int    `json:"processedRetentionDays,omitempty"`
+	RewriteBaseUrl         *string `json:"rewriteBaseUrl,omitempty"`
+	SessionUrl             *string `json:"sessionUrl,omitempty"`
+	Username               *string `json:"username,omitempty"`
+}
+
+// EmailInboxStatusResponse defines model for EmailInboxStatusResponse.
+type EmailInboxStatusResponse struct {
+	AccountId     *string    `json:"accountId,omitempty"`
+	AddressDomain *string    `json:"addressDomain,omitempty"`
+	Connected     *bool      `json:"connected,omitempty"`
+	Enabled       *bool      `json:"enabled,omitempty"`
+	LastError     *string    `json:"lastError,omitempty"`
+	LastSyncedAt  *time.Time `json:"lastSyncedAt,omitempty"`
+	Mode          *string    `json:"mode,omitempty"`
+}
+
+// EmailInboxSyncResponse defines model for EmailInboxSyncResponse.
+type EmailInboxSyncResponse struct {
+	Ok *bool `json:"ok,omitempty"`
+}
+
+// EmailInboxTestResponse defines model for EmailInboxTestResponse.
+type EmailInboxTestResponse struct {
+	Mailboxes *[]string `json:"mailboxes,omitempty"`
+	Ok        *bool     `json:"ok,omitempty"`
+}
+
 // EmailSuppression defines model for EmailSuppression.
 type EmailSuppression struct {
 	CheckName *string            `json:"checkName,omitempty"`
@@ -1527,6 +1582,39 @@ type LastResultListItem struct {
 // LastResultListItemStatus Result status
 type LastResultListItemStatus string
 
+// LimitsConcurrency Concurrency section of the limits response.
+type LimitsConcurrency struct {
+	// CallerInFlight In-flight requests for the caller. Present only when concurrency limiting is enabled.
+	CallerInFlight *int `json:"callerInFlight,omitempty"`
+	Enabled        bool `json:"enabled"`
+	Max            *int `json:"max,omitempty"`
+}
+
+// LimitsRateLimit Rate-limit section of the limits response.
+type LimitsRateLimit struct {
+	Burst *int `json:"burst,omitempty"`
+
+	// CallerRemaining Tokens remaining in the caller's bucket. Present only when rate limiting is enabled.
+	CallerRemaining   *float64 `json:"callerRemaining,omitempty"`
+	Enabled           bool     `json:"enabled"`
+	RequestsPerMinute *int     `json:"requestsPerMinute,omitempty"`
+}
+
+// LimitsResponse defines model for LimitsResponse.
+type LimitsResponse struct {
+	// CallerBucket Which bucket the caller's traffic is accounted against — "ip" or "token".
+	CallerBucket string `json:"callerBucket"`
+
+	// CallerIp Client IP the limiter resolved for this request (respecting trusted proxies).
+	CallerIp string `json:"callerIp"`
+
+	// Concurrency Concurrency section of the limits response.
+	Concurrency LimitsConcurrency `json:"concurrency"`
+
+	// RateLimit Rate-limit section of the limits response.
+	RateLimit LimitsRateLimit `json:"rateLimit"`
+}
+
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
 	Email openapi_types.Email `json:"email"`
@@ -1681,6 +1769,63 @@ type MembershipRequestUser struct {
 	Name      *string             `json:"name,omitempty"`
 	Role      *string             `json:"role,omitempty"`
 	Uid       openapi_types.UUID  `json:"uid"`
+}
+
+// MemoryBuild Build facts relevant to off-heap accounting.
+type MemoryBuild struct {
+	CgoEnabled   *bool   `json:"cgoEnabled,omitempty"`
+	GoVersion    *string `json:"goVersion,omitempty"`
+	SqliteDriver *string `json:"sqliteDriver,omitempty"`
+}
+
+// MemoryProcess OS-level process memory.
+type MemoryProcess struct {
+	RssBytes *int64 `json:"rssBytes,omitempty"`
+}
+
+// MemoryRuntime runtime.MemStats / goroutine slice of the memory snapshot.
+type MemoryRuntime struct {
+	GcCpuFraction  *float64 `json:"gcCpuFraction,omitempty"`
+	GcPauseTotalNs *int64   `json:"gcPauseTotalNs,omitempty"`
+	GoMaxProcs     *int     `json:"goMaxProcs,omitempty"`
+
+	// GoMemLimitBytes Effective GOMEMLIMIT soft cap; 0 means unlimited.
+	GoMemLimitBytes *int64 `json:"goMemLimitBytes,omitempty"`
+	HeapAllocBytes  *int64 `json:"heapAllocBytes,omitempty"`
+	HeapInuseBytes  *int64 `json:"heapInuseBytes,omitempty"`
+	HeapObjects     *int64 `json:"heapObjects,omitempty"`
+	NextGcBytes     *int64 `json:"nextGcBytes,omitempty"`
+	NumGc           *int64 `json:"numGc,omitempty"`
+	NumGoroutine    *int   `json:"numGoroutine,omitempty"`
+	StackInuseBytes *int64 `json:"stackInuseBytes,omitempty"`
+	SysBytes        *int64 `json:"sysBytes,omitempty"`
+}
+
+// MemorySnapshot defines model for MemorySnapshot.
+type MemorySnapshot struct {
+	// Build Build facts relevant to off-heap accounting.
+	Build *MemoryBuild `json:"build,omitempty"`
+
+	// Process OS-level process memory.
+	Process *MemoryProcess `json:"process,omitempty"`
+
+	// Runtime runtime.MemStats / goroutine slice of the memory snapshot.
+	Runtime *MemoryRuntime `json:"runtime,omitempty"`
+
+	// Subsystems Cardinalities of the suspect subsystems.
+	Subsystems *MemorySubsystems `json:"subsystems,omitempty"`
+}
+
+// MemorySnapshotResponse defines model for MemorySnapshotResponse.
+type MemorySnapshotResponse struct {
+	Data MemorySnapshot `json:"data"`
+}
+
+// MemorySubsystems Cardinalities of the suspect subsystems.
+type MemorySubsystems struct {
+	DekCacheEntries  *int `json:"dekCacheEntries,omitempty"`
+	EventListeners   *int `json:"eventListeners,omitempty"`
+	RateLimitEntries *int `json:"rateLimitEntries,omitempty"`
 }
 
 // OncallIcalFeedResponse defines model for OncallIcalFeedResponse.
@@ -2148,6 +2293,21 @@ type SystemParameter struct {
 // SystemParameterListResponse defines model for SystemParameterListResponse.
 type SystemParameterListResponse struct {
 	Data *[]SystemParameter `json:"data,omitempty"`
+}
+
+// TestEmailRequest defines model for TestEmailRequest.
+type TestEmailRequest struct {
+	// Recipient Destination email address for the test message.
+	Recipient string `json:"recipient"`
+}
+
+// TestEmailResponse defines model for TestEmailResponse.
+type TestEmailResponse struct {
+	// Message Human-readable detail (why it failed, or a success note).
+	Message string `json:"message"`
+
+	// Sent Whether the test email was sent.
+	Sent bool `json:"sent"`
 }
 
 // Token defines model for Token.
@@ -3005,6 +3165,9 @@ type CreateTokenJSONRequestBody = CreateTokenRequest
 // SetSystemParameterJSONRequestBody defines body for SetSystemParameter for application/json ContentType.
 type SetSystemParameterJSONRequestBody = SetSystemParameterRequest
 
+// SendTestEmailJSONRequestBody defines body for SendTestEmail for application/json ContentType.
+type SendTestEmailJSONRequestBody = TestEmailRequest
+
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
 
@@ -3080,6 +3243,12 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 type ClientInterface interface {
 	// GetHealth request
 	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetLimits request
+	GetLimits(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetMemory request
+	GetMemory(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetCostDistribution request
 	GetCostDistribution(ctx context.Context, params *GetCostDistributionParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3655,11 +3824,26 @@ type ClientInterface interface {
 
 	CreateToken(ctx context.Context, org OrgPath, body CreateTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetActivationFunnel request
+	GetActivationFunnel(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListSystemCheckJobs request
 	ListSystemCheckJobs(ctx context.Context, params *ListSystemCheckJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetSystemCheckJob request
 	GetSystemCheckJob(ctx context.Context, uid CheckJobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetEmailInboxConfig request
+	GetEmailInboxConfig(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetEmailInboxStatus request
+	GetEmailInboxStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SyncEmailInbox request
+	SyncEmailInbox(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestEmailInbox request
+	TestEmailInbox(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSystemJobs request
 	ListSystemJobs(ctx context.Context, params *ListSystemJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3689,10 +3873,39 @@ type ClientInterface interface {
 
 	// GetSchedulingLaneLoad request
 	GetSchedulingLaneLoad(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SendTestEmailWithBody request with any body
+	SendTestEmailWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SendTestEmail(ctx context.Context, body SendTestEmailJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetHealthRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetLimits(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetLimitsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetMemory(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetMemoryRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -6211,6 +6424,18 @@ func (c *Client) CreateToken(ctx context.Context, org OrgPath, body CreateTokenJ
 	return c.Client.Do(req)
 }
 
+func (c *Client) GetActivationFunnel(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetActivationFunnelRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListSystemCheckJobs(ctx context.Context, params *ListSystemCheckJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListSystemCheckJobsRequest(c.Server, params)
 	if err != nil {
@@ -6225,6 +6450,54 @@ func (c *Client) ListSystemCheckJobs(ctx context.Context, params *ListSystemChec
 
 func (c *Client) GetSystemCheckJob(ctx context.Context, uid CheckJobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetSystemCheckJobRequest(c.Server, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetEmailInboxConfig(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetEmailInboxConfigRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetEmailInboxStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetEmailInboxStatusRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SyncEmailInbox(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSyncEmailInboxRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestEmailInbox(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestEmailInboxRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -6355,6 +6628,30 @@ func (c *Client) GetSchedulingLaneLoad(ctx context.Context, reqEditors ...Reques
 	return c.Client.Do(req)
 }
 
+func (c *Client) SendTestEmailWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSendTestEmailRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SendTestEmail(ctx context.Context, body SendTestEmailJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSendTestEmailRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // NewGetHealthRequest generates requests for GetHealth
 func NewGetHealthRequest(server string) (*http.Request, error) {
 	var err error
@@ -6365,6 +6662,60 @@ func NewGetHealthRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/api/mgmt/health")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetLimitsRequest generates requests for GetLimits
+func NewGetLimitsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/mgmt/limits")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetMemoryRequest generates requests for GetMemory
+func NewGetMemoryRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/mgmt/memory")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -14358,6 +14709,33 @@ func NewCreateTokenRequestWithBody(server string, org OrgPath, contentType strin
 	return req, nil
 }
 
+// NewGetActivationFunnelRequest generates requests for GetActivationFunnel
+func NewGetActivationFunnelRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/activation")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListSystemCheckJobsRequest generates requests for ListSystemCheckJobs
 func NewListSystemCheckJobsRequest(server string, params *ListSystemCheckJobsParams) (*http.Request, error) {
 	var err error
@@ -14450,6 +14828,114 @@ func NewGetSystemCheckJobRequest(server string, uid CheckJobUidPath) (*http.Requ
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetEmailInboxConfigRequest generates requests for GetEmailInboxConfig
+func NewGetEmailInboxConfigRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/email-inbox/config")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetEmailInboxStatusRequest generates requests for GetEmailInboxStatus
+func NewGetEmailInboxStatusRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/email-inbox/status")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSyncEmailInboxRequest generates requests for SyncEmailInbox
+func NewSyncEmailInboxRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/email-inbox/sync")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewTestEmailInboxRequest generates requests for TestEmailInbox
+func NewTestEmailInboxRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/email-inbox/test")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -14818,6 +15304,46 @@ func NewGetSchedulingLaneLoadRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewSendTestEmailRequest calls the generic SendTestEmail builder with application/json body
+func NewSendTestEmailRequest(server string, body SendTestEmailJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSendTestEmailRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewSendTestEmailRequestWithBody generates requests for SendTestEmail with any type of body
+func NewSendTestEmailRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/test-email")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -14863,6 +15389,12 @@ func WithBaseURL(baseURL string) ClientOption {
 type ClientWithResponsesInterface interface {
 	// GetHealthWithResponse request
 	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResult, error)
+
+	// GetLimitsWithResponse request
+	GetLimitsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetLimitsResult, error)
+
+	// GetMemoryWithResponse request
+	GetMemoryWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMemoryResult, error)
 
 	// GetCostDistributionWithResponse request
 	GetCostDistributionWithResponse(ctx context.Context, params *GetCostDistributionParams, reqEditors ...RequestEditorFn) (*GetCostDistributionResult, error)
@@ -15438,11 +15970,26 @@ type ClientWithResponsesInterface interface {
 
 	CreateTokenWithResponse(ctx context.Context, org OrgPath, body CreateTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTokenResult, error)
 
+	// GetActivationFunnelWithResponse request
+	GetActivationFunnelWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetActivationFunnelResult, error)
+
 	// ListSystemCheckJobsWithResponse request
 	ListSystemCheckJobsWithResponse(ctx context.Context, params *ListSystemCheckJobsParams, reqEditors ...RequestEditorFn) (*ListSystemCheckJobsResult, error)
 
 	// GetSystemCheckJobWithResponse request
 	GetSystemCheckJobWithResponse(ctx context.Context, uid CheckJobUidPath, reqEditors ...RequestEditorFn) (*GetSystemCheckJobResult, error)
+
+	// GetEmailInboxConfigWithResponse request
+	GetEmailInboxConfigWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetEmailInboxConfigResult, error)
+
+	// GetEmailInboxStatusWithResponse request
+	GetEmailInboxStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetEmailInboxStatusResult, error)
+
+	// SyncEmailInboxWithResponse request
+	SyncEmailInboxWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*SyncEmailInboxResult, error)
+
+	// TestEmailInboxWithResponse request
+	TestEmailInboxWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*TestEmailInboxResult, error)
 
 	// ListSystemJobsWithResponse request
 	ListSystemJobsWithResponse(ctx context.Context, params *ListSystemJobsParams, reqEditors ...RequestEditorFn) (*ListSystemJobsResult, error)
@@ -15472,6 +16019,11 @@ type ClientWithResponsesInterface interface {
 
 	// GetSchedulingLaneLoadWithResponse request
 	GetSchedulingLaneLoadWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetSchedulingLaneLoadResult, error)
+
+	// SendTestEmailWithBodyWithResponse request with any body
+	SendTestEmailWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SendTestEmailResult, error)
+
+	SendTestEmailWithResponse(ctx context.Context, body SendTestEmailJSONRequestBody, reqEditors ...RequestEditorFn) (*SendTestEmailResult, error)
 }
 
 type GetHealthResult struct {
@@ -15490,6 +16042,52 @@ func (r GetHealthResult) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetHealthResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetLimitsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *LimitsResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r GetLimitsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetLimitsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetMemoryResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MemorySnapshotResponse
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r GetMemoryResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetMemoryResult) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -19253,6 +19851,30 @@ func (r CreateTokenResult) StatusCode() int {
 	return 0
 }
 
+type GetActivationFunnelResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ActivationFunnelResponse
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r GetActivationFunnelResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetActivationFunnelResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListSystemCheckJobsResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -19294,6 +19916,102 @@ func (r GetSystemCheckJobResult) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetSystemCheckJobResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetEmailInboxConfigResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *EmailInboxConfigResponse
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r GetEmailInboxConfigResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetEmailInboxConfigResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetEmailInboxStatusResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *EmailInboxStatusResponse
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r GetEmailInboxStatusResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetEmailInboxStatusResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SyncEmailInboxResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *EmailInboxSyncResponse
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r SyncEmailInboxResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SyncEmailInboxResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type TestEmailInboxResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *EmailInboxTestResponse
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r TestEmailInboxResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestEmailInboxResult) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -19515,6 +20233,30 @@ func (r GetSchedulingLaneLoadResult) StatusCode() int {
 	return 0
 }
 
+type SendTestEmailResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *TestEmailResponse
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r SendTestEmailResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SendTestEmailResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 // GetHealthWithResponse request returning *GetHealthResult
 func (c *ClientWithResponses) GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResult, error) {
 	rsp, err := c.GetHealth(ctx, reqEditors...)
@@ -19522,6 +20264,24 @@ func (c *ClientWithResponses) GetHealthWithResponse(ctx context.Context, reqEdit
 		return nil, err
 	}
 	return ParseGetHealthResult(rsp)
+}
+
+// GetLimitsWithResponse request returning *GetLimitsResult
+func (c *ClientWithResponses) GetLimitsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetLimitsResult, error) {
+	rsp, err := c.GetLimits(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetLimitsResult(rsp)
+}
+
+// GetMemoryWithResponse request returning *GetMemoryResult
+func (c *ClientWithResponses) GetMemoryWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMemoryResult, error) {
+	rsp, err := c.GetMemory(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetMemoryResult(rsp)
 }
 
 // GetCostDistributionWithResponse request returning *GetCostDistributionResult
@@ -21352,6 +22112,15 @@ func (c *ClientWithResponses) CreateTokenWithResponse(ctx context.Context, org O
 	return ParseCreateTokenResult(rsp)
 }
 
+// GetActivationFunnelWithResponse request returning *GetActivationFunnelResult
+func (c *ClientWithResponses) GetActivationFunnelWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetActivationFunnelResult, error) {
+	rsp, err := c.GetActivationFunnel(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetActivationFunnelResult(rsp)
+}
+
 // ListSystemCheckJobsWithResponse request returning *ListSystemCheckJobsResult
 func (c *ClientWithResponses) ListSystemCheckJobsWithResponse(ctx context.Context, params *ListSystemCheckJobsParams, reqEditors ...RequestEditorFn) (*ListSystemCheckJobsResult, error) {
 	rsp, err := c.ListSystemCheckJobs(ctx, params, reqEditors...)
@@ -21368,6 +22137,42 @@ func (c *ClientWithResponses) GetSystemCheckJobWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseGetSystemCheckJobResult(rsp)
+}
+
+// GetEmailInboxConfigWithResponse request returning *GetEmailInboxConfigResult
+func (c *ClientWithResponses) GetEmailInboxConfigWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetEmailInboxConfigResult, error) {
+	rsp, err := c.GetEmailInboxConfig(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetEmailInboxConfigResult(rsp)
+}
+
+// GetEmailInboxStatusWithResponse request returning *GetEmailInboxStatusResult
+func (c *ClientWithResponses) GetEmailInboxStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetEmailInboxStatusResult, error) {
+	rsp, err := c.GetEmailInboxStatus(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetEmailInboxStatusResult(rsp)
+}
+
+// SyncEmailInboxWithResponse request returning *SyncEmailInboxResult
+func (c *ClientWithResponses) SyncEmailInboxWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*SyncEmailInboxResult, error) {
+	rsp, err := c.SyncEmailInbox(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSyncEmailInboxResult(rsp)
+}
+
+// TestEmailInboxWithResponse request returning *TestEmailInboxResult
+func (c *ClientWithResponses) TestEmailInboxWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*TestEmailInboxResult, error) {
+	rsp, err := c.TestEmailInbox(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestEmailInboxResult(rsp)
 }
 
 // ListSystemJobsWithResponse request returning *ListSystemJobsResult
@@ -21459,6 +22264,23 @@ func (c *ClientWithResponses) GetSchedulingLaneLoadWithResponse(ctx context.Cont
 	return ParseGetSchedulingLaneLoadResult(rsp)
 }
 
+// SendTestEmailWithBodyWithResponse request with arbitrary body returning *SendTestEmailResult
+func (c *ClientWithResponses) SendTestEmailWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SendTestEmailResult, error) {
+	rsp, err := c.SendTestEmailWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSendTestEmailResult(rsp)
+}
+
+func (c *ClientWithResponses) SendTestEmailWithResponse(ctx context.Context, body SendTestEmailJSONRequestBody, reqEditors ...RequestEditorFn) (*SendTestEmailResult, error) {
+	rsp, err := c.SendTestEmail(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSendTestEmailResult(rsp)
+}
+
 // ParseGetHealthResult parses an HTTP response from a GetHealthWithResponse call
 func ParseGetHealthResult(rsp *http.Response) (*GetHealthResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -21479,6 +22301,72 @@ func ParseGetHealthResult(rsp *http.Response) (*GetHealthResult, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetLimitsResult parses an HTTP response from a GetLimitsWithResponse call
+func ParseGetLimitsResult(rsp *http.Response) (*GetLimitsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetLimitsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LimitsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetMemoryResult parses an HTTP response from a GetMemoryWithResponse call
+func ParseGetMemoryResult(rsp *http.Response) (*GetMemoryResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetMemoryResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MemorySnapshotResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	}
 
@@ -27696,6 +28584,46 @@ func ParseCreateTokenResult(rsp *http.Response) (*CreateTokenResult, error) {
 	return response, nil
 }
 
+// ParseGetActivationFunnelResult parses an HTTP response from a GetActivationFunnelWithResponse call
+func ParseGetActivationFunnelResult(rsp *http.Response) (*GetActivationFunnelResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetActivationFunnelResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ActivationFunnelResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListSystemCheckJobsResult parses an HTTP response from a ListSystemCheckJobsWithResponse call
 func ParseListSystemCheckJobsResult(rsp *http.Response) (*ListSystemCheckJobsResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -27763,6 +28691,166 @@ func ParseGetSystemCheckJobResult(rsp *http.Response) (*GetSystemCheckJobResult,
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetEmailInboxConfigResult parses an HTTP response from a GetEmailInboxConfigWithResponse call
+func ParseGetEmailInboxConfigResult(rsp *http.Response) (*GetEmailInboxConfigResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetEmailInboxConfigResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EmailInboxConfigResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetEmailInboxStatusResult parses an HTTP response from a GetEmailInboxStatusWithResponse call
+func ParseGetEmailInboxStatusResult(rsp *http.Response) (*GetEmailInboxStatusResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetEmailInboxStatusResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EmailInboxStatusResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSyncEmailInboxResult parses an HTTP response from a SyncEmailInboxWithResponse call
+func ParseSyncEmailInboxResult(rsp *http.Response) (*SyncEmailInboxResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SyncEmailInboxResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EmailInboxSyncResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestEmailInboxResult parses an HTTP response from a TestEmailInboxWithResponse call
+func ParseTestEmailInboxResult(rsp *http.Response) (*TestEmailInboxResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestEmailInboxResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EmailInboxTestResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	}
 
@@ -28098,6 +29186,46 @@ func ParseGetSchedulingLaneLoadResult(rsp *http.Response) (*GetSchedulingLaneLoa
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest LaneLoadResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSendTestEmailResult parses an HTTP response from a SendTestEmailWithResponse call
+func ParseSendTestEmailResult(rsp *http.Response) (*SendTestEmailResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SendTestEmailResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TestEmailResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
