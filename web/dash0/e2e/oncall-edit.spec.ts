@@ -12,15 +12,13 @@ async function createSchedule(
   page: Page,
   token: string,
   name: string,
-  slug: string,
-) {
+): Promise<{ uid: string }> {
   const resp = await page.request.post(
     `${API_BASE}/api/v1/orgs/test/on-call-schedules`,
     {
       headers: { Authorization: `Bearer ${token}` },
       data: {
         name,
-        slug,
         timezone: "UTC",
         rotationType: "daily",
         handoffTime: "09:00",
@@ -32,9 +30,9 @@ async function createSchedule(
   return resp.json();
 }
 
-async function deleteSchedule(page: Page, token: string, slug: string) {
+async function deleteSchedule(page: Page, token: string, uid: string) {
   await page.request.delete(
-    `${API_BASE}/api/v1/orgs/test/on-call-schedules/${slug}`,
+    `${API_BASE}/api/v1/orgs/test/on-call-schedules/${uid}`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
 }
@@ -47,13 +45,12 @@ test.describe("On-call schedule edit page", () => {
     const token = await getAuthToken(page);
 
     const stamp = Date.now();
-    const slug = `e2e-edit-${stamp}`;
     const originalName = `E2E Edit ${stamp}`;
-    await createSchedule(page, token, originalName, slug);
+    const { uid } = await createSchedule(page, token, originalName);
 
     try {
-      // Visit the detail page; the Edit button is now a route link.
-      await page.goto(`orgs/test/on-call/${slug}`);
+      // Visit the detail page (addressed by uid); the Edit button is a route link.
+      await page.goto(`orgs/test/on-call/${uid}`);
       await page.waitForLoadState("networkidle");
       await expect(
         page.getByRole("heading", { name: originalName }),
@@ -61,7 +58,7 @@ test.describe("On-call schedule edit page", () => {
 
       await page.getByTestId("oncall-edit-button").click();
       await page.waitForURL(
-        (url) => url.pathname.endsWith(`/on-call/${slug}/edit`),
+        (url) => url.pathname.endsWith(`/on-call/${uid}/edit`),
       );
       await page.waitForLoadState("networkidle");
 
@@ -72,11 +69,11 @@ test.describe("On-call schedule edit page", () => {
       const updatedName = `${originalName} edited`;
       await nameInput.fill(updatedName);
 
-      // Submit; expect navigation back to /on-call/$slug (without /edit).
+      // Submit; expect navigation back to /on-call/$uid (without /edit).
       await page.getByRole("button", { name: /save|update/i }).first().click();
       await page.waitForURL(
         (url) =>
-          url.pathname.endsWith(`/on-call/${slug}`) &&
+          url.pathname.endsWith(`/on-call/${uid}`) &&
           !url.pathname.endsWith("/edit"),
       );
       await page.waitForLoadState("networkidle");
@@ -85,7 +82,7 @@ test.describe("On-call schedule edit page", () => {
         page.getByRole("heading", { name: updatedName }),
       ).toBeVisible();
     } finally {
-      await deleteSchedule(page, token, slug);
+      await deleteSchedule(page, token, uid);
     }
   });
 });

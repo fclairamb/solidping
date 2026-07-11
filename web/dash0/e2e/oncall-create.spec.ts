@@ -1,41 +1,38 @@
 import { test, expect } from "./fixtures";
 
-test.describe("On-call schedule create page — slug auto-fill", () => {
-  test("slug auto-fills from name while slug is unedited", async ({
+test.describe("On-call schedule create page", () => {
+  test("has no slug field — schedules are addressed by uid", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/on-call/new");
     await page.waitForLoadState("networkidle");
 
-    const nameInput = page.getByLabel(/^name/i).first();
-    const slugInput = page.getByLabel(/slug/i).first();
-
-    await nameInput.fill("Production team");
-    await expect(slugInput).toHaveValue("production-team");
-
-    await nameInput.fill("Production Team EU");
-    await expect(slugInput).toHaveValue("production-team-eu");
+    // The name field is present…
+    await expect(page.getByLabel(/^name/i).first()).toBeVisible();
+    // …but the removed slug field must not be.
+    await expect(page.getByLabel(/slug/i)).toHaveCount(0);
   });
 
-  test("manually editing slug breaks the auto-fill link", async ({
+  test("creating with a name only navigates to the uid detail page", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/on-call/new");
     await page.waitForLoadState("networkidle");
 
-    const nameInput = page.getByLabel(/^name/i).first();
-    const slugInput = page.getByLabel(/slug/i).first();
+    const name = `E2E Create ${Date.now()}`;
+    await page.getByLabel(/^name/i).first().fill(name);
 
-    await nameInput.fill("Production");
-    await expect(slugInput).toHaveValue("production");
+    await page.getByRole("button", { name: /save|create/i }).first().click();
 
-    // Manually override the slug.
-    await slugInput.fill("custom-slug");
-
-    // Typing more in the name must NOT overwrite the manually set slug.
-    await nameInput.fill("Production Team Extra");
-    await expect(slugInput).toHaveValue("custom-slug");
+    // The detail route uses a UUID path segment, never a slug.
+    await page.waitForURL(
+      (url) =>
+        /\/on-call\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+          url.pathname,
+        ),
+    );
+    await expect(page.getByRole("heading", { name })).toBeVisible();
   });
 });
