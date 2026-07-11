@@ -21,13 +21,13 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { LabelInput } from "@/components/shared/label-input";
 import { ApiError } from "@/api/client";
@@ -242,6 +242,8 @@ interface CheckFormProps {
   isPending: boolean;
   onCancel: () => void;
   onTypeChange?: (type: CheckType) => void;
+  /** `?section=<name>` deep-link: expand + scroll that collapsible on mount. */
+  initialSection?: string;
 }
 
 export function CheckForm({
@@ -255,6 +257,7 @@ export function CheckForm({
   isPending,
   onCancel,
   onTypeChange,
+  initialSection,
 }: CheckFormProps) {
   const { t } = useTranslation("checks");
   // Fetch enabled check types from API; fall back to hardcoded list if unavailable
@@ -586,6 +589,9 @@ export function CheckForm({
     initialData?.recoveryPeriodSeconds?.toString() ?? "",
   );
   const [error, setError] = useState<string | null>(null);
+  // Bumped on every submit attempt; collapsible sections that own a live
+  // validation error read it via expandSignal to force-expand + scroll.
+  const [submitAttempts, setSubmitAttempts] = useState(0);
 
   // Check type combobox state
   const [typeSearchOpen, setTypeSearchOpen] = useState(false);
@@ -616,6 +622,20 @@ export function CheckForm({
   useEffect(() => {
     setSamplePickerOpen(false);
   }, [type]);
+
+  // `?section=<name>` deep-link: scroll the requested collapsible into view on
+  // mount (it is also expanded via defaultOpen below). Deferred a tick so the
+  // section is laid out first.
+  useEffect(() => {
+    if (!initialSection) return;
+    const id = window.setTimeout(() => {
+      document
+        .getElementById(initialSection)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Interval options filtered by type constraints
   const intervalOptions = useMemo(() => {
@@ -958,6 +978,7 @@ export function CheckForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSubmitAttempts((n) => n + 1);
 
     const config: Record<string, unknown> = {};
 
@@ -2359,6 +2380,54 @@ export function CheckForm({
 
   const selectedTypeLabel = checkTypes.find((t) => t.value === type)?.label || type;
 
+  // ── Progressive-disclosure section summaries + open-on-content ──
+  const labelCount = Object.keys(labels).length;
+  const groupName = checkGroupUid
+    ? checkGroups?.find((g) => g.uid === checkGroupUid)?.name
+    : undefined;
+  const orgCustomized = labelCount > 0 || !!checkGroupUid;
+  const orgSummaryParts: string[] = [];
+  if (slug) orgSummaryParts.push(`slug ${slug}`);
+  if (labelCount > 0)
+    orgSummaryParts.push(`${labelCount} label${labelCount === 1 ? "" : "s"}`);
+  if (groupName) orgSummaryParts.push(`group ${groupName}`);
+  const orgSummary = orgSummaryParts.join(" · ") || "slug auto-generated";
+
+  const depCount = dependsOnParents?.length ?? 0;
+  const depsSummary =
+    depCount > 0 ? `${depCount} parent${depCount === 1 ? "" : "s"}` : "None";
+
+  const incidentCustomized =
+    confirmationPeriodSeconds.trim() !== "" ||
+    recoveryPeriodSeconds.trim() !== "";
+  const incidentSummary = `confirm ${
+    confirmationPeriodSeconds.trim() || "120"
+  }s, recover ${recoveryPeriodSeconds.trim() || "120"}s${
+    incidentCustomized ? "" : " (defaults)"
+  }`;
+
+  const flappingCustomized = [
+    reopenCooldownMultiplier,
+    flappingWindowSeconds,
+    flapBackoffFactor,
+    maxRecoveryMultiplier,
+  ].some((v) => v.trim() !== "");
+  const flappingWindowLabel =
+    flappingWindowSeconds.trim() !== "" &&
+    (parseInt(flappingWindowSeconds, 10) || 0) > 0
+      ? formatDuration(parseInt(flappingWindowSeconds, 10))
+      : "6h";
+  const flappingSummary = `window ${flappingWindowLabel}, cooldown ×${
+    reopenCooldownMultiplier.trim() || "5"
+  }${flappingCustomized ? "" : " (defaults)"}`;
+
+  const timeoutError = getFieldError(fieldErrors, "timeout");
+  const advancedCustomized = timeoutSeconds.trim() !== "";
+  const advancedSummary = advancedCustomized
+    ? `timeout ${timeoutSeconds}s`
+    : "timeout 15s (default)";
+  const showGroup = (checkGroups?.length ?? 0) > 0;
+
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-center gap-4">
@@ -2371,19 +2440,34 @@ export function CheckForm({
         </div>
       </div>
 
-      <Card>
-        <form onSubmit={handleSubmit}>
-          <CardHeader>
-            <CardTitle>Check Type</CardTitle>
-            <CardDescription>Select the type of monitoring check</CardDescription>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* 1. Identity & target — always visible */}
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+            <div className="space-y-1.5">
+              <CardTitle>Identity &amp; target</CardTitle>
+              <CardDescription>What to monitor, and how to find it later</CardDescription>
+            </div>
+            <label
+              htmlFor="check-enabled"
+              className="flex shrink-0 items-center gap-2 pt-1 text-sm font-medium"
+            >
+              <span className="text-muted-foreground">Enabled</span>
+              <Switch
+                id="check-enabled"
+                checked={enabled}
+                onCheckedChange={setEnabled}
+                data-testid="check-enabled-switch"
+              />
+            </label>
           </CardHeader>
           <CardContent className="space-y-4">
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-
             {/* Check Type - searchable combobox + template button */}
             <div className="space-y-2">
               <Label htmlFor="type">Type</Label>
@@ -2500,36 +2584,25 @@ export function CheckForm({
                 </div>
               )}
             </div>
-          </CardContent>
 
-          {/* Protocol-specific config */}
-          <CardHeader className="pt-2 pb-2">
-            <CardTitle className="text-base">Configuration</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+            {/* Protocol-specific config (URL/host/port/…) */}
             {renderConfigFields()}
-          </CardContent>
 
-          {/* Common parameters */}
-          <CardHeader className="pt-2 pb-2">
-            <CardTitle className="text-base">General</CardTitle>
+            <div className="space-y-2">
+              <Label htmlFor="name">Name {mode === "create" && "(optional)"}</Label>
+              <Input id="name" type="text" placeholder="My Check" value={name} onChange={(e) => setName(e.target.value)} data-testid="check-name-input" />
+              {mode === "create" && (<p className="text-xs text-muted-foreground">If not provided, a name will be auto-generated</p>)}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 2. Scheduling — always visible */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Scheduling</CardTitle>
+            <CardDescription>How often the check runs, and from where</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="check-enabled">Enabled</Label>
-                <p className="text-xs text-muted-foreground">
-                  Disabled checks are not scheduled and never run.
-                </p>
-              </div>
-              <Switch
-                id="check-enabled"
-                checked={enabled}
-                onCheckedChange={setEnabled}
-                data-testid="check-enabled-switch"
-              />
-            </div>
-
             <div className="space-y-2">
               <Label htmlFor="period">
                 {isPassiveType(type) ? "Expected Interval" : "Check Interval"}
@@ -2564,36 +2637,49 @@ export function CheckForm({
               )}
             </div>
 
-            {!isPassiveType(type) && (
+            {showRegions && (
               <div className="space-y-2">
-                <Label htmlFor="check-timeout">Timeout (optional)</Label>
-                <Input
-                  id="check-timeout"
-                  type="number"
-                  min={1}
-                  max={30}
-                  step={1}
-                  placeholder="15 seconds (default)"
-                  value={timeoutSeconds}
-                  onChange={(e) => setTimeoutSeconds(e.target.value)}
-                  className={cn(getFieldError(fieldErrors, "timeout") && "border-destructive")}
-                  data-testid="check-timeout-input"
-                />
-                {getFieldError(fieldErrors, "timeout") ? (
-                  <p className="text-xs text-destructive">{getFieldError(fieldErrors, "timeout")}</p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Seconds a single probe may run (1–30). Empty uses the default of 15 seconds.
-                  </p>
-                )}
+                <Label>Regions</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {availableRegions?.map((region) => (
+                    <label key={region.slug} className="flex items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50">
+                      <Checkbox checked={selectedRegions.includes(region.slug)} onCheckedChange={() => toggleRegion(region.slug)} />
+                      <span className="text-sm">{region.emoji} {region.name}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">Select the regions where this check should run</p>
               </div>
             )}
+          </CardContent>
+        </Card>
 
-            <div className="space-y-2">
-              <Label htmlFor="name">Name {mode === "create" && "(optional)"}</Label>
-              <Input id="name" type="text" placeholder="My Check" value={name} onChange={(e) => setName(e.target.value)} data-testid="check-name-input" />
-              {mode === "create" && (<p className="text-xs text-muted-foreground">If not provided, a name will be auto-generated</p>)}
-            </div>
+        {/* 3. Notifications — always visible */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Notifications</CardTitle>
+            <CardDescription>Who gets paged when this check fails</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <NotifyViaSection
+              org={org}
+              connections={connections}
+              selected={connectionUids ?? []}
+              onToggle={toggleConnection}
+            />
+          </CardContent>
+        </Card>
+
+        {/* 4. Collapsible sections — collapsed unless customized */}
+        <CollapsibleSection
+          id="organization"
+          data-testid="section-organization-trigger"
+          title="Organization"
+          summary={orgSummary}
+          customized={orgCustomized}
+          defaultOpen={orgCustomized}
+          expandSignal={slugError ? submitAttempts : 0}
+        >
 
             <div className="space-y-2">
               <Label htmlFor="slug">Slug {mode === "create" && "(optional)"}</Label>
@@ -2618,125 +2704,160 @@ export function CheckForm({
               <p className="text-xs text-muted-foreground">Optional key/value tags for grouping and filtering.</p>
             </div>
 
-            <NotifyViaSection
-              org={org}
-              connections={connections}
-              selected={connectionUids ?? []}
-              onToggle={toggleConnection}
-            />
-
-            <DependsOnFormSection
-              org={org}
-              checkUid={mode === "edit" ? initialData?.uid : undefined}
-              parents={dependsOnParents ?? []}
-              onAdd={addParent}
-              onRemove={removeParent}
-            />
-
-            {checkGroups && checkGroups.length > 0 && (
+            {showGroup && (
               <div className="space-y-2">
                 <Label htmlFor="group">Group (optional)</Label>
                 <Select value={checkGroupUid || "none"} onValueChange={(v) => setCheckGroupUid(v === "none" ? "" : v)}>
                   <SelectTrigger data-testid="check-group-select"><SelectValue placeholder="No group" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No group</SelectItem>
-                    {checkGroups.map((g) => (<SelectItem key={g.uid} value={g.uid}>{g.name}</SelectItem>))}
+                    {checkGroups?.map((g) => (<SelectItem key={g.uid} value={g.uid}>{g.name}</SelectItem>))}
                   </SelectContent>
                 </Select>
               </div>
             )}
+        </CollapsibleSection>
 
-            <div className="space-y-2">
-              <Label className="text-base font-medium">Incident Tracking</Label>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <Label htmlFor="confirmationPeriodSeconds" className="text-sm">{t("form.confirmationPeriod")}</Label>
-                  <Input id="confirmationPeriodSeconds" data-testid="confirmation-period-input" type="number" min={0} max={86400} placeholder="120 (default)" value={confirmationPeriodSeconds} onChange={(e) => setConfirmationPeriodSeconds(e.target.value)} />
-                  <p className="text-xs text-muted-foreground">{t("form.confirmationPeriodHelp")}</p>
-                  {confirmationPeriodSeconds.trim() !== "" && (
-                    <p className="text-xs text-muted-foreground break-words" data-testid="confirmation-period-estimate">
-                      {describePeriod(
-                        parseInt(confirmationPeriodSeconds, 10) || 0,
-                        estimateIntervalSeconds,
-                        "confirmation",
-                        t,
-                      )}
-                    </p>
+        <CollapsibleSection
+          id="dependencies"
+          data-testid="section-dependencies-trigger"
+          title="Dependencies"
+          summary={depsSummary}
+          customized={depCount > 0}
+          defaultOpen={depCount > 0}
+        >
+          <DependsOnFormSection
+            org={org}
+            checkUid={mode === "edit" ? initialData?.uid : undefined}
+            parents={dependsOnParents ?? []}
+            onAdd={addParent}
+            onRemove={removeParent}
+          />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          id="incident-tracking"
+          data-testid="section-incident-tracking-trigger"
+          title="Incident tracking"
+          summary={incidentSummary}
+          customized={incidentCustomized}
+          defaultOpen={incidentCustomized}
+        >
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label htmlFor="confirmationPeriodSeconds" className="text-sm">{t("form.confirmationPeriod")}</Label>
+              <Input id="confirmationPeriodSeconds" data-testid="confirmation-period-input" type="number" min={0} max={86400} placeholder="120 (default)" value={confirmationPeriodSeconds} onChange={(e) => setConfirmationPeriodSeconds(e.target.value)} />
+              <p className="text-xs text-muted-foreground">{t("form.confirmationPeriodHelp")}</p>
+              {confirmationPeriodSeconds.trim() !== "" && (
+                <p className="text-xs text-muted-foreground break-words" data-testid="confirmation-period-estimate">
+                  {describePeriod(
+                    parseInt(confirmationPeriodSeconds, 10) || 0,
+                    estimateIntervalSeconds,
+                    "confirmation",
+                    t,
                   )}
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="recoveryPeriodSeconds" className="text-sm">{t("form.recoveryPeriod")}</Label>
-                  <Input id="recoveryPeriodSeconds" data-testid="recovery-period-input" type="number" min={0} max={86400} placeholder="120 (default)" value={recoveryPeriodSeconds} onChange={(e) => setRecoveryPeriodSeconds(e.target.value)} />
-                  <p className="text-xs text-muted-foreground">{t("form.recoveryPeriodHelp")}</p>
-                  {recoveryPeriodSeconds.trim() !== "" && (
-                    <p className="text-xs text-muted-foreground break-words" data-testid="recovery-period-estimate">
-                      {describePeriod(
-                        parseInt(recoveryPeriodSeconds, 10) || 0,
-                        estimateIntervalSeconds,
-                        "recovery",
-                        t,
-                      )}
-                    </p>
-                  )}
-                </div>
-              </div>
+                </p>
+              )}
             </div>
-
-            <div className="space-y-2">
-              <Label className="text-base font-medium">{t("form.flapping")}</Label>
-              <p className="text-xs text-muted-foreground">{t("form.flappingHelp")}</p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label htmlFor="reopenCooldownMultiplier" className="text-sm">{t("form.reopenCooldown")}</Label>
-                  <Input id="reopenCooldownMultiplier" data-testid="reopen-cooldown-input" type="number" min={0} placeholder="5 (default)" value={reopenCooldownMultiplier} onChange={(e) => setReopenCooldownMultiplier(e.target.value)} />
-                  <p className="text-xs text-muted-foreground">{t("form.reopenCooldownHelp")}</p>
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="flappingWindowSeconds" className="text-sm">{t("form.flappingWindow")}</Label>
-                  <Input id="flappingWindowSeconds" data-testid="flapping-window-input" type="number" min={0} placeholder="21600 (default)" value={flappingWindowSeconds} onChange={(e) => setFlappingWindowSeconds(e.target.value)} />
-                  <p className="text-xs text-muted-foreground">{t("form.flappingWindowHelp")}</p>
-                  {flappingWindowSeconds.trim() !== "" && (parseInt(flappingWindowSeconds, 10) || 0) > 0 && (
-                    <p className="text-xs text-muted-foreground break-words" data-testid="flapping-window-estimate">
-                      {t("form.periodEstimate", { duration: formatDuration(parseInt(flappingWindowSeconds, 10) || 0) })}
-                    </p>
+            <div className="space-y-1">
+              <Label htmlFor="recoveryPeriodSeconds" className="text-sm">{t("form.recoveryPeriod")}</Label>
+              <Input id="recoveryPeriodSeconds" data-testid="recovery-period-input" type="number" min={0} max={86400} placeholder="120 (default)" value={recoveryPeriodSeconds} onChange={(e) => setRecoveryPeriodSeconds(e.target.value)} />
+              <p className="text-xs text-muted-foreground">{t("form.recoveryPeriodHelp")}</p>
+              {recoveryPeriodSeconds.trim() !== "" && (
+                <p className="text-xs text-muted-foreground break-words" data-testid="recovery-period-estimate">
+                  {describePeriod(
+                    parseInt(recoveryPeriodSeconds, 10) || 0,
+                    estimateIntervalSeconds,
+                    "recovery",
+                    t,
                   )}
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="flapBackoffFactor" className="text-sm">{t("form.flapBackoffFactor")}</Label>
-                  <Input id="flapBackoffFactor" data-testid="flap-backoff-input" type="number" min={1} placeholder="2 (default)" value={flapBackoffFactor} onChange={(e) => setFlapBackoffFactor(e.target.value)} />
-                  <p className="text-xs text-muted-foreground">{t("form.flapBackoffFactorHelp")}</p>
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="maxRecoveryMultiplier" className="text-sm">{t("form.maxRecoveryMultiplier")}</Label>
-                  <Input id="maxRecoveryMultiplier" data-testid="max-recovery-multiplier-input" type="number" min={1} placeholder="8 (default)" value={maxRecoveryMultiplier} onChange={(e) => setMaxRecoveryMultiplier(e.target.value)} />
-                  <p className="text-xs text-muted-foreground">{t("form.maxRecoveryMultiplierHelp")}</p>
-                </div>
-              </div>
+                </p>
+              )}
             </div>
+          </div>
+        </CollapsibleSection>
 
-            {showRegions && (
-              <div className="space-y-2">
-                <Label>Regions</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {availableRegions?.map((region) => (
-                    <label key={region.slug} className="flex items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50">
-                      <Checkbox checked={selectedRegions.includes(region.slug)} onCheckedChange={() => toggleRegion(region.slug)} />
-                      <span className="text-sm">{region.emoji} {region.name}</span>
-                    </label>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground">Select the regions where this check should run</p>
-              </div>
-            )}
-          </CardContent>
-          <CardFooter className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
-            <Button type="submit" disabled={isPending} data-testid="check-submit-button">
-              {isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />{pendingLabel}</>) : submitLabel}
-            </Button>
-          </CardFooter>
-        </form>
-      </Card>
+        <CollapsibleSection
+          id="flapping"
+          data-testid="section-flapping-trigger"
+          title={t("form.flapping")}
+          summary={flappingSummary}
+          customized={flappingCustomized}
+          defaultOpen={flappingCustomized}
+        >
+          <p className="text-xs text-muted-foreground">{t("form.flappingHelp")}</p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label htmlFor="reopenCooldownMultiplier" className="text-sm">{t("form.reopenCooldown")}</Label>
+              <Input id="reopenCooldownMultiplier" data-testid="reopen-cooldown-input" type="number" min={0} placeholder="5 (default)" value={reopenCooldownMultiplier} onChange={(e) => setReopenCooldownMultiplier(e.target.value)} />
+              <p className="text-xs text-muted-foreground">{t("form.reopenCooldownHelp")}</p>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="flappingWindowSeconds" className="text-sm">{t("form.flappingWindow")}</Label>
+              <Input id="flappingWindowSeconds" data-testid="flapping-window-input" type="number" min={0} placeholder="21600 (default)" value={flappingWindowSeconds} onChange={(e) => setFlappingWindowSeconds(e.target.value)} />
+              <p className="text-xs text-muted-foreground">{t("form.flappingWindowHelp")}</p>
+              {flappingWindowSeconds.trim() !== "" && (parseInt(flappingWindowSeconds, 10) || 0) > 0 && (
+                <p className="text-xs text-muted-foreground break-words" data-testid="flapping-window-estimate">
+                  {t("form.periodEstimate", { duration: formatDuration(parseInt(flappingWindowSeconds, 10) || 0) })}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="flapBackoffFactor" className="text-sm">{t("form.flapBackoffFactor")}</Label>
+              <Input id="flapBackoffFactor" data-testid="flap-backoff-input" type="number" min={1} placeholder="2 (default)" value={flapBackoffFactor} onChange={(e) => setFlapBackoffFactor(e.target.value)} />
+              <p className="text-xs text-muted-foreground">{t("form.flapBackoffFactorHelp")}</p>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="maxRecoveryMultiplier" className="text-sm">{t("form.maxRecoveryMultiplier")}</Label>
+              <Input id="maxRecoveryMultiplier" data-testid="max-recovery-multiplier-input" type="number" min={1} placeholder="8 (default)" value={maxRecoveryMultiplier} onChange={(e) => setMaxRecoveryMultiplier(e.target.value)} />
+              <p className="text-xs text-muted-foreground">{t("form.maxRecoveryMultiplierHelp")}</p>
+            </div>
+          </div>
+        </CollapsibleSection>
+
+        {!isPassiveType(type) && (
+          <CollapsibleSection
+            id="advanced"
+            data-testid="section-advanced-trigger"
+            title="Advanced"
+            summary={advancedSummary}
+            customized={advancedCustomized}
+            defaultOpen={advancedCustomized || !!timeoutError}
+            expandSignal={timeoutError ? submitAttempts : 0}
+          >
+            <div className="space-y-2">
+              <Label htmlFor="check-timeout">Timeout (optional)</Label>
+              <Input
+                id="check-timeout"
+                type="number"
+                min={1}
+                max={30}
+                step={1}
+                placeholder="15 seconds (default)"
+                value={timeoutSeconds}
+                onChange={(e) => setTimeoutSeconds(e.target.value)}
+                className={cn(getFieldError(fieldErrors, "timeout") && "border-destructive")}
+                data-testid="check-timeout-input"
+              />
+              {getFieldError(fieldErrors, "timeout") ? (
+                <p className="text-xs text-destructive">{getFieldError(fieldErrors, "timeout")}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Seconds a single probe may run (1–30). Empty uses the default of 15 seconds.
+                </p>
+              )}
+            </div>
+          </CollapsibleSection>
+        )}
+
+        {/* Sticky footer — save without scrolling past the tuning knobs */}
+        <div className="sticky bottom-0 z-10 flex justify-end gap-2 rounded-lg border bg-background/95 px-4 py-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
+          <Button type="submit" disabled={isPending} data-testid="check-submit-button">
+            {isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />{pendingLabel}</>) : submitLabel}
+          </Button>
+        </div>
+      </form>
     </div>
   );
 }

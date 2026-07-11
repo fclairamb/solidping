@@ -27,6 +27,8 @@ export const Route = createFileRoute("/orgs/$org/checks/new")({
     domain: typeof search.domain === "string" ? search.domain : undefined,
     username: typeof search.username === "string" ? search.username : undefined,
     database: typeof search.database === "string" ? search.database : undefined,
+    // `?section=<name>` deep-link: expand + scroll that collapsible on load.
+    section: typeof search.section === "string" ? search.section : undefined,
   }),
   component: CheckNewPage,
 });
@@ -66,6 +68,7 @@ function CheckNewPage() {
       org={org}
       mode="create"
       initialData={initialData as Check | undefined}
+      initialSection={search.section}
       checkGroups={checkGroups}
       availableRegions={regionsData?.regions}
       defaultRegions={regionsData?.defaultRegions}

@@ -47,6 +47,7 @@ export function CollapsibleSection({
   const [open, setOpen] = React.useState(defaultOpen);
   const rootRef = React.useRef<HTMLDivElement>(null);
   const lastSignal = React.useRef(expandSignal);
+  const prevDefaultOpen = React.useRef(defaultOpen);
 
   React.useEffect(() => {
     if (expandSignal && expandSignal !== lastSignal.current) {
@@ -55,6 +56,15 @@ export function CollapsibleSection({
       rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, [expandSignal]);
+
+  // Open (without scrolling) when the "holds non-default values" signal flips
+  // true after mount — e.g. an edit page whose dependencies load asynchronously.
+  React.useEffect(() => {
+    if (defaultOpen && !prevDefaultOpen.current) {
+      setOpen(true);
+    }
+    prevDefaultOpen.current = defaultOpen;
+  }, [defaultOpen]);
 
   return (
     <Collapsible
