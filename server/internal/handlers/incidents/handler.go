@@ -271,7 +271,7 @@ func (h *Handler) AcknowledgeIncident(writer http.ResponseWriter, req bunrouter.
 		return h.handleError(writer, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, incident)
+	return h.WriteJSON(writer, http.StatusOK, incidentToResponse(incident))
 }
 
 // UnacknowledgeIncident handles POST /api/v1/orgs/:org/incidents/:uid/unack.
@@ -284,7 +284,7 @@ func (h *Handler) UnacknowledgeIncident(writer http.ResponseWriter, req bunroute
 		return h.handleError(writer, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, incident)
+	return h.WriteJSON(writer, http.StatusOK, incidentToResponse(incident))
 }
 
 // SnoozeIncident handles POST /api/v1/orgs/:org/incidents/:uid/snooze.
@@ -326,7 +326,7 @@ func (h *Handler) SnoozeIncident(writer http.ResponseWriter, req bunrouter.Reque
 		return h.handleError(writer, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, incident)
+	return h.WriteJSON(writer, http.StatusOK, incidentToResponse(incident))
 }
 
 // UnsnoozeIncident handles POST /api/v1/orgs/:org/incidents/:uid/unsnooze.
@@ -339,7 +339,7 @@ func (h *Handler) UnsnoozeIncident(writer http.ResponseWriter, req bunrouter.Req
 		return h.handleError(writer, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, incident)
+	return h.WriteJSON(writer, http.StatusOK, incidentToResponse(incident))
 }
 
 // ResolveIncident handles POST /api/v1/orgs/:org/incidents/:uid/resolve.
@@ -365,5 +365,5 @@ func (h *Handler) ResolveIncident(writer http.ResponseWriter, req bunrouter.Requ
 		return h.handleError(writer, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, incident)
+	return h.WriteJSON(writer, http.StatusOK, incidentToResponse(incident))
 }
