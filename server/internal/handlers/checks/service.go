@@ -354,6 +354,12 @@ func (s *Service) ValidateCheck(
 		return s.formatValidateError(cfgErr), nil
 	}
 
+	// Uniform per-check timeout cap (spec 2026-07-11-05) so live validation
+	// agrees with the create/update paths for every check type.
+	if timeoutErr := validateConfigTimeout(req.Config); timeoutErr != nil {
+		return s.formatValidateError(timeoutErr), nil
+	}
+
 	if depFields, depErr := s.validateDependsOn(ctx, orgSlug, req.Slug, req.DependsOn); depErr != nil {
 		return ValidateCheckResponse{}, depErr
 	} else if len(depFields) > 0 {
@@ -936,6 +942,14 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		}
 	}
 
+	// Uniform per-check timeout cap (spec 2026-07-11-05): applies to every
+	// check type regardless of the checker's own validation.
+	if req.Config != nil {
+		if timeoutErr := validateConfigTimeout(req.Config); timeoutErr != nil {
+			return CheckResponse{}, timeoutErr
+		}
+	}
+
 	// Create CheckSpec for validation
 	spec := &checkerdef.CheckSpec{
 		Name:   req.Name,
@@ -1282,6 +1296,11 @@ func (s *Service) UpdateCheck(
 		merged, mergeErr := s.applyConfigPatch(ctx, check, *req.Config)
 		if mergeErr != nil {
 			return CheckResponse{}, mergeErr
+		}
+		// Uniform per-check timeout cap (spec 2026-07-11-05) — validated on
+		// the merged config so a PATCH cannot smuggle in an over-cap value.
+		if timeoutErr := validateConfigTimeout(merged); timeoutErr != nil {
+			return CheckResponse{}, timeoutErr
 		}
 		if encErr := s.applyEncryption(ctx, check, merged); encErr != nil {
 			return CheckResponse{}, encErr

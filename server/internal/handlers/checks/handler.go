@@ -599,6 +599,17 @@ func (h *Handler) handleGetError(writer http.ResponseWriter, err error) error {
 
 // handleUpdateError handles errors from UpdateCheck.
 func (h *Handler) handleUpdateError(writer http.ResponseWriter, err error) error {
+	// Configuration validation errors (e.g. the uniform per-check timeout
+	// cap) surface as field-level VALIDATION_ERRORs, same as on create.
+	if configErr := checkerdef.IsConfigError(err); configErr != nil {
+		return h.WriteValidationError(writer, "Configuration validation failed", []base.ValidationErrorField{
+			{
+				Name:    configErr.Parameter,
+				Message: configErr.Message,
+			},
+		})
+	}
+
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
@@ -645,6 +656,15 @@ func isCheckFieldValidationError(err error) bool {
 
 // handleUpsertError handles errors from UpsertCheck.
 func (h *Handler) handleUpsertError(writer http.ResponseWriter, err error) error {
+	if configErr := checkerdef.IsConfigError(err); configErr != nil {
+		return h.WriteValidationError(writer, "Configuration validation failed", []base.ValidationErrorField{
+			{
+				Name:    configErr.Parameter,
+				Message: configErr.Message,
+			},
+		})
+	}
+
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
