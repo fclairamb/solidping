@@ -718,7 +718,28 @@ func (r *CheckWorker) executeJob(
 		return r.saveErrorResult(ctx, checkJob, fmt.Errorf("%w: %s", ErrUnknownCheckType, checkType))
 	}
 
-	if err := config.FromMap(checkJob.Config); err != nil {
+	// Resolve the effective per-check execution budget up front so an unset
+	// `timeout` can be threaded into the checker config below (spec
+	// 2026-07-11-09). The cost-aware clamp still applies to unset checks
+	// (scheduling density); an explicit user value bypasses it and is already
+	// present in the config map. checkTimeout also becomes the execution
+	// context budget in step 4.
+	checkTimeout := r.schedParams.ExecutionTimeout(checkJob.CostEWMAMs)
+
+	checkerConfigMap := checkJob.Config
+	if perCheck, userSet := perCheckTimeout(checkJob.Config); userSet {
+		// Explicit user value: take precedence over the clamp and the global
+		// default (spec 2026-07-11-05); it is already in the config map.
+		checkTimeout = perCheck
+	} else {
+		// Unset: thread the resolved 15s (or cost-clamped) budget in so every
+		// checker honors the uniform default instead of its own short internal
+		// defaultTimeout — an icmp check with no timeout now runs the full
+		// worker budget rather than giving up at 5s.
+		checkerConfigMap = configWithDefaultTimeout(checkJob.Config, checkTimeout)
+	}
+
+	if err := config.FromMap(checkerConfigMap); err != nil {
 		return r.saveErrorResult(ctx, checkJob, fmt.Errorf("%w: %w", ErrFailedToParseConf, err))
 	}
 
@@ -755,11 +776,18 @@ func (r *CheckWorker) executeJob(
 
 	// 4. Execute check with a cost-aware timeout.
 	// Use background context so the check can complete even during shutdown —
-	// only the timeout should cancel the check, not the runner shutdown. The
-	// ceiling is clamp(factor × cost_ewma, floor, check_timeout): a 200ms-p95
-	// check no longer reserves the full ceiling of worst-case occupancy, while
-	// chronic offenders still hit it. With the cost-aware timeout disabled this
-	// is the flat configured check timeout (default 15s).
+	// only the timeout should cancel the check, not the runner shutdown.
+	// checkTimeout was resolved in step 2: for an unset `timeout` it is the
+	// cost-aware clamp — clamp(factor × cost_ewma, floor, check_timeout): a
+	// 200ms-p95 check no longer reserves the full ceiling of worst-case
+	// occupancy, while chronic offenders still hit it (with the cost-aware
+	// timeout disabled it is the flat configured check timeout, default 15s) —
+	// and that same value was threaded into the checker config so it honors the
+	// uniform default. For an explicit per-check `timeout` (spec 2026-07-11-05)
+	// it is the user's value, taking precedence over both the clamp and the
+	// global default — a user asking for up to 30s must not be cut off by the
+	// ~16s global context; legacy over-cap values are clamped defensively at
+	// 30s inside perCheckTimeout so they can't buy a 61s context.
 	//
 	// The execution *context* deadline is checkTimeout + 1s (spec 2026-07-10-11):
 	// the +1s margin lets a checker that honors its own timeout report a clean
@@ -767,18 +795,6 @@ func (r *CheckWorker) executeJob(
 	// generic context-deadline-exceeded. The budget handed down to the checker
 	// stays checkTimeout (no +1s), so the checker-level timeout always fires
 	// first.
-	checkTimeout := r.schedParams.ExecutionTimeout(checkJob.CostEWMAMs)
-
-	// A per-check `timeout` config value (spec 2026-07-11-05) is an explicit
-	// user choice: it becomes the execution budget, taking precedence over
-	// both the cost-aware clamp and the global default — a user asking for up
-	// to 30s must not be cut off by the ~16s global context. The context rule
-	// stays budget + 1s. Legacy over-cap values are clamped defensively at
-	// 30s inside perCheckTimeout so they can't buy a 61s context.
-	if perCheck, ok := perCheckTimeout(checkJob.Config); ok {
-		checkTimeout = perCheck
-	}
-
 	execCtx, cancel := context.WithTimeout(context.Background(), checkTimeout+time.Second)
 	defer cancel()
 
@@ -892,12 +908,35 @@ func (r *CheckWorker) executeJob(
 // execution context past 31s.
 const maxPerCheckTimeout = 30 * time.Second
 
+// checkTimeoutConfigKey is the check-config key holding the optional per-check
+// timeout duration string (spec 2026-07-11-05).
+const checkTimeoutConfigKey = "timeout"
+
+// configWithDefaultTimeout returns a shallow copy of a check config with the
+// `timeout` key set to the resolved execution budget, used when the user left
+// `timeout` unset (spec 2026-07-11-09). Threading the budget in means every
+// checker honors the uniform default (15s, or the cost-aware clamp) instead of
+// its own short internal defaultTimeout — an icmp check with no timeout now
+// runs the full worker budget rather than giving up at 5s. The original map is
+// never mutated (copy-on-write), so executeJob's clamp decision still reflects
+// the user's real input.
+func configWithDefaultTimeout(config map[string]any, timeout time.Duration) map[string]any {
+	clone := make(map[string]any, len(config)+1)
+	for key, value := range config {
+		clone[key] = value
+	}
+
+	clone[checkTimeoutConfigKey] = timeout.String()
+
+	return clone
+}
+
 // perCheckTimeout extracts the optional per-check `timeout` duration from a
 // job's config. Returns (0, false) when the key is absent, not a duration
 // string, or non-positive — the caller then falls back to the global /
 // cost-aware execution budget. Valid values are clamped at 30s.
 func perCheckTimeout(config map[string]any) (time.Duration, bool) {
-	raw, ok := config["timeout"].(string)
+	raw, ok := config[checkTimeoutConfigKey].(string)
 	if !ok || raw == "" {
 		return 0, false
 	}
