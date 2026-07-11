@@ -12,10 +12,9 @@ import (
 
 // newRegionsSeedServer builds a minimal Server around an in-memory SQLite DB —
 // SeedRegionsFromEnv only touches dbService.
-func newRegionsSeedServer(t *testing.T) (*Server, *sqlite.Service) {
+func newRegionsSeedServer(ctx context.Context, t *testing.T) (*Server, *sqlite.Service) {
 	t.Helper()
 	r := require.New(t)
-	ctx := context.Background()
 
 	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
 	r.NoError(err)
@@ -27,15 +26,14 @@ func newRegionsSeedServer(t *testing.T) (*Server, *sqlite.Service) {
 
 // TestSeedRegionsFromEnv covers the SP_REGIONS boot seeding: valid lists are
 // persisted (and re-seeds overwrite), invalid values are logged and skipped
-// without failing the boot, and an unset env leaves the DB alone.
-//
-//nolint:paralleltest // subtests mutate the process env via t.Setenv
+// without failing the boot, and an unset env leaves the DB alone. Not
+// parallel: the subtests mutate the process env via t.Setenv.
 func TestSeedRegionsFromEnv(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("unset env is a no-op", func(t *testing.T) {
 		r := require.New(t)
-		srv, dbSvc := newRegionsSeedServer(t)
+		srv, dbSvc := newRegionsSeedServer(ctx, t)
 
 		t.Setenv(envRegions, "")
 		r.NoError(srv.SeedRegionsFromEnv(ctx))
@@ -47,7 +45,7 @@ func TestSeedRegionsFromEnv(t *testing.T) {
 
 	t.Run("valid list is seeded and readable", func(t *testing.T) {
 		r := require.New(t)
-		srv, dbSvc := newRegionsSeedServer(t)
+		srv, dbSvc := newRegionsSeedServer(ctx, t)
 
 		t.Setenv(envRegions, `[
 			{"slug": "default", "emoji": "🇪🇺", "name": "EU1 (default)"},
@@ -67,7 +65,7 @@ func TestSeedRegionsFromEnv(t *testing.T) {
 
 	t.Run("re-seed overwrites an existing parameter", func(t *testing.T) {
 		r := require.New(t)
-		srv, dbSvc := newRegionsSeedServer(t)
+		srv, dbSvc := newRegionsSeedServer(ctx, t)
 
 		// Simulate the k8xp state: a parameter whose name equals the slug.
 		r.NoError(dbSvc.SetSystemParameter(ctx, regions.ParamRegions,
@@ -85,7 +83,7 @@ func TestSeedRegionsFromEnv(t *testing.T) {
 
 	t.Run("empty name falls back to the slug", func(t *testing.T) {
 		r := require.New(t)
-		srv, dbSvc := newRegionsSeedServer(t)
+		srv, dbSvc := newRegionsSeedServer(ctx, t)
 
 		t.Setenv(envRegions, `[{"slug": "us-1", "emoji": "🇺🇸"}]`)
 		r.NoError(srv.SeedRegionsFromEnv(ctx))
@@ -106,7 +104,7 @@ func TestSeedRegionsFromEnv(t *testing.T) {
 	for name, value := range invalid {
 		t.Run("invalid value is skipped: "+name, func(t *testing.T) {
 			r := require.New(t)
-			srv, dbSvc := newRegionsSeedServer(t)
+			srv, dbSvc := newRegionsSeedServer(ctx, t)
 
 			prior := []regions.RegionDefinition{{Slug: "default", Emoji: "📍", Name: "Prior"}}
 			r.NoError(dbSvc.SetSystemParameter(ctx, regions.ParamRegions, prior, false))
