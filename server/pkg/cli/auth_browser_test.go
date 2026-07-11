@@ -71,20 +71,23 @@ func TestBuildAuthorizeURL(t *testing.T) {
 	r.Empty(query.Get("scope"))
 }
 
+// testCallbackState is the state the loopback callback tests expect back.
+const testCallbackState = "expected-state"
+
 // callGET drives the callback handler with a raw callback URL and returns the
 // recorder plus the delivered result.
 func callGET(t *testing.T, callback *loopbackCallback, rawURL string) (*httptest.ResponseRecorder, callbackResult) {
 	t.Helper()
 
-	req := httptest.NewRequest(http.MethodGet, rawURL, http.NoBody)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, rawURL, http.NoBody)
 	rec := httptest.NewRecorder()
 	callback.handler().ServeHTTP(rec, req)
 
 	return rec, <-callback.resultCh
 }
 
-func newCallback(state string) *loopbackCallback {
-	return &loopbackCallback{state: state, resultCh: make(chan callbackResult, 1)}
+func newCallback() *loopbackCallback {
+	return &loopbackCallback{state: testCallbackState, resultCh: make(chan callbackResult, 1)}
 }
 
 // TestLoopbackCallbackSuccess: matching state + code yields the code and a 200
@@ -93,7 +96,7 @@ func TestLoopbackCallbackSuccess(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	callback := newCallback("expected-state")
+	callback := newCallback()
 	rec, res := callGET(t, callback, "/callback?code=the-code&state=expected-state")
 
 	r.NoError(res.err)
@@ -107,7 +110,7 @@ func TestLoopbackCallbackStateMismatch(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	callback := newCallback("expected-state")
+	callback := newCallback()
 	rec, res := callGET(t, callback, "/callback?code=the-code&state=attacker-state")
 
 	r.ErrorIs(res.err, errStateMismatch)
@@ -120,7 +123,7 @@ func TestLoopbackCallbackMissingCode(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	callback := newCallback("expected-state")
+	callback := newCallback()
 	rec, res := callGET(t, callback, "/callback?state=expected-state")
 
 	r.ErrorIs(res.err, errNoAuthCode)
@@ -133,7 +136,7 @@ func TestLoopbackCallbackOAuthError(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	callback := newCallback("expected-state")
+	callback := newCallback()
 	rec, res := callGET(t, callback,
 		"/callback?error=access_denied&error_description=user+said+no&state=expected-state")
 
@@ -147,14 +150,15 @@ func TestLoopbackCallbackDeliversOnce(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	callback := newCallback("expected-state")
+	callback := newCallback()
 
 	rec1, res := callGET(t, callback, "/callback?code=the-code&state=expected-state")
 	r.Equal(http.StatusOK, rec1.Code)
 	r.Equal("the-code", res.code)
 
 	// A second hit does not deliver again (channel already drained, buffer 1).
-	req := httptest.NewRequest(http.MethodGet, "/callback?code=other&state=expected-state", http.NoBody)
+	req := httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet, "/callback?code=other&state=expected-state", http.NoBody)
 	rec2 := httptest.NewRecorder()
 	callback.handler().ServeHTTP(rec2, req)
 

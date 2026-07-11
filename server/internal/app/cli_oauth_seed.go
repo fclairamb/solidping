@@ -53,7 +53,8 @@ func (s *Server) SeedCLIOAuthClient(ctx context.Context) error {
 		// A concurrent boot may have inserted the row between our lookup and
 		// insert; the unique index on client_id rejects the duplicate. Confirm
 		// the client now exists rather than failing the boot.
-		if confirm, lookupErr := s.dbService.GetOAuthClientByClientID(ctx, oauth.CLIClientID); lookupErr == nil && confirm != nil {
+		confirm, lookupErr := s.dbService.GetOAuthClientByClientID(ctx, oauth.CLIClientID)
+		if lookupErr == nil && confirm != nil {
 			return nil
 		}
 

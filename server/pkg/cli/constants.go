@@ -38,4 +38,12 @@ const (
 	keySuccess = "success"
 	keyMessage = "message"
 	keyFailed  = "failed"
+
+	keyUser         = "user"
+	keyOrganization = "organization"
+	keyAuthMethod   = "auth_method"
+	keySlug         = "slug"
+
+	authMethodPAT = "pat"
+	authMethodJWT = "jwt"
 )

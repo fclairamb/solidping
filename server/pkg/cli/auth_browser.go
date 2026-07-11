@@ -52,6 +52,10 @@ var (
 	errNoAccessToken = errors.New("token endpoint returned no access token")
 	// errNoOrg means the org could not be resolved from the session.
 	errNoOrg = errors.New("could not determine the organization for this session")
+	// errNotTCPListener means the loopback listener did not yield a TCP address.
+	errNotTCPListener = errors.New("loopback listener is not a TCP listener")
+	// errTokenExchange means the token endpoint returned a non-200 status.
+	errTokenExchange = errors.New("token exchange failed")
 )
 
 // browserLoginResult carries what the login action needs to report success.
@@ -72,7 +76,9 @@ func authBrowserLogin(ctx context.Context, cliCtx *Context) (*browserLoginResult
 	baseURL := strings.TrimRight(cliCtx.Config.URL, "/")
 
 	// Ephemeral loopback listener; the OS picks a free port.
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	var listenCfg net.ListenConfig
+
+	listener, err := listenCfg.Listen(ctx, "tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, fmt.Errorf("bind loopback listener: %w", err)
 	}
@@ -80,7 +86,7 @@ func authBrowserLogin(ctx context.Context, cliCtx *Context) (*browserLoginResult
 
 	tcpAddr, ok := listener.Addr().(*net.TCPAddr)
 	if !ok {
-		return nil, fmt.Errorf("unexpected listener address type %T", listener.Addr())
+		return nil, fmt.Errorf("%w: %T", errNotTCPListener, listener.Addr())
 	}
 	redirectURI := fmt.Sprintf("http://127.0.0.1:%d%s", tcpAddr.Port, oauth.CLICallbackPath)
 
@@ -104,7 +110,7 @@ func authBrowserLogin(ctx context.Context, cliCtx *Context) (*browserLoginResult
 	defer func() { _ = srv.Close() }()
 
 	output.PrintMessage(os.Stdout, "Opening your browser to log in...")
-	if openErr := openBrowser(authorizeURL); openErr != nil {
+	if openErr := openBrowser(ctx, authorizeURL); openErr != nil {
 		output.PrintMessage(os.Stdout, "Could not open a browser automatically.")
 	}
 	output.PrintMessage(os.Stdout, "If it doesn't open, visit this URL:")
@@ -139,14 +145,14 @@ func finishBrowserLogin(
 		return nil, fmt.Errorf("create API client: %w", err)
 	}
 
-	me, err := oauthClient.Me(ctx)
+	meResp, err := oauthClient.Me(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("resolve current user: %w", err)
 	}
 
 	org := ""
-	if me.Organization != nil && me.Organization.Slug != nil {
-		org = *me.Organization.Slug
+	if meResp.Organization != nil && meResp.Organization.Slug != nil {
+		org = *meResp.Organization.Slug
 	}
 
 	if org == "" {
@@ -170,12 +176,12 @@ func finishBrowserLogin(
 	}
 
 	result := &browserLoginResult{Org: org, TokenName: tokenName}
-	if me.User != nil {
-		if me.User.Email != nil {
-			result.UserEmail = string(*me.User.Email)
+	if meResp.User != nil {
+		if meResp.User.Email != nil {
+			result.UserEmail = string(*meResp.User.Email)
 		}
-		if me.User.Uid != nil {
-			result.UserUID = me.User.Uid.String()
+		if meResp.User.Uid != nil {
+			result.UserUID = meResp.User.Uid.String()
 		}
 	}
 
@@ -184,15 +190,15 @@ func finishBrowserLogin(
 
 // generatePKCE returns a random RFC 7636 code_verifier and its S256
 // code_challenge, both base64url-encoded without padding.
-func generatePKCE() (verifier, challenge string, err error) {
+func generatePKCE() (string, string, error) {
 	buf := make([]byte, pkceVerifierBytes)
-	if _, err = rand.Read(buf); err != nil {
+	if _, err := rand.Read(buf); err != nil {
 		return "", "", fmt.Errorf("generate pkce verifier: %w", err)
 	}
 
-	verifier = base64.RawURLEncoding.EncodeToString(buf)
+	verifier := base64.RawURLEncoding.EncodeToString(buf)
 	sum := sha256.Sum256([]byte(verifier))
-	challenge = base64.RawURLEncoding.EncodeToString(sum[:])
+	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
 
 	return verifier, challenge, nil
 }
@@ -284,7 +290,7 @@ func (c *loopbackCallback) finish(res callbackResult) {
 }
 
 // wait blocks until the callback fires, the timeout elapses, or ctx is
-// cancelled, returning the authorization code or an error.
+// canceled, returning the authorization code or an error.
 func (c *loopbackCallback) wait(ctx context.Context, timeout time.Duration) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -293,6 +299,7 @@ func (c *loopbackCallback) wait(ctx context.Context, timeout time.Duration) (str
 	case res := <-c.resultCh:
 		return res.code, res.err
 	case <-ctx.Done():
+		// ctx canceled or timed out.
 		return "", fmt.Errorf("waiting for browser login: %w", ctx.Err())
 	}
 }
@@ -347,7 +354,7 @@ func exchangeCodeForToken(
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("token exchange failed (status %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return "", fmt.Errorf("%w (status %d): %s", errTokenExchange, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	//nolint:tagliatelle // RFC 6749 wire format requires snake_case field names.
@@ -378,7 +385,7 @@ func cliPATTokenName() string {
 
 // openBrowser opens rawURL in the system default browser. The command name is a
 // compile-time constant per OS; only the URL is variable.
-func openBrowser(rawURL string) error {
+func openBrowser(ctx context.Context, rawURL string) error {
 	var name string
 
 	var args []string
@@ -392,8 +399,7 @@ func openBrowser(rawURL string) error {
 		name, args = "xdg-open", []string{rawURL}
 	}
 
-	//nolint:gosec // name is a fixed per-OS constant; only the URL argument varies.
-	if err := exec.Command(name, args...).Start(); err != nil {
+	if err := exec.CommandContext(ctx, name, args...).Start(); err != nil {
 		return fmt.Errorf("open browser: %w", err)
 	}
 

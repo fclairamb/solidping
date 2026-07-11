@@ -240,28 +240,9 @@ func (h *Helper) refreshAccessToken(ctx context.Context, tokenData *TokenData) (
 
 // resolveToken gets token from file, PAT, or auto-login.
 func (h *Helper) resolveToken(ctx context.Context) (string, error) {
-	// Priority 1: Token file (with automatic refresh)
-	tokenData, err := h.readTokenFile()
-	if err == nil && tokenData != nil {
-		// A saved PAT (browser login) is used verbatim — it does not expire
-		// client-side and there is nothing to refresh.
-		if tokenData.PAT != "" {
-			return tokenData.PAT, nil
-		}
-
-		// If access token is still valid, use it
-		if tokenData.IsAccessTokenValid() {
-			return tokenData.AccessToken, nil
-		}
-
-		// Access token expired, try to refresh it
-		if tokenData.IsRefreshTokenValid() {
-			newTokenData, refreshErr := h.refreshAccessToken(ctx, tokenData)
-			if refreshErr == nil {
-				return newTokenData.AccessToken, nil
-			}
-			// Refresh failed, continue to fallback methods
-		}
+	// Priority 1: Token file (saved PAT, valid JWT, or a refreshable JWT).
+	if token, ok := h.resolveFromTokenFile(ctx); ok {
+		return token, nil
 	}
 
 	// Priority 2: PAT from config
@@ -279,6 +260,36 @@ func (h *Helper) resolveToken(ctx context.Context) (string, error) {
 	}
 
 	return "", ErrNoAuthentication
+}
+
+// resolveFromTokenFile returns a usable credential from the token file, if any:
+// a saved PAT verbatim, a still-valid access token, or a freshly refreshed one.
+// The bool is false when the file is absent/unreadable or holds nothing usable,
+// letting resolveToken fall through to its other credential sources.
+func (h *Helper) resolveFromTokenFile(ctx context.Context) (string, bool) {
+	tokenData, err := h.readTokenFile()
+	if err != nil || tokenData == nil {
+		return "", false
+	}
+
+	// A saved PAT (browser login) is used verbatim — it does not expire
+	// client-side and there is nothing to refresh.
+	if tokenData.PAT != "" {
+		return tokenData.PAT, true
+	}
+
+	if tokenData.IsAccessTokenValid() {
+		return tokenData.AccessToken, true
+	}
+
+	// Access token expired: try a refresh, else fall through.
+	if tokenData.IsRefreshTokenValid() {
+		if newTokenData, refreshErr := h.refreshAccessToken(ctx, tokenData); refreshErr == nil {
+			return newTokenData.AccessToken, true
+		}
+	}
+
+	return "", false
 }
 
 // autoLogin performs automatic login with configured credentials.

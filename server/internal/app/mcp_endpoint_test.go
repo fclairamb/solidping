@@ -80,6 +80,9 @@ func newMCPTestEnv(t *testing.T) *mcpTestEnv {
 
 	r.NoError(server.Initialize(ctx))
 	r.NoError(server.InitializeSystemConfig(ctx, cfg))
+	// Mirror the real boot: register the first-party CLI OAuth client so the CLI
+	// login walk-through can use it.
+	r.NoError(server.SeedCLIOAuthClient(ctx))
 	server.SetupRoutes(ctx)
 
 	ts := httptest.NewServer(server.Handler())

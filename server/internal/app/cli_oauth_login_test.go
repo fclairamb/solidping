@@ -1,78 +1,18 @@
 package app
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/fclairamb/solidping/server/internal/config"
-	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/oauth"
-	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
-
-// newCLIOAuthTestEnv wires a full server (real NewServer + SetupRoutes over
-// in-memory SQLite) with the first-party `solidping-cli` OAuth client seeded and
-// one org + admin member, then returns the shared HTTP harness. It mirrors
-// newMCPTestEnv but exercises the seed path the CLI depends on.
-func newCLIOAuthTestEnv(t *testing.T) *mcpTestEnv {
-	t.Helper()
-	r := require.New(t)
-	ctx := context.Background()
-
-	cfg := &config.Config{}
-	cfg.Database.Type = "sqlite-memory"
-	cfg.Auth.JWTSecret = "cli-oauth-test-secret"
-	cfg.Auth.AccessTokenExpiry = time.Hour
-	cfg.Auth.RefreshTokenExpiry = 24 * time.Hour
-
-	server, err := NewServer(ctx, cfg)
-	r.NoError(err)
-	t.Cleanup(func() { _ = server.dbService.Close() })
-
-	r.NoError(server.Initialize(ctx))
-	r.NoError(server.InitializeSystemConfig(ctx, cfg))
-	// The CLI login flow relies on this seeded, pre-registered client.
-	r.NoError(server.SeedCLIOAuthClient(ctx))
-	server.SetupRoutes(ctx)
-
-	ts := httptest.NewServer(server.Handler())
-	t.Cleanup(ts.Close)
-
-	// Rebase the issuer onto the live socket so /authorize defaults resource +
-	// audience to this server (the CLI omits scope/resource).
-	cfg.Server.BaseURL = ts.URL
-
-	org := models.NewOrganization(mcpE2EOrg, "")
-	r.NoError(server.dbService.CreateOrganization(ctx, org))
-
-	hash, err := passwords.Hash(mcpE2EPassword)
-	r.NoError(err)
-	now := time.Now()
-	user := models.NewUser(mcpE2EEmail)
-	user.PasswordHash = &hash
-	user.EmailVerifiedAt = &now
-	r.NoError(server.dbService.CreateUser(ctx, user))
-	r.NoError(server.dbService.CreateOrganizationMember(
-		ctx, models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleAdmin)))
-
-	client := &http.Client{
-		CheckRedirect: func(*http.Request, []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-
-	return &mcpTestEnv{ts: ts, client: client}
-}
 
 // TestCLIBrowserLoginWalkthrough drives the exact server-side sequence
 // `sp auth login` performs: authorize (GET → consent) → approve (POST → code) →
@@ -84,7 +24,7 @@ func newCLIOAuthTestEnv(t *testing.T) *mcpTestEnv {
 func TestCLIBrowserLoginWalkthrough(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
-	env := newCLIOAuthTestEnv(t)
+	env := newMCPTestEnv(t)
 
 	// The CLI binds an ephemeral loopback listener; the registered redirect
 	// ignores the port, so any 127.0.0.1:<port>/callback is accepted.
@@ -194,7 +134,7 @@ func TestCLIBrowserLoginWalkthrough(t *testing.T) {
 func TestCLIOAuthClientSeededAtStartup(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
-	env := newCLIOAuthTestEnv(t)
+	env := newMCPTestEnv(t)
 
 	// Discovery still works, and an /authorize for the seeded client with no
 	// session bounces to login rather than rejecting an unknown client.

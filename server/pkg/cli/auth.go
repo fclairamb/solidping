@@ -82,8 +82,8 @@ func authLoginWithPassword(ctx context.Context, cliCtx *Context, email, password
 		tokenPath, _ := config.TokenPath()
 		return cliCtx.Outputter.Print(map[string]interface{}{
 			keySuccess:    true,
-			"user":        userMap,
-			"auth_method": "jwt",
+			keyUser:       userMap,
+			keyAuthMethod: authMethodJWT,
 			"token_path":  tokenPath,
 		})
 	}
@@ -162,11 +162,11 @@ func printLoginResult(cliCtx *Context, summary loginSummary) error {
 			userMap["email"] = summary.userEmail
 		}
 		out := map[string]interface{}{
-			keySuccess:     true,
-			"user":         userMap,
-			"organization": map[string]interface{}{"slug": summary.org},
-			"auth_method":  "pat",
-			"token_path":   tokenPath,
+			keySuccess:      true,
+			keyUser:         userMap,
+			keyOrganization: map[string]interface{}{keySlug: summary.org},
+			keyAuthMethod:   authMethodPAT,
+			"token_path":    tokenPath,
 		}
 		if summary.tokenName != "" {
 			out["token_name"] = summary.tokenName
@@ -286,14 +286,14 @@ func authMeAction(ctx context.Context, cmd *cli.Command) error {
 				orgMap["uid"] = resp.Organization.Uid.String()
 			}
 			if resp.Organization.Slug != nil {
-				orgMap["slug"] = *resp.Organization.Slug
+				orgMap[keySlug] = *resp.Organization.Slug
 			}
 		}
 		return cliCtx.Outputter.Print(map[string]interface{}{
-			"user":         userMap,
-			"organization": orgMap,
-			"auth_method":  cliCtx.APIHelper.AuthMethod(ctx),
-			"token_source": tokenPath,
+			keyUser:         userMap,
+			keyOrganization: orgMap,
+			keyAuthMethod:   cliCtx.APIHelper.AuthMethod(ctx),
+			"token_source":  tokenPath,
 		})
 	}
 
@@ -318,15 +318,20 @@ func authMeAction(ctx context.Context, cmd *cli.Command) error {
 		output.PrintMessage(os.Stdout, fmt.Sprintf("Organization:  %s (UID: %s)", orgSlug, orgUID))
 	}
 	output.PrintMessage(os.Stdout, "")
-	if cliCtx.APIHelper.AuthMethod(ctx) == "pat" {
-		output.PrintMessage(os.Stdout, "Authentication method: Personal Access Token (PAT)")
-	} else {
-		output.PrintMessage(os.Stdout, "Authentication method: JWT token")
-	}
+	output.PrintMessage(os.Stdout, "Authentication method: "+authMethodLabel(cliCtx.APIHelper.AuthMethod(ctx)))
 	tokenPath, _ := config.TokenPath()
 	output.PrintMessage(os.Stdout, "Token location: "+tokenPath)
 
 	return nil
+}
+
+// authMethodLabel renders the human-readable label for an auth method.
+func authMethodLabel(method string) string {
+	if method == authMethodPAT {
+		return "Personal Access Token (PAT)"
+	}
+
+	return "JWT token"
 }
 
 // authSwitchOrgAction handles the switch-org command.

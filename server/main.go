@@ -189,27 +189,10 @@ func serve(ctx context.Context, _ *cli.Command) error {
 		return sysConfigErr
 	}
 
-	// In SaaS mode, seed the entitlements system parameters (service token +
-	// upgrade URL template) from env so the billing service can authenticate
-	// and the dashboard renders the upgrade link. No-op when self-hosted.
-	if seedErr := server.SeedSaaSEntitlements(ctx); seedErr != nil {
-		slog.ErrorContext(ctx, "Failed to seed SaaS entitlements parameters", "error", seedErr)
-		return seedErr
-	}
-
-	// Seed the `regions` system parameter from SP_REGIONS so a deployment
-	// can name its regions declaratively (e.g. "🇪🇺 EU1 (default)" instead of
-	// the raw "default" slug). No-op when unset.
-	if seedErr := server.SeedRegionsFromEnv(ctx); seedErr != nil {
-		slog.ErrorContext(ctx, "Failed to seed regions parameter", "error", seedErr)
-		return seedErr
-	}
-
-	// Register the first-party `solidping-cli` OAuth client so `sp auth
-	// login` can drive the browser authorization-code flow. Idempotent —
-	// a no-op once the client exists.
-	if seedErr := server.SeedCLIOAuthClient(ctx); seedErr != nil {
-		slog.ErrorContext(ctx, "Failed to seed CLI OAuth client", "error", seedErr)
+	// Seed startup data driven by env/deployment (SaaS entitlements, named
+	// regions, the first-party CLI OAuth client). All idempotent no-ops when the
+	// relevant env/state is absent.
+	if seedErr := seedStartupData(ctx, server); seedErr != nil {
 		return seedErr
 	}
 
@@ -254,6 +237,37 @@ func serve(ctx context.Context, _ *cli.Command) error {
 	}
 
 	return err
+}
+
+// seedStartupData runs the env/deployment-driven seeds after migrations: the
+// SaaS entitlements parameters, the named-regions parameter, and the first-party
+// CLI OAuth client. Each is idempotent and a no-op when its inputs are absent.
+func seedStartupData(ctx context.Context, server *app.Server) error {
+	// In SaaS mode, seed the entitlements system parameters (service token +
+	// upgrade URL template) from env so the billing service can authenticate
+	// and the dashboard renders the upgrade link. No-op when self-hosted.
+	if err := server.SeedSaaSEntitlements(ctx); err != nil {
+		slog.ErrorContext(ctx, "Failed to seed SaaS entitlements parameters", "error", err)
+		return err
+	}
+
+	// Seed the `regions` system parameter from SP_REGIONS so a deployment can
+	// name its regions declaratively (e.g. "🇪🇺 EU1 (default)" instead of the
+	// raw "default" slug). No-op when unset.
+	if err := server.SeedRegionsFromEnv(ctx); err != nil {
+		slog.ErrorContext(ctx, "Failed to seed regions parameter", "error", err)
+		return err
+	}
+
+	// Register the first-party `solidping-cli` OAuth client so `sp auth login`
+	// can drive the browser authorization-code flow. Idempotent — a no-op once
+	// the client exists.
+	if err := server.SeedCLIOAuthClient(ctx); err != nil {
+		slog.ErrorContext(ctx, "Failed to seed CLI OAuth client", "error", err)
+		return err
+	}
+
+	return nil
 }
 
 func migrate(ctx context.Context, _ *cli.Command) error {
