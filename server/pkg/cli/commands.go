@@ -1315,6 +1315,8 @@ func GetCommands() []*cli.Command {
 		labelsCommand(),
 		regionsCommand(),
 		checkTypesCommand(),
+		oncallCommand(),
+		escalationPoliciesCommand(),
 	}
 }
 
@@ -1566,6 +1568,205 @@ func checkTypesCommand() *cli.Command {
 					&cli.StringFlag{Name: flagType, Usage: "Filter samples to a single check type"},
 				},
 				Action: checkTypesSamplesAction,
+			},
+		},
+	}
+}
+
+// oncallScheduleFlags returns the create/update flag set for a schedule. All
+// flags are optional here; required-field enforcement lives in the actions so
+// that update can leave any subset unchanged.
+func oncallScheduleFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{Name: flagName, Usage: usageHumanReadableName},
+		&cli.StringFlag{Name: flagDescription, Usage: usageOptionalDescription},
+		&cli.StringFlag{Name: flagTimezone, Usage: "IANA timezone (e.g. Europe/Paris)"},
+		&cli.StringFlag{Name: flagRotationType, Usage: "Rotation type: daily or weekly"},
+		&cli.StringFlag{Name: flagHandoffTime, Usage: "Handoff time of day, HH:MM (24h)"},
+		&cli.IntFlag{Name: flagHandoffWeekday, Usage: "Handoff weekday 0 (Mon)..6 (Sun); weekly only"},
+		&cli.StringFlag{Name: flagStart, Usage: "Rotation start (" + usageRFC3339 + ")"},
+		&cli.StringSliceFlag{Name: flagUser, Usage: "Roster user UID (repeatable)"},
+	}
+}
+
+// oncallCommand builds the "oncall" command group.
+func oncallCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "oncall",
+		Aliases: []string{"on-call", "on-call-schedules"},
+		Usage:   "Manage on-call schedules, overrides, and iCal feeds",
+		Flags:   GetGlobalFlags(),
+		Commands: []*cli.Command{
+			{
+				Name:   flagList,
+				Usage:  "List on-call schedules",
+				Action: oncallListAction,
+			},
+			{
+				Name:   cmdCreate,
+				Usage:  "Create an on-call schedule",
+				Flags:  oncallScheduleFlags(),
+				Action: oncallCreateAction,
+			},
+			{
+				Name:      flagGet,
+				Usage:     "Get an on-call schedule",
+				ArgsUsage: argUID,
+				Action:    oncallGetAction,
+			},
+			{
+				Name:      cmdUpdate,
+				Usage:     "Update an on-call schedule",
+				ArgsUsage: argUID,
+				Flags:     oncallScheduleFlags(),
+				Action:    oncallUpdateAction,
+			},
+			{
+				Name:      flagRemove,
+				Aliases:   []string{"rm", cmdDelete},
+				Usage:     "Remove an on-call schedule",
+				ArgsUsage: argUID,
+				Action:    oncallRemoveAction,
+			},
+			{
+				Name:      "preview",
+				Usage:     "Preview the rotation over a window",
+				ArgsUsage: argUID,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: flagFrom, Usage: "Window start (" + usageRFC3339 + ")"},
+					&cli.IntFlag{Name: flagDays, Usage: "Window length in days (1-365, default 14)"},
+				},
+				Action: oncallPreviewAction,
+			},
+			oncallOverridesCommand(),
+			oncallICalCommand(),
+		},
+	}
+}
+
+// oncallOverridesCommand builds the "oncall overrides" subcommand group.
+func oncallOverridesCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "overrides",
+		Usage: "Manage overrides on an on-call schedule",
+		Commands: []*cli.Command{
+			{
+				Name:      flagList,
+				Usage:     "List overrides",
+				ArgsUsage: argUID,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: flagFrom, Usage: "Only overrides ending after (" + usageRFC3339 + ")"},
+					&cli.StringFlag{Name: flagUntil, Usage: "Only overrides starting before (" + usageRFC3339 + ")"},
+				},
+				Action: oncallOverridesListAction,
+			},
+			{
+				Name:      cmdCreate,
+				Usage:     "Create an override",
+				ArgsUsage: argUID,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: flagUser, Usage: "User UID to page during the override", Required: true},
+					&cli.StringFlag{Name: flagStart, Usage: usageRFC3339, Required: true},
+					&cli.StringFlag{Name: flagEnd, Usage: usageRFC3339, Required: true},
+					&cli.StringFlag{Name: flagReason, Usage: "Optional reason"},
+				},
+				Action: oncallOverridesCreateAction,
+			},
+			{
+				Name:      flagRemove,
+				Aliases:   []string{"rm", cmdDelete},
+				Usage:     "Remove an override",
+				ArgsUsage: "<schedule-uid> <override-uid>",
+				Action:    oncallOverridesRemoveAction,
+			},
+		},
+	}
+}
+
+// oncallICalCommand builds the "oncall ical" subcommand group.
+func oncallICalCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "ical",
+		Usage: "Manage the iCal feed for an on-call schedule",
+		Commands: []*cli.Command{
+			{
+				Name:      "enable",
+				Usage:     "Enable the iCal feed",
+				ArgsUsage: argUID,
+				Action:    oncallICalEnableAction,
+			},
+			{
+				Name:      "disable",
+				Usage:     "Disable the iCal feed",
+				ArgsUsage: argUID,
+				Action:    oncallICalDisableAction,
+			},
+			{
+				Name:      "rotate",
+				Usage:     "Rotate the iCal feed secret",
+				ArgsUsage: argUID,
+				Action:    oncallICalRotateAction,
+			},
+			{
+				Name:      "feed",
+				Usage:     "Fetch the raw public iCal feed by its secret",
+				ArgsUsage: "<secret>",
+				Action:    oncallICalFeedAction,
+			},
+		},
+	}
+}
+
+// escalationPoliciesCommand builds the "escalation-policies" command group.
+func escalationPoliciesCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "escalation-policies",
+		Aliases: []string{"escalation-policy", "escalation"},
+		Usage:   "Manage escalation policies",
+		Flags:   GetGlobalFlags(),
+		Commands: []*cli.Command{
+			{
+				Name:   flagList,
+				Usage:  "List escalation policies",
+				Action: escalationPoliciesListAction,
+			},
+			{
+				Name:  cmdCreate,
+				Usage: "Create an escalation policy",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: flagName, Usage: usageHumanReadableName, Required: true},
+					&cli.StringFlag{Name: flagDescription, Usage: usageOptionalDescription},
+					&cli.IntFlag{Name: flagRepeatMax, Usage: "Times to repeat the whole policy (>=0)"},
+					&cli.IntFlag{Name: flagRepeatAfter, Usage: "Seconds between repeats (required when repeat-max > 0)"},
+					&cli.StringFlag{Name: flagStepsJSON, Usage: usageStepsJSON},
+				},
+				Action: escalationPoliciesCreateAction,
+			},
+			{
+				Name:      flagGet,
+				Usage:     "Get an escalation policy",
+				ArgsUsage: argUID,
+				Action:    escalationPoliciesGetAction,
+			},
+			{
+				Name:      cmdUpdate,
+				Usage:     "Update an escalation policy",
+				ArgsUsage: argUID,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: flagName, Usage: usageHumanReadableName},
+					&cli.StringFlag{Name: flagDescription, Usage: usageOptionalDescription},
+					&cli.IntFlag{Name: flagRepeatMax, Usage: "Times to repeat the whole policy (>=0)"},
+					&cli.IntFlag{Name: flagRepeatAfter, Usage: "Seconds between repeats"},
+					&cli.StringFlag{Name: flagStepsJSON, Usage: usageStepsJSON},
+				},
+				Action: escalationPoliciesUpdateAction,
+			},
+			{
+				Name:      flagRemove,
+				Aliases:   []string{"rm", cmdDelete},
+				Usage:     "Remove an escalation policy",
+				ArgsUsage: argUID,
+				Action:    escalationPoliciesRemoveAction,
 			},
 		},
 	}
