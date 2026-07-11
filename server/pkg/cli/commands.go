@@ -886,12 +886,61 @@ func GetCommands() []*cli.Command {
 					ArgsUsage: argUID,
 					Action:    jobsCancelAction,
 				},
+				{
+					Name:   "stats",
+					Usage:  "Show background-job & check-schedule stats (admin)",
+					Action: jobsStatsAction,
+				},
+				{
+					Name:  "admin",
+					Usage: "Admin views over the background-jobs queue",
+					Commands: []*cli.Command{
+						{
+							Name:   flagList,
+							Usage:  "List background jobs (admin)",
+							Flags:  jobAdminListFlags(),
+							Action: jobsAdminListAction,
+						},
+						{
+							Name:      flagGet,
+							Usage:     "Get a background job (admin)",
+							ArgsUsage: argUID,
+							Action:    jobsAdminGetAction,
+						},
+						{
+							Name:      "chain",
+							Usage:     "Show a job's retry chain (admin)",
+							ArgsUsage: argUID,
+							Action:    jobsAdminChainAction,
+						},
+					},
+				},
+			},
+		},
+		{
+			Name:    "check-jobs",
+			Aliases: []string{"check-job", "cj"},
+			Usage:   "Inspect the check-schedule (check_jobs) table",
+			Flags:   GetGlobalFlags(),
+			Commands: []*cli.Command{
+				{
+					Name:   flagList,
+					Usage:  "List check-schedule jobs",
+					Flags:  checkJobPaginationFlags(),
+					Action: checkJobsListAction,
+				},
+				{
+					Name:      flagGet,
+					Usage:     "Get a check-schedule job",
+					ArgsUsage: argUID,
+					Action:    checkJobsGetAction,
+				},
 			},
 		},
 		{
 			Name:    "system",
 			Aliases: []string{"sys"},
-			Usage:   "Manage system parameters",
+			Usage:   "Manage system parameters and inspect jobs across all orgs",
 			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
@@ -923,6 +972,53 @@ func GetCommands() []*cli.Command {
 					Usage:     "Delete a system parameter",
 					ArgsUsage: "<key>",
 					Action:    systemDeleteAction,
+				},
+				{
+					Name:  "jobs",
+					Usage: "Inspect background jobs across all orgs (super-admin)",
+					Commands: []*cli.Command{
+						{
+							Name:   "stats",
+							Usage:  "Show job & check-schedule stats across all orgs",
+							Action: systemJobsStatsAction,
+						},
+						{
+							Name:   flagList,
+							Usage:  "List background jobs across all orgs",
+							Flags:  jobAdminListFlags(),
+							Action: systemJobsListAction,
+						},
+						{
+							Name:      flagGet,
+							Usage:     "Get a background job across all orgs",
+							ArgsUsage: argUID,
+							Action:    systemJobsGetAction,
+						},
+						{
+							Name:      "chain",
+							Usage:     "Show a job's retry chain across all orgs",
+							ArgsUsage: argUID,
+							Action:    systemJobsChainAction,
+						},
+					},
+				},
+				{
+					Name:  "check-jobs",
+					Usage: "Inspect the check-schedule across all orgs (super-admin)",
+					Commands: []*cli.Command{
+						{
+							Name:   flagList,
+							Usage:  "List check-schedule jobs across all orgs",
+							Flags:  checkJobPaginationFlags(),
+							Action: systemCheckJobsListAction,
+						},
+						{
+							Name:      flagGet,
+							Usage:     "Get a check-schedule job across all orgs",
+							ArgsUsage: argUID,
+							Action:    systemCheckJobsGetAction,
+						},
+					},
 				},
 			},
 		},

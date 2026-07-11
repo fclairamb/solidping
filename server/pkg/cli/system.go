@@ -191,3 +191,216 @@ func systemDeleteAction(ctx context.Context, cmd *cli.Command) error {
 	output.PrintSuccess(os.Stdout, "Parameter deleted successfully: "+key)
 	return nil
 }
+
+// systemJobsStatsAction shows aggregate job & check-schedule stats across all orgs.
+func systemJobsStatsAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	resp, err := apiClient.GetSystemJobStatsWithResponse(ctx)
+	if err != nil {
+		return cliCtx.HandleError("Failed to get system job stats", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to get system job stats", resp.StatusCode())
+	}
+
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(resp.JSON200)
+	}
+
+	renderJobStats(resp.JSON200.Data)
+
+	return nil
+}
+
+// systemJobsListAction lists background jobs across all orgs (super-admin).
+func systemJobsListAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	base := buildJobListParams(cmd)
+	params := &client.ListSystemJobsParams{
+		Status: base.Status,
+		Type:   base.Type,
+		Limit:  base.Limit,
+		Offset: base.Offset,
+	}
+
+	resp, err := apiClient.ListSystemJobsWithResponse(ctx, params)
+	if err != nil {
+		return cliCtx.HandleError("Failed to list system jobs", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to list system jobs", resp.StatusCode())
+	}
+
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(resp.JSON200)
+	}
+
+	renderAdminJobList(resp.JSON200.Data)
+
+	return nil
+}
+
+// systemJobsGetAction shows a single background job across all orgs (super-admin).
+func systemJobsGetAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	jobUID, err := requireJobUID(cmd)
+	if err != nil {
+		return err
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	resp, err := apiClient.GetSystemJobWithResponse(ctx, jobUID)
+	if err != nil {
+		return cliCtx.HandleError("Failed to get system job", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to get system job", resp.StatusCode())
+	}
+
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(resp.JSON200)
+	}
+
+	renderAdminJobDetail(resp.JSON200.Data)
+
+	return nil
+}
+
+// systemJobsChainAction shows a job's retry chain across all orgs (super-admin).
+func systemJobsChainAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	jobUID, err := requireJobUID(cmd)
+	if err != nil {
+		return err
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	resp, err := apiClient.GetSystemJobChainWithResponse(ctx, jobUID)
+	if err != nil {
+		return cliCtx.HandleError("Failed to get system job chain", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to get system job chain", resp.StatusCode())
+	}
+
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(resp.JSON200)
+	}
+
+	renderAdminJobList(resp.JSON200.Data)
+
+	return nil
+}
+
+// systemCheckJobsListAction lists check-schedule jobs across all orgs (super-admin).
+func systemCheckJobsListAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	params := &client.ListSystemCheckJobsParams{}
+	if cmd.IsSet(flagLimit) {
+		l := cmd.Int(flagLimit)
+		params.Limit = &l
+	}
+	if cmd.IsSet(flagOffset) {
+		o := cmd.Int(flagOffset)
+		params.Offset = &o
+	}
+
+	resp, err := apiClient.ListSystemCheckJobsWithResponse(ctx, params)
+	if err != nil {
+		return cliCtx.HandleError("Failed to list system check jobs", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to list system check jobs", resp.StatusCode())
+	}
+
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(resp.JSON200)
+	}
+
+	renderCheckJobList(resp.JSON200.Data)
+
+	return nil
+}
+
+// systemCheckJobsGetAction shows a single check-schedule job across all orgs (super-admin).
+func systemCheckJobsGetAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	jobUID, err := requireJobUID(cmd)
+	if err != nil {
+		return err
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	resp, err := apiClient.GetSystemCheckJobWithResponse(ctx, jobUID)
+	if err != nil {
+		return cliCtx.HandleError("Failed to get system check job", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to get system check job", resp.StatusCode())
+	}
+
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(resp.JSON200)
+	}
+
+	renderCheckJobDetail(resp.JSON200.Data)
+
+	return nil
+}
