@@ -9,7 +9,7 @@ import (
 const (
 	defaultPort       = 21
 	defaultTimeout    = 10 * time.Second
-	maxTimeout        = 60 * time.Second
+	maxTimeout        = 30 * time.Second
 	defaultUsername   = "anonymous"
 	implicitTLSPort   = 990
 	microsecondsPerMs = 1000.0
@@ -155,7 +155,7 @@ func (c *FTPConfig) Validate() error {
 	}
 
 	if c.Timeout != 0 && (c.Timeout <= 0 || c.Timeout > maxTimeout) {
-		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 60s, got %s", c.Timeout.String())
+		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 30s, got %s", c.Timeout.String())
 	}
 
 	if c.TLSMode != "" && c.TLSMode != TLSModeNone &&

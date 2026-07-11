@@ -48,8 +48,8 @@ func (c *UDPChecker) Validate(spec *checkerdef.CheckSpec) error {
 		return checkerdef.NewConfigErrorf("port", "must be between 1 and 65535, got %d", cfg.Port)
 	}
 
-	if cfg.Timeout != 0 && (cfg.Timeout <= 0 || cfg.Timeout > 60*time.Second) {
-		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 60s, got %s", cfg.Timeout.String())
+	if cfg.Timeout != 0 && (cfg.Timeout <= 0 || cfg.Timeout > 30*time.Second) {
+		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 30s, got %s", cfg.Timeout.String())
 	}
 
 	// Auto-generate name and slug from host if not provided

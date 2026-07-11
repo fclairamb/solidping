@@ -61,8 +61,8 @@ func (c *DNSChecker) Validate(spec *checkerdef.CheckSpec) error {
 	}
 
 	// Validate Timeout if set
-	if cfg.Timeout != 0 && (cfg.Timeout <= 0 || cfg.Timeout > 60*time.Second) {
-		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 60s, got %s", cfg.Timeout.String())
+	if cfg.Timeout != 0 && (cfg.Timeout <= 0 || cfg.Timeout > 30*time.Second) {
+		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 30s, got %s", cfg.Timeout.String())
 	}
 
 	// Validate RecordType if set

@@ -11,7 +11,7 @@ import (
 // SIP defaults.
 const (
 	defaultTimeout = 5 * time.Second
-	maxTimeout     = 60 * time.Second
+	maxTimeout     = 30 * time.Second
 
 	defaultPortPlain = 5060 // udp / tcp
 	defaultPortTLS   = 5061 // tls
@@ -216,7 +216,7 @@ func (c *SIPConfig) Validate() error {
 	}
 
 	if c.Timeout != 0 && (c.Timeout <= 0 || c.Timeout > maxTimeout) {
-		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 60s, got %s", c.Timeout.String())
+		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 30s, got %s", c.Timeout.String())
 	}
 
 	return nil

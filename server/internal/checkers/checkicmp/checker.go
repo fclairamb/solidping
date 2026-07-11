@@ -75,9 +75,9 @@ func (c *ICMPChecker) Validate(spec *checkerdef.CheckSpec) error {
 		return checkerdef.NewConfigErrorf("ttl", "must be between 1 and 255, got %d", cfg.TTL)
 	}
 
-	// Validate Timeout (> 0 and <= 60s) - check the original value if set
-	if cfg.Timeout != 0 && (cfg.Timeout <= 0 || cfg.Timeout > 60*time.Second) {
-		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 60s, got %s", cfg.Timeout.String())
+	// Validate Timeout (> 0 and <= 30s) - check the original value if set
+	if cfg.Timeout != 0 && (cfg.Timeout <= 0 || cfg.Timeout > 30*time.Second) {
+		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 30s, got %s", cfg.Timeout.String())
 	}
 
 	return nil

@@ -12,7 +12,7 @@ import (
 const (
 	maxScriptSize  = 64 * 1024 // 64KB max script size
 	defaultTimeout = 30 * time.Second
-	maxTimeout     = 60 * time.Second
+	maxTimeout     = 30 * time.Second
 	maxEnvEntries  = 50
 
 	fieldScript = "script"

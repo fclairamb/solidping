@@ -18,7 +18,7 @@ import (
 
 const (
 	defaultTimeout = 10 * time.Second
-	maxTimeout     = 60 * time.Second
+	maxTimeout     = 30 * time.Second
 )
 
 var (
@@ -61,7 +61,7 @@ func (c *DNSBLChecker) Validate(spec *checkerdef.CheckSpec) error {
 	}
 
 	if cfg.Timeout != 0 && (cfg.Timeout <= 0 || cfg.Timeout > maxTimeout) {
-		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 60s, got %s", cfg.Timeout.String())
+		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 30s, got %s", cfg.Timeout.String())
 	}
 
 	return nil

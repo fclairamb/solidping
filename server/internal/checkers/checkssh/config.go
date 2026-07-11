@@ -154,8 +154,8 @@ func (c *SSHConfig) Validate() error {
 		return checkerdef.NewConfigErrorf("port", "must be between 1 and 65535, got %d", c.Port)
 	}
 
-	if c.Timeout != 0 && (c.Timeout <= 0 || c.Timeout > 60*time.Second) {
-		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 60s, got %s", c.Timeout.String())
+	if c.Timeout != 0 && (c.Timeout <= 0 || c.Timeout > 30*time.Second) {
+		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 30s, got %s", c.Timeout.String())
 	}
 
 	if c.Command != "" && c.Username == "" {

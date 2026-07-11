@@ -206,13 +206,13 @@ func TestDNSBLChecker_Validate(t *testing.T) {
 			name:    "timeout too long",
 			config:  &DNSBLConfig{Target: "1.2.3.4", Timeout: 61 * time.Second},
 			wantErr: true,
-			errMsg:  "timeout: must be > 0 and <= 60s, got 1m1s",
+			errMsg:  "timeout: must be > 0 and <= 30s, got 1m1s",
 		},
 		{
 			name:    "negative timeout",
 			config:  &DNSBLConfig{Target: "1.2.3.4", Timeout: -1 * time.Second},
 			wantErr: true,
-			errMsg:  "timeout: must be > 0 and <= 60s, got -1s",
+			errMsg:  "timeout: must be > 0 and <= 30s, got -1s",
 		},
 	}
 

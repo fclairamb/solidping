@@ -10,7 +10,7 @@ import (
 
 const (
 	defaultTimeout = 30 * time.Second
-	maxTimeout     = 120 * time.Second
+	maxTimeout     = 30 * time.Second
 )
 
 // BrowserConfig holds the configuration for browser-based health checks.

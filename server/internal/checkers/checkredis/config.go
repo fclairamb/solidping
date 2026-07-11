@@ -10,7 +10,7 @@ import (
 const (
 	defaultPort    = 6379
 	defaultTimeout = 10 * time.Second
-	maxTimeout     = 60 * time.Second
+	maxTimeout     = 30 * time.Second
 )
 
 // RedisConfig holds the configuration for Redis health checks.
@@ -107,7 +107,7 @@ func (c *RedisConfig) Validate() error {
 
 	if c.Timeout != 0 && (c.Timeout <= 0 || c.Timeout > maxTimeout) {
 		return checkerdef.NewConfigErrorf(
-			"timeout", "must be > 0 and <= 60s, got %s", c.Timeout.String(),
+			"timeout", "must be > 0 and <= 30s, got %s", c.Timeout.String(),
 		)
 	}
 

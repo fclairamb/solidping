@@ -10,7 +10,7 @@ import (
 const (
 	defaultPort      = 3389
 	defaultTimeout   = 5 * time.Second
-	maxTimeout       = 60 * time.Second
+	maxTimeout       = 30 * time.Second
 	minPort          = 1
 	maxPort          = 65535
 	maxThresholdDays = 3650 // 10 years — generous sanity cap, mirrors checkssl
@@ -158,7 +158,7 @@ func (c *RDPConfig) Validate() error {
 	}
 
 	if c.Timeout != 0 && (c.Timeout <= 0 || c.Timeout > maxTimeout) {
-		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 60s, got %s", c.Timeout.String())
+		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 30s, got %s", c.Timeout.String())
 	}
 
 	return c.validateThresholds()
