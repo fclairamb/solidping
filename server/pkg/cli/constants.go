@@ -33,6 +33,8 @@ const (
 	flagDescription = "description"
 	cmdCreate       = "create"
 	cmdUpdate       = "update"
+	cmdSet          = "set"
+	cmdDelete       = "delete"
 	argChildParent  = "<child-slug> <parent-slug>"
 
 	colTimestamp = "TIMESTAMP"

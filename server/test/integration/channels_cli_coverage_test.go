@@ -16,8 +16,6 @@ import (
 // operations (create/list/get/update/rotate-secret/test/delete) end to end
 // against the real integrations handler. A local webhook receiver makes the
 // test-channel delivery deterministic.
-//
-//nolint:funlen // one end-to-end sweep over the whole channel lifecycle
 func TestCLICoverage_ChannelLifecycle(t *testing.T) {
 	t.Parallel()
 

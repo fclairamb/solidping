@@ -226,8 +226,6 @@ func channelsCreateAction(ctx context.Context, cmd *cli.Command) error {
 }
 
 // channelsUpdateAction patches a channel's name/enabled/default/settings.
-//
-//nolint:cyclop // CLI flag parsing across several optional fields
 func channelsUpdateAction(ctx context.Context, cmd *cli.Command) error {
 	cliCtx, err := NewCLIContext(cmd)
 	if err != nil {

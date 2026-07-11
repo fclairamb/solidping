@@ -268,7 +268,7 @@ func GetCommands() []*cli.Command {
 				},
 				{
 					Name:      flagRemove,
-					Aliases:   []string{"rm", "delete"},
+					Aliases:   []string{"rm", cmdDelete},
 					Usage:     "Remove a check",
 					ArgsUsage: argUIDSlug,
 					Action:    checksRemoveAction,
@@ -308,7 +308,7 @@ func GetCommands() []*cli.Command {
 							Action:    checksDepsRemoveAction,
 						},
 						{
-							Name:      "set",
+							Name:      cmdSet,
 							Usage:     "Replace the full dependsOn set for a child check (PUT-by-slug semantics)",
 							ArgsUsage: "<child-slug>",
 							Flags: []cli.Flag{
@@ -354,7 +354,7 @@ func GetCommands() []*cli.Command {
 							Action:    checksChannelsListAction,
 						},
 						{
-							Name:      "set",
+							Name:      cmdSet,
 							Usage:     "Replace the full set of channels bound to a check",
 							ArgsUsage: "<uid|slug> [<connection-uid>...]",
 							Action:    checksChannelsSetAction,
@@ -690,7 +690,7 @@ func GetCommands() []*cli.Command {
 				},
 				{
 					Name:      flagRemove,
-					Aliases:   []string{"rm", "delete"},
+					Aliases:   []string{"rm", cmdDelete},
 					Usage:     "Remove a channel",
 					ArgsUsage: argUID,
 					Action:    channelsRemoveAction,
@@ -906,7 +906,7 @@ func GetCommands() []*cli.Command {
 					Action:    systemGetAction,
 				},
 				{
-					Name:      "set",
+					Name:      cmdSet,
 					Usage:     "Set a system parameter",
 					ArgsUsage: "<key> <value>",
 					Flags: []cli.Flag{
@@ -918,7 +918,7 @@ func GetCommands() []*cli.Command {
 					Action: systemSetAction,
 				},
 				{
-					Name:      "delete",
+					Name:      cmdDelete,
 					Aliases:   []string{"rm"},
 					Usage:     "Delete a system parameter",
 					ArgsUsage: "<key>",
