@@ -42,12 +42,25 @@ SolidPing is configured primarily through environment variables. All environment
 |----------|---------|-------------|
 | `SP_NODE_ROLE` | `all` | Node role: `all`, `api`, `jobs`, `checks` |
 | `SP_NODE_REGION` | - | Worker region (required when role=`checks`) |
+| `SP_REGIONS` | - | Region display definitions, as a JSON list of `{slug, emoji, name}` |
 
 Use `SP_NODE_ROLE` to run SolidPing in a distributed configuration:
 - `all` - Single node running everything (default)
 - `api` - Only serve the API and dashboard
 - `jobs` - Only run background jobs (scheduling, cleanup)
 - `checks` - Only execute health checks (worker mode)
+
+`SP_REGIONS` names your regions declaratively: the dashboard renders
+`{emoji} {name}` wherever a region appears (check form, results, worker
+load), falling back to the raw slug for undefined regions. Set it on the
+main server; it seeds the `regions` system parameter at startup:
+
+```bash
+SP_REGIONS='[{"slug": "default", "emoji": "🇪🇺", "name": "EU1 (default)"}, {"slug": "us-1", "emoji": "🇺🇸", "name": "US1"}]'
+```
+
+When unset, the stored parameter (or the built-in `default` region) is
+used, so edits made through the API are preserved across restarts.
 
 ### Logging
 
