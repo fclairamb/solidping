@@ -212,6 +212,13 @@ const (
 	IncidentDetailStateResolved IncidentDetailState = "resolved"
 )
 
+// Defines values for InviteInfoResponseRole.
+const (
+	InviteInfoResponseRoleAdmin  InviteInfoResponseRole = "admin"
+	InviteInfoResponseRoleUser   InviteInfoResponseRole = "user"
+	InviteInfoResponseRoleViewer InviteInfoResponseRole = "viewer"
+)
+
 // Defines values for JobStatus.
 const (
 	JobStatusCancelled JobStatus = "cancelled"
@@ -348,6 +355,18 @@ const (
 	ListOrgMembershipRequestsParamsStatusRejected ListOrgMembershipRequestsParamsStatus = "rejected"
 )
 
+// AcceptInviteRequest defines model for AcceptInviteRequest.
+type AcceptInviteRequest struct {
+	// Name Display name for a newly created user
+	Name *string `json:"name,omitempty"`
+
+	// Password Password for a newly created user (ignored if the user already exists)
+	Password *string `json:"password,omitempty"`
+
+	// Token Invitation token from the emailed link
+	Token string `json:"token"`
+}
+
 // ActivationFunnelResponse defines model for ActivationFunnelResponse.
 type ActivationFunnelResponse struct {
 	Data []ActivationFunnelRow `json:"data"`
@@ -424,6 +443,19 @@ type ApproveMembershipRequestRequest struct {
 
 // ApproveMembershipRequestRequestRole Role to grant the new member (default user)
 type ApproveMembershipRequestRequestRole string
+
+// AuthProvider defines model for AuthProvider.
+type AuthProvider struct {
+	Name *string `json:"name,omitempty"`
+	Type *string `json:"type,omitempty"`
+}
+
+// AuthProvidersResponse defines model for AuthProvidersResponse.
+type AuthProvidersResponse struct {
+	Data                *[]AuthProvider `json:"data,omitempty"`
+	PasskeysEnabled     *bool           `json:"passkeysEnabled,omitempty"`
+	RegistrationEnabled *bool           `json:"registrationEnabled,omitempty"`
+}
 
 // AvailabilityPeriod defines model for AvailabilityPeriod.
 type AvailabilityPeriod struct {
@@ -751,6 +783,12 @@ type CloneCheckRequest struct {
 	Enabled       *bool   `json:"enabled,omitempty"`
 	Name          *string `json:"name,omitempty"`
 	Slug          *string `json:"slug,omitempty"`
+}
+
+// ConfirmRegistrationRequest defines model for ConfirmRegistrationRequest.
+type ConfirmRegistrationRequest struct {
+	// Token Registration confirmation token from the emailed link
+	Token string `json:"token"`
 }
 
 // CostDistribution defines model for CostDistribution.
@@ -1451,6 +1489,18 @@ type IncidentSnoozeRequest struct {
 	Until    *time.Time `json:"until,omitempty"`
 }
 
+// InviteInfoResponse defines model for InviteInfoResponse.
+type InviteInfoResponse struct {
+	// Email Masked email address the invitation was sent to
+	Email   *string                 `json:"email,omitempty"`
+	OrgName *string                 `json:"orgName,omitempty"`
+	OrgSlug *string                 `json:"orgSlug,omitempty"`
+	Role    *InviteInfoResponseRole `json:"role,omitempty"`
+}
+
+// InviteInfoResponseRole defines model for InviteInfoResponse.Role.
+type InviteInfoResponseRole string
+
 // InviteListItem defines model for InviteListItem.
 type InviteListItem struct {
 	CreatedAt time.Time           `json:"createdAt"`
@@ -1837,6 +1887,11 @@ type MemorySubsystems struct {
 	RateLimitEntries *int `json:"rateLimitEntries,omitempty"`
 }
 
+// MessageResponse defines model for MessageResponse.
+type MessageResponse struct {
+	Message *string `json:"message,omitempty"`
+}
+
 // Notification A single notification delivery audit row.
 type Notification struct {
 	ChannelType *string                 `json:"channelType,omitempty"`
@@ -2177,6 +2232,13 @@ type Region struct {
 	Slug  string `json:"slug"`
 }
 
+// RegisterRequest defines model for RegisterRequest.
+type RegisterRequest struct {
+	Email    openapi_types.Email `json:"email"`
+	Name     *string             `json:"name,omitempty"`
+	Password string              `json:"password"`
+}
+
 // RejectMembershipRequestRequest defines model for RejectMembershipRequestRequest.
 type RejectMembershipRequestRequest struct {
 	// Reason Optional reason shown to the requester
@@ -2186,6 +2248,19 @@ type RejectMembershipRequestRequest struct {
 // ReorderUidsRequest defines model for ReorderUidsRequest.
 type ReorderUidsRequest struct {
 	Uids []openapi_types.UUID `json:"uids"`
+}
+
+// RequestPasswordResetRequest defines model for RequestPasswordResetRequest.
+type RequestPasswordResetRequest struct {
+	Email openapi_types.Email `json:"email"`
+}
+
+// ResetPasswordRequest defines model for ResetPasswordRequest.
+type ResetPasswordRequest struct {
+	Password string `json:"password"`
+
+	// Token Password reset token from the emailed link
+	Token string `json:"token"`
 }
 
 // ResultFallbackInfo Present when the requested raw result UID had already been rolled up into an aggregation; describes the substitution.
@@ -2547,6 +2622,12 @@ type UpdateOrgSettingsRequest struct {
 	SessionMaxDurationSeconds *int `json:"sessionMaxDurationSeconds,omitempty"`
 }
 
+// UpdateProfileRequest defines model for UpdateProfileRequest.
+type UpdateProfileRequest struct {
+	// Name New display name for the authenticated user
+	Name *string `json:"name,omitempty"`
+}
+
 // UpdateSeverityRequest defines model for UpdateSeverityRequest.
 type UpdateSeverityRequest struct {
 	Channels    *[]string `json:"channels,omitempty"`
@@ -2804,6 +2885,9 @@ type Forbidden = Error
 
 // NotFound defines model for NotFound.
 type NotFound = Error
+
+// TooManyRequests defines model for TooManyRequests.
+type TooManyRequests = Error
 
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Error
@@ -3207,17 +3291,35 @@ type ListSystemJobsParams struct {
 	Offset *JobOffsetQuery `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// AcceptInviteJSONRequestBody defines body for AcceptInvite for application/json ContentType.
+type AcceptInviteJSONRequestBody = AcceptInviteRequest
+
+// ConfirmRegistrationJSONRequestBody defines body for ConfirmRegistration for application/json ContentType.
+type ConfirmRegistrationJSONRequestBody = ConfirmRegistrationRequest
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
 // LogoutJSONRequestBody defines body for Logout for application/json ContentType.
 type LogoutJSONRequestBody = LogoutRequest
 
+// UpdateMeJSONRequestBody defines body for UpdateMe for application/json ContentType.
+type UpdateMeJSONRequestBody = UpdateProfileRequest
+
 // CreateMembershipRequestJSONRequestBody defines body for CreateMembershipRequest for application/json ContentType.
 type CreateMembershipRequestJSONRequestBody = CreateMembershipRequestRequest
 
 // RefreshTokenJSONRequestBody defines body for RefreshToken for application/json ContentType.
 type RefreshTokenJSONRequestBody = RefreshRequest
+
+// RegisterJSONRequestBody defines body for Register for application/json ContentType.
+type RegisterJSONRequestBody = RegisterRequest
+
+// RequestPasswordResetJSONRequestBody defines body for RequestPasswordReset for application/json ContentType.
+type RequestPasswordResetJSONRequestBody = RequestPasswordResetRequest
+
+// ResetPasswordJSONRequestBody defines body for ResetPassword for application/json ContentType.
+type ResetPasswordJSONRequestBody = ResetPasswordRequest
 
 // SwitchOrgJSONRequestBody defines body for SwitchOrg for application/json ContentType.
 type SwitchOrgJSONRequestBody = SwitchOrgRequest
@@ -3466,6 +3568,19 @@ type ClientInterface interface {
 	// GetVersion request
 	GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// AcceptInviteWithBody request with any body
+	AcceptInviteWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AcceptInvite(ctx context.Context, body AcceptInviteJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ConfirmRegistrationWithBody request with any body
+	ConfirmRegistrationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ConfirmRegistration(ctx context.Context, body ConfirmRegistrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetInvite request
+	GetInvite(ctx context.Context, token string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// LoginWithBody request with any body
 	LoginWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -3479,6 +3594,11 @@ type ClientInterface interface {
 	// GetCurrentUser request
 	GetCurrentUser(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// UpdateMeWithBody request with any body
+	UpdateMeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateMe(ctx context.Context, body UpdateMeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListMyMembershipRequests request
 	ListMyMembershipRequests(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -3490,10 +3610,28 @@ type ClientInterface interface {
 	// CancelMembershipRequest request
 	CancelMembershipRequest(ctx context.Context, uid MembershipRequestUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListAuthProviders request
+	ListAuthProviders(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// RefreshTokenWithBody request with any body
 	RefreshTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	RefreshToken(ctx context.Context, body RefreshTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RegisterWithBody request with any body
+	RegisterWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	Register(ctx context.Context, body RegisterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RequestPasswordResetWithBody request with any body
+	RequestPasswordResetWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RequestPasswordReset(ctx context.Context, body RequestPasswordResetJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ResetPasswordWithBody request with any body
+	ResetPasswordWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ResetPassword(ctx context.Context, body ResetPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SwitchOrgWithBody request with any body
 	SwitchOrgWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4187,6 +4325,66 @@ func (c *Client) GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) 
 	return c.Client.Do(req)
 }
 
+func (c *Client) AcceptInviteWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAcceptInviteRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AcceptInvite(ctx context.Context, body AcceptInviteJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAcceptInviteRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ConfirmRegistrationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConfirmRegistrationRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ConfirmRegistration(ctx context.Context, body ConfirmRegistrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConfirmRegistrationRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetInvite(ctx context.Context, token string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetInviteRequest(c.Server, token)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) LoginWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewLoginRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -4247,6 +4445,30 @@ func (c *Client) GetCurrentUser(ctx context.Context, reqEditors ...RequestEditor
 	return c.Client.Do(req)
 }
 
+func (c *Client) UpdateMeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateMeRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateMe(ctx context.Context, body UpdateMeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateMeRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListMyMembershipRequests(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListMyMembershipRequestsRequest(c.Server)
 	if err != nil {
@@ -4295,6 +4517,18 @@ func (c *Client) CancelMembershipRequest(ctx context.Context, uid MembershipRequ
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListAuthProviders(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAuthProvidersRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) RefreshTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRefreshTokenRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -4309,6 +4543,78 @@ func (c *Client) RefreshTokenWithBody(ctx context.Context, contentType string, b
 
 func (c *Client) RefreshToken(ctx context.Context, body RefreshTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRefreshTokenRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RegisterWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRegisterRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) Register(ctx context.Context, body RegisterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRegisterRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RequestPasswordResetWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRequestPasswordResetRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RequestPasswordReset(ctx context.Context, body RequestPasswordResetJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRequestPasswordResetRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ResetPasswordWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResetPasswordRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ResetPassword(ctx context.Context, body ResetPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResetPasswordRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -7212,6 +7518,120 @@ func NewGetVersionRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewAcceptInviteRequest calls the generic AcceptInvite builder with application/json body
+func NewAcceptInviteRequest(server string, body AcceptInviteJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAcceptInviteRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewAcceptInviteRequestWithBody generates requests for AcceptInvite with any type of body
+func NewAcceptInviteRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/accept-invite")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewConfirmRegistrationRequest calls the generic ConfirmRegistration builder with application/json body
+func NewConfirmRegistrationRequest(server string, body ConfirmRegistrationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewConfirmRegistrationRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewConfirmRegistrationRequestWithBody generates requests for ConfirmRegistration with any type of body
+func NewConfirmRegistrationRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/confirm-registration")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetInviteRequest generates requests for GetInvite
+func NewGetInviteRequest(server string, token string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "token", runtime.ParamLocationPath, token)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/invite/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewLoginRequest calls the generic Login builder with application/json body
 func NewLoginRequest(server string, body LoginJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -7319,6 +7739,46 @@ func NewGetCurrentUserRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewUpdateMeRequest calls the generic UpdateMe builder with application/json body
+func NewUpdateMeRequest(server string, body UpdateMeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateMeRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewUpdateMeRequestWithBody generates requests for UpdateMe with any type of body
+func NewUpdateMeRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/me")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListMyMembershipRequestsRequest generates requests for ListMyMembershipRequests
 func NewListMyMembershipRequestsRequest(server string) (*http.Request, error) {
 	var err error
@@ -7420,6 +7880,33 @@ func NewCancelMembershipRequestRequest(server string, uid MembershipRequestUidPa
 	return req, nil
 }
 
+// NewListAuthProvidersRequest generates requests for ListAuthProviders
+func NewListAuthProvidersRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/providers")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewRefreshTokenRequest calls the generic RefreshToken builder with application/json body
 func NewRefreshTokenRequest(server string, body RefreshTokenJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -7441,6 +7928,126 @@ func NewRefreshTokenRequestWithBody(server string, contentType string, body io.R
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/auth/refresh")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRegisterRequest calls the generic Register builder with application/json body
+func NewRegisterRequest(server string, body RegisterJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRegisterRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewRegisterRequestWithBody generates requests for Register with any type of body
+func NewRegisterRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/register")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRequestPasswordResetRequest calls the generic RequestPasswordReset builder with application/json body
+func NewRequestPasswordResetRequest(server string, body RequestPasswordResetJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRequestPasswordResetRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewRequestPasswordResetRequestWithBody generates requests for RequestPasswordReset with any type of body
+func NewRequestPasswordResetRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/request-password-reset")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewResetPasswordRequest calls the generic ResetPassword builder with application/json body
+func NewResetPasswordRequest(server string, body ResetPasswordJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewResetPasswordRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewResetPasswordRequestWithBody generates requests for ResetPassword with any type of body
+func NewResetPasswordRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/reset-password")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -16521,6 +17128,19 @@ type ClientWithResponsesInterface interface {
 	// GetVersionWithResponse request
 	GetVersionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetVersionResult, error)
 
+	// AcceptInviteWithBodyWithResponse request with any body
+	AcceptInviteWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AcceptInviteResult, error)
+
+	AcceptInviteWithResponse(ctx context.Context, body AcceptInviteJSONRequestBody, reqEditors ...RequestEditorFn) (*AcceptInviteResult, error)
+
+	// ConfirmRegistrationWithBodyWithResponse request with any body
+	ConfirmRegistrationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ConfirmRegistrationResult, error)
+
+	ConfirmRegistrationWithResponse(ctx context.Context, body ConfirmRegistrationJSONRequestBody, reqEditors ...RequestEditorFn) (*ConfirmRegistrationResult, error)
+
+	// GetInviteWithResponse request
+	GetInviteWithResponse(ctx context.Context, token string, reqEditors ...RequestEditorFn) (*GetInviteResult, error)
+
 	// LoginWithBodyWithResponse request with any body
 	LoginWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LoginResult, error)
 
@@ -16534,6 +17154,11 @@ type ClientWithResponsesInterface interface {
 	// GetCurrentUserWithResponse request
 	GetCurrentUserWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetCurrentUserResult, error)
 
+	// UpdateMeWithBodyWithResponse request with any body
+	UpdateMeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateMeResult, error)
+
+	UpdateMeWithResponse(ctx context.Context, body UpdateMeJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateMeResult, error)
+
 	// ListMyMembershipRequestsWithResponse request
 	ListMyMembershipRequestsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListMyMembershipRequestsResult, error)
 
@@ -16545,10 +17170,28 @@ type ClientWithResponsesInterface interface {
 	// CancelMembershipRequestWithResponse request
 	CancelMembershipRequestWithResponse(ctx context.Context, uid MembershipRequestUidPath, reqEditors ...RequestEditorFn) (*CancelMembershipRequestResult, error)
 
+	// ListAuthProvidersWithResponse request
+	ListAuthProvidersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListAuthProvidersResult, error)
+
 	// RefreshTokenWithBodyWithResponse request with any body
 	RefreshTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RefreshTokenResult, error)
 
 	RefreshTokenWithResponse(ctx context.Context, body RefreshTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*RefreshTokenResult, error)
+
+	// RegisterWithBodyWithResponse request with any body
+	RegisterWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RegisterResult, error)
+
+	RegisterWithResponse(ctx context.Context, body RegisterJSONRequestBody, reqEditors ...RequestEditorFn) (*RegisterResult, error)
+
+	// RequestPasswordResetWithBodyWithResponse request with any body
+	RequestPasswordResetWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RequestPasswordResetResult, error)
+
+	RequestPasswordResetWithResponse(ctx context.Context, body RequestPasswordResetJSONRequestBody, reqEditors ...RequestEditorFn) (*RequestPasswordResetResult, error)
+
+	// ResetPasswordWithBodyWithResponse request with any body
+	ResetPasswordWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResetPasswordResult, error)
+
+	ResetPasswordWithResponse(ctx context.Context, body ResetPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ResetPasswordResult, error)
 
 	// SwitchOrgWithBodyWithResponse request with any body
 	SwitchOrgWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SwitchOrgResult, error)
@@ -17296,6 +17939,76 @@ func (r GetVersionResult) StatusCode() int {
 	return 0
 }
 
+type AcceptInviteResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *LoginResponse
+	JSON400      *ValidationError
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r AcceptInviteResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AcceptInviteResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ConfirmRegistrationResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *LoginResponse
+	JSON400      *ValidationError
+}
+
+// Status returns HTTPResponse.Status
+func (r ConfirmRegistrationResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ConfirmRegistrationResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetInviteResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *InviteInfoResponse
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetInviteResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetInviteResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type LoginResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -17358,6 +18071,30 @@ func (r GetCurrentUserResult) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetCurrentUserResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateMeResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MeResponse
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateMeResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateMeResult) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -17436,6 +18173,28 @@ func (r CancelMembershipRequestResult) StatusCode() int {
 	return 0
 }
 
+type ListAuthProvidersResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AuthProvidersResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAuthProvidersResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAuthProvidersResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type RefreshTokenResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -17453,6 +18212,76 @@ func (r RefreshTokenResult) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r RefreshTokenResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RegisterResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MessageResponse
+	JSON400      *ValidationError
+}
+
+// Status returns HTTPResponse.Status
+func (r RegisterResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RegisterResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RequestPasswordResetResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MessageResponse
+	JSON429      *TooManyRequests
+}
+
+// Status returns HTTPResponse.Status
+func (r RequestPasswordResetResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RequestPasswordResetResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ResetPasswordResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MessageResponse
+	JSON400      *ValidationError
+	JSON410      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ResetPasswordResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ResetPasswordResult) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -21725,6 +22554,49 @@ func (c *ClientWithResponses) GetVersionWithResponse(ctx context.Context, reqEdi
 	return ParseGetVersionResult(rsp)
 }
 
+// AcceptInviteWithBodyWithResponse request with arbitrary body returning *AcceptInviteResult
+func (c *ClientWithResponses) AcceptInviteWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AcceptInviteResult, error) {
+	rsp, err := c.AcceptInviteWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAcceptInviteResult(rsp)
+}
+
+func (c *ClientWithResponses) AcceptInviteWithResponse(ctx context.Context, body AcceptInviteJSONRequestBody, reqEditors ...RequestEditorFn) (*AcceptInviteResult, error) {
+	rsp, err := c.AcceptInvite(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAcceptInviteResult(rsp)
+}
+
+// ConfirmRegistrationWithBodyWithResponse request with arbitrary body returning *ConfirmRegistrationResult
+func (c *ClientWithResponses) ConfirmRegistrationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ConfirmRegistrationResult, error) {
+	rsp, err := c.ConfirmRegistrationWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConfirmRegistrationResult(rsp)
+}
+
+func (c *ClientWithResponses) ConfirmRegistrationWithResponse(ctx context.Context, body ConfirmRegistrationJSONRequestBody, reqEditors ...RequestEditorFn) (*ConfirmRegistrationResult, error) {
+	rsp, err := c.ConfirmRegistration(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConfirmRegistrationResult(rsp)
+}
+
+// GetInviteWithResponse request returning *GetInviteResult
+func (c *ClientWithResponses) GetInviteWithResponse(ctx context.Context, token string, reqEditors ...RequestEditorFn) (*GetInviteResult, error) {
+	rsp, err := c.GetInvite(ctx, token, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetInviteResult(rsp)
+}
+
 // LoginWithBodyWithResponse request with arbitrary body returning *LoginResult
 func (c *ClientWithResponses) LoginWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LoginResult, error) {
 	rsp, err := c.LoginWithBody(ctx, contentType, body, reqEditors...)
@@ -21768,6 +22640,23 @@ func (c *ClientWithResponses) GetCurrentUserWithResponse(ctx context.Context, re
 	return ParseGetCurrentUserResult(rsp)
 }
 
+// UpdateMeWithBodyWithResponse request with arbitrary body returning *UpdateMeResult
+func (c *ClientWithResponses) UpdateMeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateMeResult, error) {
+	rsp, err := c.UpdateMeWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateMeResult(rsp)
+}
+
+func (c *ClientWithResponses) UpdateMeWithResponse(ctx context.Context, body UpdateMeJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateMeResult, error) {
+	rsp, err := c.UpdateMe(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateMeResult(rsp)
+}
+
 // ListMyMembershipRequestsWithResponse request returning *ListMyMembershipRequestsResult
 func (c *ClientWithResponses) ListMyMembershipRequestsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListMyMembershipRequestsResult, error) {
 	rsp, err := c.ListMyMembershipRequests(ctx, reqEditors...)
@@ -21803,6 +22692,15 @@ func (c *ClientWithResponses) CancelMembershipRequestWithResponse(ctx context.Co
 	return ParseCancelMembershipRequestResult(rsp)
 }
 
+// ListAuthProvidersWithResponse request returning *ListAuthProvidersResult
+func (c *ClientWithResponses) ListAuthProvidersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListAuthProvidersResult, error) {
+	rsp, err := c.ListAuthProviders(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAuthProvidersResult(rsp)
+}
+
 // RefreshTokenWithBodyWithResponse request with arbitrary body returning *RefreshTokenResult
 func (c *ClientWithResponses) RefreshTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RefreshTokenResult, error) {
 	rsp, err := c.RefreshTokenWithBody(ctx, contentType, body, reqEditors...)
@@ -21818,6 +22716,57 @@ func (c *ClientWithResponses) RefreshTokenWithResponse(ctx context.Context, body
 		return nil, err
 	}
 	return ParseRefreshTokenResult(rsp)
+}
+
+// RegisterWithBodyWithResponse request with arbitrary body returning *RegisterResult
+func (c *ClientWithResponses) RegisterWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RegisterResult, error) {
+	rsp, err := c.RegisterWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRegisterResult(rsp)
+}
+
+func (c *ClientWithResponses) RegisterWithResponse(ctx context.Context, body RegisterJSONRequestBody, reqEditors ...RequestEditorFn) (*RegisterResult, error) {
+	rsp, err := c.Register(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRegisterResult(rsp)
+}
+
+// RequestPasswordResetWithBodyWithResponse request with arbitrary body returning *RequestPasswordResetResult
+func (c *ClientWithResponses) RequestPasswordResetWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RequestPasswordResetResult, error) {
+	rsp, err := c.RequestPasswordResetWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRequestPasswordResetResult(rsp)
+}
+
+func (c *ClientWithResponses) RequestPasswordResetWithResponse(ctx context.Context, body RequestPasswordResetJSONRequestBody, reqEditors ...RequestEditorFn) (*RequestPasswordResetResult, error) {
+	rsp, err := c.RequestPasswordReset(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRequestPasswordResetResult(rsp)
+}
+
+// ResetPasswordWithBodyWithResponse request with arbitrary body returning *ResetPasswordResult
+func (c *ClientWithResponses) ResetPasswordWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResetPasswordResult, error) {
+	rsp, err := c.ResetPasswordWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResetPasswordResult(rsp)
+}
+
+func (c *ClientWithResponses) ResetPasswordWithResponse(ctx context.Context, body ResetPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ResetPasswordResult, error) {
+	rsp, err := c.ResetPassword(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResetPasswordResult(rsp)
 }
 
 // SwitchOrgWithBodyWithResponse request with arbitrary body returning *SwitchOrgResult
@@ -23977,6 +24926,112 @@ func ParseGetVersionResult(rsp *http.Response) (*GetVersionResult, error) {
 	return response, nil
 }
 
+// ParseAcceptInviteResult parses an HTTP response from a AcceptInviteWithResponse call
+func ParseAcceptInviteResult(rsp *http.Response) (*AcceptInviteResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AcceptInviteResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LoginResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseConfirmRegistrationResult parses an HTTP response from a ConfirmRegistrationWithResponse call
+func ParseConfirmRegistrationResult(rsp *http.Response) (*ConfirmRegistrationResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ConfirmRegistrationResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LoginResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetInviteResult parses an HTTP response from a GetInviteWithResponse call
+func ParseGetInviteResult(rsp *http.Response) (*GetInviteResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetInviteResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest InviteInfoResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseLoginResult parses an HTTP response from a LoginWithResponse call
 func ParseLoginResult(rsp *http.Response) (*LoginResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -24056,6 +25111,46 @@ func ParseGetCurrentUserResult(rsp *http.Response) (*GetCurrentUserResult, error
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateMeResult parses an HTTP response from a UpdateMeWithResponse call
+func ParseUpdateMeResult(rsp *http.Response) (*UpdateMeResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateMeResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MeResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
@@ -24189,6 +25284,32 @@ func ParseCancelMembershipRequestResult(rsp *http.Response) (*CancelMembershipRe
 	return response, nil
 }
 
+// ParseListAuthProvidersResult parses an HTTP response from a ListAuthProvidersWithResponse call
+func ParseListAuthProvidersResult(rsp *http.Response) (*ListAuthProvidersResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAuthProvidersResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuthProvidersResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseRefreshTokenResult parses an HTTP response from a RefreshTokenWithResponse call
 func ParseRefreshTokenResult(rsp *http.Response) (*RefreshTokenResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -24216,6 +25337,112 @@ func ParseRefreshTokenResult(rsp *http.Response) (*RefreshTokenResult, error) {
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRegisterResult parses an HTTP response from a RegisterWithResponse call
+func ParseRegisterResult(rsp *http.Response) (*RegisterResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RegisterResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MessageResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRequestPasswordResetResult parses an HTTP response from a RequestPasswordResetWithResponse call
+func ParseRequestPasswordResetResult(rsp *http.Response) (*RequestPasswordResetResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RequestPasswordResetResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MessageResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseResetPasswordResult parses an HTTP response from a ResetPasswordWithResponse call
+func ParseResetPasswordResult(rsp *http.Response) (*ResetPasswordResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ResetPasswordResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MessageResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 410:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON410 = &dest
 
 	}
 

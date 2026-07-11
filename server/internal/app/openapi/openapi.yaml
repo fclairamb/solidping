@@ -527,6 +527,177 @@ paths:
                 $ref: "#/components/schemas/MeResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [Authentication]
+      summary: Update the authenticated user's profile
+      operationId: updateMe
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Updated user information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/auth/providers:
+    get:
+      tags: [Authentication]
+      summary: List configured auth providers
+      operationId: listAuthProviders
+      responses:
+        "200":
+          description: Configured providers plus registration/passkey availability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthProvidersResponse"
+
+  /api/v1/auth/register:
+    post:
+      tags: [Authentication]
+      summary: Self-service account registration
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "200":
+          description: Registration accepted; confirmation email sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/auth/confirm-registration:
+    post:
+      tags: [Authentication]
+      summary: Confirm a pending registration with an emailed token
+      operationId: confirmRegistration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmRegistrationRequest"
+      responses:
+        "200":
+          description: Registration confirmed; user logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/auth/request-password-reset:
+    post:
+      tags: [Authentication]
+      summary: Request a password reset email
+      operationId: requestPasswordReset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestPasswordResetRequest"
+      responses:
+        "200":
+          description: Reset request accepted (always returned, anti-enumeration)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/v1/auth/reset-password:
+    post:
+      tags: [Authentication]
+      summary: Set a new password using a reset token
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordRequest"
+      responses:
+        "200":
+          description: Password reset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "410":
+          description: Reset link has expired or is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/invite/{token}:
+    get:
+      tags: [Authentication]
+      summary: Inspect an invitation by token
+      operationId: getInvite
+      parameters:
+        - name: token
+          in: path
+          required: true
+          description: Invitation token
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Public invitation info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteInfoResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/auth/accept-invite:
+    post:
+      tags: [Authentication]
+      summary: Accept an invitation
+      operationId: acceptInvite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptInviteRequest"
+      responses:
+        "200":
+          description: Invitation accepted; user logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/auth/switch-org:
     post:
@@ -5354,6 +5525,13 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
 
+    TooManyRequests:
+      description: Too many requests
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
   schemas:
     Error:
       type: object
@@ -5795,6 +5973,108 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Token"
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: New display name for the authenticated user
+
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+
+    ConfirmRegistrationRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: Registration confirmation token from the emailed link
+
+    RequestPasswordResetRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    ResetPasswordRequest:
+      type: object
+      required: [token, password]
+      properties:
+        token:
+          type: string
+          description: Password reset token from the emailed link
+        password:
+          type: string
+          minLength: 8
+
+    AcceptInviteRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: Invitation token from the emailed link
+        name:
+          type: string
+          description: Display name for a newly created user
+        password:
+          type: string
+          minLength: 8
+          description: Password for a newly created user (ignored if the user already exists)
+
+    InviteInfoResponse:
+      type: object
+      properties:
+        orgName:
+          type: string
+        orgSlug:
+          type: string
+        role:
+          type: string
+          enum: [admin, user, viewer]
+        email:
+          type: string
+          description: Masked email address the invitation was sent to
+
+    AuthProvider:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+
+    AuthProvidersResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuthProvider"
+        registrationEnabled:
+          type: boolean
+        passkeysEnabled:
+          type: boolean
 
     # Check schemas
     Check:
