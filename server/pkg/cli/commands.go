@@ -1317,6 +1317,9 @@ func GetCommands() []*cli.Command {
 		checkTypesCommand(),
 		oncallCommand(),
 		escalationPoliciesCommand(),
+		orgsCommand(),
+		invitationsCommand(),
+		membershipRequestsCommand(),
 	}
 }
 
