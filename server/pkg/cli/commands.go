@@ -56,6 +56,68 @@ func GetCommands() []*cli.Command {
 					ArgsUsage: "<org>",
 					Action:    authSwitchOrgAction,
 				},
+				{
+					Name:  "register",
+					Usage: "Register a new account (self-service)",
+					Flags: []cli.Flag{
+						&cli.StringFlag{Name: flagEmail, Aliases: []string{"e"}, Usage: "Email address"},
+						&cli.StringFlag{Name: flagPassword, Aliases: []string{"p"}, Usage: "Password (min 8 chars)"},
+						&cli.StringFlag{Name: flagName, Usage: "Display name"},
+					},
+					Action: authRegisterAction,
+				},
+				{
+					Name:      "confirm-registration",
+					Usage:     "Confirm a registration with the emailed token",
+					ArgsUsage: "<token>",
+					Action:    authConfirmRegistrationAction,
+				},
+				{
+					Name:  "request-password-reset",
+					Usage: "Request a password reset email",
+					Flags: []cli.Flag{
+						&cli.StringFlag{Name: flagEmail, Aliases: []string{"e"}, Usage: "Email address"},
+					},
+					Action: authRequestPasswordResetAction,
+				},
+				{
+					Name:  "reset-password",
+					Usage: "Set a new password using a reset token",
+					Flags: []cli.Flag{
+						&cli.StringFlag{Name: flagToken, Aliases: []string{"t"}, Usage: "Reset token from the emailed link"},
+						&cli.StringFlag{Name: flagPassword, Aliases: []string{"p"}, Usage: "New password (min 8 chars)"},
+					},
+					Action: authResetPasswordAction,
+				},
+				{
+					Name:  "update",
+					Usage: "Update the authenticated user's profile",
+					Flags: []cli.Flag{
+						&cli.StringFlag{Name: flagName, Usage: "New display name"},
+					},
+					Action: authUpdateAction,
+				},
+				{
+					Name:   "providers",
+					Usage:  "List configured auth providers (OAuth/SSO/LDAP)",
+					Action: authProvidersAction,
+				},
+				{
+					Name:      "invite",
+					Usage:     "Inspect an invitation by token",
+					ArgsUsage: "<token>",
+					Action:    authInviteAction,
+				},
+				{
+					Name:  "accept-invite",
+					Usage: "Accept an invitation",
+					Flags: []cli.Flag{
+						&cli.StringFlag{Name: flagToken, Aliases: []string{"t"}, Usage: "Invitation token from the emailed link"},
+						&cli.StringFlag{Name: flagName, Usage: "Display name (new users)"},
+						&cli.StringFlag{Name: flagPassword, Aliases: []string{"p"}, Usage: "Password (new users, min 8 chars)"},
+					},
+					Action: authAcceptInviteAction,
+				},
 			},
 		},
 		{
