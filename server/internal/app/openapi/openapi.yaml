@@ -49,6 +49,10 @@ tags:
     description: Available monitoring regions
   - name: CheckTypes
     description: Check type catalog and sample configurations
+  - name: OnCallSchedules
+    description: On-call schedules, overrides, rotation preview, and iCal feeds
+  - name: EscalationPolicies
+    description: Escalation policies with ordered steps and targets
 
 paths:
   # Management APIs
@@ -3266,6 +3270,416 @@ paths:
               schema:
                 $ref: "#/components/schemas/CheckTypeSamplesListResponse"
 
+  /api/v1/orgs/{org}/on-call-schedules:
+    get:
+      tags: [OnCallSchedules]
+      summary: List on-call schedules
+      operationId: listOncallSchedules
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of on-call schedules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OncallScheduleListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [OnCallSchedules]
+      summary: Create an on-call schedule
+      operationId: createOncallSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOncallScheduleRequest"
+      responses:
+        "201":
+          description: On-call schedule created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OncallSchedule"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/on-call-schedules/{uid}:
+    get:
+      tags: [OnCallSchedules]
+      summary: Get an on-call schedule
+      operationId: getOncallSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+      responses:
+        "200":
+          description: On-call schedule details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OncallSchedule"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [OnCallSchedules]
+      summary: Update an on-call schedule
+      operationId: updateOncallSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOncallScheduleRequest"
+      responses:
+        "200":
+          description: On-call schedule updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OncallSchedule"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [OnCallSchedules]
+      summary: Delete an on-call schedule
+      operationId: deleteOncallSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+      responses:
+        "204":
+          description: On-call schedule deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/on-call-schedules/{uid}/preview:
+    get:
+      tags: [OnCallSchedules]
+      summary: Preview the on-call rotation over a window
+      operationId: previewOncallSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+        - name: from
+          in: query
+          description: Window start (RFC3339). Defaults to now.
+          schema:
+            type: string
+            format: date-time
+        - name: days
+          in: query
+          description: Window length in days (1-365, default 14)
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Preview slots
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OncallPreviewResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/on-call-schedules/{uid}/overrides:
+    get:
+      tags: [OnCallSchedules]
+      summary: List overrides on an on-call schedule
+      operationId: listOncallOverrides
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+        - name: from
+          in: query
+          description: Only overrides ending after this instant (RFC3339)
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          description: Only overrides starting before this instant (RFC3339)
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: List of overrides
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OncallOverrideListResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [OnCallSchedules]
+      summary: Create an override on an on-call schedule
+      operationId: createOncallOverride
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOncallOverrideRequest"
+      responses:
+        "201":
+          description: Override created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OncallOverride"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/on-call-schedules/{uid}/overrides/{overrideUid}:
+    delete:
+      tags: [OnCallSchedules]
+      summary: Delete an override
+      operationId: deleteOncallOverride
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+        - $ref: "#/components/parameters/OncallOverrideUidPath"
+      responses:
+        "204":
+          description: Override deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/on-call-schedules/{uid}/ical-feed/enable:
+    post:
+      tags: [OnCallSchedules]
+      summary: Enable the iCal feed for an on-call schedule
+      operationId: enableOncallIcalFeed
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+      responses:
+        "200":
+          description: Feed enabled; secret and URL returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OncallIcalFeedResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/on-call-schedules/{uid}/ical-feed/disable:
+    post:
+      tags: [OnCallSchedules]
+      summary: Disable the iCal feed for an on-call schedule
+      operationId: disableOncallIcalFeed
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+      responses:
+        "204":
+          description: Feed disabled
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/on-call-schedules/{uid}/ical-feed/rotate:
+    post:
+      tags: [OnCallSchedules]
+      summary: Rotate the iCal feed secret for an on-call schedule
+      operationId: rotateOncallIcalFeed
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+      responses:
+        "200":
+          description: Feed secret rotated; new secret and URL returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OncallIcalFeedResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/escalation-policies:
+    get:
+      tags: [EscalationPolicies]
+      summary: List escalation policies
+      operationId: listEscalationPolicies
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of escalation policies
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EscalationPolicyListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [EscalationPolicies]
+      summary: Create an escalation policy
+      operationId: createEscalationPolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEscalationPolicyRequest"
+      responses:
+        "201":
+          description: Escalation policy created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EscalationPolicy"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/escalation-policies/{uid}:
+    get:
+      tags: [EscalationPolicies]
+      summary: Get an escalation policy
+      operationId: getEscalationPolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/EscalationPolicyUidPath"
+      responses:
+        "200":
+          description: Escalation policy details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EscalationPolicy"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [EscalationPolicies]
+      summary: Update an escalation policy
+      operationId: updateEscalationPolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/EscalationPolicyUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEscalationPolicyRequest"
+      responses:
+        "200":
+          description: Escalation policy updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EscalationPolicy"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [EscalationPolicies]
+      summary: Delete an escalation policy
+      operationId: deleteEscalationPolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/EscalationPolicyUidPath"
+      responses:
+        "204":
+          description: Escalation policy deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -3412,6 +3826,33 @@ components:
         type: string
       description: Severity UID or slug
 
+    OncallScheduleUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: On-call schedule UID
+
+    OncallOverrideUidPath:
+      name: overrideUid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: On-call schedule override UID
+
+    EscalationPolicyUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Escalation policy UID
+
   responses:
     NotFound:
       description: Resource not found
@@ -3436,6 +3877,13 @@ components:
 
     ValidationError:
       description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    Conflict:
+      description: Resource conflict
       content:
         application/json:
           schema:
@@ -5791,3 +6239,332 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CheckTypeSamples"
+
+    # On-call schedule schemas
+    OncallUserRef:
+      type: object
+      required: [uid, name, email]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+
+    OncallSchedule:
+      type: object
+      required:
+        - uid
+        - name
+        - timezone
+        - rotationType
+        - handoffTime
+        - startAt
+        - icalEnabled
+        - createdAt
+        - updatedAt
+      properties:
+        uid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        timezone:
+          type: string
+        rotationType:
+          type: string
+          description: "One of: daily, weekly"
+        handoffTime:
+          type: string
+          description: Handoff time of day in HH:MM (24h)
+        handoffWeekday:
+          type: integer
+          description: 0 (Mon) .. 6 (Sun); only set for weekly rotation
+        startAt:
+          type: string
+          format: date-time
+        icalEnabled:
+          type: boolean
+        userUids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        currentlyOnCall:
+          $ref: "#/components/schemas/OncallUserRef"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    OncallScheduleListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OncallSchedule"
+
+    CreateOncallScheduleRequest:
+      type: object
+      required: [name, timezone, rotationType, handoffTime, startAt]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        timezone:
+          type: string
+        rotationType:
+          type: string
+          description: "One of: daily, weekly"
+        handoffTime:
+          type: string
+        handoffWeekday:
+          type: integer
+        startAt:
+          type: string
+          format: date-time
+        userUids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    UpdateOncallScheduleRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        timezone:
+          type: string
+        rotationType:
+          type: string
+        handoffTime:
+          type: string
+        handoffWeekday:
+          type: integer
+        startAt:
+          type: string
+          format: date-time
+        userUids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    OncallOverride:
+      type: object
+      description: >-
+        On-call schedule override. Property names are PascalCase to match the
+        current API wire format emitted by the handler.
+      required: [UID, ScheduleUID, UserUID, StartAt, EndAt, CreatedAt]
+      properties:
+        UID:
+          type: string
+          format: uuid
+        ScheduleUID:
+          type: string
+          format: uuid
+        UserUID:
+          type: string
+          format: uuid
+        StartAt:
+          type: string
+          format: date-time
+        EndAt:
+          type: string
+          format: date-time
+        Reason:
+          type: string
+          nullable: true
+        CreatedByUID:
+          type: string
+          format: uuid
+          nullable: true
+        CreatedAt:
+          type: string
+          format: date-time
+
+    OncallOverrideListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OncallOverride"
+
+    CreateOncallOverrideRequest:
+      type: object
+      required: [userUid, startAt, endAt]
+      properties:
+        userUid:
+          type: string
+          format: uuid
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+
+    OncallPreviewSlot:
+      type: object
+      required: [userUid, from, to]
+      properties:
+        userUid:
+          type: string
+          format: uuid
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+
+    OncallPreviewResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OncallPreviewSlot"
+
+    OncallIcalFeedResponse:
+      type: object
+      required: [secret, url]
+      properties:
+        secret:
+          type: string
+        url:
+          type: string
+
+    # Escalation policy schemas
+    EscalationTarget:
+      type: object
+      required: [uid, type, position]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        type:
+          type: string
+          description: "One of: user, schedule, connection, all_admins"
+        targetUid:
+          type: string
+        position:
+          type: integer
+
+    EscalationStep:
+      type: object
+      required: [uid, position, delaySeconds]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        position:
+          type: integer
+        delaySeconds:
+          type: integer
+        targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/EscalationTarget"
+
+    EscalationPolicy:
+      type: object
+      required: [uid, name, repeatMax, createdAt, updatedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        repeatMax:
+          type: integer
+        repeatAfterSeconds:
+          type: integer
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/EscalationStep"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    EscalationPolicyListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/EscalationPolicy"
+
+    EscalationTargetInput:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          description: "One of: user, schedule, connection, all_admins"
+        targetUid:
+          type: string
+
+    EscalationStepInput:
+      type: object
+      required: [delaySeconds]
+      properties:
+        delaySeconds:
+          type: integer
+        targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/EscalationTargetInput"
+
+    CreateEscalationPolicyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        repeatMax:
+          type: integer
+        repeatAfterSeconds:
+          type: integer
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/EscalationStepInput"
+
+    UpdateEscalationPolicyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        repeatMax:
+          type: integer
+        repeatAfterSeconds:
+          type: integer
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/EscalationStepInput"

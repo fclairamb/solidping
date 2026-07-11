@@ -731,3 +731,39 @@ func (c *SolidPingClient) ApplyChecks(
 
 	return result, nil
 }
+
+// GetOnCallICalFeed fetches the public iCal (text/calendar) feed for an on-call
+// schedule by its feed secret. This is an unauthenticated route that returns
+// raw VCALENDAR text, not JSON, so it uses a bespoke reader rather than the
+// generated client.
+func (c *SolidPingClient) GetOnCallICalFeed(ctx context.Context, secret string) (string, error) {
+	url := strings.TrimRight(c.config.BaseURL, "/") +
+		fmt.Sprintf("/api/v1/on-call-schedules/%s/feed.ics", secret)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("build request: %w", err)
+	}
+
+	httpClient := http.DefaultClient
+	if c.loggingTransport != nil {
+		httpClient = &http.Client{Transport: c.loggingTransport}
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // best effort
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("%w: %d", ErrUnexpectedStatus, resp.StatusCode)
+	}
+
+	return string(respBody), nil
+}

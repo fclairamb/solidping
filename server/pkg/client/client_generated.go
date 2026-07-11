@@ -674,6 +674,15 @@ type CreateDependencyRequest struct {
 // CreateDependencyRequestKind defines model for CreateDependencyRequest.Kind.
 type CreateDependencyRequestKind string
 
+// CreateEscalationPolicyRequest defines model for CreateEscalationPolicyRequest.
+type CreateEscalationPolicyRequest struct {
+	Description        *string                `json:"description,omitempty"`
+	Name               string                 `json:"name"`
+	RepeatAfterSeconds *int                   `json:"repeatAfterSeconds,omitempty"`
+	RepeatMax          *int                   `json:"repeatMax,omitempty"`
+	Steps              *[]EscalationStepInput `json:"steps,omitempty"`
+}
+
 // CreateJobRequest defines model for CreateJobRequest.
 type CreateJobRequest struct {
 	Config *map[string]interface{} `json:"config,omitempty"`
@@ -690,6 +699,28 @@ type CreateMaintenanceWindowRequest struct {
 	RecurrenceEnd *time.Time `json:"recurrenceEnd,omitempty"`
 	StartAt       time.Time  `json:"startAt"`
 	Title         string     `json:"title"`
+}
+
+// CreateOncallOverrideRequest defines model for CreateOncallOverrideRequest.
+type CreateOncallOverrideRequest struct {
+	EndAt   time.Time          `json:"endAt"`
+	Reason  *string            `json:"reason,omitempty"`
+	StartAt time.Time          `json:"startAt"`
+	UserUid openapi_types.UUID `json:"userUid"`
+}
+
+// CreateOncallScheduleRequest defines model for CreateOncallScheduleRequest.
+type CreateOncallScheduleRequest struct {
+	Description    *string `json:"description,omitempty"`
+	HandoffTime    string  `json:"handoffTime"`
+	HandoffWeekday *int    `json:"handoffWeekday,omitempty"`
+	Name           string  `json:"name"`
+
+	// RotationType One of: daily, weekly
+	RotationType string                `json:"rotationType"`
+	StartAt      time.Time             `json:"startAt"`
+	Timezone     string                `json:"timezone"`
+	UserUids     *[]openapi_types.UUID `json:"userUids,omitempty"`
 }
 
 // CreateSeverityRequest defines model for CreateSeverityRequest.
@@ -880,6 +911,55 @@ type Error struct {
 
 // ErrorCode Machine-readable error code
 type ErrorCode string
+
+// EscalationPolicy defines model for EscalationPolicy.
+type EscalationPolicy struct {
+	CreatedAt          time.Time          `json:"createdAt"`
+	Description        *string            `json:"description,omitempty"`
+	Name               string             `json:"name"`
+	RepeatAfterSeconds *int               `json:"repeatAfterSeconds,omitempty"`
+	RepeatMax          int                `json:"repeatMax"`
+	Steps              *[]EscalationStep  `json:"steps,omitempty"`
+	Uid                openapi_types.UUID `json:"uid"`
+	UpdatedAt          time.Time          `json:"updatedAt"`
+}
+
+// EscalationPolicyListResponse defines model for EscalationPolicyListResponse.
+type EscalationPolicyListResponse struct {
+	Data *[]EscalationPolicy `json:"data,omitempty"`
+}
+
+// EscalationStep defines model for EscalationStep.
+type EscalationStep struct {
+	DelaySeconds int                 `json:"delaySeconds"`
+	Position     int                 `json:"position"`
+	Targets      *[]EscalationTarget `json:"targets,omitempty"`
+	Uid          openapi_types.UUID  `json:"uid"`
+}
+
+// EscalationStepInput defines model for EscalationStepInput.
+type EscalationStepInput struct {
+	DelaySeconds int                      `json:"delaySeconds"`
+	Targets      *[]EscalationTargetInput `json:"targets,omitempty"`
+}
+
+// EscalationTarget defines model for EscalationTarget.
+type EscalationTarget struct {
+	Position  int     `json:"position"`
+	TargetUid *string `json:"targetUid,omitempty"`
+
+	// Type One of: user, schedule, connection, all_admins
+	Type string             `json:"type"`
+	Uid  openapi_types.UUID `json:"uid"`
+}
+
+// EscalationTargetInput defines model for EscalationTargetInput.
+type EscalationTargetInput struct {
+	TargetUid *string `json:"targetUid,omitempty"`
+
+	// Type One of: user, schedule, connection, all_admins
+	Type string `json:"type"`
+}
 
 // Event defines model for Event.
 type Event struct {
@@ -1229,6 +1309,76 @@ type MemberRole string
 // MemberListResponse defines model for MemberListResponse.
 type MemberListResponse struct {
 	Data *[]Member `json:"data,omitempty"`
+}
+
+// OncallIcalFeedResponse defines model for OncallIcalFeedResponse.
+type OncallIcalFeedResponse struct {
+	Secret string `json:"secret"`
+	Url    string `json:"url"`
+}
+
+// OncallOverride On-call schedule override. Property names are PascalCase to match the current API wire format emitted by the handler.
+type OncallOverride struct {
+	CreatedAt    time.Time           `json:"CreatedAt"`
+	CreatedByUID *openapi_types.UUID `json:"CreatedByUID"`
+	EndAt        time.Time           `json:"EndAt"`
+	Reason       *string             `json:"Reason"`
+	ScheduleUID  openapi_types.UUID  `json:"ScheduleUID"`
+	StartAt      time.Time           `json:"StartAt"`
+	UID          openapi_types.UUID  `json:"UID"`
+	UserUID      openapi_types.UUID  `json:"UserUID"`
+}
+
+// OncallOverrideListResponse defines model for OncallOverrideListResponse.
+type OncallOverrideListResponse struct {
+	Data *[]OncallOverride `json:"data,omitempty"`
+}
+
+// OncallPreviewResponse defines model for OncallPreviewResponse.
+type OncallPreviewResponse struct {
+	Data *[]OncallPreviewSlot `json:"data,omitempty"`
+}
+
+// OncallPreviewSlot defines model for OncallPreviewSlot.
+type OncallPreviewSlot struct {
+	From    time.Time          `json:"from"`
+	To      time.Time          `json:"to"`
+	UserUid openapi_types.UUID `json:"userUid"`
+}
+
+// OncallSchedule defines model for OncallSchedule.
+type OncallSchedule struct {
+	CreatedAt       time.Time      `json:"createdAt"`
+	CurrentlyOnCall *OncallUserRef `json:"currentlyOnCall,omitempty"`
+	Description     *string        `json:"description,omitempty"`
+
+	// HandoffTime Handoff time of day in HH:MM (24h)
+	HandoffTime string `json:"handoffTime"`
+
+	// HandoffWeekday 0 (Mon) .. 6 (Sun); only set for weekly rotation
+	HandoffWeekday *int   `json:"handoffWeekday,omitempty"`
+	IcalEnabled    bool   `json:"icalEnabled"`
+	Name           string `json:"name"`
+
+	// RotationType One of: daily, weekly
+	RotationType string                `json:"rotationType"`
+	StartAt      time.Time             `json:"startAt"`
+	Timezone     string                `json:"timezone"`
+	Uid          openapi_types.UUID    `json:"uid"`
+	UpdatedAt    time.Time             `json:"updatedAt"`
+	UserUids     *[]openapi_types.UUID `json:"userUids,omitempty"`
+}
+
+// OncallScheduleListResponse defines model for OncallScheduleListResponse.
+type OncallScheduleListResponse struct {
+	Data *[]OncallSchedule `json:"data,omitempty"`
+}
+
+// OncallUserRef defines model for OncallUserRef.
+type OncallUserRef struct {
+	Email string             `json:"email"`
+	Name  string             `json:"name"`
+	Uid   openapi_types.UUID `json:"uid"`
 }
 
 // OrgDependencyGraphResponse defines model for OrgDependencyGraphResponse.
@@ -1645,6 +1795,15 @@ type UpdateDependencyRequest struct {
 // UpdateDependencyRequestKind defines model for UpdateDependencyRequest.Kind.
 type UpdateDependencyRequestKind string
 
+// UpdateEscalationPolicyRequest defines model for UpdateEscalationPolicyRequest.
+type UpdateEscalationPolicyRequest struct {
+	Description        *string                `json:"description,omitempty"`
+	Name               *string                `json:"name,omitempty"`
+	RepeatAfterSeconds *int                   `json:"repeatAfterSeconds,omitempty"`
+	RepeatMax          *int                   `json:"repeatMax,omitempty"`
+	Steps              *[]EscalationStepInput `json:"steps,omitempty"`
+}
+
 // UpdateMaintenanceWindowRequest defines model for UpdateMaintenanceWindowRequest.
 type UpdateMaintenanceWindowRequest struct {
 	Description   *string    `json:"description,omitempty"`
@@ -1662,6 +1821,18 @@ type UpdateMemberRequest struct {
 
 // UpdateMemberRequestRole defines model for UpdateMemberRequest.Role.
 type UpdateMemberRequestRole string
+
+// UpdateOncallScheduleRequest defines model for UpdateOncallScheduleRequest.
+type UpdateOncallScheduleRequest struct {
+	Description    *string               `json:"description,omitempty"`
+	HandoffTime    *string               `json:"handoffTime,omitempty"`
+	HandoffWeekday *int                  `json:"handoffWeekday,omitempty"`
+	Name           *string               `json:"name,omitempty"`
+	RotationType   *string               `json:"rotationType,omitempty"`
+	StartAt        *time.Time            `json:"startAt,omitempty"`
+	Timezone       *string               `json:"timezone,omitempty"`
+	UserUids       *[]openapi_types.UUID `json:"userUids,omitempty"`
+}
 
 // UpdateSeverityRequest defines model for UpdateSeverityRequest.
 type UpdateSeverityRequest struct {
@@ -1810,6 +1981,9 @@ type CheckGroupUidPath = string
 // CheckUidPath defines model for CheckUidPath.
 type CheckUidPath = string
 
+// EscalationPolicyUidPath defines model for EscalationPolicyUidPath.
+type EscalationPolicyUidPath = openapi_types.UUID
+
 // IncidentUidPath defines model for IncidentUidPath.
 type IncidentUidPath = openapi_types.UUID
 
@@ -1821,6 +1995,12 @@ type MaintenanceWindowUidPath = openapi_types.UUID
 
 // MemberUidPath defines model for MemberUidPath.
 type MemberUidPath = openapi_types.UUID
+
+// OncallOverrideUidPath defines model for OncallOverrideUidPath.
+type OncallOverrideUidPath = openapi_types.UUID
+
+// OncallScheduleUidPath defines model for OncallScheduleUidPath.
+type OncallScheduleUidPath = openapi_types.UUID
 
 // OrgPath defines model for OrgPath.
 type OrgPath = string
@@ -1848,6 +2028,9 @@ type SubscriberUidPath = openapi_types.UUID
 
 // TokenUidPath defines model for TokenUidPath.
 type TokenUidPath = openapi_types.UUID
+
+// Conflict defines model for Conflict.
+type Conflict = Error
 
 // Forbidden defines model for Forbidden.
 type Forbidden = Error
@@ -2041,6 +2224,24 @@ type ListMaintenanceWindowsParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListOncallOverridesParams defines parameters for ListOncallOverrides.
+type ListOncallOverridesParams struct {
+	// From Only overrides ending after this instant (RFC3339)
+	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
+
+	// Until Only overrides starting before this instant (RFC3339)
+	Until *time.Time `form:"until,omitempty" json:"until,omitempty"`
+}
+
+// PreviewOncallScheduleParams defines parameters for PreviewOncallSchedule.
+type PreviewOncallScheduleParams struct {
+	// From Window start (RFC3339). Defaults to now.
+	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
+
+	// Days Window length in days (1-365, default 14)
+	Days *int `form:"days,omitempty" json:"days,omitempty"`
+}
+
 // ListOrgResultsParams defines parameters for ListOrgResults.
 type ListOrgResultsParams struct {
 	// CheckUid Filter by check UID or slug (comma-separated for multiple)
@@ -2155,6 +2356,12 @@ type PromoteDiscoveredChecksJSONRequestBody = PromoteChecksRequest
 // StartDiscoveryScanJSONRequestBody defines body for StartDiscoveryScan for application/json ContentType.
 type StartDiscoveryScanJSONRequestBody = StartDiscoveryScanRequest
 
+// CreateEscalationPolicyJSONRequestBody defines body for CreateEscalationPolicy for application/json ContentType.
+type CreateEscalationPolicyJSONRequestBody = CreateEscalationPolicyRequest
+
+// UpdateEscalationPolicyJSONRequestBody defines body for UpdateEscalationPolicy for application/json ContentType.
+type UpdateEscalationPolicyJSONRequestBody = UpdateEscalationPolicyRequest
+
 // AcknowledgeIncidentJSONRequestBody defines body for AcknowledgeIncident for application/json ContentType.
 type AcknowledgeIncidentJSONRequestBody = IncidentAckRequest
 
@@ -2181,6 +2388,15 @@ type AddMemberJSONRequestBody = AddMemberRequest
 
 // UpdateMemberJSONRequestBody defines body for UpdateMember for application/json ContentType.
 type UpdateMemberJSONRequestBody = UpdateMemberRequest
+
+// CreateOncallScheduleJSONRequestBody defines body for CreateOncallSchedule for application/json ContentType.
+type CreateOncallScheduleJSONRequestBody = CreateOncallScheduleRequest
+
+// UpdateOncallScheduleJSONRequestBody defines body for UpdateOncallSchedule for application/json ContentType.
+type UpdateOncallScheduleJSONRequestBody = UpdateOncallScheduleRequest
+
+// CreateOncallOverrideJSONRequestBody defines body for CreateOncallOverride for application/json ContentType.
+type CreateOncallOverrideJSONRequestBody = CreateOncallOverrideRequest
 
 // CreateSeverityJSONRequestBody defines body for CreateSeverity for application/json ContentType.
 type CreateSeverityJSONRequestBody = CreateSeverityRequest
@@ -2495,6 +2711,25 @@ type ClientInterface interface {
 	// ListDiscoveryTypes request
 	ListDiscoveryTypes(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListEscalationPolicies request
+	ListEscalationPolicies(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateEscalationPolicyWithBody request with any body
+	CreateEscalationPolicyWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateEscalationPolicy(ctx context.Context, org OrgPath, body CreateEscalationPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteEscalationPolicy request
+	DeleteEscalationPolicy(ctx context.Context, org OrgPath, uid EscalationPolicyUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetEscalationPolicy request
+	GetEscalationPolicy(ctx context.Context, org OrgPath, uid EscalationPolicyUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateEscalationPolicyWithBody request with any body
+	UpdateEscalationPolicyWithBody(ctx context.Context, org OrgPath, uid EscalationPolicyUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateEscalationPolicy(ctx context.Context, org OrgPath, uid EscalationPolicyUidPath, body UpdateEscalationPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListEvents request
 	ListEvents(ctx context.Context, org OrgPath, params *ListEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -2590,6 +2825,48 @@ type ClientInterface interface {
 	UpdateMemberWithBody(ctx context.Context, org OrgPath, uid MemberUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	UpdateMember(ctx context.Context, org OrgPath, uid MemberUidPath, body UpdateMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListOncallSchedules request
+	ListOncallSchedules(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateOncallScheduleWithBody request with any body
+	CreateOncallScheduleWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateOncallSchedule(ctx context.Context, org OrgPath, body CreateOncallScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteOncallSchedule request
+	DeleteOncallSchedule(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetOncallSchedule request
+	GetOncallSchedule(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateOncallScheduleWithBody request with any body
+	UpdateOncallScheduleWithBody(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateOncallSchedule(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, body UpdateOncallScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DisableOncallIcalFeed request
+	DisableOncallIcalFeed(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// EnableOncallIcalFeed request
+	EnableOncallIcalFeed(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RotateOncallIcalFeed request
+	RotateOncallIcalFeed(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListOncallOverrides request
+	ListOncallOverrides(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, params *ListOncallOverridesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateOncallOverrideWithBody request with any body
+	CreateOncallOverrideWithBody(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateOncallOverride(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, body CreateOncallOverrideJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteOncallOverride request
+	DeleteOncallOverride(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, overrideUid OncallOverrideUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewOncallSchedule request
+	PreviewOncallSchedule(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, params *PreviewOncallScheduleParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListRegions request
 	ListRegions(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3595,6 +3872,90 @@ func (c *Client) ListDiscoveryTypes(ctx context.Context, org OrgPath, reqEditors
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListEscalationPolicies(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListEscalationPoliciesRequest(c.Server, org)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateEscalationPolicyWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateEscalationPolicyRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateEscalationPolicy(ctx context.Context, org OrgPath, body CreateEscalationPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateEscalationPolicyRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteEscalationPolicy(ctx context.Context, org OrgPath, uid EscalationPolicyUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteEscalationPolicyRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetEscalationPolicy(ctx context.Context, org OrgPath, uid EscalationPolicyUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetEscalationPolicyRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateEscalationPolicyWithBody(ctx context.Context, org OrgPath, uid EscalationPolicyUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateEscalationPolicyRequestWithBody(c.Server, org, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateEscalationPolicy(ctx context.Context, org OrgPath, uid EscalationPolicyUidPath, body UpdateEscalationPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateEscalationPolicyRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListEvents(ctx context.Context, org OrgPath, params *ListEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListEventsRequest(c.Server, org, params)
 	if err != nil {
@@ -4005,6 +4366,186 @@ func (c *Client) UpdateMemberWithBody(ctx context.Context, org OrgPath, uid Memb
 
 func (c *Client) UpdateMember(ctx context.Context, org OrgPath, uid MemberUidPath, body UpdateMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateMemberRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListOncallSchedules(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListOncallSchedulesRequest(c.Server, org)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateOncallScheduleWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateOncallScheduleRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateOncallSchedule(ctx context.Context, org OrgPath, body CreateOncallScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateOncallScheduleRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteOncallSchedule(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteOncallScheduleRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetOncallSchedule(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetOncallScheduleRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateOncallScheduleWithBody(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateOncallScheduleRequestWithBody(c.Server, org, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateOncallSchedule(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, body UpdateOncallScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateOncallScheduleRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DisableOncallIcalFeed(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDisableOncallIcalFeedRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) EnableOncallIcalFeed(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewEnableOncallIcalFeedRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RotateOncallIcalFeed(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRotateOncallIcalFeedRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListOncallOverrides(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, params *ListOncallOverridesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListOncallOverridesRequest(c.Server, org, uid, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateOncallOverrideWithBody(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateOncallOverrideRequestWithBody(c.Server, org, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateOncallOverride(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, body CreateOncallOverrideJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateOncallOverrideRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteOncallOverride(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, overrideUid OncallOverrideUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteOncallOverrideRequest(c.Server, org, uid, overrideUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PreviewOncallSchedule(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, params *PreviewOncallScheduleParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewOncallScheduleRequest(c.Server, org, uid, params)
 	if err != nil {
 		return nil, err
 	}
@@ -7252,6 +7793,223 @@ func NewListDiscoveryTypesRequest(server string, org OrgPath) (*http.Request, er
 	return req, nil
 }
 
+// NewListEscalationPoliciesRequest generates requests for ListEscalationPolicies
+func NewListEscalationPoliciesRequest(server string, org OrgPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/escalation-policies", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateEscalationPolicyRequest calls the generic CreateEscalationPolicy builder with application/json body
+func NewCreateEscalationPolicyRequest(server string, org OrgPath, body CreateEscalationPolicyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateEscalationPolicyRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewCreateEscalationPolicyRequestWithBody generates requests for CreateEscalationPolicy with any type of body
+func NewCreateEscalationPolicyRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/escalation-policies", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteEscalationPolicyRequest generates requests for DeleteEscalationPolicy
+func NewDeleteEscalationPolicyRequest(server string, org OrgPath, uid EscalationPolicyUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/escalation-policies/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetEscalationPolicyRequest generates requests for GetEscalationPolicy
+func NewGetEscalationPolicyRequest(server string, org OrgPath, uid EscalationPolicyUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/escalation-policies/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateEscalationPolicyRequest calls the generic UpdateEscalationPolicy builder with application/json body
+func NewUpdateEscalationPolicyRequest(server string, org OrgPath, uid EscalationPolicyUidPath, body UpdateEscalationPolicyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateEscalationPolicyRequestWithBody(server, org, uid, "application/json", bodyReader)
+}
+
+// NewUpdateEscalationPolicyRequestWithBody generates requests for UpdateEscalationPolicy with any type of body
+func NewUpdateEscalationPolicyRequestWithBody(server string, org OrgPath, uid EscalationPolicyUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/escalation-policies/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListEventsRequest generates requests for ListEvents
 func NewListEventsRequest(server string, org OrgPath, params *ListEventsParams) (*http.Request, error) {
 	var err error
@@ -8708,6 +9466,606 @@ func NewUpdateMemberRequestWithBody(server string, org OrgPath, uid MemberUidPat
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListOncallSchedulesRequest generates requests for ListOncallSchedules
+func NewListOncallSchedulesRequest(server string, org OrgPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/on-call-schedules", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateOncallScheduleRequest calls the generic CreateOncallSchedule builder with application/json body
+func NewCreateOncallScheduleRequest(server string, org OrgPath, body CreateOncallScheduleJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateOncallScheduleRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewCreateOncallScheduleRequestWithBody generates requests for CreateOncallSchedule with any type of body
+func NewCreateOncallScheduleRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/on-call-schedules", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteOncallScheduleRequest generates requests for DeleteOncallSchedule
+func NewDeleteOncallScheduleRequest(server string, org OrgPath, uid OncallScheduleUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/on-call-schedules/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetOncallScheduleRequest generates requests for GetOncallSchedule
+func NewGetOncallScheduleRequest(server string, org OrgPath, uid OncallScheduleUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/on-call-schedules/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateOncallScheduleRequest calls the generic UpdateOncallSchedule builder with application/json body
+func NewUpdateOncallScheduleRequest(server string, org OrgPath, uid OncallScheduleUidPath, body UpdateOncallScheduleJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateOncallScheduleRequestWithBody(server, org, uid, "application/json", bodyReader)
+}
+
+// NewUpdateOncallScheduleRequestWithBody generates requests for UpdateOncallSchedule with any type of body
+func NewUpdateOncallScheduleRequestWithBody(server string, org OrgPath, uid OncallScheduleUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/on-call-schedules/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDisableOncallIcalFeedRequest generates requests for DisableOncallIcalFeed
+func NewDisableOncallIcalFeedRequest(server string, org OrgPath, uid OncallScheduleUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/on-call-schedules/%s/ical-feed/disable", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewEnableOncallIcalFeedRequest generates requests for EnableOncallIcalFeed
+func NewEnableOncallIcalFeedRequest(server string, org OrgPath, uid OncallScheduleUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/on-call-schedules/%s/ical-feed/enable", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRotateOncallIcalFeedRequest generates requests for RotateOncallIcalFeed
+func NewRotateOncallIcalFeedRequest(server string, org OrgPath, uid OncallScheduleUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/on-call-schedules/%s/ical-feed/rotate", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListOncallOverridesRequest generates requests for ListOncallOverrides
+func NewListOncallOverridesRequest(server string, org OrgPath, uid OncallScheduleUidPath, params *ListOncallOverridesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/on-call-schedules/%s/overrides", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.From != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "from", runtime.ParamLocationQuery, *params.From); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Until != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "until", runtime.ParamLocationQuery, *params.Until); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateOncallOverrideRequest calls the generic CreateOncallOverride builder with application/json body
+func NewCreateOncallOverrideRequest(server string, org OrgPath, uid OncallScheduleUidPath, body CreateOncallOverrideJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateOncallOverrideRequestWithBody(server, org, uid, "application/json", bodyReader)
+}
+
+// NewCreateOncallOverrideRequestWithBody generates requests for CreateOncallOverride with any type of body
+func NewCreateOncallOverrideRequestWithBody(server string, org OrgPath, uid OncallScheduleUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/on-call-schedules/%s/overrides", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteOncallOverrideRequest generates requests for DeleteOncallOverride
+func NewDeleteOncallOverrideRequest(server string, org OrgPath, uid OncallScheduleUidPath, overrideUid OncallOverrideUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "overrideUid", runtime.ParamLocationPath, overrideUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/on-call-schedules/%s/overrides/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPreviewOncallScheduleRequest generates requests for PreviewOncallSchedule
+func NewPreviewOncallScheduleRequest(server string, org OrgPath, uid OncallScheduleUidPath, params *PreviewOncallScheduleParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/on-call-schedules/%s/preview", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.From != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "from", runtime.ParamLocationQuery, *params.From); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Days != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "days", runtime.ParamLocationQuery, *params.Days); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -10890,6 +12248,25 @@ type ClientWithResponsesInterface interface {
 	// ListDiscoveryTypesWithResponse request
 	ListDiscoveryTypesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListDiscoveryTypesResult, error)
 
+	// ListEscalationPoliciesWithResponse request
+	ListEscalationPoliciesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListEscalationPoliciesResult, error)
+
+	// CreateEscalationPolicyWithBodyWithResponse request with any body
+	CreateEscalationPolicyWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateEscalationPolicyResult, error)
+
+	CreateEscalationPolicyWithResponse(ctx context.Context, org OrgPath, body CreateEscalationPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateEscalationPolicyResult, error)
+
+	// DeleteEscalationPolicyWithResponse request
+	DeleteEscalationPolicyWithResponse(ctx context.Context, org OrgPath, uid EscalationPolicyUidPath, reqEditors ...RequestEditorFn) (*DeleteEscalationPolicyResult, error)
+
+	// GetEscalationPolicyWithResponse request
+	GetEscalationPolicyWithResponse(ctx context.Context, org OrgPath, uid EscalationPolicyUidPath, reqEditors ...RequestEditorFn) (*GetEscalationPolicyResult, error)
+
+	// UpdateEscalationPolicyWithBodyWithResponse request with any body
+	UpdateEscalationPolicyWithBodyWithResponse(ctx context.Context, org OrgPath, uid EscalationPolicyUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateEscalationPolicyResult, error)
+
+	UpdateEscalationPolicyWithResponse(ctx context.Context, org OrgPath, uid EscalationPolicyUidPath, body UpdateEscalationPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateEscalationPolicyResult, error)
+
 	// ListEventsWithResponse request
 	ListEventsWithResponse(ctx context.Context, org OrgPath, params *ListEventsParams, reqEditors ...RequestEditorFn) (*ListEventsResult, error)
 
@@ -10985,6 +12362,48 @@ type ClientWithResponsesInterface interface {
 	UpdateMemberWithBodyWithResponse(ctx context.Context, org OrgPath, uid MemberUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateMemberResult, error)
 
 	UpdateMemberWithResponse(ctx context.Context, org OrgPath, uid MemberUidPath, body UpdateMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateMemberResult, error)
+
+	// ListOncallSchedulesWithResponse request
+	ListOncallSchedulesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListOncallSchedulesResult, error)
+
+	// CreateOncallScheduleWithBodyWithResponse request with any body
+	CreateOncallScheduleWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateOncallScheduleResult, error)
+
+	CreateOncallScheduleWithResponse(ctx context.Context, org OrgPath, body CreateOncallScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateOncallScheduleResult, error)
+
+	// DeleteOncallScheduleWithResponse request
+	DeleteOncallScheduleWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*DeleteOncallScheduleResult, error)
+
+	// GetOncallScheduleWithResponse request
+	GetOncallScheduleWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*GetOncallScheduleResult, error)
+
+	// UpdateOncallScheduleWithBodyWithResponse request with any body
+	UpdateOncallScheduleWithBodyWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateOncallScheduleResult, error)
+
+	UpdateOncallScheduleWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, body UpdateOncallScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateOncallScheduleResult, error)
+
+	// DisableOncallIcalFeedWithResponse request
+	DisableOncallIcalFeedWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*DisableOncallIcalFeedResult, error)
+
+	// EnableOncallIcalFeedWithResponse request
+	EnableOncallIcalFeedWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*EnableOncallIcalFeedResult, error)
+
+	// RotateOncallIcalFeedWithResponse request
+	RotateOncallIcalFeedWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*RotateOncallIcalFeedResult, error)
+
+	// ListOncallOverridesWithResponse request
+	ListOncallOverridesWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, params *ListOncallOverridesParams, reqEditors ...RequestEditorFn) (*ListOncallOverridesResult, error)
+
+	// CreateOncallOverrideWithBodyWithResponse request with any body
+	CreateOncallOverrideWithBodyWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateOncallOverrideResult, error)
+
+	CreateOncallOverrideWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, body CreateOncallOverrideJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateOncallOverrideResult, error)
+
+	// DeleteOncallOverrideWithResponse request
+	DeleteOncallOverrideWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, overrideUid OncallOverrideUidPath, reqEditors ...RequestEditorFn) (*DeleteOncallOverrideResult, error)
+
+	// PreviewOncallScheduleWithResponse request
+	PreviewOncallScheduleWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, params *PreviewOncallScheduleParams, reqEditors ...RequestEditorFn) (*PreviewOncallScheduleResult, error)
 
 	// ListRegionsWithResponse request
 	ListRegionsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListRegionsResult, error)
@@ -12417,6 +13836,128 @@ func (r ListDiscoveryTypesResult) StatusCode() int {
 	return 0
 }
 
+type ListEscalationPoliciesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *EscalationPolicyListResponse
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListEscalationPoliciesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListEscalationPoliciesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateEscalationPolicyResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *EscalationPolicy
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateEscalationPolicyResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateEscalationPolicyResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteEscalationPolicyResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+	JSON409      *Conflict
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteEscalationPolicyResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteEscalationPolicyResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetEscalationPolicyResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *EscalationPolicy
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetEscalationPolicyResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetEscalationPolicyResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateEscalationPolicyResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *EscalationPolicy
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateEscalationPolicyResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateEscalationPolicyResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListEventsResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -13031,6 +14572,296 @@ func (r UpdateMemberResult) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r UpdateMemberResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListOncallSchedulesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *OncallScheduleListResponse
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListOncallSchedulesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListOncallSchedulesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateOncallScheduleResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *OncallSchedule
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateOncallScheduleResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateOncallScheduleResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteOncallScheduleResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteOncallScheduleResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteOncallScheduleResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetOncallScheduleResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *OncallSchedule
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetOncallScheduleResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetOncallScheduleResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateOncallScheduleResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *OncallSchedule
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateOncallScheduleResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateOncallScheduleResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DisableOncallIcalFeedResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r DisableOncallIcalFeedResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DisableOncallIcalFeedResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type EnableOncallIcalFeedResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *OncallIcalFeedResponse
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r EnableOncallIcalFeedResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r EnableOncallIcalFeedResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RotateOncallIcalFeedResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *OncallIcalFeedResponse
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r RotateOncallIcalFeedResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RotateOncallIcalFeedResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListOncallOverridesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *OncallOverrideListResponse
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListOncallOverridesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListOncallOverridesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateOncallOverrideResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *OncallOverride
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateOncallOverrideResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateOncallOverrideResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteOncallOverrideResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteOncallOverrideResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteOncallOverrideResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PreviewOncallScheduleResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *OncallPreviewResponse
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r PreviewOncallScheduleResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PreviewOncallScheduleResult) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -14558,6 +16389,67 @@ func (c *ClientWithResponses) ListDiscoveryTypesWithResponse(ctx context.Context
 	return ParseListDiscoveryTypesResult(rsp)
 }
 
+// ListEscalationPoliciesWithResponse request returning *ListEscalationPoliciesResult
+func (c *ClientWithResponses) ListEscalationPoliciesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListEscalationPoliciesResult, error) {
+	rsp, err := c.ListEscalationPolicies(ctx, org, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListEscalationPoliciesResult(rsp)
+}
+
+// CreateEscalationPolicyWithBodyWithResponse request with arbitrary body returning *CreateEscalationPolicyResult
+func (c *ClientWithResponses) CreateEscalationPolicyWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateEscalationPolicyResult, error) {
+	rsp, err := c.CreateEscalationPolicyWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateEscalationPolicyResult(rsp)
+}
+
+func (c *ClientWithResponses) CreateEscalationPolicyWithResponse(ctx context.Context, org OrgPath, body CreateEscalationPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateEscalationPolicyResult, error) {
+	rsp, err := c.CreateEscalationPolicy(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateEscalationPolicyResult(rsp)
+}
+
+// DeleteEscalationPolicyWithResponse request returning *DeleteEscalationPolicyResult
+func (c *ClientWithResponses) DeleteEscalationPolicyWithResponse(ctx context.Context, org OrgPath, uid EscalationPolicyUidPath, reqEditors ...RequestEditorFn) (*DeleteEscalationPolicyResult, error) {
+	rsp, err := c.DeleteEscalationPolicy(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteEscalationPolicyResult(rsp)
+}
+
+// GetEscalationPolicyWithResponse request returning *GetEscalationPolicyResult
+func (c *ClientWithResponses) GetEscalationPolicyWithResponse(ctx context.Context, org OrgPath, uid EscalationPolicyUidPath, reqEditors ...RequestEditorFn) (*GetEscalationPolicyResult, error) {
+	rsp, err := c.GetEscalationPolicy(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetEscalationPolicyResult(rsp)
+}
+
+// UpdateEscalationPolicyWithBodyWithResponse request with arbitrary body returning *UpdateEscalationPolicyResult
+func (c *ClientWithResponses) UpdateEscalationPolicyWithBodyWithResponse(ctx context.Context, org OrgPath, uid EscalationPolicyUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateEscalationPolicyResult, error) {
+	rsp, err := c.UpdateEscalationPolicyWithBody(ctx, org, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateEscalationPolicyResult(rsp)
+}
+
+func (c *ClientWithResponses) UpdateEscalationPolicyWithResponse(ctx context.Context, org OrgPath, uid EscalationPolicyUidPath, body UpdateEscalationPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateEscalationPolicyResult, error) {
+	rsp, err := c.UpdateEscalationPolicy(ctx, org, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateEscalationPolicyResult(rsp)
+}
+
 // ListEventsWithResponse request returning *ListEventsResult
 func (c *ClientWithResponses) ListEventsWithResponse(ctx context.Context, org OrgPath, params *ListEventsParams, reqEditors ...RequestEditorFn) (*ListEventsResult, error) {
 	rsp, err := c.ListEvents(ctx, org, params, reqEditors...)
@@ -14862,6 +16754,138 @@ func (c *ClientWithResponses) UpdateMemberWithResponse(ctx context.Context, org 
 		return nil, err
 	}
 	return ParseUpdateMemberResult(rsp)
+}
+
+// ListOncallSchedulesWithResponse request returning *ListOncallSchedulesResult
+func (c *ClientWithResponses) ListOncallSchedulesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListOncallSchedulesResult, error) {
+	rsp, err := c.ListOncallSchedules(ctx, org, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListOncallSchedulesResult(rsp)
+}
+
+// CreateOncallScheduleWithBodyWithResponse request with arbitrary body returning *CreateOncallScheduleResult
+func (c *ClientWithResponses) CreateOncallScheduleWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateOncallScheduleResult, error) {
+	rsp, err := c.CreateOncallScheduleWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateOncallScheduleResult(rsp)
+}
+
+func (c *ClientWithResponses) CreateOncallScheduleWithResponse(ctx context.Context, org OrgPath, body CreateOncallScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateOncallScheduleResult, error) {
+	rsp, err := c.CreateOncallSchedule(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateOncallScheduleResult(rsp)
+}
+
+// DeleteOncallScheduleWithResponse request returning *DeleteOncallScheduleResult
+func (c *ClientWithResponses) DeleteOncallScheduleWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*DeleteOncallScheduleResult, error) {
+	rsp, err := c.DeleteOncallSchedule(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteOncallScheduleResult(rsp)
+}
+
+// GetOncallScheduleWithResponse request returning *GetOncallScheduleResult
+func (c *ClientWithResponses) GetOncallScheduleWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*GetOncallScheduleResult, error) {
+	rsp, err := c.GetOncallSchedule(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetOncallScheduleResult(rsp)
+}
+
+// UpdateOncallScheduleWithBodyWithResponse request with arbitrary body returning *UpdateOncallScheduleResult
+func (c *ClientWithResponses) UpdateOncallScheduleWithBodyWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateOncallScheduleResult, error) {
+	rsp, err := c.UpdateOncallScheduleWithBody(ctx, org, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateOncallScheduleResult(rsp)
+}
+
+func (c *ClientWithResponses) UpdateOncallScheduleWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, body UpdateOncallScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateOncallScheduleResult, error) {
+	rsp, err := c.UpdateOncallSchedule(ctx, org, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateOncallScheduleResult(rsp)
+}
+
+// DisableOncallIcalFeedWithResponse request returning *DisableOncallIcalFeedResult
+func (c *ClientWithResponses) DisableOncallIcalFeedWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*DisableOncallIcalFeedResult, error) {
+	rsp, err := c.DisableOncallIcalFeed(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDisableOncallIcalFeedResult(rsp)
+}
+
+// EnableOncallIcalFeedWithResponse request returning *EnableOncallIcalFeedResult
+func (c *ClientWithResponses) EnableOncallIcalFeedWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*EnableOncallIcalFeedResult, error) {
+	rsp, err := c.EnableOncallIcalFeed(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseEnableOncallIcalFeedResult(rsp)
+}
+
+// RotateOncallIcalFeedWithResponse request returning *RotateOncallIcalFeedResult
+func (c *ClientWithResponses) RotateOncallIcalFeedWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, reqEditors ...RequestEditorFn) (*RotateOncallIcalFeedResult, error) {
+	rsp, err := c.RotateOncallIcalFeed(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRotateOncallIcalFeedResult(rsp)
+}
+
+// ListOncallOverridesWithResponse request returning *ListOncallOverridesResult
+func (c *ClientWithResponses) ListOncallOverridesWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, params *ListOncallOverridesParams, reqEditors ...RequestEditorFn) (*ListOncallOverridesResult, error) {
+	rsp, err := c.ListOncallOverrides(ctx, org, uid, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListOncallOverridesResult(rsp)
+}
+
+// CreateOncallOverrideWithBodyWithResponse request with arbitrary body returning *CreateOncallOverrideResult
+func (c *ClientWithResponses) CreateOncallOverrideWithBodyWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateOncallOverrideResult, error) {
+	rsp, err := c.CreateOncallOverrideWithBody(ctx, org, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateOncallOverrideResult(rsp)
+}
+
+func (c *ClientWithResponses) CreateOncallOverrideWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, body CreateOncallOverrideJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateOncallOverrideResult, error) {
+	rsp, err := c.CreateOncallOverride(ctx, org, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateOncallOverrideResult(rsp)
+}
+
+// DeleteOncallOverrideWithResponse request returning *DeleteOncallOverrideResult
+func (c *ClientWithResponses) DeleteOncallOverrideWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, overrideUid OncallOverrideUidPath, reqEditors ...RequestEditorFn) (*DeleteOncallOverrideResult, error) {
+	rsp, err := c.DeleteOncallOverride(ctx, org, uid, overrideUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteOncallOverrideResult(rsp)
+}
+
+// PreviewOncallScheduleWithResponse request returning *PreviewOncallScheduleResult
+func (c *ClientWithResponses) PreviewOncallScheduleWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, params *PreviewOncallScheduleParams, reqEditors ...RequestEditorFn) (*PreviewOncallScheduleResult, error) {
+	rsp, err := c.PreviewOncallSchedule(ctx, org, uid, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewOncallScheduleResult(rsp)
 }
 
 // ListRegionsWithResponse request returning *ListRegionsResult
@@ -17314,6 +19338,220 @@ func ParseListDiscoveryTypesResult(rsp *http.Response) (*ListDiscoveryTypesResul
 	return response, nil
 }
 
+// ParseListEscalationPoliciesResult parses an HTTP response from a ListEscalationPoliciesWithResponse call
+func ParseListEscalationPoliciesResult(rsp *http.Response) (*ListEscalationPoliciesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListEscalationPoliciesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EscalationPolicyListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateEscalationPolicyResult parses an HTTP response from a CreateEscalationPolicyWithResponse call
+func ParseCreateEscalationPolicyResult(rsp *http.Response) (*CreateEscalationPolicyResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateEscalationPolicyResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest EscalationPolicy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteEscalationPolicyResult parses an HTTP response from a DeleteEscalationPolicyWithResponse call
+func ParseDeleteEscalationPolicyResult(rsp *http.Response) (*DeleteEscalationPolicyResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteEscalationPolicyResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetEscalationPolicyResult parses an HTTP response from a GetEscalationPolicyWithResponse call
+func ParseGetEscalationPolicyResult(rsp *http.Response) (*GetEscalationPolicyResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetEscalationPolicyResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EscalationPolicy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateEscalationPolicyResult parses an HTTP response from a UpdateEscalationPolicyWithResponse call
+func ParseUpdateEscalationPolicyResult(rsp *http.Response) (*UpdateEscalationPolicyResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateEscalationPolicyResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EscalationPolicy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListEventsResult parses an HTTP response from a ListEventsWithResponse call
 func ParseListEventsResult(rsp *http.Response) (*ListEventsResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -18320,6 +20558,500 @@ func ParseUpdateMemberResult(rsp *http.Response) (*UpdateMemberResult, error) {
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListOncallSchedulesResult parses an HTTP response from a ListOncallSchedulesWithResponse call
+func ParseListOncallSchedulesResult(rsp *http.Response) (*ListOncallSchedulesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListOncallSchedulesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OncallScheduleListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateOncallScheduleResult parses an HTTP response from a CreateOncallScheduleWithResponse call
+func ParseCreateOncallScheduleResult(rsp *http.Response) (*CreateOncallScheduleResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateOncallScheduleResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest OncallSchedule
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteOncallScheduleResult parses an HTTP response from a DeleteOncallScheduleWithResponse call
+func ParseDeleteOncallScheduleResult(rsp *http.Response) (*DeleteOncallScheduleResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteOncallScheduleResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetOncallScheduleResult parses an HTTP response from a GetOncallScheduleWithResponse call
+func ParseGetOncallScheduleResult(rsp *http.Response) (*GetOncallScheduleResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetOncallScheduleResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OncallSchedule
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateOncallScheduleResult parses an HTTP response from a UpdateOncallScheduleWithResponse call
+func ParseUpdateOncallScheduleResult(rsp *http.Response) (*UpdateOncallScheduleResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateOncallScheduleResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OncallSchedule
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDisableOncallIcalFeedResult parses an HTTP response from a DisableOncallIcalFeedWithResponse call
+func ParseDisableOncallIcalFeedResult(rsp *http.Response) (*DisableOncallIcalFeedResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DisableOncallIcalFeedResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseEnableOncallIcalFeedResult parses an HTTP response from a EnableOncallIcalFeedWithResponse call
+func ParseEnableOncallIcalFeedResult(rsp *http.Response) (*EnableOncallIcalFeedResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &EnableOncallIcalFeedResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OncallIcalFeedResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRotateOncallIcalFeedResult parses an HTTP response from a RotateOncallIcalFeedWithResponse call
+func ParseRotateOncallIcalFeedResult(rsp *http.Response) (*RotateOncallIcalFeedResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RotateOncallIcalFeedResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OncallIcalFeedResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListOncallOverridesResult parses an HTTP response from a ListOncallOverridesWithResponse call
+func ParseListOncallOverridesResult(rsp *http.Response) (*ListOncallOverridesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListOncallOverridesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OncallOverrideListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateOncallOverrideResult parses an HTTP response from a CreateOncallOverrideWithResponse call
+func ParseCreateOncallOverrideResult(rsp *http.Response) (*CreateOncallOverrideResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateOncallOverrideResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest OncallOverride
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteOncallOverrideResult parses an HTTP response from a DeleteOncallOverrideWithResponse call
+func ParseDeleteOncallOverrideResult(rsp *http.Response) (*DeleteOncallOverrideResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteOncallOverrideResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePreviewOncallScheduleResult parses an HTTP response from a PreviewOncallScheduleWithResponse call
+func ParsePreviewOncallScheduleResult(rsp *http.Response) (*PreviewOncallScheduleResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PreviewOncallScheduleResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OncallPreviewResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 
