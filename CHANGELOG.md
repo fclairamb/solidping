@@ -16,6 +16,7 @@
 * **admin:** region slugs resolve to friendly "{emoji} {name}" labels (e.g. "EU1 (default)") on admin surfaces, seeded from `SP_REGIONS`
 * **integrations:** the "Default for new checks" toggle now starts **enabled** when creating an integration
 * **i18n:** idiomatic FR/ES/DE auth-page headline translations replacing literal calques
+* **escalation/on-call:** escalation policies and on-call schedules drop their unused `slug` — both are addressed by `uid` only now (API routes, dashboard links); old slug-form URLs return `404` (**breaking**: the `slug` field is gone from create/update/response payloads)
 
 ### Bug Fixes
 
