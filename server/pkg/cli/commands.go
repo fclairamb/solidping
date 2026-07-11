@@ -194,6 +194,62 @@ func GetCommands() []*cli.Command {
 					Action: checksUpsertAction,
 				},
 				{
+					Name:  "validate",
+					Usage: "Validate a check definition without persisting it",
+					Flags: []cli.Flag{
+						&cli.StringFlag{
+							Name:    "file",
+							Aliases: []string{"f"},
+							Usage:   "Check definition file (JSON or YAML); reads stdin if omitted",
+						},
+					},
+					Action: checksValidateAction,
+				},
+				{
+					Name:      "clone",
+					Usage:     "Clone an existing check",
+					ArgsUsage: argUIDSlug,
+					Flags: []cli.Flag{
+						&cli.StringFlag{
+							Name:  flagName,
+							Usage: "Name for the cloned check",
+						},
+						&cli.StringFlag{
+							Name:  "slug",
+							Usage: "Slug for the cloned check (auto-generated if omitted)",
+						},
+						&cli.StringFlag{
+							Name:  "description",
+							Usage: "Description for the cloned check",
+						},
+						&cli.StringFlag{
+							Name:  "group",
+							Usage: "Check group UID for the cloned check",
+						},
+						&cli.BoolFlag{
+							Name:  "enabled",
+							Usage: "Whether the clone is enabled",
+						},
+					},
+					Action: checksCloneAction,
+				},
+				{
+					Name:      "availability",
+					Usage:     "Show availability rollups for a check",
+					ArgsUsage: argUIDSlug,
+					Flags: []cli.Flag{
+						&cli.StringFlag{
+							Name:  "periods",
+							Usage: "Comma-separated period tokens (e.g., 24h,7d,30d,90d,today,mtd,ytd)",
+						},
+						&cli.StringFlag{
+							Name:  "tz",
+							Usage: "IANA time zone for calendar tokens (default UTC)",
+						},
+					},
+					Action: checksAvailabilityAction,
+				},
+				{
 					Name:      flagEvents,
 					Usage:     "List events for a check",
 					ArgsUsage: argUIDSlug,
@@ -263,6 +319,27 @@ func GetCommands() []*cli.Command {
 								},
 							},
 							Action: checksDepsSetAction,
+						},
+						{
+							Name:      "update",
+							Usage:     "Update a parent dependency edge (kind/description)",
+							ArgsUsage: "<child-slug> <parent-slug>",
+							Flags: []cli.Flag{
+								&cli.StringFlag{
+									Name:  "kind",
+									Usage: "Dependency kind: hard or soft",
+								},
+								&cli.StringFlag{
+									Name:  "description",
+									Usage: "Description for the edge",
+								},
+							},
+							Action: checksDepsUpdateAction,
+						},
+						{
+							Name:   "graph",
+							Usage:  "Show the org-wide dependency graph",
+							Action: checksDepsGraphAction,
 						},
 					},
 				},
@@ -371,6 +448,18 @@ func GetCommands() []*cli.Command {
 					},
 					Action: resultsListAction,
 				},
+				{
+					Name:      flagGet,
+					Usage:     "Get a single result by check and result UID",
+					ArgsUsage: "<check> <uid>",
+					Flags: []cli.Flag{
+						&cli.StringFlag{
+							Name:  "region",
+							Usage: "Narrow neighbor scope to a region (comma-separated)",
+						},
+					},
+					Action: resultsGetAction,
+				},
 			},
 		},
 		{
@@ -425,6 +514,62 @@ func GetCommands() []*cli.Command {
 						},
 					},
 					Action: incidentsEventsAction,
+				},
+				{
+					Name:      "ack",
+					Usage:     "Acknowledge an incident",
+					ArgsUsage: argUID,
+					Flags: []cli.Flag{
+						&cli.StringFlag{
+							Name:  "note",
+							Usage: "Optional note recorded with the acknowledgement",
+						},
+					},
+					Action: incidentsAckAction,
+				},
+				{
+					Name:      "unack",
+					Usage:     "Remove acknowledgement from an incident",
+					ArgsUsage: argUID,
+					Action:    incidentsUnackAction,
+				},
+				{
+					Name:      "snooze",
+					Usage:     "Snooze an incident for a duration or until a time",
+					ArgsUsage: argUID,
+					Flags: []cli.Flag{
+						&cli.StringFlag{
+							Name:  "duration",
+							Usage: "Relative snooze duration (e.g., 1h, 30m)",
+						},
+						&cli.StringFlag{
+							Name:  "until",
+							Usage: "Absolute snooze end as an RFC3339 timestamp",
+						},
+						&cli.StringFlag{
+							Name:  "reason",
+							Usage: "Optional reason for the snooze",
+						},
+					},
+					Action: incidentsSnoozeAction,
+				},
+				{
+					Name:      "unsnooze",
+					Usage:     "Clear an incident snooze",
+					ArgsUsage: argUID,
+					Action:    incidentsUnsnoozeAction,
+				},
+				{
+					Name:      "resolve",
+					Usage:     "Resolve an incident",
+					ArgsUsage: argUID,
+					Flags: []cli.Flag{
+						&cli.StringFlag{
+							Name:  "note",
+							Usage: "Optional note recorded with the resolution",
+						},
+					},
+					Action: incidentsResolveAction,
 				},
 			},
 		},

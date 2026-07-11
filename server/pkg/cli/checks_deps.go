@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/urfave/cli/v3"
 	"gopkg.in/yaml.v3"
@@ -196,6 +197,160 @@ func checksDepsRemoveAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	output.PrintSuccess(os.Stdout, fmt.Sprintf("Removed %s → %s", child, parent))
+
+	return nil
+}
+
+// checksDepsUpdateAction PATCHes a single edge's kind/description.
+//
+//nolint:cyclop // CLI parameter parsing and edge lookup
+func checksDepsUpdateAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	if cmd.Args().Len() < 2 {
+		return cli.Exit("Error: <child-slug> <parent-slug> are required", 5)
+	}
+
+	child := cmd.Args().Get(0)
+	parent := cmd.Args().Get(1)
+
+	if !cmd.IsSet("kind") && !cmd.IsSet("description") {
+		return cli.Exit("Error: at least one of --kind or --description is required", 5)
+	}
+
+	kind := cmd.String("kind")
+	if cmd.IsSet("kind") && kind != depKindHard && kind != depKindSoft {
+		return cli.Exit("Error: --kind must be 'hard' or 'soft'", 5)
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		output.PrintError(os.Stdout, err.Error())
+		return cli.Exit("", 3)
+	}
+
+	deps, err := apiClient.ListCheckDependencies(ctx, cliCtx.GetOrg(), child)
+	if err != nil {
+		output.PrintError(os.Stdout, fmt.Sprintf("Failed to list dependencies: %v", err))
+		return cli.Exit("", 1)
+	}
+
+	var depUID string
+
+	for i := range deps.DependsOn {
+		edge := &deps.DependsOn[i]
+		if edge.ParentCheck.Slug == parent || edge.ParentCheck.UID == parent {
+			depUID = edge.UID
+			break
+		}
+	}
+
+	if depUID == "" {
+		output.PrintError(os.Stdout, fmt.Sprintf("No dependency on %s found for %s", parent, child))
+		return cli.Exit("", 1)
+	}
+
+	edgeUID, err := uuid.Parse(depUID)
+	if err != nil {
+		output.PrintError(os.Stdout, fmt.Sprintf("Invalid edge UID %s: %v", depUID, err))
+		return cli.Exit("", 1)
+	}
+
+	body := client.UpdateCheckDependencyJSONRequestBody{}
+	if cmd.IsSet("kind") {
+		kindEnum := client.UpdateDependencyRequestKind(kind)
+		body.Kind = &kindEnum
+	}
+	if cmd.IsSet("description") {
+		desc := cmd.String("description")
+		body.Description = &desc
+	}
+
+	resp, err := apiClient.UpdateCheckDependencyWithResponse(ctx, cliCtx.GetOrg(), child, edgeUID, body)
+	if err != nil {
+		return cliCtx.HandleError("Failed to update dependency", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to update dependency", resp.StatusCode())
+	}
+
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(resp.JSON200)
+	}
+
+	output.PrintSuccess(os.Stdout, fmt.Sprintf("Updated %s → %s", child, parent))
+
+	return nil
+}
+
+// checksDepsGraphAction prints the org-wide dependency graph.
+//
+//nolint:cyclop // CLI output formatting with nil guards
+func checksDepsGraphAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		output.PrintError(os.Stdout, err.Error())
+		return cli.Exit("", 3)
+	}
+
+	resp, err := apiClient.GetOrgDependencyGraphWithResponse(ctx, cliCtx.GetOrg())
+	if err != nil {
+		return cliCtx.HandleError("Failed to get dependency graph", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to get dependency graph", resp.StatusCode())
+	}
+
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(resp.JSON200)
+	}
+
+	data := resp.JSON200.Data
+	if data == nil || data.Edges == nil || len(*data.Edges) == 0 {
+		output.PrintMessage(os.Stdout, "No dependency edges")
+		return nil
+	}
+
+	// Build a uid -> slug map from the nodes for readable output.
+	slugByUID := map[string]string{}
+	if data.Nodes != nil {
+		for i := range *data.Nodes {
+			node := &(*data.Nodes)[i]
+			slugByUID[node.Uid.String()] = node.Slug
+		}
+	}
+
+	labelFor := func(uid string) string {
+		if slug, ok := slugByUID[uid]; ok && slug != "" {
+			return slug
+		}
+		return uid
+	}
+
+	tbl := output.NewTable(os.Stdout)
+	tbl.AppendHeader(table.Row{"CHILD", "PARENT", "KIND", "EDGE_UID"})
+
+	for i := range *data.Edges {
+		edge := &(*data.Edges)[i]
+		tbl.AppendRow(table.Row{
+			labelFor(edge.ChildCheckUid.String()),
+			labelFor(edge.ParentCheckUid.String()),
+			string(edge.Kind),
+			edge.Uid.String(),
+		})
+	}
+
+	tbl.Render()
 
 	return nil
 }
