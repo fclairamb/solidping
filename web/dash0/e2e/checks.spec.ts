@@ -380,6 +380,51 @@ test.describe("Checks", () => {
     });
   });
 
+  test("should persist and clear the optional per-check timeout", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Create a check with a 10s timeout (spec 2026-07-11-05).
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    const checkName = `E2E Timeout ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-url-input").fill("https://example.com/timeout-test");
+    await page.getByTestId("check-timeout-input").fill("10");
+    await page.getByTestId("check-submit-button").click();
+
+    // Wait for check detail page
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
+
+    // The edit form seeds the timeout input from config.timeout ("10s" → 10),
+    // so a fresh edit page proves the value was persisted in config.
+    await page.locator('a[href*="/edit"]').click();
+    await page.waitForURL(/\/edit$/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-timeout-input")).toHaveValue("10");
+
+    // Clear the timeout and save — the key must be removed from config.
+    await page.getByTestId("check-timeout-input").fill("");
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+
+    // Back on a fresh edit page the field is empty again (key removed).
+    await page.locator('a[href*="/edit"]').click();
+    await page.waitForURL(/\/edit$/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-timeout-input")).toHaveValue("");
+  });
+
   test("should show validation error when URL is empty", async ({
     authenticatedPage,
   }) => {
