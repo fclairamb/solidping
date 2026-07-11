@@ -1309,5 +1309,264 @@ func GetCommands() []*cli.Command {
 				},
 			},
 		},
+		maintenanceWindowsCommand(),
+		checkGroupsCommand(),
+		severitiesCommand(),
+		labelsCommand(),
+		regionsCommand(),
+		checkTypesCommand(),
+	}
+}
+
+// maintenanceWindowsCommand builds the "maintenance-windows" command group.
+func maintenanceWindowsCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "maintenance-windows",
+		Aliases: []string{"maintenance-window", "mw"},
+		Usage:   "Manage scheduled maintenance windows",
+		Flags:   GetGlobalFlags(),
+		Commands: []*cli.Command{
+			{
+				Name:  flagList,
+				Usage: "List maintenance windows",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: flagStatus, Usage: "Filter by status (active, upcoming, past)"},
+					&cli.IntFlag{Name: flagLimit, Usage: "Maximum results (1-100)"},
+				},
+				Action: maintenanceWindowsListAction,
+			},
+			{
+				Name:  cmdCreate,
+				Usage: "Create a maintenance window",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: flagTitle, Usage: "Window title", Required: true},
+					&cli.StringFlag{Name: flagDescription, Usage: usageOptionalDescription},
+					&cli.StringFlag{Name: flagStart, Usage: usageRFC3339, Required: true},
+					&cli.StringFlag{Name: flagEnd, Usage: usageRFC3339, Required: true},
+					&cli.StringFlag{Name: flagRecurrence, Usage: "Recurrence: none, daily, weekly, monthly"},
+					&cli.StringFlag{Name: flagRecurrenceEnd, Usage: "Recurrence end (" + usageRFC3339 + ")"},
+				},
+				Action: maintenanceWindowsCreateAction,
+			},
+			{
+				Name:      flagGet,
+				Usage:     "Get a maintenance window",
+				ArgsUsage: argUID,
+				Action:    maintenanceWindowsGetAction,
+			},
+			{
+				Name:      cmdUpdate,
+				Usage:     "Update a maintenance window",
+				ArgsUsage: argUID,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: flagTitle, Usage: "Window title"},
+					&cli.StringFlag{Name: flagDescription, Usage: usageOptionalDescription},
+					&cli.StringFlag{Name: flagStart, Usage: usageRFC3339},
+					&cli.StringFlag{Name: flagEnd, Usage: usageRFC3339},
+					&cli.StringFlag{Name: flagRecurrence, Usage: "Recurrence: none, daily, weekly, monthly"},
+					&cli.StringFlag{Name: flagRecurrenceEnd, Usage: "Recurrence end (" + usageRFC3339 + ")"},
+				},
+				Action: maintenanceWindowsUpdateAction,
+			},
+			{
+				Name:      flagRemove,
+				Aliases:   []string{"rm", cmdDelete},
+				Usage:     "Remove a maintenance window",
+				ArgsUsage: argUID,
+				Action:    maintenanceWindowsRemoveAction,
+			},
+			{
+				Name:  "checks",
+				Usage: "Manage the checks covered by a maintenance window",
+				Commands: []*cli.Command{
+					{
+						Name:      flagList,
+						Usage:     "List covered checks",
+						ArgsUsage: argUID,
+						Action:    maintenanceWindowsChecksListAction,
+					},
+					{
+						Name:      cmdSet,
+						Usage:     "Set covered checks (pass check uids as args, groups via --group)",
+						ArgsUsage: "<uid> <check-uid>...",
+						Flags: []cli.Flag{
+							&cli.StringSliceFlag{Name: flagGroup, Usage: "Check group UID (repeatable)"},
+						},
+						Action: maintenanceWindowsChecksSetAction,
+					},
+				},
+			},
+		},
+	}
+}
+
+// checkGroupsCommand builds the "check-groups" command group.
+func checkGroupsCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "check-groups",
+		Aliases: []string{"check-group"},
+		Usage:   "Manage check groups",
+		Flags:   GetGlobalFlags(),
+		Commands: []*cli.Command{
+			{
+				Name:   flagList,
+				Usage:  "List check groups",
+				Action: checkGroupsListAction,
+			},
+			{
+				Name:  cmdCreate,
+				Usage: "Create a check group",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: flagName, Usage: usageHumanReadableName, Required: true},
+					&cli.StringFlag{Name: keySlug, Usage: usageSlug},
+					&cli.StringFlag{Name: flagDescription, Usage: usageOptionalDescription},
+					&cli.IntFlag{Name: flagSortOrder, Usage: "Sort order"},
+				},
+				Action: checkGroupsCreateAction,
+			},
+			{
+				Name:      flagGet,
+				Usage:     "Get a check group",
+				ArgsUsage: argUIDSlug,
+				Action:    checkGroupsGetAction,
+			},
+			{
+				Name:      cmdUpdate,
+				Usage:     "Update a check group",
+				ArgsUsage: argUIDSlug,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: flagName, Usage: usageHumanReadableName},
+					&cli.StringFlag{Name: keySlug, Usage: usageSlug},
+					&cli.StringFlag{Name: flagDescription, Usage: usageOptionalDescription},
+					&cli.IntFlag{Name: flagSortOrder, Usage: "Sort order"},
+				},
+				Action: checkGroupsUpdateAction,
+			},
+			{
+				Name:      flagRemove,
+				Aliases:   []string{"rm", cmdDelete},
+				Usage:     "Remove a check group",
+				ArgsUsage: argUIDSlug,
+				Action:    checkGroupsRemoveAction,
+			},
+		},
+	}
+}
+
+// severitiesCommand builds the "severities" command group.
+func severitiesCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "severities",
+		Aliases: []string{"severity"},
+		Usage:   "Manage severities (channel-set bundles)",
+		Flags:   GetGlobalFlags(),
+		Commands: []*cli.Command{
+			{
+				Name:   flagList,
+				Usage:  "List severities",
+				Action: severitiesListAction,
+			},
+			{
+				Name:  cmdCreate,
+				Usage: "Create a severity",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: flagName, Usage: usageHumanReadableName, Required: true},
+					&cli.StringFlag{Name: keySlug, Usage: usageSlug},
+					&cli.StringFlag{Name: flagDescription, Usage: usageOptionalDescription},
+					&cli.StringSliceFlag{Name: flagChannels, Usage: "Channel type (repeatable)"},
+					&cli.BoolFlag{Name: flagDefault, Usage: "Mark as the default severity"},
+				},
+				Action: severitiesCreateAction,
+			},
+			{
+				Name:      flagGet,
+				Usage:     "Get a severity",
+				ArgsUsage: argUIDSlug,
+				Action:    severitiesGetAction,
+			},
+			{
+				Name:      cmdUpdate,
+				Usage:     "Update a severity",
+				ArgsUsage: argUIDSlug,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: flagName, Usage: usageHumanReadableName},
+					&cli.StringFlag{Name: keySlug, Usage: usageSlug},
+					&cli.StringFlag{Name: flagDescription, Usage: usageOptionalDescription},
+					&cli.StringSliceFlag{Name: flagChannels, Usage: "Channel type (repeatable)"},
+					&cli.BoolFlag{Name: flagDefault, Usage: "Mark as the default severity"},
+					&cli.BoolFlag{Name: flagNoDefault, Usage: "Unmark as the default severity"},
+				},
+				Action: severitiesUpdateAction,
+			},
+			{
+				Name:      flagRemove,
+				Aliases:   []string{"rm", cmdDelete},
+				Usage:     "Remove a severity",
+				ArgsUsage: argUIDSlug,
+				Action:    severitiesRemoveAction,
+			},
+		},
+	}
+}
+
+// labelsCommand builds the "labels" command group.
+func labelsCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "labels",
+		Usage: "List organization label keys and values",
+		Flags: GetGlobalFlags(),
+		Commands: []*cli.Command{
+			{
+				Name:  flagList,
+				Usage: "List label keys, or values for a given --key",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: flagKey, Usage: "List values for this key instead of keys"},
+					&cli.StringFlag{Name: flagLabelQuery, Usage: "Prefix filter on keys/values"},
+					&cli.IntFlag{Name: flagLimit, Usage: "Maximum results (1-200)"},
+				},
+				Action: labelsListAction,
+			},
+		},
+	}
+}
+
+// regionsCommand builds the "regions" command group.
+func regionsCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "regions",
+		Usage: "List available monitoring regions",
+		Flags: GetGlobalFlags(),
+		Commands: []*cli.Command{
+			{
+				Name:   flagList,
+				Usage:  "List regions available to the organization",
+				Action: regionsListAction,
+			},
+		},
+	}
+}
+
+// checkTypesCommand builds the "check-types" command group.
+func checkTypesCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "check-types",
+		Aliases: []string{"check-type"},
+		Usage:   "Inspect the check type catalog and sample configurations",
+		Flags:   GetGlobalFlags(),
+		Commands: []*cli.Command{
+			{
+				Name:   flagList,
+				Usage:  "List check types with activation status",
+				Action: checkTypesListAction,
+			},
+			{
+				Name:  "samples",
+				Usage: "List sample configurations grouped by check type",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: flagType, Usage: "Filter samples to a single check type"},
+				},
+				Action: checkTypesSamplesAction,
+			},
+		},
 	}
 }

@@ -41,9 +41,10 @@ const (
 	colType      = "TYPE"
 	colPeriod    = "PERIOD"
 
-	usageHumanReadableName = "Human-readable name"
-	usagePaginationCursor  = "Pagination cursor for next page"
-	usageResultsPerPage    = "Results per page (max 100)"
+	usageHumanReadableName   = "Human-readable name"
+	usageOptionalDescription = "Optional description"
+	usagePaginationCursor    = "Pagination cursor for next page"
+	usageResultsPerPage      = "Results per page (max 100)"
 
 	keySuccess = "success"
 	keyMessage = "message"
