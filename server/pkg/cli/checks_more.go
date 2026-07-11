@@ -30,7 +30,7 @@ const defaultAvailabilityPeriods = "24h,7d,30d,90d"
 func readCheckDefinition(cmd *cli.Command) (client.ValidateCheckRequest, error) {
 	var req client.ValidateCheckRequest
 
-	file := cmd.String("file")
+	file := cmd.String(flagFile)
 	if file == "" && cmd.Args().Len() > 0 {
 		file = cmd.Args().Get(0)
 	}
@@ -115,8 +115,9 @@ func checksValidateAction(ctx context.Context, cmd *cli.Command) error {
 	output.PrintError(os.Stdout, "Check configuration is invalid")
 
 	if result.Fields != nil {
-		for _, f := range *result.Fields {
-			output.PrintMessage(os.Stdout, "  "+f.Name+": "+f.Message)
+		fields := *result.Fields
+		for i := range fields {
+			output.PrintMessage(os.Stdout, "  "+fields[i].Name+": "+fields[i].Message)
 		}
 	}
 
@@ -124,6 +125,8 @@ func checksValidateAction(ctx context.Context, cmd *cli.Command) error {
 }
 
 // checksCloneAction implements `sp checks clone <uid|slug>`.
+//
+//nolint:funlen // CLI parameter parsing and response formatting
 func checksCloneAction(ctx context.Context, cmd *cli.Command) error {
 	cliCtx, err := NewCLIContext(cmd)
 	if err != nil {
@@ -141,12 +144,12 @@ func checksCloneAction(ctx context.Context, cmd *cli.Command) error {
 		name := cmd.String(flagName)
 		body.Name = &name
 	}
-	if cmd.IsSet("slug") {
-		slug := cmd.String("slug")
+	if cmd.IsSet(keySlug) {
+		slug := cmd.String(keySlug)
 		body.Slug = &slug
 	}
-	if cmd.IsSet("description") {
-		desc := cmd.String("description")
+	if cmd.IsSet(flagDescription) {
+		desc := cmd.String(flagDescription)
 		body.Description = &desc
 	}
 	if cmd.IsSet("group") {
@@ -194,8 +197,6 @@ func checksCloneAction(ctx context.Context, cmd *cli.Command) error {
 }
 
 // checksAvailabilityAction implements `sp checks availability <uid|slug>`.
-//
-//nolint:funlen // CLI parameter parsing and table formatting
 func checksAvailabilityAction(ctx context.Context, cmd *cli.Command) error {
 	cliCtx, err := NewCLIContext(cmd)
 	if err != nil {
@@ -243,7 +244,7 @@ func checksAvailabilityAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	tbl := output.NewTable(os.Stdout)
-	tbl.AppendHeader(table.Row{"PERIOD", "AVAILABILITY", "PROBES", "DOWNTIME"})
+	tbl.AppendHeader(table.Row{colPeriod, "AVAILABILITY", "PROBES", "DOWNTIME"})
 
 	for i := range *resp.JSON200.Data {
 		period := &(*resp.JSON200.Data)[i]
@@ -280,15 +281,15 @@ func formatAvailabilityPct(pct *float32) string {
 
 // formatProbes renders "successful/total" probe counts.
 func formatProbes(successful, total *int) string {
-	s, t := 0, 0
+	succ, tot := 0, 0
 	if successful != nil {
-		s = *successful
+		succ = *successful
 	}
 	if total != nil {
-		t = *total
+		tot = *total
 	}
 
-	return fmt.Sprintf("%d/%d", s, t)
+	return fmt.Sprintf("%d/%d", succ, tot)
 }
 
 // formatDowntime renders a downtime-seconds value as a short duration.

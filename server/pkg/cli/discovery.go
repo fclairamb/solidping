@@ -111,7 +111,7 @@ func discoveryScansCreateAction(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	scanType := cmd.String("type")
+	scanType := cmd.String(flagType)
 	if scanType == "" {
 		return cli.Exit("Error: "+errDiscoveryTypeRequired.Error(), 5)
 	}
@@ -227,7 +227,7 @@ func discoveryScansCancelAction(ctx context.Context, cmd *cli.Command) error {
 		return cliCtx.HandleStatusError("Failed to cancel scan", resp.StatusCode())
 	}
 
-	output.PrintSuccess(os.Stdout, "Cancelled scan "+jobUID.String())
+	output.PrintSuccess(os.Stdout, "Canceled scan "+jobUID.String())
 
 	return nil
 }
@@ -283,16 +283,16 @@ func discoveryChecksListAction(ctx context.Context, cmd *cli.Command) error {
 	tbl.AppendHeader(table.Row{colUID, colType, "GROUP", colName, "PROMOTED"})
 
 	for i := range *resp.JSON200.Data {
-		dc := &(*resp.JSON200.Data)[i]
+		discovered := &(*resp.JSON200.Data)[i]
 		promoted := "no"
-		if dc.PromotedToCheckUid != nil && *dc.PromotedToCheckUid != "" {
-			promoted = "yes"
+		if discovered.PromotedToCheckUid != nil && *discovered.PromotedToCheckUid != "" {
+			promoted = boolYes
 		}
 		tbl.AppendRow(table.Row{
-			derefStr(dc.Uid),
-			derefStr(dc.Type),
-			derefStr(dc.GroupLabel),
-			derefStr(dc.Name),
+			derefStr(discovered.Uid),
+			derefStr(discovered.Type),
+			derefStr(discovered.GroupLabel),
+			derefStr(discovered.Name),
 			promoted,
 		})
 	}

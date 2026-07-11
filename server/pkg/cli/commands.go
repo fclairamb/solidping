@@ -32,7 +32,7 @@ func GetCommands() []*cli.Command {
 							Sources: cli.EnvVars("SOLIDPING_PASSWORD"),
 						},
 						&cli.StringFlag{
-							Name:    "token",
+							Name:    flagToken,
 							Aliases: []string{"t"},
 							Usage:   "Save a pasted Personal Access Token (headless machines)",
 							Sources: cli.EnvVars("SP_TOKEN"),
@@ -129,7 +129,7 @@ func GetCommands() []*cli.Command {
 							Usage: usageHumanReadableName,
 						},
 						&cli.StringFlag{
-							Name:  "slug",
+							Name:  keySlug,
 							Usage: "Unique identifier slug",
 						},
 						&cli.IntFlag{
@@ -142,7 +142,7 @@ func GetCommands() []*cli.Command {
 					Action: checksAddAction,
 				},
 				{
-					Name:      "update",
+					Name:      cmdUpdate,
 					Usage:     "Update a check",
 					ArgsUsage: argUIDSlug,
 					Flags: []cli.Flag{
@@ -151,7 +151,7 @@ func GetCommands() []*cli.Command {
 							Usage: usageHumanReadableName,
 						},
 						&cli.StringFlag{
-							Name:  "slug",
+							Name:  keySlug,
 							Usage: "Unique identifier slug",
 						},
 						&cli.BoolFlag{
@@ -198,7 +198,7 @@ func GetCommands() []*cli.Command {
 					Usage: "Validate a check definition without persisting it",
 					Flags: []cli.Flag{
 						&cli.StringFlag{
-							Name:    "file",
+							Name:    flagFile,
 							Aliases: []string{"f"},
 							Usage:   "Check definition file (JSON or YAML); reads stdin if omitted",
 						},
@@ -215,11 +215,11 @@ func GetCommands() []*cli.Command {
 							Usage: "Name for the cloned check",
 						},
 						&cli.StringFlag{
-							Name:  "slug",
+							Name:  keySlug,
 							Usage: "Slug for the cloned check (auto-generated if omitted)",
 						},
 						&cli.StringFlag{
-							Name:  "description",
+							Name:  flagDescription,
 							Usage: "Description for the cloned check",
 						},
 						&cli.StringFlag{
@@ -286,7 +286,7 @@ func GetCommands() []*cli.Command {
 						{
 							Name:      flagAdd,
 							Usage:     "Add a parent dependency",
-							ArgsUsage: "<child-slug> <parent-slug>",
+							ArgsUsage: argChildParent,
 							Flags: []cli.Flag{
 								&cli.StringFlag{
 									Name:  "kind",
@@ -294,7 +294,7 @@ func GetCommands() []*cli.Command {
 									Value: depKindHard,
 								},
 								&cli.StringFlag{
-									Name:  "description",
+									Name:  flagDescription,
 									Usage: "Optional description for the edge",
 								},
 							},
@@ -304,7 +304,7 @@ func GetCommands() []*cli.Command {
 							Name:      flagRemove,
 							Aliases:   []string{"rm"},
 							Usage:     "Drop a parent dependency",
-							ArgsUsage: "<child-slug> <parent-slug>",
+							ArgsUsage: argChildParent,
 							Action:    checksDepsRemoveAction,
 						},
 						{
@@ -321,16 +321,16 @@ func GetCommands() []*cli.Command {
 							Action: checksDepsSetAction,
 						},
 						{
-							Name:      "update",
+							Name:      cmdUpdate,
 							Usage:     "Update a parent dependency edge (kind/description)",
-							ArgsUsage: "<child-slug> <parent-slug>",
+							ArgsUsage: argChildParent,
 							Flags: []cli.Flag{
 								&cli.StringFlag{
 									Name:  "kind",
 									Usage: "Dependency kind: hard or soft",
 								},
 								&cli.StringFlag{
-									Name:  "description",
+									Name:  flagDescription,
 									Usage: "Description for the edge",
 								},
 							},
@@ -348,7 +348,7 @@ func GetCommands() []*cli.Command {
 					Usage: "Export all checks as a portable JSON document (admin-only)",
 					Flags: []cli.Flag{
 						&cli.StringFlag{
-							Name:  "file",
+							Name:  flagFile,
 							Usage: "Write the export to a file instead of stdout",
 						},
 					},
@@ -374,7 +374,7 @@ func GetCommands() []*cli.Command {
 			ArgsUsage: "<manifest>",
 			Flags: append(GetGlobalFlags(),
 				&cli.StringFlag{
-					Name:    "file",
+					Name:    flagFile,
 					Aliases: []string{"f"},
 					Usage:   "Manifest file (JSON or YAML)",
 				},
@@ -611,7 +611,7 @@ func GetCommands() []*cli.Command {
 		},
 		{
 			Name:    "tokens",
-			Aliases: []string{"token"},
+			Aliases: []string{flagToken},
 			Usage:   "Manage personal access tokens",
 			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
@@ -627,7 +627,7 @@ func GetCommands() []*cli.Command {
 					Action: tokensListAction,
 				},
 				{
-					Name:  "create",
+					Name:  cmdCreate,
 					Usage: "Create a personal access token",
 					Flags: []cli.Flag{
 						&cli.StringFlag{
@@ -681,7 +681,7 @@ func GetCommands() []*cli.Command {
 					Action:    membersGetAction,
 				},
 				{
-					Name:      "update",
+					Name:      cmdUpdate,
 					Usage:     "Update a member",
 					ArgsUsage: argUID,
 					Flags: []cli.Flag{
@@ -729,7 +729,7 @@ func GetCommands() []*cli.Command {
 					Action:    jobsGetAction,
 				},
 				{
-					Name:  "create",
+					Name:  cmdCreate,
 					Usage: "Create a job",
 					Flags: []cli.Flag{
 						&cli.StringFlag{
@@ -811,7 +811,7 @@ func GetCommands() []*cli.Command {
 							Action: discoveryScansListAction,
 						},
 						{
-							Name:  "create",
+							Name:  cmdCreate,
 							Usage: "Start a new discovery scan",
 							Flags: []cli.Flag{
 								&cli.StringFlag{
@@ -895,7 +895,7 @@ func GetCommands() []*cli.Command {
 					ArgsUsage: "<identifier>",
 					Flags: []cli.Flag{
 						&cli.StringFlag{
-							Name:  "token",
+							Name:  flagToken,
 							Usage: "Heartbeat token (required if the check has one configured)",
 						},
 						&cli.StringFlag{

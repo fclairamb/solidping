@@ -28,8 +28,16 @@ const (
 	flagAdd      = "add"
 	flagRemove   = "remove"
 
+	flagToken       = "token"
+	flagFile        = "file"
+	flagDescription = "description"
+	cmdCreate       = "create"
+	cmdUpdate       = "update"
+	argChildParent  = "<child-slug> <parent-slug>"
+
 	colTimestamp = "TIMESTAMP"
 	colType      = "TYPE"
+	colPeriod    = "PERIOD"
 
 	usageHumanReadableName = "Human-readable name"
 	usagePaginationCursor  = "Pagination cursor for next page"

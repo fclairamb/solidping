@@ -121,7 +121,7 @@ func applyAction(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	file := cmd.String("file")
+	file := cmd.String(flagFile)
 	if file == "" {
 		if cmd.Args().Len() > 0 {
 			file = cmd.Args().Get(0)
@@ -234,7 +234,7 @@ func checksExportAction(ctx context.Context, cmd *cli.Command) error {
 		}
 	}
 
-	outFile := cmd.String("file")
+	outFile := cmd.String(flagFile)
 	if outFile == "" {
 		_, _ = os.Stdout.Write(doc)
 		_, _ = fmt.Fprintln(os.Stdout)

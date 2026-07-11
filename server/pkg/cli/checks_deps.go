@@ -131,7 +131,7 @@ func checksDepsAddAction(ctx context.Context, cmd *cli.Command) error {
 		Kind:           kind,
 	}
 
-	if desc := cmd.String("description"); desc != "" {
+	if desc := cmd.String(flagDescription); desc != "" {
 		body.Description = &desc
 	}
 
@@ -203,7 +203,7 @@ func checksDepsRemoveAction(ctx context.Context, cmd *cli.Command) error {
 
 // checksDepsUpdateAction PATCHes a single edge's kind/description.
 //
-//nolint:cyclop // CLI parameter parsing and edge lookup
+//nolint:funlen,cyclop // CLI parameter parsing and edge lookup
 func checksDepsUpdateAction(ctx context.Context, cmd *cli.Command) error {
 	cliCtx, err := NewCLIContext(cmd)
 	if err != nil {
@@ -217,7 +217,7 @@ func checksDepsUpdateAction(ctx context.Context, cmd *cli.Command) error {
 	child := cmd.Args().Get(0)
 	parent := cmd.Args().Get(1)
 
-	if !cmd.IsSet("kind") && !cmd.IsSet("description") {
+	if !cmd.IsSet("kind") && !cmd.IsSet(flagDescription) {
 		return cli.Exit("Error: at least one of --kind or --description is required", 5)
 	}
 
@@ -264,8 +264,8 @@ func checksDepsUpdateAction(ctx context.Context, cmd *cli.Command) error {
 		kindEnum := client.UpdateDependencyRequestKind(kind)
 		body.Kind = &kindEnum
 	}
-	if cmd.IsSet("description") {
-		desc := cmd.String("description")
+	if cmd.IsSet(flagDescription) {
+		desc := cmd.String(flagDescription)
 		body.Description = &desc
 	}
 
@@ -288,8 +288,6 @@ func checksDepsUpdateAction(ctx context.Context, cmd *cli.Command) error {
 }
 
 // checksDepsGraphAction prints the org-wide dependency graph.
-//
-//nolint:cyclop // CLI output formatting with nil guards
 func checksDepsGraphAction(ctx context.Context, cmd *cli.Command) error {
 	cliCtx, err := NewCLIContext(cmd)
 	if err != nil {
