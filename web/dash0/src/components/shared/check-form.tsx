@@ -2180,6 +2180,11 @@ export function CheckForm({
     : "timeout 15s (default)";
   const showGroup = (checkGroups?.length ?? 0) > 0;
 
+  // A section opens on load when it holds non-default values OR is the target of
+  // a `?section=<id>` deep-link (which the mount effect above also scrolls to).
+  const sectionOpen = (id: string, hasValues: boolean) =>
+    hasValues || initialSection === id;
+
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-center gap-4">
@@ -2429,7 +2434,7 @@ export function CheckForm({
           title="Organization"
           summary={orgSummary}
           customized={orgCustomized}
-          defaultOpen={orgCustomized}
+          defaultOpen={sectionOpen("organization", orgCustomized)}
           expandSignal={slugError ? submitAttempts : 0}
         >
 
@@ -2476,7 +2481,7 @@ export function CheckForm({
           title="Dependencies"
           summary={depsSummary}
           customized={depCount > 0}
-          defaultOpen={depCount > 0}
+          defaultOpen={sectionOpen("dependencies", depCount > 0)}
         >
           <DependsOnFormSection
             org={org}
@@ -2493,7 +2498,7 @@ export function CheckForm({
           title="Incident tracking"
           summary={incidentSummary}
           customized={incidentCustomized}
-          defaultOpen={incidentCustomized}
+          defaultOpen={sectionOpen("incident-tracking", incidentCustomized)}
         >
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
@@ -2535,7 +2540,7 @@ export function CheckForm({
           title={t("form.flapping")}
           summary={flappingSummary}
           customized={flappingCustomized}
-          defaultOpen={flappingCustomized}
+          defaultOpen={sectionOpen("flapping", flappingCustomized)}
         >
           <p className="text-xs text-muted-foreground">{t("form.flappingHelp")}</p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -2574,7 +2579,7 @@ export function CheckForm({
             title="Advanced"
             summary={advancedSummary}
             customized={advancedCustomized}
-            defaultOpen={advancedCustomized || !!timeoutError}
+            defaultOpen={sectionOpen("advanced", advancedCustomized || !!timeoutError)}
             expandSignal={timeoutError ? submitAttempts : 0}
           >
             <div className="space-y-2">

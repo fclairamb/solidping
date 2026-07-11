@@ -19,7 +19,11 @@ function secondsToHMS(seconds: number): string {
 function toList(value: unknown): string[] {
   const raw = Array.isArray(value) ? value : value === undefined ? [] : [value];
   return raw
-    .flatMap((v) => (typeof v === "string" ? v.split(",") : []))
+    .flatMap((v) => {
+      if (typeof v === "string") return v.split(",");
+      if (typeof v === "number") return [String(v)];
+      return [];
+    })
     .map((s) => s.trim())
     .filter(Boolean);
 }
@@ -29,7 +33,13 @@ function listOrUndef(value: unknown): string[] | undefined {
   return list.length > 0 ? list : undefined;
 }
 
+// TanStack Router's default search parser turns bare numeric query values into
+// JS numbers (e.g. `?timeout=12` → 12), while non-numeric ones stay strings, so
+// accept both.
 function toInt(value: unknown): number | undefined {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? Math.trunc(value) : undefined;
+  }
   if (typeof value !== "string") return undefined;
   const n = parseInt(value, 10);
   return Number.isNaN(n) ? undefined : n;
@@ -64,8 +74,10 @@ export const Route = createFileRoute("/orgs/$org/checks/new")({
     database: typeof search.database === "string" ? search.database : undefined,
     expectedStatus: toInt(search.expectedStatus),
     timeout: toInt(search.timeout),
-    // Labels: `?label=key:value`, repeatable and/or comma-separated.
-    label: parseLabels(search.label),
+    // Labels: `?label=key:value`, repeatable and/or comma-separated. Kept as a
+    // raw string list so the value round-trips through the URL idempotently;
+    // it is parsed into a record in the component.
+    label: listOrUndef(search.label),
     // Regions: `?region=us1,eu2` (singular, comma-separated, repeatable).
     region: listOrUndef(search.region),
     // Group slug — resolved to its uid in the component (needs the group list).
@@ -103,7 +115,7 @@ function CheckNewPage() {
         period: search.checkPeriod ? secondsToHMS(search.checkPeriod) : undefined,
         checkGroupUid: groupUid,
         regions: search.region,
-        labels: search.label,
+        labels: parseLabels(search.label),
         confirmationPeriodSeconds: search.confirmationPeriod,
         recoveryPeriodSeconds: search.recoveryPeriod,
         config: {
