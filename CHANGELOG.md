@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased
+
+
+### Features
+
+* **checks:** new **RDP** protocol check type — pre-auth X.224 negotiation with NLA and certificate-expiry knobs
+* **checks:** optional **per-check timeout** field (1–30s) in the shared check form; server-side 30s cap, execution context = timeout + 1s
+* **checks:** **configurable global check timeout** (default 15s), execution context = timeout + 1s
+* **checks:** **export format v2** — defaults block, human-readable durations, and deterministic ordering (group empty-last, then slug)
+* **dash0:** badges page check picker swapped the capped `Select` for a live-search `CheckPicker`
+* **dash0:** AI assistants (**MCP**) page moved under Account with a command-palette entry (findable by "MCP" or "AI"); legacy paths redirect
+* **dash0:** empty-state onboarding hero now offers the MCP / AI path for creating checks (mobile-usable)
+* **status:** rich link previews — per-page **Open Graph** metadata injected into served status pages, plus a branded 1200×630 default image
+* **admin:** region slugs resolve to friendly "{emoji} {name}" labels (e.g. "EU1 (default)") on admin surfaces, seeded from `SP_REGIONS`
+* **integrations:** the "Default for new checks" toggle now starts **enabled** when creating an integration
+* **i18n:** idiomatic FR/ES/DE auth-page headline translations replacing literal calques
+
+### Bug Fixes
+
+* **realtime:** fix an EventNotifier listener leak — `GetJobWait` leaked one channel per processed job and eventually silenced the realtime WebSocket with zero logs; adds `Unlisten`, a non-stacking Postgres keepalive ping, and a listener-growth warning
+* **dash0:** unify the `useCheck` query key so a live check update fetches the check **once, not twice** (single canonical cache entry)
+* **dash0:** incidents and checks list pages now subscribe to live updates (they never registered a live scope, so they only updated on reload)
+* **mcp:** method-aware `/api/v1/mcp` (GET redirect/405, DELETE session termination) and JSON 404 for unmatched `/api/` paths — a browser GET no longer falls through to the web UI
+* **rate-limiting:** key authenticated buckets by bearer token with a per-IP cap, fix off-by-one XFF client-IP extraction, and coalesce live-hint cache invalidations to damp refetch storms
+* **auth:** SSO callbacks now set the `access_token` cookie so MCP OAuth consent skips the login-page bounce
+* **checks (DNS):** repair the DNS check form — bind Domain to the host key, add DNS-server and record-type fields, and load samples correctly
+* **checks (DNSBL):** treat Spamhaus `127.255.255.x` replies as error codes rather than genuine listings (fixes false-positive blocklist hits)
+* **dash0 (DNSBL):** render the DNSBL result card with human-readable Spamhaus status-code labels
+* **status:** the status-page Atom feed no longer 500s on Postgres — bind `status_page_uid` through bun (`$1` → `?`)
+
 ## [0.2.2](https://github.com/fclairamb/solidping/compare/v0.2.1...v0.2.2) (2026-07-09)
 
 
