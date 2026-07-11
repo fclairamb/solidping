@@ -59,6 +59,12 @@ tags:
     description: Organization invitations
   - name: MembershipRequests
     description: Requests to join an organization (requester and admin sides)
+  - name: Entitlements
+    description: Per-organization entitlement limits and audit log
+  - name: Files
+    description: Org-scoped file storage metadata and content
+  - name: EmailSuppressions
+    description: Per-recipient email suppression (unsubscribe) list
 
 paths:
   # Management APIs
@@ -3987,6 +3993,276 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # Entitlements APIs (per-org limits + audit log)
+  /api/v1/orgs/{org}/entitlements:
+    get:
+      tags: [Entitlements]
+      summary: Get resolved entitlements for an organization
+      operationId: getEntitlements
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: with
+          in: query
+          required: false
+          description: Comma-separated extras to include (currently "usage")
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Resolved entitlements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntitlementsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Entitlements]
+      summary: Replace an organization's entitlements
+      operationId: setEntitlements
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetEntitlementsRequest"
+      responses:
+        "200":
+          description: Updated entitlements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntitlementsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Entitlements]
+      summary: Partially update an organization's entitlements
+      operationId: patchEntitlements
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetEntitlementsRequest"
+      responses:
+        "200":
+          description: Updated entitlements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntitlementsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/entitlements/audits:
+    get:
+      tags: [Entitlements]
+      summary: List entitlement change audits
+      operationId: listEntitlementsAudits
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: limit
+          in: query
+          required: false
+          description: Maximum results (1-200, default 50)
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Entitlement audit entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntitlementsAuditListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # File storage APIs (org-scoped metadata + content)
+  /api/v1/orgs/{org}/files:
+    get:
+      tags: [Files]
+      summary: List stored files
+      operationId: listFiles
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: q
+          in: query
+          required: false
+          description: Filter by filename substring
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Maximum results (1-200, default 50)
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          required: false
+          description: Result offset
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of files
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/files/{uid}:
+    get:
+      tags: [Files]
+      summary: Get file metadata
+      operationId: getFile
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/FileUidPath"
+      responses:
+        "200":
+          description: File metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Files]
+      summary: Delete a file
+      operationId: deleteFile
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/FileUidPath"
+      responses:
+        "204":
+          description: File deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/files/{uid}/content:
+    get:
+      tags: [Files]
+      summary: Download file content
+      operationId: downloadFile
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/FileUidPath"
+      responses:
+        "200":
+          description: Raw file bytes
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Email suppression APIs (per-recipient unsubscribe list)
+  /api/v1/orgs/{org}/email-suppressions:
+    get:
+      tags: [EmailSuppressions]
+      summary: List email suppressions
+      operationId: listEmailSuppressions
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of email suppressions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailSuppressionListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/email-suppressions/{uid}:
+    delete:
+      tags: [EmailSuppressions]
+      summary: Remove an email suppression (re-subscribe)
+      operationId: deleteEmailSuppression
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/EmailSuppressionUidPath"
+      responses:
+        "204":
+          description: Suppression removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -4177,6 +4453,24 @@ components:
         type: string
         format: uuid
       description: Membership request UID
+
+    FileUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: File UID
+
+    EmailSuppressionUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Email suppression UID
 
   responses:
     NotFound:
@@ -7134,3 +7428,180 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MembershipRequestAdminView"
+
+    # Entitlements schemas
+    EntitlementLimits:
+      type: object
+      description: Per-org numeric limits; null/absent means unlimited
+      properties:
+        maxChecks:
+          type: integer
+          nullable: true
+          description: Maximum non-internal checks (null = unlimited)
+        maxSsoUsers:
+          type: integer
+          nullable: true
+          description: Maximum SSO users (null = unlimited)
+        maxChecksPerMinute:
+          type: integer
+          nullable: true
+          description: Aggregate check dispatch rate per minute (null = unlimited)
+
+    EntitlementsUsage:
+      type: object
+      required: [checks, checksPerMinute, ssoUsers]
+      properties:
+        checks:
+          type: integer
+        checksPerMinute:
+          type: number
+          format: double
+        ssoUsers:
+          type: integer
+
+    EntitlementsResponse:
+      type: object
+      required: [limits, source, stale]
+      properties:
+        limits:
+          $ref: "#/components/schemas/EntitlementLimits"
+        source:
+          type: string
+          description: Where the entitlements came from (default, billing, admin)
+        displayName:
+          type: string
+        displayEmoji:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        lastSyncedAt:
+          type: string
+          format: date-time
+        stale:
+          type: boolean
+        usage:
+          $ref: "#/components/schemas/EntitlementsUsage"
+        upgradeUrl:
+          type: string
+
+    SetEntitlementsRequest:
+      type: object
+      properties:
+        limits:
+          $ref: "#/components/schemas/EntitlementLimits"
+        source:
+          type: string
+          description: Entitlement source (default set server-side)
+        displayName:
+          type: string
+        displayEmoji:
+          type: string
+        externalRef:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        expiresAt:
+          type: string
+          format: date-time
+        lastSyncedAt:
+          type: string
+          format: date-time
+
+    EntitlementsAudit:
+      type: object
+      required: [uid, organizationUid, source, actor, afterSnapshot, createdAt]
+      properties:
+        uid:
+          type: string
+        organizationUid:
+          type: string
+        source:
+          type: string
+        actor:
+          type: string
+        beforeSnapshot:
+          type: object
+          additionalProperties: true
+          nullable: true
+        afterSnapshot:
+          type: object
+          additionalProperties: true
+        reason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    EntitlementsAuditListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntitlementsAudit"
+
+    # File schemas
+    FileResponse:
+      type: object
+      required: [uid, organizationUid, name, mimeType, size, createdAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        organizationUid:
+          type: string
+        name:
+          type: string
+        mimeType:
+          type: string
+        size:
+          type: integer
+          format: int64
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    FileListResponse:
+      type: object
+      required: [data, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileResponse"
+        total:
+          type: integer
+          format: int64
+
+    # Email suppression schemas
+    EmailSuppression:
+      type: object
+      required: [uid, email, source, createdAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        email:
+          type: string
+        checkUid:
+          type: string
+        checkName:
+          type: string
+        source:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    EmailSuppressionListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailSuppression"
