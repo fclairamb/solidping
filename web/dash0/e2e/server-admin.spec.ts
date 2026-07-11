@@ -432,5 +432,13 @@ test.describe("Server Performance", () => {
     ).toBeVisible();
     await expect(page.getByTestId("lane-load-fast").first()).toBeVisible();
     await expect(page.getByTestId("lane-load-slow").first()).toBeVisible();
+
+    // The worker's region badge shows the resolved "{emoji} {name}" label
+    // from the region definitions — with no regions parameter set, the
+    // built-in default region resolves to "📍 Default" — never the raw
+    // "default" slug.
+    await expect(page.getByTestId("worker-region-badge").first()).toHaveText(
+      "📍 Default",
+    );
   });
 });
