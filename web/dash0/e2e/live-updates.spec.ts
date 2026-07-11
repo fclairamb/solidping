@@ -193,33 +193,60 @@ test.describe("Live dashboard updates", () => {
       await subscribedPromise;
       await expect(page.getByTestId("check-detail-header")).toBeVisible();
 
-      // While the check scope is live, the 1.5s first-result hot poll is
-      // disabled: count the check-detail refetches over an idle window. A
-      // 1.5s poll would fire at least twice; the live path fires none.
-      let detailFetches = 0;
+      // Count check-detail GETs, split by URL shape. `useCheck` now keys every
+      // consumer on ["check", org, uid] and always requests
+      // ?with=last_result,last_status_change, so the canonical fetch carries a
+      // query string. The bare (no-query) form is what the breadcrumb used to
+      // fetch as a *second* cache entry (["check", org, uid, {with:undefined}]),
+      // double-fetching the check on every live hint — after the single-key
+      // unification it must never be requested at all.
+      let withFetches = 0;
+      let bareFetches = 0;
+      const detailPath = `/api/v1/orgs/test/checks/${check.uid}`;
       const onRequest = (req: { url: () => string; method: () => string }) => {
-        if (
-          req.method() === "GET" &&
-          req.url().includes(`/api/v1/orgs/test/checks/${check.uid}?`)
-        ) {
-          detailFetches += 1;
+        if (req.method() !== "GET") return;
+        let parsed: URL;
+        try {
+          parsed = new URL(req.url());
+        } catch {
+          return;
         }
+        // Match the check-detail endpoint exactly — not sub-resources like
+        // /results/… or /availability (their path continues past the uid).
+        if (parsed.pathname !== detailPath) return;
+        if (parsed.search) withFetches += 1;
+        else bareFetches += 1;
       };
       page.on("request", onRequest);
       await page.waitForTimeout(3500);
-      const idleFetches = detailFetches;
+      // While the check scope is live, the 1.5s first-result hot poll is
+      // disabled: a 1.5s poll would fire at least twice over this idle window;
+      // the live path fires none.
       expect(
-        idleFetches,
+        withFetches,
         "no 1.5s hot poll may run while the check's live subscription is acked",
       ).toBeLessThan(2);
 
       // First real result: must appear live, driven by the hint. The summary
       // card flips from the pending fallback to "Currently up for …".
+      withFetches = 0;
+      bareFetches = 0;
       await sendHeartbeat(page, check, "up");
       await expect(page.getByText("Currently up for")).toBeVisible({
         timeout: 4000,
       });
       page.off("request", onRequest);
+      // The single live hint fetched the check through its one canonical cache
+      // entry (?with=…) and never through the retired bare breadcrumb entry —
+      // one request per hint, not two.
+      expect(
+        bareFetches,
+        "a live hint must not fetch the bare (no-with) check URL — the retired duplicate cache entry",
+      ).toBe(0);
+      expect(
+        withFetches,
+        "the live hint must drive the canonical ?with= check fetch",
+      ).toBeGreaterThanOrEqual(1);
     } finally {
       await deleteCheck(page, token, check.uid);
     }
