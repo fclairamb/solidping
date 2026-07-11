@@ -442,6 +442,182 @@ func TestCreateCheckFlappingValidationRejectsBadFactor(t *testing.T) {
 	r.Equal(string(base.ErrorCodeValidationError), errBody["code"])
 }
 
+// TestCheckConfigTimeoutCapOnCreate covers the uniform per-check timeout cap
+// (spec 2026-07-11-05) at the HTTP layer on create: values in (0, 30s] pass,
+// anything else is a 422 VALIDATION_ERROR on the `timeout` field, uniformly
+// across check types (including ones whose checker has no own timeout cap).
+func TestCheckConfigTimeoutCapOnCreate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		body       map[string]any
+		wantStatus int
+		wantMsg    string // substring of the timeout field error
+	}{
+		{
+			name: "http with 10s timeout is created",
+			body: map[string]any{
+				"type":   "http",
+				"config": map[string]any{"url": "https://example.com", "timeout": "10s"},
+			},
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name: "30s boundary is accepted",
+			body: map[string]any{
+				"type":   "tcp",
+				"config": map[string]any{"host": "example.com", "port": 443, "timeout": "30s"},
+			},
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name: "31s is rejected",
+			body: map[string]any{
+				"type":   "tcp",
+				"config": map[string]any{"host": "example.com", "port": 443, "timeout": "31s"},
+			},
+			wantStatus: http.StatusUnprocessableEntity,
+			wantMsg:    "must be > 0 and <= 30s",
+		},
+		{
+			name: "zero is rejected",
+			body: map[string]any{
+				"type":   "http",
+				"config": map[string]any{"url": "https://example.com", "timeout": "0s"},
+			},
+			wantStatus: http.StatusUnprocessableEntity,
+			wantMsg:    "must be > 0 and <= 30s",
+		},
+		{
+			name: "negative is rejected",
+			body: map[string]any{
+				"type":   "http",
+				"config": map[string]any{"url": "https://example.com", "timeout": "-5s"},
+			},
+			wantStatus: http.StatusUnprocessableEntity,
+			wantMsg:    "must be > 0 and <= 30s",
+		},
+		{
+			name: "udp (checker without its own 30s cap) is capped too",
+			body: map[string]any{
+				"type":   "udp",
+				"config": map[string]any{"host": "example.com", "port": 53, "timeout": "45s"},
+			},
+			wantStatus: http.StatusUnprocessableEntity,
+			wantMsg:    "must be > 0 and <= 30s",
+		},
+		{
+			name: "absent timeout is accepted",
+			body: map[string]any{
+				"type":   "http",
+				"config": map[string]any{"url": "https://example.com"},
+			},
+			wantStatus: http.StatusCreated,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+			router, orgSlug := newCheckHandlerRouter(t)
+
+			rec := postCheck(t, router, orgSlug, tt.body)
+			r.Equal(tt.wantStatus, rec.Code, rec.Body.String())
+
+			if tt.wantMsg == "" {
+				return
+			}
+
+			var errBody map[string]any
+			r.NoError(json.Unmarshal(rec.Body.Bytes(), &errBody))
+			r.Equal(string(base.ErrorCodeValidationError), errBody["code"])
+			fields, _ := errBody["fields"].([]any)
+			r.Len(fields, 1)
+			field, _ := fields[0].(map[string]any)
+			r.Equal("timeout", field["name"])
+			r.Contains(field["message"], tt.wantMsg)
+		})
+	}
+}
+
+// TestCheckConfigTimeoutCapOnPatch pins the PATCH side of the uniform timeout
+// cap (spec 2026-07-11-05): an over-cap value is a 422 VALIDATION_ERROR, a
+// legal value persists into config, and a subsequent config without the key
+// removes it (non-secret keys are replace-wholesale on PATCH).
+func TestCheckConfigTimeoutCapOnPatch(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	router, orgSlug := newCheckHandlerRouter(t)
+
+	rec := postCheck(t, router, orgSlug, map[string]any{
+		"type": "http", "config": map[string]any{"url": "https://example.com"},
+	})
+	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
+
+	var created map[string]any
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &created))
+	uid, _ := created["uid"].(string)
+	r.NotEmpty(uid)
+
+	patch := func(body map[string]any) *httptest.ResponseRecorder {
+		payload, err := json.Marshal(body)
+		r.NoError(err)
+		req := httptest.NewRequestWithContext(
+			t.Context(), http.MethodPatch, "/api/v1/orgs/"+orgSlug+"/checks/"+uid, bytes.NewBuffer(payload))
+		req.Header.Set("Content-Type", "application/json")
+		patchRec := httptest.NewRecorder()
+		router.ServeHTTP(patchRec, req)
+
+		return patchRec
+	}
+
+	getConfig := func() map[string]any {
+		getReq := httptest.NewRequestWithContext(
+			t.Context(), http.MethodGet, "/api/v1/orgs/"+orgSlug+"/checks/"+uid, http.NoBody)
+		getRec := httptest.NewRecorder()
+		router.ServeHTTP(getRec, getReq)
+		r.Equal(http.StatusOK, getRec.Code, getRec.Body.String())
+
+		var fetched map[string]any
+		r.NoError(json.Unmarshal(getRec.Body.Bytes(), &fetched))
+		cfg, _ := fetched["config"].(map[string]any)
+		r.NotNil(cfg)
+
+		return cfg
+	}
+
+	// Over-cap timeout on PATCH is rejected as a field validation error.
+	patchRec := patch(map[string]any{
+		"config": map[string]any{"url": "https://example.com", "timeout": "31s"},
+	})
+	r.Equal(http.StatusUnprocessableEntity, patchRec.Code, patchRec.Body.String())
+
+	var errBody map[string]any
+	r.NoError(json.Unmarshal(patchRec.Body.Bytes(), &errBody))
+	r.Equal(string(base.ErrorCodeValidationError), errBody["code"])
+	fields, _ := errBody["fields"].([]any)
+	r.Len(fields, 1)
+	field, _ := fields[0].(map[string]any)
+	r.Equal("timeout", field["name"])
+	r.Contains(field["message"], "must be > 0 and <= 30s")
+
+	// A legal value persists into config.
+	patchRec = patch(map[string]any{
+		"config": map[string]any{"url": "https://example.com", "timeout": "10s"},
+	})
+	r.Equal(http.StatusOK, patchRec.Code, patchRec.Body.String())
+	r.Equal("10s", getConfig()["timeout"])
+
+	// A config without the key removes it (clearing the form field).
+	patchRec = patch(map[string]any{
+		"config": map[string]any{"url": "https://example.com"},
+	})
+	r.Equal(http.StatusOK, patchRec.Code, patchRec.Body.String())
+	r.NotContains(getConfig(), "timeout")
+}
+
 // TestLastResultListVsDetailShape is the regression test for spec
 // 2026-07-06-01 Part B: with=last_result on the list endpoint must return a
 // slim lastResult ({uid, status, timestamp, durationMs}), while the same

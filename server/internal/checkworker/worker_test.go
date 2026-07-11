@@ -1749,6 +1749,105 @@ func TestExecuteJob_ExecutionContextIsCheckTimeoutPlusOneSecond(t *testing.T) {
 		"the +1s margin must be present so a ctx-honoring checker can report StatusTimeout before the hard cancel")
 }
 
+// TestPerCheckTimeout pins the worker-side extraction of the per-check
+// `timeout` config value (spec 2026-07-11-05): duration strings in (0, 30s]
+// are honored, legacy over-cap values are clamped at 30s, and anything
+// absent/invalid/non-positive falls back to the global rule.
+func TestPerCheckTimeout(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		config map[string]any
+		want   time.Duration
+		wantOK bool
+	}{
+		{name: "absent key", config: map[string]any{"url": "https://example.com"}, wantOK: false},
+		{name: "nil config", config: nil, wantOK: false},
+		{name: "valid 10s", config: map[string]any{"timeout": "10s"}, want: 10 * time.Second, wantOK: true},
+		{name: "sub-second", config: map[string]any{"timeout": "500ms"}, want: 500 * time.Millisecond, wantOK: true},
+		{name: "30s boundary", config: map[string]any{"timeout": "30s"}, want: 30 * time.Second, wantOK: true},
+		{name: "legacy 60s clamps to 30s", config: map[string]any{"timeout": "60s"}, want: 30 * time.Second, wantOK: true},
+		{name: "zero ignored", config: map[string]any{"timeout": "0s"}, wantOK: false},
+		{name: "negative ignored", config: map[string]any{"timeout": "-5s"}, wantOK: false},
+		{name: "garbage ignored", config: map[string]any{"timeout": "abc"}, wantOK: false},
+		{name: "empty string ignored", config: map[string]any{"timeout": ""}, wantOK: false},
+		{name: "non-string ignored", config: map[string]any{"timeout": float64(10)}, wantOK: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, ok := perCheckTimeout(tt.config)
+			require.Equal(t, tt.wantOK, ok)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestExecuteJob_PerCheckTimeoutSetsContextDeadline drives the real executeJob
+// path with a per-check `timeout` config value (spec 2026-07-11-05) and
+// asserts the execution context deadline is that timeout + 1s — taking
+// precedence over the flat/cost-aware ceiling in both directions (shorter and
+// longer than the global budget) and defensively clamped at 30s for legacy
+// over-cap configs.
+//
+//nolint:paralleltest // Test uses shared database state
+func TestExecuteJob_PerCheckTimeoutSetsContextDeadline(t *testing.T) {
+	// Flat 3s global check timeout (cost-aware off): without a per-check
+	// timeout the context deadline would be 4s — every case below must
+	// deviate from that per the per-check rule.
+	const globalCheckTimeout = 3 * time.Second
+
+	tests := []struct {
+		name         string
+		timeout      string
+		wantDeadline time.Duration
+	}{
+		{name: "shorter than the global budget", timeout: "2s", wantDeadline: 3 * time.Second},
+		{name: "longer than the global budget (user choice wins)", timeout: "8s", wantDeadline: 9 * time.Second},
+		{name: "legacy 60s clamps to 30s (+1s context)", timeout: "60s", wantDeadline: 31 * time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) { //nolint:paralleltest // shared database state
+			runner, dbSvc, ctx := setupTestRunner(t)
+			defer func() { _ = dbSvc.Close() }()
+
+			org := models.NewOrganization("test-org", "")
+			require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+			worker := models.NewWorker("test-worker", "Test Worker")
+			_, err := dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
+			require.NoError(t, err)
+			runner.setWorker(worker)
+
+			const dlType = checkerdef.CheckType("test-deadline")
+			recorder := &deadlineRecordingChecker{}
+			runner.getChecker, runner.parseConfig = stubResolvers(dlType, recorder)
+			runner.schedParams = scheduling.Params{CheckTimeout: globalCheckTimeout}
+
+			check := models.NewCheck(org.UID, "percheck-"+uuid.New().String()[:8], string(dlType))
+			check.Config = models.JSONMap{"timeout": tt.timeout}
+			require.NoError(t, dbSvc.CreateCheck(ctx, check))
+			checkJob := new(models.CheckJob)
+			require.NoError(t, dbSvc.DB().NewSelect().Model(checkJob).Where("check_uid = ?", check.UID).Scan(ctx))
+			claimJobForTest(t, dbSvc, ctx, checkJob, worker.UID)
+
+			start := time.Now()
+			require.NoError(t, runner.executeJob(ctx, runner.logger, checkJob))
+
+			require.True(t, recorder.observed.Load(), "the checker must observe a context deadline")
+			deadline := time.Unix(0, recorder.deadlineUnixNano.Load())
+			observed := deadline.Sub(start)
+
+			assert.InDelta(t, tt.wantDeadline.Seconds(), observed.Seconds(), 0.5,
+				"execution context deadline must be the per-check timeout + 1s")
+		})
+	}
+}
+
 // stubResolvers builds getChecker/parseConfig overrides that resolve exactly
 // one synthetic check type to the given stub checker, and fall through to
 // the real registry for everything else (so a subsequent heartbeat/sleep job
