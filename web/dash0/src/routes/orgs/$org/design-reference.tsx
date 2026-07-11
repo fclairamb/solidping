@@ -108,6 +108,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import {
   Table,
   TableBody,
@@ -139,6 +140,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "copyable-code", label: "Copyable code" },
   { id: "copyable-inline", label: "Copyable inline" },
   { id: "collapsible-code", label: "Collapsible code" },
+  { id: "collapsible-section", label: "Collapsible section" },
   { id: "feedback", label: "Feedback" },
   { id: "label-filter", label: "Label filter" },
   { id: "check-multi-picker", label: "Check multi-picker" },
@@ -172,6 +174,7 @@ function DesignReferencePage() {
       <CopyableCodeSection />
       <CopyableInlineSection />
       <CollapsibleCodeSection />
+      <CollapsibleSectionSection />
       <FeedbackSection />
       <LabelFilterSection />
       <CheckMultiPickerSection />
@@ -1574,6 +1577,62 @@ function CollapsibleCodeSection() {
         </div>
         <CodeSnippet
           code={`import { CollapsibleCode } from "@/components/shared/copyable-code";\n\n<CollapsibleCode label="Response body" value={json} defaultOpen={failed} />`}
+        />
+      </div>
+    </Section>
+  );
+}
+
+function CollapsibleSectionSection() {
+  const [errSignal, setErrSignal] = useState(0);
+  return (
+    <Section
+      id="collapsible-section"
+      title="Collapsible section"
+      description="Progressive-disclosure section for long forms: a header that shows the section title, a value-summary line while collapsed, and a 'customized' badge when values deviate from defaults. Bump expandSignal to force-open + scroll a section (validation error on submit, or a ?section= deep-link). Default it open when it already holds non-default values. Used to tame the check create/edit form."
+    >
+      <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+        <div className="space-y-3">
+          <CollapsibleSection
+            id="demo-flapping"
+            title="Flapping"
+            summary="window 6h, cooldown ×5 (defaults)"
+          >
+            <p className="text-sm text-muted-foreground">
+              Tuning knobs live here — collapsed by default because most users
+              never touch them.
+            </p>
+          </CollapsibleSection>
+          <CollapsibleSection
+            title="Incident tracking"
+            summary="confirm 300s, recover 120s"
+            customized
+            defaultOpen
+          >
+            <p className="text-sm text-muted-foreground">
+              Opens by default and shows the "customized" badge because its
+              values deviate from the defaults.
+            </p>
+          </CollapsibleSection>
+          <CollapsibleSection
+            title="Advanced"
+            summary="timeout 15s (default)"
+            expandSignal={errSignal}
+          >
+            <p className="text-sm text-destructive">
+              A field in here has an error — the section force-expanded.
+            </p>
+          </CollapsibleSection>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setErrSignal((n) => n + 1)}
+          >
+            Simulate submit error (expand "Advanced")
+          </Button>
+        </div>
+        <CodeSnippet
+          code={`import { CollapsibleSection } from "@/components/ui/collapsible-section";\n\n<CollapsibleSection\n  id="flapping"\n  title="Flapping"\n  summary="window 6h, cooldown ×5 (defaults)"\n  customized={isCustomized}\n  defaultOpen={hasNonDefaults}\n  expandSignal={hasError ? submitNonce : 0}\n>\n  {/* fields */}\n</CollapsibleSection>`}
         />
       </div>
     </Section>
