@@ -596,6 +596,97 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/orgs/{org}/checks/validate:
+    post:
+      tags: [Checks]
+      summary: Validate a check configuration without persisting it
+      description: >-
+        Runs the same validation the create/update paths run, but never writes.
+        Returns whether the payload is valid plus any per-field validation
+        messages.
+      operationId: validateCheck
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidateCheckRequest"
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidateCheckResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/clone:
+    post:
+      tags: [Checks]
+      summary: Clone an existing check
+      description: >-
+        Creates a near-identical copy of an existing check. Runtime state
+        (status, results, incidents, scheduler row) is not copied; labels and
+        channel bindings are re-linked to the new check.
+      operationId: cloneCheck
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CloneCheckRequest"
+      responses:
+        "201":
+          description: Check cloned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Check"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Slug already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/orgs/{org}/dependencies:
+    get:
+      tags: [Checks]
+      summary: Org-wide check dependency graph
+      description: Returns every check (node) and every dependency edge in the organization.
+      operationId: getOrgDependencyGraph
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: Dependency graph
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgDependencyGraphResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/checks/{check}/dependencies:
     get:
       tags: [Checks]
@@ -1093,6 +1184,140 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EventListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/incidents/{uid}/ack:
+    post:
+      tags: [Incidents]
+      summary: Acknowledge an incident
+      operationId: acknowledgeIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncidentAckRequest"
+      responses:
+        "200":
+          description: Incident acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/incidents/{uid}/unack:
+    post:
+      tags: [Incidents]
+      summary: Remove acknowledgement from an incident
+      operationId: unacknowledgeIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidPath"
+      responses:
+        "200":
+          description: Incident unacknowledged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/incidents/{uid}/snooze:
+    post:
+      tags: [Incidents]
+      summary: Snooze an incident
+      description: >-
+        Suppresses notifications until an explicit time (`until`) or for a
+        relative duration (`duration`, e.g. "1h", "30m"). One of the two must
+        be provided.
+      operationId: snoozeIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncidentSnoozeRequest"
+      responses:
+        "200":
+          description: Incident snoozed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/incidents/{uid}/unsnooze:
+    post:
+      tags: [Incidents]
+      summary: Clear an incident snooze
+      operationId: unsnoozeIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidPath"
+      responses:
+        "200":
+          description: Incident unsnoozed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/incidents/{uid}/resolve:
+    post:
+      tags: [Incidents]
+      summary: Resolve an incident
+      operationId: resolveIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncidentAckRequest"
+      responses:
+        "200":
+          description: Incident resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentDetail"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -2380,6 +2605,49 @@ components:
           items:
             $ref: "#/components/schemas/ExportedDependency"
 
+    ValidateCheckRequest:
+      type: object
+      required: [type, config]
+      properties:
+        type:
+          type: string
+          description: Check type (http, tcp, ping, dns, ssl, ...)
+        slug:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+        dependsOn:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExportedDependency"
+
+    ValidateCheckResponse:
+      type: object
+      required: [valid]
+      properties:
+        valid:
+          type: boolean
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationErrorField"
+
+    CloneCheckRequest:
+      type: object
+      description: Optional overrides applied to the cloned check.
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        checkGroupUid:
+          type: string
+        enabled:
+          type: boolean
+
     ExportedDependency:
       type: object
       required: [parentSlug]
@@ -2459,6 +2727,50 @@ components:
           enum: [hard, soft]
         description:
           type: string
+
+    DependencyGraphNode:
+      type: object
+      required: [uid, slug, name]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+
+    DependencyGraphEdge:
+      type: object
+      required: [uid, parentCheckUid, childCheckUid, kind]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        parentCheckUid:
+          type: string
+          format: uuid
+        childCheckUid:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [hard, soft]
+
+    OrgDependencyGraphResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            nodes:
+              type: array
+              items:
+                $ref: "#/components/schemas/DependencyGraphNode"
+            edges:
+              type: array
+              items:
+                $ref: "#/components/schemas/DependencyGraphEdge"
 
     # Result schemas
     OrgResultListResponse:
@@ -2722,6 +3034,28 @@ components:
           type: string
         config:
           type: object
+
+    IncidentAckRequest:
+      type: object
+      description: Optional note recorded with the acknowledge/resolve action.
+      properties:
+        note:
+          type: string
+
+    IncidentSnoozeRequest:
+      type: object
+      description: >-
+        Snooze target. Provide either an absolute `until` timestamp or a
+        relative `duration` (e.g. "1h", "30m").
+      properties:
+        until:
+          type: string
+          format: date-time
+        duration:
+          type: string
+          description: Go duration string, e.g. "1h", "30m"
+        reason:
+          type: string
 
     # Event schemas
     EventListResponse:
