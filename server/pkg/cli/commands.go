@@ -1320,6 +1320,9 @@ func GetCommands() []*cli.Command {
 		orgsCommand(),
 		invitationsCommand(),
 		membershipRequestsCommand(),
+		entitlementsCommand(),
+		filesCommand(),
+		emailSuppressionsCommand(),
 	}
 }
 
