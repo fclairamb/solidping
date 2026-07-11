@@ -13,6 +13,41 @@ function secondsToHMS(seconds: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+// Multi-value query params use the singular form, comma-separated, and may also
+// repeat (e.g. `?region=us1,eu2` or `?label=env:prod&label=team:infra`). Flatten
+// a raw search value (string | string[] | undefined) into a clean string list.
+function toList(value: unknown): string[] {
+  const raw = Array.isArray(value) ? value : value === undefined ? [] : [value];
+  return raw
+    .flatMap((v) => (typeof v === "string" ? v.split(",") : []))
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function listOrUndef(value: unknown): string[] | undefined {
+  const list = toList(value);
+  return list.length > 0 ? list : undefined;
+}
+
+function toInt(value: unknown): number | undefined {
+  if (typeof value !== "string") return undefined;
+  const n = parseInt(value, 10);
+  return Number.isNaN(n) ? undefined : n;
+}
+
+// Parse repeatable `label=key:value` params into a labels record.
+function parseLabels(value: unknown): Record<string, string> | undefined {
+  const entries = toList(value)
+    .map((pair) => {
+      const idx = pair.indexOf(":");
+      if (idx <= 0) return null;
+      return [pair.slice(0, idx).trim(), pair.slice(idx + 1).trim()] as const;
+    })
+    .filter((e): e is readonly [string, string] => e !== null && e[0] !== "");
+  if (entries.length === 0) return undefined;
+  return Object.fromEntries(entries);
+}
+
 export const Route = createFileRoute("/orgs/$org/checks/new")({
   validateSearch: (search: Record<string, unknown>) => ({
     checkType: typeof search.checkType === "string" ? search.checkType : undefined,
@@ -27,6 +62,16 @@ export const Route = createFileRoute("/orgs/$org/checks/new")({
     domain: typeof search.domain === "string" ? search.domain : undefined,
     username: typeof search.username === "string" ? search.username : undefined,
     database: typeof search.database === "string" ? search.database : undefined,
+    expectedStatus: toInt(search.expectedStatus),
+    timeout: toInt(search.timeout),
+    // Labels: `?label=key:value`, repeatable and/or comma-separated.
+    label: parseLabels(search.label),
+    // Regions: `?region=us1,eu2` (singular, comma-separated, repeatable).
+    region: listOrUndef(search.region),
+    // Group slug — resolved to its uid in the component (needs the group list).
+    group: typeof search.group === "string" ? search.group : undefined,
+    confirmationPeriod: toInt(search.confirmationPeriod),
+    recoveryPeriod: toInt(search.recoveryPeriod),
     // `?section=<name>` deep-link: expand + scroll that collapsible on load.
     section: typeof search.section === "string" ? search.section : undefined,
   }),
@@ -44,12 +89,23 @@ function CheckNewPage() {
 
   const hasSearchParams = Object.values(search).some((v) => v !== undefined);
 
+  // A `?group=<slug>` param carries a group slug; the form's group picker keys
+  // off the uid, so resolve it here (needs the loaded group list).
+  const groupUid = search.group
+    ? checkGroups?.find((g) => g.slug === search.group)?.uid
+    : undefined;
+
   const initialData: Partial<Check> | undefined = hasSearchParams
     ? {
         type: search.checkType as Check["type"] | undefined,
         name: search.checkName,
         slug: search.checkSlug,
         period: search.checkPeriod ? secondsToHMS(search.checkPeriod) : undefined,
+        checkGroupUid: groupUid,
+        regions: search.region,
+        labels: search.label,
+        confirmationPeriodSeconds: search.confirmationPeriod,
+        recoveryPeriodSeconds: search.recoveryPeriod,
         config: {
           ...(search.httpUrl && { url: search.httpUrl }),
           ...(search.httpMethod && { method: search.httpMethod }),
@@ -59,6 +115,10 @@ function CheckNewPage() {
           ...(search.domain && { domain: search.domain }),
           ...(search.username && { username: search.username }),
           ...(search.database && { database: search.database }),
+          ...(search.expectedStatus !== undefined && {
+            expectedStatus: search.expectedStatus,
+          }),
+          ...(search.timeout !== undefined && { timeout: `${search.timeout}s` }),
         },
       }
     : undefined;
