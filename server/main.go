@@ -205,6 +205,14 @@ func serve(ctx context.Context, _ *cli.Command) error {
 		return seedErr
 	}
 
+	// Register the first-party `solidping-cli` OAuth client so `sp auth
+	// login` can drive the browser authorization-code flow. Idempotent —
+	// a no-op once the client exists.
+	if seedErr := server.SeedCLIOAuthClient(ctx); seedErr != nil {
+		slog.ErrorContext(ctx, "Failed to seed CLI OAuth client", "error", seedErr)
+		return seedErr
+	}
+
 	// Routes are constructed after InitializeSystemConfig so handlers see
 	// the post-overlay config — e.g. PasskeyService picks up the
 	// system-parameter override of server.base_url and uses it to derive
