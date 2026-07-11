@@ -19,7 +19,6 @@
   },
   "editor": {
     "basics": "Grunddaten",
-    "slug": "Slug",
     "name": "Name",
     "description": "Beschreibung",
     "steps": "Schritte",

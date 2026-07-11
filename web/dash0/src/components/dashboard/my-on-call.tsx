@@ -64,8 +64,8 @@ export function MyOnCallWidget({ org }: MyOnCallWidgetProps) {
               className="flex items-center justify-between border rounded p-2"
             >
               <Link
-                to="/orgs/$org/on-call/$slug"
-                params={{ org, slug: schedule.slug }}
+                to="/orgs/$org/on-call/$uid"
+                params={{ org, uid: schedule.uid }}
                 className="hover:underline font-medium"
               >
                 {schedule.name}

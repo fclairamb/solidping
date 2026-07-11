@@ -79,7 +79,7 @@ import { Route as OrgsOrgOrganizationMembersRouteImport } from './routes/orgs/$o
 import { Route as OrgsOrgOrganizationInvitationsRouteImport } from './routes/orgs/$org/organization.invitations'
 import { Route as OrgsOrgOrganizationAiRouteImport } from './routes/orgs/$org/organization.ai'
 import { Route as OrgsOrgOnCallNewRouteImport } from './routes/orgs/$org/on-call.new'
-import { Route as OrgsOrgOnCallSlugRouteImport } from './routes/orgs/$org/on-call.$slug'
+import { Route as OrgsOrgOnCallUidRouteImport } from './routes/orgs/$org/on-call.$uid'
 import { Route as OrgsOrgOauthConsentRouteImport } from './routes/orgs/$org/oauth.consent'
 import { Route as OrgsOrgNotificationsNotificationUidRouteImport } from './routes/orgs/$org/notifications.$notificationUid'
 import { Route as OrgsOrgMeNotificationsRouteImport } from './routes/orgs/$org/me.notifications'
@@ -90,7 +90,7 @@ import { Route as OrgsOrgIntegrationsNewRouteImport } from './routes/orgs/$org/i
 import { Route as OrgsOrgIntegrationsIntegrationUidRouteImport } from './routes/orgs/$org/integrations.$integrationUid'
 import { Route as OrgsOrgIncidentsIncidentUidRouteImport } from './routes/orgs/$org/incidents.$incidentUid'
 import { Route as OrgsOrgEscalationPoliciesNewRouteImport } from './routes/orgs/$org/escalation-policies.new'
-import { Route as OrgsOrgEscalationPoliciesSlugRouteImport } from './routes/orgs/$org/escalation-policies.$slug'
+import { Route as OrgsOrgEscalationPoliciesUidRouteImport } from './routes/orgs/$org/escalation-policies.$uid'
 import { Route as OrgsOrgDiscoveryNewRouteImport } from './routes/orgs/$org/discovery.new'
 import { Route as OrgsOrgDiscoveryJobUidRouteImport } from './routes/orgs/$org/discovery.$jobUid'
 import { Route as OrgsOrgChecksNewRouteImport } from './routes/orgs/$org/checks.new'
@@ -102,13 +102,13 @@ import { Route as OrgsOrgAccountProfileRouteImport } from './routes/orgs/$org/ac
 import { Route as OrgsOrgAccountNotificationsRouteImport } from './routes/orgs/$org/account.notifications'
 import { Route as OrgsOrgAccountMcpRouteImport } from './routes/orgs/$org/account.mcp'
 import { Route as OrgsOrgStatusPagesStatusPageUidIndexRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.index'
-import { Route as OrgsOrgOnCallSlugIndexRouteImport } from './routes/orgs/$org/on-call.$slug.index'
+import { Route as OrgsOrgOnCallUidIndexRouteImport } from './routes/orgs/$org/on-call.$uid.index'
 import { Route as OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRouteImport } from './routes/orgs/$org/maintenance-windows.$maintenanceWindowUid.index'
 import { Route as OrgsOrgDiscoveryJobUidIndexRouteImport } from './routes/orgs/$org/discovery.$jobUid.index'
 import { Route as OrgsOrgChecksCheckUidIndexRouteImport } from './routes/orgs/$org/checks.$checkUid.index'
 import { Route as OrgsOrgStatusUpdatesUpdateUidEditRouteImport } from './routes/orgs/$org/status-updates.$updateUid.edit'
 import { Route as OrgsOrgStatusPagesStatusPageUidEditRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.edit'
-import { Route as OrgsOrgOnCallSlugEditRouteImport } from './routes/orgs/$org/on-call.$slug.edit'
+import { Route as OrgsOrgOnCallUidEditRouteImport } from './routes/orgs/$org/on-call.$uid.edit'
 import { Route as OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRouteImport } from './routes/orgs/$org/maintenance-windows.$maintenanceWindowUid.edit'
 import { Route as OrgsOrgJobsCheckCheckJobUidRouteImport } from './routes/orgs/$org/jobs.check.$checkJobUid'
 import { Route as OrgsOrgChecksCheckUidEditRouteImport } from './routes/orgs/$org/checks.$checkUid.edit'
@@ -482,9 +482,9 @@ const OrgsOrgOnCallNewRoute = OrgsOrgOnCallNewRouteImport.update({
   path: '/new',
   getParentRoute: () => OrgsOrgOnCallRoute,
 } as any)
-const OrgsOrgOnCallSlugRoute = OrgsOrgOnCallSlugRouteImport.update({
-  id: '/$slug',
-  path: '/$slug',
+const OrgsOrgOnCallUidRoute = OrgsOrgOnCallUidRouteImport.update({
+  id: '/$uid',
+  path: '/$uid',
   getParentRoute: () => OrgsOrgOnCallRoute,
 } as any)
 const OrgsOrgOauthConsentRoute = OrgsOrgOauthConsentRouteImport.update({
@@ -543,10 +543,10 @@ const OrgsOrgEscalationPoliciesNewRoute =
     path: '/new',
     getParentRoute: () => OrgsOrgEscalationPoliciesRoute,
   } as any)
-const OrgsOrgEscalationPoliciesSlugRoute =
-  OrgsOrgEscalationPoliciesSlugRouteImport.update({
-    id: '/$slug',
-    path: '/$slug',
+const OrgsOrgEscalationPoliciesUidRoute =
+  OrgsOrgEscalationPoliciesUidRouteImport.update({
+    id: '/$uid',
+    path: '/$uid',
     getParentRoute: () => OrgsOrgEscalationPoliciesRoute,
   } as any)
 const OrgsOrgDiscoveryNewRoute = OrgsOrgDiscoveryNewRouteImport.update({
@@ -606,10 +606,10 @@ const OrgsOrgStatusPagesStatusPageUidIndexRoute =
     path: '/',
     getParentRoute: () => OrgsOrgStatusPagesStatusPageUidRoute,
   } as any)
-const OrgsOrgOnCallSlugIndexRoute = OrgsOrgOnCallSlugIndexRouteImport.update({
+const OrgsOrgOnCallUidIndexRoute = OrgsOrgOnCallUidIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => OrgsOrgOnCallSlugRoute,
+  getParentRoute: () => OrgsOrgOnCallUidRoute,
 } as any)
 const OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute =
   OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRouteImport.update({
@@ -641,10 +641,10 @@ const OrgsOrgStatusPagesStatusPageUidEditRoute =
     path: '/edit',
     getParentRoute: () => OrgsOrgStatusPagesStatusPageUidRoute,
   } as any)
-const OrgsOrgOnCallSlugEditRoute = OrgsOrgOnCallSlugEditRouteImport.update({
+const OrgsOrgOnCallUidEditRoute = OrgsOrgOnCallUidEditRouteImport.update({
   id: '/edit',
   path: '/edit',
-  getParentRoute: () => OrgsOrgOnCallSlugRoute,
+  getParentRoute: () => OrgsOrgOnCallUidRoute,
 } as any)
 const OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute =
   OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRouteImport.update({
@@ -720,7 +720,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/discovery/$jobUid': typeof OrgsOrgDiscoveryJobUidRouteWithChildren
   '/orgs/$org/discovery/new': typeof OrgsOrgDiscoveryNewRoute
-  '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
+  '/orgs/$org/escalation-policies/$uid': typeof OrgsOrgEscalationPoliciesUidRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
   '/orgs/$org/integrations/$integrationUid': typeof OrgsOrgIntegrationsIntegrationUidRoute
@@ -731,7 +731,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/me/notifications': typeof OrgsOrgMeNotificationsRoute
   '/orgs/$org/notifications/$notificationUid': typeof OrgsOrgNotificationsNotificationUidRoute
   '/orgs/$org/oauth/consent': typeof OrgsOrgOauthConsentRoute
-  '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRouteWithChildren
+  '/orgs/$org/on-call/$uid': typeof OrgsOrgOnCallUidRouteWithChildren
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/ai': typeof OrgsOrgOrganizationAiRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
@@ -773,13 +773,13 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
-  '/orgs/$org/on-call/$slug/edit': typeof OrgsOrgOnCallSlugEditRoute
+  '/orgs/$org/on-call/$uid/edit': typeof OrgsOrgOnCallUidEditRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/discovery/$jobUid/': typeof OrgsOrgDiscoveryJobUidIndexRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute
-  '/orgs/$org/on-call/$slug/': typeof OrgsOrgOnCallSlugIndexRoute
+  '/orgs/$org/on-call/$uid/': typeof OrgsOrgOnCallUidIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
@@ -810,7 +810,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/discovery/new': typeof OrgsOrgDiscoveryNewRoute
-  '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
+  '/orgs/$org/escalation-policies/$uid': typeof OrgsOrgEscalationPoliciesUidRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
   '/orgs/$org/integrations/$integrationUid': typeof OrgsOrgIntegrationsIntegrationUidRoute
@@ -860,13 +860,13 @@ export interface FileRoutesByTo {
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
-  '/orgs/$org/on-call/$slug/edit': typeof OrgsOrgOnCallSlugEditRoute
+  '/orgs/$org/on-call/$uid/edit': typeof OrgsOrgOnCallUidEditRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/discovery/$jobUid': typeof OrgsOrgDiscoveryJobUidIndexRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute
-  '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugIndexRoute
+  '/orgs/$org/on-call/$uid': typeof OrgsOrgOnCallUidIndexRoute
   '/orgs/$org/status-pages/$statusPageUid': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
@@ -915,7 +915,7 @@ export interface FileRoutesById {
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/discovery/$jobUid': typeof OrgsOrgDiscoveryJobUidRouteWithChildren
   '/orgs/$org/discovery/new': typeof OrgsOrgDiscoveryNewRoute
-  '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
+  '/orgs/$org/escalation-policies/$uid': typeof OrgsOrgEscalationPoliciesUidRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
   '/orgs/$org/integrations/$integrationUid': typeof OrgsOrgIntegrationsIntegrationUidRoute
@@ -926,7 +926,7 @@ export interface FileRoutesById {
   '/orgs/$org/me/notifications': typeof OrgsOrgMeNotificationsRoute
   '/orgs/$org/notifications/$notificationUid': typeof OrgsOrgNotificationsNotificationUidRoute
   '/orgs/$org/oauth/consent': typeof OrgsOrgOauthConsentRoute
-  '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRouteWithChildren
+  '/orgs/$org/on-call/$uid': typeof OrgsOrgOnCallUidRouteWithChildren
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/ai': typeof OrgsOrgOrganizationAiRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
@@ -968,13 +968,13 @@ export interface FileRoutesById {
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
-  '/orgs/$org/on-call/$slug/edit': typeof OrgsOrgOnCallSlugEditRoute
+  '/orgs/$org/on-call/$uid/edit': typeof OrgsOrgOnCallUidEditRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/discovery/$jobUid/': typeof OrgsOrgDiscoveryJobUidIndexRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute
-  '/orgs/$org/on-call/$slug/': typeof OrgsOrgOnCallSlugIndexRoute
+  '/orgs/$org/on-call/$uid/': typeof OrgsOrgOnCallUidIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
@@ -1024,7 +1024,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/new'
     | '/orgs/$org/discovery/$jobUid'
     | '/orgs/$org/discovery/new'
-    | '/orgs/$org/escalation-policies/$slug'
+    | '/orgs/$org/escalation-policies/$uid'
     | '/orgs/$org/escalation-policies/new'
     | '/orgs/$org/incidents/$incidentUid'
     | '/orgs/$org/integrations/$integrationUid'
@@ -1035,7 +1035,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/me/notifications'
     | '/orgs/$org/notifications/$notificationUid'
     | '/orgs/$org/oauth/consent'
-    | '/orgs/$org/on-call/$slug'
+    | '/orgs/$org/on-call/$uid'
     | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/ai'
     | '/orgs/$org/organization/invitations'
@@ -1077,13 +1077,13 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid/edit'
     | '/orgs/$org/jobs/check/$checkJobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
-    | '/orgs/$org/on-call/$slug/edit'
+    | '/orgs/$org/on-call/$uid/edit'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
     | '/orgs/$org/checks/$checkUid/'
     | '/orgs/$org/discovery/$jobUid/'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/'
-    | '/orgs/$org/on-call/$slug/'
+    | '/orgs/$org/on-call/$uid/'
     | '/orgs/$org/status-pages/$statusPageUid/'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
@@ -1114,7 +1114,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/tokens'
     | '/orgs/$org/checks/new'
     | '/orgs/$org/discovery/new'
-    | '/orgs/$org/escalation-policies/$slug'
+    | '/orgs/$org/escalation-policies/$uid'
     | '/orgs/$org/escalation-policies/new'
     | '/orgs/$org/incidents/$incidentUid'
     | '/orgs/$org/integrations/$integrationUid'
@@ -1164,13 +1164,13 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid/edit'
     | '/orgs/$org/jobs/check/$checkJobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
-    | '/orgs/$org/on-call/$slug/edit'
+    | '/orgs/$org/on-call/$uid/edit'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
     | '/orgs/$org/checks/$checkUid'
     | '/orgs/$org/discovery/$jobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid'
-    | '/orgs/$org/on-call/$slug'
+    | '/orgs/$org/on-call/$uid'
     | '/orgs/$org/status-pages/$statusPageUid'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
@@ -1218,7 +1218,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/new'
     | '/orgs/$org/discovery/$jobUid'
     | '/orgs/$org/discovery/new'
-    | '/orgs/$org/escalation-policies/$slug'
+    | '/orgs/$org/escalation-policies/$uid'
     | '/orgs/$org/escalation-policies/new'
     | '/orgs/$org/incidents/$incidentUid'
     | '/orgs/$org/integrations/$integrationUid'
@@ -1229,7 +1229,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/me/notifications'
     | '/orgs/$org/notifications/$notificationUid'
     | '/orgs/$org/oauth/consent'
-    | '/orgs/$org/on-call/$slug'
+    | '/orgs/$org/on-call/$uid'
     | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/ai'
     | '/orgs/$org/organization/invitations'
@@ -1271,13 +1271,13 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid/edit'
     | '/orgs/$org/jobs/check/$checkJobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
-    | '/orgs/$org/on-call/$slug/edit'
+    | '/orgs/$org/on-call/$uid/edit'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
     | '/orgs/$org/checks/$checkUid/'
     | '/orgs/$org/discovery/$jobUid/'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/'
-    | '/orgs/$org/on-call/$slug/'
+    | '/orgs/$org/on-call/$uid/'
     | '/orgs/$org/status-pages/$statusPageUid/'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid'
@@ -1788,11 +1788,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgOnCallNewRouteImport
       parentRoute: typeof OrgsOrgOnCallRoute
     }
-    '/orgs/$org/on-call/$slug': {
-      id: '/orgs/$org/on-call/$slug'
-      path: '/$slug'
-      fullPath: '/orgs/$org/on-call/$slug'
-      preLoaderRoute: typeof OrgsOrgOnCallSlugRouteImport
+    '/orgs/$org/on-call/$uid': {
+      id: '/orgs/$org/on-call/$uid'
+      path: '/$uid'
+      fullPath: '/orgs/$org/on-call/$uid'
+      preLoaderRoute: typeof OrgsOrgOnCallUidRouteImport
       parentRoute: typeof OrgsOrgOnCallRoute
     }
     '/orgs/$org/oauth/consent': {
@@ -1865,11 +1865,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgEscalationPoliciesNewRouteImport
       parentRoute: typeof OrgsOrgEscalationPoliciesRoute
     }
-    '/orgs/$org/escalation-policies/$slug': {
-      id: '/orgs/$org/escalation-policies/$slug'
-      path: '/$slug'
-      fullPath: '/orgs/$org/escalation-policies/$slug'
-      preLoaderRoute: typeof OrgsOrgEscalationPoliciesSlugRouteImport
+    '/orgs/$org/escalation-policies/$uid': {
+      id: '/orgs/$org/escalation-policies/$uid'
+      path: '/$uid'
+      fullPath: '/orgs/$org/escalation-policies/$uid'
+      preLoaderRoute: typeof OrgsOrgEscalationPoliciesUidRouteImport
       parentRoute: typeof OrgsOrgEscalationPoliciesRoute
     }
     '/orgs/$org/discovery/new': {
@@ -1949,12 +1949,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgStatusPagesStatusPageUidIndexRouteImport
       parentRoute: typeof OrgsOrgStatusPagesStatusPageUidRoute
     }
-    '/orgs/$org/on-call/$slug/': {
-      id: '/orgs/$org/on-call/$slug/'
+    '/orgs/$org/on-call/$uid/': {
+      id: '/orgs/$org/on-call/$uid/'
       path: '/'
-      fullPath: '/orgs/$org/on-call/$slug/'
-      preLoaderRoute: typeof OrgsOrgOnCallSlugIndexRouteImport
-      parentRoute: typeof OrgsOrgOnCallSlugRoute
+      fullPath: '/orgs/$org/on-call/$uid/'
+      preLoaderRoute: typeof OrgsOrgOnCallUidIndexRouteImport
+      parentRoute: typeof OrgsOrgOnCallUidRoute
     }
     '/orgs/$org/maintenance-windows/$maintenanceWindowUid/': {
       id: '/orgs/$org/maintenance-windows/$maintenanceWindowUid/'
@@ -1991,12 +1991,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgStatusPagesStatusPageUidEditRouteImport
       parentRoute: typeof OrgsOrgStatusPagesStatusPageUidRoute
     }
-    '/orgs/$org/on-call/$slug/edit': {
-      id: '/orgs/$org/on-call/$slug/edit'
+    '/orgs/$org/on-call/$uid/edit': {
+      id: '/orgs/$org/on-call/$uid/edit'
       path: '/edit'
-      fullPath: '/orgs/$org/on-call/$slug/edit'
-      preLoaderRoute: typeof OrgsOrgOnCallSlugEditRouteImport
-      parentRoute: typeof OrgsOrgOnCallSlugRoute
+      fullPath: '/orgs/$org/on-call/$uid/edit'
+      preLoaderRoute: typeof OrgsOrgOnCallUidEditRouteImport
+      parentRoute: typeof OrgsOrgOnCallUidRoute
     }
     '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': {
       id: '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
@@ -2124,14 +2124,14 @@ const OrgsOrgDiscoveryRouteWithChildren =
   OrgsOrgDiscoveryRoute._addFileChildren(OrgsOrgDiscoveryRouteChildren)
 
 interface OrgsOrgEscalationPoliciesRouteChildren {
-  OrgsOrgEscalationPoliciesSlugRoute: typeof OrgsOrgEscalationPoliciesSlugRoute
+  OrgsOrgEscalationPoliciesUidRoute: typeof OrgsOrgEscalationPoliciesUidRoute
   OrgsOrgEscalationPoliciesNewRoute: typeof OrgsOrgEscalationPoliciesNewRoute
   OrgsOrgEscalationPoliciesIndexRoute: typeof OrgsOrgEscalationPoliciesIndexRoute
 }
 
 const OrgsOrgEscalationPoliciesRouteChildren: OrgsOrgEscalationPoliciesRouteChildren =
   {
-    OrgsOrgEscalationPoliciesSlugRoute: OrgsOrgEscalationPoliciesSlugRoute,
+    OrgsOrgEscalationPoliciesUidRoute: OrgsOrgEscalationPoliciesUidRoute,
     OrgsOrgEscalationPoliciesNewRoute: OrgsOrgEscalationPoliciesNewRoute,
     OrgsOrgEscalationPoliciesIndexRoute: OrgsOrgEscalationPoliciesIndexRoute,
   }
@@ -2238,27 +2238,27 @@ const OrgsOrgMeRouteWithChildren = OrgsOrgMeRoute._addFileChildren(
   OrgsOrgMeRouteChildren,
 )
 
-interface OrgsOrgOnCallSlugRouteChildren {
-  OrgsOrgOnCallSlugEditRoute: typeof OrgsOrgOnCallSlugEditRoute
-  OrgsOrgOnCallSlugIndexRoute: typeof OrgsOrgOnCallSlugIndexRoute
+interface OrgsOrgOnCallUidRouteChildren {
+  OrgsOrgOnCallUidEditRoute: typeof OrgsOrgOnCallUidEditRoute
+  OrgsOrgOnCallUidIndexRoute: typeof OrgsOrgOnCallUidIndexRoute
 }
 
-const OrgsOrgOnCallSlugRouteChildren: OrgsOrgOnCallSlugRouteChildren = {
-  OrgsOrgOnCallSlugEditRoute: OrgsOrgOnCallSlugEditRoute,
-  OrgsOrgOnCallSlugIndexRoute: OrgsOrgOnCallSlugIndexRoute,
+const OrgsOrgOnCallUidRouteChildren: OrgsOrgOnCallUidRouteChildren = {
+  OrgsOrgOnCallUidEditRoute: OrgsOrgOnCallUidEditRoute,
+  OrgsOrgOnCallUidIndexRoute: OrgsOrgOnCallUidIndexRoute,
 }
 
-const OrgsOrgOnCallSlugRouteWithChildren =
-  OrgsOrgOnCallSlugRoute._addFileChildren(OrgsOrgOnCallSlugRouteChildren)
+const OrgsOrgOnCallUidRouteWithChildren =
+  OrgsOrgOnCallUidRoute._addFileChildren(OrgsOrgOnCallUidRouteChildren)
 
 interface OrgsOrgOnCallRouteChildren {
-  OrgsOrgOnCallSlugRoute: typeof OrgsOrgOnCallSlugRouteWithChildren
+  OrgsOrgOnCallUidRoute: typeof OrgsOrgOnCallUidRouteWithChildren
   OrgsOrgOnCallNewRoute: typeof OrgsOrgOnCallNewRoute
   OrgsOrgOnCallIndexRoute: typeof OrgsOrgOnCallIndexRoute
 }
 
 const OrgsOrgOnCallRouteChildren: OrgsOrgOnCallRouteChildren = {
-  OrgsOrgOnCallSlugRoute: OrgsOrgOnCallSlugRouteWithChildren,
+  OrgsOrgOnCallUidRoute: OrgsOrgOnCallUidRouteWithChildren,
   OrgsOrgOnCallNewRoute: OrgsOrgOnCallNewRoute,
   OrgsOrgOnCallIndexRoute: OrgsOrgOnCallIndexRoute,
 }

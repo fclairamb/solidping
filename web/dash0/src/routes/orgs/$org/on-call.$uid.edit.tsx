@@ -19,17 +19,17 @@ import {
   type OnCallScheduleFormValues,
 } from "@/components/oncall/on-call-schedule-form";
 
-export const Route = createFileRoute("/orgs/$org/on-call/$slug/edit")({
+export const Route = createFileRoute("/orgs/$org/on-call/$uid/edit")({
   component: EditOnCallSchedulePage,
 });
 
 function EditOnCallSchedulePage() {
   const { t } = useTranslation(["oncall", "common"]);
-  const { org, slug } = Route.useParams();
+  const { org, uid } = Route.useParams();
   const navigate = useNavigate();
 
-  const { data: schedule, isLoading, error, refetch } = useOnCallSchedule(org, slug);
-  const update = useUpdateOnCallSchedule(org, slug);
+  const { data: schedule, isLoading, error, refetch } = useOnCallSchedule(org, uid);
+  const update = useUpdateOnCallSchedule(org, uid);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   if (error) {
@@ -51,7 +51,6 @@ function EditOnCallSchedulePage() {
 
   const initialValues: Partial<OnCallScheduleFormValues> = {
     name: schedule.name,
-    slug: schedule.slug,
     description: schedule.description ?? "",
     timezone: schedule.timezone,
     rotationType: schedule.rotationType,
@@ -77,8 +76,8 @@ function EditOnCallSchedulePage() {
       });
       toast.success(t("oncall:toast.updated"));
       navigate({
-        to: "/orgs/$org/on-call/$slug",
-        params: { org, slug },
+        to: "/orgs/$org/on-call/$uid",
+        params: { org, uid },
       });
     } catch (err) {
       setSubmitError(
@@ -99,7 +98,7 @@ function EditOnCallSchedulePage() {
           size="icon"
           aria-label={t("oncall:detail.back")}
         >
-          <Link to="/orgs/$org/on-call/$slug" params={{ org, slug }}>
+          <Link to="/orgs/$org/on-call/$uid" params={{ org, uid }}>
             <ArrowLeft />
           </Link>
         </Button>
@@ -118,8 +117,8 @@ function EditOnCallSchedulePage() {
             onSubmit={handleSubmit}
             onCancel={() =>
               navigate({
-                to: "/orgs/$org/on-call/$slug",
-                params: { org, slug },
+                to: "/orgs/$org/on-call/$uid",
+                params: { org, uid },
               })
             }
             submitting={update.isPending}

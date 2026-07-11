@@ -33,7 +33,6 @@ function NewOnCallSchedulePage() {
     setError(null);
     try {
       const created = await create.mutateAsync({
-        slug: values.slug,
         name: values.name,
         description: values.description || undefined,
         timezone: values.timezone,
@@ -45,8 +44,8 @@ function NewOnCallSchedulePage() {
         userUids: values.userUids,
       });
       navigate({
-        to: "/orgs/$org/on-call/$slug",
-        params: { org, slug: created.slug },
+        to: "/orgs/$org/on-call/$uid",
+        params: { org, uid: created.uid },
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : t("oncall:errors.generic"));

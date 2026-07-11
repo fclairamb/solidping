@@ -2528,7 +2528,6 @@ export interface OnCallUserRef {
 
 export interface OnCallSchedule {
   uid: string;
-  slug: string;
   name: string;
   description?: string;
   timezone: string;
@@ -2561,7 +2560,6 @@ export interface OnCallOverride {
 }
 
 export interface CreateOnCallScheduleRequest {
-  slug: string;
   name: string;
   description?: string;
   timezone: string;
@@ -2573,7 +2571,6 @@ export interface CreateOnCallScheduleRequest {
 }
 
 export interface UpdateOnCallScheduleRequest {
-  slug?: string;
   name?: string;
   description?: string;
   timezone?: string;
@@ -2604,44 +2601,44 @@ export function useOnCallSchedules(org: string) {
   });
 }
 
-export function useOnCallSchedule(org: string, slug: string) {
+export function useOnCallSchedule(org: string, uid: string) {
   return useQuery({
-    queryKey: ["onCallSchedules", org, slug],
+    queryKey: ["onCallSchedules", org, uid],
     queryFn: () =>
       apiFetch<OnCallSchedule>(
-        `/api/v1/orgs/${org}/on-call-schedules/${slug}`,
+        `/api/v1/orgs/${org}/on-call-schedules/${uid}`,
       ),
-    enabled: !!org && !!slug,
+    enabled: !!org && !!uid,
   });
 }
 
 export function useOnCallSchedulePreview(
   org: string,
-  slug: string,
+  uid: string,
   days = 14,
 ) {
   return useQuery({
-    queryKey: ["onCallSchedules", org, slug, "preview", days],
+    queryKey: ["onCallSchedules", org, uid, "preview", days],
     queryFn: async () => {
       const response = await apiFetch<{ data?: OnCallPreviewSlot[] }>(
-        `/api/v1/orgs/${org}/on-call-schedules/${slug}/preview?days=${days}`,
+        `/api/v1/orgs/${org}/on-call-schedules/${uid}/preview?days=${days}`,
       );
       return response.data || [];
     },
-    enabled: !!org && !!slug,
+    enabled: !!org && !!uid,
   });
 }
 
-export function useOnCallScheduleOverrides(org: string, slug: string) {
+export function useOnCallScheduleOverrides(org: string, uid: string) {
   return useQuery({
-    queryKey: ["onCallSchedules", org, slug, "overrides"],
+    queryKey: ["onCallSchedules", org, uid, "overrides"],
     queryFn: async () => {
       const response = await apiFetch<{ data?: OnCallOverride[] }>(
-        `/api/v1/orgs/${org}/on-call-schedules/${slug}/overrides`,
+        `/api/v1/orgs/${org}/on-call-schedules/${uid}/overrides`,
       );
       return response.data || [];
     },
-    enabled: !!org && !!slug,
+    enabled: !!org && !!uid,
   });
 }
 
@@ -2659,12 +2656,12 @@ export function useCreateOnCallSchedule(org: string) {
   });
 }
 
-export function useUpdateOnCallSchedule(org: string, slug: string) {
+export function useUpdateOnCallSchedule(org: string, uid: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (request: UpdateOnCallScheduleRequest) =>
       apiFetch<OnCallSchedule>(
-        `/api/v1/orgs/${org}/on-call-schedules/${slug}`,
+        `/api/v1/orgs/${org}/on-call-schedules/${uid}`,
         { method: "PATCH", body: JSON.stringify(request) },
       ),
     onSuccess: () => {
@@ -2676,8 +2673,8 @@ export function useUpdateOnCallSchedule(org: string, slug: string) {
 export function useDeleteOnCallSchedule(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (slug: string) =>
-      apiFetch<void>(`/api/v1/orgs/${org}/on-call-schedules/${slug}`, {
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/on-call-schedules/${uid}`, {
         method: "DELETE",
       }),
     onSuccess: () => {
@@ -2686,39 +2683,39 @@ export function useDeleteOnCallSchedule(org: string) {
   });
 }
 
-export function useCreateOnCallOverride(org: string, slug: string) {
+export function useCreateOnCallOverride(org: string, uid: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (request: CreateOnCallOverrideRequest) =>
       apiFetch<OnCallOverride>(
-        `/api/v1/orgs/${org}/on-call-schedules/${slug}/overrides`,
+        `/api/v1/orgs/${org}/on-call-schedules/${uid}/overrides`,
         { method: "POST", body: JSON.stringify(request) },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["onCallSchedules", org, slug, "overrides"],
+        queryKey: ["onCallSchedules", org, uid, "overrides"],
       });
       queryClient.invalidateQueries({
-        queryKey: ["onCallSchedules", org, slug, "preview"],
+        queryKey: ["onCallSchedules", org, uid, "preview"],
       });
     },
   });
 }
 
-export function useDeleteOnCallOverride(org: string, slug: string) {
+export function useDeleteOnCallOverride(org: string, uid: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (overrideUid: string) =>
       apiFetch<void>(
-        `/api/v1/orgs/${org}/on-call-schedules/${slug}/overrides/${overrideUid}`,
+        `/api/v1/orgs/${org}/on-call-schedules/${uid}/overrides/${overrideUid}`,
         { method: "DELETE" },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["onCallSchedules", org, slug, "overrides"],
+        queryKey: ["onCallSchedules", org, uid, "overrides"],
       });
       queryClient.invalidateQueries({
-        queryKey: ["onCallSchedules", org, slug, "preview"],
+        queryKey: ["onCallSchedules", org, uid, "preview"],
       });
     },
   });
@@ -2729,49 +2726,49 @@ export interface OnCallICalFeedResponse {
   url: string;
 }
 
-export function useEnableOnCallICalFeed(org: string, slug: string) {
+export function useEnableOnCallICalFeed(org: string, uid: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () =>
       apiFetch<OnCallICalFeedResponse>(
-        `/api/v1/orgs/${org}/on-call-schedules/${slug}/ical-feed/enable`,
+        `/api/v1/orgs/${org}/on-call-schedules/${uid}/ical-feed/enable`,
         { method: "POST" },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["onCallSchedules", org, slug],
+        queryKey: ["onCallSchedules", org, uid],
       });
     },
   });
 }
 
-export function useDisableOnCallICalFeed(org: string, slug: string) {
+export function useDisableOnCallICalFeed(org: string, uid: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () =>
       apiFetch<void>(
-        `/api/v1/orgs/${org}/on-call-schedules/${slug}/ical-feed/disable`,
+        `/api/v1/orgs/${org}/on-call-schedules/${uid}/ical-feed/disable`,
         { method: "POST" },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["onCallSchedules", org, slug],
+        queryKey: ["onCallSchedules", org, uid],
       });
     },
   });
 }
 
-export function useRotateOnCallICalFeed(org: string, slug: string) {
+export function useRotateOnCallICalFeed(org: string, uid: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () =>
       apiFetch<OnCallICalFeedResponse>(
-        `/api/v1/orgs/${org}/on-call-schedules/${slug}/ical-feed/rotate`,
+        `/api/v1/orgs/${org}/on-call-schedules/${uid}/ical-feed/rotate`,
         { method: "POST" },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["onCallSchedules", org, slug],
+        queryKey: ["onCallSchedules", org, uid],
       });
     },
   });
@@ -2902,7 +2899,6 @@ export function useDeleteSeverity(org: string) {
 
 export interface EscalationPolicy {
   uid: string;
-  slug: string;
   name: string;
   description?: string;
   repeatMax: number;
@@ -2913,7 +2909,6 @@ export interface EscalationPolicy {
 }
 
 export interface CreateEscalationPolicyRequest {
-  slug: string;
   name: string;
   description?: string;
   repeatMax: number;
@@ -2922,7 +2917,6 @@ export interface CreateEscalationPolicyRequest {
 }
 
 export interface UpdateEscalationPolicyRequest {
-  slug?: string;
   name?: string;
   description?: string;
   repeatMax?: number;
@@ -2943,14 +2937,14 @@ export function useEscalationPolicies(org: string) {
   });
 }
 
-export function useEscalationPolicy(org: string, slug: string) {
+export function useEscalationPolicy(org: string, uid: string) {
   return useQuery({
-    queryKey: ["escalationPolicies", org, slug],
+    queryKey: ["escalationPolicies", org, uid],
     queryFn: () =>
       apiFetch<EscalationPolicy>(
-        `/api/v1/orgs/${org}/escalation-policies/${slug}`,
+        `/api/v1/orgs/${org}/escalation-policies/${uid}`,
       ),
-    enabled: !!org && !!slug,
+    enabled: !!org && !!uid,
   });
 }
 
@@ -2968,12 +2962,12 @@ export function useCreateEscalationPolicy(org: string) {
   });
 }
 
-export function useUpdateEscalationPolicy(org: string, slug: string) {
+export function useUpdateEscalationPolicy(org: string, uid: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (request: UpdateEscalationPolicyRequest) =>
       apiFetch<EscalationPolicy>(
-        `/api/v1/orgs/${org}/escalation-policies/${slug}`,
+        `/api/v1/orgs/${org}/escalation-policies/${uid}`,
         { method: "PATCH", body: JSON.stringify(request) },
       ),
     onSuccess: () => {
@@ -2987,8 +2981,8 @@ export function useUpdateEscalationPolicy(org: string, slug: string) {
 export function useDeleteEscalationPolicy(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (slug: string) =>
-      apiFetch<void>(`/api/v1/orgs/${org}/escalation-policies/${slug}`, {
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/escalation-policies/${uid}`, {
         method: "DELETE",
       }),
     onSuccess: () => {

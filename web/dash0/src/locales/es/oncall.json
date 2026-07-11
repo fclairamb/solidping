@@ -57,8 +57,6 @@
     "edit": "Editar turno de guardia",
     "name": "Nombre",
     "namePlaceholder": "Plataforma EU",
-    "slug": "Identificador de URL",
-    "slugPlaceholder": "plataforma-eu",
     "description": "Descripción",
     "descriptionPlaceholder": "Opcional — a quién avisa esta rotación y cuándo",
     "timezone": "Zona horaria (IANA)",
@@ -83,7 +81,6 @@
     "userUidsHelp": "El primer usuario está de guardia desde start_at; las rotaciones siguientes recorren la lista.",
     "submit": "Guardar",
     "cancel": "Cancelar",
-    "slugReadOnly": "El identificador aún no se puede cambiar — elimine y vuelva a crear para renombrar.",
     "startAtWarning": "Cambiar el inicio de la rotación desplaza quién está de guardia ahora."
   },
   "toast": {

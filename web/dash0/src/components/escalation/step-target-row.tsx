@@ -1,6 +1,6 @@
 // Type-aware target editor for one row of an escalation policy step. Replaces
 // the raw "Target UID" textbox previously rendered inline in
-// escalation-policies.{$slug,new}.tsx — operators can now pick from a
+// escalation-policies.{$uid,new}.tsx — operators can now pick from a
 // dropdown of named entities instead of memorizing UUIDs.
 
 import { useTranslation } from "react-i18next";

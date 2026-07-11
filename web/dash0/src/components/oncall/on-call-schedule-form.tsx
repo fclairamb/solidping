@@ -20,11 +20,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { cn, slugify } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 export interface OnCallScheduleFormValues {
   name: string;
-  slug: string;
   description: string;
   timezone: string;
   rotationType: OnCallRotationType;
@@ -66,7 +65,6 @@ function nextMondayAt9amISO(): string {
 function buildDefaults(): OnCallScheduleFormValues {
   return {
     name: "",
-    slug: "",
     description: "",
     timezone: defaultBrowserTimezone(),
     rotationType: "weekly",
@@ -88,7 +86,6 @@ export function OnCallScheduleForm({
 }: Props) {
   const { t } = useTranslation(["oncall", "common"]);
 
-  const [slugManuallyEdited, setSlugManuallyEdited] = useState(mode === "edit");
   const [values, setValues] = useState<OnCallScheduleFormValues>(() => ({
     ...buildDefaults(),
     ...(initialValues ?? {}),
@@ -138,36 +135,10 @@ export function OnCallScheduleForm({
         <Input
           id="oncall-name"
           value={values.name}
-          onChange={(e) => {
-            set("name", e.target.value);
-            if (!slugManuallyEdited && mode === "create") {
-              set("slug", slugify(e.target.value));
-            }
-          }}
+          onChange={(e) => set("name", e.target.value)}
           placeholder={t("oncall:form.namePlaceholder")}
           required
         />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="oncall-slug">{t("oncall:form.slug")}</Label>
-        <Input
-          id="oncall-slug"
-          value={values.slug}
-          onChange={(e) => {
-            set("slug", e.target.value);
-            setSlugManuallyEdited(true);
-          }}
-          placeholder={t("oncall:form.slugPlaceholder")}
-          required
-          pattern="[a-z0-9-]+"
-          disabled={isEdit}
-        />
-        {isEdit && (
-          <p className="text-xs text-muted-foreground">
-            {t("oncall:form.slugReadOnly")}
-          </p>
-        )}
       </div>
 
       <div className="space-y-2">
