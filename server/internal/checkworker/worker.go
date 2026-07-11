@@ -768,6 +768,17 @@ func (r *CheckWorker) executeJob(
 	// stays checkTimeout (no +1s), so the checker-level timeout always fires
 	// first.
 	checkTimeout := r.schedParams.ExecutionTimeout(checkJob.CostEWMAMs)
+
+	// A per-check `timeout` config value (spec 2026-07-11-05) is an explicit
+	// user choice: it becomes the execution budget, taking precedence over
+	// both the cost-aware clamp and the global default — a user asking for up
+	// to 30s must not be cut off by the ~16s global context. The context rule
+	// stays budget + 1s. Legacy over-cap values are clamped defensively at
+	// 30s inside perCheckTimeout so they can't buy a 61s context.
+	if perCheck, ok := perCheckTimeout(checkJob.Config); ok {
+		checkTimeout = perCheck
+	}
+
 	execCtx, cancel := context.WithTimeout(context.Background(), checkTimeout+time.Second)
 	defer cancel()
 
@@ -872,6 +883,35 @@ func (r *CheckWorker) executeJob(
 		"delay_ms", delay.Milliseconds())
 
 	return nil
+}
+
+// maxPerCheckTimeout is the worker-side clamp on the per-check `timeout`
+// config value (spec 2026-07-11-05). It mirrors the uniform cap enforced at
+// check create/update time; the defensive clamp here keeps legacy stored
+// configs written under the old 60s per-checker caps from extending the
+// execution context past 31s.
+const maxPerCheckTimeout = 30 * time.Second
+
+// perCheckTimeout extracts the optional per-check `timeout` duration from a
+// job's config. Returns (0, false) when the key is absent, not a duration
+// string, or non-positive — the caller then falls back to the global /
+// cost-aware execution budget. Valid values are clamped at 30s.
+func perCheckTimeout(config map[string]any) (time.Duration, bool) {
+	raw, ok := config["timeout"].(string)
+	if !ok || raw == "" {
+		return 0, false
+	}
+
+	duration, err := time.ParseDuration(raw)
+	if err != nil || duration <= 0 {
+		return 0, false
+	}
+
+	if duration > maxPerCheckTimeout {
+		duration = maxPerCheckTimeout
+	}
+
+	return duration, true
 }
 
 // execOutcome carries a checker's Execute result (or panic) from the child
