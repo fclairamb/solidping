@@ -29,6 +29,15 @@ const (
 	AddMemberRequestRoleViewer AddMemberRequestRole = "viewer"
 )
 
+// Defines values for AdminJobStatus.
+const (
+	AdminJobStatusFailed  AdminJobStatus = "failed"
+	AdminJobStatusPending AdminJobStatus = "pending"
+	AdminJobStatusRetried AdminJobStatus = "retried"
+	AdminJobStatusRunning AdminJobStatus = "running"
+	AdminJobStatusSuccess AdminJobStatus = "success"
+)
+
 // Defines values for ApproveMembershipRequestRequestRole.
 const (
 	ApproveMembershipRequestRequestRoleAdmin  ApproveMembershipRequestRequestRole = "admin"
@@ -54,6 +63,14 @@ const (
 	CheckTypeIcmp   CheckType = "icmp"
 	CheckTypeSsl    CheckType = "ssl"
 	CheckTypeTcp    CheckType = "tcp"
+)
+
+// Defines values for CheckJobViewState.
+const (
+	CheckJobViewStateCrashLooping CheckJobViewState = "crashLooping"
+	CheckJobViewStateIdle         CheckJobViewState = "idle"
+	CheckJobViewStateInFlight     CheckJobViewState = "inFlight"
+	CheckJobViewStateStalled      CheckJobViewState = "stalled"
 )
 
 // Defines values for CheckListItemLastStatusChangeStatus.
@@ -340,6 +357,38 @@ type AddMemberRequest struct {
 // AddMemberRequestRole defines model for AddMemberRequest.Role.
 type AddMemberRequestRole string
 
+// AdminJob A background-jobs queue row as returned by the admin/system views.
+type AdminJob struct {
+	Config    *map[string]interface{} `json:"config,omitempty"`
+	CreatedAt *time.Time              `json:"createdAt,omitempty"`
+	DeletedAt *time.Time              `json:"deletedAt"`
+
+	// OrganizationUid Owning org, or null for system jobs.
+	OrganizationUid *openapi_types.UUID     `json:"organizationUid"`
+	Output          *map[string]interface{} `json:"output,omitempty"`
+	PreviousJobUid  *openapi_types.UUID     `json:"previousJobUid"`
+	RetryCount      *int                    `json:"retryCount,omitempty"`
+	ScheduledAt     *time.Time              `json:"scheduledAt,omitempty"`
+	Status          *AdminJobStatus         `json:"status,omitempty"`
+	Type            *string                 `json:"type,omitempty"`
+	Uid             *openapi_types.UUID     `json:"uid,omitempty"`
+	UpdatedAt       *time.Time              `json:"updatedAt,omitempty"`
+}
+
+// AdminJobStatus defines model for AdminJob.Status.
+type AdminJobStatus string
+
+// AdminJobListResponse defines model for AdminJobListResponse.
+type AdminJobListResponse struct {
+	Data *[]AdminJob `json:"data,omitempty"`
+}
+
+// AdminJobResponse defines model for AdminJobResponse.
+type AdminJobResponse struct {
+	// Data A background-jobs queue row as returned by the admin/system views.
+	Data *AdminJob `json:"data,omitempty"`
+}
+
 // ApproveMembershipRequestRequest defines model for ApproveMembershipRequestRequest.
 type ApproveMembershipRequestRequest struct {
 	// Role Role to grant the new member (default user)
@@ -511,6 +560,40 @@ type CheckGroupListResponse struct {
 	Data *[]CheckGroup `json:"data,omitempty"`
 }
 
+// CheckJobListResponse defines model for CheckJobListResponse.
+type CheckJobListResponse struct {
+	Data *[]CheckJobView `json:"data,omitempty"`
+}
+
+// CheckJobResponse defines model for CheckJobResponse.
+type CheckJobResponse struct {
+	// Data A redacted check_jobs scheduler row. Secret values are never included, only encrypted key names.
+	Data *CheckJobView `json:"data,omitempty"`
+}
+
+// CheckJobView A redacted check_jobs scheduler row. Secret values are never included, only encrypted key names.
+type CheckJobView struct {
+	CheckName       *string                 `json:"checkName"`
+	CheckUid        *openapi_types.UUID     `json:"checkUid,omitempty"`
+	Config          *map[string]interface{} `json:"config,omitempty"`
+	Encrypted       *bool                   `json:"encrypted,omitempty"`
+	EncryptedKeys   *[]string               `json:"encryptedKeys,omitempty"`
+	LeaseExpiresAt  *time.Time              `json:"leaseExpiresAt"`
+	LeaseStarts     *int                    `json:"leaseStarts,omitempty"`
+	LeaseWorkerUid  *string                 `json:"leaseWorkerUid"`
+	OrganizationUid *openapi_types.UUID     `json:"organizationUid,omitempty"`
+	PeriodSeconds   *int64                  `json:"periodSeconds,omitempty"`
+	Region          *string                 `json:"region"`
+	ScheduledAt     *time.Time              `json:"scheduledAt"`
+	State           *CheckJobViewState      `json:"state,omitempty"`
+	Type            *string                 `json:"type,omitempty"`
+	Uid             *openapi_types.UUID     `json:"uid,omitempty"`
+	UpdatedAt       *time.Time              `json:"updatedAt,omitempty"`
+}
+
+// CheckJobViewState defines model for CheckJobView.State.
+type CheckJobViewState string
+
 // CheckListItem defines model for CheckListItem.
 type CheckListItem struct {
 	Config    *map[string]interface{} `json:"config,omitempty"`
@@ -575,6 +658,15 @@ type CheckRef struct {
 	Name string             `json:"name"`
 	Slug string             `json:"slug"`
 	Uid  openapi_types.UUID `json:"uid"`
+}
+
+// CheckScheduleStats Check-schedule counts derived from lease state.
+type CheckScheduleStats struct {
+	CrashLooping *int `json:"crashLooping,omitempty"`
+	DueNow       *int `json:"dueNow,omitempty"`
+	InFlight     *int `json:"inFlight,omitempty"`
+	Stalled      *int `json:"stalled,omitempty"`
+	Total        *int `json:"total,omitempty"`
 }
 
 // CheckScheduling Read-only scheduling telemetry, derived from the check's per-region scheduler jobs (max across regions). Present only on the check DETAIL response (GET by uid/slug) — never on list responses — and omitted until the check's first run produces a cost signal.
@@ -1340,9 +1432,30 @@ type JobListResponse struct {
 	Data *[]Job `json:"data,omitempty"`
 }
 
+// JobQueueStats Background-jobs queue counts.
+type JobQueueStats struct {
+	Failed24h *int `json:"failed24h,omitempty"`
+	Pending   *int `json:"pending,omitempty"`
+	Running   *int `json:"running,omitempty"`
+}
+
 // JobResponse defines model for JobResponse.
 type JobResponse struct {
 	Data *Job `json:"data,omitempty"`
+}
+
+// JobsStats defines model for JobsStats.
+type JobsStats struct {
+	// Checks Check-schedule counts derived from lease state.
+	Checks *CheckScheduleStats `json:"checks,omitempty"`
+
+	// Jobs Background-jobs queue counts.
+	Jobs *JobQueueStats `json:"jobs,omitempty"`
+}
+
+// JobsStatsResponse defines model for JobsStatsResponse.
+type JobsStatsResponse struct {
+	Data *JobsStats `json:"data,omitempty"`
 }
 
 // LabelSuggestion defines model for LabelSuggestion.
@@ -2298,6 +2411,9 @@ type ChannelUidPath = openapi_types.UUID
 // CheckGroupUidPath defines model for CheckGroupUidPath.
 type CheckGroupUidPath = string
 
+// CheckJobUidPath defines model for CheckJobUidPath.
+type CheckJobUidPath = openapi_types.UUID
+
 // CheckUidPath defines model for CheckUidPath.
 type CheckUidPath = string
 
@@ -2315,6 +2431,18 @@ type IncidentUidPath = openapi_types.UUID
 
 // InvitationUidPath defines model for InvitationUidPath.
 type InvitationUidPath = openapi_types.UUID
+
+// JobLimitQuery defines model for JobLimitQuery.
+type JobLimitQuery = int
+
+// JobOffsetQuery defines model for JobOffsetQuery.
+type JobOffsetQuery = int
+
+// JobStatusQuery defines model for JobStatusQuery.
+type JobStatusQuery = string
+
+// JobTypeQuery defines model for JobTypeQuery.
+type JobTypeQuery = string
 
 // JobUidPath defines model for JobUidPath.
 type JobUidPath = openapi_types.UUID
@@ -2394,10 +2522,34 @@ type ListCheckTypeSamplesParams struct {
 	Type *string `form:"type,omitempty" json:"type,omitempty"`
 }
 
+// ListAdminJobsParams defines parameters for ListAdminJobs.
+type ListAdminJobsParams struct {
+	// Status Filter by job status
+	Status *JobStatusQuery `form:"status,omitempty" json:"status,omitempty"`
+
+	// Type Filter by job type
+	Type *JobTypeQuery `form:"type,omitempty" json:"type,omitempty"`
+
+	// Limit Maximum number of rows to return (1-200)
+	Limit *JobLimitQuery `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of rows to skip
+	Offset *JobOffsetQuery `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // ListChannelsParams defines parameters for ListChannels.
 type ListChannelsParams struct {
 	// Type Filter by channel type (e.g., "slack", "webhook")
 	Type *string `form:"type,omitempty" json:"type,omitempty"`
+}
+
+// ListCheckJobsParams defines parameters for ListCheckJobs.
+type ListCheckJobsParams struct {
+	// Limit Maximum number of rows to return (1-200)
+	Limit *JobLimitQuery `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of rows to skip
+	Offset *JobOffsetQuery `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // ListChecksParams defines parameters for ListChecks.
@@ -2665,6 +2817,30 @@ type ListStatusUpdatesParams struct {
 type ListOrgTokensParams struct {
 	// Type Filter by token type
 	Type *string `form:"type,omitempty" json:"type,omitempty"`
+}
+
+// ListSystemCheckJobsParams defines parameters for ListSystemCheckJobs.
+type ListSystemCheckJobsParams struct {
+	// Limit Maximum number of rows to return (1-200)
+	Limit *JobLimitQuery `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of rows to skip
+	Offset *JobOffsetQuery `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListSystemJobsParams defines parameters for ListSystemJobs.
+type ListSystemJobsParams struct {
+	// Status Filter by job status
+	Status *JobStatusQuery `form:"status,omitempty" json:"status,omitempty"`
+
+	// Type Filter by job type
+	Type *JobTypeQuery `form:"type,omitempty" json:"type,omitempty"`
+
+	// Limit Maximum number of rows to return (1-200)
+	Limit *JobLimitQuery `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of rows to skip
+	Offset *JobOffsetQuery `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
@@ -2962,6 +3138,15 @@ type ClientInterface interface {
 
 	CreateOrg(ctx context.Context, body CreateOrgJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListAdminJobs request
+	ListAdminJobs(ctx context.Context, org OrgPath, params *ListAdminJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAdminJob request
+	GetAdminJob(ctx context.Context, org OrgPath, uid JobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAdminJobChain request
+	GetAdminJobChain(ctx context.Context, org OrgPath, uid JobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListChannels request
 	ListChannels(ctx context.Context, org OrgPath, params *ListChannelsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -3005,6 +3190,12 @@ type ClientInterface interface {
 	UpdateCheckGroupWithBody(ctx context.Context, org OrgPath, uid CheckGroupUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	UpdateCheckGroup(ctx context.Context, org OrgPath, uid CheckGroupUidPath, body UpdateCheckGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListCheckJobs request
+	ListCheckJobs(ctx context.Context, org OrgPath, params *ListCheckJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCheckJob request
+	GetCheckJob(ctx context.Context, org OrgPath, uid CheckJobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListChecks request
 	ListChecks(ctx context.Context, org OrgPath, params *ListChecksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3220,6 +3411,9 @@ type ClientInterface interface {
 	CreateJobWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	CreateJob(ctx context.Context, org OrgPath, body CreateJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetJobStats request
+	GetJobStats(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CancelJob request
 	CancelJob(ctx context.Context, org OrgPath, uid JobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3460,6 +3654,24 @@ type ClientInterface interface {
 	CreateTokenWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	CreateToken(ctx context.Context, org OrgPath, body CreateTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSystemCheckJobs request
+	ListSystemCheckJobs(ctx context.Context, params *ListSystemCheckJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSystemCheckJob request
+	GetSystemCheckJob(ctx context.Context, uid CheckJobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSystemJobs request
+	ListSystemJobs(ctx context.Context, params *ListSystemJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSystemJobStats request
+	GetSystemJobStats(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSystemJob request
+	GetSystemJob(ctx context.Context, uid JobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSystemJobChain request
+	GetSystemJobChain(ctx context.Context, uid JobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSystemParameters request
 	ListSystemParameters(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3743,6 +3955,42 @@ func (c *Client) CreateOrg(ctx context.Context, body CreateOrgJSONRequestBody, r
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListAdminJobs(ctx context.Context, org OrgPath, params *ListAdminJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAdminJobsRequest(c.Server, org, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAdminJob(ctx context.Context, org OrgPath, uid JobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAdminJobRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAdminJobChain(ctx context.Context, org OrgPath, uid JobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAdminJobChainRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListChannels(ctx context.Context, org OrgPath, params *ListChannelsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListChannelsRequest(c.Server, org, params)
 	if err != nil {
@@ -3925,6 +4173,30 @@ func (c *Client) UpdateCheckGroupWithBody(ctx context.Context, org OrgPath, uid 
 
 func (c *Client) UpdateCheckGroup(ctx context.Context, org OrgPath, uid CheckGroupUidPath, body UpdateCheckGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateCheckGroupRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListCheckJobs(ctx context.Context, org OrgPath, params *ListCheckJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCheckJobsRequest(c.Server, org, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetCheckJob(ctx context.Context, org OrgPath, uid CheckJobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCheckJobRequest(c.Server, org, uid)
 	if err != nil {
 		return nil, err
 	}
@@ -4861,6 +5133,18 @@ func (c *Client) CreateJobWithBody(ctx context.Context, org OrgPath, contentType
 
 func (c *Client) CreateJob(ctx context.Context, org OrgPath, body CreateJobJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateJobRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetJobStats(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetJobStatsRequest(c.Server, org)
 	if err != nil {
 		return nil, err
 	}
@@ -5927,6 +6211,78 @@ func (c *Client) CreateToken(ctx context.Context, org OrgPath, body CreateTokenJ
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListSystemCheckJobs(ctx context.Context, params *ListSystemCheckJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSystemCheckJobsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSystemCheckJob(ctx context.Context, uid CheckJobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSystemCheckJobRequest(c.Server, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListSystemJobs(ctx context.Context, params *ListSystemJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSystemJobsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSystemJobStats(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSystemJobStatsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSystemJob(ctx context.Context, uid JobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSystemJobRequest(c.Server, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSystemJobChain(ctx context.Context, uid JobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSystemJobChainRequest(c.Server, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListSystemParameters(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListSystemParametersRequest(c.Server)
 	if err != nil {
@@ -6589,6 +6945,192 @@ func NewCreateOrgRequestWithBody(server string, contentType string, body io.Read
 	return req, nil
 }
 
+// NewListAdminJobsRequest generates requests for ListAdminJobs
+func NewListAdminJobsRequest(server string, org OrgPath, params *ListAdminJobsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/admin/jobs", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "status", runtime.ParamLocationQuery, *params.Status); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Type != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "type", runtime.ParamLocationQuery, *params.Type); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAdminJobRequest generates requests for GetAdminJob
+func NewGetAdminJobRequest(server string, org OrgPath, uid JobUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/admin/jobs/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAdminJobChainRequest generates requests for GetAdminJobChain
+func NewGetAdminJobChainRequest(server string, org OrgPath, uid JobUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/admin/jobs/%s/chain", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListChannelsRequest generates requests for ListChannels
 func NewListChannelsRequest(server string, org OrgPath, params *ListChannelsParams) (*http.Request, error) {
 	var err error
@@ -7123,6 +7665,119 @@ func NewUpdateCheckGroupRequestWithBody(server string, org OrgPath, uid CheckGro
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListCheckJobsRequest generates requests for ListCheckJobs
+func NewListCheckJobsRequest(server string, org OrgPath, params *ListCheckJobsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/check-jobs", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetCheckJobRequest generates requests for GetCheckJob
+func NewGetCheckJobRequest(server string, org OrgPath, uid CheckJobUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/check-jobs/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -10315,6 +10970,40 @@ func NewCreateJobRequestWithBody(server string, org OrgPath, contentType string,
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetJobStatsRequest generates requests for GetJobStats
+func NewGetJobStatsRequest(server string, org OrgPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/jobs/stats", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -13669,6 +14358,297 @@ func NewCreateTokenRequestWithBody(server string, org OrgPath, contentType strin
 	return req, nil
 }
 
+// NewListSystemCheckJobsRequest generates requests for ListSystemCheckJobs
+func NewListSystemCheckJobsRequest(server string, params *ListSystemCheckJobsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/check-jobs")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSystemCheckJobRequest generates requests for GetSystemCheckJob
+func NewGetSystemCheckJobRequest(server string, uid CheckJobUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/check-jobs/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListSystemJobsRequest generates requests for ListSystemJobs
+func NewListSystemJobsRequest(server string, params *ListSystemJobsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/jobs")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "status", runtime.ParamLocationQuery, *params.Status); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Type != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "type", runtime.ParamLocationQuery, *params.Type); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSystemJobStatsRequest generates requests for GetSystemJobStats
+func NewGetSystemJobStatsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/jobs/stats")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSystemJobRequest generates requests for GetSystemJob
+func NewGetSystemJobRequest(server string, uid JobUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/jobs/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSystemJobChainRequest generates requests for GetSystemJobChain
+func NewGetSystemJobChainRequest(server string, uid JobUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/jobs/%s/chain", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListSystemParametersRequest generates requests for ListSystemParameters
 func NewListSystemParametersRequest(server string) (*http.Request, error) {
 	var err error
@@ -13941,6 +14921,15 @@ type ClientWithResponsesInterface interface {
 
 	CreateOrgWithResponse(ctx context.Context, body CreateOrgJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateOrgResult, error)
 
+	// ListAdminJobsWithResponse request
+	ListAdminJobsWithResponse(ctx context.Context, org OrgPath, params *ListAdminJobsParams, reqEditors ...RequestEditorFn) (*ListAdminJobsResult, error)
+
+	// GetAdminJobWithResponse request
+	GetAdminJobWithResponse(ctx context.Context, org OrgPath, uid JobUidPath, reqEditors ...RequestEditorFn) (*GetAdminJobResult, error)
+
+	// GetAdminJobChainWithResponse request
+	GetAdminJobChainWithResponse(ctx context.Context, org OrgPath, uid JobUidPath, reqEditors ...RequestEditorFn) (*GetAdminJobChainResult, error)
+
 	// ListChannelsWithResponse request
 	ListChannelsWithResponse(ctx context.Context, org OrgPath, params *ListChannelsParams, reqEditors ...RequestEditorFn) (*ListChannelsResult, error)
 
@@ -13984,6 +14973,12 @@ type ClientWithResponsesInterface interface {
 	UpdateCheckGroupWithBodyWithResponse(ctx context.Context, org OrgPath, uid CheckGroupUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateCheckGroupResult, error)
 
 	UpdateCheckGroupWithResponse(ctx context.Context, org OrgPath, uid CheckGroupUidPath, body UpdateCheckGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateCheckGroupResult, error)
+
+	// ListCheckJobsWithResponse request
+	ListCheckJobsWithResponse(ctx context.Context, org OrgPath, params *ListCheckJobsParams, reqEditors ...RequestEditorFn) (*ListCheckJobsResult, error)
+
+	// GetCheckJobWithResponse request
+	GetCheckJobWithResponse(ctx context.Context, org OrgPath, uid CheckJobUidPath, reqEditors ...RequestEditorFn) (*GetCheckJobResult, error)
 
 	// ListChecksWithResponse request
 	ListChecksWithResponse(ctx context.Context, org OrgPath, params *ListChecksParams, reqEditors ...RequestEditorFn) (*ListChecksResult, error)
@@ -14199,6 +15194,9 @@ type ClientWithResponsesInterface interface {
 	CreateJobWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateJobResult, error)
 
 	CreateJobWithResponse(ctx context.Context, org OrgPath, body CreateJobJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateJobResult, error)
+
+	// GetJobStatsWithResponse request
+	GetJobStatsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*GetJobStatsResult, error)
 
 	// CancelJobWithResponse request
 	CancelJobWithResponse(ctx context.Context, org OrgPath, uid JobUidPath, reqEditors ...RequestEditorFn) (*CancelJobResult, error)
@@ -14439,6 +15437,24 @@ type ClientWithResponsesInterface interface {
 	CreateTokenWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTokenResult, error)
 
 	CreateTokenWithResponse(ctx context.Context, org OrgPath, body CreateTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTokenResult, error)
+
+	// ListSystemCheckJobsWithResponse request
+	ListSystemCheckJobsWithResponse(ctx context.Context, params *ListSystemCheckJobsParams, reqEditors ...RequestEditorFn) (*ListSystemCheckJobsResult, error)
+
+	// GetSystemCheckJobWithResponse request
+	GetSystemCheckJobWithResponse(ctx context.Context, uid CheckJobUidPath, reqEditors ...RequestEditorFn) (*GetSystemCheckJobResult, error)
+
+	// ListSystemJobsWithResponse request
+	ListSystemJobsWithResponse(ctx context.Context, params *ListSystemJobsParams, reqEditors ...RequestEditorFn) (*ListSystemJobsResult, error)
+
+	// GetSystemJobStatsWithResponse request
+	GetSystemJobStatsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetSystemJobStatsResult, error)
+
+	// GetSystemJobWithResponse request
+	GetSystemJobWithResponse(ctx context.Context, uid JobUidPath, reqEditors ...RequestEditorFn) (*GetSystemJobResult, error)
+
+	// GetSystemJobChainWithResponse request
+	GetSystemJobChainWithResponse(ctx context.Context, uid JobUidPath, reqEditors ...RequestEditorFn) (*GetSystemJobChainResult, error)
 
 	// ListSystemParametersWithResponse request
 	ListSystemParametersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListSystemParametersResult, error)
@@ -14825,6 +15841,76 @@ func (r CreateOrgResult) StatusCode() int {
 	return 0
 }
 
+type ListAdminJobsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AdminJobListResponse
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAdminJobsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAdminJobsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAdminJobResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AdminJobResponse
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAdminJobResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAdminJobResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAdminJobChainResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AdminJobListResponse
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAdminJobChainResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAdminJobChainResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListChannelsResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -15114,6 +16200,53 @@ func (r UpdateCheckGroupResult) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r UpdateCheckGroupResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListCheckJobsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *CheckJobListResponse
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCheckJobsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCheckJobsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetCheckJobResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *CheckJobResponse
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCheckJobResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCheckJobResult) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -16548,6 +17681,30 @@ func (r CreateJobResult) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r CreateJobResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetJobStatsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *JobsStatsResponse
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r GetJobStatsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetJobStatsResult) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -18096,6 +19253,147 @@ func (r CreateTokenResult) StatusCode() int {
 	return 0
 }
 
+type ListSystemCheckJobsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *CheckJobListResponse
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSystemCheckJobsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSystemCheckJobsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetSystemCheckJobResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *CheckJobResponse
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSystemCheckJobResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSystemCheckJobResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListSystemJobsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AdminJobListResponse
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSystemJobsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSystemJobsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetSystemJobStatsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *JobsStatsResponse
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSystemJobStatsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSystemJobStatsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetSystemJobResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AdminJobResponse
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSystemJobResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSystemJobResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetSystemJobChainResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AdminJobListResponse
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSystemJobChainResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSystemJobChainResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListSystemParametersResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -18409,6 +19707,33 @@ func (c *ClientWithResponses) CreateOrgWithResponse(ctx context.Context, body Cr
 	return ParseCreateOrgResult(rsp)
 }
 
+// ListAdminJobsWithResponse request returning *ListAdminJobsResult
+func (c *ClientWithResponses) ListAdminJobsWithResponse(ctx context.Context, org OrgPath, params *ListAdminJobsParams, reqEditors ...RequestEditorFn) (*ListAdminJobsResult, error) {
+	rsp, err := c.ListAdminJobs(ctx, org, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAdminJobsResult(rsp)
+}
+
+// GetAdminJobWithResponse request returning *GetAdminJobResult
+func (c *ClientWithResponses) GetAdminJobWithResponse(ctx context.Context, org OrgPath, uid JobUidPath, reqEditors ...RequestEditorFn) (*GetAdminJobResult, error) {
+	rsp, err := c.GetAdminJob(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAdminJobResult(rsp)
+}
+
+// GetAdminJobChainWithResponse request returning *GetAdminJobChainResult
+func (c *ClientWithResponses) GetAdminJobChainWithResponse(ctx context.Context, org OrgPath, uid JobUidPath, reqEditors ...RequestEditorFn) (*GetAdminJobChainResult, error) {
+	rsp, err := c.GetAdminJobChain(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAdminJobChainResult(rsp)
+}
+
 // ListChannelsWithResponse request returning *ListChannelsResult
 func (c *ClientWithResponses) ListChannelsWithResponse(ctx context.Context, org OrgPath, params *ListChannelsParams, reqEditors ...RequestEditorFn) (*ListChannelsResult, error) {
 	rsp, err := c.ListChannels(ctx, org, params, reqEditors...)
@@ -18547,6 +19872,24 @@ func (c *ClientWithResponses) UpdateCheckGroupWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseUpdateCheckGroupResult(rsp)
+}
+
+// ListCheckJobsWithResponse request returning *ListCheckJobsResult
+func (c *ClientWithResponses) ListCheckJobsWithResponse(ctx context.Context, org OrgPath, params *ListCheckJobsParams, reqEditors ...RequestEditorFn) (*ListCheckJobsResult, error) {
+	rsp, err := c.ListCheckJobs(ctx, org, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCheckJobsResult(rsp)
+}
+
+// GetCheckJobWithResponse request returning *GetCheckJobResult
+func (c *ClientWithResponses) GetCheckJobWithResponse(ctx context.Context, org OrgPath, uid CheckJobUidPath, reqEditors ...RequestEditorFn) (*GetCheckJobResult, error) {
+	rsp, err := c.GetCheckJob(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCheckJobResult(rsp)
 }
 
 // ListChecksWithResponse request returning *ListChecksResult
@@ -19230,6 +20573,15 @@ func (c *ClientWithResponses) CreateJobWithResponse(ctx context.Context, org Org
 		return nil, err
 	}
 	return ParseCreateJobResult(rsp)
+}
+
+// GetJobStatsWithResponse request returning *GetJobStatsResult
+func (c *ClientWithResponses) GetJobStatsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*GetJobStatsResult, error) {
+	rsp, err := c.GetJobStats(ctx, org, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetJobStatsResult(rsp)
 }
 
 // CancelJobWithResponse request returning *CancelJobResult
@@ -20000,6 +21352,60 @@ func (c *ClientWithResponses) CreateTokenWithResponse(ctx context.Context, org O
 	return ParseCreateTokenResult(rsp)
 }
 
+// ListSystemCheckJobsWithResponse request returning *ListSystemCheckJobsResult
+func (c *ClientWithResponses) ListSystemCheckJobsWithResponse(ctx context.Context, params *ListSystemCheckJobsParams, reqEditors ...RequestEditorFn) (*ListSystemCheckJobsResult, error) {
+	rsp, err := c.ListSystemCheckJobs(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSystemCheckJobsResult(rsp)
+}
+
+// GetSystemCheckJobWithResponse request returning *GetSystemCheckJobResult
+func (c *ClientWithResponses) GetSystemCheckJobWithResponse(ctx context.Context, uid CheckJobUidPath, reqEditors ...RequestEditorFn) (*GetSystemCheckJobResult, error) {
+	rsp, err := c.GetSystemCheckJob(ctx, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSystemCheckJobResult(rsp)
+}
+
+// ListSystemJobsWithResponse request returning *ListSystemJobsResult
+func (c *ClientWithResponses) ListSystemJobsWithResponse(ctx context.Context, params *ListSystemJobsParams, reqEditors ...RequestEditorFn) (*ListSystemJobsResult, error) {
+	rsp, err := c.ListSystemJobs(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSystemJobsResult(rsp)
+}
+
+// GetSystemJobStatsWithResponse request returning *GetSystemJobStatsResult
+func (c *ClientWithResponses) GetSystemJobStatsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetSystemJobStatsResult, error) {
+	rsp, err := c.GetSystemJobStats(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSystemJobStatsResult(rsp)
+}
+
+// GetSystemJobWithResponse request returning *GetSystemJobResult
+func (c *ClientWithResponses) GetSystemJobWithResponse(ctx context.Context, uid JobUidPath, reqEditors ...RequestEditorFn) (*GetSystemJobResult, error) {
+	rsp, err := c.GetSystemJob(ctx, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSystemJobResult(rsp)
+}
+
+// GetSystemJobChainWithResponse request returning *GetSystemJobChainResult
+func (c *ClientWithResponses) GetSystemJobChainWithResponse(ctx context.Context, uid JobUidPath, reqEditors ...RequestEditorFn) (*GetSystemJobChainResult, error) {
+	rsp, err := c.GetSystemJobChain(ctx, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSystemJobChainResult(rsp)
+}
+
 // ListSystemParametersWithResponse request returning *ListSystemParametersResult
 func (c *ClientWithResponses) ListSystemParametersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListSystemParametersResult, error) {
 	rsp, err := c.ListSystemParameters(ctx, reqEditors...)
@@ -20574,6 +21980,112 @@ func ParseCreateOrgResult(rsp *http.Response) (*CreateOrgResult, error) {
 	return response, nil
 }
 
+// ParseListAdminJobsResult parses an HTTP response from a ListAdminJobsWithResponse call
+func ParseListAdminJobsResult(rsp *http.Response) (*ListAdminJobsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAdminJobsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminJobListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAdminJobResult parses an HTTP response from a GetAdminJobWithResponse call
+func ParseGetAdminJobResult(rsp *http.Response) (*GetAdminJobResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAdminJobResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminJobResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAdminJobChainResult parses an HTTP response from a GetAdminJobChainWithResponse call
+func ParseGetAdminJobChainResult(rsp *http.Response) (*GetAdminJobChainResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAdminJobChainResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminJobListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListChannelsResult parses an HTTP response from a ListChannelsWithResponse call
 func ParseListChannelsResult(rsp *http.Response) (*ListChannelsResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -21090,6 +22602,79 @@ func ParseUpdateCheckGroupResult(rsp *http.Response) (*UpdateCheckGroupResult, e
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListCheckJobsResult parses an HTTP response from a ListCheckJobsWithResponse call
+func ParseListCheckJobsResult(rsp *http.Response) (*ListCheckJobsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCheckJobsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckJobListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCheckJobResult parses an HTTP response from a GetCheckJobWithResponse call
+func ParseGetCheckJobResult(rsp *http.Response) (*GetCheckJobResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCheckJobResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckJobResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound
@@ -23463,6 +25048,46 @@ func ParseCreateJobResult(rsp *http.Response) (*CreateJobResult, error) {
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetJobStatsResult parses an HTTP response from a GetJobStatsWithResponse call
+func ParseGetJobStatsResult(rsp *http.Response) (*GetJobStatsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetJobStatsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest JobsStatsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	}
 
@@ -26065,6 +27690,225 @@ func ParseCreateTokenResult(rsp *http.Response) (*CreateTokenResult, error) {
 			return nil, err
 		}
 		response.JSON201 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSystemCheckJobsResult parses an HTTP response from a ListSystemCheckJobsWithResponse call
+func ParseListSystemCheckJobsResult(rsp *http.Response) (*ListSystemCheckJobsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSystemCheckJobsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckJobListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSystemCheckJobResult parses an HTTP response from a GetSystemCheckJobWithResponse call
+func ParseGetSystemCheckJobResult(rsp *http.Response) (*GetSystemCheckJobResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSystemCheckJobResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckJobResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSystemJobsResult parses an HTTP response from a ListSystemJobsWithResponse call
+func ParseListSystemJobsResult(rsp *http.Response) (*ListSystemJobsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSystemJobsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminJobListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSystemJobStatsResult parses an HTTP response from a GetSystemJobStatsWithResponse call
+func ParseGetSystemJobStatsResult(rsp *http.Response) (*GetSystemJobStatsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSystemJobStatsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest JobsStatsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSystemJobResult parses an HTTP response from a GetSystemJobWithResponse call
+func ParseGetSystemJobResult(rsp *http.Response) (*GetSystemJobResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSystemJobResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminJobResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSystemJobChainResult parses an HTTP response from a GetSystemJobChainWithResponse call
+func ParseGetSystemJobChainResult(rsp *http.Response) (*GetSystemJobChainResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSystemJobChainResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminJobListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 

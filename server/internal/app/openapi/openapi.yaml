@@ -1918,6 +1918,266 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # Jobs admin & scheduler introspection (org-scoped, org-admin gated)
+  /api/v1/orgs/{org}/jobs/stats:
+    get:
+      tags: [Jobs]
+      summary: Job & check-schedule stats
+      description: Aggregate counts over the background-jobs queue and the check schedule for the org.
+      operationId: getJobStats
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: Aggregate job stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobsStatsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/orgs/{org}/admin/jobs:
+    get:
+      tags: [Jobs]
+      summary: List background jobs (admin)
+      description: Admin-gated list of background jobs for the org, most-recent first.
+      operationId: listAdminJobs
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/JobStatusQuery"
+        - $ref: "#/components/parameters/JobTypeQuery"
+        - $ref: "#/components/parameters/JobLimitQuery"
+        - $ref: "#/components/parameters/JobOffsetQuery"
+      responses:
+        "200":
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminJobListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/orgs/{org}/admin/jobs/{uid}:
+    get:
+      tags: [Jobs]
+      summary: Get a background job (admin)
+      operationId: getAdminJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/JobUidPath"
+      responses:
+        "200":
+          description: Job details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminJobResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/admin/jobs/{uid}/chain:
+    get:
+      tags: [Jobs]
+      summary: Get a job's retry chain (admin)
+      description: Ordered chain of jobs linked via previousJobUid, earliest ancestor to latest descendant.
+      operationId: getAdminJobChain
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/JobUidPath"
+      responses:
+        "200":
+          description: Retry chain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminJobListResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/check-jobs:
+    get:
+      tags: [Jobs]
+      summary: List check-schedule jobs (admin)
+      description: Admin-gated list of the check_jobs scheduler rows. Encrypted secret values are never returned.
+      operationId: listCheckJobs
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/JobLimitQuery"
+        - $ref: "#/components/parameters/JobOffsetQuery"
+      responses:
+        "200":
+          description: List of check jobs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckJobListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/orgs/{org}/check-jobs/{uid}:
+    get:
+      tags: [Jobs]
+      summary: Get a check-schedule job (admin)
+      operationId: getCheckJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckJobUidPath"
+      responses:
+        "200":
+          description: Check job details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckJobResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Jobs admin & scheduler introspection (system-scoped, super-admin gated)
+  /api/v1/system/jobs/stats:
+    get:
+      tags: [System]
+      summary: Job & check-schedule stats (all orgs)
+      description: Aggregate job and check-schedule counts across every org (super-admin).
+      operationId: getSystemJobStats
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Aggregate job stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobsStatsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/jobs:
+    get:
+      tags: [System]
+      summary: List background jobs (all orgs)
+      description: Super-admin list of background jobs across all orgs, including system jobs (null org).
+      operationId: listSystemJobs
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/JobStatusQuery"
+        - $ref: "#/components/parameters/JobTypeQuery"
+        - $ref: "#/components/parameters/JobLimitQuery"
+        - $ref: "#/components/parameters/JobOffsetQuery"
+      responses:
+        "200":
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminJobListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/jobs/{uid}:
+    get:
+      tags: [System]
+      summary: Get a background job (all orgs)
+      operationId: getSystemJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/JobUidPath"
+      responses:
+        "200":
+          description: Job details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminJobResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/system/jobs/{uid}/chain:
+    get:
+      tags: [System]
+      summary: Get a job's retry chain (all orgs)
+      operationId: getSystemJobChain
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/JobUidPath"
+      responses:
+        "200":
+          description: Retry chain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminJobListResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/system/check-jobs:
+    get:
+      tags: [System]
+      summary: List check-schedule jobs (all orgs)
+      description: Super-admin list of the check_jobs scheduler rows across every org. Secrets are never returned.
+      operationId: listSystemCheckJobs
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/JobLimitQuery"
+        - $ref: "#/components/parameters/JobOffsetQuery"
+      responses:
+        "200":
+          description: List of check jobs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckJobListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/check-jobs/{uid}:
+    get:
+      tags: [System]
+      summary: Get a check-schedule job (all orgs)
+      operationId: getSystemCheckJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CheckJobUidPath"
+      responses:
+        "200":
+          description: Check job details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckJobResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/discovery/types:
     get:
       tags: [Discovery]
@@ -4332,6 +4592,47 @@ components:
         format: uuid
       description: Job UID
 
+    CheckJobUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Check-schedule job UID
+
+    JobStatusQuery:
+      name: status
+      in: query
+      required: false
+      description: Filter by job status
+      schema:
+        type: string
+
+    JobTypeQuery:
+      name: type
+      in: query
+      required: false
+      description: Filter by job type
+      schema:
+        type: string
+
+    JobLimitQuery:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of rows to return (1-200)
+      schema:
+        type: integer
+
+    JobOffsetQuery:
+      name: offset
+      in: query
+      required: false
+      description: Number of rows to skip
+      schema:
+        type: integer
+
     ScanJobUidPath:
       name: jobUid
       in: path
@@ -6260,6 +6561,171 @@ components:
           type: string
         config:
           type: object
+
+    # Jobs admin & scheduler introspection schemas
+    AdminJob:
+      type: object
+      description: A background-jobs queue row as returned by the admin/system views.
+      properties:
+        uid:
+          type: string
+          format: uuid
+        organizationUid:
+          type: string
+          format: uuid
+          nullable: true
+          description: Owning org, or null for system jobs.
+        type:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+        retryCount:
+          type: integer
+        scheduledAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [pending, running, success, retried, failed]
+        output:
+          type: object
+          additionalProperties: true
+        previousJobUid:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    AdminJobListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminJob"
+
+    AdminJobResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/AdminJob"
+
+    CheckJobView:
+      type: object
+      description: A redacted check_jobs scheduler row. Secret values are never included, only encrypted key names.
+      properties:
+        uid:
+          type: string
+          format: uuid
+        organizationUid:
+          type: string
+          format: uuid
+        checkUid:
+          type: string
+          format: uuid
+        checkName:
+          type: string
+          nullable: true
+        region:
+          type: string
+          nullable: true
+        type:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+        encryptedKeys:
+          type: array
+          items:
+            type: string
+        encrypted:
+          type: boolean
+        periodSeconds:
+          type: integer
+          format: int64
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+        leaseWorkerUid:
+          type: string
+          nullable: true
+        leaseExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        leaseStarts:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+        state:
+          type: string
+          enum: [idle, inFlight, stalled, crashLooping]
+
+    CheckJobListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckJobView"
+
+    CheckJobResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/CheckJobView"
+
+    JobQueueStats:
+      type: object
+      description: Background-jobs queue counts.
+      properties:
+        pending:
+          type: integer
+        running:
+          type: integer
+        failed24h:
+          type: integer
+
+    CheckScheduleStats:
+      type: object
+      description: Check-schedule counts derived from lease state.
+      properties:
+        total:
+          type: integer
+        dueNow:
+          type: integer
+        inFlight:
+          type: integer
+        stalled:
+          type: integer
+        crashLooping:
+          type: integer
+
+    JobsStats:
+      type: object
+      properties:
+        jobs:
+          $ref: "#/components/schemas/JobQueueStats"
+        checks:
+          $ref: "#/components/schemas/CheckScheduleStats"
+
+    JobsStatsResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/JobsStats"
 
     # System Parameters
     SystemParameter:
