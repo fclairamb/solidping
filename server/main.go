@@ -197,6 +197,14 @@ func serve(ctx context.Context, _ *cli.Command) error {
 		return seedErr
 	}
 
+	// Seed the `regions` system parameter from SP_REGIONS so a deployment
+	// can name its regions declaratively (e.g. "🇪🇺 EU1 (default)" instead of
+	// the raw "default" slug). No-op when unset.
+	if seedErr := server.SeedRegionsFromEnv(ctx); seedErr != nil {
+		slog.ErrorContext(ctx, "Failed to seed regions parameter", "error", seedErr)
+		return seedErr
+	}
+
 	// Routes are constructed after InitializeSystemConfig so handlers see
 	// the post-overlay config — e.g. PasskeyService picks up the
 	// system-parameter override of server.base_url and uses it to derive
