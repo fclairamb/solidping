@@ -200,6 +200,37 @@ test.describe("Escalation policy editor", () => {
     }
   });
 
+  test("detail breadcrumb shows the section back-link and the policy-name segment", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const stamp = Date.now();
+    const name = `E2E Bc ${stamp}`;
+
+    const policy = await createEscalationPolicy(page, token, name);
+
+    try {
+      // Detail page is addressed by uid; the breadcrumb reads `params.uid`.
+      await page.goto(`orgs/test/escalation-policies/${policy.uid}`);
+      await page.waitForLoadState("networkidle");
+
+      // Scope to the top header so we assert on the breadcrumb, not the
+      // sidebar link or the page heading.
+      const header = page.locator("header").first();
+      // Section root must be a clickable back-link (regression: rendered as
+      // plain non-clickable text when the breadcrumb read the removed slug).
+      await expect(
+        header.getByRole("link", { name: /escalation policies/i }),
+      ).toBeVisible();
+      // Entity-name segment must render the policy name (regression: omitted
+      // because `params.slug` was always undefined after the slug removal).
+      await expect(header.getByText(name)).toBeVisible();
+    } finally {
+      await deleteAllEscalationPolicies(page, token);
+    }
+  });
+
   test("header: Back button is immediately to the left of the Delete button", async ({
     authenticatedPage,
   }) => {

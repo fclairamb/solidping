@@ -56,6 +56,15 @@ test.describe("On-call schedule edit page", () => {
         page.getByRole("heading", { name: originalName }),
       ).toBeVisible();
 
+      // Breadcrumb (scoped to the header) reads `params.uid`: the section root
+      // is a clickable back-link and the entity-name segment renders the
+      // schedule name — both broke when it still read the removed `slug`.
+      const header = page.locator("header").first();
+      await expect(
+        header.getByRole("link", { name: /on-call/i }),
+      ).toBeVisible();
+      await expect(header.getByText(originalName)).toBeVisible();
+
       await page.getByTestId("oncall-edit-button").click();
       await page.waitForURL(
         (url) => url.pathname.endsWith(`/on-call/${uid}/edit`),
