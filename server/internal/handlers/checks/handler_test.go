@@ -442,10 +442,12 @@ func TestCreateCheckFlappingValidationRejectsBadFactor(t *testing.T) {
 	r.Equal(string(base.ErrorCodeValidationError), errBody["code"])
 }
 
-// TestCheckConfigTimeoutCapOnCreate covers the uniform per-check timeout cap
-// (spec 2026-07-11-05) at the HTTP layer on create: values in (0, 30s] pass,
-// anything else is a 422 VALIDATION_ERROR on the `timeout` field, uniformly
-// across check types (including ones whose checker has no own timeout cap).
+// TestCheckConfigTimeoutCapOnCreate covers the uniform per-check timeout range
+// (spec 2026-07-11-05 + the explicit 1s floor from spec 2026-07-11-09) at the
+// HTTP layer on create: values in [1s, 30s] pass, anything else (including
+// sub-second values) is a 422 VALIDATION_ERROR on the `timeout` field,
+// uniformly across check types (including ones whose checker has no own
+// timeout cap).
 func TestCheckConfigTimeoutCapOnCreate(t *testing.T) {
 	t.Parallel()
 
@@ -472,13 +474,30 @@ func TestCheckConfigTimeoutCapOnCreate(t *testing.T) {
 			wantStatus: http.StatusCreated,
 		},
 		{
+			name: "1s floor is accepted",
+			body: map[string]any{
+				"type":   "tcp",
+				"config": map[string]any{"host": "example.com", "port": 443, "timeout": "1s"},
+			},
+			wantStatus: http.StatusCreated,
+		},
+		{
 			name: "31s is rejected",
 			body: map[string]any{
 				"type":   "tcp",
 				"config": map[string]any{"host": "example.com", "port": 443, "timeout": "31s"},
 			},
 			wantStatus: http.StatusUnprocessableEntity,
-			wantMsg:    "must be > 0 and <= 30s",
+			wantMsg:    "must be >= 1s and <= 30s",
+		},
+		{
+			name: "sub-second is rejected by the 1s floor",
+			body: map[string]any{
+				"type":   "http",
+				"config": map[string]any{"url": "https://example.com", "timeout": "500ms"},
+			},
+			wantStatus: http.StatusUnprocessableEntity,
+			wantMsg:    "must be >= 1s and <= 30s",
 		},
 		{
 			name: "zero is rejected",
@@ -487,7 +506,7 @@ func TestCheckConfigTimeoutCapOnCreate(t *testing.T) {
 				"config": map[string]any{"url": "https://example.com", "timeout": "0s"},
 			},
 			wantStatus: http.StatusUnprocessableEntity,
-			wantMsg:    "must be > 0 and <= 30s",
+			wantMsg:    "must be >= 1s and <= 30s",
 		},
 		{
 			name: "negative is rejected",
@@ -496,7 +515,7 @@ func TestCheckConfigTimeoutCapOnCreate(t *testing.T) {
 				"config": map[string]any{"url": "https://example.com", "timeout": "-5s"},
 			},
 			wantStatus: http.StatusUnprocessableEntity,
-			wantMsg:    "must be > 0 and <= 30s",
+			wantMsg:    "must be >= 1s and <= 30s",
 		},
 		{
 			name: "udp (checker without its own 30s cap) is capped too",
@@ -505,7 +524,7 @@ func TestCheckConfigTimeoutCapOnCreate(t *testing.T) {
 				"config": map[string]any{"host": "example.com", "port": 53, "timeout": "45s"},
 			},
 			wantStatus: http.StatusUnprocessableEntity,
-			wantMsg:    "must be > 0 and <= 30s",
+			wantMsg:    "must be >= 1s and <= 30s",
 		},
 		{
 			name: "absent timeout is accepted",
@@ -601,7 +620,7 @@ func TestCheckConfigTimeoutCapOnPatch(t *testing.T) {
 	r.Len(fields, 1)
 	field, _ := fields[0].(map[string]any)
 	r.Equal("timeout", field["name"])
-	r.Contains(field["message"], "must be > 0 and <= 30s")
+	r.Contains(field["message"], "must be >= 1s and <= 30s")
 
 	// A legal value persists into config.
 	patchRec = patch(map[string]any{
