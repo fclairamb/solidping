@@ -37,6 +37,18 @@ tags:
     description: Network discovery scans and suggested checks
   - name: System
     description: System-wide configuration (super admin only)
+  - name: MaintenanceWindows
+    description: Scheduled maintenance windows and their check coverage
+  - name: CheckGroups
+    description: Check group management
+  - name: Severities
+    description: Severity primitives (channel-set bundles)
+  - name: Labels
+    description: Label key/value autocomplete
+  - name: Regions
+    description: Available monitoring regions
+  - name: CheckTypes
+    description: Check type catalog and sample configurations
 
 paths:
   # Management APIs
@@ -2758,6 +2770,502 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/maintenance-windows:
+    get:
+      tags: [MaintenanceWindows]
+      summary: List maintenance windows
+      operationId: listMaintenanceWindows
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: status
+          in: query
+          description: Filter by lifecycle status (active, upcoming, past)
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum results (1-100)
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of maintenance windows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceWindowListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [MaintenanceWindows]
+      summary: Create a maintenance window
+      operationId: createMaintenanceWindow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMaintenanceWindowRequest"
+      responses:
+        "201":
+          description: Maintenance window created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceWindow"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/maintenance-windows/{uid}:
+    get:
+      tags: [MaintenanceWindows]
+      summary: Get a maintenance window
+      operationId: getMaintenanceWindow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MaintenanceWindowUidPath"
+      responses:
+        "200":
+          description: Maintenance window details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceWindow"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [MaintenanceWindows]
+      summary: Update a maintenance window
+      operationId: updateMaintenanceWindow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MaintenanceWindowUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMaintenanceWindowRequest"
+      responses:
+        "200":
+          description: Maintenance window updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceWindow"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [MaintenanceWindows]
+      summary: Delete a maintenance window
+      operationId: deleteMaintenanceWindow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MaintenanceWindowUidPath"
+      responses:
+        "204":
+          description: Maintenance window deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/maintenance-windows/{uid}/checks:
+    get:
+      tags: [MaintenanceWindows]
+      summary: List the checks covered by a maintenance window
+      operationId: listMaintenanceWindowChecks
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MaintenanceWindowUidPath"
+      responses:
+        "200":
+          description: List of check associations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceWindowCheckListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [MaintenanceWindows]
+      summary: Set the checks covered by a maintenance window
+      operationId: setMaintenanceWindowChecks
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MaintenanceWindowUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetMaintenanceWindowChecksRequest"
+      responses:
+        "204":
+          description: Check associations updated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/check-groups:
+    get:
+      tags: [CheckGroups]
+      summary: List check groups
+      operationId: listCheckGroups
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of check groups
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckGroupListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [CheckGroups]
+      summary: Create a check group
+      operationId: createCheckGroup
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCheckGroupRequest"
+      responses:
+        "201":
+          description: Check group created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckGroup"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/check-groups/{uid}:
+    get:
+      tags: [CheckGroups]
+      summary: Get a check group
+      operationId: getCheckGroup
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckGroupUidPath"
+      responses:
+        "200":
+          description: Check group details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckGroup"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [CheckGroups]
+      summary: Update a check group
+      operationId: updateCheckGroup
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckGroupUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCheckGroupRequest"
+      responses:
+        "200":
+          description: Check group updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckGroup"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [CheckGroups]
+      summary: Delete a check group
+      operationId: deleteCheckGroup
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckGroupUidPath"
+      responses:
+        "204":
+          description: Check group deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/severities:
+    get:
+      tags: [Severities]
+      summary: List severities
+      operationId: listSeverities
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of severities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeverityListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Severities]
+      summary: Create a severity
+      operationId: createSeverity
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSeverityRequest"
+      responses:
+        "201":
+          description: Severity created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Severity"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/severities/{uid}:
+    get:
+      tags: [Severities]
+      summary: Get a severity
+      operationId: getSeverity
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SeverityUidPath"
+      responses:
+        "200":
+          description: Severity details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Severity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Severities]
+      summary: Update a severity
+      operationId: updateSeverity
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SeverityUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSeverityRequest"
+      responses:
+        "200":
+          description: Severity updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Severity"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Severities]
+      summary: Delete a severity
+      operationId: deleteSeverity
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SeverityUidPath"
+      responses:
+        "204":
+          description: Severity deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Severity is the default and cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/orgs/{org}/labels:
+    get:
+      tags: [Labels]
+      summary: List label key/value suggestions
+      operationId: listLabels
+      description: >
+        Returns distinct label keys, or distinct values for a given key when
+        the "key" query parameter is set, with usage counts for popularity sort.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: key
+          in: query
+          description: When set, list distinct values for this key instead of keys
+          schema:
+            type: string
+        - name: q
+          in: query
+          description: Prefix filter on the returned keys/values
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum results (1-200)
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of label suggestions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LabelSuggestionListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/regions:
+    get:
+      tags: [Regions]
+      summary: List regions available to an organization
+      operationId: listRegions
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: Available regions plus the org's default region set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgRegionListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/check-types:
+    get:
+      tags: [CheckTypes]
+      summary: List check types with server-level activation status
+      operationId: listCheckTypes
+      responses:
+        "200":
+          description: List of check types
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckTypeListResponse"
+
+  /api/v1/check-types/samples:
+    get:
+      tags: [CheckTypes]
+      summary: List sample configurations grouped by check type
+      operationId: listCheckTypeSamples
+      parameters:
+        - name: type
+          in: query
+          description: Filter samples to a single check type
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sample configurations grouped by check type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckTypeSamplesListResponse"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2878,6 +3386,31 @@ components:
         type: string
         format: uuid
       description: Status update UID
+
+    MaintenanceWindowUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Maintenance window UID
+
+    CheckGroupUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Check group UID or slug
+
+    SeverityUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Severity UID or slug
 
   responses:
     NotFound:
@@ -4881,3 +5414,380 @@ components:
             period:
               type: string
               description: ISO 8601 duration (e.g. PT1M)
+
+    # Maintenance window schemas
+    MaintenanceWindowOccurrence:
+      type: object
+      required: [startAt, endAt]
+      properties:
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+
+    MaintenanceWindow:
+      type: object
+      required:
+        - uid
+        - title
+        - startAt
+        - endAt
+        - recurrence
+        - status
+        - nextOccurrences
+        - createdAt
+        - updatedAt
+      properties:
+        uid:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        recurrence:
+          type: string
+          description: "One of: none, daily, weekly, monthly"
+        recurrenceEnd:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        status:
+          type: string
+          description: "Server-computed lifecycle: active, upcoming, past"
+        nextOccurrences:
+          type: array
+          items:
+            $ref: "#/components/schemas/MaintenanceWindowOccurrence"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    MaintenanceWindowListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MaintenanceWindow"
+
+    CreateMaintenanceWindowRequest:
+      type: object
+      required: [title, startAt, endAt]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        recurrence:
+          type: string
+          description: "One of: none, daily, weekly, monthly"
+        recurrenceEnd:
+          type: string
+          format: date-time
+
+    UpdateMaintenanceWindowRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        recurrence:
+          type: string
+        recurrenceEnd:
+          type: string
+          format: date-time
+
+    MaintenanceWindowCheck:
+      type: object
+      required: [uid]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        checkUid:
+          type: string
+          format: uuid
+        checkGroupUid:
+          type: string
+          format: uuid
+
+    MaintenanceWindowCheckListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MaintenanceWindowCheck"
+
+    SetMaintenanceWindowChecksRequest:
+      type: object
+      properties:
+        checkUids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        checkGroupUids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    # Check group schemas
+    CheckGroup:
+      type: object
+      required: [uid, name, slug, sortOrder, checkCount, createdAt, updatedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        sortOrder:
+          type: integer
+        checkCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CheckGroupListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckGroup"
+
+    CreateCheckGroupRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        sortOrder:
+          type: integer
+
+    UpdateCheckGroupRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        sortOrder:
+          type: integer
+
+    # Severity schemas
+    Severity:
+      type: object
+      required: [uid, slug, name, channels, isDefault, createdAt, updatedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        channels:
+          type: array
+          items:
+            type: string
+        isDefault:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SeverityListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Severity"
+
+    CreateSeverityRequest:
+      type: object
+      required: [name]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        channels:
+          type: array
+          items:
+            type: string
+        isDefault:
+          type: boolean
+
+    UpdateSeverityRequest:
+      type: object
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        channels:
+          type: array
+          items:
+            type: string
+        isDefault:
+          type: boolean
+
+    # Label suggestion schemas
+    LabelSuggestion:
+      type: object
+      required: [value, count]
+      properties:
+        value:
+          type: string
+        count:
+          type: integer
+
+    LabelSuggestionListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/LabelSuggestion"
+
+    # Region schemas
+    Region:
+      type: object
+      required: [slug, emoji, name]
+      properties:
+        slug:
+          type: string
+        emoji:
+          type: string
+        name:
+          type: string
+
+    OrgRegionListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Region"
+        defaultRegions:
+          type: array
+          items:
+            type: string
+
+    # Check type schemas
+    CheckTypeInfo:
+      type: object
+      required: [type, description, labels, enabled]
+      properties:
+        type:
+          type: string
+        description:
+          type: string
+        labels:
+          type: array
+          items:
+            type: string
+        enabled:
+          type: boolean
+        disabledReason:
+          type: string
+        minPeriodSeconds:
+          type: integer
+        maxPeriodSeconds:
+          type: integer
+        defaultPeriodSeconds:
+          type: integer
+
+    CheckTypeListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckTypeInfo"
+
+    CheckTypeSampleConfig:
+      type: object
+      required: [name, slug, periodSeconds, config]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        periodSeconds:
+          type: integer
+        config:
+          type: object
+          additionalProperties: true
+
+    CheckTypeSamples:
+      type: object
+      required: [checkType, samples]
+      properties:
+        checkType:
+          type: string
+        samples:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckTypeSampleConfig"
+
+    CheckTypeSamplesListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckTypeSamples"

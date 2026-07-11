@@ -431,6 +431,23 @@ type CheckChannelListResponse struct {
 	Data *[]CheckChannel `json:"data,omitempty"`
 }
 
+// CheckGroup defines model for CheckGroup.
+type CheckGroup struct {
+	CheckCount  int                `json:"checkCount"`
+	CreatedAt   time.Time          `json:"createdAt"`
+	Description *string            `json:"description,omitempty"`
+	Name        string             `json:"name"`
+	Slug        string             `json:"slug"`
+	SortOrder   int                `json:"sortOrder"`
+	Uid         openapi_types.UUID `json:"uid"`
+	UpdatedAt   time.Time          `json:"updatedAt"`
+}
+
+// CheckGroupListResponse defines model for CheckGroupListResponse.
+type CheckGroupListResponse struct {
+	Data *[]CheckGroup `json:"data,omitempty"`
+}
+
 // CheckListItem defines model for CheckListItem.
 type CheckListItem struct {
 	Config    *map[string]interface{} `json:"config,omitempty"`
@@ -509,6 +526,42 @@ type CheckScheduling struct {
 	DutyCyclePct int `json:"dutyCyclePct"`
 }
 
+// CheckTypeInfo defines model for CheckTypeInfo.
+type CheckTypeInfo struct {
+	DefaultPeriodSeconds *int     `json:"defaultPeriodSeconds,omitempty"`
+	Description          string   `json:"description"`
+	DisabledReason       *string  `json:"disabledReason,omitempty"`
+	Enabled              bool     `json:"enabled"`
+	Labels               []string `json:"labels"`
+	MaxPeriodSeconds     *int     `json:"maxPeriodSeconds,omitempty"`
+	MinPeriodSeconds     *int     `json:"minPeriodSeconds,omitempty"`
+	Type                 string   `json:"type"`
+}
+
+// CheckTypeListResponse defines model for CheckTypeListResponse.
+type CheckTypeListResponse struct {
+	Data *[]CheckTypeInfo `json:"data,omitempty"`
+}
+
+// CheckTypeSampleConfig defines model for CheckTypeSampleConfig.
+type CheckTypeSampleConfig struct {
+	Config        map[string]interface{} `json:"config"`
+	Name          string                 `json:"name"`
+	PeriodSeconds int                    `json:"periodSeconds"`
+	Slug          string                 `json:"slug"`
+}
+
+// CheckTypeSamples defines model for CheckTypeSamples.
+type CheckTypeSamples struct {
+	CheckType string                  `json:"checkType"`
+	Samples   []CheckTypeSampleConfig `json:"samples"`
+}
+
+// CheckTypeSamplesListResponse defines model for CheckTypeSamplesListResponse.
+type CheckTypeSamplesListResponse struct {
+	Data *[]CheckTypeSamples `json:"data,omitempty"`
+}
+
 // CloneCheckRequest Optional overrides applied to the cloned check.
 type CloneCheckRequest struct {
 	CheckGroupUid *string `json:"checkGroupUid,omitempty"`
@@ -561,6 +614,14 @@ type CreateChannelRequest struct {
 
 	// Type Channel type (slack, discord, webhook, email, ...)
 	Type string `json:"type"`
+}
+
+// CreateCheckGroupRequest defines model for CreateCheckGroupRequest.
+type CreateCheckGroupRequest struct {
+	Description *string `json:"description,omitempty"`
+	Name        string  `json:"name"`
+	Slug        *string `json:"slug,omitempty"`
+	SortOrder   *int    `json:"sortOrder,omitempty"`
 }
 
 // CreateCheckRequest defines model for CreateCheckRequest.
@@ -617,6 +678,27 @@ type CreateDependencyRequestKind string
 type CreateJobRequest struct {
 	Config *map[string]interface{} `json:"config,omitempty"`
 	Type   string                  `json:"type"`
+}
+
+// CreateMaintenanceWindowRequest defines model for CreateMaintenanceWindowRequest.
+type CreateMaintenanceWindowRequest struct {
+	Description *string   `json:"description,omitempty"`
+	EndAt       time.Time `json:"endAt"`
+
+	// Recurrence One of: none, daily, weekly, monthly
+	Recurrence    *string    `json:"recurrence,omitempty"`
+	RecurrenceEnd *time.Time `json:"recurrenceEnd,omitempty"`
+	StartAt       time.Time  `json:"startAt"`
+	Title         string     `json:"title"`
+}
+
+// CreateSeverityRequest defines model for CreateSeverityRequest.
+type CreateSeverityRequest struct {
+	Channels    *[]string `json:"channels,omitempty"`
+	Description *string   `json:"description,omitempty"`
+	IsDefault   *bool     `json:"isDefault,omitempty"`
+	Name        string    `json:"name"`
+	Slug        *string   `json:"slug,omitempty"`
 }
 
 // CreateStatusPageRequest defines model for CreateStatusPageRequest.
@@ -971,6 +1053,17 @@ type JobResponse struct {
 	Data *Job `json:"data,omitempty"`
 }
 
+// LabelSuggestion defines model for LabelSuggestion.
+type LabelSuggestion struct {
+	Count int    `json:"count"`
+	Value string `json:"value"`
+}
+
+// LabelSuggestionListResponse defines model for LabelSuggestionListResponse.
+type LabelSuggestionListResponse struct {
+	Data *[]LabelSuggestion `json:"data,omitempty"`
+}
+
 // LaneLoadResponse defines model for LaneLoadResponse.
 type LaneLoadResponse struct {
 	Data []WorkerLaneLoad `json:"data"`
@@ -1068,6 +1161,49 @@ type LogoutResponse struct {
 	TokensDeleted *int    `json:"tokensDeleted,omitempty"`
 }
 
+// MaintenanceWindow defines model for MaintenanceWindow.
+type MaintenanceWindow struct {
+	CreatedAt       time.Time                     `json:"createdAt"`
+	CreatedBy       *string                       `json:"createdBy,omitempty"`
+	Description     *string                       `json:"description,omitempty"`
+	EndAt           time.Time                     `json:"endAt"`
+	NextOccurrences []MaintenanceWindowOccurrence `json:"nextOccurrences"`
+
+	// Recurrence One of: none, daily, weekly, monthly
+	Recurrence    string     `json:"recurrence"`
+	RecurrenceEnd *time.Time `json:"recurrenceEnd,omitempty"`
+	StartAt       time.Time  `json:"startAt"`
+
+	// Status Server-computed lifecycle: active, upcoming, past
+	Status    string             `json:"status"`
+	Title     string             `json:"title"`
+	Uid       openapi_types.UUID `json:"uid"`
+	UpdatedAt time.Time          `json:"updatedAt"`
+}
+
+// MaintenanceWindowCheck defines model for MaintenanceWindowCheck.
+type MaintenanceWindowCheck struct {
+	CheckGroupUid *openapi_types.UUID `json:"checkGroupUid,omitempty"`
+	CheckUid      *openapi_types.UUID `json:"checkUid,omitempty"`
+	Uid           openapi_types.UUID  `json:"uid"`
+}
+
+// MaintenanceWindowCheckListResponse defines model for MaintenanceWindowCheckListResponse.
+type MaintenanceWindowCheckListResponse struct {
+	Data *[]MaintenanceWindowCheck `json:"data,omitempty"`
+}
+
+// MaintenanceWindowListResponse defines model for MaintenanceWindowListResponse.
+type MaintenanceWindowListResponse struct {
+	Data *[]MaintenanceWindow `json:"data,omitempty"`
+}
+
+// MaintenanceWindowOccurrence defines model for MaintenanceWindowOccurrence.
+type MaintenanceWindowOccurrence struct {
+	EndAt   time.Time `json:"endAt"`
+	StartAt time.Time `json:"startAt"`
+}
+
 // MeResponse defines model for MeResponse.
 type MeResponse struct {
 	Organization  *OrganizationSummary         `json:"organization,omitempty"`
@@ -1101,6 +1237,12 @@ type OrgDependencyGraphResponse struct {
 		Edges *[]DependencyGraphEdge `json:"edges,omitempty"`
 		Nodes *[]DependencyGraphNode `json:"nodes,omitempty"`
 	} `json:"data,omitempty"`
+}
+
+// OrgRegionListResponse defines model for OrgRegionListResponse.
+type OrgRegionListResponse struct {
+	Data           *[]Region `json:"data,omitempty"`
+	DefaultRegions *[]string `json:"defaultRegions,omitempty"`
 }
 
 // OrgResult defines model for OrgResult.
@@ -1219,6 +1361,13 @@ type RefreshResponse struct {
 	ExpiresIn   *int    `json:"expiresIn,omitempty"`
 }
 
+// Region defines model for Region.
+type Region struct {
+	Emoji string `json:"emoji"`
+	Name  string `json:"name"`
+	Slug  string `json:"slug"`
+}
+
 // ReorderUidsRequest defines model for ReorderUidsRequest.
 type ReorderUidsRequest struct {
 	Uids []openapi_types.UUID `json:"uids"`
@@ -1243,6 +1392,12 @@ type SetCheckChannelsRequest struct {
 	ConnectionUids []openapi_types.UUID `json:"connectionUids"`
 }
 
+// SetMaintenanceWindowChecksRequest defines model for SetMaintenanceWindowChecksRequest.
+type SetMaintenanceWindowChecksRequest struct {
+	CheckGroupUids *[]openapi_types.UUID `json:"checkGroupUids,omitempty"`
+	CheckUids      *[]openapi_types.UUID `json:"checkUids,omitempty"`
+}
+
 // SetSystemParameterRequest defines model for SetSystemParameterRequest.
 type SetSystemParameterRequest struct {
 	// Secret Whether this is a secret parameter (optional, defaults to false)
@@ -1250,6 +1405,23 @@ type SetSystemParameterRequest struct {
 
 	// Value The parameter value to set
 	Value interface{} `json:"value,omitempty"`
+}
+
+// Severity defines model for Severity.
+type Severity struct {
+	Channels    []string           `json:"channels"`
+	CreatedAt   time.Time          `json:"createdAt"`
+	Description *string            `json:"description,omitempty"`
+	IsDefault   bool               `json:"isDefault"`
+	Name        string             `json:"name"`
+	Slug        string             `json:"slug"`
+	Uid         openapi_types.UUID `json:"uid"`
+	UpdatedAt   time.Time          `json:"updatedAt"`
+}
+
+// SeverityListResponse defines model for SeverityListResponse.
+type SeverityListResponse struct {
+	Data *[]Severity `json:"data,omitempty"`
 }
 
 // StartDiscoveryScanRequest defines model for StartDiscoveryScanRequest.
@@ -1429,6 +1601,14 @@ type UpdateChannelRequest struct {
 	Settings  *map[string]interface{} `json:"settings,omitempty"`
 }
 
+// UpdateCheckGroupRequest defines model for UpdateCheckGroupRequest.
+type UpdateCheckGroupRequest struct {
+	Description *string `json:"description,omitempty"`
+	Name        *string `json:"name,omitempty"`
+	Slug        *string `json:"slug,omitempty"`
+	SortOrder   *int    `json:"sortOrder,omitempty"`
+}
+
 // UpdateCheckRequest defines model for UpdateCheckRequest.
 type UpdateCheckRequest struct {
 	Config *map[string]interface{} `json:"config,omitempty"`
@@ -1465,6 +1645,16 @@ type UpdateDependencyRequest struct {
 // UpdateDependencyRequestKind defines model for UpdateDependencyRequest.Kind.
 type UpdateDependencyRequestKind string
 
+// UpdateMaintenanceWindowRequest defines model for UpdateMaintenanceWindowRequest.
+type UpdateMaintenanceWindowRequest struct {
+	Description   *string    `json:"description,omitempty"`
+	EndAt         *time.Time `json:"endAt,omitempty"`
+	Recurrence    *string    `json:"recurrence,omitempty"`
+	RecurrenceEnd *time.Time `json:"recurrenceEnd,omitempty"`
+	StartAt       *time.Time `json:"startAt,omitempty"`
+	Title         *string    `json:"title,omitempty"`
+}
+
 // UpdateMemberRequest defines model for UpdateMemberRequest.
 type UpdateMemberRequest struct {
 	Role *UpdateMemberRequestRole `json:"role,omitempty"`
@@ -1472,6 +1662,15 @@ type UpdateMemberRequest struct {
 
 // UpdateMemberRequestRole defines model for UpdateMemberRequest.Role.
 type UpdateMemberRequestRole string
+
+// UpdateSeverityRequest defines model for UpdateSeverityRequest.
+type UpdateSeverityRequest struct {
+	Channels    *[]string `json:"channels,omitempty"`
+	Description *string   `json:"description,omitempty"`
+	IsDefault   *bool     `json:"isDefault,omitempty"`
+	Name        *string   `json:"name,omitempty"`
+	Slug        *string   `json:"slug,omitempty"`
+}
 
 // UpdateStatusPageRequest defines model for UpdateStatusPageRequest.
 type UpdateStatusPageRequest struct {
@@ -1605,6 +1804,9 @@ type WorkerLaneLoad struct {
 // ChannelUidPath defines model for ChannelUidPath.
 type ChannelUidPath = openapi_types.UUID
 
+// CheckGroupUidPath defines model for CheckGroupUidPath.
+type CheckGroupUidPath = string
+
 // CheckUidPath defines model for CheckUidPath.
 type CheckUidPath = string
 
@@ -1613,6 +1815,9 @@ type IncidentUidPath = openapi_types.UUID
 
 // JobUidPath defines model for JobUidPath.
 type JobUidPath = openapi_types.UUID
+
+// MaintenanceWindowUidPath defines model for MaintenanceWindowUidPath.
+type MaintenanceWindowUidPath = openapi_types.UUID
 
 // MemberUidPath defines model for MemberUidPath.
 type MemberUidPath = openapi_types.UUID
@@ -1628,6 +1833,9 @@ type ScanJobUidPath = openapi_types.UUID
 
 // SectionUidPath defines model for SectionUidPath.
 type SectionUidPath = string
+
+// SeverityUidPath defines model for SeverityUidPath.
+type SeverityUidPath = string
 
 // StatusPageUidPath defines model for StatusPageUidPath.
 type StatusPageUidPath = string
@@ -1662,6 +1870,12 @@ type GetCostDistributionParams struct {
 // ListAllTokensParams defines parameters for ListAllTokens.
 type ListAllTokensParams struct {
 	// Type Filter by token type
+	Type *string `form:"type,omitempty" json:"type,omitempty"`
+}
+
+// ListCheckTypeSamplesParams defines parameters for ListCheckTypeSamples.
+type ListCheckTypeSamplesParams struct {
+	// Type Filter samples to a single check type
 	Type *string `form:"type,omitempty" json:"type,omitempty"`
 }
 
@@ -1806,6 +2020,27 @@ type ListJobsParams struct {
 	Status *string `form:"status,omitempty" json:"status,omitempty"`
 }
 
+// ListLabelsParams defines parameters for ListLabels.
+type ListLabelsParams struct {
+	// Key When set, list distinct values for this key instead of keys
+	Key *string `form:"key,omitempty" json:"key,omitempty"`
+
+	// Q Prefix filter on the returned keys/values
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Limit Maximum results (1-200)
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListMaintenanceWindowsParams defines parameters for ListMaintenanceWindows.
+type ListMaintenanceWindowsParams struct {
+	// Status Filter by lifecycle status (active, upcoming, past)
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+
+	// Limit Maximum results (1-100)
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListOrgResultsParams defines parameters for ListOrgResults.
 type ListOrgResultsParams struct {
 	// CheckUid Filter by check UID or slug (comma-separated for multiple)
@@ -1884,6 +2119,12 @@ type CreateChannelJSONRequestBody = CreateChannelRequest
 // UpdateChannelJSONRequestBody defines body for UpdateChannel for application/json ContentType.
 type UpdateChannelJSONRequestBody = UpdateChannelRequest
 
+// CreateCheckGroupJSONRequestBody defines body for CreateCheckGroup for application/json ContentType.
+type CreateCheckGroupJSONRequestBody = CreateCheckGroupRequest
+
+// UpdateCheckGroupJSONRequestBody defines body for UpdateCheckGroup for application/json ContentType.
+type UpdateCheckGroupJSONRequestBody = UpdateCheckGroupRequest
+
 // CreateCheckJSONRequestBody defines body for CreateCheck for application/json ContentType.
 type CreateCheckJSONRequestBody = CreateCheckRequest
 
@@ -1926,11 +2167,26 @@ type SnoozeIncidentJSONRequestBody = IncidentSnoozeRequest
 // CreateJobJSONRequestBody defines body for CreateJob for application/json ContentType.
 type CreateJobJSONRequestBody = CreateJobRequest
 
+// CreateMaintenanceWindowJSONRequestBody defines body for CreateMaintenanceWindow for application/json ContentType.
+type CreateMaintenanceWindowJSONRequestBody = CreateMaintenanceWindowRequest
+
+// UpdateMaintenanceWindowJSONRequestBody defines body for UpdateMaintenanceWindow for application/json ContentType.
+type UpdateMaintenanceWindowJSONRequestBody = UpdateMaintenanceWindowRequest
+
+// SetMaintenanceWindowChecksJSONRequestBody defines body for SetMaintenanceWindowChecks for application/json ContentType.
+type SetMaintenanceWindowChecksJSONRequestBody = SetMaintenanceWindowChecksRequest
+
 // AddMemberJSONRequestBody defines body for AddMember for application/json ContentType.
 type AddMemberJSONRequestBody = AddMemberRequest
 
 // UpdateMemberJSONRequestBody defines body for UpdateMember for application/json ContentType.
 type UpdateMemberJSONRequestBody = UpdateMemberRequest
+
+// CreateSeverityJSONRequestBody defines body for CreateSeverity for application/json ContentType.
+type CreateSeverityJSONRequestBody = CreateSeverityRequest
+
+// UpdateSeverityJSONRequestBody defines body for UpdateSeverity for application/json ContentType.
+type UpdateSeverityJSONRequestBody = UpdateSeverityRequest
 
 // CreateStatusPageJSONRequestBody defines body for CreateStatusPage for application/json ContentType.
 type CreateStatusPageJSONRequestBody = CreateStatusPageRequest
@@ -2079,6 +2335,12 @@ type ClientInterface interface {
 	// RevokeToken request
 	RevokeToken(ctx context.Context, tokenUid TokenUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListCheckTypes request
+	ListCheckTypes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListCheckTypeSamples request
+	ListCheckTypeSamples(ctx context.Context, params *ListCheckTypeSamplesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListChannels request
 	ListChannels(ctx context.Context, org OrgPath, params *ListChannelsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -2103,6 +2365,25 @@ type ClientInterface interface {
 
 	// TestChannel request
 	TestChannel(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListCheckGroups request
+	ListCheckGroups(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateCheckGroupWithBody request with any body
+	CreateCheckGroupWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateCheckGroup(ctx context.Context, org OrgPath, body CreateCheckGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteCheckGroup request
+	DeleteCheckGroup(ctx context.Context, org OrgPath, uid CheckGroupUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCheckGroup request
+	GetCheckGroup(ctx context.Context, org OrgPath, uid CheckGroupUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateCheckGroupWithBody request with any body
+	UpdateCheckGroupWithBody(ctx context.Context, org OrgPath, uid CheckGroupUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateCheckGroup(ctx context.Context, org OrgPath, uid CheckGroupUidPath, body UpdateCheckGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListChecks request
 	ListChecks(ctx context.Context, org OrgPath, params *ListChecksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2261,6 +2542,36 @@ type ClientInterface interface {
 	// GetJob request
 	GetJob(ctx context.Context, org OrgPath, uid JobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListLabels request
+	ListLabels(ctx context.Context, org OrgPath, params *ListLabelsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListMaintenanceWindows request
+	ListMaintenanceWindows(ctx context.Context, org OrgPath, params *ListMaintenanceWindowsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateMaintenanceWindowWithBody request with any body
+	CreateMaintenanceWindowWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateMaintenanceWindow(ctx context.Context, org OrgPath, body CreateMaintenanceWindowJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteMaintenanceWindow request
+	DeleteMaintenanceWindow(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetMaintenanceWindow request
+	GetMaintenanceWindow(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateMaintenanceWindowWithBody request with any body
+	UpdateMaintenanceWindowWithBody(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateMaintenanceWindow(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, body UpdateMaintenanceWindowJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListMaintenanceWindowChecks request
+	ListMaintenanceWindowChecks(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetMaintenanceWindowChecksWithBody request with any body
+	SetMaintenanceWindowChecksWithBody(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetMaintenanceWindowChecks(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, body SetMaintenanceWindowChecksJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListMembers request
 	ListMembers(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -2280,8 +2591,30 @@ type ClientInterface interface {
 
 	UpdateMember(ctx context.Context, org OrgPath, uid MemberUidPath, body UpdateMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListRegions request
+	ListRegions(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListOrgResults request
 	ListOrgResults(ctx context.Context, org OrgPath, params *ListOrgResultsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSeverities request
+	ListSeverities(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSeverityWithBody request with any body
+	CreateSeverityWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateSeverity(ctx context.Context, org OrgPath, body CreateSeverityJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteSeverity request
+	DeleteSeverity(ctx context.Context, org OrgPath, uid SeverityUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSeverity request
+	GetSeverity(ctx context.Context, org OrgPath, uid SeverityUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSeverityWithBody request with any body
+	UpdateSeverityWithBody(ctx context.Context, org OrgPath, uid SeverityUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateSeverity(ctx context.Context, org OrgPath, uid SeverityUidPath, body UpdateSeverityJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListStatusPages request
 	ListStatusPages(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2566,6 +2899,30 @@ func (c *Client) RevokeToken(ctx context.Context, tokenUid TokenUidPath, reqEdit
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListCheckTypes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCheckTypesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListCheckTypeSamples(ctx context.Context, params *ListCheckTypeSamplesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCheckTypeSamplesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListChannels(ctx context.Context, org OrgPath, params *ListChannelsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListChannelsRequest(c.Server, org, params)
 	if err != nil {
@@ -2664,6 +3021,90 @@ func (c *Client) RotateChannelSecret(ctx context.Context, org OrgPath, uid Chann
 
 func (c *Client) TestChannel(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTestChannelRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListCheckGroups(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCheckGroupsRequest(c.Server, org)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateCheckGroupWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateCheckGroupRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateCheckGroup(ctx context.Context, org OrgPath, body CreateCheckGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateCheckGroupRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteCheckGroup(ctx context.Context, org OrgPath, uid CheckGroupUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteCheckGroupRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetCheckGroup(ctx context.Context, org OrgPath, uid CheckGroupUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCheckGroupRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateCheckGroupWithBody(ctx context.Context, org OrgPath, uid CheckGroupUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateCheckGroupRequestWithBody(c.Server, org, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateCheckGroup(ctx context.Context, org OrgPath, uid CheckGroupUidPath, body UpdateCheckGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateCheckGroupRequest(c.Server, org, uid, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3358,6 +3799,138 @@ func (c *Client) GetJob(ctx context.Context, org OrgPath, uid JobUidPath, reqEdi
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListLabels(ctx context.Context, org OrgPath, params *ListLabelsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListLabelsRequest(c.Server, org, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListMaintenanceWindows(ctx context.Context, org OrgPath, params *ListMaintenanceWindowsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListMaintenanceWindowsRequest(c.Server, org, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateMaintenanceWindowWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateMaintenanceWindowRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateMaintenanceWindow(ctx context.Context, org OrgPath, body CreateMaintenanceWindowJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateMaintenanceWindowRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteMaintenanceWindow(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteMaintenanceWindowRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetMaintenanceWindow(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetMaintenanceWindowRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateMaintenanceWindowWithBody(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateMaintenanceWindowRequestWithBody(c.Server, org, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateMaintenanceWindow(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, body UpdateMaintenanceWindowJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateMaintenanceWindowRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListMaintenanceWindowChecks(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListMaintenanceWindowChecksRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetMaintenanceWindowChecksWithBody(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetMaintenanceWindowChecksRequestWithBody(c.Server, org, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetMaintenanceWindowChecks(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, body SetMaintenanceWindowChecksJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetMaintenanceWindowChecksRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListMembers(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListMembersRequest(c.Server, org)
 	if err != nil {
@@ -3442,8 +4015,104 @@ func (c *Client) UpdateMember(ctx context.Context, org OrgPath, uid MemberUidPat
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListRegions(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListRegionsRequest(c.Server, org)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListOrgResults(ctx context.Context, org OrgPath, params *ListOrgResultsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListOrgResultsRequest(c.Server, org, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListSeverities(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSeveritiesRequest(c.Server, org)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateSeverityWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSeverityRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateSeverity(ctx context.Context, org OrgPath, body CreateSeverityJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSeverityRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteSeverity(ctx context.Context, org OrgPath, uid SeverityUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteSeverityRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSeverity(ctx context.Context, org OrgPath, uid SeverityUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSeverityRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateSeverityWithBody(ctx context.Context, org OrgPath, uid SeverityUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSeverityRequestWithBody(c.Server, org, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateSeverity(ctx context.Context, org OrgPath, uid SeverityUidPath, body UpdateSeverityJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSeverityRequest(c.Server, org, uid, body)
 	if err != nil {
 		return nil, err
 	}
@@ -4331,6 +5000,82 @@ func NewRevokeTokenRequest(server string, tokenUid TokenUidPath) (*http.Request,
 	return req, nil
 }
 
+// NewListCheckTypesRequest generates requests for ListCheckTypes
+func NewListCheckTypesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/check-types")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListCheckTypeSamplesRequest generates requests for ListCheckTypeSamples
+func NewListCheckTypeSamplesRequest(server string, params *ListCheckTypeSamplesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/check-types/samples")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Type != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "type", runtime.ParamLocationQuery, *params.Type); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListChannelsRequest generates requests for ListChannels
 func NewListChannelsRequest(server string, org OrgPath, params *ListChannelsParams) (*http.Request, error) {
 	var err error
@@ -4648,6 +5393,223 @@ func NewTestChannelRequest(server string, org OrgPath, uid ChannelUidPath) (*htt
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewListCheckGroupsRequest generates requests for ListCheckGroups
+func NewListCheckGroupsRequest(server string, org OrgPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/check-groups", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateCheckGroupRequest calls the generic CreateCheckGroup builder with application/json body
+func NewCreateCheckGroupRequest(server string, org OrgPath, body CreateCheckGroupJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateCheckGroupRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewCreateCheckGroupRequestWithBody generates requests for CreateCheckGroup with any type of body
+func NewCreateCheckGroupRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/check-groups", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteCheckGroupRequest generates requests for DeleteCheckGroup
+func NewDeleteCheckGroupRequest(server string, org OrgPath, uid CheckGroupUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/check-groups/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetCheckGroupRequest generates requests for GetCheckGroup
+func NewGetCheckGroupRequest(server string, org OrgPath, uid CheckGroupUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/check-groups/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateCheckGroupRequest calls the generic UpdateCheckGroup builder with application/json body
+func NewUpdateCheckGroupRequest(server string, org OrgPath, uid CheckGroupUidPath, body UpdateCheckGroupJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateCheckGroupRequestWithBody(server, org, uid, "application/json", bodyReader)
+}
+
+// NewUpdateCheckGroupRequestWithBody generates requests for UpdateCheckGroup with any type of body
+func NewUpdateCheckGroupRequestWithBody(server string, org OrgPath, uid CheckGroupUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/check-groups/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -7095,6 +8057,444 @@ func NewGetJobRequest(server string, org OrgPath, uid JobUidPath) (*http.Request
 	return req, nil
 }
 
+// NewListLabelsRequest generates requests for ListLabels
+func NewListLabelsRequest(server string, org OrgPath, params *ListLabelsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/labels", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Key != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "key", runtime.ParamLocationQuery, *params.Key); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "q", runtime.ParamLocationQuery, *params.Q); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListMaintenanceWindowsRequest generates requests for ListMaintenanceWindows
+func NewListMaintenanceWindowsRequest(server string, org OrgPath, params *ListMaintenanceWindowsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/maintenance-windows", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "status", runtime.ParamLocationQuery, *params.Status); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateMaintenanceWindowRequest calls the generic CreateMaintenanceWindow builder with application/json body
+func NewCreateMaintenanceWindowRequest(server string, org OrgPath, body CreateMaintenanceWindowJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateMaintenanceWindowRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewCreateMaintenanceWindowRequestWithBody generates requests for CreateMaintenanceWindow with any type of body
+func NewCreateMaintenanceWindowRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/maintenance-windows", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteMaintenanceWindowRequest generates requests for DeleteMaintenanceWindow
+func NewDeleteMaintenanceWindowRequest(server string, org OrgPath, uid MaintenanceWindowUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/maintenance-windows/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetMaintenanceWindowRequest generates requests for GetMaintenanceWindow
+func NewGetMaintenanceWindowRequest(server string, org OrgPath, uid MaintenanceWindowUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/maintenance-windows/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateMaintenanceWindowRequest calls the generic UpdateMaintenanceWindow builder with application/json body
+func NewUpdateMaintenanceWindowRequest(server string, org OrgPath, uid MaintenanceWindowUidPath, body UpdateMaintenanceWindowJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateMaintenanceWindowRequestWithBody(server, org, uid, "application/json", bodyReader)
+}
+
+// NewUpdateMaintenanceWindowRequestWithBody generates requests for UpdateMaintenanceWindow with any type of body
+func NewUpdateMaintenanceWindowRequestWithBody(server string, org OrgPath, uid MaintenanceWindowUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/maintenance-windows/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListMaintenanceWindowChecksRequest generates requests for ListMaintenanceWindowChecks
+func NewListMaintenanceWindowChecksRequest(server string, org OrgPath, uid MaintenanceWindowUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/maintenance-windows/%s/checks", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetMaintenanceWindowChecksRequest calls the generic SetMaintenanceWindowChecks builder with application/json body
+func NewSetMaintenanceWindowChecksRequest(server string, org OrgPath, uid MaintenanceWindowUidPath, body SetMaintenanceWindowChecksJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetMaintenanceWindowChecksRequestWithBody(server, org, uid, "application/json", bodyReader)
+}
+
+// NewSetMaintenanceWindowChecksRequestWithBody generates requests for SetMaintenanceWindowChecks with any type of body
+func NewSetMaintenanceWindowChecksRequestWithBody(server string, org OrgPath, uid MaintenanceWindowUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/maintenance-windows/%s/checks", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListMembersRequest generates requests for ListMembers
 func NewListMembersRequest(server string, org OrgPath) (*http.Request, error) {
 	var err error
@@ -7312,6 +8712,40 @@ func NewUpdateMemberRequestWithBody(server string, org OrgPath, uid MemberUidPat
 	return req, nil
 }
 
+// NewListRegionsRequest generates requests for ListRegions
+func NewListRegionsRequest(server string, org OrgPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/regions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListOrgResultsRequest generates requests for ListOrgResults
 func NewListOrgResultsRequest(server string, org OrgPath, params *ListOrgResultsParams) (*http.Request, error) {
 	var err error
@@ -7476,6 +8910,223 @@ func NewListOrgResultsRequest(server string, org OrgPath, params *ListOrgResults
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewListSeveritiesRequest generates requests for ListSeverities
+func NewListSeveritiesRequest(server string, org OrgPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/severities", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateSeverityRequest calls the generic CreateSeverity builder with application/json body
+func NewCreateSeverityRequest(server string, org OrgPath, body CreateSeverityJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateSeverityRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewCreateSeverityRequestWithBody generates requests for CreateSeverity with any type of body
+func NewCreateSeverityRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/severities", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteSeverityRequest generates requests for DeleteSeverity
+func NewDeleteSeverityRequest(server string, org OrgPath, uid SeverityUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/severities/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSeverityRequest generates requests for GetSeverity
+func NewGetSeverityRequest(server string, org OrgPath, uid SeverityUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/severities/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateSeverityRequest calls the generic UpdateSeverity builder with application/json body
+func NewUpdateSeverityRequest(server string, org OrgPath, uid SeverityUidPath, body UpdateSeverityJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateSeverityRequestWithBody(server, org, uid, "application/json", bodyReader)
+}
+
+// NewUpdateSeverityRequestWithBody generates requests for UpdateSeverity with any type of body
+func NewUpdateSeverityRequestWithBody(server string, org OrgPath, uid SeverityUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/severities/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -9079,6 +10730,12 @@ type ClientWithResponsesInterface interface {
 	// RevokeTokenWithResponse request
 	RevokeTokenWithResponse(ctx context.Context, tokenUid TokenUidPath, reqEditors ...RequestEditorFn) (*RevokeTokenResult, error)
 
+	// ListCheckTypesWithResponse request
+	ListCheckTypesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListCheckTypesResult, error)
+
+	// ListCheckTypeSamplesWithResponse request
+	ListCheckTypeSamplesWithResponse(ctx context.Context, params *ListCheckTypeSamplesParams, reqEditors ...RequestEditorFn) (*ListCheckTypeSamplesResult, error)
+
 	// ListChannelsWithResponse request
 	ListChannelsWithResponse(ctx context.Context, org OrgPath, params *ListChannelsParams, reqEditors ...RequestEditorFn) (*ListChannelsResult, error)
 
@@ -9103,6 +10760,25 @@ type ClientWithResponsesInterface interface {
 
 	// TestChannelWithResponse request
 	TestChannelWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*TestChannelResult, error)
+
+	// ListCheckGroupsWithResponse request
+	ListCheckGroupsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListCheckGroupsResult, error)
+
+	// CreateCheckGroupWithBodyWithResponse request with any body
+	CreateCheckGroupWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateCheckGroupResult, error)
+
+	CreateCheckGroupWithResponse(ctx context.Context, org OrgPath, body CreateCheckGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCheckGroupResult, error)
+
+	// DeleteCheckGroupWithResponse request
+	DeleteCheckGroupWithResponse(ctx context.Context, org OrgPath, uid CheckGroupUidPath, reqEditors ...RequestEditorFn) (*DeleteCheckGroupResult, error)
+
+	// GetCheckGroupWithResponse request
+	GetCheckGroupWithResponse(ctx context.Context, org OrgPath, uid CheckGroupUidPath, reqEditors ...RequestEditorFn) (*GetCheckGroupResult, error)
+
+	// UpdateCheckGroupWithBodyWithResponse request with any body
+	UpdateCheckGroupWithBodyWithResponse(ctx context.Context, org OrgPath, uid CheckGroupUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateCheckGroupResult, error)
+
+	UpdateCheckGroupWithResponse(ctx context.Context, org OrgPath, uid CheckGroupUidPath, body UpdateCheckGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateCheckGroupResult, error)
 
 	// ListChecksWithResponse request
 	ListChecksWithResponse(ctx context.Context, org OrgPath, params *ListChecksParams, reqEditors ...RequestEditorFn) (*ListChecksResult, error)
@@ -9261,6 +10937,36 @@ type ClientWithResponsesInterface interface {
 	// GetJobWithResponse request
 	GetJobWithResponse(ctx context.Context, org OrgPath, uid JobUidPath, reqEditors ...RequestEditorFn) (*GetJobResult, error)
 
+	// ListLabelsWithResponse request
+	ListLabelsWithResponse(ctx context.Context, org OrgPath, params *ListLabelsParams, reqEditors ...RequestEditorFn) (*ListLabelsResult, error)
+
+	// ListMaintenanceWindowsWithResponse request
+	ListMaintenanceWindowsWithResponse(ctx context.Context, org OrgPath, params *ListMaintenanceWindowsParams, reqEditors ...RequestEditorFn) (*ListMaintenanceWindowsResult, error)
+
+	// CreateMaintenanceWindowWithBodyWithResponse request with any body
+	CreateMaintenanceWindowWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateMaintenanceWindowResult, error)
+
+	CreateMaintenanceWindowWithResponse(ctx context.Context, org OrgPath, body CreateMaintenanceWindowJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateMaintenanceWindowResult, error)
+
+	// DeleteMaintenanceWindowWithResponse request
+	DeleteMaintenanceWindowWithResponse(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, reqEditors ...RequestEditorFn) (*DeleteMaintenanceWindowResult, error)
+
+	// GetMaintenanceWindowWithResponse request
+	GetMaintenanceWindowWithResponse(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, reqEditors ...RequestEditorFn) (*GetMaintenanceWindowResult, error)
+
+	// UpdateMaintenanceWindowWithBodyWithResponse request with any body
+	UpdateMaintenanceWindowWithBodyWithResponse(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateMaintenanceWindowResult, error)
+
+	UpdateMaintenanceWindowWithResponse(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, body UpdateMaintenanceWindowJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateMaintenanceWindowResult, error)
+
+	// ListMaintenanceWindowChecksWithResponse request
+	ListMaintenanceWindowChecksWithResponse(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, reqEditors ...RequestEditorFn) (*ListMaintenanceWindowChecksResult, error)
+
+	// SetMaintenanceWindowChecksWithBodyWithResponse request with any body
+	SetMaintenanceWindowChecksWithBodyWithResponse(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetMaintenanceWindowChecksResult, error)
+
+	SetMaintenanceWindowChecksWithResponse(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, body SetMaintenanceWindowChecksJSONRequestBody, reqEditors ...RequestEditorFn) (*SetMaintenanceWindowChecksResult, error)
+
 	// ListMembersWithResponse request
 	ListMembersWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListMembersResult, error)
 
@@ -9280,8 +10986,30 @@ type ClientWithResponsesInterface interface {
 
 	UpdateMemberWithResponse(ctx context.Context, org OrgPath, uid MemberUidPath, body UpdateMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateMemberResult, error)
 
+	// ListRegionsWithResponse request
+	ListRegionsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListRegionsResult, error)
+
 	// ListOrgResultsWithResponse request
 	ListOrgResultsWithResponse(ctx context.Context, org OrgPath, params *ListOrgResultsParams, reqEditors ...RequestEditorFn) (*ListOrgResultsResult, error)
+
+	// ListSeveritiesWithResponse request
+	ListSeveritiesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListSeveritiesResult, error)
+
+	// CreateSeverityWithBodyWithResponse request with any body
+	CreateSeverityWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSeverityResult, error)
+
+	CreateSeverityWithResponse(ctx context.Context, org OrgPath, body CreateSeverityJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSeverityResult, error)
+
+	// DeleteSeverityWithResponse request
+	DeleteSeverityWithResponse(ctx context.Context, org OrgPath, uid SeverityUidPath, reqEditors ...RequestEditorFn) (*DeleteSeverityResult, error)
+
+	// GetSeverityWithResponse request
+	GetSeverityWithResponse(ctx context.Context, org OrgPath, uid SeverityUidPath, reqEditors ...RequestEditorFn) (*GetSeverityResult, error)
+
+	// UpdateSeverityWithBodyWithResponse request with any body
+	UpdateSeverityWithBodyWithResponse(ctx context.Context, org OrgPath, uid SeverityUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSeverityResult, error)
+
+	UpdateSeverityWithResponse(ctx context.Context, org OrgPath, uid SeverityUidPath, body UpdateSeverityJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSeverityResult, error)
 
 	// ListStatusPagesWithResponse request
 	ListStatusPagesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListStatusPagesResult, error)
@@ -9624,6 +11352,50 @@ func (r RevokeTokenResult) StatusCode() int {
 	return 0
 }
 
+type ListCheckTypesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *CheckTypeListResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCheckTypesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCheckTypesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListCheckTypeSamplesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *CheckTypeSamplesListResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCheckTypeSamplesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCheckTypeSamplesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListChannelsResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -9792,6 +11564,127 @@ func (r TestChannelResult) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r TestChannelResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListCheckGroupsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *CheckGroupListResponse
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCheckGroupsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCheckGroupsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateCheckGroupResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *CheckGroup
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateCheckGroupResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateCheckGroupResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteCheckGroupResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteCheckGroupResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteCheckGroupResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetCheckGroupResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *CheckGroup
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCheckGroupResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCheckGroupResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateCheckGroupResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *CheckGroup
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateCheckGroupResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateCheckGroupResult) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -10832,6 +12725,199 @@ func (r GetJobResult) StatusCode() int {
 	return 0
 }
 
+type ListLabelsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *LabelSuggestionListResponse
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListLabelsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListLabelsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListMaintenanceWindowsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MaintenanceWindowListResponse
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListMaintenanceWindowsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListMaintenanceWindowsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateMaintenanceWindowResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *MaintenanceWindow
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateMaintenanceWindowResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateMaintenanceWindowResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteMaintenanceWindowResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteMaintenanceWindowResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteMaintenanceWindowResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetMaintenanceWindowResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MaintenanceWindow
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetMaintenanceWindowResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetMaintenanceWindowResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateMaintenanceWindowResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MaintenanceWindow
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateMaintenanceWindowResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateMaintenanceWindowResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListMaintenanceWindowChecksResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MaintenanceWindowCheckListResponse
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListMaintenanceWindowChecksResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListMaintenanceWindowChecksResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetMaintenanceWindowChecksResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r SetMaintenanceWindowChecksResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetMaintenanceWindowChecksResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListMembersResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -10951,6 +13037,30 @@ func (r UpdateMemberResult) StatusCode() int {
 	return 0
 }
 
+type ListRegionsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *OrgRegionListResponse
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListRegionsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListRegionsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListOrgResultsResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -10969,6 +13079,128 @@ func (r ListOrgResultsResult) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ListOrgResultsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListSeveritiesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SeverityListResponse
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSeveritiesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSeveritiesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateSeverityResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *Severity
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateSeverityResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateSeverityResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteSeverityResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+	JSON409      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteSeverityResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteSeverityResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetSeverityResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Severity
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSeverityResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSeverityResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateSeverityResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Severity
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateSeverityResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateSeverityResult) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -11818,6 +14050,24 @@ func (c *ClientWithResponses) RevokeTokenWithResponse(ctx context.Context, token
 	return ParseRevokeTokenResult(rsp)
 }
 
+// ListCheckTypesWithResponse request returning *ListCheckTypesResult
+func (c *ClientWithResponses) ListCheckTypesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListCheckTypesResult, error) {
+	rsp, err := c.ListCheckTypes(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCheckTypesResult(rsp)
+}
+
+// ListCheckTypeSamplesWithResponse request returning *ListCheckTypeSamplesResult
+func (c *ClientWithResponses) ListCheckTypeSamplesWithResponse(ctx context.Context, params *ListCheckTypeSamplesParams, reqEditors ...RequestEditorFn) (*ListCheckTypeSamplesResult, error) {
+	rsp, err := c.ListCheckTypeSamples(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCheckTypeSamplesResult(rsp)
+}
+
 // ListChannelsWithResponse request returning *ListChannelsResult
 func (c *ClientWithResponses) ListChannelsWithResponse(ctx context.Context, org OrgPath, params *ListChannelsParams, reqEditors ...RequestEditorFn) (*ListChannelsResult, error) {
 	rsp, err := c.ListChannels(ctx, org, params, reqEditors...)
@@ -11895,6 +14145,67 @@ func (c *ClientWithResponses) TestChannelWithResponse(ctx context.Context, org O
 		return nil, err
 	}
 	return ParseTestChannelResult(rsp)
+}
+
+// ListCheckGroupsWithResponse request returning *ListCheckGroupsResult
+func (c *ClientWithResponses) ListCheckGroupsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListCheckGroupsResult, error) {
+	rsp, err := c.ListCheckGroups(ctx, org, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCheckGroupsResult(rsp)
+}
+
+// CreateCheckGroupWithBodyWithResponse request with arbitrary body returning *CreateCheckGroupResult
+func (c *ClientWithResponses) CreateCheckGroupWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateCheckGroupResult, error) {
+	rsp, err := c.CreateCheckGroupWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateCheckGroupResult(rsp)
+}
+
+func (c *ClientWithResponses) CreateCheckGroupWithResponse(ctx context.Context, org OrgPath, body CreateCheckGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCheckGroupResult, error) {
+	rsp, err := c.CreateCheckGroup(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateCheckGroupResult(rsp)
+}
+
+// DeleteCheckGroupWithResponse request returning *DeleteCheckGroupResult
+func (c *ClientWithResponses) DeleteCheckGroupWithResponse(ctx context.Context, org OrgPath, uid CheckGroupUidPath, reqEditors ...RequestEditorFn) (*DeleteCheckGroupResult, error) {
+	rsp, err := c.DeleteCheckGroup(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteCheckGroupResult(rsp)
+}
+
+// GetCheckGroupWithResponse request returning *GetCheckGroupResult
+func (c *ClientWithResponses) GetCheckGroupWithResponse(ctx context.Context, org OrgPath, uid CheckGroupUidPath, reqEditors ...RequestEditorFn) (*GetCheckGroupResult, error) {
+	rsp, err := c.GetCheckGroup(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCheckGroupResult(rsp)
+}
+
+// UpdateCheckGroupWithBodyWithResponse request with arbitrary body returning *UpdateCheckGroupResult
+func (c *ClientWithResponses) UpdateCheckGroupWithBodyWithResponse(ctx context.Context, org OrgPath, uid CheckGroupUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateCheckGroupResult, error) {
+	rsp, err := c.UpdateCheckGroupWithBody(ctx, org, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateCheckGroupResult(rsp)
+}
+
+func (c *ClientWithResponses) UpdateCheckGroupWithResponse(ctx context.Context, org OrgPath, uid CheckGroupUidPath, body UpdateCheckGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateCheckGroupResult, error) {
+	rsp, err := c.UpdateCheckGroup(ctx, org, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateCheckGroupResult(rsp)
 }
 
 // ListChecksWithResponse request returning *ListChecksResult
@@ -12396,6 +14707,102 @@ func (c *ClientWithResponses) GetJobWithResponse(ctx context.Context, org OrgPat
 	return ParseGetJobResult(rsp)
 }
 
+// ListLabelsWithResponse request returning *ListLabelsResult
+func (c *ClientWithResponses) ListLabelsWithResponse(ctx context.Context, org OrgPath, params *ListLabelsParams, reqEditors ...RequestEditorFn) (*ListLabelsResult, error) {
+	rsp, err := c.ListLabels(ctx, org, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListLabelsResult(rsp)
+}
+
+// ListMaintenanceWindowsWithResponse request returning *ListMaintenanceWindowsResult
+func (c *ClientWithResponses) ListMaintenanceWindowsWithResponse(ctx context.Context, org OrgPath, params *ListMaintenanceWindowsParams, reqEditors ...RequestEditorFn) (*ListMaintenanceWindowsResult, error) {
+	rsp, err := c.ListMaintenanceWindows(ctx, org, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListMaintenanceWindowsResult(rsp)
+}
+
+// CreateMaintenanceWindowWithBodyWithResponse request with arbitrary body returning *CreateMaintenanceWindowResult
+func (c *ClientWithResponses) CreateMaintenanceWindowWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateMaintenanceWindowResult, error) {
+	rsp, err := c.CreateMaintenanceWindowWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateMaintenanceWindowResult(rsp)
+}
+
+func (c *ClientWithResponses) CreateMaintenanceWindowWithResponse(ctx context.Context, org OrgPath, body CreateMaintenanceWindowJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateMaintenanceWindowResult, error) {
+	rsp, err := c.CreateMaintenanceWindow(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateMaintenanceWindowResult(rsp)
+}
+
+// DeleteMaintenanceWindowWithResponse request returning *DeleteMaintenanceWindowResult
+func (c *ClientWithResponses) DeleteMaintenanceWindowWithResponse(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, reqEditors ...RequestEditorFn) (*DeleteMaintenanceWindowResult, error) {
+	rsp, err := c.DeleteMaintenanceWindow(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteMaintenanceWindowResult(rsp)
+}
+
+// GetMaintenanceWindowWithResponse request returning *GetMaintenanceWindowResult
+func (c *ClientWithResponses) GetMaintenanceWindowWithResponse(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, reqEditors ...RequestEditorFn) (*GetMaintenanceWindowResult, error) {
+	rsp, err := c.GetMaintenanceWindow(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetMaintenanceWindowResult(rsp)
+}
+
+// UpdateMaintenanceWindowWithBodyWithResponse request with arbitrary body returning *UpdateMaintenanceWindowResult
+func (c *ClientWithResponses) UpdateMaintenanceWindowWithBodyWithResponse(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateMaintenanceWindowResult, error) {
+	rsp, err := c.UpdateMaintenanceWindowWithBody(ctx, org, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateMaintenanceWindowResult(rsp)
+}
+
+func (c *ClientWithResponses) UpdateMaintenanceWindowWithResponse(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, body UpdateMaintenanceWindowJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateMaintenanceWindowResult, error) {
+	rsp, err := c.UpdateMaintenanceWindow(ctx, org, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateMaintenanceWindowResult(rsp)
+}
+
+// ListMaintenanceWindowChecksWithResponse request returning *ListMaintenanceWindowChecksResult
+func (c *ClientWithResponses) ListMaintenanceWindowChecksWithResponse(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, reqEditors ...RequestEditorFn) (*ListMaintenanceWindowChecksResult, error) {
+	rsp, err := c.ListMaintenanceWindowChecks(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListMaintenanceWindowChecksResult(rsp)
+}
+
+// SetMaintenanceWindowChecksWithBodyWithResponse request with arbitrary body returning *SetMaintenanceWindowChecksResult
+func (c *ClientWithResponses) SetMaintenanceWindowChecksWithBodyWithResponse(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetMaintenanceWindowChecksResult, error) {
+	rsp, err := c.SetMaintenanceWindowChecksWithBody(ctx, org, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetMaintenanceWindowChecksResult(rsp)
+}
+
+func (c *ClientWithResponses) SetMaintenanceWindowChecksWithResponse(ctx context.Context, org OrgPath, uid MaintenanceWindowUidPath, body SetMaintenanceWindowChecksJSONRequestBody, reqEditors ...RequestEditorFn) (*SetMaintenanceWindowChecksResult, error) {
+	rsp, err := c.SetMaintenanceWindowChecks(ctx, org, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetMaintenanceWindowChecksResult(rsp)
+}
+
 // ListMembersWithResponse request returning *ListMembersResult
 func (c *ClientWithResponses) ListMembersWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListMembersResult, error) {
 	rsp, err := c.ListMembers(ctx, org, reqEditors...)
@@ -12457,6 +14864,15 @@ func (c *ClientWithResponses) UpdateMemberWithResponse(ctx context.Context, org 
 	return ParseUpdateMemberResult(rsp)
 }
 
+// ListRegionsWithResponse request returning *ListRegionsResult
+func (c *ClientWithResponses) ListRegionsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListRegionsResult, error) {
+	rsp, err := c.ListRegions(ctx, org, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListRegionsResult(rsp)
+}
+
 // ListOrgResultsWithResponse request returning *ListOrgResultsResult
 func (c *ClientWithResponses) ListOrgResultsWithResponse(ctx context.Context, org OrgPath, params *ListOrgResultsParams, reqEditors ...RequestEditorFn) (*ListOrgResultsResult, error) {
 	rsp, err := c.ListOrgResults(ctx, org, params, reqEditors...)
@@ -12464,6 +14880,67 @@ func (c *ClientWithResponses) ListOrgResultsWithResponse(ctx context.Context, or
 		return nil, err
 	}
 	return ParseListOrgResultsResult(rsp)
+}
+
+// ListSeveritiesWithResponse request returning *ListSeveritiesResult
+func (c *ClientWithResponses) ListSeveritiesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListSeveritiesResult, error) {
+	rsp, err := c.ListSeverities(ctx, org, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSeveritiesResult(rsp)
+}
+
+// CreateSeverityWithBodyWithResponse request with arbitrary body returning *CreateSeverityResult
+func (c *ClientWithResponses) CreateSeverityWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSeverityResult, error) {
+	rsp, err := c.CreateSeverityWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSeverityResult(rsp)
+}
+
+func (c *ClientWithResponses) CreateSeverityWithResponse(ctx context.Context, org OrgPath, body CreateSeverityJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSeverityResult, error) {
+	rsp, err := c.CreateSeverity(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSeverityResult(rsp)
+}
+
+// DeleteSeverityWithResponse request returning *DeleteSeverityResult
+func (c *ClientWithResponses) DeleteSeverityWithResponse(ctx context.Context, org OrgPath, uid SeverityUidPath, reqEditors ...RequestEditorFn) (*DeleteSeverityResult, error) {
+	rsp, err := c.DeleteSeverity(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteSeverityResult(rsp)
+}
+
+// GetSeverityWithResponse request returning *GetSeverityResult
+func (c *ClientWithResponses) GetSeverityWithResponse(ctx context.Context, org OrgPath, uid SeverityUidPath, reqEditors ...RequestEditorFn) (*GetSeverityResult, error) {
+	rsp, err := c.GetSeverity(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSeverityResult(rsp)
+}
+
+// UpdateSeverityWithBodyWithResponse request with arbitrary body returning *UpdateSeverityResult
+func (c *ClientWithResponses) UpdateSeverityWithBodyWithResponse(ctx context.Context, org OrgPath, uid SeverityUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSeverityResult, error) {
+	rsp, err := c.UpdateSeverityWithBody(ctx, org, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSeverityResult(rsp)
+}
+
+func (c *ClientWithResponses) UpdateSeverityWithResponse(ctx context.Context, org OrgPath, uid SeverityUidPath, body UpdateSeverityJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSeverityResult, error) {
+	rsp, err := c.UpdateSeverity(ctx, org, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSeverityResult(rsp)
 }
 
 // ListStatusPagesWithResponse request returning *ListStatusPagesResult
@@ -13134,6 +15611,58 @@ func ParseRevokeTokenResult(rsp *http.Response) (*RevokeTokenResult, error) {
 	return response, nil
 }
 
+// ParseListCheckTypesResult parses an HTTP response from a ListCheckTypesWithResponse call
+func ParseListCheckTypesResult(rsp *http.Response) (*ListCheckTypesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCheckTypesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckTypeListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListCheckTypeSamplesResult parses an HTTP response from a ListCheckTypeSamplesWithResponse call
+func ParseListCheckTypeSamplesResult(rsp *http.Response) (*ListCheckTypeSamplesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCheckTypeSamplesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckTypeSamplesListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListChannelsResult parses an HTTP response from a ListChannelsWithResponse call
 func ParseListChannelsResult(rsp *http.Response) (*ListChannelsResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -13425,6 +15954,213 @@ func ParseTestChannelResult(rsp *http.Response) (*TestChannelResult, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest ChannelTestResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListCheckGroupsResult parses an HTTP response from a ListCheckGroupsWithResponse call
+func ParseListCheckGroupsResult(rsp *http.Response) (*ListCheckGroupsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCheckGroupsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckGroupListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateCheckGroupResult parses an HTTP response from a CreateCheckGroupWithResponse call
+func ParseCreateCheckGroupResult(rsp *http.Response) (*CreateCheckGroupResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateCheckGroupResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest CheckGroup
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteCheckGroupResult parses an HTTP response from a DeleteCheckGroupWithResponse call
+func ParseDeleteCheckGroupResult(rsp *http.Response) (*DeleteCheckGroupResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteCheckGroupResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCheckGroupResult parses an HTTP response from a GetCheckGroupWithResponse call
+func ParseGetCheckGroupResult(rsp *http.Response) (*GetCheckGroupResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCheckGroupResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckGroup
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateCheckGroupResult parses an HTTP response from a UpdateCheckGroupWithResponse call
+func ParseUpdateCheckGroupResult(rsp *http.Response) (*UpdateCheckGroupResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateCheckGroupResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckGroup
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -15070,6 +17806,333 @@ func ParseGetJobResult(rsp *http.Response) (*GetJobResult, error) {
 	return response, nil
 }
 
+// ParseListLabelsResult parses an HTTP response from a ListLabelsWithResponse call
+func ParseListLabelsResult(rsp *http.Response) (*ListLabelsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListLabelsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LabelSuggestionListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListMaintenanceWindowsResult parses an HTTP response from a ListMaintenanceWindowsWithResponse call
+func ParseListMaintenanceWindowsResult(rsp *http.Response) (*ListMaintenanceWindowsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListMaintenanceWindowsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MaintenanceWindowListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateMaintenanceWindowResult parses an HTTP response from a CreateMaintenanceWindowWithResponse call
+func ParseCreateMaintenanceWindowResult(rsp *http.Response) (*CreateMaintenanceWindowResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateMaintenanceWindowResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest MaintenanceWindow
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteMaintenanceWindowResult parses an HTTP response from a DeleteMaintenanceWindowWithResponse call
+func ParseDeleteMaintenanceWindowResult(rsp *http.Response) (*DeleteMaintenanceWindowResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteMaintenanceWindowResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetMaintenanceWindowResult parses an HTTP response from a GetMaintenanceWindowWithResponse call
+func ParseGetMaintenanceWindowResult(rsp *http.Response) (*GetMaintenanceWindowResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetMaintenanceWindowResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MaintenanceWindow
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateMaintenanceWindowResult parses an HTTP response from a UpdateMaintenanceWindowWithResponse call
+func ParseUpdateMaintenanceWindowResult(rsp *http.Response) (*UpdateMaintenanceWindowResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateMaintenanceWindowResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MaintenanceWindow
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListMaintenanceWindowChecksResult parses an HTTP response from a ListMaintenanceWindowChecksWithResponse call
+func ParseListMaintenanceWindowChecksResult(rsp *http.Response) (*ListMaintenanceWindowChecksResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListMaintenanceWindowChecksResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MaintenanceWindowCheckListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetMaintenanceWindowChecksResult parses an HTTP response from a SetMaintenanceWindowChecksWithResponse call
+func ParseSetMaintenanceWindowChecksResult(rsp *http.Response) (*SetMaintenanceWindowChecksResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetMaintenanceWindowChecksResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListMembersResult parses an HTTP response from a ListMembersWithResponse call
 func ParseListMembersResult(rsp *http.Response) (*ListMembersResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -15263,6 +18326,46 @@ func ParseUpdateMemberResult(rsp *http.Response) (*UpdateMemberResult, error) {
 	return response, nil
 }
 
+// ParseListRegionsResult parses an HTTP response from a ListRegionsWithResponse call
+func ParseListRegionsResult(rsp *http.Response) (*ListRegionsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListRegionsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OrgRegionListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListOrgResultsResult parses an HTTP response from a ListOrgResultsWithResponse call
 func ParseListOrgResultsResult(rsp *http.Response) (*ListOrgResultsResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -15283,6 +18386,220 @@ func ParseListOrgResultsResult(rsp *http.Response) (*ListOrgResultsResult, error
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSeveritiesResult parses an HTTP response from a ListSeveritiesWithResponse call
+func ParseListSeveritiesResult(rsp *http.Response) (*ListSeveritiesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSeveritiesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SeverityListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateSeverityResult parses an HTTP response from a CreateSeverityWithResponse call
+func ParseCreateSeverityResult(rsp *http.Response) (*CreateSeverityResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateSeverityResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Severity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteSeverityResult parses an HTTP response from a DeleteSeverityWithResponse call
+func ParseDeleteSeverityResult(rsp *http.Response) (*DeleteSeverityResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteSeverityResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSeverityResult parses an HTTP response from a GetSeverityWithResponse call
+func ParseGetSeverityResult(rsp *http.Response) (*GetSeverityResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSeverityResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Severity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateSeverityResult parses an HTTP response from a UpdateSeverityWithResponse call
+func ParseUpdateSeverityResult(rsp *http.Response) (*UpdateSeverityResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateSeverityResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Severity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
