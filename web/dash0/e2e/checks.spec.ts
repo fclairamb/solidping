@@ -394,6 +394,10 @@ test.describe("Checks", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
+    // The empty field advertises the uniform 15s default (spec 2026-07-11-09).
+    await expect(page.getByTestId("check-timeout-input")).toHaveAttribute("placeholder", "15 seconds (default)");
+    await expect(page.getByText("Empty uses the default of 15 seconds.")).toBeVisible();
+
     const checkName = `E2E Timeout ${Date.now()}`;
     await page.getByTestId("check-name-input").fill(checkName);
     await page.getByTestId("check-url-input").fill("https://example.com/timeout-test");

@@ -2573,7 +2573,7 @@ export function CheckForm({
                   min={1}
                   max={30}
                   step={1}
-                  placeholder="Check type default"
+                  placeholder="15 seconds (default)"
                   value={timeoutSeconds}
                   onChange={(e) => setTimeoutSeconds(e.target.value)}
                   className={cn(getFieldError(fieldErrors, "timeout") && "border-destructive")}
@@ -2583,7 +2583,7 @@ export function CheckForm({
                   <p className="text-xs text-destructive">{getFieldError(fieldErrors, "timeout")}</p>
                 ) : (
                   <p className="text-xs text-muted-foreground">
-                    Seconds a single probe may run (1–30). Empty uses the check type&apos;s default.
+                    Seconds a single probe may run (1–30). Empty uses the default of 15 seconds.
                   </p>
                 )}
               </div>
