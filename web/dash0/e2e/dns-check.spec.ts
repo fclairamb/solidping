@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { expandSection } from "./section-helpers";
 
 // Regression coverage for spec 2026-07-10-11: the DNS check form used to submit
 // the queried domain under the `domain` key (which the DNS backend ignores) and
@@ -29,6 +30,7 @@ test.describe("DNS check form", () => {
     // Override name/slug so we don't collide with the seeded sample check.
     const suffix = Date.now();
     await page.getByTestId("check-name-input").fill(`E2E DNS Sample ${suffix}`);
+    await expandSection(page, "section-organization-trigger");
     await page.getByTestId("check-slug-input").fill(`e2e-dns-sample-${suffix}`);
 
     // Submit — should succeed (previously failed with "host is required").
@@ -54,6 +56,7 @@ test.describe("DNS check form", () => {
     const suffix = Date.now();
     const checkName = `E2E DNS Server ${suffix}`;
     await page.getByTestId("check-name-input").fill(checkName);
+    await expandSection(page, "section-organization-trigger");
     await page.getByTestId("check-slug-input").fill(`e2e-dns-server-${suffix}`);
     await page.getByTestId("check-domain-input").fill("example.com");
     await page.getByTestId("check-dns-nameserver-input").fill("8.8.8.8:53");

@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { expandSection } from "./section-helpers";
 
 test.describe("Checks", () => {
   test("should display the checks list page", async ({ authenticatedPage }) => {
@@ -88,7 +89,8 @@ test.describe("Checks", () => {
     await page.getByRole("option", { name: "1 minute" }).click();
 
     // Confirmation 120 -> "= 2 min" with the approximate probe count for the
-    // active 1-minute interval.
+    // active 1-minute interval. Incident tracking lives in a collapsed section.
+    await expandSection(page, "section-incident-tracking-trigger");
     await page.getByTestId("confirmation-period-input").fill("120");
     const confirmationEstimate = page.getByTestId("confirmation-period-estimate");
     await expect(confirmationEstimate).toContainText("= 2 min");
@@ -347,6 +349,7 @@ test.describe("Checks", () => {
     await page.waitForLoadState("networkidle");
 
     // Set flapping parameters (reopen multiplier is kept; window/factor/cap are new)
+    await expandSection(page, "section-flapping-trigger");
     await page.getByTestId("reopen-cooldown-input").fill("3");
     await page.getByTestId("flapping-window-input").fill("7200");
     await page.getByTestId("flap-backoff-input").fill("3");
@@ -367,7 +370,9 @@ test.describe("Checks", () => {
     await page.waitForURL(/\/edit$/);
     await page.waitForLoadState("networkidle");
 
-    // Verify the flapping values are still set
+    // Verify the flapping values are still set (the section auto-opens because
+    // it holds non-default values, but expand defensively in case it did not).
+    await expandSection(page, "section-flapping-trigger");
     await expect(page.getByTestId("reopen-cooldown-input")).toHaveValue("3");
     await expect(page.getByTestId("flapping-window-input")).toHaveValue("7200");
     await expect(page.getByTestId("flap-backoff-input")).toHaveValue("3");
@@ -394,6 +399,8 @@ test.describe("Checks", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
+    // Timeout lives in the collapsed "Advanced" section on create.
+    await expandSection(page, "section-advanced-trigger");
     // The empty field advertises the uniform 15s default (spec 2026-07-11-09).
     await expect(page.getByTestId("check-timeout-input")).toHaveAttribute("placeholder", "15 seconds (default)");
     await expect(page.getByText("Empty uses the default of 15 seconds.")).toBeVisible();
@@ -414,6 +421,8 @@ test.describe("Checks", () => {
     await page.locator('a[href*="/edit"]').click();
     await page.waitForURL(/\/edit$/);
     await page.waitForLoadState("networkidle");
+    // A non-default timeout auto-opens Advanced; expand defensively regardless.
+    await expandSection(page, "section-advanced-trigger");
     await expect(page.getByTestId("check-timeout-input")).toHaveValue("10");
 
     // Clear the timeout and save — the key must be removed from config.
@@ -422,10 +431,12 @@ test.describe("Checks", () => {
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
 
-    // Back on a fresh edit page the field is empty again (key removed).
+    // Back on a fresh edit page the field is empty again (key removed). With the
+    // timeout cleared, Advanced is collapsed by default, so expand it first.
     await page.locator('a[href*="/edit"]').click();
     await page.waitForURL(/\/edit$/);
     await page.waitForLoadState("networkidle");
+    await expandSection(page, "section-advanced-trigger");
     await expect(page.getByTestId("check-timeout-input")).toHaveValue("");
   });
 
