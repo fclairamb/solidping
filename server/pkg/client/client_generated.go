@@ -29,6 +29,13 @@ const (
 	AddMemberRequestRoleViewer AddMemberRequestRole = "viewer"
 )
 
+// Defines values for ApproveMembershipRequestRequestRole.
+const (
+	ApproveMembershipRequestRequestRoleAdmin  ApproveMembershipRequestRequestRole = "admin"
+	ApproveMembershipRequestRequestRoleUser   ApproveMembershipRequestRequestRole = "user"
+	ApproveMembershipRequestRequestRoleViewer ApproveMembershipRequestRequestRole = "viewer"
+)
+
 // Defines values for CheckLastStatusChangeStatus.
 const (
 	CheckLastStatusChangeStatusDOWN    CheckLastStatusChangeStatus = "DOWN"
@@ -83,6 +90,29 @@ const (
 const (
 	CreateDependencyRequestKindHard CreateDependencyRequestKind = "hard"
 	CreateDependencyRequestKindSoft CreateDependencyRequestKind = "soft"
+)
+
+// Defines values for CreateInvitationRequestApp.
+const (
+	CreateInvitationRequestAppDash  CreateInvitationRequestApp = "dash"
+	CreateInvitationRequestAppDash0 CreateInvitationRequestApp = "dash0"
+)
+
+// Defines values for CreateInvitationRequestExpiresIn.
+const (
+	CreateInvitationRequestExpiresInN12h CreateInvitationRequestExpiresIn = "12h"
+	CreateInvitationRequestExpiresInN1h  CreateInvitationRequestExpiresIn = "1h"
+	CreateInvitationRequestExpiresInN1w  CreateInvitationRequestExpiresIn = "1w"
+	CreateInvitationRequestExpiresInN24h CreateInvitationRequestExpiresIn = "24h"
+	CreateInvitationRequestExpiresInN48h CreateInvitationRequestExpiresIn = "48h"
+	CreateInvitationRequestExpiresInN6h  CreateInvitationRequestExpiresIn = "6h"
+)
+
+// Defines values for CreateInvitationRequestRole.
+const (
+	CreateInvitationRequestRoleAdmin  CreateInvitationRequestRole = "admin"
+	CreateInvitationRequestRoleUser   CreateInvitationRequestRole = "user"
+	CreateInvitationRequestRoleViewer CreateInvitationRequestRole = "viewer"
 )
 
 // Defines values for DependencyKind.
@@ -205,6 +235,22 @@ const (
 	MemberRoleViewer MemberRole = "viewer"
 )
 
+// Defines values for MembershipRequestAdminViewStatus.
+const (
+	MembershipRequestAdminViewStatusApproved MembershipRequestAdminViewStatus = "approved"
+	MembershipRequestAdminViewStatusCanceled MembershipRequestAdminViewStatus = "canceled"
+	MembershipRequestAdminViewStatusPending  MembershipRequestAdminViewStatus = "pending"
+	MembershipRequestAdminViewStatusRejected MembershipRequestAdminViewStatus = "rejected"
+)
+
+// Defines values for MembershipRequestSummaryStatus.
+const (
+	MembershipRequestSummaryStatusApproved MembershipRequestSummaryStatus = "approved"
+	MembershipRequestSummaryStatusCanceled MembershipRequestSummaryStatus = "canceled"
+	MembershipRequestSummaryStatusPending  MembershipRequestSummaryStatus = "pending"
+	MembershipRequestSummaryStatusRejected MembershipRequestSummaryStatus = "rejected"
+)
+
 // Defines values for OrgResultStatus.
 const (
 	OrgResultStatusDown    OrgResultStatus = "down"
@@ -277,6 +323,14 @@ const (
 	GetBadgeParamsFormatUptime       GetBadgeParamsFormat = "uptime"
 )
 
+// Defines values for ListOrgMembershipRequestsParamsStatus.
+const (
+	ListOrgMembershipRequestsParamsStatusApproved ListOrgMembershipRequestsParamsStatus = "approved"
+	ListOrgMembershipRequestsParamsStatusCanceled ListOrgMembershipRequestsParamsStatus = "canceled"
+	ListOrgMembershipRequestsParamsStatusPending  ListOrgMembershipRequestsParamsStatus = "pending"
+	ListOrgMembershipRequestsParamsStatusRejected ListOrgMembershipRequestsParamsStatus = "rejected"
+)
+
 // AddMemberRequest defines model for AddMemberRequest.
 type AddMemberRequest struct {
 	Email openapi_types.Email  `json:"email"`
@@ -285,6 +339,15 @@ type AddMemberRequest struct {
 
 // AddMemberRequestRole defines model for AddMemberRequest.Role.
 type AddMemberRequestRole string
+
+// ApproveMembershipRequestRequest defines model for ApproveMembershipRequestRequest.
+type ApproveMembershipRequestRequest struct {
+	// Role Role to grant the new member (default user)
+	Role *ApproveMembershipRequestRequestRole `json:"role,omitempty"`
+}
+
+// ApproveMembershipRequestRequestRole Role to grant the new member (default user)
+type ApproveMembershipRequestRequestRole string
 
 // AvailabilityPeriod defines model for AvailabilityPeriod.
 type AvailabilityPeriod struct {
@@ -683,6 +746,28 @@ type CreateEscalationPolicyRequest struct {
 	Steps              *[]EscalationStepInput `json:"steps,omitempty"`
 }
 
+// CreateInvitationRequest defines model for CreateInvitationRequest.
+type CreateInvitationRequest struct {
+	// App Target dashboard for the invite link (default dash0)
+	App   *CreateInvitationRequestApp `json:"app,omitempty"`
+	Email openapi_types.Email         `json:"email"`
+
+	// ExpiresIn Invitation lifetime (default 24h)
+	ExpiresIn *CreateInvitationRequestExpiresIn `json:"expiresIn,omitempty"`
+
+	// Role Member role granted on acceptance (default user)
+	Role *CreateInvitationRequestRole `json:"role,omitempty"`
+}
+
+// CreateInvitationRequestApp Target dashboard for the invite link (default dash0)
+type CreateInvitationRequestApp string
+
+// CreateInvitationRequestExpiresIn Invitation lifetime (default 24h)
+type CreateInvitationRequestExpiresIn string
+
+// CreateInvitationRequestRole Member role granted on acceptance (default user)
+type CreateInvitationRequestRole string
+
 // CreateJobRequest defines model for CreateJobRequest.
 type CreateJobRequest struct {
 	Config *map[string]interface{} `json:"config,omitempty"`
@@ -699,6 +784,15 @@ type CreateMaintenanceWindowRequest struct {
 	RecurrenceEnd *time.Time `json:"recurrenceEnd,omitempty"`
 	StartAt       time.Time  `json:"startAt"`
 	Title         string     `json:"title"`
+}
+
+// CreateMembershipRequestRequest defines model for CreateMembershipRequestRequest.
+type CreateMembershipRequestRequest struct {
+	// Message Optional message to the org admins
+	Message *string `json:"message,omitempty"`
+
+	// OrgSlug Slug of the organization to join
+	OrgSlug string `json:"orgSlug"`
 }
 
 // CreateOncallOverrideRequest defines model for CreateOncallOverrideRequest.
@@ -721,6 +815,15 @@ type CreateOncallScheduleRequest struct {
 	StartAt      time.Time             `json:"startAt"`
 	Timezone     string                `json:"timezone"`
 	UserUids     *[]openapi_types.UUID `json:"userUids,omitempty"`
+}
+
+// CreateOrgRequest defines model for CreateOrgRequest.
+type CreateOrgRequest struct {
+	// Name Human-readable organization name
+	Name string `json:"name"`
+
+	// Slug URL-friendly identifier (3-20 chars, lowercase alphanumeric with hyphens)
+	Slug string `json:"slug"`
 }
 
 // CreateSeverityRequest defines model for CreateSeverityRequest.
@@ -1107,6 +1210,30 @@ type IncidentSnoozeRequest struct {
 	Until    *time.Time `json:"until,omitempty"`
 }
 
+// InviteListItem defines model for InviteListItem.
+type InviteListItem struct {
+	CreatedAt time.Time           `json:"createdAt"`
+	Email     openapi_types.Email `json:"email"`
+	ExpiresAt *time.Time          `json:"expiresAt,omitempty"`
+	Role      string              `json:"role"`
+	Uid       openapi_types.UUID  `json:"uid"`
+}
+
+// InviteListResponse defines model for InviteListResponse.
+type InviteListResponse struct {
+	Data *[]InviteListItem `json:"data,omitempty"`
+}
+
+// InviteResponse defines model for InviteResponse.
+type InviteResponse struct {
+	Email     openapi_types.Email `json:"email"`
+	ExpiresAt time.Time           `json:"expiresAt"`
+	InviteUrl string              `json:"inviteUrl"`
+	Role      string              `json:"role"`
+	Token     string              `json:"token"`
+	Uid       openapi_types.UUID  `json:"uid"`
+}
+
 // Job defines model for Job.
 type Job struct {
 	CompletedAt     *time.Time              `json:"completedAt,omitempty"`
@@ -1311,6 +1438,53 @@ type MemberListResponse struct {
 	Data *[]Member `json:"data,omitempty"`
 }
 
+// MembershipRequestAdminListResponse defines model for MembershipRequestAdminListResponse.
+type MembershipRequestAdminListResponse struct {
+	Data *[]MembershipRequestAdminView `json:"data,omitempty"`
+}
+
+// MembershipRequestAdminView defines model for MembershipRequestAdminView.
+type MembershipRequestAdminView struct {
+	CreatedAt      time.Time                        `json:"createdAt"`
+	DecidedAt      *time.Time                       `json:"decidedAt,omitempty"`
+	DecisionReason *string                          `json:"decisionReason,omitempty"`
+	Message        *string                          `json:"message,omitempty"`
+	Status         MembershipRequestAdminViewStatus `json:"status"`
+	Uid            openapi_types.UUID               `json:"uid"`
+	User           MembershipRequestUser            `json:"user"`
+}
+
+// MembershipRequestAdminViewStatus defines model for MembershipRequestAdminView.Status.
+type MembershipRequestAdminViewStatus string
+
+// MembershipRequestListResponse defines model for MembershipRequestListResponse.
+type MembershipRequestListResponse struct {
+	Data *[]MembershipRequestSummary `json:"data,omitempty"`
+}
+
+// MembershipRequestSummary defines model for MembershipRequestSummary.
+type MembershipRequestSummary struct {
+	CreatedAt      time.Time                      `json:"createdAt"`
+	DecidedAt      *time.Time                     `json:"decidedAt,omitempty"`
+	DecisionReason *string                        `json:"decisionReason,omitempty"`
+	Message        *string                        `json:"message,omitempty"`
+	Organization   OrganizationRef                `json:"organization"`
+	Status         MembershipRequestSummaryStatus `json:"status"`
+	Uid            openapi_types.UUID             `json:"uid"`
+}
+
+// MembershipRequestSummaryStatus defines model for MembershipRequestSummary.Status.
+type MembershipRequestSummaryStatus string
+
+// MembershipRequestUser defines model for MembershipRequestUser.
+type MembershipRequestUser struct {
+	AvatarUrl *string             `json:"avatarUrl,omitempty"`
+	Email     openapi_types.Email `json:"email"`
+	Name      *string             `json:"name,omitempty"`
+	Role      *string             `json:"role,omitempty"`
+	Uid       openapi_types.UUID  `json:"uid"`
+}
+
 // OncallIcalFeedResponse defines model for OncallIcalFeedResponse.
 type OncallIcalFeedResponse struct {
 	Secret string `json:"secret"`
@@ -1395,6 +1569,20 @@ type OrgRegionListResponse struct {
 	DefaultRegions *[]string `json:"defaultRegions,omitempty"`
 }
 
+// OrgResponse defines model for OrgResponse.
+type OrgResponse struct {
+	// AccessToken Access token scoped to the new organization
+	AccessToken string `json:"accessToken"`
+
+	// ExpiresIn Access token lifetime in seconds
+	ExpiresIn    int                `json:"expiresIn"`
+	Name         string             `json:"name"`
+	RefreshToken string             `json:"refreshToken"`
+	Slug         string             `json:"slug"`
+	TokenType    string             `json:"tokenType"`
+	Uid          openapi_types.UUID `json:"uid"`
+}
+
 // OrgResult defines model for OrgResult.
 type OrgResult struct {
 	// AvailabilityPct Availability percentage for aggregated periods (with=availabilityPct)
@@ -1446,6 +1634,15 @@ type OrgResultListResponse struct {
 	Pagination *CursorPagination `json:"pagination,omitempty"`
 }
 
+// OrgSettingsResponse defines model for OrgSettingsResponse.
+type OrgSettingsResponse struct {
+	// RegistrationEmailPattern Auto-join email regex; empty when unset
+	RegistrationEmailPattern string `json:"registrationEmailPattern"`
+
+	// SessionMaxDurationSeconds Org-level session max duration override in seconds; omitted when inherited
+	SessionMaxDurationSeconds *int `json:"sessionMaxDurationSeconds,omitempty"`
+}
+
 // OrganizationMemberSummary defines model for OrganizationMemberSummary.
 type OrganizationMemberSummary struct {
 	Name *string                        `json:"name,omitempty"`
@@ -1455,6 +1652,13 @@ type OrganizationMemberSummary struct {
 
 // OrganizationMemberSummaryRole defines model for OrganizationMemberSummary.Role.
 type OrganizationMemberSummaryRole string
+
+// OrganizationRef defines model for OrganizationRef.
+type OrganizationRef struct {
+	Name string             `json:"name"`
+	Slug string             `json:"slug"`
+	Uid  openapi_types.UUID `json:"uid"`
+}
 
 // OrganizationSummary defines model for OrganizationSummary.
 type OrganizationSummary struct {
@@ -1516,6 +1720,12 @@ type Region struct {
 	Emoji string `json:"emoji"`
 	Name  string `json:"name"`
 	Slug  string `json:"slug"`
+}
+
+// RejectMembershipRequestRequest defines model for RejectMembershipRequestRequest.
+type RejectMembershipRequestRequest struct {
+	// Reason Optional reason shown to the requester
+	Reason *string `json:"reason,omitempty"`
 }
 
 // ReorderUidsRequest defines model for ReorderUidsRequest.
@@ -1834,6 +2044,15 @@ type UpdateOncallScheduleRequest struct {
 	UserUids       *[]openapi_types.UUID `json:"userUids,omitempty"`
 }
 
+// UpdateOrgSettingsRequest defines model for UpdateOrgSettingsRequest.
+type UpdateOrgSettingsRequest struct {
+	// RegistrationEmailPattern Auto-join email regex; empty string clears it
+	RegistrationEmailPattern *string `json:"registrationEmailPattern,omitempty"`
+
+	// SessionMaxDurationSeconds Session max duration override in seconds; <=0 clears the override
+	SessionMaxDurationSeconds *int `json:"sessionMaxDurationSeconds,omitempty"`
+}
+
 // UpdateSeverityRequest defines model for UpdateSeverityRequest.
 type UpdateSeverityRequest struct {
 	Channels    *[]string `json:"channels,omitempty"`
@@ -1987,6 +2206,9 @@ type EscalationPolicyUidPath = openapi_types.UUID
 // IncidentUidPath defines model for IncidentUidPath.
 type IncidentUidPath = openapi_types.UUID
 
+// InvitationUidPath defines model for InvitationUidPath.
+type InvitationUidPath = openapi_types.UUID
+
 // JobUidPath defines model for JobUidPath.
 type JobUidPath = openapi_types.UUID
 
@@ -1995,6 +2217,9 @@ type MaintenanceWindowUidPath = openapi_types.UUID
 
 // MemberUidPath defines model for MemberUidPath.
 type MemberUidPath = openapi_types.UUID
+
+// MembershipRequestUidPath defines model for MembershipRequestUidPath.
+type MembershipRequestUidPath = openapi_types.UUID
 
 // OncallOverrideUidPath defines model for OncallOverrideUidPath.
 type OncallOverrideUidPath = openapi_types.UUID
@@ -2224,6 +2449,15 @@ type ListMaintenanceWindowsParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListOrgMembershipRequestsParams defines parameters for ListOrgMembershipRequests.
+type ListOrgMembershipRequestsParams struct {
+	// Status Filter by status (pending, approved, rejected, canceled)
+	Status *ListOrgMembershipRequestsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+}
+
+// ListOrgMembershipRequestsParamsStatus defines parameters for ListOrgMembershipRequests.
+type ListOrgMembershipRequestsParamsStatus string
+
 // ListOncallOverridesParams defines parameters for ListOncallOverrides.
 type ListOncallOverridesParams struct {
 	// From Only overrides ending after this instant (RFC3339)
@@ -2308,11 +2542,17 @@ type LoginJSONRequestBody = LoginRequest
 // LogoutJSONRequestBody defines body for Logout for application/json ContentType.
 type LogoutJSONRequestBody = LogoutRequest
 
+// CreateMembershipRequestJSONRequestBody defines body for CreateMembershipRequest for application/json ContentType.
+type CreateMembershipRequestJSONRequestBody = CreateMembershipRequestRequest
+
 // RefreshTokenJSONRequestBody defines body for RefreshToken for application/json ContentType.
 type RefreshTokenJSONRequestBody = RefreshRequest
 
 // SwitchOrgJSONRequestBody defines body for SwitchOrg for application/json ContentType.
 type SwitchOrgJSONRequestBody = SwitchOrgRequest
+
+// CreateOrgJSONRequestBody defines body for CreateOrg for application/json ContentType.
+type CreateOrgJSONRequestBody = CreateOrgRequest
 
 // CreateChannelJSONRequestBody defines body for CreateChannel for application/json ContentType.
 type CreateChannelJSONRequestBody = CreateChannelRequest
@@ -2371,6 +2611,9 @@ type ResolveIncidentJSONRequestBody = IncidentAckRequest
 // SnoozeIncidentJSONRequestBody defines body for SnoozeIncident for application/json ContentType.
 type SnoozeIncidentJSONRequestBody = IncidentSnoozeRequest
 
+// CreateInvitationJSONRequestBody defines body for CreateInvitation for application/json ContentType.
+type CreateInvitationJSONRequestBody = CreateInvitationRequest
+
 // CreateJobJSONRequestBody defines body for CreateJob for application/json ContentType.
 type CreateJobJSONRequestBody = CreateJobRequest
 
@@ -2389,6 +2632,12 @@ type AddMemberJSONRequestBody = AddMemberRequest
 // UpdateMemberJSONRequestBody defines body for UpdateMember for application/json ContentType.
 type UpdateMemberJSONRequestBody = UpdateMemberRequest
 
+// ApproveMembershipRequestJSONRequestBody defines body for ApproveMembershipRequest for application/json ContentType.
+type ApproveMembershipRequestJSONRequestBody = ApproveMembershipRequestRequest
+
+// RejectMembershipRequestJSONRequestBody defines body for RejectMembershipRequest for application/json ContentType.
+type RejectMembershipRequestJSONRequestBody = RejectMembershipRequestRequest
+
 // CreateOncallScheduleJSONRequestBody defines body for CreateOncallSchedule for application/json ContentType.
 type CreateOncallScheduleJSONRequestBody = CreateOncallScheduleRequest
 
@@ -2397,6 +2646,9 @@ type UpdateOncallScheduleJSONRequestBody = UpdateOncallScheduleRequest
 
 // CreateOncallOverrideJSONRequestBody defines body for CreateOncallOverride for application/json ContentType.
 type CreateOncallOverrideJSONRequestBody = CreateOncallOverrideRequest
+
+// UpdateOrgSettingsJSONRequestBody defines body for UpdateOrgSettings for application/json ContentType.
+type UpdateOrgSettingsJSONRequestBody = UpdateOrgSettingsRequest
 
 // CreateSeverityJSONRequestBody defines body for CreateSeverity for application/json ContentType.
 type CreateSeverityJSONRequestBody = CreateSeverityRequest
@@ -2535,6 +2787,17 @@ type ClientInterface interface {
 	// GetCurrentUser request
 	GetCurrentUser(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListMyMembershipRequests request
+	ListMyMembershipRequests(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateMembershipRequestWithBody request with any body
+	CreateMembershipRequestWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateMembershipRequest(ctx context.Context, body CreateMembershipRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CancelMembershipRequest request
+	CancelMembershipRequest(ctx context.Context, uid MembershipRequestUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// RefreshTokenWithBody request with any body
 	RefreshTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -2556,6 +2819,11 @@ type ClientInterface interface {
 
 	// ListCheckTypeSamples request
 	ListCheckTypeSamples(ctx context.Context, params *ListCheckTypeSamplesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateOrgWithBody request with any body
+	CreateOrgWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateOrg(ctx context.Context, body CreateOrgJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListChannels request
 	ListChannels(ctx context.Context, org OrgPath, params *ListChannelsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2763,6 +3031,17 @@ type ClientInterface interface {
 	// UnsnoozeIncident request
 	UnsnoozeIncident(ctx context.Context, org OrgPath, uid IncidentUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListInvitations request
+	ListInvitations(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateInvitationWithBody request with any body
+	CreateInvitationWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateInvitation(ctx context.Context, org OrgPath, body CreateInvitationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteInvitation request
+	DeleteInvitation(ctx context.Context, org OrgPath, uid InvitationUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListJobs request
 	ListJobs(ctx context.Context, org OrgPath, params *ListJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -2826,6 +3105,19 @@ type ClientInterface interface {
 
 	UpdateMember(ctx context.Context, org OrgPath, uid MemberUidPath, body UpdateMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListOrgMembershipRequests request
+	ListOrgMembershipRequests(ctx context.Context, org OrgPath, params *ListOrgMembershipRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ApproveMembershipRequestWithBody request with any body
+	ApproveMembershipRequestWithBody(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ApproveMembershipRequest(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, body ApproveMembershipRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RejectMembershipRequestWithBody request with any body
+	RejectMembershipRequestWithBody(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RejectMembershipRequest(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, body RejectMembershipRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListOncallSchedules request
 	ListOncallSchedules(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -2873,6 +3165,14 @@ type ClientInterface interface {
 
 	// ListOrgResults request
 	ListOrgResults(ctx context.Context, org OrgPath, params *ListOrgResultsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetOrgSettings request
+	GetOrgSettings(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateOrgSettingsWithBody request with any body
+	UpdateOrgSettingsWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateOrgSettings(ctx context.Context, org OrgPath, body UpdateOrgSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSeverities request
 	ListSeverities(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3104,6 +3404,54 @@ func (c *Client) GetCurrentUser(ctx context.Context, reqEditors ...RequestEditor
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListMyMembershipRequests(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListMyMembershipRequestsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateMembershipRequestWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateMembershipRequestRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateMembershipRequest(ctx context.Context, body CreateMembershipRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateMembershipRequestRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CancelMembershipRequest(ctx context.Context, uid MembershipRequestUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCancelMembershipRequestRequest(c.Server, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) RefreshTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRefreshTokenRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -3190,6 +3538,30 @@ func (c *Client) ListCheckTypes(ctx context.Context, reqEditors ...RequestEditor
 
 func (c *Client) ListCheckTypeSamples(ctx context.Context, params *ListCheckTypeSamplesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListCheckTypeSamplesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateOrgWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateOrgRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateOrg(ctx context.Context, body CreateOrgJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateOrgRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -4100,6 +4472,54 @@ func (c *Client) UnsnoozeIncident(ctx context.Context, org OrgPath, uid Incident
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListInvitations(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListInvitationsRequest(c.Server, org)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateInvitationWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateInvitationRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateInvitation(ctx context.Context, org OrgPath, body CreateInvitationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateInvitationRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteInvitation(ctx context.Context, org OrgPath, uid InvitationUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteInvitationRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListJobs(ctx context.Context, org OrgPath, params *ListJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListJobsRequest(c.Server, org, params)
 	if err != nil {
@@ -4376,6 +4796,66 @@ func (c *Client) UpdateMember(ctx context.Context, org OrgPath, uid MemberUidPat
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListOrgMembershipRequests(ctx context.Context, org OrgPath, params *ListOrgMembershipRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListOrgMembershipRequestsRequest(c.Server, org, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ApproveMembershipRequestWithBody(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApproveMembershipRequestRequestWithBody(c.Server, org, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ApproveMembershipRequest(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, body ApproveMembershipRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApproveMembershipRequestRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RejectMembershipRequestWithBody(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRejectMembershipRequestRequestWithBody(c.Server, org, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RejectMembershipRequest(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, body RejectMembershipRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRejectMembershipRequestRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListOncallSchedules(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListOncallSchedulesRequest(c.Server, org)
 	if err != nil {
@@ -4570,6 +5050,42 @@ func (c *Client) ListRegions(ctx context.Context, org OrgPath, reqEditors ...Req
 
 func (c *Client) ListOrgResults(ctx context.Context, org OrgPath, params *ListOrgResultsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListOrgResultsRequest(c.Server, org, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetOrgSettings(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetOrgSettingsRequest(c.Server, org)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateOrgSettingsWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateOrgSettingsRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateOrgSettings(ctx context.Context, org OrgPath, body UpdateOrgSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateOrgSettingsRequest(c.Server, org, body)
 	if err != nil {
 		return nil, err
 	}
@@ -5378,6 +5894,107 @@ func NewGetCurrentUserRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewListMyMembershipRequestsRequest generates requests for ListMyMembershipRequests
+func NewListMyMembershipRequestsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/membership-requests")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateMembershipRequestRequest calls the generic CreateMembershipRequest builder with application/json body
+func NewCreateMembershipRequestRequest(server string, body CreateMembershipRequestJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateMembershipRequestRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateMembershipRequestRequestWithBody generates requests for CreateMembershipRequest with any type of body
+func NewCreateMembershipRequestRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/membership-requests")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCancelMembershipRequestRequest generates requests for CancelMembershipRequest
+func NewCancelMembershipRequestRequest(server string, uid MembershipRequestUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/membership-requests/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewRefreshTokenRequest calls the generic RefreshToken builder with application/json body
 func NewRefreshTokenRequest(server string, body RefreshTokenJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -5613,6 +6230,46 @@ func NewListCheckTypeSamplesRequest(server string, params *ListCheckTypeSamplesP
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewCreateOrgRequest calls the generic CreateOrg builder with application/json body
+func NewCreateOrgRequest(server string, body CreateOrgJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateOrgRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateOrgRequestWithBody generates requests for CreateOrg with any type of body
+func NewCreateOrgRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -8614,6 +9271,128 @@ func NewUnsnoozeIncidentRequest(server string, org OrgPath, uid IncidentUidPath)
 	return req, nil
 }
 
+// NewListInvitationsRequest generates requests for ListInvitations
+func NewListInvitationsRequest(server string, org OrgPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/invitations", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateInvitationRequest calls the generic CreateInvitation builder with application/json body
+func NewCreateInvitationRequest(server string, org OrgPath, body CreateInvitationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateInvitationRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewCreateInvitationRequestWithBody generates requests for CreateInvitation with any type of body
+func NewCreateInvitationRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/invitations", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteInvitationRequest generates requests for DeleteInvitation
+func NewDeleteInvitationRequest(server string, org OrgPath, uid InvitationUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/invitations/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListJobsRequest generates requests for ListJobs
 func NewListJobsRequest(server string, org OrgPath, params *ListJobsParams) (*http.Request, error) {
 	var err error
@@ -9470,6 +10249,170 @@ func NewUpdateMemberRequestWithBody(server string, org OrgPath, uid MemberUidPat
 	return req, nil
 }
 
+// NewListOrgMembershipRequestsRequest generates requests for ListOrgMembershipRequests
+func NewListOrgMembershipRequestsRequest(server string, org OrgPath, params *ListOrgMembershipRequestsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/membership-requests", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "status", runtime.ParamLocationQuery, *params.Status); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewApproveMembershipRequestRequest calls the generic ApproveMembershipRequest builder with application/json body
+func NewApproveMembershipRequestRequest(server string, org OrgPath, uid MembershipRequestUidPath, body ApproveMembershipRequestJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewApproveMembershipRequestRequestWithBody(server, org, uid, "application/json", bodyReader)
+}
+
+// NewApproveMembershipRequestRequestWithBody generates requests for ApproveMembershipRequest with any type of body
+func NewApproveMembershipRequestRequestWithBody(server string, org OrgPath, uid MembershipRequestUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/membership-requests/%s/approve", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRejectMembershipRequestRequest calls the generic RejectMembershipRequest builder with application/json body
+func NewRejectMembershipRequestRequest(server string, org OrgPath, uid MembershipRequestUidPath, body RejectMembershipRequestJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRejectMembershipRequestRequestWithBody(server, org, uid, "application/json", bodyReader)
+}
+
+// NewRejectMembershipRequestRequestWithBody generates requests for RejectMembershipRequest with any type of body
+func NewRejectMembershipRequestRequestWithBody(server string, org OrgPath, uid MembershipRequestUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/membership-requests/%s/reject", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListOncallSchedulesRequest generates requests for ListOncallSchedules
 func NewListOncallSchedulesRequest(server string, org OrgPath) (*http.Request, error) {
 	var err error
@@ -10268,6 +11211,87 @@ func NewListOrgResultsRequest(server string, org OrgPath, params *ListOrgResults
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewGetOrgSettingsRequest generates requests for GetOrgSettings
+func NewGetOrgSettingsRequest(server string, org OrgPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateOrgSettingsRequest calls the generic UpdateOrgSettings builder with application/json body
+func NewUpdateOrgSettingsRequest(server string, org OrgPath, body UpdateOrgSettingsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateOrgSettingsRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewUpdateOrgSettingsRequestWithBody generates requests for UpdateOrgSettings with any type of body
+func NewUpdateOrgSettingsRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -12072,6 +13096,17 @@ type ClientWithResponsesInterface interface {
 	// GetCurrentUserWithResponse request
 	GetCurrentUserWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetCurrentUserResult, error)
 
+	// ListMyMembershipRequestsWithResponse request
+	ListMyMembershipRequestsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListMyMembershipRequestsResult, error)
+
+	// CreateMembershipRequestWithBodyWithResponse request with any body
+	CreateMembershipRequestWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateMembershipRequestResult, error)
+
+	CreateMembershipRequestWithResponse(ctx context.Context, body CreateMembershipRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateMembershipRequestResult, error)
+
+	// CancelMembershipRequestWithResponse request
+	CancelMembershipRequestWithResponse(ctx context.Context, uid MembershipRequestUidPath, reqEditors ...RequestEditorFn) (*CancelMembershipRequestResult, error)
+
 	// RefreshTokenWithBodyWithResponse request with any body
 	RefreshTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RefreshTokenResult, error)
 
@@ -12093,6 +13128,11 @@ type ClientWithResponsesInterface interface {
 
 	// ListCheckTypeSamplesWithResponse request
 	ListCheckTypeSamplesWithResponse(ctx context.Context, params *ListCheckTypeSamplesParams, reqEditors ...RequestEditorFn) (*ListCheckTypeSamplesResult, error)
+
+	// CreateOrgWithBodyWithResponse request with any body
+	CreateOrgWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateOrgResult, error)
+
+	CreateOrgWithResponse(ctx context.Context, body CreateOrgJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateOrgResult, error)
 
 	// ListChannelsWithResponse request
 	ListChannelsWithResponse(ctx context.Context, org OrgPath, params *ListChannelsParams, reqEditors ...RequestEditorFn) (*ListChannelsResult, error)
@@ -12300,6 +13340,17 @@ type ClientWithResponsesInterface interface {
 	// UnsnoozeIncidentWithResponse request
 	UnsnoozeIncidentWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, reqEditors ...RequestEditorFn) (*UnsnoozeIncidentResult, error)
 
+	// ListInvitationsWithResponse request
+	ListInvitationsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListInvitationsResult, error)
+
+	// CreateInvitationWithBodyWithResponse request with any body
+	CreateInvitationWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateInvitationResult, error)
+
+	CreateInvitationWithResponse(ctx context.Context, org OrgPath, body CreateInvitationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateInvitationResult, error)
+
+	// DeleteInvitationWithResponse request
+	DeleteInvitationWithResponse(ctx context.Context, org OrgPath, uid InvitationUidPath, reqEditors ...RequestEditorFn) (*DeleteInvitationResult, error)
+
 	// ListJobsWithResponse request
 	ListJobsWithResponse(ctx context.Context, org OrgPath, params *ListJobsParams, reqEditors ...RequestEditorFn) (*ListJobsResult, error)
 
@@ -12363,6 +13414,19 @@ type ClientWithResponsesInterface interface {
 
 	UpdateMemberWithResponse(ctx context.Context, org OrgPath, uid MemberUidPath, body UpdateMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateMemberResult, error)
 
+	// ListOrgMembershipRequestsWithResponse request
+	ListOrgMembershipRequestsWithResponse(ctx context.Context, org OrgPath, params *ListOrgMembershipRequestsParams, reqEditors ...RequestEditorFn) (*ListOrgMembershipRequestsResult, error)
+
+	// ApproveMembershipRequestWithBodyWithResponse request with any body
+	ApproveMembershipRequestWithBodyWithResponse(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApproveMembershipRequestResult, error)
+
+	ApproveMembershipRequestWithResponse(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, body ApproveMembershipRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*ApproveMembershipRequestResult, error)
+
+	// RejectMembershipRequestWithBodyWithResponse request with any body
+	RejectMembershipRequestWithBodyWithResponse(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RejectMembershipRequestResult, error)
+
+	RejectMembershipRequestWithResponse(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, body RejectMembershipRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*RejectMembershipRequestResult, error)
+
 	// ListOncallSchedulesWithResponse request
 	ListOncallSchedulesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListOncallSchedulesResult, error)
 
@@ -12410,6 +13474,14 @@ type ClientWithResponsesInterface interface {
 
 	// ListOrgResultsWithResponse request
 	ListOrgResultsWithResponse(ctx context.Context, org OrgPath, params *ListOrgResultsParams, reqEditors ...RequestEditorFn) (*ListOrgResultsResult, error)
+
+	// GetOrgSettingsWithResponse request
+	GetOrgSettingsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*GetOrgSettingsResult, error)
+
+	// UpdateOrgSettingsWithBodyWithResponse request with any body
+	UpdateOrgSettingsWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateOrgSettingsResult, error)
+
+	UpdateOrgSettingsWithResponse(ctx context.Context, org OrgPath, body UpdateOrgSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateOrgSettingsResult, error)
 
 	// ListSeveritiesWithResponse request
 	ListSeveritiesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListSeveritiesResult, error)
@@ -12681,6 +13753,78 @@ func (r GetCurrentUserResult) StatusCode() int {
 	return 0
 }
 
+type ListMyMembershipRequestsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MembershipRequestListResponse
+	JSON401      *Unauthorized
+}
+
+// Status returns HTTPResponse.Status
+func (r ListMyMembershipRequestsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListMyMembershipRequestsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateMembershipRequestResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *MembershipRequestSummary
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+	JSON409      *Conflict
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateMembershipRequestResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateMembershipRequestResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CancelMembershipRequestResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r CancelMembershipRequestResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CancelMembershipRequestResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type RefreshTokenResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -12809,6 +13953,31 @@ func (r ListCheckTypeSamplesResult) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ListCheckTypeSamplesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateOrgResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *OrgResponse
+	JSON401      *Unauthorized
+	JSON409      *Conflict
+	JSON422      *ValidationError
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateOrgResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateOrgResult) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -14175,6 +15344,80 @@ func (r UnsnoozeIncidentResult) StatusCode() int {
 	return 0
 }
 
+type ListInvitationsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *InviteListResponse
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r ListInvitationsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListInvitationsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateInvitationResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *InviteResponse
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateInvitationResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateInvitationResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteInvitationResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteInvitationResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteInvitationResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListJobsResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -14578,6 +15821,80 @@ func (r UpdateMemberResult) StatusCode() int {
 	return 0
 }
 
+type ListOrgMembershipRequestsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MembershipRequestAdminListResponse
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListOrgMembershipRequestsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListOrgMembershipRequestsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ApproveMembershipRequestResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+	JSON404      *NotFound
+	JSON409      *Conflict
+}
+
+// Status returns HTTPResponse.Status
+func (r ApproveMembershipRequestResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ApproveMembershipRequestResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RejectMembershipRequestResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r RejectMembershipRequestResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RejectMembershipRequestResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListOncallSchedulesResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -14910,6 +16227,57 @@ func (r ListOrgResultsResult) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ListOrgResultsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetOrgSettingsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *OrgSettingsResponse
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetOrgSettingsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetOrgSettingsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateOrgSettingsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *OrgSettingsResponse
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateOrgSettingsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateOrgSettingsResult) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -15829,6 +17197,41 @@ func (c *ClientWithResponses) GetCurrentUserWithResponse(ctx context.Context, re
 	return ParseGetCurrentUserResult(rsp)
 }
 
+// ListMyMembershipRequestsWithResponse request returning *ListMyMembershipRequestsResult
+func (c *ClientWithResponses) ListMyMembershipRequestsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListMyMembershipRequestsResult, error) {
+	rsp, err := c.ListMyMembershipRequests(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListMyMembershipRequestsResult(rsp)
+}
+
+// CreateMembershipRequestWithBodyWithResponse request with arbitrary body returning *CreateMembershipRequestResult
+func (c *ClientWithResponses) CreateMembershipRequestWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateMembershipRequestResult, error) {
+	rsp, err := c.CreateMembershipRequestWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateMembershipRequestResult(rsp)
+}
+
+func (c *ClientWithResponses) CreateMembershipRequestWithResponse(ctx context.Context, body CreateMembershipRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateMembershipRequestResult, error) {
+	rsp, err := c.CreateMembershipRequest(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateMembershipRequestResult(rsp)
+}
+
+// CancelMembershipRequestWithResponse request returning *CancelMembershipRequestResult
+func (c *ClientWithResponses) CancelMembershipRequestWithResponse(ctx context.Context, uid MembershipRequestUidPath, reqEditors ...RequestEditorFn) (*CancelMembershipRequestResult, error) {
+	rsp, err := c.CancelMembershipRequest(ctx, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCancelMembershipRequestResult(rsp)
+}
+
 // RefreshTokenWithBodyWithResponse request with arbitrary body returning *RefreshTokenResult
 func (c *ClientWithResponses) RefreshTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RefreshTokenResult, error) {
 	rsp, err := c.RefreshTokenWithBody(ctx, contentType, body, reqEditors...)
@@ -15897,6 +17300,23 @@ func (c *ClientWithResponses) ListCheckTypeSamplesWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseListCheckTypeSamplesResult(rsp)
+}
+
+// CreateOrgWithBodyWithResponse request with arbitrary body returning *CreateOrgResult
+func (c *ClientWithResponses) CreateOrgWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateOrgResult, error) {
+	rsp, err := c.CreateOrgWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateOrgResult(rsp)
+}
+
+func (c *ClientWithResponses) CreateOrgWithResponse(ctx context.Context, body CreateOrgJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateOrgResult, error) {
+	rsp, err := c.CreateOrg(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateOrgResult(rsp)
 }
 
 // ListChannelsWithResponse request returning *ListChannelsResult
@@ -16555,6 +17975,41 @@ func (c *ClientWithResponses) UnsnoozeIncidentWithResponse(ctx context.Context, 
 	return ParseUnsnoozeIncidentResult(rsp)
 }
 
+// ListInvitationsWithResponse request returning *ListInvitationsResult
+func (c *ClientWithResponses) ListInvitationsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListInvitationsResult, error) {
+	rsp, err := c.ListInvitations(ctx, org, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListInvitationsResult(rsp)
+}
+
+// CreateInvitationWithBodyWithResponse request with arbitrary body returning *CreateInvitationResult
+func (c *ClientWithResponses) CreateInvitationWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateInvitationResult, error) {
+	rsp, err := c.CreateInvitationWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateInvitationResult(rsp)
+}
+
+func (c *ClientWithResponses) CreateInvitationWithResponse(ctx context.Context, org OrgPath, body CreateInvitationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateInvitationResult, error) {
+	rsp, err := c.CreateInvitation(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateInvitationResult(rsp)
+}
+
+// DeleteInvitationWithResponse request returning *DeleteInvitationResult
+func (c *ClientWithResponses) DeleteInvitationWithResponse(ctx context.Context, org OrgPath, uid InvitationUidPath, reqEditors ...RequestEditorFn) (*DeleteInvitationResult, error) {
+	rsp, err := c.DeleteInvitation(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteInvitationResult(rsp)
+}
+
 // ListJobsWithResponse request returning *ListJobsResult
 func (c *ClientWithResponses) ListJobsWithResponse(ctx context.Context, org OrgPath, params *ListJobsParams, reqEditors ...RequestEditorFn) (*ListJobsResult, error) {
 	rsp, err := c.ListJobs(ctx, org, params, reqEditors...)
@@ -16756,6 +18211,49 @@ func (c *ClientWithResponses) UpdateMemberWithResponse(ctx context.Context, org 
 	return ParseUpdateMemberResult(rsp)
 }
 
+// ListOrgMembershipRequestsWithResponse request returning *ListOrgMembershipRequestsResult
+func (c *ClientWithResponses) ListOrgMembershipRequestsWithResponse(ctx context.Context, org OrgPath, params *ListOrgMembershipRequestsParams, reqEditors ...RequestEditorFn) (*ListOrgMembershipRequestsResult, error) {
+	rsp, err := c.ListOrgMembershipRequests(ctx, org, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListOrgMembershipRequestsResult(rsp)
+}
+
+// ApproveMembershipRequestWithBodyWithResponse request with arbitrary body returning *ApproveMembershipRequestResult
+func (c *ClientWithResponses) ApproveMembershipRequestWithBodyWithResponse(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApproveMembershipRequestResult, error) {
+	rsp, err := c.ApproveMembershipRequestWithBody(ctx, org, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApproveMembershipRequestResult(rsp)
+}
+
+func (c *ClientWithResponses) ApproveMembershipRequestWithResponse(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, body ApproveMembershipRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*ApproveMembershipRequestResult, error) {
+	rsp, err := c.ApproveMembershipRequest(ctx, org, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApproveMembershipRequestResult(rsp)
+}
+
+// RejectMembershipRequestWithBodyWithResponse request with arbitrary body returning *RejectMembershipRequestResult
+func (c *ClientWithResponses) RejectMembershipRequestWithBodyWithResponse(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RejectMembershipRequestResult, error) {
+	rsp, err := c.RejectMembershipRequestWithBody(ctx, org, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRejectMembershipRequestResult(rsp)
+}
+
+func (c *ClientWithResponses) RejectMembershipRequestWithResponse(ctx context.Context, org OrgPath, uid MembershipRequestUidPath, body RejectMembershipRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*RejectMembershipRequestResult, error) {
+	rsp, err := c.RejectMembershipRequest(ctx, org, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRejectMembershipRequestResult(rsp)
+}
+
 // ListOncallSchedulesWithResponse request returning *ListOncallSchedulesResult
 func (c *ClientWithResponses) ListOncallSchedulesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListOncallSchedulesResult, error) {
 	rsp, err := c.ListOncallSchedules(ctx, org, reqEditors...)
@@ -16904,6 +18402,32 @@ func (c *ClientWithResponses) ListOrgResultsWithResponse(ctx context.Context, or
 		return nil, err
 	}
 	return ParseListOrgResultsResult(rsp)
+}
+
+// GetOrgSettingsWithResponse request returning *GetOrgSettingsResult
+func (c *ClientWithResponses) GetOrgSettingsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*GetOrgSettingsResult, error) {
+	rsp, err := c.GetOrgSettings(ctx, org, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetOrgSettingsResult(rsp)
+}
+
+// UpdateOrgSettingsWithBodyWithResponse request with arbitrary body returning *UpdateOrgSettingsResult
+func (c *ClientWithResponses) UpdateOrgSettingsWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateOrgSettingsResult, error) {
+	rsp, err := c.UpdateOrgSettingsWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateOrgSettingsResult(rsp)
+}
+
+func (c *ClientWithResponses) UpdateOrgSettingsWithResponse(ctx context.Context, org OrgPath, body UpdateOrgSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateOrgSettingsResult, error) {
+	rsp, err := c.UpdateOrgSettings(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateOrgSettingsResult(rsp)
 }
 
 // ListSeveritiesWithResponse request returning *ListSeveritiesResult
@@ -17517,6 +19041,126 @@ func ParseGetCurrentUserResult(rsp *http.Response) (*GetCurrentUserResult, error
 	return response, nil
 }
 
+// ParseListMyMembershipRequestsResult parses an HTTP response from a ListMyMembershipRequestsWithResponse call
+func ParseListMyMembershipRequestsResult(rsp *http.Response) (*ListMyMembershipRequestsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListMyMembershipRequestsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MembershipRequestListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateMembershipRequestResult parses an HTTP response from a CreateMembershipRequestWithResponse call
+func ParseCreateMembershipRequestResult(rsp *http.Response) (*CreateMembershipRequestResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateMembershipRequestResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest MembershipRequestSummary
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCancelMembershipRequestResult parses an HTTP response from a CancelMembershipRequestWithResponse call
+func ParseCancelMembershipRequestResult(rsp *http.Response) (*CancelMembershipRequestResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CancelMembershipRequestResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseRefreshTokenResult parses an HTTP response from a RefreshTokenWithResponse call
 func ParseRefreshTokenResult(rsp *http.Response) (*RefreshTokenResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -17681,6 +19325,53 @@ func ParseListCheckTypeSamplesResult(rsp *http.Response) (*ListCheckTypeSamplesR
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateOrgResult parses an HTTP response from a CreateOrgWithResponse call
+func ParseCreateOrgResult(rsp *http.Response) (*CreateOrgResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateOrgResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest OrgResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	}
 
@@ -19919,6 +21610,140 @@ func ParseUnsnoozeIncidentResult(rsp *http.Response) (*UnsnoozeIncidentResult, e
 	return response, nil
 }
 
+// ParseListInvitationsResult parses an HTTP response from a ListInvitationsWithResponse call
+func ParseListInvitationsResult(rsp *http.Response) (*ListInvitationsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListInvitationsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest InviteListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateInvitationResult parses an HTTP response from a CreateInvitationWithResponse call
+func ParseCreateInvitationResult(rsp *http.Response) (*CreateInvitationResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateInvitationResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest InviteResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteInvitationResult parses an HTTP response from a DeleteInvitationWithResponse call
+func ParseDeleteInvitationResult(rsp *http.Response) (*DeleteInvitationResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteInvitationResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListJobsResult parses an HTTP response from a ListJobsWithResponse call
 func ParseListJobsResult(rsp *http.Response) (*ListJobsResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -20564,6 +22389,140 @@ func ParseUpdateMemberResult(rsp *http.Response) (*UpdateMemberResult, error) {
 	return response, nil
 }
 
+// ParseListOrgMembershipRequestsResult parses an HTTP response from a ListOrgMembershipRequestsWithResponse call
+func ParseListOrgMembershipRequestsResult(rsp *http.Response) (*ListOrgMembershipRequestsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListOrgMembershipRequestsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MembershipRequestAdminListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseApproveMembershipRequestResult parses an HTTP response from a ApproveMembershipRequestWithResponse call
+func ParseApproveMembershipRequestResult(rsp *http.Response) (*ApproveMembershipRequestResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ApproveMembershipRequestResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRejectMembershipRequestResult parses an HTTP response from a RejectMembershipRequestWithResponse call
+func ParseRejectMembershipRequestResult(rsp *http.Response) (*RejectMembershipRequestResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RejectMembershipRequestResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListOncallSchedulesResult parses an HTTP response from a ListOncallSchedulesWithResponse call
 func ParseListOncallSchedulesResult(rsp *http.Response) (*ListOncallSchedulesResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -21125,6 +23084,107 @@ func ParseListOrgResultsResult(rsp *http.Response) (*ListOrgResultsResult, error
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetOrgSettingsResult parses an HTTP response from a GetOrgSettingsWithResponse call
+func ParseGetOrgSettingsResult(rsp *http.Response) (*GetOrgSettingsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetOrgSettingsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OrgSettingsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateOrgSettingsResult parses an HTTP response from a UpdateOrgSettingsWithResponse call
+func ParseUpdateOrgSettingsResult(rsp *http.Response) (*UpdateOrgSettingsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateOrgSettingsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OrgSettingsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound

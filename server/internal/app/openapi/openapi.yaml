@@ -53,6 +53,12 @@ tags:
     description: On-call schedules, overrides, rotation preview, and iCal feeds
   - name: EscalationPolicies
     description: Escalation policies with ordered steps and targets
+  - name: Organizations
+    description: Organization creation and settings
+  - name: Invitations
+    description: Organization invitations
+  - name: MembershipRequests
+    description: Requests to join an organization (requester and admin sides)
 
 paths:
   # Management APIs
@@ -3680,6 +3686,307 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  # Organization APIs
+  /api/v1/orgs:
+    post:
+      tags: [Organizations]
+      summary: Create a new organization
+      description: >-
+        Creates a new organization, makes the caller its admin, and returns a
+        session scoped to the new org.
+      operationId: createOrg
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrgRequest"
+      responses:
+        "201":
+          description: Organization created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/orgs/{org}/settings:
+    get:
+      tags: [Organizations]
+      summary: Get organization settings
+      operationId: getOrgSettings
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: Organization settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgSettingsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Organizations]
+      summary: Update organization settings
+      operationId: updateOrgSettings
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrgSettingsRequest"
+      responses:
+        "200":
+          description: Updated organization settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgSettingsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Organization invitation APIs
+  /api/v1/orgs/{org}/invitations:
+    get:
+      tags: [Invitations]
+      summary: List pending invitations
+      operationId: listInvitations
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of pending invitations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [Invitations]
+      summary: Create an invitation
+      operationId: createInvitation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInvitationRequest"
+      responses:
+        "201":
+          description: Invitation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/invitations/{uid}:
+    delete:
+      tags: [Invitations]
+      summary: Revoke a pending invitation
+      operationId: deleteInvitation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/InvitationUidPath"
+      responses:
+        "204":
+          description: Invitation revoked
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Membership request APIs (requester side)
+  /api/v1/auth/membership-requests:
+    get:
+      tags: [MembershipRequests]
+      summary: List the caller's own membership requests
+      operationId: listMyMembershipRequests
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The caller's membership requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipRequestListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [MembershipRequests]
+      summary: Request to join an organization
+      operationId: createMembershipRequest
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMembershipRequestRequest"
+      responses:
+        "201":
+          description: Membership request created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipRequestSummary"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/auth/membership-requests/{uid}:
+    delete:
+      tags: [MembershipRequests]
+      summary: Cancel one of the caller's membership requests
+      operationId: cancelMembershipRequest
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/MembershipRequestUidPath"
+      responses:
+        "204":
+          description: Membership request cancelled
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Membership request APIs (org-admin side)
+  /api/v1/orgs/{org}/membership-requests:
+    get:
+      tags: [MembershipRequests]
+      summary: List an organization's membership requests
+      operationId: listOrgMembershipRequests
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: status
+          in: query
+          required: false
+          description: Filter by status (pending, approved, rejected, canceled)
+          schema:
+            type: string
+            enum: [pending, approved, rejected, canceled]
+      responses:
+        "200":
+          description: Membership requests for the organization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipRequestAdminListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/membership-requests/{uid}/approve:
+    post:
+      tags: [MembershipRequests]
+      summary: Approve a membership request
+      operationId: approveMembershipRequest
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MembershipRequestUidPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproveMembershipRequestRequest"
+      responses:
+        "200":
+          description: Membership request approved
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/orgs/{org}/membership-requests/{uid}/reject:
+    post:
+      tags: [MembershipRequests]
+      summary: Reject a membership request
+      operationId: rejectMembershipRequest
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MembershipRequestUidPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RejectMembershipRequestRequest"
+      responses:
+        "200":
+          description: Membership request rejected
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -3852,6 +4159,24 @@ components:
         type: string
         format: uuid
       description: Escalation policy UID
+
+    InvitationUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Invitation UID
+
+    MembershipRequestUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Membership request UID
 
   responses:
     NotFound:
@@ -6568,3 +6893,244 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EscalationStepInput"
+
+    # Organization schemas
+    CreateOrgRequest:
+      type: object
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+          description: Human-readable organization name
+        slug:
+          type: string
+          description: URL-friendly identifier (3-20 chars, lowercase alphanumeric with hyphens)
+
+    OrgResponse:
+      type: object
+      required: [uid, slug, name, accessToken, refreshToken, expiresIn, tokenType]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        accessToken:
+          type: string
+          description: Access token scoped to the new organization
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+          description: Access token lifetime in seconds
+        tokenType:
+          type: string
+
+    OrgSettingsResponse:
+      type: object
+      required: [registrationEmailPattern]
+      properties:
+        registrationEmailPattern:
+          type: string
+          description: Auto-join email regex; empty when unset
+        sessionMaxDurationSeconds:
+          type: integer
+          description: Org-level session max duration override in seconds; omitted when inherited
+
+    UpdateOrgSettingsRequest:
+      type: object
+      properties:
+        registrationEmailPattern:
+          type: string
+          description: Auto-join email regex; empty string clears it
+        sessionMaxDurationSeconds:
+          type: integer
+          description: Session max duration override in seconds; <=0 clears the override
+
+    # Invitation schemas
+    CreateInvitationRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [admin, user, viewer]
+          description: Member role granted on acceptance (default user)
+        expiresIn:
+          type: string
+          enum: ["1h", "6h", "12h", "24h", "48h", "1w"]
+          description: Invitation lifetime (default 24h)
+        app:
+          type: string
+          enum: [dash0, dash]
+          description: Target dashboard for the invite link (default dash0)
+
+    InviteResponse:
+      type: object
+      required: [uid, token, email, role, inviteUrl, expiresAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        token:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+        inviteUrl:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+
+    InviteListItem:
+      type: object
+      required: [uid, email, role, createdAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    InviteListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/InviteListItem"
+
+    # Membership request schemas
+    OrganizationRef:
+      type: object
+      required: [uid, slug, name]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+
+    MembershipRequestUser:
+      type: object
+      required: [uid, email]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        avatarUrl:
+          type: string
+        role:
+          type: string
+
+    CreateMembershipRequestRequest:
+      type: object
+      required: [orgSlug]
+      properties:
+        orgSlug:
+          type: string
+          description: Slug of the organization to join
+        message:
+          type: string
+          description: Optional message to the org admins
+
+    ApproveMembershipRequestRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [admin, user, viewer]
+          description: Role to grant the new member (default user)
+
+    RejectMembershipRequestRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          description: Optional reason shown to the requester
+
+    MembershipRequestSummary:
+      type: object
+      required: [uid, organization, status, createdAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        organization:
+          $ref: "#/components/schemas/OrganizationRef"
+        status:
+          type: string
+          enum: [pending, approved, rejected, canceled]
+        message:
+          type: string
+        decisionReason:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        decidedAt:
+          type: string
+          format: date-time
+
+    MembershipRequestListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MembershipRequestSummary"
+
+    MembershipRequestAdminView:
+      type: object
+      required: [uid, user, status, createdAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        user:
+          $ref: "#/components/schemas/MembershipRequestUser"
+        status:
+          type: string
+          enum: [pending, approved, rejected, canceled]
+        message:
+          type: string
+        decisionReason:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        decidedAt:
+          type: string
+          format: date-time
+
+    MembershipRequestAdminListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MembershipRequestAdminView"
