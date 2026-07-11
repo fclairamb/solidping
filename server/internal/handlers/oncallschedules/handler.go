@@ -39,7 +39,6 @@ const jsonDataKey = "data"
 // scheduleResponse is the JSON shape returned to the client.
 type scheduleResponse struct {
 	UID             string    `json:"uid"`
-	Slug            string    `json:"slug"`
 	Name            string    `json:"name"`
 	Description     *string   `json:"description,omitempty"`
 	Timezone        string    `json:"timezone"`
@@ -73,7 +72,6 @@ func (h *Handler) toScheduleResponse(
 ) *scheduleResponse {
 	return &scheduleResponse{
 		UID:             schedule.UID,
-		Slug:            schedule.Slug,
 		Name:            schedule.Name,
 		Description:     schedule.Description,
 		Timezone:        schedule.Timezone,
@@ -177,7 +175,6 @@ func (h *Handler) ListSchedules(writer http.ResponseWriter, req bunrouter.Reques
 
 // CreateScheduleBody mirrors the POST body documented in the spec.
 type CreateScheduleBody struct {
-	Slug           string    `json:"slug"`
 	Name           string    `json:"name"`
 	Description    string    `json:"description"`
 	Timezone       string    `json:"timezone"`
@@ -202,7 +199,6 @@ func (h *Handler) CreateSchedule(writer http.ResponseWriter, req bunrouter.Reque
 
 	schedule, err := h.svc.CreateSchedule(req.Context(), &CreateScheduleInput{
 		OrganizationUID: orgUID,
-		Slug:            body.Slug,
 		Name:            body.Name,
 		Description:     body.Description,
 		Timezone:        body.Timezone,
@@ -223,15 +219,15 @@ func (h *Handler) CreateSchedule(writer http.ResponseWriter, req bunrouter.Reque
 	))
 }
 
-// GetSchedule handles GET /api/v1/orgs/:org/on-call-schedules/:slug.
+// GetSchedule handles GET /api/v1/orgs/:org/on-call-schedules/:uid.
 func (h *Handler) GetSchedule(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgUID, orgErr := h.resolveOrgUID(req)
 	if orgErr != nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
-	slug := req.Param("slug")
+	uid := req.Param("uid")
 
-	schedule, err := h.svc.GetScheduleByUidOrSlug(req.Context(), orgUID, slug)
+	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -245,7 +241,6 @@ func (h *Handler) GetSchedule(writer http.ResponseWriter, req bunrouter.Request)
 
 // UpdateScheduleBody is the partial-update payload.
 type UpdateScheduleBody struct {
-	Slug           *string    `json:"slug"`
 	Name           *string    `json:"name"`
 	Description    *string    `json:"description"`
 	Timezone       *string    `json:"timezone"`
@@ -256,15 +251,15 @@ type UpdateScheduleBody struct {
 	UserUIDs       *[]string  `json:"userUids"`
 }
 
-// UpdateSchedule handles PATCH /api/v1/orgs/:org/on-call-schedules/:slug.
+// UpdateSchedule handles PATCH /api/v1/orgs/:org/on-call-schedules/:uid.
 func (h *Handler) UpdateSchedule(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgUID, orgErr := h.resolveOrgUID(req)
 	if orgErr != nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
-	slug := req.Param("slug")
+	uid := req.Param("uid")
 
-	schedule, err := h.svc.GetScheduleByUidOrSlug(req.Context(), orgUID, slug)
+	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -275,7 +270,6 @@ func (h *Handler) UpdateSchedule(writer http.ResponseWriter, req bunrouter.Reque
 	}
 
 	input := &UpdateScheduleInput{
-		Slug:           body.Slug,
 		Name:           body.Name,
 		Description:    body.Description,
 		Timezone:       body.Timezone,
@@ -302,15 +296,15 @@ func (h *Handler) UpdateSchedule(writer http.ResponseWriter, req bunrouter.Reque
 	))
 }
 
-// DeleteSchedule handles DELETE /api/v1/orgs/:org/on-call-schedules/:slug.
+// DeleteSchedule handles DELETE /api/v1/orgs/:org/on-call-schedules/:uid.
 func (h *Handler) DeleteSchedule(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgUID, orgErr := h.resolveOrgUID(req)
 	if orgErr != nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
-	slug := req.Param("slug")
+	uid := req.Param("uid")
 
-	schedule, err := h.svc.GetScheduleByUidOrSlug(req.Context(), orgUID, slug)
+	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -324,15 +318,15 @@ func (h *Handler) DeleteSchedule(writer http.ResponseWriter, req bunrouter.Reque
 	return nil
 }
 
-// PreviewSchedule handles GET /api/v1/orgs/:org/on-call-schedules/:slug/preview.
+// PreviewSchedule handles GET /api/v1/orgs/:org/on-call-schedules/:uid/preview.
 func (h *Handler) PreviewSchedule(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgUID, orgErr := h.resolveOrgUID(req)
 	if orgErr != nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
-	slug := req.Param("slug")
+	uid := req.Param("uid")
 
-	schedule, err := h.svc.GetScheduleByUidOrSlug(req.Context(), orgUID, slug)
+	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -380,15 +374,15 @@ func (h *Handler) PreviewSchedule(writer http.ResponseWriter, req bunrouter.Requ
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{jsonDataKey: out})
 }
 
-// ListOverrides handles GET /api/v1/orgs/:org/on-call-schedules/:slug/overrides.
+// ListOverrides handles GET /api/v1/orgs/:org/on-call-schedules/:uid/overrides.
 func (h *Handler) ListOverrides(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgUID, orgErr := h.resolveOrgUID(req)
 	if orgErr != nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
-	slug := req.Param("slug")
+	uid := req.Param("uid")
 
-	schedule, err := h.svc.GetScheduleByUidOrSlug(req.Context(), orgUID, slug)
+	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -429,15 +423,15 @@ type CreateOverrideBody struct {
 	Reason  string    `json:"reason"`
 }
 
-// CreateOverride handles POST /api/v1/orgs/:org/on-call-schedules/:slug/overrides.
+// CreateOverride handles POST /api/v1/orgs/:org/on-call-schedules/:uid/overrides.
 func (h *Handler) CreateOverride(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgUID, orgErr := h.resolveOrgUID(req)
 	if orgErr != nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
-	slug := req.Param("slug")
+	uid := req.Param("uid")
 
-	schedule, err := h.svc.GetScheduleByUidOrSlug(req.Context(), orgUID, slug)
+	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -462,7 +456,7 @@ func (h *Handler) CreateOverride(writer http.ResponseWriter, req bunrouter.Reque
 	return h.WriteJSON(writer, http.StatusCreated, override)
 }
 
-// DeleteOverride handles DELETE /api/v1/orgs/:org/on-call-schedules/:slug/overrides/:overrideUid.
+// DeleteOverride handles DELETE /api/v1/orgs/:org/on-call-schedules/:uid/overrides/:overrideUid.
 func (h *Handler) DeleteOverride(writer http.ResponseWriter, req bunrouter.Request) error {
 	overrideUID := req.Param("overrideUid")
 
@@ -475,15 +469,15 @@ func (h *Handler) DeleteOverride(writer http.ResponseWriter, req bunrouter.Reque
 	return nil
 }
 
-// EnableICalFeed handles POST /api/v1/orgs/:org/on-call-schedules/:slug/ical-feed/enable.
+// EnableICalFeed handles POST /api/v1/orgs/:org/on-call-schedules/:uid/ical-feed/enable.
 func (h *Handler) EnableICalFeed(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgUID, orgErr := h.resolveOrgUID(req)
 	if orgErr != nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
-	slug := req.Param("slug")
+	uid := req.Param("uid")
 
-	schedule, err := h.svc.GetScheduleByUidOrSlug(req.Context(), orgUID, slug)
+	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -499,7 +493,7 @@ func (h *Handler) EnableICalFeed(writer http.ResponseWriter, req bunrouter.Reque
 	})
 }
 
-// RotateICalFeed handles POST /api/v1/orgs/:org/on-call-schedules/:slug/ical-feed/rotate.
+// RotateICalFeed handles POST /api/v1/orgs/:org/on-call-schedules/:uid/ical-feed/rotate.
 // Replaces the existing secret with a fresh one; subscribers on the old URL
 // start receiving 410 immediately.
 func (h *Handler) RotateICalFeed(writer http.ResponseWriter, req bunrouter.Request) error {
@@ -508,9 +502,9 @@ func (h *Handler) RotateICalFeed(writer http.ResponseWriter, req bunrouter.Reque
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
 
-	slug := req.Param("slug")
+	uid := req.Param("uid")
 
-	schedule, err := h.svc.GetScheduleByUidOrSlug(req.Context(), orgUID, slug)
+	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -526,15 +520,15 @@ func (h *Handler) RotateICalFeed(writer http.ResponseWriter, req bunrouter.Reque
 	})
 }
 
-// DisableICalFeed handles POST /api/v1/orgs/:org/on-call-schedules/:slug/ical-feed/disable.
+// DisableICalFeed handles POST /api/v1/orgs/:org/on-call-schedules/:uid/ical-feed/disable.
 func (h *Handler) DisableICalFeed(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgUID, orgErr := h.resolveOrgUID(req)
 	if orgErr != nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
-	slug := req.Param("slug")
+	uid := req.Param("uid")
 
-	schedule, err := h.svc.GetScheduleByUidOrSlug(req.Context(), orgUID, slug)
+	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
 		return h.handleError(writer, err)
 	}

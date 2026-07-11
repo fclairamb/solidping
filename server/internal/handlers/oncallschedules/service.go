@@ -56,7 +56,6 @@ func NewService(dbService db.Service) *Service {
 // plus its initial roster.
 type CreateScheduleInput struct {
 	OrganizationUID string
-	Slug            string
 	Name            string
 	Description     string
 	Timezone        string
@@ -78,7 +77,7 @@ func (s *Service) CreateSchedule(ctx context.Context, input *CreateScheduleInput
 	}
 
 	schedule := models.NewOnCallSchedule(
-		input.OrganizationUID, input.Slug, input.Name, input.Timezone, input.RotationType,
+		input.OrganizationUID, input.Name, input.Timezone, input.RotationType,
 	)
 	schedule.HandoffTime = input.HandoffTime
 	schedule.HandoffWeekday = input.HandoffWeekday
@@ -117,42 +116,6 @@ func (s *Service) GetScheduleByUID(
 	return schedule, nil
 }
 
-// GetScheduleBySlug returns a schedule by (org, slug).
-func (s *Service) GetScheduleBySlug(
-	ctx context.Context, orgUID, slug string,
-) (*models.OnCallSchedule, error) {
-	schedule, err := s.db.GetOnCallScheduleBySlug(ctx, orgUID, slug)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrScheduleNotFound
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return schedule, nil
-}
-
-// GetScheduleByUidOrSlug returns a schedule addressed by either its UID or
-// its slug. Used by GET/PATCH/DELETE and the schedule sub-routes so a
-// Terraform-style uid is a valid identifier alongside the slug.
-//
-//nolint:revive // ByUidOrSlug matches the established checks/status-pages naming
-func (s *Service) GetScheduleByUidOrSlug(
-	ctx context.Context, orgUID, identifier string,
-) (*models.OnCallSchedule, error) {
-	schedule, err := s.db.GetOnCallScheduleByUidOrSlug(ctx, orgUID, identifier)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrScheduleNotFound
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return schedule, nil
-}
-
 // ListSchedules returns all schedules for an organization.
 func (s *Service) ListSchedules(ctx context.Context, orgUID string) ([]*models.OnCallSchedule, error) {
 	return s.db.ListOnCallSchedules(ctx, orgUID)
@@ -175,7 +138,6 @@ func (s *Service) ReplaceUsers(
 // UpdateScheduleInput holds optional updates. Use pointers so an explicit
 // "set to value" is distinguishable from "leave unchanged".
 type UpdateScheduleInput struct {
-	Slug           *string
 	Name           *string
 	Description    *string
 	Timezone       *string
@@ -228,7 +190,6 @@ func (s *Service) UpdateSchedule(
 	}
 
 	update := &models.OnCallScheduleUpdate{
-		Slug:                input.Slug,
 		Name:                input.Name,
 		Description:         input.Description,
 		Timezone:            input.Timezone,

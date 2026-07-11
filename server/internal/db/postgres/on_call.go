@@ -30,6 +30,12 @@ func (s *Service) CreateOnCallSchedule(ctx context.Context, schedule *models.OnC
 func (s *Service) GetOnCallSchedule(
 	ctx context.Context, orgUID, scheduleUID string,
 ) (*models.OnCallSchedule, error) {
+	// uid is a uuid-typed column; a non-UUID value errors on the implicit
+	// cast instead of matching zero rows, so short-circuit to ErrNoRows.
+	if _, err := uuid.Parse(scheduleUID); err != nil {
+		return nil, sql.ErrNoRows
+	}
+
 	var schedule models.OnCallSchedule
 
 	query := s.db.NewSelect().
@@ -43,54 +49,6 @@ func (s *Service) GetOnCallSchedule(
 
 	if err := query.Scan(ctx); err != nil {
 		return nil, fmt.Errorf("get on-call schedule: %w", err)
-	}
-
-	return &schedule, nil
-}
-
-// GetOnCallScheduleBySlug looks up by (org, slug).
-func (s *Service) GetOnCallScheduleBySlug(
-	ctx context.Context, orgUID, slug string,
-) (*models.OnCallSchedule, error) {
-	var schedule models.OnCallSchedule
-
-	err := s.db.NewSelect().
-		Model(&schedule).
-		Where("organization_uid = ?", orgUID).
-		Where("slug = ?", slug).
-		Where("deleted_at IS NULL").
-		Scan(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("get on-call schedule by slug: %w", err)
-	}
-
-	return &schedule, nil
-}
-
-// GetOnCallScheduleByUidOrSlug looks up by (org, identifier) where the
-// identifier is a UID when it parses as a UUID, otherwise a slug. Mirrors
-// the resolution used by checks and status pages so the same path param can
-// address a schedule by uid or slug.
-//
-//nolint:revive // ByUidOrSlug matches the db.Service interface naming
-func (s *Service) GetOnCallScheduleByUidOrSlug(
-	ctx context.Context, orgUID, identifier string,
-) (*models.OnCallSchedule, error) {
-	var schedule models.OnCallSchedule
-
-	query := s.db.NewSelect().
-		Model(&schedule).
-		Where("organization_uid = ?", orgUID).
-		Where("deleted_at IS NULL")
-
-	if _, err := uuid.Parse(identifier); err == nil {
-		query = query.Where("uid = ?", identifier)
-	} else {
-		query = query.Where("slug = ?", identifier)
-	}
-
-	if err := query.Scan(ctx); err != nil {
-		return nil, fmt.Errorf("get on-call schedule by uid or slug: %w", err)
 	}
 
 	return &schedule, nil
@@ -173,9 +131,6 @@ func (s *Service) UpdateOnCallSchedule(
 
 // applyOnCallScheduleSets writes Set() calls for the non-nil pointer fields.
 func applyOnCallScheduleSets(query *bun.UpdateQuery, update *models.OnCallScheduleUpdate) *bun.UpdateQuery {
-	if update.Slug != nil {
-		query = query.Set("slug = ?", *update.Slug)
-	}
 	if update.Name != nil {
 		query = query.Set("name = ?", *update.Name)
 	}

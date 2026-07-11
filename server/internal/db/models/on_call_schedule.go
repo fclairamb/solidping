@@ -23,7 +23,6 @@ const (
 type OnCallSchedule struct {
 	UID             string       `bun:"uid,pk,type:varchar(36)"`
 	OrganizationUID string       `bun:"organization_uid,notnull"`
-	Slug            string       `bun:"slug,notnull"`
 	Name            string       `bun:"name,notnull"`
 	Description     *string      `bun:"description"`
 	Timezone        string       `bun:"timezone,notnull"`
@@ -39,13 +38,12 @@ type OnCallSchedule struct {
 
 // NewOnCallSchedule builds a schedule with a fresh UID; caller fills the
 // remaining fields.
-func NewOnCallSchedule(orgUID, slug, name, timezone string, rotation RotationType) *OnCallSchedule {
+func NewOnCallSchedule(orgUID, name, timezone string, rotation RotationType) *OnCallSchedule {
 	now := time.Now()
 
 	return &OnCallSchedule{
 		UID:             uuid.New().String(),
 		OrganizationUID: orgUID,
-		Slug:            slug,
 		Name:            name,
 		Timezone:        timezone,
 		RotationType:    rotation,
@@ -57,7 +55,6 @@ func NewOnCallSchedule(orgUID, slug, name, timezone string, rotation RotationTyp
 // OnCallScheduleUpdate captures the writable fields of a schedule. Pointer
 // semantics: nil = unchanged, non-nil = set.
 type OnCallScheduleUpdate struct {
-	Slug           *string
 	Name           *string
 	Description    *string
 	Timezone       *string
