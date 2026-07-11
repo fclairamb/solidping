@@ -144,7 +144,7 @@ func orgSettingsSetAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	body := client.UpdateOrgSettingsJSONRequestBody{
-		RegistrationEmailPattern: optString(cmd, flagEmailPattern),
+		RegistrationEmailPattern:  optString(cmd, flagEmailPattern),
 		SessionMaxDurationSeconds: optInt(cmd, flagSessionMaxDuration),
 	}
 

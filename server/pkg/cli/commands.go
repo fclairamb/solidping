@@ -881,7 +881,7 @@ func GetCommands() []*cli.Command {
 					Action: jobsCreateAction,
 				},
 				{
-					Name:      "cancel",
+					Name:      cmdCancel,
 					Usage:     "Cancel a job",
 					ArgsUsage: argUID,
 					Action:    jobsCancelAction,
@@ -969,7 +969,7 @@ func GetCommands() []*cli.Command {
 							Action:    discoveryScansGetAction,
 						},
 						{
-							Name:      "cancel",
+							Name:      cmdCancel,
 							Usage:     "Cancel a running discovery scan",
 							ArgsUsage: argUID,
 							Action:    discoveryScansCancelAction,

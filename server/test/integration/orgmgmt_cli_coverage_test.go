@@ -83,7 +83,7 @@ func TestCLICoverage_OrgSettings(t *testing.T) {
 	r.NoError(err)
 	r.Equal(200, getResp.StatusCode())
 	r.NotNil(getResp.JSON200)
-	r.Equal("", getResp.JSON200.RegistrationEmailPattern)
+	r.Empty(getResp.JSON200.RegistrationEmailPattern)
 	r.Nil(getResp.JSON200.SessionMaxDurationSeconds)
 
 	pattern := "@acme\\.example$"
@@ -337,5 +337,5 @@ func TestCLICoverage_MembershipRequestCancel(t *testing.T) {
 			r.Equal(client.MembershipRequestSummaryStatus("canceled"), req.Status)
 		}
 	}
-	r.True(found, "cancelled request must still be listed with canceled status")
+	r.True(found, "canceled request must still be listed with canceled status")
 }

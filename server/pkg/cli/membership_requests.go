@@ -54,7 +54,7 @@ func membershipRequestsCommand() *cli.Command {
 				Action: membershipRequestsListAction,
 			},
 			{
-				Name:      "cancel",
+				Name:      cmdCancel,
 				Usage:     "Cancel one of your membership requests",
 				ArgsUsage: argUID,
 				Action:    membershipRequestsCancelAction,
@@ -218,7 +218,7 @@ func membershipRequestsCancelAction(ctx context.Context, cmd *cli.Command) error
 		return cliCtx.HandleStatusError("Failed to cancel membership request", resp.StatusCode())
 	}
 
-	output.PrintSuccess(os.Stdout, "Membership request cancelled: "+requestUID.String())
+	output.PrintSuccess(os.Stdout, "Membership request canceled: "+requestUID.String())
 
 	return nil
 }
