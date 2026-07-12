@@ -59,10 +59,13 @@ func Int(i int) *int { return &i }
 // "billing service never reconciled us yet" fallback for a fresh SaaS
 // org, and it must render/enforce identically to the real Free plan
 // until billing writes its own org_entitlements row.
+// The SaaS numbers implement the Free tier of the pricing decision of
+// 2026-07-12 (Free €0: 100 checks, 6 checks/min, 5 seats).
 const (
 	defaultMaxSSOUsersSelfHosted  = 30
-	defaultMaxChecksSaaS          = 10
+	defaultMaxChecksSaaS          = 100
 	defaultMaxChecksPerMinuteSaaS = 6
+	defaultMaxSSOUsersSaaS        = 5
 )
 
 // Display identity shown on the usage page when a row has none of its
@@ -94,6 +97,7 @@ func DefaultsFor(mode string) Entitlements {
 			Limits: Limits{
 				MaxChecks:          Int(defaultMaxChecksSaaS),
 				MaxChecksPerMinute: Int(defaultMaxChecksPerMinuteSaaS),
+				MaxSSOUsers:        Int(defaultMaxSSOUsersSaaS),
 			},
 			Source:       models.EntitlementSourceDefault,
 			DisplayName:  strPtr(displayNameSaaS),
