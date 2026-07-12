@@ -20,6 +20,48 @@ community demand.
 
 ---
 
+## Refresh log
+
+### 2026-07-12 — web re-verification of the tracked set
+
+Facts re-checked against live pricing/product pages (sources inline in each
+entry). Deltas since the 2026-05/06 capture:
+
+- **Status Harbor — prices ~doubled.** Starter $5 → **$10/mo**, Pro $12 → **$24/mo**
+  (Pro now 25 monitors / 3 Lighthouse agents / 6 seats). Free tier is 5-min and
+  HTTP/TCP/UDP only (SSL/DNS gated behind Starter+).
+- **exit1.dev now advertises an MCP server** (AI-assistant access — the same
+  category as SolidPing's MCP surface) plus WebSocket + ICMP checks; free tier is
+  10 monitors, paid scales to 1,000 monitors @15s. Exact cheap-tier € figure
+  unverified on the current site.
+- **OpenStatus added a Scale tier at $500/mo** above Pro, and raised monitor
+  allotments ("same pricing, more monitors"). Starter $30 / Pro $100 headline
+  unchanged; free interval 10-min, Starter 1-min, Pro 30-sec.
+- **failover.io** added an **ntfy** channel (now 10 channels) and **blockchain /
+  RPC node monitoring with stall detection**; Free/$19 Pro/$79 Team prices
+  unchanged.
+- **HarborScale pivoted** from "monitor everything" uptime toward a telemetry /
+  observability platform (Linux + Docker + ESP32/IoT metrics, managed Grafana
+  built-in) — lower direct-uptime overlap now.
+- **Peekaping** stable at v0.0.46 (2026-04-10), ~1.1k★, MIT, ~14 monitor types /
+  20+ alert channels — momentum roughly flat.
+- **OneUptime** pricing captured: Free / **Growth $22/mo** / **Scale $99/mo**
+  (SSO) / Enterprise, plus PAYG **$1/active-monitor/mo**.
+- **Updu** confirmed live (single Go binary, ~19 monitor types, GitOps config).
+- **SolidUptime — no live product found; presumed inactive/parked.** The
+  name-collision concern with "solidping" is therefore lower priority for now.
+- **StatusDrift** still Cloudflare-blocks its pricing page (paid tiers
+  unverified); positioning has shifted toward DevOps/SRE (Terraform provider,
+  SLO/error-budget/burn-rate, on-call) rather than ITSM.
+- **PulsorUp** live (blog active); pricing unverified.
+- New self-hosted entrants worth watching added below: **EasyMonitor**,
+  **Tianji**, **Kener** (see the new-entrants block at the end of the tracked
+  section). Context: Uptime Kuma is now ~89k★ and the top features pushing its
+  users to alternatives — REST API, distributed multi-location probing,
+  multi-user/SSO, PostgreSQL — are exactly SolidPing's differentiators.
+
+---
+
 ## Tracked closely (`track: true`)
 
 Scope overlaps SolidPing's uptime + self-host + on-call story enough that a shift
@@ -49,9 +91,12 @@ tracking their moves maps where "uptime kuma alternative" demand lives. Surfaced
 Open-source status page + uptime monitoring (OSS + paid SaaS), 8k+★, SOC2-ready
 angle, trusted by Cal.com / Documenso. Paid hosted $30/mo (Starter, 20 monitors,
 1-min, 28 regions) → $100/mo (Pro, 50 monitors, 30-sec, OTel exporter, private
-locations). Same OSS+SaaS shape as SolidPing but status-page-first vs
+locations) → **$500/mo (Scale, added 2026, 10 status pages)** → Enterprise (SOC2,
+SAML/SSO). Same OSS+SaaS shape as SolidPing but status-page-first vs
 monitoring-first. Their "X vs OpenStatus" comparison-page template (Atlassian,
 Better Stack, Checkly, Incident.io, Instatus, Status.io) is worth studying.
+*Update 2026-07-12:* added the $500 Scale tier and raised monitor allotments
+("same pricing, more monitors"); Starter/Pro headline prices unchanged.
 
 ### failover.io — https://failover.io
 SaaS uptime + cron + SSL with cascading multi-channel alert escalation; the
@@ -61,17 +106,22 @@ SMS, Slack, Telegram, Discord, Teams, ntfy, PagerDuty, Webhook, Voice). Free
 SMS+voice) / Team ($79/mo, unlimited, 15s, on-call, 20 seats). Active-active HA.
 Their ack-required model is the top differentiator — confirm SolidPing's ack flow
 before writing any /vs/ content. Surfaced 2026-05-19 via Mastodon self-promo;
-pricing captured 2026-05-21.
+pricing captured 2026-05-21. *Update 2026-07-12:* added **blockchain / RPC node
+monitoring with stall detection** and authenticated-endpoint support; Free/$19/$79
+prices unchanged.
 
 ### Status Harbor — https://statusharbor.io
 SaaS uptime + private-network monitoring via outbound "Lighthouse" agents that run
 inside the network and push results out — no inbound ports (same concept as
 SolidPing's distributed workers). HTTP/TCP/UDP/SSL/DNS + cron; Email/Slack/
-Telegram/Webhook. Free ($0, 5 monitors, 1 Lighthouse, 5-min) / Starter ($5/mo,
-1-min) / Pro ($12/mo, 25 monitors, 3 Lighthouses, 6 members). SolidPing counters:
+Telegram/Webhook. Free ($0, 5 monitors, 1 Lighthouse, 5-min, HTTP/TCP/UDP only) /
+Starter (**$10/mo**, 1-min, +SSL/DNS) / Pro (**$24/mo**, 25 monitors, 3 Lighthouses,
+6 members). SolidPing counters:
 self-hosted/OSS, 32 check types vs ~6, 9 channels vs 4. Surfaced 2026-05-25 via
 an r/selfhosted self-promo that was heavily downvoted ("AI slop advertisement") —
-community mood is hostile to promo posts here.
+community mood is hostile to promo posts here. *Update 2026-07-12:* paid prices
+**roughly doubled** (Starter $5→$10, Pro $12→$24); Lighthouse agents now also stream
+host metrics (CPU/mem/disk/net).
 
 ### StatusDrift — https://statusdrift.com
 Uptime + cert + domain + DNS + TCP, status pages, incident mgmt, SLA monitoring,
@@ -94,19 +144,27 @@ SaaS "Monitor Everything in 60 Seconds — No Setup Required." Tagline mirrors
 SolidPing's ease-of-onboarding angle. Docs use IoT metaphors (Harbors = projects,
 Ships = entities, Cargo = metrics) suggesting broader device/service monitoring.
 Pricing/check types not yet captured (JS-rendered). Added 2026-05-18.
+*Update 2026-07-12:* **pivoted toward a telemetry / observability platform** —
+ingests metrics from Linux servers, Docker containers, and ESP32/IoT sensors with
+managed Grafana built-in. Lower direct-uptime overlap now; downgrade priority.
 
 ### exit1.dev — https://exit1.dev
-Ultra-cheap SaaS ($3/mo) with broad protocol coverage (HTTP/REST/UDP/TCP/ICMP/
+Ultra-cheap SaaS ($3/mo historically) with broad protocol coverage (HTTP/REST/UDP/TCP/ICMP/
 Heartbeat/WS/DNS/SSL/domain expiry) and unlimited webhook alerts. Disruptive on
 price; overlaps SolidPing's network/security checks. SolidPing wins on self-host,
 multi-tenant, on-call, databases/MQ/browser/JS; exit1 wins on "pay $3 and forget
-it." Surfaced 2026-04-12 (Show HN 47736853).
+it." Surfaced 2026-04-12 (Show HN 47736853). *Update 2026-07-12:* now advertises an
+**MCP server for AI assistants** (same category as SolidPing's MCP surface) plus
+WebSocket + ICMP checks; free tier 10 monitors, paid scales to 1,000 monitors @15s
+(exact cheap-tier price unverified on the current site).
 
 ### SolidUptime — https://soliduptime.org
 SaaS uptime with incident grouping, free tier, no CC. **Name-collision risk** —
 "SolidUptime" / "solidping" are confusably similar; both launched 2026, both
 emphasize incident grouping. Matters for SEO / trademark / domain. Surfaced
-2026-04-07 (Show HN 47675648).
+2026-04-07 (Show HN 47675648). *Update 2026-07-12:* **no live product found — the
+site/product did not surface in re-search; presumed inactive/parked.** The
+name-collision concern is therefore lower priority until/unless it reappears.
 
 ### Updu — github.com/nwpeckham88/updu
 Lightweight single-binary self-hosted uptime monitor (OSS). Single-binary like
@@ -116,7 +174,24 @@ natural step-up target when minimalists outgrow it. Surfaced 2026-04-08 (HN 4768
 ### Pulsorup — https://pulsorup.com
 Solo-dev SaaS positioned on "fewer false alerts" — competes with SolidPing's
 incident grouping / adaptive resolution. SolidPing counters with self-host,
-multi-protocol, on-call. Surfaced 2026-04-18 (HN 47819121).
+multi-protocol, on-call. Surfaced 2026-04-18 (HN 47819121). *Update 2026-07-12:*
+still live; pricing unverified.
+
+### New self-hosted entrants (added 2026-07-12)
+Surfaced during the 2026-07-12 refresh via "Uptime Kuma alternative" roundups and
+self-hosted discovery. Early — verify traction before treating as head-to-head.
+
+- **Tianji** — https://tianji.msgbyte.com · OSS, free. Frequently ranked the top
+  self-hosted Uptime-Kuma alternative; bundles uptime + website analytics + server
+  status in one app. Broader "all-in-one" scope than SolidPing's uptime-first
+  focus; watch its momentum.
+- **EasyMonitor** — batteries-included self-hosted Uptime-Kuma alternative, one
+  `docker compose up`. Stack: Laravel 12 + PostgreSQL + Redis Streams + Go probes +
+  TimescaleDB for results. Same self-host lane; no distributed multi-region or
+  on-call depth surfaced yet.
+- **Kener** — https://kener.ing · OSS (SvelteKit), lightweight status-page + basic
+  monitoring. Status-page-first, narrower than SolidPing; SEO competitor for
+  "open-source status page" queries.
 
 ---
 

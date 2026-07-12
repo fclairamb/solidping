@@ -90,6 +90,11 @@ competitor above can claim both at once:
 distributed probing or a hosted tier — that would close SolidPing's Axis-2 gap
 against the closest same-lane project.
 
+**Market-exit opportunity (2026-07-12):** Freshping (Freshworks) shut down
+2026-03-06 — a free-tier incumbent left the market, and its users need a new home.
+This is a concrete, time-boxed displacement window: lead with "self-host it and it
+can't be sunset on you," plus a low-friction import path. See messaging hook #10.
+
 ---
 
 ## Messaging hooks (derived from the analysis)
@@ -116,6 +121,13 @@ targets:
    → Velprove / Checkly / synthetic-API users wanting authenticated / multi-step flows.
 9. **"AI-native monitoring — your agent can talk to your monitors."**
    → the MCP server ships standard; Velprove charges $49/mo for "API/MCP/N8N."
+   *Caveat (2026-07-12): exit1.dev now advertises an MCP server too — "AI-native"
+   is no longer unique. Narrow the claim to "self-hosted MCP, your data never
+   leaves your infra."*
+10. **"Freshping shut down. Land somewhere you own."**
+   → Freshping (Freshworks) closed 2026-03-06; its free-tier users are actively
+   looking for a home. Lead with self-host (nothing to shut down on you) + a free
+   import path. Time-boxed: the migration window closes as those users settle.
 
 For the underlying capability claims behind these hooks (multi-tenant self-host,
 JMAP inbox monitoring, envelope-encrypted credentials, distributed workers,
