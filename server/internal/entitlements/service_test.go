@@ -49,12 +49,14 @@ func TestDefaultsForSaaS(t *testing.T) {
 	r := require.New(t)
 
 	defaults := entitlements.DefaultsFor(config.DeploymentModeSaaS)
-	r.Nil(defaults.Limits.MaxSSOUsers)
+	// Aligned with the billing Free plan (pricing decision 2026-07-12:
+	// 100 checks, 6 checks/min, 5 seats).
+	r.NotNil(defaults.Limits.MaxSSOUsers)
+	r.Equal(5, *defaults.Limits.MaxSSOUsers)
 	r.NotNil(defaults.Limits.MaxChecksPerMinute)
 	r.Equal(6, *defaults.Limits.MaxChecksPerMinute)
-	// Aligned with the billing Free plan (spec 2026-07-07-01).
 	r.NotNil(defaults.Limits.MaxChecks)
-	r.Equal(10, *defaults.Limits.MaxChecks)
+	r.Equal(100, *defaults.Limits.MaxChecks)
 	r.NotNil(defaults.DisplayName)
 	r.Equal("Free", *defaults.DisplayName)
 	r.NotNil(defaults.DisplayEmoji)
@@ -108,10 +110,11 @@ func TestResolveSaaSDefaultsWhenNoRow(t *testing.T) {
 	resolved, err := svc.Resolve(ctx, org.UID)
 	r.NoError(err)
 	r.NotNil(resolved.Limits.MaxChecks)
-	r.Equal(10, *resolved.Limits.MaxChecks)
+	r.Equal(100, *resolved.Limits.MaxChecks)
 	r.NotNil(resolved.Limits.MaxChecksPerMinute)
 	r.Equal(6, *resolved.Limits.MaxChecksPerMinute)
-	r.Nil(resolved.Limits.MaxSSOUsers)
+	r.NotNil(resolved.Limits.MaxSSOUsers)
+	r.Equal(5, *resolved.Limits.MaxSSOUsers)
 	r.NotNil(resolved.DisplayName)
 	r.Equal("Free", *resolved.DisplayName)
 	r.NotNil(resolved.DisplayEmoji)
