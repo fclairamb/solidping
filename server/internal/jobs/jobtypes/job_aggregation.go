@@ -178,13 +178,7 @@ func (r *AggregationJobRun) aggregatePeriod(
 	// rollup numbers — it just preserves the one raw row that records e.g.
 	// "this check was created here" instead of letting its permalink morph
 	// into a misleading aggregation fallback (see GetResult).
-	sourceUIDs := make([]string, 0, len(resultsResp.Results))
-	for _, result := range resultsResp.Results {
-		if result.Status != nil && models.ResultStatus(*result.Status).IsLifecycleMarker() {
-			continue
-		}
-		sourceUIDs = append(sourceUIDs, result.UID)
-	}
+	sourceUIDs := measurableSourceUIDs(resultsResp.Results)
 
 	// Progress guard (spec 2026-07-11-16 §2): a bucket whose only rows are
 	// lifecycle markers has nothing to roll up. Inserting a degenerate
@@ -295,6 +289,23 @@ func lifecycleMarkerStatuses() []int {
 	return []int{int(models.ResultStatusCreated), int(models.ResultStatusRunning)}
 }
 
+// measurableSourceUIDs returns the UIDs of the rows that carry real
+// measurements, skipping lifecycle-marker rows (created, running) — those are
+// intentionally preserved (permalink preservation) and never deleted by a
+// rollup.
+func measurableSourceUIDs(results []*models.Result) []string {
+	uids := make([]string, 0, len(results))
+	for _, result := range results {
+		if result.Status != nil && models.ResultStatus(*result.Status).IsLifecycleMarker() {
+			continue
+		}
+
+		uids = append(uids, result.UID)
+	}
+
+	return uids
+}
+
 // retentionFromConfig resolves the per-tier aggregation retention (raw→hour,
 // hour→day, day→month) at job-run time from the performance.* global
 // parameters, with precedence: env SP_PERFORMANCE_* → global DB parameter
@@ -332,27 +343,13 @@ func resolveRetentionTier(
 	log := aggregationLogger(jctx)
 
 	// 1. Environment variable (highest precedence).
-	if raw := strings.TrimSpace(os.Getenv(envVar)); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n >= 1 {
-			return n
-		}
-
-		log.WarnContext(ctx, "Ignoring invalid retention env override, falling through",
-			"env", envVar, "value", raw)
+	if n, ok := retentionFromEnv(ctx, envVar, log); ok {
+		return n
 	}
 
 	// 2. Global DB parameter (organization_uid IS NULL).
-	if jctx != nil && jctx.DBService != nil {
-		if param, err := jctx.DBService.GetSystemParameter(ctx, string(key)); err == nil && param != nil {
-			if n, ok := parameterInt(param); ok {
-				if n >= 1 {
-					return n
-				}
-
-				log.WarnContext(ctx, "Ignoring invalid retention parameter, falling through",
-					"key", string(key), "value", n)
-			}
-		}
+	if n, ok := retentionFromDBParam(ctx, jctx, key, log); ok {
+		return n
 	}
 
 	// 3. Legacy koanf field (deprecated back-compat, removed a release from now).
@@ -365,6 +362,54 @@ func resolveRetentionTier(
 
 	// 4. Hardcoded default.
 	return def
+}
+
+// retentionFromEnv reads a retention tier from an SP_PERFORMANCE_* env var.
+// Returns ok=false (and warns) on absent or invalid (< 1 / unparseable) values.
+func retentionFromEnv(ctx context.Context, envVar string, log *slog.Logger) (int, bool) {
+	raw := strings.TrimSpace(os.Getenv(envVar))
+	if raw == "" {
+		return 0, false
+	}
+
+	if n, err := strconv.Atoi(raw); err == nil && n >= 1 {
+		return n, true
+	}
+
+	log.WarnContext(ctx, "Ignoring invalid retention env override, falling through",
+		"env", envVar, "value", raw)
+
+	return 0, false
+}
+
+// retentionFromDBParam reads a retention tier from the global (organization_uid
+// IS NULL) system parameter. Returns ok=false on absent/unreadable values, and
+// warns (then ok=false) on a present-but-invalid (< 1) value.
+func retentionFromDBParam(
+	ctx context.Context, jctx *jobdef.JobContext, key systemconfig.ParameterKey, log *slog.Logger,
+) (int, bool) {
+	if jctx == nil || jctx.DBService == nil {
+		return 0, false
+	}
+
+	param, err := jctx.DBService.GetSystemParameter(ctx, string(key))
+	if err != nil || param == nil {
+		return 0, false
+	}
+
+	n, ok := parameterInt(param)
+	if !ok {
+		return 0, false
+	}
+
+	if n >= 1 {
+		return n, true
+	}
+
+	log.WarnContext(ctx, "Ignoring invalid retention parameter, falling through",
+		"key", string(key), "value", n)
+
+	return 0, false
 }
 
 // parameterInt extracts an integer from a system parameter's stored value,

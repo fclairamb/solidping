@@ -905,9 +905,9 @@ func TestAggregatePeriod_KeepsLifecycleMarkerRows(t *testing.T) {
 		r.NoError(delErr)
 	}
 
-	// An old, fully-elapsed hour bucket so the default retention (1 hour)
-	// marks it as ready to aggregate.
-	baseHour := time.Now().UTC().Add(-3 * time.Hour).Truncate(time.Hour)
+	// An old, fully-elapsed hour bucket, older than the default raw retention
+	// (24 hours, spec 2026-07-11-16 §4), so it is ready to aggregate.
+	baseHour := time.Now().UTC().Add(-30 * time.Hour).Truncate(time.Hour)
 
 	newRaw := func(status models.ResultStatus, offset time.Duration) *models.Result {
 		res := models.NewResult(org.UID, check.UID, status, 0.1)
