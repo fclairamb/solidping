@@ -166,6 +166,13 @@ type Service interface {
 
 	// Result operations
 	CreateResult(ctx context.Context, result *models.Result) error
+	// UpsertAggregatedResult writes an aggregated (non-raw) result idempotently:
+	// it replaces any existing row for the same bucket key
+	// (organization_uid, check_uid, coalesce(region,''), period_type,
+	// period_start) inside one transaction, so re-running an aggregation for the
+	// same bucket yields exactly one row instead of a duplicate. The NULL-proof
+	// results_aggregated_unique_idx is the backstop (spec 2026-07-11-16).
+	UpsertAggregatedResult(ctx context.Context, result *models.Result) error
 	GetResult(ctx context.Context, uid string) (*models.Result, error)
 	ListResults(ctx context.Context, filter *models.ListResultsFilter) (*models.ListResultsResponse, error)
 	// GetResultNeighbors returns the UID of the next-older (prevUID) and

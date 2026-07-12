@@ -1598,6 +1598,31 @@ func (s *Service) CreateResult(ctx context.Context, result *models.Result) error
 	return err
 }
 
+// UpsertAggregatedResult replaces any existing aggregated row for the same
+// bucket key (organization_uid, check_uid, coalesce(region,”), period_type,
+// period_start) with the given result, in one transaction. This keeps
+// re-aggregation idempotent (exactly one row per bucket) even when region is
+// NULL — where the unique index treats NULLs as distinct. See spec
+// 2026-07-11-16.
+func (s *Service) UpsertAggregatedResult(ctx context.Context, result *models.Result) error {
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if _, err := tx.NewDelete().
+			Model((*models.Result)(nil)).
+			Where("organization_uid = ?", result.OrganizationUID).
+			Where("check_uid = ?", result.CheckUID).
+			Where("period_type = ?", result.PeriodType).
+			Where("period_start = ?", result.PeriodStart).
+			Where("COALESCE(region, '') = COALESCE(?, '')", result.Region).
+			Exec(ctx); err != nil {
+			return err
+		}
+
+		_, err := tx.NewInsert().Model(result).Exec(ctx)
+
+		return err
+	})
+}
+
 func (s *Service) SaveResultWithStatusTracking(ctx context.Context, result *models.Result) error {
 	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		// Clear previous last_for_status for this check+status combination
@@ -1667,6 +1692,12 @@ func (s *Service) ListResults(
 	// Filter by multiple statuses
 	if len(filter.Statuses) > 0 {
 		query = query.Where("status IN (?)", bun.List(filter.Statuses))
+	}
+
+	// Exclude statuses (e.g. lifecycle markers in aggregation discovery). A NULL
+	// status is never a marker, so it stays included.
+	if len(filter.ExcludeStatuses) > 0 {
+		query = query.Where("(status IS NULL OR status NOT IN (?))", bun.List(filter.ExcludeStatuses))
 	}
 
 	// Time range filters

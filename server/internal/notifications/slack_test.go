@@ -273,6 +273,10 @@ func (m *mockDBService) CreateResult(_ context.Context, _ *models.Result) error 
 	panic("not implemented")
 }
 
+func (m *mockDBService) UpsertAggregatedResult(_ context.Context, _ *models.Result) error {
+	panic("not implemented")
+}
+
 func (m *mockDBService) GetResult(_ context.Context, _ string) (*models.Result, error) {
 	panic("not implemented")
 }

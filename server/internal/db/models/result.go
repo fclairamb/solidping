@@ -152,12 +152,18 @@ func NewResult(orgUID, checkUID string, status ResultStatus, duration float32) *
 
 // ListResultsFilter provides filtering options for listing results.
 type ListResultsFilter struct {
-	OrganizationUID  string     // Required: organization scope
-	CheckUIDs        []string   // Optional: filter by multiple check UIDs
-	CheckTypes       []string   // Optional: filter by check types (requires join with checks table)
-	Regions          []string   // Optional: filter by multiple regions
-	PeriodTypes      []string   // Optional: filter by multiple period_types ('raw', 'hour', 'day', 'month')
-	Statuses         []int      // Optional: filter by multiple status integers
+	OrganizationUID string   // Required: organization scope
+	CheckUIDs       []string // Optional: filter by multiple check UIDs
+	CheckTypes      []string // Optional: filter by check types (requires join with checks table)
+	Regions         []string // Optional: filter by multiple regions
+	PeriodTypes     []string // Optional: filter by multiple period_types ('raw', 'hour', 'day', 'month')
+	Statuses        []int    // Optional: filter by multiple status integers (inclusion)
+	// ExcludeStatuses drops rows whose status is in this set (NULL status is
+	// never excluded). Used by aggregation work-discovery to skip buckets whose
+	// only rows are lifecycle markers (created/running), which would otherwise
+	// re-aggregate into degenerate rollups forever (poison-pill loop, spec
+	// 2026-07-11-16). Applied independently of Statuses.
+	ExcludeStatuses  []int
 	PeriodStartAfter *time.Time // Optional: filter period_start >= this value
 	// Optional: filter period_start < this value (filters by period_start, not period_end)
 	PeriodEndBefore *time.Time
