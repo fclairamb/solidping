@@ -13,9 +13,15 @@ import (
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
+
+// portAggFKOrphanRunPG is distinct from every embedded-Postgres port used by the
+// _postgres_test.go files in internal/db/postgres (…15451, 15457…) so this
+// cross-package test never collides when `make test` runs packages in parallel.
+const portAggFKOrphanRunPG = 15452
 
 // errForcedStage is returned by errOnListResults to make aggregatePeriod fail
 // deterministically, standing in for the FK-orphan INSERT that used to halt the
@@ -293,6 +299,54 @@ func TestRun_StageErrorStillSchedulesFollowUp(t *testing.T) {
 
 	run := &AggregationJobRun{}
 	err := run.Run(ctx, jctx)
+
+	r.Error(err, "the stage error must still be surfaced so the job fails/retries visibly")
+	r.ErrorIs(err, errForcedStage)
+
+	r.Len(jobs.scheduledAt, 1, "the follow-up job must be scheduled despite the stage error")
+	r.WithinDuration(time.Now().Add(1*time.Hour), jobs.scheduledAt[0], 2*time.Minute,
+		"a stage error reschedules ~1h out, never at delay=0")
+}
+
+// TestRun_StageErrorStillSchedulesFollowUp_Postgres is the Postgres parity case
+// for spec 2026-07-12-01 §1/§5. Run's "always schedule the follow-up" control
+// flow is backend-independent: the stage error is forced at the ListResults
+// boundary via errOnListResults, so the wrapped backend's query path is never
+// reached. This variant proves the behavior holds with a real *postgres.Service
+// as the DBService — the +1h follow-up is still scheduled AND the stage error is
+// still surfaced (errors.Is). Gated behind the same embedded-Postgres
+// testcontainer skip as the db/postgres parity tests.
+//
+//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction)
+func TestRun_StageErrorStillSchedulesFollowUp_Postgres(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping embedded-postgres test in -short mode")
+	}
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	pgSvc, err := postgres.New(ctx, &postgres.Config{Embedded: true, Port: portAggFKOrphanRunPG, RunMode: "test"})
+	if err != nil {
+		t.Skipf("embedded postgres unavailable: %v", err)
+	}
+	t.Cleanup(func() { _ = pgSvc.Close() })
+
+	if initErr := pgSvc.Initialize(ctx); initErr != nil {
+		t.Skipf("embedded postgres init failed: %v", initErr)
+	}
+
+	orgUID := uuid.Must(uuid.NewV7()).String()
+	jobs := &recordingJobService{}
+	jctx := &jobdef.JobContext{
+		OrganizationUID: &orgUID,
+		DBService:       &errOnListResults{Service: pgSvc, err: errForcedStage},
+		Services:        &services.Registry{Jobs: jobs},
+		Logger:          slog.Default(),
+	}
+
+	run := &AggregationJobRun{}
+	err = run.Run(ctx, jctx)
 
 	r.Error(err, "the stage error must still be surfaced so the job fails/retries visibly")
 	r.ErrorIs(err, errForcedStage)
