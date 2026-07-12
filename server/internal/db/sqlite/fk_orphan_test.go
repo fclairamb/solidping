@@ -52,10 +52,10 @@ func TestForeignKeysEnforcedOnFreshConnection(t *testing.T) {
 	r.Error(err, "inserting an orphan result must be rejected by the foreign key")
 }
 
-// TestMigration007PurgesOrphans pins spec 2026-07-12-01 §3: the 007 migration
-// deletes results rows whose check no longer exists and leaves live checks'
-// rows intact. Idempotent / no-op on clean data.
-func TestMigration007PurgesOrphans(t *testing.T) {
+// TestMigration006PurgesOrphans pins spec 2026-07-12-01 §3: the consolidated
+// v0.5.0 migration deletes results rows whose check no longer exists and leaves
+// live checks' rows intact. Idempotent / no-op on clean data.
+func TestMigration006PurgesOrphans(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -89,8 +89,8 @@ func TestMigration007PurgesOrphans(t *testing.T) {
 	r.Equal(3, countByCheck(orphanCheckUID), "orphans must exist before the migration")
 	r.Equal(1, countByCheck(check.UID), "the live check's marker row must exist")
 
-	// Run the real 007 up migration SQL.
-	migrationSQL, err := fs.ReadFile(migrationsFS, "migrations/007_v0_5_0.up.sql")
+	// Run the real 006 up migration SQL (orphan purge + dedupe + NULL-proof index).
+	migrationSQL, err := fs.ReadFile(migrationsFS, "migrations/006_v0_5_0.up.sql")
 	r.NoError(err)
 	_, err = svc.db.ExecContext(ctx, string(migrationSQL))
 	r.NoError(err)
