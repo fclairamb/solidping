@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.3.0](https://github.com/fclairamb/solidping/compare/v0.2.3...v0.3.0) (2026-07-12)
 
 
 ### Features
@@ -17,6 +17,8 @@
 * **integrations:** the "Default for new checks" toggle now starts **enabled** when creating an integration
 * **i18n:** idiomatic FR/ES/DE auth-page headline translations replacing literal calques
 * **escalation/on-call:** escalation policies and on-call schedules drop their unused `slug` — both are addressed by `uid` only now (API routes, dashboard links); old slug-form URLs return `404` (**breaking**: the `slug` field is gone from create/update/response payloads)
+* **cli:** the `sp` CLI now covers the full API surface — ~20 new command groups (channels + per-check bindings, status-pages/status-updates, maintenance-windows, check-groups/severities/labels/regions/check-types, on-call schedules + escalation-policies, orgs/settings/invitations/membership-requests, entitlements/files/email-suppressions, jobs admin & stats + check-jobs, server & system ops, notifications + routes/contacts, and auth self-service) plus the previously-missing operations on existing groups (incident ack/snooze/resolve, check validate/clone, dependency update/graph, results get, availability, discovery, heartbeat send); the OpenAPI spec and generated client were backfilled to match
+* **dash0:** the check create/edit form was restructured with **progressive disclosure** — an always-visible Identity/Scheduling/Notifications core plus collapsed-by-default sections (Authentication, Organization, Dependencies, Incident tracking, Flapping, Advanced) with header value-summaries and auto-expand on validation error; adds a reusable `CollapsibleSection` primitive and refactors the form behind a per-check-type module registry (one serializer feeds both the preview and the submit), and extends/documents the `/checks/new` query-param prefill
 
 ### Bug Fixes
 
@@ -30,13 +32,9 @@
 * **checks (DNSBL):** treat Spamhaus `127.255.255.x` replies as error codes rather than genuine listings (fixes false-positive blocklist hits)
 * **dash0 (DNSBL):** render the DNSBL result card with human-readable Spamhaus status-code labels
 * **status:** the status-page Atom feed no longer 500s on Postgres — bind `status_page_uid` through bun (`$1` → `?`)
-
-## [0.3.0](https://github.com/fclairamb/solidping/compare/v0.2.3...v0.3.0) (2026-07-12)
-
-
-### Features
-
-* batch 2026-07-10 (part 2) — RDP check, per-check/global timeouts, MCP endpoint & page, DNSBL fixes, realtime EventNotifier leak fix (+14 more) ([#121](https://github.com/fclairamb/solidping/issues/121)) ([bf802f5](https://github.com/fclairamb/solidping/commit/bf802f5c23fbb23e167876f41a63db5c74323349))
+* **aggregation:** fix a poison-pill loop where marker-only result buckets re-aggregated forever, duplicating `hour` rollup rows and scheduler jobs unbounded — lifecycle markers are excluded from work discovery, aggregation only reschedules immediately when it made real progress, aggregated writes are idempotent upserts, and a NULL-region-proof unique index closes the duplicate hole (the v0.5.0 migration dedupes existing rows); rollup retention now comes from global `performance.*` parameters
+* **aggregation:** fix an FK-orphan poison pill where a `results` row whose check was hard-deleted failed the rollup insert and permanently halted the org's aggregation — orphaned buckets are skipped in discovery, the job always reschedules its follow-up after a stage error, SQLite enforces foreign keys on every connection, and the v0.5.0 migration purges any existing orphans
+* **jobs:** the `jobs` table no longer grows unbounded — a daily `jobs_cleanup` job soft-deletes finished jobs after 48h and hard-deletes them 24h later (retry-chains drained tail-first), with thresholds configurable via `performance.*` parameters
 
 ## [0.2.3](https://github.com/fclairamb/solidping/compare/v0.2.2...v0.2.3) (2026-07-10)
 
