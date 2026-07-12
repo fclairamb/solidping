@@ -320,6 +320,18 @@ type Service interface {
 	ListJobs(ctx context.Context, orgUID *string, limit int) ([]*models.Job, error)
 	UpdateJob(ctx context.Context, uid string, update models.JobUpdate) error
 	DeleteJob(ctx context.Context, uid string) error
+	// SoftDeleteFinishedJobs marks up to `limit` terminal jobs
+	// (success/retried/failed) still live (deleted_at IS NULL) whose updated_at
+	// is before `before` as soft-deleted (deleted_at = now). Stage 1 of the
+	// jobs_cleanup retention lifecycle. Returns the number of rows affected;
+	// callers loop until a short batch to drain a backlog without a long txn.
+	SoftDeleteFinishedJobs(ctx context.Context, before time.Time, limit int) (int64, error)
+	// DeleteSoftDeletedJobs physically deletes up to `limit` jobs soft-deleted
+	// before `before`, excluding any still referenced by another job's
+	// previous_job_uid (the retry-chain FK guard — chains drain tail-first over
+	// consecutive runs). Stage 2 of the jobs_cleanup retention lifecycle.
+	// Returns the number of rows deleted.
+	DeleteSoftDeletedJobs(ctx context.Context, before time.Time, limit int) (int64, error)
 
 	// State Storage operations
 	// GetStateEntry retrieves a state entry by organization and key.

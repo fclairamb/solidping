@@ -2098,6 +2098,78 @@ func (s *Service) DeleteJob(ctx context.Context, uid string) error {
 	return err
 }
 
+// SoftDeleteFinishedJobs marks up to `limit` terminal jobs done before `before`
+// as soft-deleted (jobs_cleanup stage 1). Select-then-update keeps the batch
+// bounded regardless of how bun renders a LIMIT-in-UPDATE.
+func (s *Service) SoftDeleteFinishedJobs(ctx context.Context, before time.Time, limit int) (int64, error) {
+	var uids []string
+
+	err := s.db.NewSelect().
+		Model((*models.Job)(nil)).
+		Column("uid").
+		Where("status IN (?)", bun.List(models.FinishedJobStatuses())).
+		Where("deleted_at IS NULL").
+		Where("updated_at < ?", before).
+		Limit(limit).
+		Scan(ctx, &uids)
+	if err != nil {
+		return 0, fmt.Errorf("failed to select finished jobs to soft-delete: %w", err)
+	}
+
+	if len(uids) == 0 {
+		return 0, nil
+	}
+
+	res, err := s.db.NewUpdate().
+		Model((*models.Job)(nil)).
+		Set("deleted_at = ?", time.Now()).
+		Where("uid IN (?)", bun.List(uids)).
+		Where("deleted_at IS NULL").
+		Exec(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to soft-delete finished jobs: %w", err)
+	}
+
+	count, _ := res.RowsAffected()
+
+	return count, nil
+}
+
+// DeleteSoftDeletedJobs physically deletes up to `limit` jobs soft-deleted
+// before `before`, skipping any still referenced by another job's
+// previous_job_uid so the retry-chain FK never trips (jobs_cleanup stage 2).
+func (s *Service) DeleteSoftDeletedJobs(ctx context.Context, before time.Time, limit int) (int64, error) {
+	var uids []string
+
+	err := s.db.NewSelect().
+		Model((*models.Job)(nil)).
+		Column("uid").
+		Where("deleted_at IS NOT NULL").
+		Where("deleted_at < ?", before).
+		Where("uid NOT IN (SELECT previous_job_uid FROM jobs WHERE previous_job_uid IS NOT NULL)").
+		Limit(limit).
+		Scan(ctx, &uids)
+	if err != nil {
+		return 0, fmt.Errorf("failed to select soft-deleted jobs to delete: %w", err)
+	}
+
+	if len(uids) == 0 {
+		return 0, nil
+	}
+
+	res, err := s.db.NewDelete().
+		Model((*models.Job)(nil)).
+		Where("uid IN (?)", bun.List(uids)).
+		Exec(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete soft-deleted jobs: %w", err)
+	}
+
+	count, _ := res.RowsAffected()
+
+	return count, nil
+}
+
 // Incident operations
 
 // applyIncidentSetFields walks the non-clear pointer fields and writes the
