@@ -1799,6 +1799,13 @@ func (s *Service) ListResults(
 		query = query.Where("(status IS NULL OR status NOT IN (?))", bun.List(filter.ExcludeStatuses))
 	}
 
+	// Skip rows whose check has been hard-deleted (FK-orphan rows). A no-op here
+	// by FK construction (Postgres cannot hold orphans), kept for parity with
+	// SQLite and defense in depth. See RequireCheckExists.
+	if filter.RequireCheckExists {
+		query = query.Where("check_uid IN (SELECT uid FROM checks)")
+	}
+
 	// Time range filters
 	if filter.PeriodStartAfter != nil {
 		query = query.Where("period_start >= ?", *filter.PeriodStartAfter)

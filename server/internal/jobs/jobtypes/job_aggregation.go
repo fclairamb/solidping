@@ -83,41 +83,64 @@ func (r *AggregationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) er
 		{periodDay, periodMonth}, // Priority 3: day → month
 	}
 
-	// Try each aggregation stage until one succeeds
+	// Try each aggregation stage until one succeeds or errors. A stage error is
+	// captured (not returned early) so the "schedule next run" below still fires:
+	// a poisoned bucket must degrade to "this bucket is stuck", never
+	// "aggregation for the org is dead" (spec 2026-07-12-01 §1). Discovery (§2)
+	// already excludes the FK-orphan buckets that caused the original halt; this
+	// is the backend-independent safety net for any other persistent stage error.
 	workDone := false
+	var stageErr error
 	for i := range aggregations {
 		agg := &aggregations[i]
 		aggregated, err := r.aggregatePeriod(ctx, jctx, orgUID, agg.sourcePeriod, agg.targetPeriod)
 		if err != nil {
 			log.ErrorContext(ctx, "Aggregation error", "error", err, "source", agg.sourcePeriod, "target", agg.targetPeriod)
-			return jobdef.NewRetryableError(err)
+			stageErr = err
+
+			break // Stop after a failing stage, but still schedule the follow-up.
 		}
 		if aggregated {
 			workDone = true
 			log.InfoContext(ctx, "Aggregated data", "source", agg.sourcePeriod, "target", agg.targetPeriod)
+
 			break // Process one aggregation per run
 		}
 	}
 
-	if !workDone {
+	if stageErr == nil && !workDone {
 		log.InfoContext(ctx, "No aggregation work found")
 	}
 
-	// Schedule next run
+	// Schedule next run. Only a run that actually rolled a bucket up retries
+	// immediately (delay=0) to drain the backlog; a stage error uses the +1h
+	// delay so a persistently poisoned bucket can never spin at delay=0.
 	delay := 1 * time.Hour
 	if workDone {
-		delay = 0 // Immediate retry if work was done
+		delay = 0
 	}
 
 	scheduledAt := time.Now().Add(delay)
-	_, err := jctx.Services.Jobs.CreateJob(ctx, orgUID, string(jobdef.JobTypeAggregation), nil, &jobsvc.JobOptions{
-		ScheduledAt: &scheduledAt,
-	})
-	if err != nil {
-		log.ErrorContext(ctx, "Failed to schedule next aggregation job", "error", err)
+	if _, schedErr := jctx.Services.Jobs.CreateJob(
+		ctx, orgUID, string(jobdef.JobTypeAggregation), nil, &jobsvc.JobOptions{ScheduledAt: &scheduledAt},
+	); schedErr != nil {
+		log.ErrorContext(ctx, "Failed to schedule next aggregation job", "error", schedErr)
+
+		// If there is no stage error to surface, propagate the scheduling failure
+		// so the run is visibly unhealthy; otherwise the stage error wins below.
+		if stageErr == nil {
+			return schedErr
+		}
 	}
 
-	return err // CreateJob handles duplicates automatically
+	// Surface the stage error (retryable) after the follow-up has been scheduled,
+	// so this job run still retries/fails visibly without killing the org's
+	// aggregation. CreateJob dedupes against the retry chain automatically.
+	if stageErr != nil {
+		return jobdef.NewRetryableError(stageErr)
+	}
+
+	return nil
 }
 
 // aggregatePeriod performs a single aggregation operation for a specific period type.
@@ -252,7 +275,13 @@ func (r *AggregationJobRun) findAggregatableResults(
 		// 2026-07-11-16 §1). The step-3 aggregation fetch reads all statuses, so
 		// markers still contribute their skip/keep behavior there.
 		ExcludeStatuses: lifecycleMarkerStatuses(),
-		Limit:           100, // Get a sample to find check-region pairs
+		// Never select a bucket whose check has been hard-deleted: its rows are
+		// FK-orphans and rolling them up fails the INSERT (results.check_uid →
+		// checks.uid), which — without the §1 always-schedule guard — permanently
+		// halts aggregation for the org. Ordered period_start DESC, the newest
+		// orphan is otherwise a deterministic poison pill (spec 2026-07-12-01 §2).
+		RequireCheckExists: true,
+		Limit:              100, // Get a sample to find check-region pairs
 	}
 
 	resultsResp, err := jctx.DBService.ListResults(ctx, &filter)

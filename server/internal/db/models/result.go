@@ -163,8 +163,17 @@ type ListResultsFilter struct {
 	// only rows are lifecycle markers (created/running), which would otherwise
 	// re-aggregate into degenerate rollups forever (poison-pill loop, spec
 	// 2026-07-11-16). Applied independently of Statuses.
-	ExcludeStatuses  []int
-	PeriodStartAfter *time.Time // Optional: filter period_start >= this value
+	ExcludeStatuses []int
+	// RequireCheckExists, when true, drops rows whose check_uid no longer has a
+	// row in `checks` (`check_uid IN (SELECT uid FROM checks)`). Soft-deleted
+	// checks still have a row and keep their history — only rows orphaned by a
+	// hard delete are excluded. Used by aggregation work-discovery so a single
+	// FK-orphan raw row can't become a deterministic poison pill that fails the
+	// rollup INSERT and permanently halts the org's aggregation (spec
+	// 2026-07-12-01 §2). A no-op on Postgres by FK construction; implemented on
+	// both backends for parity and defense in depth.
+	RequireCheckExists bool
+	PeriodStartAfter   *time.Time // Optional: filter period_start >= this value
 	// Optional: filter period_start < this value (filters by period_start, not period_end)
 	PeriodEndBefore *time.Time
 

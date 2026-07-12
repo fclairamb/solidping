@@ -1700,6 +1700,12 @@ func (s *Service) ListResults(
 		query = query.Where("(status IS NULL OR status NOT IN (?))", bun.List(filter.ExcludeStatuses))
 	}
 
+	// Skip rows whose check has been hard-deleted (FK-orphan rows). Soft-deleted
+	// checks still have a row and stay included. See RequireCheckExists.
+	if filter.RequireCheckExists {
+		query = query.Where("check_uid IN (SELECT uid FROM checks)")
+	}
+
 	// Time range filters
 	if filter.PeriodStartAfter != nil {
 		query = query.Where("period_start >= ?", *filter.PeriodStartAfter)
