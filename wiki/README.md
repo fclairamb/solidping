@@ -67,6 +67,8 @@ Market analysis of uptime monitoring services.
 - [competitors/comparison.md](competitors/comparison.md) — Comparison matrix and pricing across 9 competitors, with current SolidPing positioning (May 2026)
 - [competitors/criteria.md](competitors/criteria.md) — Evaluation framework: pricing, features, protocols, deployment, support
 - [competitors/full-list.md](competitors/full-list.md) — Comprehensive directory of all monitoring services
+- [competitors/indie-watch.md](competitors/indie-watch.md) — Indie/OSS/emerging entrants surfaced by the marketing-listening pipeline (Peekaping, OneUptime, OpenStatus, failover.io, Status Harbor, exit1, and ~24 more), tracked vs. background
+- [competitors/positioning.md](competitors/positioning.md) — Competitive positioning & messaging: buyer-profile win/lose, counter-angles, positioning-convergence watch, messaging hooks
 
 ### Per-competitor analyses
 
