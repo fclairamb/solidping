@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/systemconfig"
 )
 
 // poisonPillOldOffset places a bucket safely past the 24h raw retention default
@@ -320,6 +321,53 @@ func TestRun_MarkerOnlyReschedulesInOneHour(t *testing.T) {
 	_, err := dbSvc.GetResult(ctx, created.UID)
 	r.NoError(err, "the marker must remain untouched")
 	r.Empty(listHourRows(t, dbSvc, org, check), "no hour row may be produced")
+}
+
+// TestRetentionFromConfig_DefaultsAndDBParameter pins spec 2026-07-11-16 §4: an
+// unconfigured deployment resolves to the real defaults (24/30/12), never the
+// old 1/1/1; a global DB parameter overrides its tier; an invalid (< 1) DB
+// value warns and falls through to the default.
+func TestRetentionFromConfig_DefaultsAndDBParameter(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	dbSvc, _, _ := newAggTestEnv(t)
+
+	jctx := &jobdef.JobContext{DBService: dbSvc, Logger: slog.Default()}
+
+	raw, hour, day := retentionFromConfig(ctx, jctx)
+	r.Equal(defaultRetentionRawHours, raw, "raw retention defaults to 24h, not 1")
+	r.Equal(defaultRetentionHourDays, hour)
+	r.Equal(defaultRetentionDayMonths, day)
+
+	// A valid global DB parameter overrides just its tier.
+	r.NoError(dbSvc.SetSystemParameter(ctx, string(systemconfig.KeyPerfAggRetentionRawHours), 5, false))
+	raw, hour, day = retentionFromConfig(ctx, jctx)
+	r.Equal(5, raw, "a global DB parameter must override the raw tier")
+	r.Equal(defaultRetentionHourDays, hour)
+	r.Equal(defaultRetentionDayMonths, day)
+
+	// An invalid (< 1) value must warn and fall through to the default.
+	r.NoError(dbSvc.SetSystemParameter(ctx, string(systemconfig.KeyPerfAggRetentionRawHours), 0, false))
+	raw, _, _ = retentionFromConfig(ctx, jctx)
+	r.Equal(defaultRetentionRawHours, raw, "an invalid parameter must fall through to the default")
+}
+
+// TestRetentionFromConfig_EnvOverrides pins that an SP_PERFORMANCE_* env var
+// wins over the DB parameter. Not parallel: it mutates process env.
+func TestRetentionFromConfig_EnvOverrides(t *testing.T) {
+	r := require.New(t)
+	ctx := t.Context()
+	dbSvc, _, _ := newAggTestEnv(t)
+
+	// DB says 5, env says 9 — env must win.
+	r.NoError(dbSvc.SetSystemParameter(ctx, string(systemconfig.KeyPerfAggRetentionRawHours), 5, false))
+	t.Setenv("SP_PERFORMANCE_AGGREGATION_RETENTION_RAW_HOURS", "9")
+
+	jctx := &jobdef.JobContext{DBService: dbSvc, Logger: slog.Default()}
+	raw, _, _ := retentionFromConfig(ctx, jctx)
+	r.Equal(9, raw, "an env override must win over the DB parameter")
 }
 
 // TestRun_WorkDoneReschedulesImmediately is the contrast: when a bucket really
