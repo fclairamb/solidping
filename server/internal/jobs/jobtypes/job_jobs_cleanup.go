@@ -53,7 +53,21 @@ func (d *JobsCleanupJobDefinition) CreateJobRun(config json.RawMessage) (jobdef.
 }
 
 // JobsCleanupJobRun is the runtime state for one cleanup execution.
-type JobsCleanupJobRun struct{}
+type JobsCleanupJobRun struct {
+	// batchSize overrides jobsCleanupBatchSize when > 0. Production leaves it
+	// zero; tests set a small value to exercise the multi-batch drain loop
+	// without seeding tens of thousands of rows.
+	batchSize int
+}
+
+// batch returns the effective per-statement batch size.
+func (r *JobsCleanupJobRun) batch() int {
+	if r.batchSize > 0 {
+		return r.batchSize
+	}
+
+	return jobsCleanupBatchSize
+}
 
 // Run soft-deletes finished jobs older than the soft-delete window (stage 1),
 // hard-deletes rows soft-deleted past the grace window (stage 2), then
@@ -103,18 +117,20 @@ func (r *JobsCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) er
 }
 
 // softDeletePass runs stage 1 in batches until a short batch drains the backlog.
-func (r *JobsCleanupJobRun) softDeletePass(ctx context.Context, jctx *jobdef.JobContext, before time.Time) (int64, error) {
+func (r *JobsCleanupJobRun) softDeletePass(
+	ctx context.Context, jctx *jobdef.JobContext, before time.Time,
+) (int64, error) {
 	var total int64
 
 	for {
-		n, err := jctx.DBService.SoftDeleteFinishedJobs(ctx, before, jobsCleanupBatchSize)
+		n, err := jctx.DBService.SoftDeleteFinishedJobs(ctx, before, r.batch())
 		if err != nil {
 			return total, err
 		}
 
 		total += n
 
-		if n < jobsCleanupBatchSize {
+		if n < int64(r.batch()) {
 			break
 		}
 	}
@@ -125,18 +141,20 @@ func (r *JobsCleanupJobRun) softDeletePass(ctx context.Context, jctx *jobdef.Job
 // hardDeletePass runs stage 2 in batches. A short batch ends the run: whatever
 // remains is either not yet past the grace window or still FK-referenced, and
 // drains on a later run.
-func (r *JobsCleanupJobRun) hardDeletePass(ctx context.Context, jctx *jobdef.JobContext, before time.Time) (int64, error) {
+func (r *JobsCleanupJobRun) hardDeletePass(
+	ctx context.Context, jctx *jobdef.JobContext, before time.Time,
+) (int64, error) {
 	var total int64
 
 	for {
-		n, err := jctx.DBService.DeleteSoftDeletedJobs(ctx, before, jobsCleanupBatchSize)
+		n, err := jctx.DBService.DeleteSoftDeletedJobs(ctx, before, r.batch())
 		if err != nil {
 			return total, err
 		}
 
 		total += n
 
-		if n < jobsCleanupBatchSize {
+		if n < int64(r.batch()) {
 			break
 		}
 	}

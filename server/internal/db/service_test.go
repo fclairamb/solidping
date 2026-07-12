@@ -66,6 +66,10 @@ func testService(t *testing.T, svc db.Service) {
 		testJobsWithoutOrg(ctx, t, svc)
 	})
 
+	t.Run("JobsCleanupRetention", func(t *testing.T) {
+		testJobsCleanupRetention(ctx, t, svc)
+	})
+
 	t.Run("StateEntries", func(t *testing.T) {
 		testStateEntries(ctx, t, svc)
 	})
@@ -1269,6 +1273,151 @@ func testJobsWithoutOrg(ctx context.Context, t *testing.T, svc db.Service) {
 
 		assert.True(t, foundGlobal, "Should find the global job in the list")
 	})
+}
+
+// testJobsCleanupRetention is the cross-engine parity guard for the jobs_cleanup
+// two-stage retention DB methods (spec 2026-07-11-17): stage 1
+// (SoftDeleteFinishedJobs) and stage 2 (DeleteSoftDeletedJobs) must behave
+// identically on Postgres and SQLite. Every assertion targets a seeded UID so
+// the shared harness DB cannot pollute it (the methods scan the whole table).
+func testJobsCleanupRetention(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+	now := time.Now()
+
+	// insert writes a job with fully controlled status/timestamps/link, bypassing
+	// CreateJob's defaults. deletedAgo nil means a live row; prev links a retry
+	// chain via previous_job_uid.
+	insert := func(
+		status models.JobStatus, updatedAgo time.Duration, deletedAgo *time.Duration, prev *string,
+	) *models.Job {
+		job := models.NewJob(nil, "jobs-cleanup-test")
+		job.Status = status
+		job.UpdatedAt = now.Add(-updatedAgo)
+		job.CreatedAt = job.UpdatedAt
+		if deletedAgo != nil {
+			d := now.Add(-*deletedAgo)
+			job.DeletedAt = &d
+		}
+		job.PreviousJobUID = prev
+
+		_, err := svc.DB().NewInsert().Model(job).Exec(ctx)
+		r.NoError(err)
+
+		return job
+	}
+	reload := func(uid string) *models.Job {
+		var job models.Job
+		err := svc.DB().NewSelect().Model(&job).Where("uid = ?", uid).Scan(ctx)
+		r.NoError(err)
+
+		return &job
+	}
+	exists := func(uid string) bool {
+		n, err := svc.DB().NewSelect().Model((*models.Job)(nil)).Where("uid = ?", uid).Count(ctx)
+		r.NoError(err)
+
+		return n > 0
+	}
+
+	h24 := 24 * time.Hour
+	h25 := 25 * time.Hour
+	h23 := 23 * time.Hour
+	softBoundary := now.Add(-48 * time.Hour)
+	hardBoundary := now.Add(-h24)
+
+	// Stage-1 candidates: three terminal statuses done > 48h ago (should be
+	// soft-deleted) versus rows that must survive stage 1.
+	oldSuccess := insert(models.JobStatusSuccess, 49*time.Hour, nil, nil)
+	oldRetried := insert(models.JobStatusRetried, 49*time.Hour, nil, nil)
+	oldFailed := insert(models.JobStatusFailed, 49*time.Hour, nil, nil)
+	recentSuccess := insert(models.JobStatusSuccess, 47*time.Hour, nil, nil) // 47h < 48h → survives
+	oldPending := insert(models.JobStatusPending, 49*time.Hour, nil, nil)    // never touched, any age
+	oldRunning := insert(models.JobStatusRunning, 49*time.Hour, nil, nil)    // never touched, any age
+	alreadySoft := insert(models.JobStatusSuccess, 49*time.Hour, &h25, nil)  // stage 1 must not re-touch
+	alreadySoftAt := reload(alreadySoft.UID).DeletedAt
+
+	// Stage-2 candidates: rows soft-deleted > 24h ago (hard-deleted) versus a
+	// freshly soft-deleted one; userCancelled models a cancel that set deleted_at
+	// on a still-pending row.
+	hardEligible := insert(models.JobStatusSuccess, 49*time.Hour, &h25, nil)
+	hardFresh := insert(models.JobStatusSuccess, 49*time.Hour, &h23, nil) // soft-deleted 23h → survives
+	userCanceled := insert(models.JobStatusPending, time.Hour, &h25, nil) // canceled, deleted_at old
+
+	// Retry chain: successor references predecessor; the FK guard defers the
+	// predecessor's hard delete until the successor is gone.
+	predecessor := insert(models.JobStatusRetried, 49*time.Hour, &h25, nil)
+	successor := insert(models.JobStatusSuccess, 49*time.Hour, &h25, &predecessor.UID)
+
+	// --- Stage 1: soft-delete finished jobs done > 48h ago. ---
+	soft, err := svc.SoftDeleteFinishedJobs(ctx, softBoundary, 1000)
+	r.NoError(err)
+	r.GreaterOrEqual(soft, int64(3), "at least the three old terminal rows soft-deleted")
+
+	r.NotNil(reload(oldSuccess.UID).DeletedAt, "old success soft-deleted")
+	r.NotNil(reload(oldRetried.UID).DeletedAt, "old retried soft-deleted")
+	r.NotNil(reload(oldFailed.UID).DeletedAt, "old failed soft-deleted")
+	r.Nil(reload(recentSuccess.UID).DeletedAt, "success done 47h ago survives (< 48h)")
+	r.Nil(reload(oldPending.UID).DeletedAt, "pending never soft-deleted regardless of age")
+	r.Nil(reload(oldRunning.UID).DeletedAt, "running never soft-deleted regardless of age")
+	r.WithinDuration(*alreadySoftAt, *reload(alreadySoft.UID).DeletedAt, time.Second,
+		"stage 1 must not re-stamp an already soft-deleted row")
+
+	// Idempotency: a second stage-1 pass finds nothing new among our rows (the
+	// freshly soft-deleted ones now carry deleted_at, and the survivors stay
+	// ineligible). It must not resurrect or re-touch anything.
+	freshDeletedAt := reload(oldSuccess.UID).DeletedAt
+	_, err = svc.SoftDeleteFinishedJobs(ctx, softBoundary, 1000)
+	r.NoError(err)
+	r.WithinDuration(*freshDeletedAt, *reload(oldSuccess.UID).DeletedAt, time.Second,
+		"second stage-1 pass leaves the already soft-deleted row's timestamp intact")
+
+	// --- Stage 2, pass 1: hard-delete rows soft-deleted > 24h ago. ---
+	hard, err := svc.DeleteSoftDeletedJobs(ctx, hardBoundary, 1000)
+	r.NoError(err)
+	r.GreaterOrEqual(hard, int64(1))
+
+	r.False(exists(hardEligible.UID), "row soft-deleted 25h ago is hard-deleted")
+	r.False(exists(userCanceled.UID), "user-canceled row (deleted_at 25h ago) is hard-deleted")
+	r.True(exists(hardFresh.UID), "row soft-deleted only 23h ago survives the grace window")
+	r.True(exists(recentSuccess.UID), "still-visible finished row untouched by stage 2")
+	// The rows soft-deleted by stage 1 just now (deleted_at ~= now) are NOT past
+	// the 24h grace window, so they remain queryable.
+	r.True(exists(oldSuccess.UID), "freshly soft-deleted row stays queryable during grace window")
+
+	// Retry chain: successor (unreferenced) goes first; predecessor is deferred.
+	r.False(exists(successor.UID), "unreferenced successor hard-deleted")
+	r.True(exists(predecessor.UID), "referenced predecessor deferred by the FK guard")
+
+	// --- Stage 2, pass 2: the now-unreferenced predecessor drains. ---
+	_, err = svc.DeleteSoftDeletedJobs(ctx, hardBoundary, 1000)
+	r.NoError(err)
+	r.False(exists(predecessor.UID), "predecessor drains once its successor is gone (two runs)")
+
+	// Idempotency: a third stage-2 pass deletes nothing more of ours.
+	r.True(exists(hardFresh.UID))
+	_, err = svc.DeleteSoftDeletedJobs(ctx, hardBoundary, 1000)
+	r.NoError(err)
+	r.True(exists(hardFresh.UID), "stage 2 remains a no-op for rows inside the grace window")
+
+	// --- Batching contract: LIMIT bounds each call, a short batch signals done. ---
+	for i := 0; i < 5; i++ {
+		insert(models.JobStatusSuccess, 49*time.Hour, nil, nil)
+	}
+
+	b1, err := svc.SoftDeleteFinishedJobs(ctx, softBoundary, 2)
+	r.NoError(err)
+	r.Equal(int64(2), b1, "first batch is full (limit)")
+	b2, err := svc.SoftDeleteFinishedJobs(ctx, softBoundary, 2)
+	r.NoError(err)
+	r.Equal(int64(2), b2, "second batch is full (limit)")
+	b3, err := svc.SoftDeleteFinishedJobs(ctx, softBoundary, 2)
+	r.NoError(err)
+	r.Equal(int64(1), b3, "third batch is short → backlog drained")
+	b4, err := svc.SoftDeleteFinishedJobs(ctx, softBoundary, 2)
+	r.NoError(err)
+	r.Equal(int64(0), b4, "nothing left to soft-delete")
 }
 
 func testStateEntries(ctx context.Context, t *testing.T, svc db.Service) {

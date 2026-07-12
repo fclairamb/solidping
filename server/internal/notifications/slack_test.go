@@ -579,6 +579,14 @@ func (m *mockDBService) UpdateJob(_ context.Context, _ string, _ models.JobUpdat
 	panic("not implemented")
 }
 func (m *mockDBService) DeleteJob(_ context.Context, _ string) error { panic("not implemented") }
+func (m *mockDBService) SoftDeleteFinishedJobs(_ context.Context, _ time.Time, _ int) (int64, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteSoftDeletedJobs(_ context.Context, _ time.Time, _ int) (int64, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) PurgeOldJobs(_ context.Context, _ int) (int64, error) {
 	panic("not implemented")
 }
