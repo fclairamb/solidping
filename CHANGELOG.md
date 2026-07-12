@@ -31,6 +31,13 @@
 * **dash0 (DNSBL):** render the DNSBL result card with human-readable Spamhaus status-code labels
 * **status:** the status-page Atom feed no longer 500s on Postgres — bind `status_page_uid` through bun (`$1` → `?`)
 
+## [0.3.0](https://github.com/fclairamb/solidping/compare/v0.2.3...v0.3.0) (2026-07-12)
+
+
+### Features
+
+* batch 2026-07-10 (part 2) — RDP check, per-check/global timeouts, MCP endpoint & page, DNSBL fixes, realtime EventNotifier leak fix (+14 more) ([#121](https://github.com/fclairamb/solidping/issues/121)) ([bf802f5](https://github.com/fclairamb/solidping/commit/bf802f5c23fbb23e167876f41a63db5c74323349))
+
 ## [0.2.3](https://github.com/fclairamb/solidping/compare/v0.2.2...v0.2.3) (2026-07-10)
 
 
