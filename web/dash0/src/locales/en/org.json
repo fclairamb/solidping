@@ -36,6 +36,11 @@
   "ai": {
     "title": "AI assistants",
     "description": "Connect Claude, Cursor, VS Code, or any MCP-capable client to this organization's monitoring data.",
+    "connectTitle": "Connect a client",
+    "fromGet": {
+      "title": "You opened the MCP API endpoint in a browser",
+      "description": "/api/v1/mcp is a machine-to-machine endpoint for MCP clients, not a web page. Use the instructions below to connect Claude, Cursor, VS Code, or any other MCP-capable client."
+    },
     "mcpUrl": "MCP server URL",
     "claude": {
       "title": "Claude (web / desktop)",

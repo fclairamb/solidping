@@ -8,12 +8,27 @@ isolation as the REST API.
 
 ## Endpoint
 
-A single POST endpoint, mounted at `/api/v1/mcp`
-([`server/internal/app/server.go:418`](../../server/internal/app/server.go)),
-behind the standard `RequireAuth` middleware. The transport is **MCP
-Streamable HTTP** (the spec's HTTP+SSE binding); requests carry a JSON-RPC
-envelope and the server responds with either a single JSON-RPC reply
-or an SSE stream depending on the request type.
+Mounted at `/api/v1/mcp`
+([`server/internal/app/server.go`](../../server/internal/app/server.go)).
+JSON-RPC traffic goes over **POST**, behind `RequireMCPAuth`. The transport
+is **MCP Streamable HTTP** (the spec's HTTP+SSE binding); requests carry a
+JSON-RPC envelope and the server responds with either a single JSON-RPC
+reply or an SSE stream depending on the request type.
+
+The other methods are handled per the transport spec
+([`mcp/handler.go`](../../server/internal/mcp/handler.go)):
+
+- **GET** (unauthenticated): a client probing with
+  `Accept: text/event-stream` gets `405` + `Allow` (we don't serve
+  server-initiated SSE streams); anything else — a human in a browser —
+  gets a `302` to the dashboard's MCP setup page (`/dash0/mcp?from=get`),
+  which shows a "you opened the API endpoint in a browser" hint.
+- **DELETE** (behind `RequireMCPAuth`): explicit session termination —
+  deletes the session named by `Mcp-Session-Id` (404 if unknown or
+  belonging to another org, 204 on success).
+
+Unmatched paths under `/api/` never fall through to the SPA shell — they
+answer the standard JSON error shape (`NOT_FOUND`).
 
 The supported protocol version is **`2025-03-26`**
 ([`mcp/handler.go:39`](../../server/internal/mcp/handler.go)). Newer

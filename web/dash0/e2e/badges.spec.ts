@@ -105,9 +105,10 @@ test.describe("Badges", () => {
     await page.goto(`/dash0/orgs/test/badges`);
     await page.waitForLoadState("networkidle");
 
-    // Select the check
+    // Select the check via the live-search picker: open, type, pick.
     await page.getByTestId("badge-check-select").click();
-    await page.getByRole("option", { name: checkName }).click();
+    await page.getByPlaceholder("Search checks").fill(checkName);
+    await page.getByTestId(`check-picker-option-${check.slug}`).click();
 
     // Verify check was selected
     await expect(page.getByTestId("badge-check-select")).toContainText(
@@ -585,8 +586,8 @@ test.describe("Badges", () => {
     const urlText = await page.getByTestId("badge-embed-url").textContent();
     expect(urlText).toContain(`/checks/${target.slug}/badges/`);
 
-    // The dropdown trigger shows the deep-linked check's name (merge path:
-    // it isn't in the first list page but is merged into the options).
+    // The picker trigger shows the deep-linked check's name (resolved via the
+    // direct check fetch, not the picker's own search results).
     await expect(page.getByTestId("badge-check-select")).toContainText(
       targetName,
       { timeout: 5000 }
@@ -620,6 +621,56 @@ test.describe("Badges", () => {
       targetName,
       { timeout: 5000 }
     );
+  });
+
+  test("live search filters checks server-side and selects one beyond the first page", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    // Create the target FIRST, then 25 newer checks so the target sorts past
+    // the picker's initial (empty-query) result page of 25 (created_at DESC).
+    const marker = Date.now();
+    const targetName = `Badge LiveSearch Needle ${marker}`;
+    const target = await createCheck(page, token, targetName);
+    await createExtraChecks(page, token, `LiveSearch ${marker}`, 25);
+
+    await page.goto(`/dash0/orgs/test/badges`);
+    await page.waitForLoadState("networkidle");
+
+    // Open the picker: the initial result page shows the newer fillers only.
+    await page.getByTestId("badge-check-select").click();
+    await expect(
+      page.locator('[data-testid^="check-picker-option-"]').first()
+    ).toBeVisible({ timeout: 10000 });
+    await expect(
+      page.getByTestId(`check-picker-option-${target.slug}`)
+    ).toHaveCount(0);
+
+    // Type part of the target's name → the server-side filtered match appears.
+    await page.getByPlaceholder("Search checks").fill(`Needle ${marker}`);
+    const option = page.getByTestId(`check-picker-option-${target.slug}`);
+    await expect(option).toBeVisible({ timeout: 10000 });
+    await option.click();
+
+    // The trigger shows the picked check's name and ?check=<slug> lands in the URL.
+    await expect(page.getByTestId("badge-check-select")).toContainText(
+      targetName,
+      { timeout: 10000 }
+    );
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("check"), {
+        timeout: 5000,
+      })
+      .toBe(target.slug || target.uid);
+
+    // The badge preview renders and the embed URL points at the target check.
+    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+      timeout: 10000,
+    });
+    const urlText = await page.getByTestId("badge-embed-url").textContent();
+    expect(urlText).toContain(`/checks/${target.slug || target.uid}/badges/`);
   });
 
   test("unknown check param shows a not-found notice, not a blank pane", async ({

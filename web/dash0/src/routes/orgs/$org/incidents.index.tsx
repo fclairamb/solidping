@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/table";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { PageHeader } from "@/components/shared/page-header";
+import { useLiveSubscription } from "@/contexts/LiveEventsContext";
 
 type StateFilter = "all" | "active" | "resolved" | "acked" | "snoozed";
 
@@ -107,6 +108,11 @@ function IncidentsIndexPage() {
   const { org } = Route.useParams();
   const { state: stateFilter, showSuppressed } = Route.useSearch();
   const navigate = useNavigate();
+
+  // Live updates: an `incidents` hint invalidates the `incidents` org root
+  // (DEFAULT_QUERY_ROOTS), whose predicate ignores the options segment — so
+  // every `state`/`showSuppressed` filter variant of useIncidents refetches.
+  useLiveSubscription({ entity: "incidents" });
 
   const {
     data: incidents,

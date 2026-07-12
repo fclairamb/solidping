@@ -40,6 +40,7 @@ import { Button } from "@/components/ui/button";
 import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { regionDisplayLabel } from "@/lib/region-label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Card,
@@ -72,6 +73,7 @@ import { QueryErrorView } from "@/components/shared/error-views";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { SslChainCard } from "@/components/checks/ssl-chain-card";
 import { DockerRestartLoopCard } from "@/components/checks/docker-restart-loop-card";
+import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
 import { ResponseTimeChart, chartFetchParams, formatMs } from "@/components/checks/response-time-chart";
 import { AvailabilityTable } from "@/components/checks/availability-table";
 import { DependenciesCard } from "@/components/checks/dependencies-card";
@@ -412,7 +414,7 @@ function CheckDetailPage() {
     error,
     refetch,
     isRefetching,
-  } = useCheck(org, checkUid, { with: "last_result,last_status_change" });
+  } = useCheck(org, checkUid);
 
   const periodMs = useMemo(
     () => parsePeriodMs(check?.period),
@@ -461,7 +463,6 @@ function CheckDetailPage() {
 
   // Re-fetch check (with lastResult) at the same interval
   useCheck(org, checkUid, {
-    with: "last_result,last_status_change",
     refetchInterval,
   });
 
@@ -988,14 +989,11 @@ function CheckDetailPage() {
                   {t("checks:detail.regionsLabel")}
                 </div>
                 <div className="flex gap-1 flex-wrap">
-                  {check.regions.map((slug) => {
-                    const region = regionsData?.regions?.find((r) => r.slug === slug);
-                    return (
-                      <Badge key={slug} variant="outline">
-                        {region ? `${region.emoji} ${region.name}` : slug}
-                      </Badge>
-                    );
-                  })}
+                  {check.regions.map((slug) => (
+                    <Badge key={slug} variant="outline">
+                      {regionDisplayLabel(regionsData?.regions, slug)}
+                    </Badge>
+                  ))}
                 </div>
               </div>
             )}
@@ -1111,9 +1109,15 @@ function CheckDetailPage() {
                       </div>
                       <div className="bg-muted rounded-md p-3 text-sm font-mono max-h-32 overflow-auto">
                         {Object.entries(check.lastResult.output)
-                          // The SSL chain + soonest-expiring details get a
-                          // dedicated table below; don't repeat them as raw JSON.
-                          .filter(([key]) => key !== "chain" && key !== "soonestExpiring")
+                          // The SSL chain + soonest-expiring details, and the
+                          // DNSBL zone/code fields, get a dedicated card below;
+                          // don't repeat them as raw JSON.
+                          .filter(
+                            ([key]) =>
+                              key !== "chain" &&
+                              key !== "soonestExpiring" &&
+                              !(DNSBL_OUTPUT_KEYS as readonly string[]).includes(key),
+                          )
                           .map(([key, value]) => (
                             <div key={key} className="flex gap-2">
                               <span className="text-muted-foreground">
@@ -1145,6 +1149,10 @@ function CheckDetailPage() {
         <DockerRestartLoopCard output={check.lastResult?.output as Record<string, unknown> | undefined} />
       )}
 
+      {check.type === "dnsbl" && (
+        <DnsblCard output={check.lastResult?.output as Record<string, unknown> | undefined} />
+      )}
+
       <DependenciesCard org={org} checkUid={checkUid} />
 
       <Card>
@@ -1166,21 +1174,18 @@ function CheckDetailPage() {
               >
                 {t("checks:detail.results.filterAll")}
               </Button>
-              {observedRegions.map((slug) => {
-                const region = regionsData?.regions?.find((r) => r.slug === slug);
-                return (
-                  <Button
-                    key={slug}
-                    variant={effectiveResultsRegion === slug ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setResultsRegion(slug)}
-                    className="px-2 text-xs"
-                    data-testid={`results-region-chip-${slug}`}
-                  >
-                    {region ? `${region.emoji} ${region.name}` : slug}
-                  </Button>
-                );
-              })}
+              {observedRegions.map((slug) => (
+                <Button
+                  key={slug}
+                  variant={effectiveResultsRegion === slug ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setResultsRegion(slug)}
+                  className="px-2 text-xs"
+                  data-testid={`results-region-chip-${slug}`}
+                >
+                  {regionDisplayLabel(regionsData?.regions, slug)}
+                </Button>
+              ))}
             </div>
           )}
         </CardHeader>
@@ -1267,9 +1272,6 @@ function CheckDetailPage() {
                     >
                       {result.region ? (
                         (() => {
-                          const region = regionsData?.regions?.find(
-                            (r) => r.slug === result.region,
-                          );
                           const slug = result.region;
                           return (
                             // A real <button> styled with badgeVariants (not
@@ -1289,7 +1291,7 @@ function CheckDetailPage() {
                                 setResultsRegion(slug);
                               }}
                             >
-                              {region ? `${region.emoji} ${region.name}` : slug}
+                              {regionDisplayLabel(regionsData?.regions, slug)}
                             </button>
                           );
                         })()

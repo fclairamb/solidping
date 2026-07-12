@@ -88,6 +88,7 @@ import { ApiError, apiFetch } from "@/api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseLabelsParam, serializeLabelsParam } from "@/lib/labels";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLiveSubscription } from "@/contexts/LiveEventsContext";
 
 interface ChecksIndexSearch {
   labels?: string;
@@ -575,6 +576,12 @@ function ChecksIndexPage() {
   const [changeGroupCheck, setChangeGroupCheck] = useState<Check | null>(null);
   const debouncedSearch = useDebounce(search, 300);
 
+  // Live updates: `checks`/`results` hints invalidate both the flat
+  // ["checks", org] root and the infinite ["checks", "infinite", org] root
+  // (see infiniteOrgRoot in LiveEventsContext), so every group section's
+  // paginated query refreshes status and last-result cells without a reload.
+  useLiveSubscription({ entity: "checks" });
+
   const {
     data: groups,
     isLoading: groupsLoading,
@@ -752,7 +759,7 @@ function ChecksIndexPage() {
               <FolderPlus className="sm:mr-2 h-4 w-4" />
               <span className="hidden sm:inline">{t("newGroup")}</span>
             </Button>
-            <Link to="/orgs/$org/checks/new" params={{ org }} search={{ checkType: undefined, checkPeriod: undefined, checkName: undefined, checkSlug: undefined, httpUrl: undefined, httpMethod: undefined, host: undefined, port: undefined, url: undefined, domain: undefined, username: undefined, database: undefined }}>
+            <Link to="/orgs/$org/checks/new" params={{ org }} search={{ checkType: undefined, checkPeriod: undefined, checkName: undefined, checkSlug: undefined, httpUrl: undefined, httpMethod: undefined, host: undefined, port: undefined, url: undefined, domain: undefined, username: undefined, database: undefined, expectedStatus: undefined, timeout: undefined, label: undefined, region: undefined, group: undefined, confirmationPeriod: undefined, recoveryPeriod: undefined, section: undefined }}>
               <Button data-testid="new-check-button">
                 <Plus className="sm:mr-2 h-4 w-4" />
                 <span className="hidden sm:inline">{t("newCheck")}</span>

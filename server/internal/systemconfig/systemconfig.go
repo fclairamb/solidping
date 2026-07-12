@@ -80,6 +80,23 @@ const (
 	KeyAggregationRetentionHour ParameterKey = "aggregation.retention_hour"
 	KeyAggregationRetentionDay  ParameterKey = "aggregation.retention_day"
 
+	// Global performance / data-retention knobs, resolved at job-run time
+	// through the env → DB parameter → default precedence (spec 2026-07-11-16
+	// §4; the wider performance.* group is spec 2026-07-11-17). These replace
+	// the koanf-only aggregation.retention_* fields for aggregation
+	// work-discovery — the unit suffix keeps the integer values unambiguous.
+	KeyPerfAggRetentionRawHours  ParameterKey = "performance.aggregation_retention_raw_hours"
+	KeyPerfAggRetentionHourDays  ParameterKey = "performance.aggregation_retention_hour_days"
+	KeyPerfAggRetentionDayMonths ParameterKey = "performance.aggregation_retention_day_months"
+
+	// Jobs-table retention knobs (spec 2026-07-11-17). Resolved at job-run time
+	// by the same env → global DB parameter → default precedence as the
+	// aggregation perf keys (jobtypes.resolveRetentionTier). A finished job is
+	// soft-deleted after KeyPerfJobsSoftDeleteHours (stage 1) and hard-deleted
+	// KeyPerfJobsHardDeleteHours after that (stage 2). Defaults 48 / 24.
+	KeyPerfJobsSoftDeleteHours ParameterKey = "performance.jobs_soft_delete_hours"
+	KeyPerfJobsHardDeleteHours ParameterKey = "performance.jobs_hard_delete_hours"
+
 	// Generic OAuth2/OIDC provider keys (spec 2026-07-08-08, part 1). Global-only,
 	// single instance — see config.OIDCOAuthConfig.
 	KeyOIDCEnabled      ParameterKey = "auth.oidc.enabled"

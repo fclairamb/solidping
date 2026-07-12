@@ -25,6 +25,10 @@ tags:
     description: Check results and statistics
   - name: Incidents
     description: Incident management and tracking
+  - name: Channels
+    description: Notification channels / integrations and per-check bindings
+  - name: Notifications
+    description: Per-incident/user/org notification delivery audit and per-user notification routes and contacts
   - name: Events
     description: Audit events and activity log
   - name: Members
@@ -35,6 +39,34 @@ tags:
     description: Network discovery scans and suggested checks
   - name: System
     description: System-wide configuration (super admin only)
+  - name: MaintenanceWindows
+    description: Scheduled maintenance windows and their check coverage
+  - name: CheckGroups
+    description: Check group management
+  - name: Severities
+    description: Severity primitives (channel-set bundles)
+  - name: Labels
+    description: Label key/value autocomplete
+  - name: Regions
+    description: Available monitoring regions
+  - name: CheckTypes
+    description: Check type catalog and sample configurations
+  - name: OnCallSchedules
+    description: On-call schedules, overrides, rotation preview, and iCal feeds
+  - name: EscalationPolicies
+    description: Escalation policies with ordered steps and targets
+  - name: Organizations
+    description: Organization creation and settings
+  - name: Invitations
+    description: Organization invitations
+  - name: MembershipRequests
+    description: Requests to join an organization (requester and admin sides)
+  - name: Entitlements
+    description: Per-organization entitlement limits and audit log
+  - name: Files
+    description: Org-scoped file storage metadata and content
+  - name: EmailSuppressions
+    description: Per-recipient email suppression (unsubscribe) list
 
 paths:
   # Management APIs
@@ -97,6 +129,49 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/mgmt/limits:
+    get:
+      tags: [Management]
+      summary: Rate-limit and concurrency introspection
+      description: >
+        Returns the server's rate-limit and concurrency configuration together
+        with the calling client's live counters (remaining tokens, in-flight
+        requests), the resolved caller IP and which bucket ("ip" or "token")
+        the caller's traffic is accounted against. Public, no authentication.
+      operationId: getLimits
+      responses:
+        "200":
+          description: Rate-limit and concurrency state for the caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LimitsResponse"
+
+  /api/mgmt/memory:
+    get:
+      tags: [Management]
+      summary: Runtime memory snapshot
+      description: >
+        Returns a JSON snapshot of runtime memory (heap / stack / goroutines /
+        GC), process RSS, suspect-subsystem cardinalities (DEK cache, rate-limit
+        entries, event listeners) and build facts (cgo, SQLite driver, Go
+        version). Super-admin only; the raw pprof surface stays on the
+        localhost-bound profiler server.
+      operationId: getMemory
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Memory snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemorySnapshotResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/v1/system/scheduling/lane-load:
     get:
       tags: [System]
@@ -120,6 +195,147 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LaneLoadResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  # System actions (Super Admin Only)
+  /api/v1/system/test-email:
+    post:
+      tags: [System]
+      summary: Send a test email
+      description: >
+        Sends a test email to the given recipient using the currently saved
+        SMTP parameters, and reports whether the send succeeded. Super-admin
+        only.
+      operationId: sendTestEmail
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TestEmailRequest"
+      responses:
+        "200":
+          description: Test email result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestEmailResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/email-inbox/config:
+    get:
+      tags: [System]
+      summary: Get the email-inbox (JMAP) configuration
+      description: >
+        Returns the saved JMAP inbox configuration with the password elided.
+        Super-admin only.
+      operationId: getEmailInboxConfig
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Email-inbox configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailInboxConfigResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/email-inbox/status:
+    get:
+      tags: [System]
+      summary: Get the email-inbox connection status
+      description: >
+        Reports whether the email inbox is enabled and connected, the mode, the
+        last sync time, the last error and the address domain. Super-admin only.
+      operationId: getEmailInboxStatus
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Email-inbox status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailInboxStatusResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/email-inbox/test:
+    post:
+      tags: [System]
+      summary: Test the email-inbox connection
+      description: >
+        Connects to the configured JMAP inbox and lists its resolved mailboxes.
+        Super-admin only.
+      operationId: testEmailInbox
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailInboxTestResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/email-inbox/sync:
+    post:
+      tags: [System]
+      summary: Trigger an email-inbox sync
+      description: >
+        Runs one immediate sync pass over the configured JMAP inbox.
+        Super-admin only.
+      operationId: syncEmailInbox
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailInboxSyncResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/activation:
+    get:
+      tags: [System]
+      summary: Organization activation funnel
+      description: >
+        Returns one row per organization with the timestamps for each activation
+        milestone (signup, first check, first result, first notification, first
+        incident). Super-admin only.
+      operationId: getActivationFunnel
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Activation funnel rows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivationFunnelResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -311,6 +527,177 @@ paths:
                 $ref: "#/components/schemas/MeResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [Authentication]
+      summary: Update the authenticated user's profile
+      operationId: updateMe
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Updated user information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/auth/providers:
+    get:
+      tags: [Authentication]
+      summary: List configured auth providers
+      operationId: listAuthProviders
+      responses:
+        "200":
+          description: Configured providers plus registration/passkey availability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthProvidersResponse"
+
+  /api/v1/auth/register:
+    post:
+      tags: [Authentication]
+      summary: Self-service account registration
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "200":
+          description: Registration accepted; confirmation email sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/auth/confirm-registration:
+    post:
+      tags: [Authentication]
+      summary: Confirm a pending registration with an emailed token
+      operationId: confirmRegistration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmRegistrationRequest"
+      responses:
+        "200":
+          description: Registration confirmed; user logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/auth/request-password-reset:
+    post:
+      tags: [Authentication]
+      summary: Request a password reset email
+      operationId: requestPasswordReset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestPasswordResetRequest"
+      responses:
+        "200":
+          description: Reset request accepted (always returned, anti-enumeration)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/v1/auth/reset-password:
+    post:
+      tags: [Authentication]
+      summary: Set a new password using a reset token
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordRequest"
+      responses:
+        "200":
+          description: Password reset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "410":
+          description: Reset link has expired or is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/invite/{token}:
+    get:
+      tags: [Authentication]
+      summary: Inspect an invitation by token
+      operationId: getInvite
+      parameters:
+        - name: token
+          in: path
+          required: true
+          description: Invitation token
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Public invitation info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteInfoResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/auth/accept-invite:
+    post:
+      tags: [Authentication]
+      summary: Accept an invitation
+      operationId: acceptInvite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptInviteRequest"
+      responses:
+        "200":
+          description: Invitation accepted; user logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/auth/switch-org:
     post:
@@ -595,6 +982,97 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /api/v1/orgs/{org}/checks/validate:
+    post:
+      tags: [Checks]
+      summary: Validate a check configuration without persisting it
+      description: >-
+        Runs the same validation the create/update paths run, but never writes.
+        Returns whether the payload is valid plus any per-field validation
+        messages.
+      operationId: validateCheck
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidateCheckRequest"
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidateCheckResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/clone:
+    post:
+      tags: [Checks]
+      summary: Clone an existing check
+      description: >-
+        Creates a near-identical copy of an existing check. Runtime state
+        (status, results, incidents, scheduler row) is not copied; labels and
+        channel bindings are re-linked to the new check.
+      operationId: cloneCheck
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CloneCheckRequest"
+      responses:
+        "201":
+          description: Check cloned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Check"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Slug already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/orgs/{org}/dependencies:
+    get:
+      tags: [Checks]
+      summary: Org-wide check dependency graph
+      description: Returns every check (node) and every dependency edge in the organization.
+      operationId: getOrgDependencyGraph
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: Dependency graph
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgDependencyGraphResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/orgs/{org}/checks/{check}/dependencies:
     get:
@@ -1098,6 +1576,725 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/incidents/{uid}/ack:
+    post:
+      tags: [Incidents]
+      summary: Acknowledge an incident
+      operationId: acknowledgeIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncidentAckRequest"
+      responses:
+        "200":
+          description: Incident acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/incidents/{uid}/unack:
+    post:
+      tags: [Incidents]
+      summary: Remove acknowledgement from an incident
+      operationId: unacknowledgeIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidPath"
+      responses:
+        "200":
+          description: Incident unacknowledged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/incidents/{uid}/snooze:
+    post:
+      tags: [Incidents]
+      summary: Snooze an incident
+      description: >-
+        Suppresses notifications until an explicit time (`until`) or for a
+        relative duration (`duration`, e.g. "1h", "30m"). One of the two must
+        be provided.
+      operationId: snoozeIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncidentSnoozeRequest"
+      responses:
+        "200":
+          description: Incident snoozed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/incidents/{uid}/unsnooze:
+    post:
+      tags: [Incidents]
+      summary: Clear an incident snooze
+      operationId: unsnoozeIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidPath"
+      responses:
+        "200":
+          description: Incident unsnoozed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/incidents/{uid}/resolve:
+    post:
+      tags: [Incidents]
+      summary: Resolve an incident
+      operationId: resolveIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncidentAckRequest"
+      responses:
+        "200":
+          description: Incident resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Notification delivery audit (read) APIs
+  /api/v1/orgs/{org}/notifications:
+    get:
+      tags: [Notifications]
+      summary: List notification deliveries by connection
+      description: >-
+        Lists notification delivery audit rows for the org, filtered by a
+        connection (channel). `connectionUid` is required.
+      operationId: listNotifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: connectionUid
+          in: query
+          required: true
+          description: Connection (channel) UID to filter by
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum rows to return (default 10, max 50)
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of notification deliveries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationListResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/notifications/{notifUid}:
+    get:
+      tags: [Notifications]
+      summary: Get a notification delivery by UID
+      operationId: getNotification
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/NotificationUidPath"
+      responses:
+        "200":
+          description: Notification delivery detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/incidents/{uid}/notifications:
+    get:
+      tags: [Notifications]
+      summary: List notification deliveries for an incident
+      operationId: listIncidentNotifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidPath"
+        - $ref: "#/components/parameters/NotificationStatusQuery"
+        - $ref: "#/components/parameters/NotificationUserUidQuery"
+        - $ref: "#/components/parameters/NotificationConnectionUidQuery"
+        - $ref: "#/components/parameters/NotificationLimitQuery"
+        - $ref: "#/components/parameters/NotificationBeforeQuery"
+      responses:
+        "200":
+          description: List of notification deliveries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/incidents/{uid}/notifications/{notifUid}:
+    get:
+      tags: [Notifications]
+      summary: Get an incident notification delivery by UID
+      operationId: getIncidentNotification
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidPath"
+        - $ref: "#/components/parameters/NotificationUidPath"
+      responses:
+        "200":
+          description: Notification delivery detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/me/notifications:
+    get:
+      tags: [Notifications]
+      summary: List the caller's notification deliveries
+      operationId: listMyNotifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/NotificationStatusQuery"
+        - $ref: "#/components/parameters/NotificationConnectionUidQuery"
+        - $ref: "#/components/parameters/NotificationLimitQuery"
+        - $ref: "#/components/parameters/NotificationBeforeQuery"
+      responses:
+        "200":
+          description: List of notification deliveries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/users/{uid}/notifications:
+    get:
+      tags: [Notifications]
+      summary: List a user's notification deliveries
+      description: >-
+        Admins may query any user; non-admin members may only query
+        themselves (403 otherwise).
+      operationId: listUserNotifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/UserUidPath"
+        - $ref: "#/components/parameters/NotificationStatusQuery"
+        - $ref: "#/components/parameters/NotificationConnectionUidQuery"
+        - $ref: "#/components/parameters/NotificationLimitQuery"
+        - $ref: "#/components/parameters/NotificationBeforeQuery"
+      responses:
+        "200":
+          description: List of notification deliveries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Per-user notification routes and contacts
+  /api/v1/orgs/{org}/users/me/notification-routes:
+    get:
+      tags: [Notifications]
+      summary: List the caller's notification routes
+      operationId: listMyNotificationRoutes
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of notification routes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationRouteListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/users/me/notification-routes/{routeUid}:
+    patch:
+      tags: [Notifications]
+      summary: Update one of the caller's notification routes
+      description: Toggle the enabled flag and/or reorder the full route list.
+      operationId: updateMyNotificationRoute
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/RouteUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateNotificationRouteRequest"
+      responses:
+        "200":
+          description: Updated notification route
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationRoute"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/users/me/notification-routes/{routeUid}/test:
+    post:
+      tags: [Notifications]
+      summary: Send a test notification through one of the caller's routes
+      operationId: testMyNotificationRoute
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/RouteUidPath"
+      responses:
+        "204":
+          description: Test notification dispatched
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/orgs/{org}/users/me/notification-contacts:
+    post:
+      tags: [Notifications]
+      summary: Add a notification contact (and its route) for the caller
+      operationId: addMyNotificationContact
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddNotificationContactRequest"
+      responses:
+        "201":
+          description: Contact added; the created route is returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationRoute"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/users/me/notification-contacts/{contactUid}:
+    delete:
+      tags: [Notifications]
+      summary: Remove one of the caller's notification contacts
+      operationId: removeMyNotificationContact
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ContactUidPath"
+      responses:
+        "204":
+          description: Contact removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Channel APIs (notification channels / integrations)
+  /api/v1/orgs/{org}/channels:
+    get:
+      tags: [Channels]
+      summary: List notification channels
+      operationId: listChannels
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: type
+          in: query
+          description: Filter by channel type (e.g., "slack", "webhook")
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of channels
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Channels]
+      summary: Create a notification channel
+      operationId: createChannel
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChannelRequest"
+      responses:
+        "201":
+          description: Channel created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/channels/{uid}:
+    get:
+      tags: [Channels]
+      summary: Get a notification channel
+      operationId: getChannel
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ChannelUidPath"
+      responses:
+        "200":
+          description: Channel details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Channels]
+      summary: Update a notification channel
+      operationId: updateChannel
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ChannelUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateChannelRequest"
+      responses:
+        "200":
+          description: Channel updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Channels]
+      summary: Delete a notification channel
+      operationId: deleteChannel
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ChannelUidPath"
+      responses:
+        "204":
+          description: Channel deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/channels/{uid}/rotate-secret:
+    post:
+      tags: [Channels]
+      summary: Rotate a webhook channel's signing secret
+      description: >-
+        Rotates the per-channel signing secret (webhook channels only). The
+        current secret becomes the previous one (valid for a 24 h grace window)
+        and a fresh secret is generated. Returns 400 for non-webhook channels.
+      operationId: rotateChannelSecret
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ChannelUidPath"
+      responses:
+        "200":
+          description: Secret rotated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/channels/{uid}/test:
+    post:
+      tags: [Channels]
+      summary: Send a sample notification through a channel
+      description: >-
+        Sends a sample notification through the channel to verify it is wired
+        correctly. Always returns 200 for a notifiable channel; inspect the
+        `success` field to know whether delivery worked. Returns 400 for
+        data-source-only channel types.
+      operationId: testChannel
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ChannelUidPath"
+      responses:
+        "200":
+          description: Test delivery outcome
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelTestResult"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/checks/{check}/channels:
+    get:
+      tags: [Channels]
+      summary: List channels bound to a check
+      operationId: listCheckChannels
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: check
+          in: path
+          required: true
+          description: Check uid or slug
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Channels bound to the check
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckChannelListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Channels]
+      summary: Replace the full set of channels bound to a check
+      operationId: setCheckChannels
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: check
+          in: path
+          required: true
+          description: Check uid or slug
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetCheckChannelsRequest"
+      responses:
+        "204":
+          description: Channel bindings replaced
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/checks/{check}/channels/{connection}:
+    post:
+      tags: [Channels]
+      summary: Bind a single channel to a check
+      operationId: addCheckChannel
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: check
+          in: path
+          required: true
+          description: Check uid or slug
+          schema:
+            type: string
+        - name: connection
+          in: path
+          required: true
+          description: Channel (connection) uid
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "201":
+          description: Channel bound to the check
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Channels]
+      summary: Unbind a single channel from a check
+      operationId: removeCheckChannel
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: check
+          in: path
+          required: true
+          description: Check uid or slug
+          schema:
+            type: string
+        - name: connection
+          in: path
+          required: true
+          description: Channel (connection) uid
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Channel unbound from the check
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # Event APIs
   /api/v1/orgs/{org}/events:
     get:
@@ -1361,6 +2558,266 @@ paths:
       responses:
         "204":
           description: Job cancelled
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Jobs admin & scheduler introspection (org-scoped, org-admin gated)
+  /api/v1/orgs/{org}/jobs/stats:
+    get:
+      tags: [Jobs]
+      summary: Job & check-schedule stats
+      description: Aggregate counts over the background-jobs queue and the check schedule for the org.
+      operationId: getJobStats
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: Aggregate job stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobsStatsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/orgs/{org}/admin/jobs:
+    get:
+      tags: [Jobs]
+      summary: List background jobs (admin)
+      description: Admin-gated list of background jobs for the org, most-recent first.
+      operationId: listAdminJobs
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/JobStatusQuery"
+        - $ref: "#/components/parameters/JobTypeQuery"
+        - $ref: "#/components/parameters/JobLimitQuery"
+        - $ref: "#/components/parameters/JobOffsetQuery"
+      responses:
+        "200":
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminJobListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/orgs/{org}/admin/jobs/{uid}:
+    get:
+      tags: [Jobs]
+      summary: Get a background job (admin)
+      operationId: getAdminJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/JobUidPath"
+      responses:
+        "200":
+          description: Job details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminJobResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/admin/jobs/{uid}/chain:
+    get:
+      tags: [Jobs]
+      summary: Get a job's retry chain (admin)
+      description: Ordered chain of jobs linked via previousJobUid, earliest ancestor to latest descendant.
+      operationId: getAdminJobChain
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/JobUidPath"
+      responses:
+        "200":
+          description: Retry chain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminJobListResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/check-jobs:
+    get:
+      tags: [Jobs]
+      summary: List check-schedule jobs (admin)
+      description: Admin-gated list of the check_jobs scheduler rows. Encrypted secret values are never returned.
+      operationId: listCheckJobs
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/JobLimitQuery"
+        - $ref: "#/components/parameters/JobOffsetQuery"
+      responses:
+        "200":
+          description: List of check jobs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckJobListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/orgs/{org}/check-jobs/{uid}:
+    get:
+      tags: [Jobs]
+      summary: Get a check-schedule job (admin)
+      operationId: getCheckJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckJobUidPath"
+      responses:
+        "200":
+          description: Check job details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckJobResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Jobs admin & scheduler introspection (system-scoped, super-admin gated)
+  /api/v1/system/jobs/stats:
+    get:
+      tags: [System]
+      summary: Job & check-schedule stats (all orgs)
+      description: Aggregate job and check-schedule counts across every org (super-admin).
+      operationId: getSystemJobStats
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Aggregate job stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobsStatsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/jobs:
+    get:
+      tags: [System]
+      summary: List background jobs (all orgs)
+      description: Super-admin list of background jobs across all orgs, including system jobs (null org).
+      operationId: listSystemJobs
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/JobStatusQuery"
+        - $ref: "#/components/parameters/JobTypeQuery"
+        - $ref: "#/components/parameters/JobLimitQuery"
+        - $ref: "#/components/parameters/JobOffsetQuery"
+      responses:
+        "200":
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminJobListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/jobs/{uid}:
+    get:
+      tags: [System]
+      summary: Get a background job (all orgs)
+      operationId: getSystemJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/JobUidPath"
+      responses:
+        "200":
+          description: Job details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminJobResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/system/jobs/{uid}/chain:
+    get:
+      tags: [System]
+      summary: Get a job's retry chain (all orgs)
+      operationId: getSystemJobChain
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/JobUidPath"
+      responses:
+        "200":
+          description: Retry chain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminJobListResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/system/check-jobs:
+    get:
+      tags: [System]
+      summary: List check-schedule jobs (all orgs)
+      description: Super-admin list of the check_jobs scheduler rows across every org. Secrets are never returned.
+      operationId: listSystemCheckJobs
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/JobLimitQuery"
+        - $ref: "#/components/parameters/JobOffsetQuery"
+      responses:
+        "200":
+          description: List of check jobs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckJobListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/check-jobs/{uid}:
+    get:
+      tags: [System]
+      summary: Get a check-schedule job (all orgs)
+      operationId: getSystemCheckJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CheckJobUidPath"
+      responses:
+        "200":
+          description: Check job details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckJobResponse"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -1650,6 +3107,2065 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # Status page APIs
+  /api/v1/orgs/{org}/status-pages:
+    get:
+      tags: [StatusPages]
+      summary: List status pages
+      operationId: listStatusPages
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of status pages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [StatusPages]
+      summary: Create a status page
+      operationId: createStatusPage
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStatusPageRequest"
+      responses:
+        "201":
+          description: Status page created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}:
+    get:
+      tags: [StatusPages]
+      summary: Get a status page
+      operationId: getStatusPage
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - name: with
+          in: query
+          description: Comma-separated related data to include (e.g. "sections")
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Status page details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [StatusPages]
+      summary: Update a status page
+      operationId: updateStatusPage
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStatusPageRequest"
+      responses:
+        "200":
+          description: Status page updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [StatusPages]
+      summary: Delete a status page
+      operationId: deleteStatusPage
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      responses:
+        "204":
+          description: Status page deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections:
+    get:
+      tags: [StatusPages]
+      summary: List sections of a status page
+      operationId: listStatusPageSections
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      responses:
+        "200":
+          description: List of sections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageSectionListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [StatusPages]
+      summary: Create a section
+      operationId: createStatusPageSection
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStatusPageSectionRequest"
+      responses:
+        "201":
+          description: Section created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageSection"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections/reorder:
+    post:
+      tags: [StatusPages]
+      summary: Reorder the sections of a status page
+      operationId: reorderStatusPageSections
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReorderUidsRequest"
+      responses:
+        "204":
+          description: Sections reordered
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections/{sectionUid}:
+    get:
+      tags: [StatusPages]
+      summary: Get a section
+      operationId: getStatusPageSection
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/SectionUidPath"
+      responses:
+        "200":
+          description: Section details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageSection"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [StatusPages]
+      summary: Update a section
+      operationId: updateStatusPageSection
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/SectionUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStatusPageSectionRequest"
+      responses:
+        "200":
+          description: Section updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageSection"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [StatusPages]
+      summary: Delete a section
+      operationId: deleteStatusPageSection
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/SectionUidPath"
+      responses:
+        "204":
+          description: Section deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections/{sectionUid}/resources:
+    get:
+      tags: [StatusPages]
+      summary: List resources of a section
+      operationId: listStatusPageResources
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/SectionUidPath"
+      responses:
+        "200":
+          description: List of resources
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageResourceListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [StatusPages]
+      summary: Add a check as a resource to a section
+      operationId: createStatusPageResource
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/SectionUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStatusPageResourceRequest"
+      responses:
+        "201":
+          description: Resource created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageResource"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections/{sectionUid}/resources/reorder:
+    post:
+      tags: [StatusPages]
+      summary: Reorder the resources of a section
+      operationId: reorderStatusPageResources
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/SectionUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReorderUidsRequest"
+      responses:
+        "204":
+          description: Resources reordered
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections/{sectionUid}/resources/{resourceUid}:
+    patch:
+      tags: [StatusPages]
+      summary: Update a resource
+      operationId: updateStatusPageResource
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/SectionUidPath"
+        - $ref: "#/components/parameters/ResourceUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStatusPageResourceRequest"
+      responses:
+        "200":
+          description: Resource updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageResource"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [StatusPages]
+      summary: Remove a resource from a section
+      operationId: deleteStatusPageResource
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/SectionUidPath"
+        - $ref: "#/components/parameters/ResourceUidPath"
+      responses:
+        "204":
+          description: Resource removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers:
+    get:
+      tags: [StatusPages]
+      summary: List subscribers of a status page
+      operationId: listStatusPageSubscribers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      responses:
+        "200":
+          description: List of subscribers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageSubscriberListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers/{uid}:
+    delete:
+      tags: [StatusPages]
+      summary: Remove a subscriber from a status page
+      operationId: removeStatusPageSubscriber
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/SubscriberUidPath"
+      responses:
+        "204":
+          description: Subscriber removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Status update APIs
+  /api/v1/orgs/{org}/status-updates:
+    get:
+      tags: [StatusUpdates]
+      summary: List status updates
+      operationId: listStatusUpdates
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: statusPage
+          in: query
+          description: Filter by status page UID
+          schema:
+            type: string
+        - name: section
+          in: query
+          description: Filter by section UID
+          schema:
+            type: string
+        - name: check
+          in: query
+          description: Filter by check UID
+          schema:
+            type: string
+        - name: incident
+          in: query
+          description: Filter by incident UID
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum results (1-200)
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          description: Result offset
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of status updates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusUpdateListResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [StatusUpdates]
+      summary: Create a status update
+      operationId: createStatusUpdate
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStatusUpdateRequest"
+      responses:
+        "201":
+          description: Status update created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusUpdate"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-updates/{uid}:
+    get:
+      tags: [StatusUpdates]
+      summary: Get a status update
+      operationId: getStatusUpdate
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusUpdateUidPath"
+      responses:
+        "200":
+          description: Status update details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusUpdate"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [StatusUpdates]
+      summary: Update a status update
+      operationId: updateStatusUpdate
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusUpdateUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStatusUpdateRequest"
+      responses:
+        "200":
+          description: Status update updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusUpdate"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [StatusUpdates]
+      summary: Delete a status update
+      operationId: deleteStatusUpdate
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusUpdateUidPath"
+      responses:
+        "204":
+          description: Status update deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/maintenance-windows:
+    get:
+      tags: [MaintenanceWindows]
+      summary: List maintenance windows
+      operationId: listMaintenanceWindows
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: status
+          in: query
+          description: Filter by lifecycle status (active, upcoming, past)
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum results (1-100)
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of maintenance windows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceWindowListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [MaintenanceWindows]
+      summary: Create a maintenance window
+      operationId: createMaintenanceWindow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMaintenanceWindowRequest"
+      responses:
+        "201":
+          description: Maintenance window created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceWindow"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/maintenance-windows/{uid}:
+    get:
+      tags: [MaintenanceWindows]
+      summary: Get a maintenance window
+      operationId: getMaintenanceWindow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MaintenanceWindowUidPath"
+      responses:
+        "200":
+          description: Maintenance window details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceWindow"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [MaintenanceWindows]
+      summary: Update a maintenance window
+      operationId: updateMaintenanceWindow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MaintenanceWindowUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMaintenanceWindowRequest"
+      responses:
+        "200":
+          description: Maintenance window updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceWindow"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [MaintenanceWindows]
+      summary: Delete a maintenance window
+      operationId: deleteMaintenanceWindow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MaintenanceWindowUidPath"
+      responses:
+        "204":
+          description: Maintenance window deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/maintenance-windows/{uid}/checks:
+    get:
+      tags: [MaintenanceWindows]
+      summary: List the checks covered by a maintenance window
+      operationId: listMaintenanceWindowChecks
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MaintenanceWindowUidPath"
+      responses:
+        "200":
+          description: List of check associations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceWindowCheckListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [MaintenanceWindows]
+      summary: Set the checks covered by a maintenance window
+      operationId: setMaintenanceWindowChecks
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MaintenanceWindowUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetMaintenanceWindowChecksRequest"
+      responses:
+        "204":
+          description: Check associations updated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/check-groups:
+    get:
+      tags: [CheckGroups]
+      summary: List check groups
+      operationId: listCheckGroups
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of check groups
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckGroupListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [CheckGroups]
+      summary: Create a check group
+      operationId: createCheckGroup
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCheckGroupRequest"
+      responses:
+        "201":
+          description: Check group created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckGroup"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/check-groups/{uid}:
+    get:
+      tags: [CheckGroups]
+      summary: Get a check group
+      operationId: getCheckGroup
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckGroupUidPath"
+      responses:
+        "200":
+          description: Check group details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckGroup"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [CheckGroups]
+      summary: Update a check group
+      operationId: updateCheckGroup
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckGroupUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCheckGroupRequest"
+      responses:
+        "200":
+          description: Check group updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckGroup"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [CheckGroups]
+      summary: Delete a check group
+      operationId: deleteCheckGroup
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckGroupUidPath"
+      responses:
+        "204":
+          description: Check group deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/severities:
+    get:
+      tags: [Severities]
+      summary: List severities
+      operationId: listSeverities
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of severities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeverityListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Severities]
+      summary: Create a severity
+      operationId: createSeverity
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSeverityRequest"
+      responses:
+        "201":
+          description: Severity created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Severity"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/severities/{uid}:
+    get:
+      tags: [Severities]
+      summary: Get a severity
+      operationId: getSeverity
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SeverityUidPath"
+      responses:
+        "200":
+          description: Severity details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Severity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Severities]
+      summary: Update a severity
+      operationId: updateSeverity
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SeverityUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSeverityRequest"
+      responses:
+        "200":
+          description: Severity updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Severity"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Severities]
+      summary: Delete a severity
+      operationId: deleteSeverity
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SeverityUidPath"
+      responses:
+        "204":
+          description: Severity deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Severity is the default and cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/orgs/{org}/labels:
+    get:
+      tags: [Labels]
+      summary: List label key/value suggestions
+      operationId: listLabels
+      description: >
+        Returns distinct label keys, or distinct values for a given key when
+        the "key" query parameter is set, with usage counts for popularity sort.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: key
+          in: query
+          description: When set, list distinct values for this key instead of keys
+          schema:
+            type: string
+        - name: q
+          in: query
+          description: Prefix filter on the returned keys/values
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum results (1-200)
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of label suggestions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LabelSuggestionListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/regions:
+    get:
+      tags: [Regions]
+      summary: List regions available to an organization
+      operationId: listRegions
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: Available regions plus the org's default region set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgRegionListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/check-types:
+    get:
+      tags: [CheckTypes]
+      summary: List check types with server-level activation status
+      operationId: listCheckTypes
+      responses:
+        "200":
+          description: List of check types
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckTypeListResponse"
+
+  /api/v1/check-types/samples:
+    get:
+      tags: [CheckTypes]
+      summary: List sample configurations grouped by check type
+      operationId: listCheckTypeSamples
+      parameters:
+        - name: type
+          in: query
+          description: Filter samples to a single check type
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sample configurations grouped by check type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckTypeSamplesListResponse"
+
+  /api/v1/orgs/{org}/on-call-schedules:
+    get:
+      tags: [OnCallSchedules]
+      summary: List on-call schedules
+      operationId: listOncallSchedules
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of on-call schedules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OncallScheduleListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [OnCallSchedules]
+      summary: Create an on-call schedule
+      operationId: createOncallSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOncallScheduleRequest"
+      responses:
+        "201":
+          description: On-call schedule created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OncallSchedule"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/on-call-schedules/{uid}:
+    get:
+      tags: [OnCallSchedules]
+      summary: Get an on-call schedule
+      operationId: getOncallSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+      responses:
+        "200":
+          description: On-call schedule details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OncallSchedule"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [OnCallSchedules]
+      summary: Update an on-call schedule
+      operationId: updateOncallSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOncallScheduleRequest"
+      responses:
+        "200":
+          description: On-call schedule updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OncallSchedule"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [OnCallSchedules]
+      summary: Delete an on-call schedule
+      operationId: deleteOncallSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+      responses:
+        "204":
+          description: On-call schedule deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/on-call-schedules/{uid}/preview:
+    get:
+      tags: [OnCallSchedules]
+      summary: Preview the on-call rotation over a window
+      operationId: previewOncallSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+        - name: from
+          in: query
+          description: Window start (RFC3339). Defaults to now.
+          schema:
+            type: string
+            format: date-time
+        - name: days
+          in: query
+          description: Window length in days (1-365, default 14)
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Preview slots
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OncallPreviewResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/on-call-schedules/{uid}/overrides:
+    get:
+      tags: [OnCallSchedules]
+      summary: List overrides on an on-call schedule
+      operationId: listOncallOverrides
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+        - name: from
+          in: query
+          description: Only overrides ending after this instant (RFC3339)
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          description: Only overrides starting before this instant (RFC3339)
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: List of overrides
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OncallOverrideListResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [OnCallSchedules]
+      summary: Create an override on an on-call schedule
+      operationId: createOncallOverride
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOncallOverrideRequest"
+      responses:
+        "201":
+          description: Override created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OncallOverride"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/on-call-schedules/{uid}/overrides/{overrideUid}:
+    delete:
+      tags: [OnCallSchedules]
+      summary: Delete an override
+      operationId: deleteOncallOverride
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+        - $ref: "#/components/parameters/OncallOverrideUidPath"
+      responses:
+        "204":
+          description: Override deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/on-call-schedules/{uid}/ical-feed/enable:
+    post:
+      tags: [OnCallSchedules]
+      summary: Enable the iCal feed for an on-call schedule
+      operationId: enableOncallIcalFeed
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+      responses:
+        "200":
+          description: Feed enabled; secret and URL returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OncallIcalFeedResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/on-call-schedules/{uid}/ical-feed/disable:
+    post:
+      tags: [OnCallSchedules]
+      summary: Disable the iCal feed for an on-call schedule
+      operationId: disableOncallIcalFeed
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+      responses:
+        "204":
+          description: Feed disabled
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/on-call-schedules/{uid}/ical-feed/rotate:
+    post:
+      tags: [OnCallSchedules]
+      summary: Rotate the iCal feed secret for an on-call schedule
+      operationId: rotateOncallIcalFeed
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/OncallScheduleUidPath"
+      responses:
+        "200":
+          description: Feed secret rotated; new secret and URL returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OncallIcalFeedResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/escalation-policies:
+    get:
+      tags: [EscalationPolicies]
+      summary: List escalation policies
+      operationId: listEscalationPolicies
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of escalation policies
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EscalationPolicyListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [EscalationPolicies]
+      summary: Create an escalation policy
+      operationId: createEscalationPolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEscalationPolicyRequest"
+      responses:
+        "201":
+          description: Escalation policy created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EscalationPolicy"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/escalation-policies/{uid}:
+    get:
+      tags: [EscalationPolicies]
+      summary: Get an escalation policy
+      operationId: getEscalationPolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/EscalationPolicyUidPath"
+      responses:
+        "200":
+          description: Escalation policy details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EscalationPolicy"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [EscalationPolicies]
+      summary: Update an escalation policy
+      operationId: updateEscalationPolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/EscalationPolicyUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEscalationPolicyRequest"
+      responses:
+        "200":
+          description: Escalation policy updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EscalationPolicy"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [EscalationPolicies]
+      summary: Delete an escalation policy
+      operationId: deleteEscalationPolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/EscalationPolicyUidPath"
+      responses:
+        "204":
+          description: Escalation policy deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  # Organization APIs
+  /api/v1/orgs:
+    post:
+      tags: [Organizations]
+      summary: Create a new organization
+      description: >-
+        Creates a new organization, makes the caller its admin, and returns a
+        session scoped to the new org.
+      operationId: createOrg
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrgRequest"
+      responses:
+        "201":
+          description: Organization created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/orgs/{org}/settings:
+    get:
+      tags: [Organizations]
+      summary: Get organization settings
+      operationId: getOrgSettings
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: Organization settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgSettingsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Organizations]
+      summary: Update organization settings
+      operationId: updateOrgSettings
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrgSettingsRequest"
+      responses:
+        "200":
+          description: Updated organization settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgSettingsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Organization invitation APIs
+  /api/v1/orgs/{org}/invitations:
+    get:
+      tags: [Invitations]
+      summary: List pending invitations
+      operationId: listInvitations
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of pending invitations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [Invitations]
+      summary: Create an invitation
+      operationId: createInvitation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInvitationRequest"
+      responses:
+        "201":
+          description: Invitation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/invitations/{uid}:
+    delete:
+      tags: [Invitations]
+      summary: Revoke a pending invitation
+      operationId: deleteInvitation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/InvitationUidPath"
+      responses:
+        "204":
+          description: Invitation revoked
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Membership request APIs (requester side)
+  /api/v1/auth/membership-requests:
+    get:
+      tags: [MembershipRequests]
+      summary: List the caller's own membership requests
+      operationId: listMyMembershipRequests
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The caller's membership requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipRequestListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [MembershipRequests]
+      summary: Request to join an organization
+      operationId: createMembershipRequest
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMembershipRequestRequest"
+      responses:
+        "201":
+          description: Membership request created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipRequestSummary"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/auth/membership-requests/{uid}:
+    delete:
+      tags: [MembershipRequests]
+      summary: Cancel one of the caller's membership requests
+      operationId: cancelMembershipRequest
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/MembershipRequestUidPath"
+      responses:
+        "204":
+          description: Membership request cancelled
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Membership request APIs (org-admin side)
+  /api/v1/orgs/{org}/membership-requests:
+    get:
+      tags: [MembershipRequests]
+      summary: List an organization's membership requests
+      operationId: listOrgMembershipRequests
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: status
+          in: query
+          required: false
+          description: Filter by status (pending, approved, rejected, canceled)
+          schema:
+            type: string
+            enum: [pending, approved, rejected, canceled]
+      responses:
+        "200":
+          description: Membership requests for the organization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipRequestAdminListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/membership-requests/{uid}/approve:
+    post:
+      tags: [MembershipRequests]
+      summary: Approve a membership request
+      operationId: approveMembershipRequest
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MembershipRequestUidPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproveMembershipRequestRequest"
+      responses:
+        "200":
+          description: Membership request approved
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/orgs/{org}/membership-requests/{uid}/reject:
+    post:
+      tags: [MembershipRequests]
+      summary: Reject a membership request
+      operationId: rejectMembershipRequest
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MembershipRequestUidPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RejectMembershipRequestRequest"
+      responses:
+        "200":
+          description: Membership request rejected
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Entitlements APIs (per-org limits + audit log)
+  /api/v1/orgs/{org}/entitlements:
+    get:
+      tags: [Entitlements]
+      summary: Get resolved entitlements for an organization
+      operationId: getEntitlements
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: with
+          in: query
+          required: false
+          description: Comma-separated extras to include (currently "usage")
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Resolved entitlements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntitlementsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Entitlements]
+      summary: Replace an organization's entitlements
+      operationId: setEntitlements
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetEntitlementsRequest"
+      responses:
+        "200":
+          description: Updated entitlements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntitlementsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Entitlements]
+      summary: Partially update an organization's entitlements
+      operationId: patchEntitlements
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetEntitlementsRequest"
+      responses:
+        "200":
+          description: Updated entitlements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntitlementsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/entitlements/audits:
+    get:
+      tags: [Entitlements]
+      summary: List entitlement change audits
+      operationId: listEntitlementsAudits
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: limit
+          in: query
+          required: false
+          description: Maximum results (1-200, default 50)
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Entitlement audit entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntitlementsAuditListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # File storage APIs (org-scoped metadata + content)
+  /api/v1/orgs/{org}/files:
+    get:
+      tags: [Files]
+      summary: List stored files
+      operationId: listFiles
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: q
+          in: query
+          required: false
+          description: Filter by filename substring
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Maximum results (1-200, default 50)
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          required: false
+          description: Result offset
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of files
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/files/{uid}:
+    get:
+      tags: [Files]
+      summary: Get file metadata
+      operationId: getFile
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/FileUidPath"
+      responses:
+        "200":
+          description: File metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Files]
+      summary: Delete a file
+      operationId: deleteFile
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/FileUidPath"
+      responses:
+        "204":
+          description: File deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/files/{uid}/content:
+    get:
+      tags: [Files]
+      summary: Download file content
+      operationId: downloadFile
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/FileUidPath"
+      responses:
+        "200":
+          description: Raw file bytes
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Email suppression APIs (per-recipient unsubscribe list)
+  /api/v1/orgs/{org}/email-suppressions:
+    get:
+      tags: [EmailSuppressions]
+      summary: List email suppressions
+      operationId: listEmailSuppressions
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of email suppressions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailSuppressionListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/email-suppressions/{uid}:
+    delete:
+      tags: [EmailSuppressions]
+      summary: Remove an email suppression (re-subscribe)
+      operationId: deleteEmailSuppression
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/EmailSuppressionUidPath"
+      responses:
+        "204":
+          description: Suppression removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1692,6 +5208,15 @@ components:
         format: uuid
       description: Incident UID
 
+    ChannelUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Channel (connection) UID
+
     MemberUidPath:
       name: uid
       in: path
@@ -1710,6 +5235,47 @@ components:
         format: uuid
       description: Job UID
 
+    CheckJobUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Check-schedule job UID
+
+    JobStatusQuery:
+      name: status
+      in: query
+      required: false
+      description: Filter by job status
+      schema:
+        type: string
+
+    JobTypeQuery:
+      name: type
+      in: query
+      required: false
+      description: Filter by job type
+      schema:
+        type: string
+
+    JobLimitQuery:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of rows to return (1-200)
+      schema:
+        type: integer
+
+    JobOffsetQuery:
+      name: offset
+      in: query
+      required: false
+      description: Number of rows to skip
+      schema:
+        type: integer
+
     ScanJobUidPath:
       name: jobUid
       in: path
@@ -1718,6 +5284,210 @@ components:
         type: string
         format: uuid
       description: Discovery scan job UID
+
+    StatusPageUidPath:
+      name: statusPageUid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Status page UID or slug
+
+    SectionUidPath:
+      name: sectionUid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Section UID or slug
+
+    ResourceUidPath:
+      name: resourceUid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Resource UID
+
+    SubscriberUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Subscriber UID
+
+    StatusUpdateUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Status update UID
+
+    MaintenanceWindowUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Maintenance window UID
+
+    CheckGroupUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Check group UID or slug
+
+    SeverityUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Severity UID or slug
+
+    OncallScheduleUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: On-call schedule UID
+
+    OncallOverrideUidPath:
+      name: overrideUid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: On-call schedule override UID
+
+    EscalationPolicyUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Escalation policy UID
+
+    InvitationUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Invitation UID
+
+    MembershipRequestUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Membership request UID
+
+    FileUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: File UID
+
+    EmailSuppressionUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Email suppression UID
+
+    NotificationUidPath:
+      name: notifUid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Notification delivery UID
+
+    UserUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: User UID
+
+    RouteUidPath:
+      name: routeUid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Notification route UID
+
+    ContactUidPath:
+      name: contactUid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Notification contact UID
+
+    NotificationStatusQuery:
+      name: status
+      in: query
+      required: false
+      description: Filter by delivery status (e.g. sent, failed, skipped)
+      schema:
+        type: string
+
+    NotificationUserUidQuery:
+      name: userUid
+      in: query
+      required: false
+      description: Filter by target user UID
+      schema:
+        type: string
+
+    NotificationConnectionUidQuery:
+      name: connectionUid
+      in: query
+      required: false
+      description: Filter by connection (channel) UID
+      schema:
+        type: string
+
+    NotificationLimitQuery:
+      name: limit
+      in: query
+      required: false
+      description: Maximum rows to return (default 100)
+      schema:
+        type: integer
+
+    NotificationBeforeQuery:
+      name: before
+      in: query
+      required: false
+      description: Only rows created strictly before this RFC3339 timestamp
+      schema:
+        type: string
+        format: date-time
 
   responses:
     NotFound:
@@ -1743,6 +5513,20 @@ components:
 
     ValidationError:
       description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    Conflict:
+      description: Resource conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    TooManyRequests:
+      description: Too many requests
       content:
         application/json:
           schema:
@@ -1864,6 +5648,143 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/CostDistribution"
+
+    LimitsRateLimit:
+      type: object
+      description: Rate-limit section of the limits response.
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+        requestsPerMinute:
+          type: integer
+        burst:
+          type: integer
+        callerRemaining:
+          type: number
+          format: double
+          description: >
+            Tokens remaining in the caller's bucket. Present only when rate
+            limiting is enabled.
+
+    LimitsConcurrency:
+      type: object
+      description: Concurrency section of the limits response.
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+        max:
+          type: integer
+        callerInFlight:
+          type: integer
+          description: >
+            In-flight requests for the caller. Present only when concurrency
+            limiting is enabled.
+
+    LimitsResponse:
+      type: object
+      required: [rateLimit, concurrency, callerIp, callerBucket]
+      properties:
+        rateLimit:
+          $ref: "#/components/schemas/LimitsRateLimit"
+        concurrency:
+          $ref: "#/components/schemas/LimitsConcurrency"
+        callerIp:
+          type: string
+          description: Client IP the limiter resolved for this request (respecting trusted proxies).
+        callerBucket:
+          type: string
+          description: Which bucket the caller's traffic is accounted against — "ip" or "token".
+
+    MemoryRuntime:
+      type: object
+      description: runtime.MemStats / goroutine slice of the memory snapshot.
+      properties:
+        heapAllocBytes:
+          type: integer
+          format: int64
+        heapInuseBytes:
+          type: integer
+          format: int64
+        heapObjects:
+          type: integer
+          format: int64
+        stackInuseBytes:
+          type: integer
+          format: int64
+        sysBytes:
+          type: integer
+          format: int64
+        numGoroutine:
+          type: integer
+        numGc:
+          type: integer
+          format: int64
+        gcPauseTotalNs:
+          type: integer
+          format: int64
+        nextGcBytes:
+          type: integer
+          format: int64
+        gcCpuFraction:
+          type: number
+          format: double
+        goMemLimitBytes:
+          type: integer
+          format: int64
+          description: Effective GOMEMLIMIT soft cap; 0 means unlimited.
+        goMaxProcs:
+          type: integer
+
+    MemoryProcess:
+      type: object
+      description: OS-level process memory.
+      properties:
+        rssBytes:
+          type: integer
+          format: int64
+
+    MemorySubsystems:
+      type: object
+      description: Cardinalities of the suspect subsystems.
+      properties:
+        dekCacheEntries:
+          type: integer
+        rateLimitEntries:
+          type: integer
+        eventListeners:
+          type: integer
+
+    MemoryBuild:
+      type: object
+      description: Build facts relevant to off-heap accounting.
+      properties:
+        cgoEnabled:
+          type: boolean
+        sqliteDriver:
+          type: string
+        goVersion:
+          type: string
+
+    MemorySnapshot:
+      type: object
+      properties:
+        runtime:
+          $ref: "#/components/schemas/MemoryRuntime"
+        process:
+          $ref: "#/components/schemas/MemoryProcess"
+        subsystems:
+          $ref: "#/components/schemas/MemorySubsystems"
+        build:
+          $ref: "#/components/schemas/MemoryBuild"
+
+    MemorySnapshotResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/MemorySnapshot"
 
     HealthResponse:
       type: object
@@ -2052,6 +5973,108 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Token"
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: New display name for the authenticated user
+
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+
+    ConfirmRegistrationRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: Registration confirmation token from the emailed link
+
+    RequestPasswordResetRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    ResetPasswordRequest:
+      type: object
+      required: [token, password]
+      properties:
+        token:
+          type: string
+          description: Password reset token from the emailed link
+        password:
+          type: string
+          minLength: 8
+
+    AcceptInviteRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: Invitation token from the emailed link
+        name:
+          type: string
+          description: Display name for a newly created user
+        password:
+          type: string
+          minLength: 8
+          description: Password for a newly created user (ignored if the user already exists)
+
+    InviteInfoResponse:
+      type: object
+      properties:
+        orgName:
+          type: string
+        orgSlug:
+          type: string
+        role:
+          type: string
+          enum: [admin, user, viewer]
+        email:
+          type: string
+          description: Masked email address the invitation was sent to
+
+    AuthProvider:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+
+    AuthProvidersResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuthProvider"
+        registrationEnabled:
+          type: boolean
+        passkeysEnabled:
+          type: boolean
 
     # Check schemas
     Check:
@@ -2380,6 +6403,49 @@ components:
           items:
             $ref: "#/components/schemas/ExportedDependency"
 
+    ValidateCheckRequest:
+      type: object
+      required: [type, config]
+      properties:
+        type:
+          type: string
+          description: Check type (http, tcp, ping, dns, ssl, ...)
+        slug:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+        dependsOn:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExportedDependency"
+
+    ValidateCheckResponse:
+      type: object
+      required: [valid]
+      properties:
+        valid:
+          type: boolean
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationErrorField"
+
+    CloneCheckRequest:
+      type: object
+      description: Optional overrides applied to the cloned check.
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        checkGroupUid:
+          type: string
+        enabled:
+          type: boolean
+
     ExportedDependency:
       type: object
       required: [parentSlug]
@@ -2459,6 +6525,50 @@ components:
           enum: [hard, soft]
         description:
           type: string
+
+    DependencyGraphNode:
+      type: object
+      required: [uid, slug, name]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+
+    DependencyGraphEdge:
+      type: object
+      required: [uid, parentCheckUid, childCheckUid, kind]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        parentCheckUid:
+          type: string
+          format: uuid
+        childCheckUid:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [hard, soft]
+
+    OrgDependencyGraphResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            nodes:
+              type: array
+              items:
+                $ref: "#/components/schemas/DependencyGraphNode"
+            edges:
+              type: array
+              items:
+                $ref: "#/components/schemas/DependencyGraphEdge"
 
     # Result schemas
     OrgResultListResponse:
@@ -2723,6 +6833,28 @@ components:
         config:
           type: object
 
+    IncidentAckRequest:
+      type: object
+      description: Optional note recorded with the acknowledge/resolve action.
+      properties:
+        note:
+          type: string
+
+    IncidentSnoozeRequest:
+      type: object
+      description: >-
+        Snooze target. Provide either an absolute `until` timestamp or a
+        relative `duration` (e.g. "1h", "30m").
+      properties:
+        until:
+          type: string
+          format: date-time
+        duration:
+          type: string
+          description: Go duration string, e.g. "1h", "30m"
+        reason:
+          type: string
+
     # Event schemas
     EventListResponse:
       type: object
@@ -2821,6 +6953,700 @@ components:
           type: string
           enum: [admin, user, viewer]
 
+    # Notification schemas
+    NotificationListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Notification"
+
+    Notification:
+      type: object
+      description: A single notification delivery audit row.
+      properties:
+        uid:
+          type: string
+        incidentUid:
+          type: string
+        eventType:
+          type: string
+        source:
+          type: string
+        stepUid:
+          type: string
+        repeatIndex:
+          type: integer
+        channelType:
+          type: string
+        status:
+          type: string
+        skipReason:
+          type: string
+        error:
+          type: string
+        messageId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        sentAt:
+          type: string
+          format: date-time
+        user:
+          $ref: "#/components/schemas/NotificationUser"
+        connection:
+          $ref: "#/components/schemas/NotificationConnection"
+        incident:
+          $ref: "#/components/schemas/NotificationIncident"
+
+    NotificationUser:
+      type: object
+      properties:
+        uid:
+          type: string
+        name:
+          type: string
+
+    NotificationConnection:
+      type: object
+      properties:
+        uid:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+
+    NotificationIncident:
+      type: object
+      properties:
+        uid:
+          type: string
+        title:
+          type: string
+        state:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+
+    NotificationDetail:
+      type: object
+      description: A notification delivery row with the extra lifecycle fields.
+      allOf:
+        - $ref: "#/components/schemas/Notification"
+        - type: object
+          properties:
+            failedAt:
+              type: string
+              format: date-time
+            cancelledAt:
+              type: string
+              format: date-time
+            jobUid:
+              type: string
+            deliveryDetails:
+              type: object
+              additionalProperties: true
+              description: Structured per-attempt delivery artifacts
+
+    NotificationRouteListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/NotificationRoute"
+        slackSuggestion:
+          $ref: "#/components/schemas/NotificationSlackSuggestion"
+
+    NotificationRoute:
+      type: object
+      required: [uid, enabled, position, contact, createdAt]
+      properties:
+        uid:
+          type: string
+        enabled:
+          type: boolean
+        position:
+          type: integer
+        contact:
+          $ref: "#/components/schemas/NotificationContact"
+        createdAt:
+          type: string
+          format: date-time
+
+    NotificationContact:
+      type: object
+      required: [uid, type, value, label]
+      properties:
+        uid:
+          type: string
+        type:
+          type: string
+        value:
+          type: string
+        label:
+          type: string
+        verifiedAt:
+          type: string
+          format: date-time
+
+    NotificationSlackSuggestion:
+      type: object
+      properties:
+        slackUserId:
+          type: string
+        workspaceName:
+          type: string
+        channelUid:
+          type: string
+
+    AddNotificationContactRequest:
+      type: object
+      required: [type, value]
+      properties:
+        type:
+          type: string
+          description: Contact type (email, phone, slack_user, web_push, ...)
+        value:
+          type: string
+        label:
+          type: string
+
+    UpdateNotificationRouteRequest:
+      type: object
+      description: Toggle the enabled flag and/or reorder the full route list.
+      properties:
+        enabled:
+          type: boolean
+        routeUids:
+          type: array
+          description: Full ordered list of route UIDs for a reorder
+          items:
+            type: string
+
+    # Channel schemas
+    Channel:
+      type: object
+      required: [uid, type, name, enabled, isDefault, createdAt, updatedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        type:
+          type: string
+          description: Channel type (slack, discord, webhook, email, ...)
+        name:
+          type: string
+        enabled:
+          type: boolean
+        isDefault:
+          type: boolean
+        settings:
+          type: object
+          additionalProperties: true
+          description: Public (non-secret) settings for the channel
+        settingsPrivateKeys:
+          type: array
+          items:
+            type: string
+          description: Names of settings stored encrypted (values omitted)
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ChannelListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Channel"
+
+    CreateChannelRequest:
+      type: object
+      required: [type, name]
+      properties:
+        type:
+          type: string
+          description: Channel type (slack, discord, webhook, email, ...)
+        name:
+          type: string
+        enabled:
+          type: boolean
+        isDefault:
+          type: boolean
+        settings:
+          type: object
+          additionalProperties: true
+
+    UpdateChannelRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        enabled:
+          type: boolean
+        isDefault:
+          type: boolean
+        settings:
+          type: object
+          additionalProperties: true
+
+    ChannelTestResult:
+      type: object
+      required: [success, statusCode, durationMs]
+      properties:
+        success:
+          type: boolean
+        statusCode:
+          type: integer
+          description: HTTP status for HTTP-based channels; 0 otherwise
+        durationMs:
+          type: integer
+          format: int64
+        error:
+          type: string
+        detail:
+          type: string
+          description: Optional human-readable success note
+
+    CheckChannel:
+      type: object
+      required: [uid, type, name, enabled, isDefault]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        type:
+          type: string
+        name:
+          type: string
+        enabled:
+          type: boolean
+        isDefault:
+          type: boolean
+
+    CheckChannelListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckChannel"
+
+    SetCheckChannelsRequest:
+      type: object
+      required: [connectionUids]
+      properties:
+        connectionUids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    # Status page schemas
+    StatusPage:
+      type: object
+      required:
+        - uid
+        - name
+        - slug
+        - visibility
+        - isDefault
+        - enabled
+        - showAvailability
+        - showResponseTime
+        - historyDays
+        - historyPeriod
+      properties:
+        uid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        visibility:
+          type: string
+          description: Visibility of the page (e.g. "public", "private")
+        isDefault:
+          type: boolean
+        enabled:
+          type: boolean
+        showAvailability:
+          type: boolean
+        showResponseTime:
+          type: boolean
+        historyDays:
+          type: integer
+        historyPeriod:
+          type: string
+          description: History window (24h, 7d, 30d, 90d)
+        language:
+          type: string
+        sections:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusPageSection"
+        recentUpdates:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusUpdatePublic"
+        createdAt:
+          type: string
+          format: date-time
+
+    StatusPageListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusPage"
+
+    CreateStatusPageRequest:
+      type: object
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        visibility:
+          type: string
+        isDefault:
+          type: boolean
+        showAvailability:
+          type: boolean
+        showResponseTime:
+          type: boolean
+        historyDays:
+          type: integer
+        historyPeriod:
+          type: string
+        language:
+          type: string
+
+    UpdateStatusPageRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        visibility:
+          type: string
+        isDefault:
+          type: boolean
+        enabled:
+          type: boolean
+        showAvailability:
+          type: boolean
+        showResponseTime:
+          type: boolean
+        historyDays:
+          type: integer
+        historyPeriod:
+          type: string
+        language:
+          type: string
+
+    StatusPageSection:
+      type: object
+      required: [uid, name, slug, position]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        position:
+          type: integer
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusPageResource"
+        createdAt:
+          type: string
+          format: date-time
+
+    StatusPageSectionListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusPageSection"
+
+    CreateStatusPageSectionRequest:
+      type: object
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        position:
+          type: integer
+
+    UpdateStatusPageSectionRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        position:
+          type: integer
+
+    StatusPageResource:
+      type: object
+      required: [uid, checkUid, position]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        checkUid:
+          type: string
+          format: uuid
+        publicName:
+          type: string
+        explanation:
+          type: string
+        position:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    StatusPageResourceListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusPageResource"
+
+    CreateStatusPageResourceRequest:
+      type: object
+      required: [checkUid]
+      properties:
+        checkUid:
+          type: string
+          description: Check UID or slug to attach as a resource
+        publicName:
+          type: string
+        explanation:
+          type: string
+        position:
+          type: integer
+
+    UpdateStatusPageResourceRequest:
+      type: object
+      properties:
+        publicName:
+          type: string
+        explanation:
+          type: string
+        position:
+          type: integer
+
+    ReorderUidsRequest:
+      type: object
+      required: [uids]
+      properties:
+        uids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    StatusPageSubscriber:
+      type: object
+      required: [uid, scope, confirmed, createdAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        email:
+          type: string
+        scope:
+          type: string
+          description: Subscription scope ("page" or "incident")
+        incidentUid:
+          type: string
+          format: uuid
+        confirmed:
+          type: boolean
+        createdAt:
+          type: string
+
+    StatusPageSubscriberListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusPageSubscriber"
+        meta:
+          type: object
+          properties:
+            count:
+              type: integer
+
+    # Status update schemas
+    StatusUpdate:
+      type: object
+      required:
+        - uid
+        - statusPageUid
+        - title
+        - bodyMarkdown
+        - kind
+        - publishedAt
+        - authorUid
+        - createdAt
+        - updatedAt
+      properties:
+        uid:
+          type: string
+          format: uuid
+        statusPageUid:
+          type: string
+          format: uuid
+        sectionUid:
+          type: string
+          format: uuid
+        checkUid:
+          type: string
+          format: uuid
+        incidentUid:
+          type: string
+          format: uuid
+        title:
+          type: string
+        bodyMarkdown:
+          type: string
+        linkUrl:
+          type: string
+        kind:
+          type: string
+          description: "One of: investigating, identified, monitoring, resolved, maintenance, info"
+        publishedAt:
+          type: string
+          format: date-time
+        authorUid:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    StatusUpdatePublic:
+      type: object
+      required: [uid, title, bodyMarkdown, kind, publishedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        sectionUid:
+          type: string
+          format: uuid
+        checkUid:
+          type: string
+          format: uuid
+        incidentUid:
+          type: string
+          format: uuid
+        title:
+          type: string
+        bodyMarkdown:
+          type: string
+        linkUrl:
+          type: string
+        kind:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+
+    StatusUpdateListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusUpdate"
+
+    CreateStatusUpdateRequest:
+      type: object
+      required: [statusPageUid, title, bodyMarkdown, kind]
+      properties:
+        statusPageUid:
+          type: string
+          format: uuid
+        sectionUid:
+          type: string
+          format: uuid
+        checkUid:
+          type: string
+          format: uuid
+        incidentUid:
+          type: string
+          format: uuid
+        title:
+          type: string
+        bodyMarkdown:
+          type: string
+        linkUrl:
+          type: string
+        kind:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+
+    UpdateStatusUpdateRequest:
+      type: object
+      properties:
+        sectionUid:
+          type: string
+          format: uuid
+        checkUid:
+          type: string
+          format: uuid
+        incidentUid:
+          type: string
+          format: uuid
+        title:
+          type: string
+        bodyMarkdown:
+          type: string
+        linkUrl:
+          type: string
+        kind:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+
     # Job schemas
     JobListResponse:
       type: object
@@ -2872,6 +7698,171 @@ components:
           type: string
         config:
           type: object
+
+    # Jobs admin & scheduler introspection schemas
+    AdminJob:
+      type: object
+      description: A background-jobs queue row as returned by the admin/system views.
+      properties:
+        uid:
+          type: string
+          format: uuid
+        organizationUid:
+          type: string
+          format: uuid
+          nullable: true
+          description: Owning org, or null for system jobs.
+        type:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+        retryCount:
+          type: integer
+        scheduledAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [pending, running, success, retried, failed]
+        output:
+          type: object
+          additionalProperties: true
+        previousJobUid:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    AdminJobListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminJob"
+
+    AdminJobResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/AdminJob"
+
+    CheckJobView:
+      type: object
+      description: A redacted check_jobs scheduler row. Secret values are never included, only encrypted key names.
+      properties:
+        uid:
+          type: string
+          format: uuid
+        organizationUid:
+          type: string
+          format: uuid
+        checkUid:
+          type: string
+          format: uuid
+        checkName:
+          type: string
+          nullable: true
+        region:
+          type: string
+          nullable: true
+        type:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+        encryptedKeys:
+          type: array
+          items:
+            type: string
+        encrypted:
+          type: boolean
+        periodSeconds:
+          type: integer
+          format: int64
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+        leaseWorkerUid:
+          type: string
+          nullable: true
+        leaseExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        leaseStarts:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+        state:
+          type: string
+          enum: [idle, inFlight, stalled, crashLooping]
+
+    CheckJobListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckJobView"
+
+    CheckJobResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/CheckJobView"
+
+    JobQueueStats:
+      type: object
+      description: Background-jobs queue counts.
+      properties:
+        pending:
+          type: integer
+        running:
+          type: integer
+        failed24h:
+          type: integer
+
+    CheckScheduleStats:
+      type: object
+      description: Check-schedule counts derived from lease state.
+      properties:
+        total:
+          type: integer
+        dueNow:
+          type: integer
+        inFlight:
+          type: integer
+        stalled:
+          type: integer
+        crashLooping:
+          type: integer
+
+    JobsStats:
+      type: object
+      properties:
+        jobs:
+          $ref: "#/components/schemas/JobQueueStats"
+        checks:
+          $ref: "#/components/schemas/CheckScheduleStats"
+
+    JobsStatsResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/JobsStats"
 
     # System Parameters
     SystemParameter:
@@ -2954,6 +7945,126 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkerLaneLoad"
+
+    TestEmailRequest:
+      type: object
+      required: [recipient]
+      properties:
+        recipient:
+          type: string
+          description: Destination email address for the test message.
+
+    TestEmailResponse:
+      type: object
+      required: [sent, message]
+      properties:
+        sent:
+          type: boolean
+          description: Whether the test email was sent.
+        message:
+          type: string
+          description: Human-readable detail (why it failed, or a success note).
+
+    EmailInboxConfigResponse:
+      type: object
+      description: Saved JMAP inbox configuration, with the password elided.
+      properties:
+        enabled:
+          type: boolean
+        sessionUrl:
+          type: string
+        username:
+          type: string
+        addressDomain:
+          type: string
+        mailboxName:
+          type: string
+        processedMailboxName:
+          type: string
+        pollIntervalSeconds:
+          type: integer
+        processedRetentionDays:
+          type: integer
+        failedRetentionDays:
+          type: integer
+        rewriteBaseUrl:
+          type: string
+        passwordSet:
+          type: boolean
+
+    EmailInboxStatusResponse:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        connected:
+          type: boolean
+        mode:
+          type: string
+        lastSyncedAt:
+          type: string
+          format: date-time
+        lastError:
+          type: string
+        addressDomain:
+          type: string
+        accountId:
+          type: string
+
+    EmailInboxTestResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        mailboxes:
+          type: array
+          items:
+            type: string
+
+    EmailInboxSyncResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+
+    ActivationFunnelRow:
+      type: object
+      description: Per-org timestamps for each activation milestone.
+      required: [organizationUid, slug, name, orgCreatedAt]
+      properties:
+        organizationUid:
+          type: string
+        slug:
+          type: string
+        name:
+          type: string
+        signupAt:
+          type: string
+          format: date-time
+        firstCheckAt:
+          type: string
+          format: date-time
+        firstResultAt:
+          type: string
+          format: date-time
+        firstNotifierAt:
+          type: string
+          format: date-time
+        firstIncidentAt:
+          type: string
+          format: date-time
+        orgCreatedAt:
+          type: string
+          format: date-time
+
+    ActivationFunnelResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivationFunnelRow"
 
     DiscoveryType:
       type: object
@@ -3093,3 +8204,1127 @@ components:
             period:
               type: string
               description: ISO 8601 duration (e.g. PT1M)
+
+    # Maintenance window schemas
+    MaintenanceWindowOccurrence:
+      type: object
+      required: [startAt, endAt]
+      properties:
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+
+    MaintenanceWindow:
+      type: object
+      required:
+        - uid
+        - title
+        - startAt
+        - endAt
+        - recurrence
+        - status
+        - nextOccurrences
+        - createdAt
+        - updatedAt
+      properties:
+        uid:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        recurrence:
+          type: string
+          description: "One of: none, daily, weekly, monthly"
+        recurrenceEnd:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        status:
+          type: string
+          description: "Server-computed lifecycle: active, upcoming, past"
+        nextOccurrences:
+          type: array
+          items:
+            $ref: "#/components/schemas/MaintenanceWindowOccurrence"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    MaintenanceWindowListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MaintenanceWindow"
+
+    CreateMaintenanceWindowRequest:
+      type: object
+      required: [title, startAt, endAt]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        recurrence:
+          type: string
+          description: "One of: none, daily, weekly, monthly"
+        recurrenceEnd:
+          type: string
+          format: date-time
+
+    UpdateMaintenanceWindowRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        recurrence:
+          type: string
+        recurrenceEnd:
+          type: string
+          format: date-time
+
+    MaintenanceWindowCheck:
+      type: object
+      required: [uid]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        checkUid:
+          type: string
+          format: uuid
+        checkGroupUid:
+          type: string
+          format: uuid
+
+    MaintenanceWindowCheckListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MaintenanceWindowCheck"
+
+    SetMaintenanceWindowChecksRequest:
+      type: object
+      properties:
+        checkUids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        checkGroupUids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    # Check group schemas
+    CheckGroup:
+      type: object
+      required: [uid, name, slug, sortOrder, checkCount, createdAt, updatedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        sortOrder:
+          type: integer
+        checkCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CheckGroupListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckGroup"
+
+    CreateCheckGroupRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        sortOrder:
+          type: integer
+
+    UpdateCheckGroupRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        sortOrder:
+          type: integer
+
+    # Severity schemas
+    Severity:
+      type: object
+      required: [uid, slug, name, channels, isDefault, createdAt, updatedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        channels:
+          type: array
+          items:
+            type: string
+        isDefault:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SeverityListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Severity"
+
+    CreateSeverityRequest:
+      type: object
+      required: [name]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        channels:
+          type: array
+          items:
+            type: string
+        isDefault:
+          type: boolean
+
+    UpdateSeverityRequest:
+      type: object
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        channels:
+          type: array
+          items:
+            type: string
+        isDefault:
+          type: boolean
+
+    # Label suggestion schemas
+    LabelSuggestion:
+      type: object
+      required: [value, count]
+      properties:
+        value:
+          type: string
+        count:
+          type: integer
+
+    LabelSuggestionListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/LabelSuggestion"
+
+    # Region schemas
+    Region:
+      type: object
+      required: [slug, emoji, name]
+      properties:
+        slug:
+          type: string
+        emoji:
+          type: string
+        name:
+          type: string
+
+    OrgRegionListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Region"
+        defaultRegions:
+          type: array
+          items:
+            type: string
+
+    # Check type schemas
+    CheckTypeInfo:
+      type: object
+      required: [type, description, labels, enabled]
+      properties:
+        type:
+          type: string
+        description:
+          type: string
+        labels:
+          type: array
+          items:
+            type: string
+        enabled:
+          type: boolean
+        disabledReason:
+          type: string
+        minPeriodSeconds:
+          type: integer
+        maxPeriodSeconds:
+          type: integer
+        defaultPeriodSeconds:
+          type: integer
+
+    CheckTypeListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckTypeInfo"
+
+    CheckTypeSampleConfig:
+      type: object
+      required: [name, slug, periodSeconds, config]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        periodSeconds:
+          type: integer
+        config:
+          type: object
+          additionalProperties: true
+
+    CheckTypeSamples:
+      type: object
+      required: [checkType, samples]
+      properties:
+        checkType:
+          type: string
+        samples:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckTypeSampleConfig"
+
+    CheckTypeSamplesListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckTypeSamples"
+
+    # On-call schedule schemas
+    OncallUserRef:
+      type: object
+      required: [uid, name, email]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+
+    OncallSchedule:
+      type: object
+      required:
+        - uid
+        - name
+        - timezone
+        - rotationType
+        - handoffTime
+        - startAt
+        - icalEnabled
+        - createdAt
+        - updatedAt
+      properties:
+        uid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        timezone:
+          type: string
+        rotationType:
+          type: string
+          description: "One of: daily, weekly"
+        handoffTime:
+          type: string
+          description: Handoff time of day in HH:MM (24h)
+        handoffWeekday:
+          type: integer
+          description: 0 (Mon) .. 6 (Sun); only set for weekly rotation
+        startAt:
+          type: string
+          format: date-time
+        icalEnabled:
+          type: boolean
+        userUids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        currentlyOnCall:
+          $ref: "#/components/schemas/OncallUserRef"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    OncallScheduleListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OncallSchedule"
+
+    CreateOncallScheduleRequest:
+      type: object
+      required: [name, timezone, rotationType, handoffTime, startAt]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        timezone:
+          type: string
+        rotationType:
+          type: string
+          description: "One of: daily, weekly"
+        handoffTime:
+          type: string
+        handoffWeekday:
+          type: integer
+        startAt:
+          type: string
+          format: date-time
+        userUids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    UpdateOncallScheduleRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        timezone:
+          type: string
+        rotationType:
+          type: string
+        handoffTime:
+          type: string
+        handoffWeekday:
+          type: integer
+        startAt:
+          type: string
+          format: date-time
+        userUids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    OncallOverride:
+      type: object
+      description: >-
+        On-call schedule override. Property names are PascalCase to match the
+        current API wire format emitted by the handler.
+      required: [UID, ScheduleUID, UserUID, StartAt, EndAt, CreatedAt]
+      properties:
+        UID:
+          type: string
+          format: uuid
+        ScheduleUID:
+          type: string
+          format: uuid
+        UserUID:
+          type: string
+          format: uuid
+        StartAt:
+          type: string
+          format: date-time
+        EndAt:
+          type: string
+          format: date-time
+        Reason:
+          type: string
+          nullable: true
+        CreatedByUID:
+          type: string
+          format: uuid
+          nullable: true
+        CreatedAt:
+          type: string
+          format: date-time
+
+    OncallOverrideListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OncallOverride"
+
+    CreateOncallOverrideRequest:
+      type: object
+      required: [userUid, startAt, endAt]
+      properties:
+        userUid:
+          type: string
+          format: uuid
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+
+    OncallPreviewSlot:
+      type: object
+      required: [userUid, from, to]
+      properties:
+        userUid:
+          type: string
+          format: uuid
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+
+    OncallPreviewResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OncallPreviewSlot"
+
+    OncallIcalFeedResponse:
+      type: object
+      required: [secret, url]
+      properties:
+        secret:
+          type: string
+        url:
+          type: string
+
+    # Escalation policy schemas
+    EscalationTarget:
+      type: object
+      required: [uid, type, position]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        type:
+          type: string
+          description: "One of: user, schedule, connection, all_admins"
+        targetUid:
+          type: string
+        position:
+          type: integer
+
+    EscalationStep:
+      type: object
+      required: [uid, position, delaySeconds]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        position:
+          type: integer
+        delaySeconds:
+          type: integer
+        targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/EscalationTarget"
+
+    EscalationPolicy:
+      type: object
+      required: [uid, name, repeatMax, createdAt, updatedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        repeatMax:
+          type: integer
+        repeatAfterSeconds:
+          type: integer
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/EscalationStep"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    EscalationPolicyListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/EscalationPolicy"
+
+    EscalationTargetInput:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          description: "One of: user, schedule, connection, all_admins"
+        targetUid:
+          type: string
+
+    EscalationStepInput:
+      type: object
+      required: [delaySeconds]
+      properties:
+        delaySeconds:
+          type: integer
+        targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/EscalationTargetInput"
+
+    CreateEscalationPolicyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        repeatMax:
+          type: integer
+        repeatAfterSeconds:
+          type: integer
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/EscalationStepInput"
+
+    UpdateEscalationPolicyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        repeatMax:
+          type: integer
+        repeatAfterSeconds:
+          type: integer
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/EscalationStepInput"
+
+    # Organization schemas
+    CreateOrgRequest:
+      type: object
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+          description: Human-readable organization name
+        slug:
+          type: string
+          description: URL-friendly identifier (3-20 chars, lowercase alphanumeric with hyphens)
+
+    OrgResponse:
+      type: object
+      required: [uid, slug, name, accessToken, refreshToken, expiresIn, tokenType]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        accessToken:
+          type: string
+          description: Access token scoped to the new organization
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+          description: Access token lifetime in seconds
+        tokenType:
+          type: string
+
+    OrgSettingsResponse:
+      type: object
+      required: [registrationEmailPattern]
+      properties:
+        registrationEmailPattern:
+          type: string
+          description: Auto-join email regex; empty when unset
+        sessionMaxDurationSeconds:
+          type: integer
+          description: Org-level session max duration override in seconds; omitted when inherited
+
+    UpdateOrgSettingsRequest:
+      type: object
+      properties:
+        registrationEmailPattern:
+          type: string
+          description: Auto-join email regex; empty string clears it
+        sessionMaxDurationSeconds:
+          type: integer
+          description: Session max duration override in seconds; <=0 clears the override
+
+    # Invitation schemas
+    CreateInvitationRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [admin, user, viewer]
+          description: Member role granted on acceptance (default user)
+        expiresIn:
+          type: string
+          enum: ["1h", "6h", "12h", "24h", "48h", "1w"]
+          description: Invitation lifetime (default 24h)
+        app:
+          type: string
+          enum: [dash0, dash]
+          description: Target dashboard for the invite link (default dash0)
+
+    InviteResponse:
+      type: object
+      required: [uid, token, email, role, inviteUrl, expiresAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        token:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+        inviteUrl:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+
+    InviteListItem:
+      type: object
+      required: [uid, email, role, createdAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    InviteListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/InviteListItem"
+
+    # Membership request schemas
+    OrganizationRef:
+      type: object
+      required: [uid, slug, name]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+
+    MembershipRequestUser:
+      type: object
+      required: [uid, email]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        avatarUrl:
+          type: string
+        role:
+          type: string
+
+    CreateMembershipRequestRequest:
+      type: object
+      required: [orgSlug]
+      properties:
+        orgSlug:
+          type: string
+          description: Slug of the organization to join
+        message:
+          type: string
+          description: Optional message to the org admins
+
+    ApproveMembershipRequestRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [admin, user, viewer]
+          description: Role to grant the new member (default user)
+
+    RejectMembershipRequestRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          description: Optional reason shown to the requester
+
+    MembershipRequestSummary:
+      type: object
+      required: [uid, organization, status, createdAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        organization:
+          $ref: "#/components/schemas/OrganizationRef"
+        status:
+          type: string
+          enum: [pending, approved, rejected, canceled]
+        message:
+          type: string
+        decisionReason:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        decidedAt:
+          type: string
+          format: date-time
+
+    MembershipRequestListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MembershipRequestSummary"
+
+    MembershipRequestAdminView:
+      type: object
+      required: [uid, user, status, createdAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        user:
+          $ref: "#/components/schemas/MembershipRequestUser"
+        status:
+          type: string
+          enum: [pending, approved, rejected, canceled]
+        message:
+          type: string
+        decisionReason:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        decidedAt:
+          type: string
+          format: date-time
+
+    MembershipRequestAdminListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MembershipRequestAdminView"
+
+    # Entitlements schemas
+    EntitlementLimits:
+      type: object
+      description: Per-org numeric limits; null/absent means unlimited
+      properties:
+        maxChecks:
+          type: integer
+          nullable: true
+          description: Maximum non-internal checks (null = unlimited)
+        maxSsoUsers:
+          type: integer
+          nullable: true
+          description: Maximum SSO users (null = unlimited)
+        maxChecksPerMinute:
+          type: integer
+          nullable: true
+          description: Aggregate check dispatch rate per minute (null = unlimited)
+
+    EntitlementsUsage:
+      type: object
+      required: [checks, checksPerMinute, ssoUsers]
+      properties:
+        checks:
+          type: integer
+        checksPerMinute:
+          type: number
+          format: double
+        ssoUsers:
+          type: integer
+
+    EntitlementsResponse:
+      type: object
+      required: [limits, source, stale]
+      properties:
+        limits:
+          $ref: "#/components/schemas/EntitlementLimits"
+        source:
+          type: string
+          description: Where the entitlements came from (default, billing, admin)
+        displayName:
+          type: string
+        displayEmoji:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        lastSyncedAt:
+          type: string
+          format: date-time
+        stale:
+          type: boolean
+        usage:
+          $ref: "#/components/schemas/EntitlementsUsage"
+        upgradeUrl:
+          type: string
+
+    SetEntitlementsRequest:
+      type: object
+      properties:
+        limits:
+          $ref: "#/components/schemas/EntitlementLimits"
+        source:
+          type: string
+          description: Entitlement source (default set server-side)
+        displayName:
+          type: string
+        displayEmoji:
+          type: string
+        externalRef:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        expiresAt:
+          type: string
+          format: date-time
+        lastSyncedAt:
+          type: string
+          format: date-time
+
+    EntitlementsAudit:
+      type: object
+      required: [uid, organizationUid, source, actor, afterSnapshot, createdAt]
+      properties:
+        uid:
+          type: string
+        organizationUid:
+          type: string
+        source:
+          type: string
+        actor:
+          type: string
+        beforeSnapshot:
+          type: object
+          additionalProperties: true
+          nullable: true
+        afterSnapshot:
+          type: object
+          additionalProperties: true
+        reason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    EntitlementsAuditListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntitlementsAudit"
+
+    # File schemas
+    FileResponse:
+      type: object
+      required: [uid, organizationUid, name, mimeType, size, createdAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        organizationUid:
+          type: string
+        name:
+          type: string
+        mimeType:
+          type: string
+        size:
+          type: integer
+          format: int64
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    FileListResponse:
+      type: object
+      required: [data, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileResponse"
+        total:
+          type: integer
+          format: int64
+
+    # Email suppression schemas
+    EmailSuppression:
+      type: object
+      required: [uid, email, source, createdAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        email:
+          type: string
+        checkUid:
+          type: string
+        checkName:
+          type: string
+        source:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    EmailSuppressionListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailSuppression"

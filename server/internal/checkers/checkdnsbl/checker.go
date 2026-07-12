@@ -18,7 +18,7 @@ import (
 
 const (
 	defaultTimeout = 10 * time.Second
-	maxTimeout     = 60 * time.Second
+	maxTimeout     = 30 * time.Second
 )
 
 var (
@@ -61,7 +61,7 @@ func (c *DNSBLChecker) Validate(spec *checkerdef.CheckSpec) error {
 	}
 
 	if cfg.Timeout != 0 && (cfg.Timeout <= 0 || cfg.Timeout > maxTimeout) {
-		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 60s, got %s", cfg.Timeout.String())
+		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 30s, got %s", cfg.Timeout.String())
 	}
 
 	return nil
@@ -104,10 +104,7 @@ func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 	}
 
 	// 2. Query each IP against each zone, classifying with inverted DNS semantics.
-	listedSet := map[string]bool{}
-	cleanSet := map[string]bool{}
-	inconclusiveSet := map[string]bool{}
-	returnCodes := map[string][]string{}
+	res := newZoneResults()
 
 	for _, ip := range ips {
 		reversed := reverseIP(ip)
@@ -121,22 +118,22 @@ func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 			addrs, lookupErr := lookuper.LookupHost(ctx, query)
 			switch {
 			case lookupErr == nil && len(addrs) > 0:
-				listedSet[zone] = true
-
-				returnCodes[zone] = appendUnique(returnCodes[zone], addrs)
+				// A non-empty answer may still be an error/status reply
+				// (127.255.255.x), which must not count as a listing.
+				res.recordAnswer(zone, addrs)
 			case isNotFound(lookupErr):
-				cleanSet[zone] = true
+				res.clean[zone] = true
 			default:
-				inconclusiveSet[zone] = true
+				res.inconclusive[zone] = true
 			}
 		}
 	}
 
 	duration := time.Since(start)
 
-	listedOn := sortedKeysExcept(listedSet, nil)
-	clean := sortedKeysExcept(cleanSet, listedSet)
-	inconclusive := sortedKeysExcept(inconclusiveSet, mergeSets(listedSet, cleanSet))
+	listedOn := sortedKeysExcept(res.listed, nil)
+	clean := sortedKeysExcept(res.clean, res.listed)
+	inconclusive := sortedKeysExcept(res.inconclusive, mergeSets(res.listed, res.clean))
 
 	status := classifyStatus(len(listedOn), len(clean), len(inconclusive))
 
@@ -157,8 +154,14 @@ func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 		},
 	}
 
-	if len(returnCodes) > 0 {
-		result.Output["return_codes"] = returnCodes
+	if len(res.returnCodes) > 0 {
+		result.Output["return_codes"] = res.returnCodes
+	}
+
+	// Surface reserved 127.255.255.x error/status codes (e.g. .254 = query via
+	// public resolver refused) so operators see why a zone was inconclusive.
+	if len(res.errorCodes) > 0 {
+		result.Output["error_codes"] = res.errorCodes
 	}
 
 	if cfg.Nameserver != "" {
@@ -166,6 +169,47 @@ func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 	}
 
 	return result, nil
+}
+
+// zoneResults accumulates per-zone classification while querying DNSBL zones.
+// listed/clean/inconclusive are zone sets; returnCodes holds genuine listing
+// addresses and errorCodes holds reserved 127.255.255.x error/status replies.
+type zoneResults struct {
+	listed       map[string]bool
+	clean        map[string]bool
+	inconclusive map[string]bool
+	returnCodes  map[string][]string
+	errorCodes   map[string][]string
+}
+
+// newZoneResults returns a zoneResults with all maps initialized.
+func newZoneResults() *zoneResults {
+	return &zoneResults{
+		listed:       map[string]bool{},
+		clean:        map[string]bool{},
+		inconclusive: map[string]bool{},
+		returnCodes:  map[string][]string{},
+		errorCodes:   map[string][]string{},
+	}
+}
+
+// recordAnswer classifies a non-empty zone answer. Genuine 127.0.0.x listings
+// mark the zone listed and are recorded under returnCodes; a set containing only
+// reserved 127.255.255.x error codes marks the zone inconclusive instead. Any
+// error codes are always surfaced under errorCodes.
+func (r *zoneResults) recordAnswer(zone string, addrs []string) {
+	listings, errCodes := partitionDNSBLAddrs(addrs)
+
+	if len(listings) > 0 {
+		r.listed[zone] = true
+		r.returnCodes[zone] = appendUnique(r.returnCodes[zone], listings)
+	} else {
+		r.inconclusive[zone] = true
+	}
+
+	if len(errCodes) > 0 {
+		r.errorCodes[zone] = appendUnique(r.errorCodes[zone], errCodes)
+	}
 }
 
 // classifyStatus maps zone counts to a check status per the spec table:
@@ -232,6 +276,45 @@ func reverseIP(ipStr string) string {
 	}
 
 	return fmt.Sprintf("%d.%d.%d.%d", ip4[3], ip4[2], ip4[1], ip4[0])
+}
+
+// isDNSBLErrorCode reports whether addr is a reserved DNSBL error/status reply.
+//
+// DNSBLs use the 127.255.255.0/24 range for non-listing replies rather than
+// genuine listings — Spamhaus, for example, returns 127.255.255.252 (typo /
+// malformed zone), 127.255.255.254 (query via a public/open resolver, refused),
+// and 127.255.255.255 (query volume / rate-limit exceeded). No legitimate DNSBL
+// encodes a real listing in 127.255.255.x, so the whole /24 is treated as an
+// error range.
+func isDNSBLErrorCode(addr string) bool {
+	ip := net.ParseIP(addr)
+	if ip == nil {
+		return false
+	}
+
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return false
+	}
+
+	return ip4[0] == 127 && ip4[1] == 255 && ip4[2] == 255
+}
+
+// partitionDNSBLAddrs splits a zone's answer set into genuine listing addresses
+// and reserved 127.255.255.x error/status codes. The error codes must not be
+// counted as listings (see isDNSBLErrorCode).
+func partitionDNSBLAddrs(addrs []string) ([]string, []string) {
+	var listings, errCodes []string
+
+	for _, addr := range addrs {
+		if isDNSBLErrorCode(addr) {
+			errCodes = append(errCodes, addr)
+		} else {
+			listings = append(listings, addr)
+		}
+	}
+
+	return listings, errCodes
 }
 
 // isNotFound reports whether err is an NXDOMAIN / host-not-found DNS error,

@@ -57,8 +57,6 @@
     "edit": "Modifier l'astreinte",
     "name": "Nom",
     "namePlaceholder": "Plateforme EU",
-    "slug": "Identifiant URL",
-    "slugPlaceholder": "plateforme-eu",
     "description": "Description",
     "descriptionPlaceholder": "Optionnel — qui cette rotation notifie et quand",
     "timezone": "Fuseau horaire (IANA)",
@@ -83,7 +81,6 @@
     "userUidsHelp": "Le premier utilisateur est d'astreinte à partir de start_at ; les rotations suivantes descendent la liste.",
     "submit": "Enregistrer",
     "cancel": "Annuler",
-    "slugReadOnly": "L'identifiant ne peut pas être modifié — supprimez et recréez pour renommer.",
     "startAtWarning": "Modifier l'origine de la rotation décale la personne actuellement d'astreinte."
   },
   "toast": {

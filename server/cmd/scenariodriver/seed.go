@@ -180,17 +180,16 @@ type EscalationPolicyStep struct {
 	Targets      []EscalationPolicyStepTarget
 }
 
-// EscalationPolicyResult holds the created policy's UID and slug.
+// EscalationPolicyResult holds the created policy's UID.
 type EscalationPolicyResult struct {
-	UID  string
-	Slug string
+	UID string
 }
 
 // CreateEscalationPolicy creates an escalation policy in the given org.
 func CreateEscalationPolicy(
 	ctx context.Context,
 	client *apiClient,
-	org, slug string,
+	org, name string,
 	steps []EscalationPolicyStep,
 	repeatMax int,
 	repeatAfterSeconds *int,
@@ -214,8 +213,7 @@ func CreateEscalationPolicy(
 	}
 
 	reqBody := map[string]any{
-		"slug":      slug,
-		"name":      "Scenario Policy " + slug,
+		"name":      "Scenario Policy " + name,
 		"repeatMax": repeatMax,
 		"steps":     stepsPayload,
 	}
@@ -234,13 +232,12 @@ func CreateEscalationPolicy(
 	}
 
 	uid, _ := out["uid"].(string)
-	outSlug, _ := out["slug"].(string)
 
 	if uid == "" {
 		return nil, fmt.Errorf("create escalation policy: no uid in response")
 	}
 
-	return &EscalationPolicyResult{UID: uid, Slug: outSlug}, nil
+	return &EscalationPolicyResult{UID: uid}, nil
 }
 
 // AssignPolicyToCheck assigns an escalation policy UID to a check by slug.
@@ -293,13 +290,13 @@ func DeleteChannel(ctx context.Context, client *apiClient, org, channelUID strin
 	return nil
 }
 
-// DeletePolicy deletes an escalation policy by slug.
-func DeletePolicy(ctx context.Context, client *apiClient, org, policySlug string) error {
+// DeletePolicy deletes an escalation policy by UID.
+func DeletePolicy(ctx context.Context, client *apiClient, org, policyUID string) error {
 	_, err := client.do(ctx, http.MethodDelete,
-		fmt.Sprintf("/api/v1/orgs/%s/escalation-policies/%s", org, policySlug),
+		fmt.Sprintf("/api/v1/orgs/%s/escalation-policies/%s", org, policyUID),
 		nil, nil)
 	if err != nil {
-		return fmt.Errorf("delete policy %s: %w", policySlug, err)
+		return fmt.Errorf("delete policy %s: %w", policyUID, err)
 	}
 
 	return nil

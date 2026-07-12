@@ -13,7 +13,9 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { QueryErrorView } from "@/components/shared/error-views";
-import { useResult, type OrgResultDetail, type ResultFallbackInfo } from "@/api/hooks";
+import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
+import { useResult, useRegions, type OrgResultDetail, type ResultFallbackInfo } from "@/api/hooks";
+import { regionDisplayLabel } from "@/lib/region-label";
 
 export const Route = createFileRoute(
   "/orgs/$org/checks/$checkUid/results/$resultUid",
@@ -99,6 +101,9 @@ function ResultDetailPage() {
   const { org, checkUid, resultUid } = Route.useParams();
   const { region } = Route.useSearch();
   const { data, isLoading, error, refetch } = useResult(org, checkUid, resultUid, { region });
+  // The result carries the raw region slug; show the friendly
+  // "{emoji} {name}" label from the region definitions (raw-slug fallback).
+  const { data: regionsData } = useRegions(org);
 
   if (isLoading) {
     return (
@@ -137,6 +142,14 @@ function ResultDetailPage() {
   const callerRemoteAddr = typeof remoteAddr === "string" && remoteAddr ? remoteAddr : undefined;
   const callerHttpMethod = typeof httpMethod === "string" && httpMethod ? httpMethod : undefined;
   const hasCallerInfo = Boolean(callerUserAgent || callerRemoteAddr || callerHttpMethod);
+
+  // DNSBL zone/code fields get a dedicated DnsblCard below (human-readable
+  // status codes); drop them from the raw JSON dump so nothing is shown twice.
+  const rawDump = Object.fromEntries(
+    Object.entries(remainingOutput).filter(
+      ([key]) => !(DNSBL_OUTPUT_KEYS as readonly string[]).includes(key),
+    ),
+  );
 
   const goToResult = (targetResultUid: string) =>
     navigate({
@@ -224,7 +237,9 @@ function ResultDetailPage() {
           {data.region && (
             <div>
               <span className="text-muted-foreground">{t("checks:resultDetail.region")}: </span>
-              <code className="font-mono">{data.region}</code>
+              <code className="font-mono">
+                {regionDisplayLabel(regionsData?.regions, data.region)}
+              </code>
             </div>
           )}
           {data.durationMs !== undefined && (
@@ -326,14 +341,16 @@ function ResultDetailPage() {
         </Card>
       )}
 
-      {remainingOutput && Object.keys(remainingOutput).length > 0 && (
+      <DnsblCard output={data.output as Record<string, unknown> | undefined} />
+
+      {rawDump && Object.keys(rawDump).length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">{t("checks:resultDetail.output")}</CardTitle>
           </CardHeader>
           <CardContent>
             <pre className="max-h-96 overflow-auto rounded-md bg-muted p-3 text-xs">
-              {JSON.stringify(remainingOutput, null, 2)}
+              {JSON.stringify(rawDump, null, 2)}
             </pre>
           </CardContent>
         </Card>

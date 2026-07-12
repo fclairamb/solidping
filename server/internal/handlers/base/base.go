@@ -22,6 +22,7 @@ const (
 	ErrorCodeInternalError        ErrorCode = "INTERNAL_ERROR"
 	ErrorCodeValidationError      ErrorCode = "VALIDATION_ERROR"
 	ErrorCodeNotFound             ErrorCode = "NOT_FOUND"
+	ErrorCodeMethodNotAllowed     ErrorCode = "METHOD_NOT_ALLOWED"
 	ErrorCodeUnauthorized         ErrorCode = "UNAUTHORIZED"
 	ErrorCodeForbidden            ErrorCode = "FORBIDDEN"
 	ErrorCodeConflict             ErrorCode = "CONFLICT"

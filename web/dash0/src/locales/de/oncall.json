@@ -57,8 +57,6 @@
     "edit": "Bereitschaftsplan bearbeiten",
     "name": "Name",
     "namePlaceholder": "Plattform EU",
-    "slug": "URL-Slug",
-    "slugPlaceholder": "plattform-eu",
     "description": "Beschreibung",
     "descriptionPlaceholder": "Optional — wen diese Rotation benachrichtigt und wann",
     "timezone": "Zeitzone (IANA)",
@@ -83,7 +81,6 @@
     "userUidsHelp": "Der erste Benutzer ist ab start_at in Bereitschaft; nachfolgende Rotationen gehen die Liste hinunter.",
     "submit": "Speichern",
     "cancel": "Abbrechen",
-    "slugReadOnly": "Slug kann noch nicht geändert werden — zum Umbenennen löschen und neu erstellen.",
     "startAtWarning": "Das Ändern des Rotations-Startpunkts verschiebt, wer aktuell in Bereitschaft ist."
   },
   "toast": {

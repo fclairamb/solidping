@@ -34,7 +34,7 @@ func TestConfigValidate(t *testing.T) {
 		{"bad kind", func(c *checkkubernetes.KubernetesConfig) { c.Kind = "StatefulSet" }, true},
 		{"timeout too large", func(c *checkkubernetes.KubernetesConfig) { c.Timeout = 61 * time.Second }, true},
 		{"timeout negative", func(c *checkkubernetes.KubernetesConfig) { c.Timeout = -time.Second }, true},
-		{"timeout at max", func(c *checkkubernetes.KubernetesConfig) { c.Timeout = 60 * time.Second }, false},
+		{"timeout at max", func(c *checkkubernetes.KubernetesConfig) { c.Timeout = 30 * time.Second }, false},
 	}
 
 	for _, tc := range tests {

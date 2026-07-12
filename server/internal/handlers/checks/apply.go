@@ -345,7 +345,7 @@ func paramStringValue(param *models.Parameter) (string, bool) {
 func (s *Service) ApplyChecks(
 	ctx context.Context, orgSlug string, doc *ExportDocument, opts ApplyOptions,
 ) (*ApplyResult, error) {
-	if doc.Version != 1 {
+	if !isSupportedExportVersion(doc.Version) {
 		return nil, ErrUnsupportedExportVersion
 	}
 

@@ -39,20 +39,23 @@ func authedRequestWithBody(t *testing.T, ts *TestServer, method, path string, bo
 	return resp.StatusCode, out
 }
 
-// createEscalationPolicyViaAPI creates a policy with empty steps and returns its slug.
-func createEscalationPolicyViaAPI(t *testing.T, ts *TestServer, slug, name string) {
+// createEscalationPolicyViaAPI creates a policy with empty steps and returns its UID.
+func createEscalationPolicyViaAPI(t *testing.T, ts *TestServer, name string) string {
 	t.Helper()
 
 	status, body := authedRequestWithBody(t, ts, http.MethodPost,
 		"/api/v1/orgs/"+TestOrgSlug+"/escalation-policies",
 		map[string]any{
-			"slug":      slug,
 			"name":      name,
 			"repeatMax": 0,
 			"steps":     []any{},
 		},
 	)
 	require.Equal(t, http.StatusCreated, status, "create policy: body=%v", body)
+	uid, _ := body["uid"].(string)
+	require.NotEmpty(t, uid)
+
+	return uid
 }
 
 // createConnectionViaAPI creates a webhook notification channel and returns its UID.
@@ -77,14 +80,13 @@ func createConnectionViaAPI(t *testing.T, ts *TestServer) string {
 }
 
 // createOnCallScheduleViaAPI creates a weekly on-call schedule and returns its UID.
-func createOnCallScheduleViaAPI(t *testing.T, ts *TestServer, slug string) string {
+func createOnCallScheduleViaAPI(t *testing.T, ts *TestServer) string {
 	t.Helper()
 
 	status, body := authedRequestWithBody(t, ts, http.MethodPost,
 		"/api/v1/orgs/"+TestOrgSlug+"/on-call-schedules",
 		map[string]any{
 			"name":           "E2E Schedule",
-			"slug":           slug,
 			"timezone":       "UTC",
 			"rotationType":   "weekly",
 			"handoffTime":    "09:00",
@@ -101,11 +103,11 @@ func createOnCallScheduleViaAPI(t *testing.T, ts *TestServer, slug string) strin
 }
 
 // patchPolicySteps replaces the steps of an escalation policy.
-func patchPolicySteps(t *testing.T, ts *TestServer, policySlug string, steps []any) {
+func patchPolicySteps(t *testing.T, ts *TestServer, policyUID string, steps []any) {
 	t.Helper()
 
 	status, body := authedRequestWithBody(t, ts, http.MethodPatch,
-		"/api/v1/orgs/"+TestOrgSlug+"/escalation-policies/"+policySlug,
+		"/api/v1/orgs/"+TestOrgSlug+"/escalation-policies/"+policyUID,
 		map[string]any{"steps": steps},
 	)
 	require.Equal(t, http.StatusOK, status, "patch policy steps: body=%v", body)
@@ -113,11 +115,11 @@ func patchPolicySteps(t *testing.T, ts *TestServer, policySlug string, steps []a
 
 // getFirstTargetUID fetches the policy and returns the targetUid of the first
 // target of the first step.
-func getFirstTargetUID(t *testing.T, ts *TestServer, policySlug string) string {
+func getFirstTargetUID(t *testing.T, ts *TestServer, policyUID string) string {
 	t.Helper()
 
 	status, raw := authedRequest(t, ts, http.MethodGet,
-		"/api/v1/orgs/"+TestOrgSlug+"/escalation-policies/"+policySlug)
+		"/api/v1/orgs/"+TestOrgSlug+"/escalation-policies/"+policyUID)
 	require.Equal(t, http.StatusOK, status)
 
 	var body map[string]any
@@ -145,11 +147,11 @@ func TestEscalationPolicyTargetUIDRoundTrip(t *testing.T) {
 
 	// Seed prerequisites.
 	connectionUID := createConnectionViaAPI(t, ts)
-	scheduleUID := createOnCallScheduleViaAPI(t, ts, "e2e-sched")
+	scheduleUID := createOnCallScheduleViaAPI(t, ts)
 	// Test user is created by NewTestServer with this UID.
 	userUID := "10000000-0000-0000-0000-000000000002"
 
-	createEscalationPolicyViaAPI(t, ts, "e2e-round-trip", "E2E Round Trip")
+	topPolicyUID := createEscalationPolicyViaAPI(t, ts, "E2E Round Trip")
 
 	cases := []struct {
 		name      string
@@ -166,11 +168,10 @@ func TestEscalationPolicyTargetUIDRoundTrip(t *testing.T) {
 			t.Parallel()
 			r := require.New(t)
 
-			// Each parallel subtest uses its own policy slug to avoid write races.
-			policySlug := "e2e-round-trip-" + tc.name
-			createEscalationPolicyViaAPI(t, ts, policySlug, "E2E Round Trip "+tc.name)
+			// Each parallel subtest uses its own policy to avoid write races.
+			policyUID := createEscalationPolicyViaAPI(t, ts, "E2E Round Trip "+tc.name)
 
-			patchPolicySteps(t, ts, policySlug, []any{
+			patchPolicySteps(t, ts, policyUID, []any{
 				map[string]any{
 					"delaySeconds": 0,
 					"targets": []any{
@@ -182,7 +183,7 @@ func TestEscalationPolicyTargetUIDRoundTrip(t *testing.T) {
 				},
 			})
 
-			got := getFirstTargetUID(t, ts, policySlug)
+			got := getFirstTargetUID(t, ts, policyUID)
 			r.Equal(tc.targetUID, got, "targetUid must round-trip for type %q", tc.targetTyp)
 		})
 	}
@@ -190,7 +191,7 @@ func TestEscalationPolicyTargetUIDRoundTrip(t *testing.T) {
 	t.Run("all_admins", func(t *testing.T) {
 		r := require.New(t)
 
-		patchPolicySteps(t, ts, "e2e-round-trip", []any{
+		patchPolicySteps(t, ts, topPolicyUID, []any{
 			map[string]any{
 				"delaySeconds": 0,
 				"targets": []any{
@@ -200,7 +201,7 @@ func TestEscalationPolicyTargetUIDRoundTrip(t *testing.T) {
 		})
 
 		// all_admins has no targetUid — the key must be absent or empty.
-		got := getFirstTargetUID(t, ts, "e2e-round-trip")
+		got := getFirstTargetUID(t, ts, topPolicyUID)
 		r.Empty(got, "all_admins must not produce a targetUid")
 	})
 }

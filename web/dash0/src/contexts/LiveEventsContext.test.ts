@@ -1,11 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import type {
   LiveEventsCallbacks,
   LiveScope,
   LiveSocketHandle,
 } from "@/lib/live-socket";
-import { LIVE_LAZY_POLL_MS, LiveRegistry, stretchWhileLive } from "./LiveEventsContext";
+import {
+  LIVE_INVALIDATE_MIN_INTERVAL_MS,
+  LIVE_LAZY_POLL_MS,
+  LiveRegistry,
+  stretchWhileLive,
+} from "./LiveEventsContext";
 
 const ORG = "acme";
 
@@ -55,8 +60,8 @@ function seedQueries(client: QueryClient): void {
   const keys: unknown[][] = [
     ["checks", ORG, { limit: 1000 }],
     ["checks", "infinite", ORG, {}],
-    ["check", ORG, "uid-1", {}],
-    ["check", ORG, "uid-2", {}],
+    ["check", ORG, "uid-1"],
+    ["check", ORG, "uid-2"],
     ["results", ORG, { checkUid: "uid-1" }],
     ["results", ORG, { checkUid: "uid-2" }],
     ["allResults", ORG, {}],
@@ -67,6 +72,7 @@ function seedQueries(client: QueryClient): void {
     ["backgroundJobs", ORG, {}],
     // Other org + non-org keys must never be touched.
     ["checks", "other-org", {}],
+    ["checks", "infinite", "other-org", {}],
     ["features"],
   ];
   for (const key of keys) {
@@ -167,6 +173,17 @@ describe("LiveRegistry replay on (re)connect", () => {
 });
 
 describe("LiveRegistry scope-accurate invalidation", () => {
+  // The subscribed ack starts the scope's hint cooldown, so these tests use
+  // fake timers and step past LIVE_INVALIDATE_MIN_INTERVAL_MS before sending
+  // an update hint — they exercise routing accuracy, not damping (which has
+  // its own suite below).
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("subscribed ack invalidates exactly that scope's default roots", () => {
     const { client, conn, registry } = setup();
     registry.addScope({ entity: "checks" });
@@ -179,6 +196,34 @@ describe("LiveRegistry scope-accurate invalidation", () => {
     expect(stale).not.toContain(JSON.stringify(["incidents", ORG, {}]));
   });
 
+  it("subscribed ack on the checks scope also invalidates the paginated (infinite) checks list", () => {
+    // The checks *list page* fetches exclusively through useInfiniteChecks,
+    // whose key is ["checks", "infinite", org, options] — org one segment
+    // deeper than the flat orgRoot shape. This locks in the infiniteOrgRoot
+    // mapping; without it, the list page's live subscription would send the
+    // subscribe frame yet never refresh anything the page renders.
+    const { client, conn, registry } = setup();
+    registry.addScope({ entity: "checks" });
+    registry.start();
+    conn.open();
+    conn.subscribed({ entity: "checks" });
+
+    expect(staleKeys(client)).toContain(JSON.stringify(["checks", "infinite", ORG, {}]));
+  });
+
+  it("a 'checks' kind hint (status transition) invalidates the infinite checks list", () => {
+    const { client, conn, registry } = setup();
+    registry.addScope({ entity: "checks" });
+    registry.start();
+    conn.open();
+    conn.subscribed({ entity: "checks" });
+    client.getQueryCache().getAll().forEach((q) => client.resetQueries({ queryKey: q.queryKey }));
+
+    vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
+    conn.update({ entity: "checks" }, ["checks"]);
+    expect(staleKeys(client)).toContain(JSON.stringify(["checks", "infinite", ORG, {}]));
+  });
+
   it("update on a check scope invalidates only that check's queries, not another check's", () => {
     const { client, conn, registry } = setup();
     registry.addScope({ entity: "check", uid: "uid-1" });
@@ -187,17 +232,18 @@ describe("LiveRegistry scope-accurate invalidation", () => {
     conn.subscribed({ entity: "check", uid: "uid-1" });
 
     const before = staleKeys(client);
-    expect(before).toContain(JSON.stringify(["check", ORG, "uid-1", {}]));
-    expect(before).not.toContain(JSON.stringify(["check", ORG, "uid-2", {}]));
+    expect(before).toContain(JSON.stringify(["check", ORG, "uid-1"]));
+    expect(before).not.toContain(JSON.stringify(["check", ORG, "uid-2"]));
 
     client.getQueryCache().getAll().forEach((q) => client.resetQueries({ queryKey: q.queryKey }));
 
+    vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
     conn.update({ entity: "check", uid: "uid-1" }, ["results"]);
     const stale = staleKeys(client);
     // results for uid-1 (nested checkUid) invalidated, uid-2's left alone.
     expect(stale).toContain(JSON.stringify(["results", ORG, { checkUid: "uid-1" }]));
     expect(stale).not.toContain(JSON.stringify(["results", ORG, { checkUid: "uid-2" }]));
-    expect(stale).not.toContain(JSON.stringify(["check", ORG, "uid-2", {}]));
+    expect(stale).not.toContain(JSON.stringify(["check", ORG, "uid-2"]));
   });
 
   it("a 'results' kind update on a check scope also invalidates that check's own detail query", () => {
@@ -214,10 +260,11 @@ describe("LiveRegistry scope-accurate invalidation", () => {
     conn.subscribed({ entity: "check", uid: "uid-1" });
     client.getQueryCache().getAll().forEach((q) => client.resetQueries({ queryKey: q.queryKey }));
 
+    vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
     conn.update({ entity: "check", uid: "uid-1" }, ["results"]);
     const stale = staleKeys(client);
-    expect(stale).toContain(JSON.stringify(["check", ORG, "uid-1", {}]));
-    expect(stale).not.toContain(JSON.stringify(["check", ORG, "uid-2", {}]));
+    expect(stale).toContain(JSON.stringify(["check", ORG, "uid-1"]));
+    expect(stale).not.toContain(JSON.stringify(["check", ORG, "uid-2"]));
   });
 
   it("a 'results' kind update on the checks collection scope also invalidates the checks list", () => {
@@ -228,9 +275,13 @@ describe("LiveRegistry scope-accurate invalidation", () => {
     conn.subscribed({ entity: "checks" });
     client.getQueryCache().getAll().forEach((q) => client.resetQueries({ queryKey: q.queryKey }));
 
+    vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
     conn.update({ entity: "checks" }, ["results"]);
     const stale = staleKeys(client);
     expect(stale).toContain(JSON.stringify(["checks", ORG, { limit: 1000 }]));
+    // The paginated list (checks index page) embeds last-result cells too —
+    // a steady-state (no-transition) run must refresh it as well.
+    expect(stale).toContain(JSON.stringify(["checks", "infinite", ORG, {}]));
   });
 
   it("empty kinds on update means 'all' for that scope's roots", () => {
@@ -241,6 +292,7 @@ describe("LiveRegistry scope-accurate invalidation", () => {
     conn.subscribed({ entity: "incidents" });
     client.getQueryCache().getAll().forEach((q) => client.resetQueries({ queryKey: q.queryKey }));
 
+    vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
     conn.update({ entity: "incidents" }, []);
     const stale = staleKeys(client);
     expect(stale).toContain(JSON.stringify(["incidents", ORG, {}]));
@@ -271,6 +323,189 @@ describe("LiveRegistry scope-accurate invalidation", () => {
     conn.subscribed({ entity: "checks" });
 
     expect(staleKeys(client)).not.toContain(JSON.stringify(["checks", "other-org", {}]));
+    expect(staleKeys(client)).not.toContain(
+      JSON.stringify(["checks", "infinite", "other-org", {}]),
+    );
+  });
+});
+
+describe("LiveRegistry hint damping (refetch storm protection)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Boots a subscribed `checks` scope and clears both the query cache and
+   * the cooldown started by the subscribed ack, so each test begins from a
+   * quiet, fully-fresh state. */
+  function liveChecksScope() {
+    const ctx = setup();
+    ctx.registry.addScope({ entity: "checks" });
+    ctx.registry.start();
+    ctx.conn.open();
+    ctx.conn.subscribed({ entity: "checks" });
+    vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
+    resetAll(ctx.client);
+    return ctx;
+  }
+
+  function resetAll(client: QueryClient): void {
+    client.getQueryCache().getAll().forEach((q) => client.resetQueries({ queryKey: q.queryKey }));
+  }
+
+  it("the first hint after a quiet period invalidates immediately", () => {
+    const { client, conn } = liveChecksScope();
+
+    conn.update({ entity: "checks" }, ["results"]);
+    expect(staleKeys(client)).toContain(JSON.stringify(["checks", ORG, { limit: 1000 }]));
+  });
+
+  it("a burst of hints during the cooldown coalesces into exactly one trailing invalidation", () => {
+    const { client, conn } = liveChecksScope();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+
+    conn.update({ entity: "checks" }, ["results"]); // immediate — starts cooldown
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    resetAll(client);
+
+    // The ~1 s server flush cadence: hints keep arriving inside the cooldown.
+    conn.update({ entity: "checks" }, ["results"]);
+    vi.advanceTimersByTime(1_000);
+    conn.update({ entity: "checks" }, ["results"]);
+    vi.advanceTimersByTime(1_000);
+    conn.update({ entity: "checks" }, ["results"]);
+    expect(invalidate).toHaveBeenCalledTimes(1); // nothing yet — all damped
+    expect(staleKeys(client)).toEqual([]);
+
+    // Trailing edge: exactly one deferred invalidation at cooldown expiry.
+    vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
+    expect(invalidate).toHaveBeenCalledTimes(2);
+    expect(staleKeys(client)).toContain(JSON.stringify(["checks", ORG, { limit: 1000 }]));
+
+    // And nothing else fires afterwards.
+    vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS * 3);
+    expect(invalidate).toHaveBeenCalledTimes(2);
+  });
+
+  it("merges kinds across a damped burst so the trailing invalidation covers all hinted roots", () => {
+    const { client, conn, registry } = setup();
+    registry.addScope({ entity: "check", uid: "uid-1" });
+    registry.start();
+    conn.open();
+    conn.subscribed({ entity: "check", uid: "uid-1" });
+    vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
+    client.getQueryCache().getAll().forEach((q) => client.resetQueries({ queryKey: q.queryKey }));
+
+    conn.update({ entity: "check", uid: "uid-1" }, ["incidents"]); // immediate
+    client.getQueryCache().getAll().forEach((q) => client.resetQueries({ queryKey: q.queryKey }));
+
+    // Two different kinds inside the cooldown — the deferred invalidation
+    // must cover both kinds' roots.
+    conn.update({ entity: "check", uid: "uid-1" }, ["incidents"]);
+    conn.update({ entity: "check", uid: "uid-1" }, ["results"]);
+    expect(staleKeys(client)).toEqual([]);
+
+    vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
+    const stale = staleKeys(client);
+    expect(stale).toContain(JSON.stringify(["check", ORG, "uid-1"])); // incidents root
+    expect(stale).toContain(JSON.stringify(["results", ORG, { checkUid: "uid-1" }])); // results root
+  });
+
+  it("an empty-kinds ('all') hint during the cooldown subsumes pending kinds", () => {
+    const { client, conn } = liveChecksScope();
+
+    conn.update({ entity: "checks" }, ["checks"]); // immediate
+    resetAll(client);
+
+    conn.update({ entity: "checks" }, ["checks"]);
+    conn.update({ entity: "checks" }, []); // "all"
+    vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
+
+    // The "results" kind's extra roots (checkAvailability) are only covered
+    // by the all-kinds expansion — proving the empty hint won.
+    expect(staleKeys(client)).toContain(
+      JSON.stringify(["checkAvailability", ORG, "uid-1", ["24h"], undefined]),
+    );
+  });
+
+  it("a hint after the cooldown expires quietly is immediate again", () => {
+    const { client, conn } = liveChecksScope();
+
+    conn.update({ entity: "checks" }, ["results"]); // immediate
+    resetAll(client);
+
+    // Quiet period: cooldown passes with no further hints, no timer pending.
+    vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
+    expect(staleKeys(client)).toEqual([]);
+
+    conn.update({ entity: "checks" }, ["results"]);
+    expect(staleKeys(client)).toContain(JSON.stringify(["checks", ORG, { limit: 1000 }]));
+  });
+
+  it("onSubscribed catch-up stays immediate even during a hint cooldown", () => {
+    const { client, conn } = liveChecksScope();
+
+    conn.update({ entity: "checks" }, ["results"]); // immediate — cooldown running
+    resetAll(client);
+
+    // A resubscribe ack (e.g. after a reconnect replay) must not be damped.
+    conn.subscribed({ entity: "checks" });
+    expect(staleKeys(client)).toContain(JSON.stringify(["checks", ORG, { limit: 1000 }]));
+  });
+
+  it("resync stays immediate even during a hint cooldown", () => {
+    const { client, conn } = liveChecksScope();
+
+    conn.update({ entity: "checks" }, ["results"]); // immediate — cooldown running
+    resetAll(client);
+
+    conn.resync();
+    expect(staleKeys(client)).toContain(JSON.stringify(["checks", ORG, { limit: 1000 }]));
+  });
+
+  it("an immediate catch-up absorbs pending deferred work (no double invalidation)", () => {
+    const { client, conn } = liveChecksScope();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+
+    conn.update({ entity: "checks" }, ["results"]); // immediate (1)
+    conn.update({ entity: "checks" }, ["results"]); // damped — deferred scheduled
+    conn.subscribed({ entity: "checks" }); // catch-up (2) — clears the deferred work
+
+    vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS * 2);
+    expect(invalidate).toHaveBeenCalledTimes(2);
+  });
+
+  it("stop() cancels pending deferred invalidations", () => {
+    const { client, conn, registry } = liveChecksScope();
+
+    conn.update({ entity: "checks" }, ["results"]); // immediate
+    resetAll(client);
+    conn.update({ entity: "checks" }, ["results"]); // damped — deferred scheduled
+
+    registry.stop();
+    vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS * 2);
+    expect(staleKeys(client)).toEqual([]);
+  });
+
+  it("scopes damp independently — one scope's cooldown never delays another's hints", () => {
+    const { client, conn, registry } = setup();
+    registry.addScope({ entity: "checks" });
+    registry.addScope({ entity: "incidents" });
+    registry.start();
+    conn.open();
+    conn.subscribed({ entity: "checks" });
+    conn.subscribed({ entity: "incidents" });
+    vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
+    client.getQueryCache().getAll().forEach((q) => client.resetQueries({ queryKey: q.queryKey }));
+
+    conn.update({ entity: "checks" }, ["results"]); // starts checks' cooldown
+    client.getQueryCache().getAll().forEach((q) => client.resetQueries({ queryKey: q.queryKey }));
+
+    // incidents' first hint is untouched by checks' running cooldown.
+    conn.update({ entity: "incidents" }, []);
+    expect(staleKeys(client)).toContain(JSON.stringify(["incidents", ORG, {}]));
   });
 });
 

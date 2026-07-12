@@ -1,7 +1,7 @@
 package escalationpolicies_test
 
 // Integration tests for the escalation-policy service against an in-memory
-// sqlite backend, focused on uid-or-slug addressing for GET/PATCH/DELETE.
+// sqlite backend, focused on uid addressing for GET/PATCH/DELETE.
 
 import (
 	"testing"
@@ -30,14 +30,13 @@ func newPolicyTestService(t *testing.T) (*escalationpolicies.Service, *models.Or
 }
 
 func createTestPolicy(
-	t *testing.T, svc *escalationpolicies.Service, orgUID, slug string,
+	t *testing.T, svc *escalationpolicies.Service, orgUID, name string,
 ) *models.EscalationPolicy {
 	t.Helper()
 
 	policy, err := svc.CreatePolicy(t.Context(), &escalationpolicies.CreatePolicyInput{
 		OrganizationUID: orgUID,
-		Slug:            slug,
-		Name:            slug,
+		Name:            name,
 		Steps: []escalationpolicies.StepInput{
 			{
 				DelaySeconds: 0,
@@ -52,45 +51,37 @@ func createTestPolicy(
 	return policy
 }
 
-func TestServiceGetPolicyByUidOrSlug(t *testing.T) {
+func TestServiceGetPolicy(t *testing.T) {
 	t.Parallel()
 
 	svc, org := newPolicyTestService(t)
 	policy := createTestPolicy(t, svc, org.UID, "oncall")
 
-	t.Run("by slug", func(t *testing.T) {
+	t.Run("by uid", func(t *testing.T) {
 		t.Parallel()
 
-		detail, err := svc.GetPolicyByUidOrSlug(t.Context(), org.UID, "oncall")
+		detail, err := svc.GetPolicy(t.Context(), org.UID, policy.UID)
 		require.NoError(t, err)
 		require.Equal(t, policy.UID, detail.Policy.UID)
 		require.Len(t, detail.Steps, 1)
 	})
 
-	t.Run("by uid", func(t *testing.T) {
+	t.Run("slug-shaped identifier returns not found", func(t *testing.T) {
 		t.Parallel()
 
-		detail, err := svc.GetPolicyByUidOrSlug(t.Context(), org.UID, policy.UID)
-		require.NoError(t, err)
-		require.Equal(t, policy.UID, detail.Policy.UID)
-	})
-
-	t.Run("unknown slug returns not found", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := svc.GetPolicyByUidOrSlug(t.Context(), org.UID, "nope")
+		_, err := svc.GetPolicy(t.Context(), org.UID, "oncall")
 		require.ErrorIs(t, err, escalationpolicies.ErrPolicyNotFound)
 	})
 
 	t.Run("unknown uid returns not found", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := svc.GetPolicyByUidOrSlug(t.Context(), org.UID, "00000000-0000-0000-0000-000000000000")
+		_, err := svc.GetPolicy(t.Context(), org.UID, "00000000-0000-0000-0000-000000000000")
 		require.ErrorIs(t, err, escalationpolicies.ErrPolicyNotFound)
 	})
 }
 
-func TestServiceUpdatePolicyByUidOrSlug(t *testing.T) {
+func TestServiceUpdatePolicy(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -106,22 +97,14 @@ func TestServiceUpdatePolicyByUidOrSlug(t *testing.T) {
 	r.NoError(err)
 	r.Equal("On-Call Policy", detail.Policy.Name)
 
-	// Update addressed by slug.
-	newName2 := "On-Call Policy v2"
-	detail2, err := svc.UpdatePolicy(t.Context(), org.UID, "oncall", &escalationpolicies.UpdatePolicyInput{
-		Name: &newName2,
-	})
-	r.NoError(err)
-	r.Equal("On-Call Policy v2", detail2.Policy.Name)
-
-	// Unknown identifier → not found.
-	_, err = svc.UpdatePolicy(t.Context(), org.UID, "ghost", &escalationpolicies.UpdatePolicyInput{
+	// A slug-shaped identifier no longer resolves → not found.
+	_, err = svc.UpdatePolicy(t.Context(), org.UID, "oncall", &escalationpolicies.UpdatePolicyInput{
 		Name: &newName,
 	})
 	r.ErrorIs(err, escalationpolicies.ErrPolicyNotFound)
 }
 
-func TestServiceDeletePolicyByUidOrSlug(t *testing.T) {
+func TestServiceDeletePolicy(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -130,15 +113,9 @@ func TestServiceDeletePolicyByUidOrSlug(t *testing.T) {
 	// Delete by UID.
 	p1 := createTestPolicy(t, svc, org.UID, "byuid")
 	r.NoError(svc.DeletePolicy(t.Context(), org.UID, p1.UID))
-	_, err := svc.GetPolicyByUidOrSlug(t.Context(), org.UID, p1.UID)
+	_, err := svc.GetPolicy(t.Context(), org.UID, p1.UID)
 	r.ErrorIs(err, escalationpolicies.ErrPolicyNotFound)
 
-	// Delete by slug.
-	createTestPolicy(t, svc, org.UID, "byslug")
-	r.NoError(svc.DeletePolicy(t.Context(), org.UID, "byslug"))
-	_, err = svc.GetPolicyByUidOrSlug(t.Context(), org.UID, "byslug")
-	r.ErrorIs(err, escalationpolicies.ErrPolicyNotFound)
-
-	// Unknown identifier → not found.
+	// A slug-shaped identifier no longer resolves → not found.
 	r.ErrorIs(svc.DeletePolicy(t.Context(), org.UID, "ghost"), escalationpolicies.ErrPolicyNotFound)
 }

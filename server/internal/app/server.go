@@ -153,6 +153,7 @@ type Server struct {
 	slackSocketSupervisor *slack.SlackSocketSupervisor
 	rateLimiter           *middleware.RateLimiter // For the /api/mgmt/limits introspection handler
 	realtimeHub           *realtime.Hub           // Live hint stream fan-out (nil when realtime disabled)
+	statusPagesService    *statuspages.Service    // Public status-page lookups for status0 OG-metadata injection
 	cancelCtx             context.CancelFunc
 	workersWg             sync.WaitGroup // Tracks workers
 }
@@ -260,7 +261,8 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 
 	// GetJobWait subscribes internally via notifier.Listen("job.created") on each
-	// call, so no external wakeup channel is needed here.
+	// call (and Unlistens on return, so subscriptions do not leak), so no external
+	// wakeup channel is needed here.
 	jobService := jobsvc.NewService(dbService.DB(), dbService, eventNotifier, svcList.Realtime)
 	svcList.Jobs = jobService
 
@@ -572,8 +574,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService,
 		s.services.Credentials, s.services.Entitlements, s.services.Realtime,
 	)
-	mcpGroup := api.NewGroup("/mcp").Use(authMiddleware.RequireMCPAuth)
-	mcpGroup.POST("", s.mcpHandler.Handle)
+	mcpGroup := api.NewGroup("/mcp")
+	// GET is deliberately outside RequireMCPAuth: a browser opening the
+	// endpoint has no token and gets a helpful redirect to the dashboard MCP
+	// page, while an MCP client probing with Accept: text/event-stream gets
+	// the spec-mandated 405 (we don't serve server-initiated SSE streams).
+	mcpGroup.GET("", s.mcpHandler.HandleGet)
+	mcpAuthed := mcpGroup.Use(authMiddleware.RequireMCPAuth)
+	mcpAuthed.POST("", s.mcpHandler.Handle)
+	mcpAuthed.DELETE("", s.mcpHandler.HandleDelete)
 
 	// OAuth 2.1 authorization server for the MCP resource (spec
 	// 2026-06-20-03). Discovery docs are served at the site root where MCP
@@ -814,16 +823,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgOnCall := api.NewGroup("/orgs/:org/on-call-schedules").Use(authMiddleware.RequireAuth)
 	orgOnCall.GET("", onCallHandler.ListSchedules)
 	orgOnCall.POST("", onCallHandler.CreateSchedule)
-	orgOnCall.GET("/:slug", onCallHandler.GetSchedule)
-	orgOnCall.PATCH("/:slug", onCallHandler.UpdateSchedule)
-	orgOnCall.DELETE("/:slug", onCallHandler.DeleteSchedule)
-	orgOnCall.GET("/:slug/preview", onCallHandler.PreviewSchedule)
-	orgOnCall.GET("/:slug/overrides", onCallHandler.ListOverrides)
-	orgOnCall.POST("/:slug/overrides", onCallHandler.CreateOverride)
-	orgOnCall.DELETE("/:slug/overrides/:overrideUid", onCallHandler.DeleteOverride)
-	orgOnCall.POST("/:slug/ical-feed/enable", onCallHandler.EnableICalFeed)
-	orgOnCall.POST("/:slug/ical-feed/disable", onCallHandler.DisableICalFeed)
-	orgOnCall.POST("/:slug/ical-feed/rotate", onCallHandler.RotateICalFeed)
+	orgOnCall.GET("/:uid", onCallHandler.GetSchedule)
+	orgOnCall.PATCH("/:uid", onCallHandler.UpdateSchedule)
+	orgOnCall.DELETE("/:uid", onCallHandler.DeleteSchedule)
+	orgOnCall.GET("/:uid/preview", onCallHandler.PreviewSchedule)
+	orgOnCall.GET("/:uid/overrides", onCallHandler.ListOverrides)
+	orgOnCall.POST("/:uid/overrides", onCallHandler.CreateOverride)
+	orgOnCall.DELETE("/:uid/overrides/:overrideUid", onCallHandler.DeleteOverride)
+	orgOnCall.POST("/:uid/ical-feed/enable", onCallHandler.EnableICalFeed)
+	orgOnCall.POST("/:uid/ical-feed/disable", onCallHandler.DisableICalFeed)
+	orgOnCall.POST("/:uid/ical-feed/rotate", onCallHandler.RotateICalFeed)
 
 	// Public iCal feed — the secret in the URL authorizes access. No auth
 	// middleware: clients are calendar apps that can't bear tokens.
@@ -845,9 +854,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgEscalation := api.NewGroup("/orgs/:org/escalation-policies").Use(authMiddleware.RequireAuth)
 	orgEscalation.GET("", escalationHandler.ListPolicies)
 	orgEscalation.POST("", escalationHandler.CreatePolicy)
-	orgEscalation.GET("/:slug", escalationHandler.GetPolicy)
-	orgEscalation.PATCH("/:slug", escalationHandler.UpdatePolicy)
-	orgEscalation.DELETE("/:slug", escalationHandler.DeletePolicy)
+	orgEscalation.GET("/:uid", escalationHandler.GetPolicy)
+	orgEscalation.PATCH("/:uid", escalationHandler.UpdatePolicy)
+	orgEscalation.DELETE("/:uid", escalationHandler.DeletePolicy)
 
 	// User notification routes (authentication required)
 	userNotifService := usernotifications.NewService(s.dbService)
@@ -1040,6 +1049,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Status pages routes (authentication required)
 	statusPagesService := statuspages.NewService(s.dbService, s.config)
+	// Retained on the server so serveStatus0Static can resolve pages for
+	// per-page Open Graph / Twitter Card metadata injection.
+	s.statusPagesService = statusPagesService
 	statusPagesHandler := statuspages.NewHandler(statusPagesService, s.config)
 	orgStatusPages := api.NewGroup("/orgs/:org/status-pages").Use(authMiddleware.RequireAuth)
 	orgStatusPages.GET("", statusPagesHandler.ListStatusPages)
@@ -1343,18 +1355,28 @@ type LimitsConcurrency struct {
 }
 
 // LimitsResponse is the body of GET /api/mgmt/limits.
+//
+// CallerIP echoes the client IP the limiter resolved for this request
+// (respecting trusted_proxies), and CallerBucket says which bucket the
+// caller's traffic is accounted against — "ip" or "token" — so diagnosing a
+// bucketing misconfiguration is a single curl instead of a log dive.
 type LimitsResponse struct {
-	RateLimit   LimitsRateLimit   `json:"rateLimit"`
-	Concurrency LimitsConcurrency `json:"concurrency"`
+	RateLimit    LimitsRateLimit   `json:"rateLimit"`
+	Concurrency  LimitsConcurrency `json:"concurrency"`
+	CallerIP     string            `json:"callerIp"`
+	CallerBucket string            `json:"callerBucket"`
 }
 
 func (s *Server) getLimits(writer http.ResponseWriter, req bunrouter.Request) error {
 	cfg := s.rateLimiter.Config()
-	state := s.rateLimiter.StateFor(s.rateLimiter.ExtractIP(req.Request))
+	key, kind, ip := s.rateLimiter.CallerBucket(req.Request)
+	state := s.rateLimiter.StateFor(key)
 
 	resp := LimitsResponse{
-		RateLimit:   LimitsRateLimit{Enabled: cfg.RequestsPerMinute > 0},
-		Concurrency: LimitsConcurrency{Enabled: cfg.MaxConcurrent > 0},
+		RateLimit:    LimitsRateLimit{Enabled: cfg.RequestsPerMinute > 0},
+		Concurrency:  LimitsConcurrency{Enabled: cfg.MaxConcurrent > 0},
+		CallerIP:     ip,
+		CallerBucket: kind,
 	}
 	if resp.RateLimit.Enabled {
 		resp.RateLimit.RequestsPerMinute = cfg.RequestsPerMinute
@@ -1519,6 +1541,15 @@ func writeDocsFile(writer http.ResponseWriter, name string, data []byte, status 
 
 // serveAppRoot determines whether to proxy to dev server or serve static files.
 func (s *Server) serveAppRoot(writer http.ResponseWriter, req bunrouter.Request) error {
+	// Nothing under /api/ ever serves the SPA: an unmatched path in the API
+	// namespace answers with the standard JSON error shape so non-browser
+	// clients (MCP probes included) never receive text/html.
+	if strings.HasPrefix(req.URL.Path, "/api/") {
+		handlerBase := base.NewHandlerBase(s.config)
+
+		return handlerBase.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "API route not found")
+	}
+
 	// Redirect root to dash0 dashboard
 	if req.URL.Path == "/" {
 		http.Redirect(writer, req.Request, "/dash0/", http.StatusFound)
@@ -1557,7 +1588,7 @@ func (s *Server) serveAppRedirect(
 
 	//nolint:exhaustruct // Only Scheme and Host are needed for reverse proxy
 	targetURL := &url.URL{
-		Scheme: "http",
+		Scheme: schemeHTTP,
 		Host:   rule.TargetHost,
 	}
 
@@ -1738,10 +1769,12 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req bunrouter.Re
 	filePath := path.Join("status0res", reqPath)
 
 	maxAgeSeconds := 31536000 // 1 year for assets
+	servingIndexFallback := false
 
 	data, err := status0Files.ReadFile(filePath)
 	if err != nil {
 		maxAgeSeconds = 60
+		servingIndexFallback = true
 		filePath = path.Join("status0res", "index.html")
 
 		data, err = status0Files.ReadFile(filePath)
@@ -1750,6 +1783,16 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req bunrouter.Re
 			http.Error(writer, "File not found", http.StatusNotFound)
 
 			return nil
+		}
+	}
+
+	// For a status-page path served via the SPA index.html fallback, inject
+	// per-page Open Graph / Twitter Card metadata so shared links get a rich
+	// preview. Non-status-page paths and missing/disabled/private pages keep
+	// the generic head (no page-existence leak).
+	if servingIndexFallback {
+		if meta, ok := s.status0MetaForPath(req, reqPath); ok {
+			data = []byte(injectStatus0Meta(string(data), meta))
 		}
 	}
 

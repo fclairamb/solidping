@@ -43,7 +43,7 @@ import {
 } from "@/components/ui/table";
 import { QueryErrorView } from "@/components/shared/error-views";
 
-export const Route = createFileRoute("/orgs/$org/on-call/$slug/")({
+export const Route = createFileRoute("/orgs/$org/on-call/$uid/")({
   component: OnCallDetailPage,
 });
 
@@ -60,7 +60,7 @@ const COLOR_PALETTE = [
 
 function OnCallDetailPage() {
   const { t } = useTranslation(["oncall", "common"]);
-  const { org, slug } = Route.useParams();
+  const { org, uid } = Route.useParams();
   const navigate = useNavigate();
 
   const {
@@ -68,16 +68,16 @@ function OnCallDetailPage() {
     isLoading,
     error,
     refetch,
-  } = useOnCallSchedule(org, slug);
-  const { data: slots } = useOnCallSchedulePreview(org, slug);
-  const { data: overrides } = useOnCallScheduleOverrides(org, slug);
+  } = useOnCallSchedule(org, uid);
+  const { data: slots } = useOnCallSchedulePreview(org, uid);
+  const { data: overrides } = useOnCallScheduleOverrides(org, uid);
   const { data: membersResp } = useMembers(org);
 
   const deleteMutation = useDeleteOnCallSchedule(org);
-  const deleteOverride = useDeleteOnCallOverride(org, slug);
-  const enableFeed = useEnableOnCallICalFeed(org, slug);
-  const disableFeed = useDisableOnCallICalFeed(org, slug);
-  const rotateFeed = useRotateOnCallICalFeed(org, slug);
+  const deleteOverride = useDeleteOnCallOverride(org, uid);
+  const enableFeed = useEnableOnCallICalFeed(org, uid);
+  const disableFeed = useDisableOnCallICalFeed(org, uid);
+  const rotateFeed = useRotateOnCallICalFeed(org, uid);
   const [feedURL, setFeedURL] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -105,7 +105,7 @@ function OnCallDetailPage() {
   }
 
   const handleConfirmDelete = async () => {
-    await deleteMutation.mutateAsync(slug);
+    await deleteMutation.mutateAsync(uid);
     setDeleteOpen(false);
     navigate({ to: "/orgs/$org/on-call", params: { org } });
   };
@@ -158,8 +158,8 @@ function OnCallDetailPage() {
           </Button>
           <Button asChild variant="outline" aria-label={t("oncall:detail.edit")}>
             <Link
-              to="/orgs/$org/on-call/$slug/edit"
-              params={{ org, slug }}
+              to="/orgs/$org/on-call/$uid/edit"
+              params={{ org, uid }}
               data-testid="oncall-edit-button"
             >
               <Pencil />

@@ -36,6 +36,11 @@
   "ai": {
     "title": "Assistants IA",
     "description": "Connectez Claude, Cursor, VS Code ou tout client compatible MCP aux données de supervision de cette organisation.",
+    "connectTitle": "Connecter un client",
+    "fromGet": {
+      "title": "Vous avez ouvert le point d'accès API MCP dans un navigateur",
+      "description": "/api/v1/mcp est un point d'accès machine-à-machine pour les clients MCP, pas une page web. Suivez les instructions ci-dessous pour connecter Claude, Cursor, VS Code ou tout autre client compatible MCP."
+    },
     "mcpUrl": "URL du serveur MCP",
     "claude": {
       "title": "Claude (web / bureau)",

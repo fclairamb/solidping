@@ -84,7 +84,7 @@ function EscalationPoliciesListPage() {
 
   const onConfirmDelete = () => {
     if (!pendingDelete) return;
-    deleteMutation.mutate(pendingDelete.slug, {
+    deleteMutation.mutate(pendingDelete.uid, {
       onSuccess: () => {
         toast.success(t("common:delete"));
         setPendingDelete(null);
@@ -211,8 +211,8 @@ function PolicyRow({ org, policy, onDelete }: PolicyRowProps) {
     <TableRow data-testid="policy-row">
       <TableCell>
         <Link
-          to="/orgs/$org/escalation-policies/$slug"
-          params={{ org, slug: policy.slug }}
+          to="/orgs/$org/escalation-policies/$uid"
+          params={{ org, uid: policy.uid }}
           className="font-medium hover:underline"
         >
           {policy.name}
@@ -238,8 +238,8 @@ function PolicyRow({ org, policy, onDelete }: PolicyRowProps) {
         <div className="flex items-center justify-end gap-1">
           <Button asChild variant="ghost" size="icon" aria-label={t("common:edit")}>
             <Link
-              to="/orgs/$org/escalation-policies/$slug"
-              params={{ org, slug: policy.slug }}
+              to="/orgs/$org/escalation-policies/$uid"
+              params={{ org, uid: policy.uid }}
             >
               <Pencil className="h-4 w-4" />
             </Link>

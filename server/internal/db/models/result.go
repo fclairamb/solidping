@@ -152,13 +152,28 @@ func NewResult(orgUID, checkUID string, status ResultStatus, duration float32) *
 
 // ListResultsFilter provides filtering options for listing results.
 type ListResultsFilter struct {
-	OrganizationUID  string     // Required: organization scope
-	CheckUIDs        []string   // Optional: filter by multiple check UIDs
-	CheckTypes       []string   // Optional: filter by check types (requires join with checks table)
-	Regions          []string   // Optional: filter by multiple regions
-	PeriodTypes      []string   // Optional: filter by multiple period_types ('raw', 'hour', 'day', 'month')
-	Statuses         []int      // Optional: filter by multiple status integers
-	PeriodStartAfter *time.Time // Optional: filter period_start >= this value
+	OrganizationUID string   // Required: organization scope
+	CheckUIDs       []string // Optional: filter by multiple check UIDs
+	CheckTypes      []string // Optional: filter by check types (requires join with checks table)
+	Regions         []string // Optional: filter by multiple regions
+	PeriodTypes     []string // Optional: filter by multiple period_types ('raw', 'hour', 'day', 'month')
+	Statuses        []int    // Optional: filter by multiple status integers (inclusion)
+	// ExcludeStatuses drops rows whose status is in this set (NULL status is
+	// never excluded). Used by aggregation work-discovery to skip buckets whose
+	// only rows are lifecycle markers (created/running), which would otherwise
+	// re-aggregate into degenerate rollups forever (poison-pill loop, spec
+	// 2026-07-11-16). Applied independently of Statuses.
+	ExcludeStatuses []int
+	// RequireCheckExists, when true, drops rows whose check_uid no longer has a
+	// row in `checks` (`check_uid IN (SELECT uid FROM checks)`). Soft-deleted
+	// checks still have a row and keep their history — only rows orphaned by a
+	// hard delete are excluded. Used by aggregation work-discovery so a single
+	// FK-orphan raw row can't become a deterministic poison pill that fails the
+	// rollup INSERT and permanently halts the org's aggregation (spec
+	// 2026-07-12-01 §2). A no-op on Postgres by FK construction; implemented on
+	// both backends for parity and defense in depth.
+	RequireCheckExists bool
+	PeriodStartAfter   *time.Time // Optional: filter period_start >= this value
 	// Optional: filter period_start < this value (filters by period_start, not period_end)
 	PeriodEndBefore *time.Time
 

@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { expandSection } from "./section-helpers";
 
 test.describe("Check labels", () => {
   test.describe.configure({ mode: "serial" });
@@ -11,6 +12,8 @@ test.describe("Check labels", () => {
     await page.waitForURL(/\/checks\/new/);
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
+    // Labels now live in the collapsed "Organization" section.
+    await expandSection(page, "section-organization-trigger");
   }
 
   async function fillBasics(
@@ -54,9 +57,11 @@ test.describe("Check labels", () => {
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f-]{36}$/, { timeout: 10000 });
 
-    // Reload via the edit page and assert the chip is preserved.
+    // Reload via the edit page and assert the chip is preserved. The section
+    // auto-opens because labels are set; expand defensively regardless.
     await page.goto(page.url() + "/edit");
     await page.waitForLoadState("networkidle");
+    await expandSection(page, "section-organization-trigger");
     await expect(page.getByTestId("label-chips")).toContainText("service: payments");
   });
 
@@ -89,6 +94,7 @@ test.describe("Check labels", () => {
 
     await page.goto(page.url() + "/edit");
     await page.waitForLoadState("networkidle");
+    await expandSection(page, "section-organization-trigger");
     await expect(page.getByTestId("label-chips")).toContainText("env: prod");
   });
 

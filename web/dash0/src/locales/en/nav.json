@@ -128,6 +128,7 @@
     "groupOrganization": "Organization",
     "groupChecks": "Checks",
     "newCheck": "New Check",
-    "newCheckDescription": "Create a new monitoring check"
+    "newCheckDescription": "Create a new monitoring check",
+    "aiDescription": "Connect AI assistants via MCP"
   }
 }

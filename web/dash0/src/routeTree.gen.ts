@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as NoOrgRouteImport } from './routes/no-org'
+import { Route as McpRouteImport } from './routes/mcp'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as IndexRouteImport } from './routes/index'
@@ -26,6 +27,7 @@ import { Route as OrgsOrgRegisterRouteImport } from './routes/orgs/$org/register
 import { Route as OrgsOrgOrganizationRouteImport } from './routes/orgs/$org/organization'
 import { Route as OrgsOrgOnCallRouteImport } from './routes/orgs/$org/on-call'
 import { Route as OrgsOrgMeRouteImport } from './routes/orgs/$org/me'
+import { Route as OrgsOrgMcpRouteImport } from './routes/orgs/$org/mcp'
 import { Route as OrgsOrgMaintenanceWindowsRouteImport } from './routes/orgs/$org/maintenance-windows'
 import { Route as OrgsOrgLoginRouteImport } from './routes/orgs/$org/login'
 import { Route as OrgsOrgJobsRouteImport } from './routes/orgs/$org/jobs'
@@ -77,7 +79,7 @@ import { Route as OrgsOrgOrganizationMembersRouteImport } from './routes/orgs/$o
 import { Route as OrgsOrgOrganizationInvitationsRouteImport } from './routes/orgs/$org/organization.invitations'
 import { Route as OrgsOrgOrganizationAiRouteImport } from './routes/orgs/$org/organization.ai'
 import { Route as OrgsOrgOnCallNewRouteImport } from './routes/orgs/$org/on-call.new'
-import { Route as OrgsOrgOnCallSlugRouteImport } from './routes/orgs/$org/on-call.$slug'
+import { Route as OrgsOrgOnCallUidRouteImport } from './routes/orgs/$org/on-call.$uid'
 import { Route as OrgsOrgOauthConsentRouteImport } from './routes/orgs/$org/oauth.consent'
 import { Route as OrgsOrgNotificationsNotificationUidRouteImport } from './routes/orgs/$org/notifications.$notificationUid'
 import { Route as OrgsOrgMeNotificationsRouteImport } from './routes/orgs/$org/me.notifications'
@@ -88,7 +90,7 @@ import { Route as OrgsOrgIntegrationsNewRouteImport } from './routes/orgs/$org/i
 import { Route as OrgsOrgIntegrationsIntegrationUidRouteImport } from './routes/orgs/$org/integrations.$integrationUid'
 import { Route as OrgsOrgIncidentsIncidentUidRouteImport } from './routes/orgs/$org/incidents.$incidentUid'
 import { Route as OrgsOrgEscalationPoliciesNewRouteImport } from './routes/orgs/$org/escalation-policies.new'
-import { Route as OrgsOrgEscalationPoliciesSlugRouteImport } from './routes/orgs/$org/escalation-policies.$slug'
+import { Route as OrgsOrgEscalationPoliciesUidRouteImport } from './routes/orgs/$org/escalation-policies.$uid'
 import { Route as OrgsOrgDiscoveryNewRouteImport } from './routes/orgs/$org/discovery.new'
 import { Route as OrgsOrgDiscoveryJobUidRouteImport } from './routes/orgs/$org/discovery.$jobUid'
 import { Route as OrgsOrgChecksNewRouteImport } from './routes/orgs/$org/checks.new'
@@ -98,14 +100,15 @@ import { Route as OrgsOrgAccountSessionsRouteImport } from './routes/orgs/$org/a
 import { Route as OrgsOrgAccountSecurityRouteImport } from './routes/orgs/$org/account.security'
 import { Route as OrgsOrgAccountProfileRouteImport } from './routes/orgs/$org/account.profile'
 import { Route as OrgsOrgAccountNotificationsRouteImport } from './routes/orgs/$org/account.notifications'
+import { Route as OrgsOrgAccountMcpRouteImport } from './routes/orgs/$org/account.mcp'
 import { Route as OrgsOrgStatusPagesStatusPageUidIndexRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.index'
-import { Route as OrgsOrgOnCallSlugIndexRouteImport } from './routes/orgs/$org/on-call.$slug.index'
+import { Route as OrgsOrgOnCallUidIndexRouteImport } from './routes/orgs/$org/on-call.$uid.index'
 import { Route as OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRouteImport } from './routes/orgs/$org/maintenance-windows.$maintenanceWindowUid.index'
 import { Route as OrgsOrgDiscoveryJobUidIndexRouteImport } from './routes/orgs/$org/discovery.$jobUid.index'
 import { Route as OrgsOrgChecksCheckUidIndexRouteImport } from './routes/orgs/$org/checks.$checkUid.index'
 import { Route as OrgsOrgStatusUpdatesUpdateUidEditRouteImport } from './routes/orgs/$org/status-updates.$updateUid.edit'
 import { Route as OrgsOrgStatusPagesStatusPageUidEditRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.edit'
-import { Route as OrgsOrgOnCallSlugEditRouteImport } from './routes/orgs/$org/on-call.$slug.edit'
+import { Route as OrgsOrgOnCallUidEditRouteImport } from './routes/orgs/$org/on-call.$uid.edit'
 import { Route as OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRouteImport } from './routes/orgs/$org/maintenance-windows.$maintenanceWindowUid.edit'
 import { Route as OrgsOrgJobsCheckCheckJobUidRouteImport } from './routes/orgs/$org/jobs.check.$checkJobUid'
 import { Route as OrgsOrgChecksCheckUidEditRouteImport } from './routes/orgs/$org/checks.$checkUid.edit'
@@ -115,6 +118,11 @@ import { Route as OrgsOrgChecksCheckUidResultsResultUidRouteImport } from './rou
 const NoOrgRoute = NoOrgRouteImport.update({
   id: '/no-org',
   path: '/no-org',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const McpRoute = McpRouteImport.update({
+  id: '/mcp',
+  path: '/mcp',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -196,6 +204,11 @@ const OrgsOrgOnCallRoute = OrgsOrgOnCallRouteImport.update({
 const OrgsOrgMeRoute = OrgsOrgMeRouteImport.update({
   id: '/me',
   path: '/me',
+  getParentRoute: () => OrgsOrgRoute,
+} as any)
+const OrgsOrgMcpRoute = OrgsOrgMcpRouteImport.update({
+  id: '/mcp',
+  path: '/mcp',
   getParentRoute: () => OrgsOrgRoute,
 } as any)
 const OrgsOrgMaintenanceWindowsRoute =
@@ -469,9 +482,9 @@ const OrgsOrgOnCallNewRoute = OrgsOrgOnCallNewRouteImport.update({
   path: '/new',
   getParentRoute: () => OrgsOrgOnCallRoute,
 } as any)
-const OrgsOrgOnCallSlugRoute = OrgsOrgOnCallSlugRouteImport.update({
-  id: '/$slug',
-  path: '/$slug',
+const OrgsOrgOnCallUidRoute = OrgsOrgOnCallUidRouteImport.update({
+  id: '/$uid',
+  path: '/$uid',
   getParentRoute: () => OrgsOrgOnCallRoute,
 } as any)
 const OrgsOrgOauthConsentRoute = OrgsOrgOauthConsentRouteImport.update({
@@ -530,10 +543,10 @@ const OrgsOrgEscalationPoliciesNewRoute =
     path: '/new',
     getParentRoute: () => OrgsOrgEscalationPoliciesRoute,
   } as any)
-const OrgsOrgEscalationPoliciesSlugRoute =
-  OrgsOrgEscalationPoliciesSlugRouteImport.update({
-    id: '/$slug',
-    path: '/$slug',
+const OrgsOrgEscalationPoliciesUidRoute =
+  OrgsOrgEscalationPoliciesUidRouteImport.update({
+    id: '/$uid',
+    path: '/$uid',
     getParentRoute: () => OrgsOrgEscalationPoliciesRoute,
   } as any)
 const OrgsOrgDiscoveryNewRoute = OrgsOrgDiscoveryNewRouteImport.update({
@@ -582,16 +595,21 @@ const OrgsOrgAccountNotificationsRoute =
     path: '/notifications',
     getParentRoute: () => OrgsOrgAccountRoute,
   } as any)
+const OrgsOrgAccountMcpRoute = OrgsOrgAccountMcpRouteImport.update({
+  id: '/mcp',
+  path: '/mcp',
+  getParentRoute: () => OrgsOrgAccountRoute,
+} as any)
 const OrgsOrgStatusPagesStatusPageUidIndexRoute =
   OrgsOrgStatusPagesStatusPageUidIndexRouteImport.update({
     id: '/',
     path: '/',
     getParentRoute: () => OrgsOrgStatusPagesStatusPageUidRoute,
   } as any)
-const OrgsOrgOnCallSlugIndexRoute = OrgsOrgOnCallSlugIndexRouteImport.update({
+const OrgsOrgOnCallUidIndexRoute = OrgsOrgOnCallUidIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => OrgsOrgOnCallSlugRoute,
+  getParentRoute: () => OrgsOrgOnCallUidRoute,
 } as any)
 const OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute =
   OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRouteImport.update({
@@ -623,10 +641,10 @@ const OrgsOrgStatusPagesStatusPageUidEditRoute =
     path: '/edit',
     getParentRoute: () => OrgsOrgStatusPagesStatusPageUidRoute,
   } as any)
-const OrgsOrgOnCallSlugEditRoute = OrgsOrgOnCallSlugEditRouteImport.update({
+const OrgsOrgOnCallUidEditRoute = OrgsOrgOnCallUidEditRouteImport.update({
   id: '/edit',
   path: '/edit',
-  getParentRoute: () => OrgsOrgOnCallSlugRoute,
+  getParentRoute: () => OrgsOrgOnCallUidRoute,
 } as any)
 const OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute =
   OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRouteImport.update({
@@ -663,6 +681,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/mcp': typeof McpRoute
   '/no-org': typeof NoOrgRoute
   '/confirm-registration/$token': typeof ConfirmRegistrationTokenRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -681,6 +700,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/jobs': typeof OrgsOrgJobsRouteWithChildren
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
   '/orgs/$org/maintenance-windows': typeof OrgsOrgMaintenanceWindowsRouteWithChildren
+  '/orgs/$org/mcp': typeof OrgsOrgMcpRoute
   '/orgs/$org/me': typeof OrgsOrgMeRouteWithChildren
   '/orgs/$org/on-call': typeof OrgsOrgOnCallRouteWithChildren
   '/orgs/$org/organization': typeof OrgsOrgOrganizationRouteWithChildren
@@ -690,6 +710,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/status-updates': typeof OrgsOrgStatusUpdatesRouteWithChildren
   '/orgs/$org/test': typeof OrgsOrgTestRouteWithChildren
   '/orgs/$org/': typeof OrgsOrgIndexRoute
+  '/orgs/$org/account/mcp': typeof OrgsOrgAccountMcpRoute
   '/orgs/$org/account/notifications': typeof OrgsOrgAccountNotificationsRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
@@ -699,7 +720,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/discovery/$jobUid': typeof OrgsOrgDiscoveryJobUidRouteWithChildren
   '/orgs/$org/discovery/new': typeof OrgsOrgDiscoveryNewRoute
-  '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
+  '/orgs/$org/escalation-policies/$uid': typeof OrgsOrgEscalationPoliciesUidRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
   '/orgs/$org/integrations/$integrationUid': typeof OrgsOrgIntegrationsIntegrationUidRoute
@@ -710,7 +731,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/me/notifications': typeof OrgsOrgMeNotificationsRoute
   '/orgs/$org/notifications/$notificationUid': typeof OrgsOrgNotificationsNotificationUidRoute
   '/orgs/$org/oauth/consent': typeof OrgsOrgOauthConsentRoute
-  '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRouteWithChildren
+  '/orgs/$org/on-call/$uid': typeof OrgsOrgOnCallUidRouteWithChildren
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/ai': typeof OrgsOrgOrganizationAiRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
@@ -752,13 +773,13 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
-  '/orgs/$org/on-call/$slug/edit': typeof OrgsOrgOnCallSlugEditRoute
+  '/orgs/$org/on-call/$uid/edit': typeof OrgsOrgOnCallUidEditRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/discovery/$jobUid/': typeof OrgsOrgDiscoveryJobUidIndexRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute
-  '/orgs/$org/on-call/$slug/': typeof OrgsOrgOnCallSlugIndexRoute
+  '/orgs/$org/on-call/$uid/': typeof OrgsOrgOnCallUidIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
@@ -767,6 +788,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/mcp': typeof McpRoute
   '/no-org': typeof NoOrgRoute
   '/confirm-registration/$token': typeof ConfirmRegistrationTokenRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -776,9 +798,11 @@ export interface FileRoutesByTo {
   '/orgs/$org/design-reference': typeof OrgsOrgDesignReferenceRoute
   '/orgs/$org/events': typeof OrgsOrgEventsRoute
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
+  '/orgs/$org/mcp': typeof OrgsOrgMcpRoute
   '/orgs/$org/me': typeof OrgsOrgMeRouteWithChildren
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
   '/orgs/$org': typeof OrgsOrgIndexRoute
+  '/orgs/$org/account/mcp': typeof OrgsOrgAccountMcpRoute
   '/orgs/$org/account/notifications': typeof OrgsOrgAccountNotificationsRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
@@ -786,7 +810,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/discovery/new': typeof OrgsOrgDiscoveryNewRoute
-  '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
+  '/orgs/$org/escalation-policies/$uid': typeof OrgsOrgEscalationPoliciesUidRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
   '/orgs/$org/integrations/$integrationUid': typeof OrgsOrgIntegrationsIntegrationUidRoute
@@ -836,13 +860,13 @@ export interface FileRoutesByTo {
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
-  '/orgs/$org/on-call/$slug/edit': typeof OrgsOrgOnCallSlugEditRoute
+  '/orgs/$org/on-call/$uid/edit': typeof OrgsOrgOnCallUidEditRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/discovery/$jobUid': typeof OrgsOrgDiscoveryJobUidIndexRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute
-  '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugIndexRoute
+  '/orgs/$org/on-call/$uid': typeof OrgsOrgOnCallUidIndexRoute
   '/orgs/$org/status-pages/$statusPageUid': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
@@ -852,6 +876,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/mcp': typeof McpRoute
   '/no-org': typeof NoOrgRoute
   '/confirm-registration/$token': typeof ConfirmRegistrationTokenRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -870,6 +895,7 @@ export interface FileRoutesById {
   '/orgs/$org/jobs': typeof OrgsOrgJobsRouteWithChildren
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
   '/orgs/$org/maintenance-windows': typeof OrgsOrgMaintenanceWindowsRouteWithChildren
+  '/orgs/$org/mcp': typeof OrgsOrgMcpRoute
   '/orgs/$org/me': typeof OrgsOrgMeRouteWithChildren
   '/orgs/$org/on-call': typeof OrgsOrgOnCallRouteWithChildren
   '/orgs/$org/organization': typeof OrgsOrgOrganizationRouteWithChildren
@@ -879,6 +905,7 @@ export interface FileRoutesById {
   '/orgs/$org/status-updates': typeof OrgsOrgStatusUpdatesRouteWithChildren
   '/orgs/$org/test': typeof OrgsOrgTestRouteWithChildren
   '/orgs/$org/': typeof OrgsOrgIndexRoute
+  '/orgs/$org/account/mcp': typeof OrgsOrgAccountMcpRoute
   '/orgs/$org/account/notifications': typeof OrgsOrgAccountNotificationsRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
@@ -888,7 +915,7 @@ export interface FileRoutesById {
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/discovery/$jobUid': typeof OrgsOrgDiscoveryJobUidRouteWithChildren
   '/orgs/$org/discovery/new': typeof OrgsOrgDiscoveryNewRoute
-  '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
+  '/orgs/$org/escalation-policies/$uid': typeof OrgsOrgEscalationPoliciesUidRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
   '/orgs/$org/integrations/$integrationUid': typeof OrgsOrgIntegrationsIntegrationUidRoute
@@ -899,7 +926,7 @@ export interface FileRoutesById {
   '/orgs/$org/me/notifications': typeof OrgsOrgMeNotificationsRoute
   '/orgs/$org/notifications/$notificationUid': typeof OrgsOrgNotificationsNotificationUidRoute
   '/orgs/$org/oauth/consent': typeof OrgsOrgOauthConsentRoute
-  '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRouteWithChildren
+  '/orgs/$org/on-call/$uid': typeof OrgsOrgOnCallUidRouteWithChildren
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/ai': typeof OrgsOrgOrganizationAiRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
@@ -941,13 +968,13 @@ export interface FileRoutesById {
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
-  '/orgs/$org/on-call/$slug/edit': typeof OrgsOrgOnCallSlugEditRoute
+  '/orgs/$org/on-call/$uid/edit': typeof OrgsOrgOnCallUidEditRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/discovery/$jobUid/': typeof OrgsOrgDiscoveryJobUidIndexRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute
-  '/orgs/$org/on-call/$slug/': typeof OrgsOrgOnCallSlugIndexRoute
+  '/orgs/$org/on-call/$uid/': typeof OrgsOrgOnCallUidIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
@@ -958,6 +985,7 @@ export interface FileRouteTypes {
     | '/'
     | '/forgot-password'
     | '/login'
+    | '/mcp'
     | '/no-org'
     | '/confirm-registration/$token'
     | '/invite/$token'
@@ -976,6 +1004,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/jobs'
     | '/orgs/$org/login'
     | '/orgs/$org/maintenance-windows'
+    | '/orgs/$org/mcp'
     | '/orgs/$org/me'
     | '/orgs/$org/on-call'
     | '/orgs/$org/organization'
@@ -985,6 +1014,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-updates'
     | '/orgs/$org/test'
     | '/orgs/$org/'
+    | '/orgs/$org/account/mcp'
     | '/orgs/$org/account/notifications'
     | '/orgs/$org/account/profile'
     | '/orgs/$org/account/security'
@@ -994,7 +1024,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/new'
     | '/orgs/$org/discovery/$jobUid'
     | '/orgs/$org/discovery/new'
-    | '/orgs/$org/escalation-policies/$slug'
+    | '/orgs/$org/escalation-policies/$uid'
     | '/orgs/$org/escalation-policies/new'
     | '/orgs/$org/incidents/$incidentUid'
     | '/orgs/$org/integrations/$integrationUid'
@@ -1005,7 +1035,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/me/notifications'
     | '/orgs/$org/notifications/$notificationUid'
     | '/orgs/$org/oauth/consent'
-    | '/orgs/$org/on-call/$slug'
+    | '/orgs/$org/on-call/$uid'
     | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/ai'
     | '/orgs/$org/organization/invitations'
@@ -1047,13 +1077,13 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid/edit'
     | '/orgs/$org/jobs/check/$checkJobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
-    | '/orgs/$org/on-call/$slug/edit'
+    | '/orgs/$org/on-call/$uid/edit'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
     | '/orgs/$org/checks/$checkUid/'
     | '/orgs/$org/discovery/$jobUid/'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/'
-    | '/orgs/$org/on-call/$slug/'
+    | '/orgs/$org/on-call/$uid/'
     | '/orgs/$org/status-pages/$statusPageUid/'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
@@ -1062,6 +1092,7 @@ export interface FileRouteTypes {
     | '/'
     | '/forgot-password'
     | '/login'
+    | '/mcp'
     | '/no-org'
     | '/confirm-registration/$token'
     | '/invite/$token'
@@ -1071,9 +1102,11 @@ export interface FileRouteTypes {
     | '/orgs/$org/design-reference'
     | '/orgs/$org/events'
     | '/orgs/$org/login'
+    | '/orgs/$org/mcp'
     | '/orgs/$org/me'
     | '/orgs/$org/register'
     | '/orgs/$org'
+    | '/orgs/$org/account/mcp'
     | '/orgs/$org/account/notifications'
     | '/orgs/$org/account/profile'
     | '/orgs/$org/account/security'
@@ -1081,7 +1114,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/tokens'
     | '/orgs/$org/checks/new'
     | '/orgs/$org/discovery/new'
-    | '/orgs/$org/escalation-policies/$slug'
+    | '/orgs/$org/escalation-policies/$uid'
     | '/orgs/$org/escalation-policies/new'
     | '/orgs/$org/incidents/$incidentUid'
     | '/orgs/$org/integrations/$integrationUid'
@@ -1131,13 +1164,13 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid/edit'
     | '/orgs/$org/jobs/check/$checkJobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
-    | '/orgs/$org/on-call/$slug/edit'
+    | '/orgs/$org/on-call/$uid/edit'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
     | '/orgs/$org/checks/$checkUid'
     | '/orgs/$org/discovery/$jobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid'
-    | '/orgs/$org/on-call/$slug'
+    | '/orgs/$org/on-call/$uid'
     | '/orgs/$org/status-pages/$statusPageUid'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
@@ -1146,6 +1179,7 @@ export interface FileRouteTypes {
     | '/'
     | '/forgot-password'
     | '/login'
+    | '/mcp'
     | '/no-org'
     | '/confirm-registration/$token'
     | '/invite/$token'
@@ -1164,6 +1198,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/jobs'
     | '/orgs/$org/login'
     | '/orgs/$org/maintenance-windows'
+    | '/orgs/$org/mcp'
     | '/orgs/$org/me'
     | '/orgs/$org/on-call'
     | '/orgs/$org/organization'
@@ -1173,6 +1208,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-updates'
     | '/orgs/$org/test'
     | '/orgs/$org/'
+    | '/orgs/$org/account/mcp'
     | '/orgs/$org/account/notifications'
     | '/orgs/$org/account/profile'
     | '/orgs/$org/account/security'
@@ -1182,7 +1218,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/new'
     | '/orgs/$org/discovery/$jobUid'
     | '/orgs/$org/discovery/new'
-    | '/orgs/$org/escalation-policies/$slug'
+    | '/orgs/$org/escalation-policies/$uid'
     | '/orgs/$org/escalation-policies/new'
     | '/orgs/$org/incidents/$incidentUid'
     | '/orgs/$org/integrations/$integrationUid'
@@ -1193,7 +1229,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/me/notifications'
     | '/orgs/$org/notifications/$notificationUid'
     | '/orgs/$org/oauth/consent'
-    | '/orgs/$org/on-call/$slug'
+    | '/orgs/$org/on-call/$uid'
     | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/ai'
     | '/orgs/$org/organization/invitations'
@@ -1235,13 +1271,13 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid/edit'
     | '/orgs/$org/jobs/check/$checkJobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
-    | '/orgs/$org/on-call/$slug/edit'
+    | '/orgs/$org/on-call/$uid/edit'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
     | '/orgs/$org/checks/$checkUid/'
     | '/orgs/$org/discovery/$jobUid/'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/'
-    | '/orgs/$org/on-call/$slug/'
+    | '/orgs/$org/on-call/$uid/'
     | '/orgs/$org/status-pages/$statusPageUid/'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid'
@@ -1251,6 +1287,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
+  McpRoute: typeof McpRoute
   NoOrgRoute: typeof NoOrgRoute
   ConfirmRegistrationTokenRoute: typeof ConfirmRegistrationTokenRoute
   InviteTokenRoute: typeof InviteTokenRoute
@@ -1266,6 +1303,13 @@ declare module '@tanstack/react-router' {
       path: '/no-org'
       fullPath: '/no-org'
       preLoaderRoute: typeof NoOrgRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mcp': {
+      id: '/mcp'
+      path: '/mcp'
+      fullPath: '/mcp'
+      preLoaderRoute: typeof McpRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -1378,6 +1422,13 @@ declare module '@tanstack/react-router' {
       path: '/me'
       fullPath: '/orgs/$org/me'
       preLoaderRoute: typeof OrgsOrgMeRouteImport
+      parentRoute: typeof OrgsOrgRoute
+    }
+    '/orgs/$org/mcp': {
+      id: '/orgs/$org/mcp'
+      path: '/mcp'
+      fullPath: '/orgs/$org/mcp'
+      preLoaderRoute: typeof OrgsOrgMcpRouteImport
       parentRoute: typeof OrgsOrgRoute
     }
     '/orgs/$org/maintenance-windows': {
@@ -1737,11 +1788,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgOnCallNewRouteImport
       parentRoute: typeof OrgsOrgOnCallRoute
     }
-    '/orgs/$org/on-call/$slug': {
-      id: '/orgs/$org/on-call/$slug'
-      path: '/$slug'
-      fullPath: '/orgs/$org/on-call/$slug'
-      preLoaderRoute: typeof OrgsOrgOnCallSlugRouteImport
+    '/orgs/$org/on-call/$uid': {
+      id: '/orgs/$org/on-call/$uid'
+      path: '/$uid'
+      fullPath: '/orgs/$org/on-call/$uid'
+      preLoaderRoute: typeof OrgsOrgOnCallUidRouteImport
       parentRoute: typeof OrgsOrgOnCallRoute
     }
     '/orgs/$org/oauth/consent': {
@@ -1814,11 +1865,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgEscalationPoliciesNewRouteImport
       parentRoute: typeof OrgsOrgEscalationPoliciesRoute
     }
-    '/orgs/$org/escalation-policies/$slug': {
-      id: '/orgs/$org/escalation-policies/$slug'
-      path: '/$slug'
-      fullPath: '/orgs/$org/escalation-policies/$slug'
-      preLoaderRoute: typeof OrgsOrgEscalationPoliciesSlugRouteImport
+    '/orgs/$org/escalation-policies/$uid': {
+      id: '/orgs/$org/escalation-policies/$uid'
+      path: '/$uid'
+      fullPath: '/orgs/$org/escalation-policies/$uid'
+      preLoaderRoute: typeof OrgsOrgEscalationPoliciesUidRouteImport
       parentRoute: typeof OrgsOrgEscalationPoliciesRoute
     }
     '/orgs/$org/discovery/new': {
@@ -1884,6 +1935,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgAccountNotificationsRouteImport
       parentRoute: typeof OrgsOrgAccountRoute
     }
+    '/orgs/$org/account/mcp': {
+      id: '/orgs/$org/account/mcp'
+      path: '/mcp'
+      fullPath: '/orgs/$org/account/mcp'
+      preLoaderRoute: typeof OrgsOrgAccountMcpRouteImport
+      parentRoute: typeof OrgsOrgAccountRoute
+    }
     '/orgs/$org/status-pages/$statusPageUid/': {
       id: '/orgs/$org/status-pages/$statusPageUid/'
       path: '/'
@@ -1891,12 +1949,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgStatusPagesStatusPageUidIndexRouteImport
       parentRoute: typeof OrgsOrgStatusPagesStatusPageUidRoute
     }
-    '/orgs/$org/on-call/$slug/': {
-      id: '/orgs/$org/on-call/$slug/'
+    '/orgs/$org/on-call/$uid/': {
+      id: '/orgs/$org/on-call/$uid/'
       path: '/'
-      fullPath: '/orgs/$org/on-call/$slug/'
-      preLoaderRoute: typeof OrgsOrgOnCallSlugIndexRouteImport
-      parentRoute: typeof OrgsOrgOnCallSlugRoute
+      fullPath: '/orgs/$org/on-call/$uid/'
+      preLoaderRoute: typeof OrgsOrgOnCallUidIndexRouteImport
+      parentRoute: typeof OrgsOrgOnCallUidRoute
     }
     '/orgs/$org/maintenance-windows/$maintenanceWindowUid/': {
       id: '/orgs/$org/maintenance-windows/$maintenanceWindowUid/'
@@ -1933,12 +1991,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgStatusPagesStatusPageUidEditRouteImport
       parentRoute: typeof OrgsOrgStatusPagesStatusPageUidRoute
     }
-    '/orgs/$org/on-call/$slug/edit': {
-      id: '/orgs/$org/on-call/$slug/edit'
+    '/orgs/$org/on-call/$uid/edit': {
+      id: '/orgs/$org/on-call/$uid/edit'
       path: '/edit'
-      fullPath: '/orgs/$org/on-call/$slug/edit'
-      preLoaderRoute: typeof OrgsOrgOnCallSlugEditRouteImport
-      parentRoute: typeof OrgsOrgOnCallSlugRoute
+      fullPath: '/orgs/$org/on-call/$uid/edit'
+      preLoaderRoute: typeof OrgsOrgOnCallUidEditRouteImport
+      parentRoute: typeof OrgsOrgOnCallUidRoute
     }
     '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': {
       id: '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
@@ -1979,6 +2037,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface OrgsOrgAccountRouteChildren {
+  OrgsOrgAccountMcpRoute: typeof OrgsOrgAccountMcpRoute
   OrgsOrgAccountNotificationsRoute: typeof OrgsOrgAccountNotificationsRoute
   OrgsOrgAccountProfileRoute: typeof OrgsOrgAccountProfileRoute
   OrgsOrgAccountSecurityRoute: typeof OrgsOrgAccountSecurityRoute
@@ -1988,6 +2047,7 @@ interface OrgsOrgAccountRouteChildren {
 }
 
 const OrgsOrgAccountRouteChildren: OrgsOrgAccountRouteChildren = {
+  OrgsOrgAccountMcpRoute: OrgsOrgAccountMcpRoute,
   OrgsOrgAccountNotificationsRoute: OrgsOrgAccountNotificationsRoute,
   OrgsOrgAccountProfileRoute: OrgsOrgAccountProfileRoute,
   OrgsOrgAccountSecurityRoute: OrgsOrgAccountSecurityRoute,
@@ -2064,14 +2124,14 @@ const OrgsOrgDiscoveryRouteWithChildren =
   OrgsOrgDiscoveryRoute._addFileChildren(OrgsOrgDiscoveryRouteChildren)
 
 interface OrgsOrgEscalationPoliciesRouteChildren {
-  OrgsOrgEscalationPoliciesSlugRoute: typeof OrgsOrgEscalationPoliciesSlugRoute
+  OrgsOrgEscalationPoliciesUidRoute: typeof OrgsOrgEscalationPoliciesUidRoute
   OrgsOrgEscalationPoliciesNewRoute: typeof OrgsOrgEscalationPoliciesNewRoute
   OrgsOrgEscalationPoliciesIndexRoute: typeof OrgsOrgEscalationPoliciesIndexRoute
 }
 
 const OrgsOrgEscalationPoliciesRouteChildren: OrgsOrgEscalationPoliciesRouteChildren =
   {
-    OrgsOrgEscalationPoliciesSlugRoute: OrgsOrgEscalationPoliciesSlugRoute,
+    OrgsOrgEscalationPoliciesUidRoute: OrgsOrgEscalationPoliciesUidRoute,
     OrgsOrgEscalationPoliciesNewRoute: OrgsOrgEscalationPoliciesNewRoute,
     OrgsOrgEscalationPoliciesIndexRoute: OrgsOrgEscalationPoliciesIndexRoute,
   }
@@ -2178,27 +2238,27 @@ const OrgsOrgMeRouteWithChildren = OrgsOrgMeRoute._addFileChildren(
   OrgsOrgMeRouteChildren,
 )
 
-interface OrgsOrgOnCallSlugRouteChildren {
-  OrgsOrgOnCallSlugEditRoute: typeof OrgsOrgOnCallSlugEditRoute
-  OrgsOrgOnCallSlugIndexRoute: typeof OrgsOrgOnCallSlugIndexRoute
+interface OrgsOrgOnCallUidRouteChildren {
+  OrgsOrgOnCallUidEditRoute: typeof OrgsOrgOnCallUidEditRoute
+  OrgsOrgOnCallUidIndexRoute: typeof OrgsOrgOnCallUidIndexRoute
 }
 
-const OrgsOrgOnCallSlugRouteChildren: OrgsOrgOnCallSlugRouteChildren = {
-  OrgsOrgOnCallSlugEditRoute: OrgsOrgOnCallSlugEditRoute,
-  OrgsOrgOnCallSlugIndexRoute: OrgsOrgOnCallSlugIndexRoute,
+const OrgsOrgOnCallUidRouteChildren: OrgsOrgOnCallUidRouteChildren = {
+  OrgsOrgOnCallUidEditRoute: OrgsOrgOnCallUidEditRoute,
+  OrgsOrgOnCallUidIndexRoute: OrgsOrgOnCallUidIndexRoute,
 }
 
-const OrgsOrgOnCallSlugRouteWithChildren =
-  OrgsOrgOnCallSlugRoute._addFileChildren(OrgsOrgOnCallSlugRouteChildren)
+const OrgsOrgOnCallUidRouteWithChildren =
+  OrgsOrgOnCallUidRoute._addFileChildren(OrgsOrgOnCallUidRouteChildren)
 
 interface OrgsOrgOnCallRouteChildren {
-  OrgsOrgOnCallSlugRoute: typeof OrgsOrgOnCallSlugRouteWithChildren
+  OrgsOrgOnCallUidRoute: typeof OrgsOrgOnCallUidRouteWithChildren
   OrgsOrgOnCallNewRoute: typeof OrgsOrgOnCallNewRoute
   OrgsOrgOnCallIndexRoute: typeof OrgsOrgOnCallIndexRoute
 }
 
 const OrgsOrgOnCallRouteChildren: OrgsOrgOnCallRouteChildren = {
-  OrgsOrgOnCallSlugRoute: OrgsOrgOnCallSlugRouteWithChildren,
+  OrgsOrgOnCallUidRoute: OrgsOrgOnCallUidRouteWithChildren,
   OrgsOrgOnCallNewRoute: OrgsOrgOnCallNewRoute,
   OrgsOrgOnCallIndexRoute: OrgsOrgOnCallIndexRoute,
 }
@@ -2356,6 +2416,7 @@ interface OrgsOrgRouteChildren {
   OrgsOrgJobsRoute: typeof OrgsOrgJobsRouteWithChildren
   OrgsOrgLoginRoute: typeof OrgsOrgLoginRoute
   OrgsOrgMaintenanceWindowsRoute: typeof OrgsOrgMaintenanceWindowsRouteWithChildren
+  OrgsOrgMcpRoute: typeof OrgsOrgMcpRoute
   OrgsOrgMeRoute: typeof OrgsOrgMeRouteWithChildren
   OrgsOrgOnCallRoute: typeof OrgsOrgOnCallRouteWithChildren
   OrgsOrgOrganizationRoute: typeof OrgsOrgOrganizationRouteWithChildren
@@ -2383,6 +2444,7 @@ const OrgsOrgRouteChildren: OrgsOrgRouteChildren = {
   OrgsOrgJobsRoute: OrgsOrgJobsRouteWithChildren,
   OrgsOrgLoginRoute: OrgsOrgLoginRoute,
   OrgsOrgMaintenanceWindowsRoute: OrgsOrgMaintenanceWindowsRouteWithChildren,
+  OrgsOrgMcpRoute: OrgsOrgMcpRoute,
   OrgsOrgMeRoute: OrgsOrgMeRouteWithChildren,
   OrgsOrgOnCallRoute: OrgsOrgOnCallRouteWithChildren,
   OrgsOrgOrganizationRoute: OrgsOrgOrganizationRouteWithChildren,
@@ -2405,6 +2467,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
+  McpRoute: McpRoute,
   NoOrgRoute: NoOrgRoute,
   ConfirmRegistrationTokenRoute: ConfirmRegistrationTokenRoute,
   InviteTokenRoute: InviteTokenRoute,

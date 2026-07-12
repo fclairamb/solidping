@@ -204,6 +204,50 @@ func TestTokenFileIO(t *testing.T) { //nolint:tparallel // Subtests share state 
 	})
 }
 
+// TestSavePATAndResolve covers the browser-login credential: SavePAT persists a
+// PAT as the sole credential, resolveToken returns it verbatim (ahead of any
+// JWT logic), and AuthMethod reports "pat".
+func TestSavePATAndResolve(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	tmpDir := t.TempDir()
+	tokenPath := filepath.Join(tmpDir, "token.json")
+	helper := NewHelper(&config.Config{URL: "http://localhost:4000", Org: "test"}, tokenPath, false)
+
+	const pat = "pat_deadbeefcafe"
+	r.NoError(helper.SavePAT(pat))
+
+	// The saved file carries only the PAT, no JWT.
+	saved, err := helper.readTokenFile()
+	r.NoError(err)
+	r.Equal(pat, saved.PAT)
+	r.Empty(saved.AccessToken)
+
+	// resolveToken returns the PAT verbatim; AuthMethod reports "pat".
+	resolved, err := helper.resolveToken(t.Context())
+	r.NoError(err)
+	r.Equal(pat, resolved)
+	r.Equal("pat", helper.AuthMethod(t.Context()))
+}
+
+// TestAuthMethodJWT: a stored JWT session reports "jwt".
+func TestAuthMethodJWT(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	tmpDir := t.TempDir()
+	tokenPath := filepath.Join(tmpDir, "token.json")
+	helper := NewHelper(&config.Config{URL: "http://localhost:4000", Org: "test"}, tokenPath, false)
+
+	r.NoError(helper.saveTokenFile(&TokenData{
+		AccessToken:          testJWTToken,
+		AccessTokenExpiresAt: time.Now().Add(time.Hour),
+	}))
+
+	r.Equal("jwt", helper.AuthMethod(t.Context()))
+}
+
 func TestCreateTokenData(t *testing.T) {
 	t.Parallel()
 

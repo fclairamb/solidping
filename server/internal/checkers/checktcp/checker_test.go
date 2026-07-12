@@ -338,7 +338,7 @@ func TestTCPChecker_Validate(t *testing.T) {
 				Timeout: -1 * time.Second,
 			},
 			wantErr: true,
-			errMsg:  "timeout: must be > 0 and <= 60s, got -1s",
+			errMsg:  "timeout: must be > 0 and <= 30s, got -1s",
 		},
 		{
 			name: "timeout too long",
@@ -348,7 +348,7 @@ func TestTCPChecker_Validate(t *testing.T) {
 				Timeout: 61 * time.Second,
 			},
 			wantErr: true,
-			errMsg:  "timeout: must be > 0 and <= 60s, got 1m1s",
+			errMsg:  "timeout: must be > 0 and <= 30s, got 1m1s",
 		},
 	}
 

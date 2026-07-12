@@ -176,30 +176,279 @@ func TestConcurrencyLimit_ExcludedPaths(t *testing.T) {
 	close(release)
 }
 
+// newBunRequestXFF builds a request from a fixed RemoteAddr carrying the
+// given X-Forwarded-For header, mimicking a client behind a reverse proxy.
+func newBunRequestXFF(xff string) bunrouter.Request {
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodGet, "/api/v1/orgs/default/checks", http.NoBody,
+	)
+	req.RemoteAddr = "192.168.1.1:12345"
+	req.Header.Set("X-Forwarded-For", xff)
+	return bunrouter.NewRequest(req)
+}
+
 func TestExtractIP_TrustedProxies(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	// With TrustedProxies=1 the middleware should read X-Forwarded-For.
+	// With TrustedProxies=1 the middleware must bucket by the XFF client, not
+	// by the shared RemoteAddr. Burst 2 with no slow lane so exhaustion is
+	// observable: if extraction were broken (everything collapsing into the
+	// RemoteAddr bucket), the second identity's requests would 429.
 	cfg := config.RateLimitConfig{
-		RequestsPerMinute: 5,
-		Burst:             5,
+		RequestsPerMinute: 2,
+		Burst:             2,
 		TrustedProxies:    1,
+		RateQueue:         0,
 	}
 	rl := middleware.NewRateLimiter(cfg, context.Background())
 	handler := rl.RateLimit(okHandler())
 
-	// Requests from different XFF IPs but same RemoteAddr should each have their own bucket.
-	for _, xff := range []string{"10.0.0.1", "10.0.0.2"} {
+	// Exhaust the first XFF identity's bucket.
+	for i := range 2 {
 		w := httptest.NewRecorder()
+		_ = handler(w, newBunRequestXFF("10.0.0.1"))
+		r.Equal(http.StatusOK, w.Code, "request %d from 10.0.0.1 should pass", i)
+	}
+	w := httptest.NewRecorder()
+	_ = handler(w, newBunRequestXFF("10.0.0.1"))
+	r.Equal(http.StatusTooManyRequests, w.Code, "10.0.0.1 must be exhausted")
+
+	// A different XFF identity from the same RemoteAddr has its own bucket.
+	w = httptest.NewRecorder()
+	_ = handler(w, newBunRequestXFF("10.0.0.2"))
+	r.Equal(http.StatusOK, w.Code, "10.0.0.2 must have its own fresh bucket")
+
+	// A spoofed-looking two-entry header behind one trusted hop buckets by
+	// the last (proxy-appended) entry: 10.0.0.1 is still exhausted even when
+	// the client prepends a decoy.
+	w = httptest.NewRecorder()
+	_ = handler(w, newBunRequestXFF("6.6.6.6, 10.0.0.1"))
+	r.Equal(http.StatusTooManyRequests, w.Code,
+		"a prepended decoy entry must not grant 10.0.0.1 a fresh bucket")
+}
+
+// newBunRequestToken builds a request from ip carrying a bearer token (empty
+// token = anonymous).
+func newBunRequestToken(ip, token string) bunrouter.Request {
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodGet, "/api/v1/orgs/default/checks", http.NoBody,
+	)
+	req.RemoteAddr = ip + ":12345"
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	return bunrouter.NewRequest(req)
+}
+
+func TestRateLimit_TokenBuckets_IndependentPerToken(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := config.RateLimitConfig{
+		RequestsPerMinute: 2,
+		Burst:             2,
+		RateQueue:         0,
+		TokenBucketsPerIP: 50,
+	}
+	rl := middleware.NewRateLimiter(cfg, context.Background())
+	handler := rl.RateLimit(okHandler())
+
+	// Exhaust token A's bucket from one IP.
+	for i := range 2 {
+		w := httptest.NewRecorder()
+		_ = handler(w, newBunRequestToken("9.9.9.9", "token-A"))
+		r.Equal(http.StatusOK, w.Code, "token A request %d should pass", i)
+	}
+	w := httptest.NewRecorder()
+	_ = handler(w, newBunRequestToken("9.9.9.9", "token-A"))
+	r.Equal(http.StatusTooManyRequests, w.Code, "token A must be exhausted")
+
+	// A different token from the same IP has its own bucket.
+	w = httptest.NewRecorder()
+	_ = handler(w, newBunRequestToken("9.9.9.9", "token-B"))
+	r.Equal(http.StatusOK, w.Code, "token B must have its own fresh bucket")
+
+	// Anonymous traffic from the same IP keeps its own (IP) bucket too.
+	w = httptest.NewRecorder()
+	_ = handler(w, newBunRequestToken("9.9.9.9", ""))
+	r.Equal(http.StatusOK, w.Code, "anonymous traffic must not share token A's bucket")
+}
+
+func TestRateLimit_TokenBuckets_SameTokenSharedAcrossIPs(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := config.RateLimitConfig{
+		RequestsPerMinute: 2,
+		Burst:             2,
+		RateQueue:         0,
+		TokenBucketsPerIP: 50,
+	}
+	rl := middleware.NewRateLimiter(cfg, context.Background())
+	handler := rl.RateLimit(okHandler())
+
+	// Exhaust the token's bucket from the first IP.
+	for range 2 {
+		w := httptest.NewRecorder()
+		_ = handler(w, newBunRequestToken("11.0.0.1", "roaming-token"))
+		r.Equal(http.StatusOK, w.Code)
+	}
+
+	// The same token from another IP shares the same (token) bucket.
+	w := httptest.NewRecorder()
+	_ = handler(w, newBunRequestToken("11.0.0.2", "roaming-token"))
+	r.Equal(http.StatusTooManyRequests, w.Code,
+		"the same token from a different IP must share one bucket")
+}
+
+func TestRateLimit_TokenBuckets_CapFallsBackToIPBucket(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := config.RateLimitConfig{
+		RequestsPerMinute: 2,
+		Burst:             2,
+		RateQueue:         0,
+		TokenBucketsPerIP: 1,
+	}
+	rl := middleware.NewRateLimiter(cfg, context.Background())
+	handler := rl.RateLimit(okHandler())
+
+	// Token A claims the IP's single token-bucket slot.
+	w := httptest.NewRecorder()
+	_ = handler(w, newBunRequestToken("12.0.0.1", "token-A"))
+	r.Equal(http.StatusOK, w.Code)
+
+	// Token B is over the cap — it rides the shared IP bucket instead of
+	// minting a fresh one (2 pass, 3rd rejected).
+	for i := range 2 {
+		w = httptest.NewRecorder()
+		_ = handler(w, newBunRequestToken("12.0.0.1", "token-B"))
+		r.Equal(http.StatusOK, w.Code, "over-cap token request %d rides the IP bucket", i)
+	}
+	w = httptest.NewRecorder()
+	_ = handler(w, newBunRequestToken("12.0.0.1", "token-B"))
+	r.Equal(http.StatusTooManyRequests, w.Code, "over-cap token must exhaust with the IP bucket")
+
+	// Anonymous traffic shares that now-exhausted IP bucket.
+	w = httptest.NewRecorder()
+	_ = handler(w, newBunRequestToken("12.0.0.1", ""))
+	r.Equal(http.StatusTooManyRequests, w.Code, "anonymous traffic shares the exhausted IP bucket")
+
+	// Token A's own bucket is unaffected by the IP bucket exhaustion.
+	w = httptest.NewRecorder()
+	_ = handler(w, newBunRequestToken("12.0.0.1", "token-A"))
+	r.Equal(http.StatusOK, w.Code, "token A keeps its own bucket")
+}
+
+func TestRateLimit_TokenBucketsDisabled_KeysByIP(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := config.RateLimitConfig{
+		RequestsPerMinute: 2,
+		Burst:             2,
+		RateQueue:         0,
+		TokenBucketsPerIP: 0, // token keying off: legacy pure per-IP behavior
+	}
+	rl := middleware.NewRateLimiter(cfg, context.Background())
+	handler := rl.RateLimit(okHandler())
+
+	for range 2 {
+		w := httptest.NewRecorder()
+		_ = handler(w, newBunRequestToken("13.0.0.1", "token-A"))
+		r.Equal(http.StatusOK, w.Code)
+	}
+	// A different token from the same IP shares the IP bucket when disabled.
+	w := httptest.NewRecorder()
+	_ = handler(w, newBunRequestToken("13.0.0.1", "token-B"))
+	r.Equal(http.StatusTooManyRequests, w.Code,
+		"with token keying disabled, all tokens share the IP bucket")
+}
+
+func TestRateLimit_TokenBuckets_CookieTokenAlsoKeys(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := config.RateLimitConfig{
+		RequestsPerMinute: 2,
+		Burst:             2,
+		RateQueue:         0,
+		TokenBucketsPerIP: 50,
+	}
+	rl := middleware.NewRateLimiter(cfg, context.Background())
+	handler := rl.RateLimit(okHandler())
+
+	cookieReq := func() bunrouter.Request {
 		req := httptest.NewRequestWithContext(
 			context.Background(), http.MethodGet, "/api/v1/orgs/default/checks", http.NoBody,
 		)
-		req.RemoteAddr = "192.168.1.1:12345"
-		req.Header.Set("X-Forwarded-For", xff)
-		_ = handler(w, bunrouter.NewRequest(req))
-		r.Equal(http.StatusOK, w.Code, "request from %s should pass", xff)
+		req.RemoteAddr = "14.0.0.1:12345"
+		req.AddCookie(&http.Cookie{Name: middleware.CookieAuthToken, Value: "cookie-token"})
+		return bunrouter.NewRequest(req)
 	}
+
+	// Exhaust the cookie identity's bucket.
+	for range 2 {
+		w := httptest.NewRecorder()
+		_ = handler(w, cookieReq())
+		r.Equal(http.StatusOK, w.Code)
+	}
+	w := httptest.NewRecorder()
+	_ = handler(w, cookieReq())
+	r.Equal(http.StatusTooManyRequests, w.Code, "cookie token bucket must be exhausted")
+
+	// Anonymous traffic from the same IP is unaffected.
+	w = httptest.NewRecorder()
+	_ = handler(w, newBunRequestToken("14.0.0.1", ""))
+	r.Equal(http.StatusOK, w.Code, "anonymous traffic keeps its own IP bucket")
+}
+
+func TestConcurrencyLimit_TokenBuckets_IndependentPerToken(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := config.RateLimitConfig{
+		RequestsPerMinute: 0,
+		MaxConcurrent:     1,
+		TokenBucketsPerIP: 50,
+	}
+	rl := middleware.NewRateLimiter(cfg, context.Background())
+
+	inside := make(chan struct{}, 1)
+	release := make(chan struct{})
+	blockingHandler := func(w http.ResponseWriter, _ bunrouter.Request) error {
+		inside <- struct{}{}
+		<-release
+		w.WriteHeader(http.StatusOK)
+		return nil
+	}
+	handler := rl.ConcurrencyLimit(blockingHandler)
+	fastHandler := rl.ConcurrencyLimit(okHandler())
+
+	// Token A occupies its single concurrency slot.
+	var holder sync.WaitGroup
+	holder.Add(1)
+	go func() {
+		defer holder.Done()
+		w := httptest.NewRecorder()
+		_ = handler(w, newBunRequestToken("15.0.0.1", "token-A"))
+	}()
+	<-inside
+
+	// Another token-A request is rejected (slot busy, no queue).
+	w := httptest.NewRecorder()
+	_ = fastHandler(w, newBunRequestToken("15.0.0.1", "token-A"))
+	r.Equal(http.StatusTooManyRequests, w.Code, "token A's slot is busy")
+
+	// Token B from the same IP has its own slot.
+	w = httptest.NewRecorder()
+	_ = fastHandler(w, newBunRequestToken("15.0.0.1", "token-B"))
+	r.Equal(http.StatusOK, w.Code, "token B must have its own concurrency slot")
+
+	close(release)
+	holder.Wait()
 }
 
 func TestRateLimit_Disabled(t *testing.T) {

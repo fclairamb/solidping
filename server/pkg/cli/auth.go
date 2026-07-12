@@ -17,32 +17,48 @@ import (
 	"github.com/fclairamb/solidping/server/pkg/client"
 )
 
-// authLoginAction handles the login command.
+// authLoginAction handles the login command. Browser OAuth login is the default;
+// --email/--password and --token are explicit non-interactive fallbacks.
 func authLoginAction(ctx context.Context, cmd *cli.Command) error {
 	cliCtx, err := NewCLIContext(cmd)
 	if err != nil {
 		return err
 	}
 
-	// Get email and password from flags or prompt
 	email := cmd.String("email")
 	password := cmd.String("password")
+	token := strings.TrimSpace(cmd.String("token"))
+
+	switch {
+	case token != "":
+		// Headless: the human pasted a PAT created on the dashboard.
+		return authLoginWithToken(ctx, cliCtx, token)
+	case email != "" || password != "":
+		// Non-interactive credentials (scripts, self-hosted without SSO).
+		return authLoginWithPassword(ctx, cliCtx, email, password)
+	default:
+		// Default: open a browser, approve, end up holding only a named PAT.
+		return authLoginWithBrowser(ctx, cliCtx)
+	}
+}
+
+// authLoginWithPassword performs the classic email/password login, prompting for
+// whatever flag was omitted.
+func authLoginWithPassword(ctx context.Context, cliCtx *Context, email, password string) error {
+	var err error
 
 	if email == "" {
-		email, err = promptForInput("Email: ")
-		if err != nil {
+		if email, err = promptForInput("Email: "); err != nil {
 			return err
 		}
 	}
 
 	if password == "" {
-		password, err = readPassword("Password: ")
-		if err != nil {
+		if password, err = readPassword("Password: "); err != nil {
 			return err
 		}
 	}
 
-	// Perform login
 	_, user, err := cliCtx.APIHelper.Login(ctx, cliCtx.GetOrg(), email, password)
 	if err != nil {
 		if !cliCtx.IsText() {
@@ -52,22 +68,23 @@ func authLoginAction(ctx context.Context, cmd *cli.Command) error {
 		return cli.Exit("", 3) // Authentication error
 	}
 
-	// Output success
-	if !cliCtx.IsText() { //nolint:nestif // JSON vs text output handling
-		tokenPath, _ := config.TokenPath()
-		userMap := map[string]interface{}{}
-		if user != nil {
-			if user.Uid != nil {
-				userMap["uid"] = user.Uid.String()
-			}
-			if user.Email != nil {
-				userMap["email"] = *user.Email
-			}
+	userMap := map[string]interface{}{}
+	if user != nil {
+		if user.Uid != nil {
+			userMap["uid"] = user.Uid.String()
 		}
+		if user.Email != nil {
+			userMap["email"] = *user.Email
+		}
+	}
+
+	if !cliCtx.IsText() {
+		tokenPath, _ := config.TokenPath()
 		return cliCtx.Outputter.Print(map[string]interface{}{
-			keySuccess:   true,
-			"user":       userMap,
-			"token_path": tokenPath,
+			keySuccess:    true,
+			keyUser:       userMap,
+			keyAuthMethod: authMethodJWT,
+			"token_path":  tokenPath,
 		})
 	}
 
@@ -79,6 +96,123 @@ func authLoginAction(ctx context.Context, cmd *cli.Command) error {
 	output.PrintMessage(os.Stdout, "Token saved to: "+tokenPath)
 
 	return nil
+}
+
+// authLoginWithToken saves a pasted PAT and confirms it works by calling
+// /auth/me. This is the headless path where the browser runs on another machine.
+func authLoginWithToken(ctx context.Context, cliCtx *Context, token string) error {
+	if err := cliCtx.APIHelper.SavePAT(token); err != nil {
+		return cliCtx.HandleError("Failed to save token", err)
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	resp, err := apiClient.Me(ctx)
+	if err != nil {
+		return cliCtx.HandleError("Token saved but verification failed", err)
+	}
+
+	return printLoginResult(cliCtx, loginSummary{
+		org:       orgSlugFromMe(resp),
+		userEmail: userEmailFromMe(resp),
+		userUID:   userUIDFromMe(resp),
+	})
+}
+
+// authLoginWithBrowser runs the loopback browser OAuth flow and reports success.
+func authLoginWithBrowser(ctx context.Context, cliCtx *Context) error {
+	result, err := authBrowserLogin(ctx, cliCtx)
+	if err != nil {
+		if !cliCtx.IsText() {
+			return cliCtx.Outputter.PrintError(fmt.Errorf("login failed: %w", err))
+		}
+		output.PrintError(os.Stdout, fmt.Sprintf("Login failed: %v", err))
+		return cli.Exit("", 3) // Authentication error
+	}
+
+	return printLoginResult(cliCtx, loginSummary{
+		org:       result.Org,
+		userEmail: result.UserEmail,
+		userUID:   result.UserUID,
+		tokenName: result.TokenName,
+	})
+}
+
+// loginSummary is the small set of fields the PAT-based login paths report.
+type loginSummary struct {
+	org       string
+	userEmail string
+	userUID   string
+	tokenName string
+}
+
+// printLoginResult renders a successful PAT login in the active output format.
+func printLoginResult(cliCtx *Context, summary loginSummary) error {
+	tokenPath, _ := config.TokenPath()
+
+	if !cliCtx.IsText() {
+		userMap := map[string]interface{}{}
+		if summary.userUID != "" {
+			userMap["uid"] = summary.userUID
+		}
+		if summary.userEmail != "" {
+			userMap["email"] = summary.userEmail
+		}
+		out := map[string]interface{}{
+			keySuccess:      true,
+			keyUser:         userMap,
+			keyOrganization: map[string]interface{}{keySlug: summary.org},
+			keyAuthMethod:   authMethodPAT,
+			"token_path":    tokenPath,
+		}
+		if summary.tokenName != "" {
+			out["token_name"] = summary.tokenName
+		}
+		return cliCtx.Outputter.Print(out)
+	}
+
+	output.PrintSuccess(os.Stdout, "Login successful!")
+	if summary.userEmail != "" && summary.userUID != "" {
+		output.PrintMessage(os.Stdout, fmt.Sprintf("Logged in as: %s (%s)", summary.userEmail, summary.userUID))
+	}
+	if summary.org != "" {
+		output.PrintMessage(os.Stdout, "Organization: "+summary.org)
+	}
+	if summary.tokenName != "" {
+		output.PrintMessage(os.Stdout, "Token name:   "+summary.tokenName)
+	}
+	output.PrintMessage(os.Stdout, "Token saved to: "+tokenPath)
+
+	return nil
+}
+
+// orgSlugFromMe / userEmailFromMe / userUIDFromMe safely read display fields off
+// a /auth/me response.
+func orgSlugFromMe(resp *client.MeResponse) string {
+	if resp != nil && resp.Organization != nil && resp.Organization.Slug != nil {
+		return *resp.Organization.Slug
+	}
+
+	return ""
+}
+
+func userEmailFromMe(resp *client.MeResponse) string {
+	if resp != nil && resp.User != nil && resp.User.Email != nil {
+		return string(*resp.User.Email)
+	}
+
+	return ""
+}
+
+func userUIDFromMe(resp *client.MeResponse) string {
+	if resp != nil && resp.User != nil && resp.User.Uid != nil {
+		return resp.User.Uid.String()
+	}
+
+	return ""
 }
 
 // authLogoutAction handles the logout command.
@@ -152,14 +286,14 @@ func authMeAction(ctx context.Context, cmd *cli.Command) error {
 				orgMap["uid"] = resp.Organization.Uid.String()
 			}
 			if resp.Organization.Slug != nil {
-				orgMap["slug"] = *resp.Organization.Slug
+				orgMap[keySlug] = *resp.Organization.Slug
 			}
 		}
 		return cliCtx.Outputter.Print(map[string]interface{}{
-			"user":         userMap,
-			"organization": orgMap,
-			"auth_method":  "jwt",
-			"token_source": tokenPath,
+			keyUser:         userMap,
+			keyOrganization: orgMap,
+			keyAuthMethod:   cliCtx.APIHelper.AuthMethod(ctx),
+			"token_source":  tokenPath,
 		})
 	}
 
@@ -184,11 +318,20 @@ func authMeAction(ctx context.Context, cmd *cli.Command) error {
 		output.PrintMessage(os.Stdout, fmt.Sprintf("Organization:  %s (UID: %s)", orgSlug, orgUID))
 	}
 	output.PrintMessage(os.Stdout, "")
-	output.PrintMessage(os.Stdout, "Authentication method: JWT token")
+	output.PrintMessage(os.Stdout, "Authentication method: "+authMethodLabel(cliCtx.APIHelper.AuthMethod(ctx)))
 	tokenPath, _ := config.TokenPath()
 	output.PrintMessage(os.Stdout, "Token location: "+tokenPath)
 
 	return nil
+}
+
+// authMethodLabel renders the human-readable label for an auth method.
+func authMethodLabel(method string) string {
+	if method == authMethodPAT {
+		return "Personal Access Token (PAT)"
+	}
+
+	return "JWT token"
 }
 
 // authSwitchOrgAction handles the switch-org command.

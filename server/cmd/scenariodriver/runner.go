@@ -357,9 +357,9 @@ func (r *scenarioRunner) stepCreateEscalationPolicy(ctx context.Context, step St
 		name += " " + step.ID
 	}
 
-	slug := step.Slug
-	if slug == "" {
-		slug = step.ID
+	label := step.Slug
+	if label == "" {
+		label = step.ID
 	}
 
 	// Resolve channel IDs in targets to actual UIDs.
@@ -389,20 +389,20 @@ func (r *scenarioRunner) stepCreateEscalationPolicy(ctx context.Context, step St
 		})
 	}
 
-	res, err := CreateEscalationPolicy(ctx, r.client, r.cfg.Org, slug, apiSteps,
+	res, err := CreateEscalationPolicy(ctx, r.client, r.cfg.Org, label, apiSteps,
 		step.RepeatMax, step.RepeatAfterSeconds)
 	if err != nil {
 		return name, err
 	}
 
 	if step.ID != "" {
-		r.ids[step.ID] = resolvedID{uid: res.UID, slug: res.Slug}
+		r.ids[step.ID] = resolvedID{uid: res.UID}
 	}
 
-	// Push cleanup: delete by slug.
-	policySlug := res.Slug
-	r.pushCleanup("delete policy "+policySlug, func(ctx context.Context) error {
-		return DeletePolicy(ctx, r.client, r.cfg.Org, policySlug)
+	// Push cleanup: delete by UID.
+	policyUID := res.UID
+	r.pushCleanup("delete policy "+policyUID, func(ctx context.Context) error {
+		return DeletePolicy(ctx, r.client, r.cfg.Org, policyUID)
 	})
 
 	return name, nil

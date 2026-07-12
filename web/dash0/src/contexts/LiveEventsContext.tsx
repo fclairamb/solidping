@@ -9,6 +9,14 @@
 // Disconnected or disabled (feature off / forbidden), everything behaves
 // exactly like today's plain polling — graceful degradation is the fallback
 // path, not an error path.
+//
+// Hint-driven invalidations are damped per scope (see
+// LIVE_INVALIDATE_MIN_INTERVAL_MS): a busy org emits a `checks` hint every
+// server flush (~1 s), and invalidating on each one turned every open
+// dashboard tab into several heavy refetches per second — enough to drain
+// the API rate-limit bucket. The damper is trailing-edge, so the last hint
+// of a burst always lands; one-shot catch-ups (subscribed ack, resync) stay
+// immediate.
 
 import {
   createContext,
@@ -27,6 +35,14 @@ import {
 
 /** Lazy safety-net poll interval used while a scope is live. */
 export const LIVE_LAZY_POLL_MS = 5 * 60_000;
+
+/**
+ * Minimum interval between hint-driven cache invalidations for one scope.
+ * Hints arriving inside the cooldown are coalesced into exactly one
+ * trailing-edge invalidation at cooldown expiry (kinds merged), so the final
+ * hint of a burst is never dropped — only rate-limited.
+ */
+export const LIVE_INVALIDATE_MIN_INTERVAL_MS = 3_000;
 
 /**
  * Returns the effective refetch interval for a polling hook: stretched to
@@ -48,6 +64,18 @@ interface QueryRoot {
  * incidents list, events list, jobs stats, …). No uid involved. */
 function orgRoot(root: string): QueryRoot {
   return { root, matches: (key, org) => key[0] === root && key[1] === org };
+}
+
+/** key[1] === "infinite" && key[2] === org — a paginated org-collection
+ * query (useInfiniteChecks), whose org sits one segment deeper than the flat
+ * orgRoot shape. Without this, the checks *list page* (which fetches
+ * exclusively through the infinite key) would subscribe fine but never be
+ * invalidated by hints. */
+function infiniteOrgRoot(root: string): QueryRoot {
+  return {
+    root,
+    matches: (key, org) => key[0] === root && key[1] === "infinite" && key[2] === org,
+  };
 }
 
 /** key[1] === org && key[2] === uid — a per-check detail query (useCheck,
@@ -80,7 +108,7 @@ function resultsRoot(root: string): QueryRoot {
  * entities ignore it. */
 const DEFAULT_QUERY_ROOTS: Record<LiveEntity, Partial<Record<string, QueryRoot[]>>> = {
   checks: {
-    checks: [orgRoot("checks")],
+    checks: [orgRoot("checks"), infiniteOrgRoot("checks")],
     // A plain result write (no status transition) publishes kind "results"
     // only — never "checks" (see realtime.KindChecks: published separately,
     // only on an actual status transition). The checks list embeds
@@ -89,6 +117,7 @@ const DEFAULT_QUERY_ROOTS: Record<LiveEntity, Partial<Record<string, QueryRoot[]
     // up to the lazy poll interval on every steady-state (no-transition) run.
     results: [
       orgRoot("checks"),
+      infiniteOrgRoot("checks"),
       resultsRoot("results"),
       resultsRoot("allResults"),
       orgRoot("checkAvailability"),
@@ -177,6 +206,15 @@ interface ScopeEntry {
   listeners: Set<() => void>;
 }
 
+/** Per-scope damping state for hint-driven invalidations. `pendingKinds`
+ * accumulates the kinds hinted during a cooldown; `null` means an
+ * empty-kinds ("all") hint arrived and subsumes any specific kinds. */
+interface ScopeDamper {
+  lastAt: number;
+  timer: ReturnType<typeof setTimeout> | null;
+  pendingKinds: Set<string> | null;
+}
+
 /**
  * Connection status for the sidebar indicator dot (see
  * live-status-dot.tsx). Distinct from the per-scope `live` flag:
@@ -200,6 +238,7 @@ export type LiveConnectionStatus = "connecting" | "live" | "reconnecting" | "dis
  */
 export class LiveRegistry {
   private scopes = new Map<string, ScopeEntry>();
+  private dampers = new Map<string, ScopeDamper>();
   private globalListeners = new Set<() => void>();
   private socketHandle: ReturnType<typeof connectLiveSocket> | null = null;
   private status: LiveConnectionStatus = "connecting";
@@ -234,17 +273,19 @@ export class LiveRegistry {
         entry.error = undefined;
         this.notifyScope(entry);
         // A fresh subscribe (or a replayed one after reconnect) may have
-        // missed updates; invalidate once so the scope catches up.
-        invalidateScope(this.queryClient, this.org, scope, [], entry.queryRoots);
+        // missed updates; invalidate once so the scope catches up. This is a
+        // one-shot event, not part of a hint storm — it stays immediate (but
+        // still starts the scope's cooldown, see invalidateScopeNow).
+        this.invalidateScopeNow(scope);
       },
       onUpdate: (scope, kinds) => {
-        const entry = this.scopes.get(scopeKey(scope));
-        invalidateScope(this.queryClient, this.org, scope, kinds, entry?.queryRoots);
+        this.dampedInvalidate(scope, kinds);
       },
       onResync: () => {
-        // Bus transport gap: invalidate every currently subscribed scope once.
+        // Bus transport gap: invalidate every currently subscribed scope
+        // once. One-shot like the subscribed catch-up — immediate.
         for (const entry of this.scopes.values()) {
-          invalidateScope(this.queryClient, this.org, entry.scope, [], entry.queryRoots);
+          this.invalidateScopeNow(entry.scope);
         }
       },
       onScopeError: (scope, error) => {
@@ -265,8 +306,85 @@ export class LiveRegistry {
   }
 
   stop(): void {
+    for (const damper of this.dampers.values()) {
+      if (damper.timer !== null) {
+        clearTimeout(damper.timer);
+        damper.timer = null;
+      }
+    }
     this.socketHandle?.disconnect();
     this.socketHandle = null;
+  }
+
+  private getDamper(key: string): ScopeDamper {
+    let damper = this.dampers.get(key);
+    if (!damper) {
+      damper = { lastAt: 0, timer: null, pendingKinds: new Set() };
+      this.dampers.set(key, damper);
+    }
+    return damper;
+  }
+
+  /**
+   * Invalidates the scope's full root set right now, (re)starting its
+   * cooldown and clearing any deferred work — an all-kinds invalidation
+   * subsumes whatever hints were pending. Used for one-shot catch-ups
+   * (subscribed ack, resync), never for `update` hints.
+   */
+  private invalidateScopeNow(scope: LiveScope): void {
+    const key = scopeKey(scope);
+    const damper = this.getDamper(key);
+    if (damper.timer !== null) {
+      clearTimeout(damper.timer);
+      damper.timer = null;
+    }
+    damper.pendingKinds = new Set();
+    damper.lastAt = Date.now();
+    invalidateScope(this.queryClient, this.org, scope, [], this.scopes.get(key)?.queryRoots);
+  }
+
+  /**
+   * Rate-limits hint-driven invalidations per scope: outside the cooldown a
+   * hint invalidates immediately; inside it, hints merge their kinds into a
+   * pending set and schedule exactly one trailing-edge invalidation at
+   * cooldown expiry, so the last hint of a burst always lands. Without this,
+   * a busy org's ~1 s server hint flushes turn each open tab into several
+   * heavy refetches per second — enough to exhaust API rate limits.
+   */
+  private dampedInvalidate(scope: LiveScope, kinds: string[]): void {
+    const key = scopeKey(scope);
+    const damper = this.getDamper(key);
+    const now = Date.now();
+
+    if (damper.timer === null && now - damper.lastAt >= LIVE_INVALIDATE_MIN_INTERVAL_MS) {
+      damper.lastAt = now;
+      invalidateScope(this.queryClient, this.org, scope, kinds, this.scopes.get(key)?.queryRoots);
+      return;
+    }
+
+    // In cooldown: merge kinds (empty = "all" subsumes the specific set)…
+    if (kinds.length === 0) {
+      damper.pendingKinds = null;
+    } else if (damper.pendingKinds !== null) {
+      for (const kind of kinds) damper.pendingKinds.add(kind);
+    }
+    // …and make sure exactly one trailing invalidation is scheduled.
+    if (damper.timer === null) {
+      const delay = Math.max(0, damper.lastAt + LIVE_INVALIDATE_MIN_INTERVAL_MS - now);
+      damper.timer = setTimeout(() => {
+        damper.timer = null;
+        const pending = damper.pendingKinds;
+        damper.pendingKinds = new Set();
+        damper.lastAt = Date.now();
+        invalidateScope(
+          this.queryClient,
+          this.org,
+          scope,
+          pending === null ? [] : [...pending],
+          this.scopes.get(key)?.queryRoots,
+        );
+      }, delay);
+    }
   }
 
   addScope(scope: LiveScope, queryRoots?: QueryRoot[]): void {

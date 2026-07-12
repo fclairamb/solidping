@@ -25,7 +25,7 @@ const (
 
 const (
 	defaultTimeout = 10 * time.Second
-	maxTimeout     = 60 * time.Second
+	maxTimeout     = 30 * time.Second
 )
 
 // Config map keys — kept as constants so FromMap / GetConfig can't drift.
@@ -137,7 +137,7 @@ func (c *KubernetesConfig) Validate() error {
 
 	if c.Timeout != 0 && (c.Timeout <= 0 || c.Timeout > maxTimeout) {
 		return checkerdef.NewConfigErrorf(
-			keyTimeout, "must be > 0 and <= 60s, got %s", c.Timeout.String(),
+			keyTimeout, "must be > 0 and <= 30s, got %s", c.Timeout.String(),
 		)
 	}
 

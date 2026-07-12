@@ -97,8 +97,11 @@ func (h *OIDCOAuthHandler) Callback(writer http.ResponseWriter, req bunrouter.Re
 		return h.handleOAuthError(writer, req, oauthState.RedirectURI, err)
 	}
 
-	// Redirect with tokens
+	// Redirect with tokens. Also set the SPA session cookie so
+	// cookie-authenticated surfaces (the embedded MCP OAuth
+	// authorize/consent flow) work without a login-page refresh bounce.
 	redirectURL := h.buildSuccessRedirect(oauthState.RedirectURI, result)
+	setAccessTokenCookie(writer, result.AccessToken, result.ExpiresIn)
 	http.Redirect(writer, req.Request, redirectURL, http.StatusFound)
 
 	return nil

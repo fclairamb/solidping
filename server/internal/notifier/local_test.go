@@ -315,3 +315,84 @@ func TestLocalEventNotifier_BurstWithinBufferIsLossless(t *testing.T) {
 		}
 	}
 }
+
+// TestLocalEventNotifier_UnlistenBoundsListenerCount is the regression test for
+// the 2026-07-11 listener leak: a per-call subscriber (GetJobWait) that Listens
+// then Unlistens must not grow the listener slices without bound. After each
+// Listen/Unlisten cycle ListenerCount returns to its baseline.
+func TestLocalEventNotifier_UnlistenBoundsListenerCount(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		cycles int
+	}{
+		{name: "few cycles", cycles: 10},
+		{name: "many cycles", cycles: 5000},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			n := NewLocalEventNotifier()
+			defer func() { _ = n.Close() }()
+
+			r.Equal(0, n.ListenerCount(), "baseline should be zero")
+
+			for i := 0; i < tc.cycles; i++ {
+				ch := n.Listen("job.created")
+				r.Equal(1, n.ListenerCount(), "exactly one listener while subscribed")
+				n.Unlisten("job.created", ch)
+				r.Equal(0, n.ListenerCount(), "Unlisten must reclaim the slot")
+			}
+
+			r.Equal(0, n.ListenerCount(), "no listeners must leak across cycles")
+		})
+	}
+}
+
+// TestLocalEventNotifier_UnlistenSelective verifies Unlisten removes only the
+// targeted channel and that unknown channels are a safe no-op.
+func TestLocalEventNotifier_UnlistenSelective(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	n := NewLocalEventNotifier()
+	defer func() { _ = n.Close() }()
+
+	ch1 := n.Listen("check.created")
+	ch2 := n.Listen("check.created")
+	ch3 := n.Listen("check.updated")
+	r.Equal(3, n.ListenerCount())
+
+	// Unlisten of a channel that was never registered is a no-op.
+	stranger := make(chan string)
+	n.Unlisten("check.created", stranger)
+	r.Equal(3, n.ListenerCount(), "unknown channel must not remove anything")
+
+	// Wrong event type is also a no-op.
+	n.Unlisten("check.updated", ch1)
+	r.Equal(3, n.ListenerCount(), "channel must only be removed under its own event type")
+
+	// Remove ch1; ch2 must still receive notifications.
+	n.Unlisten("check.created", ch1)
+	r.Equal(2, n.ListenerCount())
+
+	r.NoError(n.Notify(context.Background(), "check.created", "hello"))
+	select {
+	case got := <-ch2:
+		r.Equal("hello", got)
+	case <-time.After(time.Second):
+		r.FailNow("surviving listener ch2 did not receive notification")
+	}
+
+	// Double Unlisten of ch1 is a no-op.
+	n.Unlisten("check.created", ch1)
+	r.Equal(2, n.ListenerCount())
+
+	n.Unlisten("check.created", ch2)
+	n.Unlisten("check.updated", ch3)
+	r.Equal(0, n.ListenerCount())
+}

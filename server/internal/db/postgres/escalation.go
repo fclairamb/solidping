@@ -30,6 +30,12 @@ func (s *Service) CreateEscalationPolicy(ctx context.Context, policy *models.Esc
 func (s *Service) GetEscalationPolicy(
 	ctx context.Context, orgUID, policyUID string,
 ) (*models.EscalationPolicy, error) {
+	// uid is a uuid-typed column; a non-UUID value errors on the implicit
+	// cast instead of matching zero rows, so short-circuit to ErrNoRows.
+	if _, err := uuid.Parse(policyUID); err != nil {
+		return nil, sql.ErrNoRows
+	}
+
 	var policy models.EscalationPolicy
 
 	query := s.db.NewSelect().
@@ -43,54 +49,6 @@ func (s *Service) GetEscalationPolicy(
 
 	if err := query.Scan(ctx); err != nil {
 		return nil, fmt.Errorf("get escalation policy: %w", err)
-	}
-
-	return &policy, nil
-}
-
-// GetEscalationPolicyBySlug fetches by (org, slug).
-func (s *Service) GetEscalationPolicyBySlug(
-	ctx context.Context, orgUID, slug string,
-) (*models.EscalationPolicy, error) {
-	var policy models.EscalationPolicy
-
-	err := s.db.NewSelect().
-		Model(&policy).
-		Where("organization_uid = ?", orgUID).
-		Where("slug = ?", slug).
-		Where("deleted_at IS NULL").
-		Scan(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("get escalation policy by slug: %w", err)
-	}
-
-	return &policy, nil
-}
-
-// GetEscalationPolicyByUidOrSlug fetches by (org, identifier) where the
-// identifier is a UID when it parses as a UUID, otherwise a slug. Mirrors
-// the resolution used by checks and status pages so the same path param can
-// address a policy by uid or slug.
-//
-//nolint:revive // ByUidOrSlug matches the db.Service interface naming
-func (s *Service) GetEscalationPolicyByUidOrSlug(
-	ctx context.Context, orgUID, identifier string,
-) (*models.EscalationPolicy, error) {
-	var policy models.EscalationPolicy
-
-	query := s.db.NewSelect().
-		Model(&policy).
-		Where("organization_uid = ?", orgUID).
-		Where("deleted_at IS NULL")
-
-	if _, err := uuid.Parse(identifier); err == nil {
-		query = query.Where("uid = ?", identifier)
-	} else {
-		query = query.Where("slug = ?", identifier)
-	}
-
-	if err := query.Scan(ctx); err != nil {
-		return nil, fmt.Errorf("get escalation policy by uid or slug: %w", err)
 	}
 
 	return &policy, nil
@@ -124,10 +82,6 @@ func (s *Service) UpdateEscalationPolicy(
 		Where("uid = ?", policyUID).
 		Where("deleted_at IS NULL").
 		Set("updated_at = ?", time.Now())
-
-	if update.Slug != nil {
-		query = query.Set("slug = ?", *update.Slug)
-	}
 
 	if update.Name != nil {
 		query = query.Set("name = ?", *update.Name)

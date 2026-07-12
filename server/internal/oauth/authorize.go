@@ -227,10 +227,16 @@ func (h *Handler) handleAuthError(writer http.ResponseWriter, req bunrouter.Requ
 }
 
 // redirectToLogin bounces an unauthenticated /authorize request through the
-// dashboard login, encoding the full original request as returnTo so the browser
+// dashboard login, encoding the original request as returnTo so the browser
 // lands back here (now carrying the session cookie) after logging in.
+//
+// returnTo is deliberately a RELATIVE path (+query), not an absolute URL: the
+// dashboard's open-redirect guard (web/dash0 lib/login-destination.ts) rejects
+// any returnTo carrying a scheme, and a path-anchored value is same-origin by
+// construction. The previous Issuer-prefixed absolute value was rejected by
+// that guard, silently dead-ending the MCP connect flow on the login page.
 func (h *Handler) redirectToLogin(writer http.ResponseWriter, req bunrouter.Request) {
-	returnTo := h.metadata().Issuer + req.URL.RequestURI()
+	returnTo := req.URL.RequestURI()
 	loginURL := "/dash0/login?returnTo=" + url.QueryEscape(returnTo)
 	http.Redirect(writer, req.Request, loginURL, http.StatusFound)
 }

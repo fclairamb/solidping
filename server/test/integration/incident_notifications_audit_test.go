@@ -330,7 +330,7 @@ func TestAuditEscalationUserSend(t *testing.T) {
 	r.NoError(s.dbSvc.CreateUser(ctx, user))
 
 	// Create an escalation policy with a user target, delay 0.
-	policy := models.NewEscalationPolicy(s.org.UID, "pager", "Pager Policy")
+	policy := models.NewEscalationPolicy(s.org.UID, "Pager Policy")
 	r.NoError(s.dbSvc.CreateEscalationPolicy(ctx, policy))
 
 	step := models.NewEscalationPolicyStep(policy.UID, 0, 0)
@@ -450,7 +450,6 @@ func TestAuditEmptyScheduleSkipped(t *testing.T) {
 	schedule := &models.OnCallSchedule{
 		UID:             uuid.New().String(),
 		OrganizationUID: s.org.UID,
-		Slug:            "empty-sched",
 		Name:            "Empty Schedule",
 		Timezone:        "UTC",
 		RotationType:    models.RotationTypeWeekly,
@@ -464,7 +463,7 @@ func TestAuditEmptyScheduleSkipped(t *testing.T) {
 	// Empty roster: no users added.
 
 	// Create an escalation policy with a schedule target.
-	policy := models.NewEscalationPolicy(s.org.UID, "sched-policy", "Schedule Policy")
+	policy := models.NewEscalationPolicy(s.org.UID, "Schedule Policy")
 	r.NoError(s.dbSvc.CreateEscalationPolicy(ctx, policy))
 
 	step := models.NewEscalationPolicyStep(policy.UID, 0, 0)
@@ -542,7 +541,7 @@ func TestAuditNoAdminsSkipped(t *testing.T) {
 	s := newNotificationAuditSetup(t)
 
 	// Org has no admin members by default, so pageAllAdmins returns 0.
-	policy := models.NewEscalationPolicy(s.org.UID, "admins-policy", "All Admins Policy")
+	policy := models.NewEscalationPolicy(s.org.UID, "All Admins Policy")
 	r.NoError(s.dbSvc.CreateEscalationPolicy(ctx, policy))
 
 	step := models.NewEscalationPolicyStep(policy.UID, 0, 0)

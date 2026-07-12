@@ -26,7 +26,6 @@ const (
 type EscalationPolicy struct {
 	UID                string     `bun:"uid,pk,type:varchar(36)"`
 	OrganizationUID    string     `bun:"organization_uid,notnull"`
-	Slug               string     `bun:"slug,notnull"`
 	Name               string     `bun:"name,notnull"`
 	Description        *string    `bun:"description"`
 	RepeatMax          int        `bun:"repeat_max,notnull,default:0"`
@@ -37,13 +36,12 @@ type EscalationPolicy struct {
 }
 
 // NewEscalationPolicy builds a policy with a fresh UID.
-func NewEscalationPolicy(orgUID, slug, name string) *EscalationPolicy {
+func NewEscalationPolicy(orgUID, name string) *EscalationPolicy {
 	now := time.Now()
 
 	return &EscalationPolicy{
 		UID:             uuid.New().String(),
 		OrganizationUID: orgUID,
-		Slug:            slug,
 		Name:            name,
 		CreatedAt:       now,
 		UpdatedAt:       now,
@@ -52,7 +50,6 @@ func NewEscalationPolicy(orgUID, slug, name string) *EscalationPolicy {
 
 // EscalationPolicyUpdate captures the writable fields. Pointer = optional.
 type EscalationPolicyUpdate struct {
-	Slug               *string
 	Name               *string
 	Description        *string
 	RepeatMax          *int

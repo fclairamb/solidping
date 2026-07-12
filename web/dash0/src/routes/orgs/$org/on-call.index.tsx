@@ -62,7 +62,7 @@ function OnCallListPage() {
 
   const onConfirmDelete = () => {
     if (!pendingDelete) return;
-    deleteMutation.mutate(pendingDelete.slug, {
+    deleteMutation.mutate(pendingDelete.uid, {
       onSuccess: () => {
         toast.success(t("oncall:detail.deleteConfirmAction"));
         setPendingDelete(null);
@@ -185,8 +185,8 @@ function ScheduleRow({ org, schedule, onDelete }: ScheduleRowProps) {
     <TableRow data-testid="oncall-row">
       <TableCell>
         <Link
-          to="/orgs/$org/on-call/$slug"
-          params={{ org, slug: schedule.slug }}
+          to="/orgs/$org/on-call/$uid"
+          params={{ org, uid: schedule.uid }}
           className="font-medium hover:underline"
         >
           {schedule.name}
@@ -211,8 +211,8 @@ function ScheduleRow({ org, schedule, onDelete }: ScheduleRowProps) {
         <div className="flex items-center justify-end gap-1">
           <Button asChild variant="ghost" size="icon" aria-label={t("oncall:detail.edit")}>
             <Link
-              to="/orgs/$org/on-call/$slug/edit"
-              params={{ org, slug: schedule.slug }}
+              to="/orgs/$org/on-call/$uid/edit"
+              params={{ org, uid: schedule.uid }}
             >
               <Pencil className="h-4 w-4" />
             </Link>

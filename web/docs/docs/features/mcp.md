@@ -7,7 +7,7 @@ title: MCP Server (AI Access)
 
 SolidPing ships a built-in **Model Context Protocol (MCP)** server, letting AI assistants and LLM agents read and manage your monitoring data through a standard tool interface. Point an MCP-capable client (such as Claude) at SolidPing and it can list checks, inspect incidents, build status pages, and schedule maintenance — all scoped to a single organization.
 
-If your dashboard is running, the fastest path is **Organization → AI assistants** — it has copy-paste snippets and one-click install buttons pre-filled with your instance's URL. This page covers the same ground for reference, plus the underlying protocol details.
+If your dashboard is running, the fastest path is the **AI assistants** page — `/dash0/orgs/<org>/mcp`, linked from the main sidebar (opening the MCP endpoint URL in a browser also lands there). It has copy-paste snippets and one-click install buttons pre-filled with your instance's URL. This page covers the same ground for reference, plus the underlying protocol details.
 
 ## Connect with just the URL
 
@@ -132,4 +132,4 @@ Replace the URL with your `SP_BASE_URL` and supply a token carrying the `mcp` or
 
 ## See also
 
-**Organization → AI assistants** in the dashboard has the same instructions rendered with your instance's actual URL — copy buttons and one-click install links included.
+The **AI assistants** page in the dashboard sidebar (`/dash0/orgs/<org>/mcp`) has the same instructions rendered with your instance's actual URL — copy buttons and one-click install links included.

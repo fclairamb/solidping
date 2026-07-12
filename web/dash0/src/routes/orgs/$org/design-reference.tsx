@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  Bot,
   Check,
   CheckCircle2,
   Copy,
@@ -107,6 +108,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import {
   Table,
   TableBody,
@@ -138,6 +140,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "copyable-code", label: "Copyable code" },
   { id: "copyable-inline", label: "Copyable inline" },
   { id: "collapsible-code", label: "Collapsible code" },
+  { id: "collapsible-section", label: "Collapsible section" },
   { id: "feedback", label: "Feedback" },
   { id: "label-filter", label: "Label filter" },
   { id: "check-multi-picker", label: "Check multi-picker" },
@@ -171,6 +174,7 @@ function DesignReferencePage() {
       <CopyableCodeSection />
       <CopyableInlineSection />
       <CollapsibleCodeSection />
+      <CollapsibleSectionSection />
       <FeedbackSection />
       <LabelFilterSection />
       <CheckMultiPickerSection />
@@ -1055,6 +1059,46 @@ function ButtonsBadgesSection() {
           }
           importLine={`import { Card, CardContent } from "@/components/ui/card";\nimport { Badge } from "@/components/ui/badge";\nimport { parseUserAgent } from "@/lib/user-agent";\n\n<Card className={session.isCurrent ? "border-primary" : undefined}>\n  <CardContent className="flex items-start justify-between gap-3 p-4">\n    {/* device icon + browser/OS + badges + revoke button */}\n  </CardContent>\n</Card>`}
         />
+
+        <h3 className="text-sm font-medium">Secondary-path divider + sub-card</h3>
+        <p className="text-sm text-muted-foreground">
+          When a page has one primary action and a clearly subordinate
+          alternative path (e.g. the empty-state onboarding hero&apos;s
+          &quot;let AI set everything up&quot; MCP link under the quick-create
+          form), separate them with a hairline &quot;or&quot; divider followed
+          by a bordered sub-card: icon + title/description on the left, an
+          outline <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Button asChild</code>{" "}
+          CTA on the right. Stacks vertically below <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code>.
+          The divider is decorative — mark it{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">aria-hidden</code>.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-md space-y-4">
+              <div className="flex items-center gap-3" aria-hidden="true">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-xs uppercase text-muted-foreground">or</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+              <div className="flex flex-col gap-3 rounded-md border bg-card p-4 text-left sm:flex-row sm:items-center">
+                <div className="flex flex-1 items-start gap-3">
+                  <Bot className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                  <div>
+                    <p className="text-sm font-medium">Let AI set everything up</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Connect an AI assistant and ask it to do the work for you.
+                    </p>
+                  </div>
+                </div>
+                <Button variant="outline" size="sm" className="shrink-0">
+                  Set up MCP
+                  <ArrowRight className="ml-1 h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          }
+          importLine={`import { Button } from "@/components/ui/button";\nimport { Link } from "@tanstack/react-router";\n\n<div className="flex items-center gap-3" aria-hidden="true">\n  <div className="h-px flex-1 bg-border" />\n  <span className="text-xs uppercase text-muted-foreground">{t("welcome.or")}</span>\n  <div className="h-px flex-1 bg-border" />\n</div>\n<div className="flex flex-col gap-3 rounded-md border bg-card p-4 text-left sm:flex-row sm:items-center">\n  {/* icon + title/description */}\n  <Button asChild variant="outline" size="sm" className="shrink-0">\n    <Link to="/orgs/$org/account/mcp" params={{ org }}>…</Link>\n  </Button>\n</div>`}
+        />
       </div>
     </Section>
   );
@@ -1533,6 +1577,62 @@ function CollapsibleCodeSection() {
         </div>
         <CodeSnippet
           code={`import { CollapsibleCode } from "@/components/shared/copyable-code";\n\n<CollapsibleCode label="Response body" value={json} defaultOpen={failed} />`}
+        />
+      </div>
+    </Section>
+  );
+}
+
+function CollapsibleSectionSection() {
+  const [errSignal, setErrSignal] = useState(0);
+  return (
+    <Section
+      id="collapsible-section"
+      title="Collapsible section"
+      description="Progressive-disclosure section for long forms: a header that shows the section title, a value-summary line while collapsed, and a 'customized' badge when values deviate from defaults. Bump expandSignal to force-open + scroll a section (validation error on submit, or a ?section= deep-link). Default it open when it already holds non-default values. Used to tame the check create/edit form."
+    >
+      <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+        <div className="space-y-3">
+          <CollapsibleSection
+            id="demo-flapping"
+            title="Flapping"
+            summary="window 6h, cooldown ×5 (defaults)"
+          >
+            <p className="text-sm text-muted-foreground">
+              Tuning knobs live here — collapsed by default because most users
+              never touch them.
+            </p>
+          </CollapsibleSection>
+          <CollapsibleSection
+            title="Incident tracking"
+            summary="confirm 300s, recover 120s"
+            customized
+            defaultOpen
+          >
+            <p className="text-sm text-muted-foreground">
+              Opens by default and shows the "customized" badge because its
+              values deviate from the defaults.
+            </p>
+          </CollapsibleSection>
+          <CollapsibleSection
+            title="Advanced"
+            summary="timeout 15s (default)"
+            expandSignal={errSignal}
+          >
+            <p className="text-sm text-destructive">
+              A field in here has an error — the section force-expanded.
+            </p>
+          </CollapsibleSection>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setErrSignal((n) => n + 1)}
+          >
+            Simulate submit error (expand "Advanced")
+          </Button>
+        </div>
+        <CodeSnippet
+          code={`import { CollapsibleSection } from "@/components/ui/collapsible-section";\n\n<CollapsibleSection\n  id="flapping"\n  title="Flapping"\n  summary="window 6h, cooldown ×5 (defaults)"\n  customized={isCustomized}\n  defaultOpen={hasNonDefaults}\n  expandSignal={hasError ? submitNonce : 0}\n>\n  {/* fields */}\n</CollapsibleSection>`}
         />
       </div>
     </Section>

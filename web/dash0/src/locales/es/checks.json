@@ -187,6 +187,8 @@
     "sipDescription": "Comprobar la accesibilidad y el registro de un servidor SIP",
     "ntp": "NTP",
     "ntpDescription": "Monitorizar servidores de tiempo NTP",
+    "rdp": "RDP",
+    "rdpDescription": "Monitorizar servidores RDP (Escritorio remoto)",
     "sleep": "Sleep",
     "sleepDescription": "Esperar una duración fija (sintético/pruebas, sin E/S de red)"
   },
@@ -196,7 +198,17 @@
     "blocklists": "Zonas de listas de bloqueo",
     "blocklistsHelp": "Opcional. Una zona de lista de bloqueo DNS por línea (o separadas por comas). Déjelo vacío para usar las predeterminadas (Spamhaus, SpamCop, Barracuda, UCEPROTECT).",
     "nameserver": "Resolutor personalizado",
-    "nameserverHelp": "host:port opcional de un resolutor recursivo. Los resolutores públicos (8.8.8.8, 1.1.1.1) están bloqueados por Spamhaus, use un resolutor local si es necesario."
+    "nameserverHelp": "host:port opcional de un resolutor recursivo. Los resolutores públicos (8.8.8.8, 1.1.1.1) están bloqueados por Spamhaus, use un resolutor local si es necesario.",
+    "title": "Estado de listas de bloqueo",
+    "description": "Cómo se resolvió el objetivo en cada zona de lista de bloqueo DNS.",
+    "listedOn": "Listado en",
+    "clean": "Limpio",
+    "inconclusive": "No concluyente",
+    "errorCodes": "Respuestas de diagnóstico",
+    "errTypo": "Nombre de zona DNSBL erróneo o mal formado",
+    "errPublicResolver": "Consulta a través de un resolvedor público/abierto — rechazada",
+    "errRateLimit": "Volumen de consultas / límite de tasa superado",
+    "errGeneric": "Respuesta de error DNSBL ({{code}})"
   },
   "sip": {
     "transport": "Transporte",

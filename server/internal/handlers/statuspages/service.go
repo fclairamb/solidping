@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 	"time"
@@ -925,6 +926,15 @@ func (s *Service) ViewStatusPage(
 	// Populate recent status updates (graceful — empty when table doesn't exist yet)
 	if page.HistoryDays > 0 {
 		updates, updErr := s.db.ListPublicStatusUpdates(ctx, page.UID, page.HistoryDays)
+		if updErr != nil {
+			// Don't fail the whole page, but surface the error: a broken
+			// updates query used to silently render an empty timeline, which
+			// masked the Postgres `$1`-placeholder bug for both this page and
+			// the Atom feed. Logging it means it can't hide again.
+			slog.ErrorContext(ctx, "Failed to load public status updates for status page",
+				"error", updErr, "statusPageUID", page.UID, "orgUID", org.UID)
+		}
+
 		if updErr == nil && len(updates) > 0 {
 			recentUpdates := make([]StatusUpdatePublicResponse, len(updates))
 			for i, upd := range updates {

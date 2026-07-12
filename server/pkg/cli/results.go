@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/urfave/cli/v3"
 
@@ -205,6 +206,81 @@ func resultsListAction(ctx context.Context, cmd *cli.Command) error {
 	} else {
 		msg := fmt.Sprintf("\nShowing %d results", len(allResults))
 		output.PrintMessage(os.Stdout, msg)
+	}
+
+	return nil
+}
+
+// resultsGetAction fetches a single result by check + result UID.
+//
+//nolint:cyclop // CLI parameter parsing and field-by-field output
+func resultsGetAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	if cmd.Args().Len() < 2 {
+		return cli.Exit("Error: <check> <result-uid> are required", 5)
+	}
+
+	check := cmd.Args().Get(0)
+
+	resultUID, err := uuid.Parse(cmd.Args().Get(1))
+	if err != nil {
+		return cli.Exit("Error: invalid result UID: "+err.Error(), 5)
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	params := &client.GetOrgResultParams{}
+	if region := cmd.String("region"); region != "" {
+		params.Region = &region
+	}
+
+	resp, err := apiClient.GetOrgResultWithResponse(ctx, cliCtx.GetOrg(), check, resultUID, params)
+	if err != nil {
+		return cliCtx.HandleError("Failed to get result", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to get result", resp.StatusCode())
+	}
+
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(resp.JSON200)
+	}
+
+	result := resp.JSON200
+
+	if result.Uid != nil {
+		output.PrintMessage(os.Stdout, "UID:          "+result.Uid.String())
+	}
+	if result.Status != nil {
+		output.PrintMessage(os.Stdout, "Status:       "+string(*result.Status))
+	}
+	if result.CheckSlug != nil {
+		output.PrintMessage(os.Stdout, "Check:        "+*result.CheckSlug)
+	} else if result.CheckUid != nil {
+		output.PrintMessage(os.Stdout, "Check UID:    "+result.CheckUid.String())
+	}
+	if result.PeriodType != nil {
+		output.PrintMessage(os.Stdout, "Period Type:  "+*result.PeriodType)
+	}
+	if result.PeriodStart != nil {
+		output.PrintMessage(os.Stdout, "Period Start: "+result.PeriodStart.Format(time.RFC3339))
+	}
+	if result.Region != nil {
+		output.PrintMessage(os.Stdout, "Region:       "+*result.Region)
+	}
+	if result.DurationMs != nil {
+		output.PrintMessage(os.Stdout, fmt.Sprintf("Duration:     %.2f ms", *result.DurationMs))
+	}
+	if result.Fallback != nil {
+		output.PrintMessage(os.Stdout, "(served from an aggregated fallback row)")
 	}
 
 	return nil

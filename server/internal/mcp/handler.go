@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
+	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
@@ -142,6 +144,95 @@ func (h *Handler) Stop() {
 	if h.cancel != nil {
 		h.cancel()
 	}
+}
+
+// dashboardMCPPath is where a browser hitting GET on the MCP endpoint is
+// sent: the dashboard's org-less MCP setup route, which resolves the org
+// client-side and forwards to /orgs/$org/mcp. The from=get search param keys
+// the contextual "you opened the API endpoint in a browser" hint.
+const dashboardMCPPath = "/dash0/mcp?from=get"
+
+// allowedMCPMethods is the Allow header value advertised on 405 responses:
+// the methods the MCP endpoint actually implements.
+const allowedMCPMethods = "POST, DELETE"
+
+// acceptsEventStream reports whether the Accept header explicitly lists
+// text/event-stream — the signature of an MCP client opening a listening
+// stream (Streamable HTTP GET). Browser Accept lists (text/html,...,*/*)
+// never name it explicitly, so wildcards intentionally don't match.
+func acceptsEventStream(accept string) bool {
+	for _, part := range strings.Split(accept, ",") {
+		mediaType, _, _ := strings.Cut(strings.TrimSpace(part), ";")
+		if strings.EqualFold(strings.TrimSpace(mediaType), "text/event-stream") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// HandleGet handles GET on the MCP endpoint. The Streamable HTTP transport
+// expects GET to either open an SSE stream for server-initiated messages or
+// return 405 Method Not Allowed. We don't support server-initiated streams,
+// so MCP clients (Accept: text/event-stream) get the spec answer, while a
+// human in a browser gets a redirect to the dashboard page that explains how
+// to actually connect a client. Unauthenticated by design: a browser hitting
+// the URL has no token, and the redirect leaks nothing.
+func (h *Handler) HandleGet(writer http.ResponseWriter, req bunrouter.Request) error {
+	if acceptsEventStream(req.Header.Get("Accept")) {
+		writer.Header().Set("Allow", allowedMCPMethods)
+
+		return writeJSON(writer, http.StatusMethodNotAllowed, base.ErrorResponse{
+			Title:  "SSE streams are not supported on this MCP endpoint",
+			Code:   string(base.ErrorCodeMethodNotAllowed),
+			Detail: "Send JSON-RPC requests with POST; GET streaming is not implemented.",
+		})
+	}
+
+	http.Redirect(writer, req.Request, dashboardMCPPath, http.StatusFound)
+
+	return nil
+}
+
+// HandleDelete terminates the MCP session named by the Mcp-Session-Id header
+// (Streamable HTTP explicit session termination). Auth is enforced by
+// RequireMCPAuth at the route; the session must belong to the caller's org.
+func (h *Handler) HandleDelete(writer http.ResponseWriter, req bunrouter.Request) error {
+	claims, ok := middleware.GetClaimsFromContext(req.Context())
+	if !ok {
+		return writeJSON(writer, http.StatusUnauthorized, base.ErrorResponse{
+			Title: "Authentication required",
+			Code:  string(base.ErrorCodeUnauthorized),
+		})
+	}
+
+	sessionID := req.Header.Get("Mcp-Session-Id")
+	if sessionID == "" {
+		return writeJSON(writer, http.StatusBadRequest, base.ErrorResponse{
+			Title: "Mcp-Session-Id header is required",
+			Code:  string(base.ErrorCodeValidationError),
+		})
+	}
+
+	value, found := h.sessions.Load(sessionID)
+	if found {
+		// A session from another org is indistinguishable from a missing one
+		// so cross-org probing can't confirm session IDs exist.
+		sess, isSession := value.(*session)
+		found = isSession && sess.orgSlug == claims.OrgSlug
+	}
+
+	if !found {
+		return writeJSON(writer, http.StatusNotFound, base.ErrorResponse{
+			Title: "Unknown MCP session",
+			Code:  string(base.ErrorCodeNotFound),
+		})
+	}
+
+	h.sessions.Delete(sessionID)
+	writer.WriteHeader(http.StatusNoContent)
+
+	return nil
 }
 
 // Handle handles an MCP HTTP request.

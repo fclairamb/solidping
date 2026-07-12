@@ -16,7 +16,7 @@ async function deleteAllOnCallSchedules(page: Page, token: string) {
   const body = await resp.json();
   for (const s of body.data ?? []) {
     await page.request.delete(
-      `${API_BASE}/api/v1/orgs/test/on-call-schedules/${s.slug}`,
+      `${API_BASE}/api/v1/orgs/test/on-call-schedules/${s.uid}`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
   }
@@ -30,25 +30,19 @@ async function deleteAllEscalationPolicies(page: Page, token: string) {
   const body = await resp.json();
   for (const p of body.data ?? []) {
     await page.request.delete(
-      `${API_BASE}/api/v1/orgs/test/escalation-policies/${p.slug}`,
+      `${API_BASE}/api/v1/orgs/test/escalation-policies/${p.uid}`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
   }
 }
 
-async function createOnCallSchedule(
-  page: Page,
-  token: string,
-  name: string,
-  slug: string,
-) {
+async function createOnCallSchedule(page: Page, token: string, name: string) {
   const resp = await page.request.post(
     `${API_BASE}/api/v1/orgs/test/on-call-schedules`,
     {
       headers: { Authorization: `Bearer ${token}` },
       data: {
         name,
-        slug,
         timezone: "UTC",
         rotationType: "weekly",
         handoffTime: "09:00",
@@ -61,19 +55,13 @@ async function createOnCallSchedule(
   return resp.json();
 }
 
-async function createEscalationPolicy(
-  page: Page,
-  token: string,
-  name: string,
-  slug: string,
-) {
+async function createEscalationPolicy(page: Page, token: string, name: string) {
   const resp = await page.request.post(
     `${API_BASE}/api/v1/orgs/test/escalation-policies`,
     {
       headers: { Authorization: `Bearer ${token}` },
       data: {
         name,
-        slug,
         description: `${name} description for filter test`,
         repeatMax: 0,
         steps: [],
@@ -112,8 +100,8 @@ test.describe("Listing pages share the checks-page chrome", () => {
 
     await deleteAllOnCallSchedules(page, token);
     const stamp = Date.now();
-    await createOnCallSchedule(page, token, `Listing A ${stamp}`, `listing-a-${stamp}`);
-    await createOnCallSchedule(page, token, `Listing B ${stamp}`, `listing-b-${stamp}`);
+    const scheduleA = await createOnCallSchedule(page, token, `Listing A ${stamp}`);
+    await createOnCallSchedule(page, token, `Listing B ${stamp}`);
 
     await page.goto("orgs/test/on-call");
     await page.waitForLoadState("networkidle");
@@ -128,10 +116,10 @@ test.describe("Listing pages share the checks-page chrome", () => {
     const rows = page.getByTestId("oncall-row");
     await expect(rows).toHaveCount(2);
 
-    // Click the first schedule's name and confirm it navigates to detail
+    // Click the first schedule's name and confirm it navigates to detail (by uid)
     await page.getByRole("link", { name: `Listing A ${stamp}` }).click();
     await page.waitForURL((url) =>
-      url.pathname.includes(`/on-call/listing-a-${stamp}`),
+      url.pathname.includes(`/on-call/${scheduleA.uid}`),
     );
 
     // Cleanup
@@ -146,8 +134,8 @@ test.describe("Listing pages share the checks-page chrome", () => {
 
     await deleteAllEscalationPolicies(page, token);
     const stamp = Date.now();
-    await createEscalationPolicy(page, token, `Alpha ${stamp}`, `alpha-${stamp}`);
-    await createEscalationPolicy(page, token, `Bravo ${stamp}`, `bravo-${stamp}`);
+    await createEscalationPolicy(page, token, `Alpha ${stamp}`);
+    await createEscalationPolicy(page, token, `Bravo ${stamp}`);
 
     await page.goto("orgs/test/escalation-policies");
     await page.waitForLoadState("networkidle");

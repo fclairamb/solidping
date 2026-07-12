@@ -1,19 +1,23 @@
-import { test, expect } from "./fixtures";
+import { test, expect, API_BASE } from "./fixtures";
 
-// Covers the "AI assistants" page (organization/ai): the MCP connector
-// setup surface added for one-click Cursor/VS Code installs and copy-paste
-// instructions for Claude / Claude Code / generic clients. No backend
-// mutation is involved — the page is derived entirely from
-// window.location.origin, so these tests only assert rendering + the
-// exact URL encoded into each control. Deep-link anchors are asserted by
-// decoding their href, never clicked — the cursor:// / vscode: protocol
-// handlers aren't available in CI.
-test.describe("AI assistants (MCP connector setup)", () => {
+// Covers the MCP setup page (/orgs/$org/account/mcp, formerly /orgs/$org/mcp
+// and before that organization/ai): the MCP connector setup surface with
+// one-click Cursor/VS Code installs and copy-paste instructions for Claude /
+// Claude Code / generic clients, plus the routing glue:
+//   - the old /orgs/$org/organization/ai path redirects here;
+//   - the old /orgs/$org/mcp path redirects here;
+//   - a browser opening GET /api/v1/mcp is redirected here with a ?from=get
+//     contextual hint instead of receiving the raw SPA shell.
+// No backend mutation is involved — the page itself is derived entirely from
+// window.location.origin. Deep-link anchors are asserted by decoding their
+// href, never clicked — the cursor:// / vscode: protocol handlers aren't
+// available in CI.
+test.describe("MCP page (AI assistants / MCP connector setup)", () => {
   test("renders for an org member with the instance MCP URL", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
-    await page.goto("orgs/test/organization/ai");
+    await page.goto("orgs/test/account/mcp");
     await page.waitForLoadState("networkidle");
 
     await expect(
@@ -26,13 +30,57 @@ test.describe("AI assistants (MCP connector setup)", () => {
     // The MCP URL is rendered as visible text (CopyableCode) at least twice:
     // the top-level intro block and inside the Claude card.
     await expect(page.getByText(expectedUrl).first()).toBeVisible();
+
+    // Without ?from=get the contextual hint stays hidden.
+    await expect(page.getByTestId("mcp-from-get-hint")).toHaveCount(0);
+  });
+
+  test("old organization/ai path redirects to the new page", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/organization/ai");
+    await page.waitForURL(/\/orgs\/test\/account\/mcp/);
+
+    await expect(
+      page.getByRole("heading", { name: /ai assistants/i }),
+    ).toBeVisible();
+  });
+
+  test("old /orgs/$org/mcp path redirects to the Account page", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/mcp");
+    await page.waitForURL(/\/orgs\/test\/account\/mcp/);
+
+    await expect(
+      page.getByRole("heading", { name: /ai assistants/i }),
+    ).toBeVisible();
+  });
+
+  test("browser GET on /api/v1/mcp lands here with the from=get hint", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    // A human pasting the MCP endpoint into the address bar: the backend
+    // answers 302 → /dash0/mcp?from=get, the org-less /mcp route resolves
+    // the org from the session and forwards to the Account MCP page,
+    // preserving the query string.
+    await page.goto(`${API_BASE}/api/v1/mcp`);
+    await page.waitForURL(/\/orgs\/test\/account\/mcp\?.*from=get/);
+
+    await expect(
+      page.getByRole("heading", { name: /ai assistants/i }),
+    ).toBeVisible();
+    await expect(page.getByTestId("mcp-from-get-hint")).toBeVisible();
   });
 
   test("Cursor deep link encodes the exact instance MCP URL", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
-    await page.goto("orgs/test/organization/ai");
+    await page.goto("orgs/test/account/mcp");
     await page.waitForLoadState("networkidle");
 
     const origin = await page.evaluate(() => window.location.origin);
@@ -55,7 +103,7 @@ test.describe("AI assistants (MCP connector setup)", () => {
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
-    await page.goto("orgs/test/organization/ai");
+    await page.goto("orgs/test/account/mcp");
     await page.waitForLoadState("networkidle");
 
     const origin = await page.evaluate(() => window.location.origin);
@@ -90,7 +138,7 @@ test.describe("AI assistants (MCP connector setup)", () => {
     // client-card grid collapses to a single column.
     await page.setViewportSize({ width: 375, height: 812 });
 
-    await page.goto("orgs/test/organization/ai");
+    await page.goto("orgs/test/account/mcp");
     await page.waitForLoadState("networkidle");
 
     await expect(

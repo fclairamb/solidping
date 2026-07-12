@@ -189,6 +189,8 @@
     "sipDescription": "Vérifier la joignabilité et l'enregistrement d'un serveur SIP",
     "ntp": "NTP",
     "ntpDescription": "Surveiller les serveurs de temps NTP",
+    "rdp": "RDP",
+    "rdpDescription": "Surveiller les serveurs RDP (Bureau à distance)",
     "sleep": "Sleep",
     "sleepDescription": "Attendre une durée fixe (synthétique/test, sans I/O réseau)"
   },
@@ -241,7 +243,17 @@
     "blocklists": "Zones de listes de blocage",
     "blocklistsHelp": "Optionnel. Une zone de liste de blocage DNS par ligne (ou séparées par des virgules). Laissez vide pour utiliser les valeurs par défaut (Spamhaus, SpamCop, Barracuda, UCEPROTECT).",
     "nameserver": "Résolveur personnalisé",
-    "nameserverHelp": "host:port optionnel d'un résolveur récursif. Les résolveurs publics (8.8.8.8, 1.1.1.1) sont bloqués par Spamhaus, utilisez un résolveur local si nécessaire."
+    "nameserverHelp": "host:port optionnel d'un résolveur récursif. Les résolveurs publics (8.8.8.8, 1.1.1.1) sont bloqués par Spamhaus, utilisez un résolveur local si nécessaire.",
+    "title": "État des listes de blocage",
+    "description": "Résultat de la résolution de la cible pour chaque zone de liste de blocage DNS.",
+    "listedOn": "Répertorié sur",
+    "clean": "Propre",
+    "inconclusive": "Non concluant",
+    "errorCodes": "Réponses de diagnostic",
+    "errTypo": "Nom de zone DNSBL erroné ou mal formé",
+    "errPublicResolver": "Requête via un résolveur public/ouvert — refusée",
+    "errRateLimit": "Volume de requêtes / limite de débit dépassée",
+    "errGeneric": "Réponse d'erreur DNSBL ({{code}})"
   },
   "sip": {
     "transport": "Transport",

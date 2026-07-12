@@ -177,6 +177,11 @@ const (
 	// self-reported health (stratum, leap indicator, root distance), with
 	// optional clock-offset and max-stratum thresholds.
 	CheckTypeNTP CheckType = "ntp"
+	// CheckTypeRDP monitors Remote Desktop Protocol servers via the pre-auth
+	// X.224 negotiation handshake (MS-RDPBCGR): service liveness, negotiated
+	// security protocol (optionally enforcing NLA), and certificate expiry
+	// when a TLS-based protocol is selected. No credentials are used.
+	CheckTypeRDP CheckType = "rdp"
 	// CheckTypeSleep is a synthetic/testing check that sleeps for a configured
 	// duration. It performs no network I/O and exists as a deterministic load
 	// generator for the scheduler. It is NOT a customer-facing check type and
@@ -285,6 +290,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeSIP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check SIP server reachability and registration"},
 	{Type: CheckTypeKubernetes, Labels: []string{labelSafe, labelReqK8sCluster, labelCatInfrastructure}, Description: "Monitor Kubernetes workload replica health"},
 	{Type: CheckTypeNTP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor NTP time servers", DefaultPeriod: 5 * time.Minute},
+	{Type: CheckTypeRDP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor RDP (Remote Desktop) servers"},
 	{Type: CheckTypeSleep, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Sleep for a fixed duration (synthetic/testing)", DefaultPeriod: 1 * time.Minute},
 }
 
@@ -377,6 +383,7 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeSIP,
 		CheckTypeKubernetes,
 		CheckTypeNTP,
+		CheckTypeRDP,
 		CheckTypeSleep,
 	}
 }

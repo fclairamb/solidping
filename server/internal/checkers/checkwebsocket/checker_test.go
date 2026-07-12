@@ -70,7 +70,7 @@ func TestWebSocketChecker_Validate(t *testing.T) {
 		{
 			name:    "timeout too large",
 			spec:    checkerdef.CheckSpec{Config: map[string]any{"url": "wss://example.com", "timeout": "120s"}},
-			wantErr: "timeout: must be > 0 and <= 60s",
+			wantErr: "timeout: must be > 0 and <= 30s",
 		},
 		{
 			name: "valid — sets default name and slug",

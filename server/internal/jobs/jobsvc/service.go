@@ -506,6 +506,11 @@ func (s *serviceImpl) CancelJob(ctx context.Context, uid string) error {
 // signals and jobs whose scheduled_at passed without a signal.
 func (s *serviceImpl) GetJobWait(ctx context.Context) (*models.Job, error) {
 	wakeup := s.notifier.Listen(eventTypeJobCreated)
+	// GetJobWait subscribes on every call (job runners loop over it), so it MUST
+	// deregister on return — otherwise one listener channel leaks per processed
+	// job, the notifier's forward loop slows linearly, and on Postgres the
+	// LISTEN/NOTIFY pipeline eventually wedges and silences the realtime WS.
+	defer s.notifier.Unlisten(eventTypeJobCreated, wakeup)
 
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()

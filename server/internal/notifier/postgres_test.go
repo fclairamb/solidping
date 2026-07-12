@@ -262,6 +262,34 @@ func TestPgEventNotifier(t *testing.T) {
 			}
 		}
 	})
+
+	// Unlisten_bounds_listener_count is the Postgres-path regression test for the
+	// 2026-07-11 listener leak: repeated Listen/Unlisten cycles (as GetJobWait
+	// does per job) must not grow the listener slices. ListenerCount returns to
+	// baseline after every cycle.
+	t.Run("Unlisten_bounds_listener_count", func(t *testing.T) { //nolint:paralleltest // shared embedded DB
+		r := require.New(t)
+		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
+		notifier, err := NewPgEventNotifier(db, connString, logger)
+		r.NoError(err)
+		defer func() { _ = notifier.Close() }()
+
+		r.Equal(0, notifier.ListenerCount(), "baseline should be zero")
+
+		const cycles = 2000
+		for i := 0; i < cycles; i++ {
+			ch := notifier.Listen("job.created")
+			r.Equal(1, notifier.ListenerCount(), "exactly one listener while subscribed")
+			notifier.Unlisten("job.created", ch)
+			r.Equal(0, notifier.ListenerCount(), "Unlisten must reclaim the slot")
+		}
+
+		r.Equal(0, notifier.ListenerCount(), "no listeners must leak across cycles")
+
+		// Unknown-channel Unlisten is a safe no-op.
+		notifier.Unlisten("job.created", make(chan string))
+		r.Equal(0, notifier.ListenerCount())
+	})
 }
 
 // TestPgEventNotifier_ReconnectEvents exercises the reconnect fan-out surface

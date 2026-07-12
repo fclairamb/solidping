@@ -27,6 +27,8 @@ test.describe("Command Menu (Cmd+K)", () => {
     await expect(page.getByText("Account", { exact: true })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Profile" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Tokens" })).toBeVisible();
+    await expect(page.getByTestId("command-menu-ai")).toBeVisible();
+    await expect(page.getByTestId("command-menu-ai")).toContainText("AI assistants");
 
     // Verify Organization group
     await expect(page.getByText("Organization", { exact: true })).toBeVisible();
@@ -161,6 +163,32 @@ test.describe("Command Menu (Cmd+K)", () => {
     await page.waitForURL(/\/checks\/new/, { timeout: 5000 });
     expect(page.url()).toContain("/checks/new");
     await expect(input).not.toBeVisible();
+  });
+
+  test("exposes the AI assistants (MCP) entry, findable by MCP, → /account/mcp", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
+
+    await page.keyboard.press("Meta+k");
+    const input = page.locator('[cmdk-input]');
+    await expect(input).toBeVisible({ timeout: 3000 });
+
+    // The entry lives in the Account group and matches on "MCP" even though
+    // its title reads "AI assistants" — the description carries the MCP term.
+    const aiItem = page.getByTestId("command-menu-ai");
+    await input.fill("MCP");
+    await expect(aiItem).toBeVisible();
+
+    // Selecting it navigates to the Account MCP page.
+    await aiItem.click();
+    await page.waitForURL(/\/account\/mcp/, { timeout: 5000 });
+    expect(page.url()).toContain("/account/mcp");
+    await expect(input).not.toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /ai assistants/i }),
+    ).toBeVisible();
   });
 
   test("should show checks and navigate to a check", async ({

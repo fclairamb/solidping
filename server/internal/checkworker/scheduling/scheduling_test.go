@@ -129,7 +129,7 @@ func TestExecutionTimeout(t *testing.T) {
 		want       time.Duration
 	}{
 		{
-			name:       "disabled falls back to flat 30s",
+			name:       "disabled falls back to the flat default ceiling",
 			params:     scheduling.Params{CostTimeoutFactor: 0},
 			costEWMAMs: 200,
 			want:       scheduling.DefaultExecutionTimeout,
@@ -153,9 +153,37 @@ func TestExecutionTimeout(t *testing.T) {
 			want:       scheduling.DefaultExecutionTimeout,
 		},
 		{
-			name:       "chronic offender is clamped to the 30s ceiling",
+			name:       "chronic offender is clamped to the default ceiling",
 			params:     scheduling.Params{CostTimeoutFactor: 3, CostTimeoutFloor: 2 * time.Second},
 			costEWMAMs: 60000, // 3 × 60s = 180s, clamped
+			want:       scheduling.DefaultExecutionTimeout,
+		},
+		{
+			name: "configured CheckTimeout raises the upper clamp bound",
+			params: scheduling.Params{
+				CheckTimeout: 25 * time.Second, CostTimeoutFactor: 3, CostTimeoutFloor: 2 * time.Second,
+			},
+			costEWMAMs: 60000, // 3 × 60s = 180s, clamped to the 25s configured ceiling
+			want:       25 * time.Second,
+		},
+		{
+			name: "configured CheckTimeout lowers the upper clamp bound",
+			params: scheduling.Params{
+				CheckTimeout: 8 * time.Second, CostTimeoutFactor: 3, CostTimeoutFloor: 2 * time.Second,
+			},
+			costEWMAMs: 60000, // 3 × 60s = 180s, clamped to the 8s configured ceiling
+			want:       8 * time.Second,
+		},
+		{
+			name:       "configured CheckTimeout is the flat timeout when cost-aware is off",
+			params:     scheduling.Params{CheckTimeout: 20 * time.Second, CostTimeoutFactor: 0},
+			costEWMAMs: 200,
+			want:       20 * time.Second,
+		},
+		{
+			name:       "unset CheckTimeout falls back to the default ceiling",
+			params:     scheduling.Params{CheckTimeout: 0, CostTimeoutFactor: 0},
+			costEWMAMs: 200,
 			want:       scheduling.DefaultExecutionTimeout,
 		},
 	}
@@ -169,19 +197,34 @@ func TestExecutionTimeout(t *testing.T) {
 }
 
 // TestExecutionTimeoutDefaultOnValues pins the spec 2026-07-01-04 D4
-// verification table for the new production defaults (factor 3, floor 5s):
-// a never-run job keeps the full 30s (cold-start fix), a fast check's
-// worst-case slot occupancy drops to the 5s floor, a mid-cost check gets
-// 3× its measured cost, and a slow check keeps the full ceiling.
+// verification table for the production defaults (factor 3, floor 5s) with the
+// new 15s global ceiling (spec 2026-07-10-11): a never-run job keeps the full
+// 15s (cold-start fix), a fast check's worst-case slot occupancy drops to the
+// 5s floor, a mid-cost check gets 3× its measured cost, and a slow check is
+// clamped to the 15s ceiling.
 func TestExecutionTimeoutDefaultOnValues(t *testing.T) {
 	t.Parallel()
 
 	p := scheduling.Params{CostTimeoutFactor: 3, CostTimeoutFloor: 5 * time.Second}
 
-	require.Equal(t, 30*time.Second, p.ExecutionTimeout(0), "cost 0 (never ran) → full default ceiling")
+	require.Equal(t, 15*time.Second, p.ExecutionTimeout(0), "cost 0 (never ran) → full default ceiling")
 	require.Equal(t, 5*time.Second, p.ExecutionTimeout(200), "cost 200ms → 600ms, clamped up to the 5s floor")
 	require.Equal(t, 12*time.Second, p.ExecutionTimeout(4000), "cost 4s → 3×4s = 12s")
-	require.Equal(t, 30*time.Second, p.ExecutionTimeout(20000), "cost 20s → 60s, clamped to the 30s ceiling")
+	require.Equal(t, 15*time.Second, p.ExecutionTimeout(20000), "cost 20s → 60s, clamped to the 15s ceiling")
+}
+
+// TestEffectiveCheckTimeout covers the configurable global check timeout (spec
+// 2026-07-10-11): a configured CheckTimeout is used verbatim; unset (0) falls
+// back to the 15s DefaultExecutionTimeout.
+func TestEffectiveCheckTimeout(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, 15*time.Second, scheduling.DefaultExecutionTimeout,
+		"the built-in default ceiling is 15s")
+	require.Equal(t, scheduling.DefaultExecutionTimeout, (scheduling.Params{}).EffectiveCheckTimeout(),
+		"unset CheckTimeout falls back to the default ceiling")
+	require.Equal(t, 22*time.Second, (scheduling.Params{CheckTimeout: 22 * time.Second}).EffectiveCheckTimeout(),
+		"a configured CheckTimeout is used verbatim")
 }
 
 func TestUpdateEWMA(t *testing.T) {
@@ -209,7 +252,7 @@ func TestUpdateEWMA(t *testing.T) {
 
 // TestZeroParamsAreInert verifies the no-data baseline: with zero Params and no
 // cost history, effective == scheduled_at (pure FIFO), and the cost-aware
-// timeout falls back to the flat 30s ceiling.
+// timeout falls back to the flat default (15s) ceiling.
 func TestZeroParamsAreInert(t *testing.T) {
 	t.Parallel()
 

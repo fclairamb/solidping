@@ -99,7 +99,11 @@ func (h *SAMLHandler) ACS(writer http.ResponseWriter, req bunrouter.Request) err
 		return h.handleSAMLError(writer, req, state.RedirectURI, err)
 	}
 
+	// Redirect with tokens. Also set the SPA session cookie so
+	// cookie-authenticated surfaces (the embedded MCP OAuth
+	// authorize/consent flow) work without a login-page refresh bounce.
 	redirectURL := h.buildSuccessRedirect(state.RedirectURI, result)
+	setAccessTokenCookie(writer, result.AccessToken, result.ExpiresIn)
 	http.Redirect(writer, req.Request, redirectURL, http.StatusFound)
 
 	return nil

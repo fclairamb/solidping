@@ -16,7 +16,7 @@ async function deleteAllEscalationPolicies(page: Page, token: string) {
   const body = await resp.json();
   for (const p of body.data ?? []) {
     await page.request.delete(
-      `${API_BASE}/api/v1/orgs/test/escalation-policies/${p.slug}`,
+      `${API_BASE}/api/v1/orgs/test/escalation-policies/${p.uid}`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
   }
@@ -49,7 +49,6 @@ async function createOnCallSchedule(
   page: Page,
   token: string,
   name: string,
-  slug: string,
 ): Promise<{ uid: string }> {
   const resp = await page.request.post(
     `${API_BASE}/api/v1/orgs/test/on-call-schedules`,
@@ -57,7 +56,6 @@ async function createOnCallSchedule(
       headers: { Authorization: `Bearer ${token}` },
       data: {
         name,
-        slug,
         timezone: "UTC",
         rotationType: "weekly",
         handoffTime: "09:00",
@@ -70,9 +68,9 @@ async function createOnCallSchedule(
   return resp.json();
 }
 
-async function deleteOnCallSchedule(page: Page, token: string, slug: string) {
+async function deleteOnCallSchedule(page: Page, token: string, uid: string) {
   await page.request.delete(
-    `${API_BASE}/api/v1/orgs/test/on-call-schedules/${slug}`,
+    `${API_BASE}/api/v1/orgs/test/on-call-schedules/${uid}`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
 }
@@ -80,15 +78,14 @@ async function deleteOnCallSchedule(page: Page, token: string, slug: string) {
 async function createEscalationPolicy(
   page: Page,
   token: string,
-  slug: string,
   name: string,
   steps: unknown[] = [],
-) {
+): Promise<{ uid: string }> {
   const resp = await page.request.post(
     `${API_BASE}/api/v1/orgs/test/escalation-policies`,
     {
       headers: { Authorization: `Bearer ${token}` },
-      data: { slug, name, repeatMax: 0, steps },
+      data: { name, repeatMax: 0, steps },
     },
   );
   return resp.json();
@@ -107,7 +104,6 @@ test.describe("Escalation policy editor", () => {
       page,
       token,
       `E2E Sched ${stamp}`,
-      `e2e-sched-${stamp}`,
     );
     // Test org user: test@test.com — get their userUid via the members API.
     const membersResp = await page.request.get(
@@ -118,17 +114,21 @@ test.describe("Escalation policy editor", () => {
     const userUid = (members.data ?? [])[0]?.userUid as string;
     expect(userUid).toBeTruthy();
 
-    const policySlug = `e2e-pol-${stamp}`;
-    await createEscalationPolicy(page, token, policySlug, `E2E Policy ${stamp}`, [
-      {
-        delayMinutes: 0,
-        targets: [{ type: "connection", targetUid: channel.uid }],
-      },
-    ]);
+    const policy = await createEscalationPolicy(
+      page,
+      token,
+      `E2E Policy ${stamp}`,
+      [
+        {
+          delayMinutes: 0,
+          targets: [{ type: "connection", targetUid: channel.uid }],
+        },
+      ],
+    );
 
     try {
-      // Navigate to the edit page.
-      await page.goto(`orgs/test/escalation-policies/${policySlug}`);
+      // Navigate to the edit page (addressed by uid).
+      await page.goto(`orgs/test/escalation-policies/${policy.uid}`);
       await page.waitForLoadState("networkidle");
 
       // The first step's type selector must show "Notification connection".
@@ -196,7 +196,38 @@ test.describe("Escalation policy editor", () => {
     } finally {
       await deleteAllEscalationPolicies(page, token);
       await deleteChannel(page, token, channel.uid);
-      await deleteOnCallSchedule(page, token, `e2e-sched-${stamp}`);
+      await deleteOnCallSchedule(page, token, schedule.uid);
+    }
+  });
+
+  test("detail breadcrumb shows the section back-link and the policy-name segment", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const stamp = Date.now();
+    const name = `E2E Bc ${stamp}`;
+
+    const policy = await createEscalationPolicy(page, token, name);
+
+    try {
+      // Detail page is addressed by uid; the breadcrumb reads `params.uid`.
+      await page.goto(`orgs/test/escalation-policies/${policy.uid}`);
+      await page.waitForLoadState("networkidle");
+
+      // Scope to the top header so we assert on the breadcrumb, not the
+      // sidebar link or the page heading.
+      const header = page.locator("header").first();
+      // Section root must be a clickable back-link (regression: rendered as
+      // plain non-clickable text when the breadcrumb read the removed slug).
+      await expect(
+        header.getByRole("link", { name: /escalation policies/i }),
+      ).toBeVisible();
+      // Entity-name segment must render the policy name (regression: omitted
+      // because `params.slug` was always undefined after the slug removal).
+      await expect(header.getByText(name)).toBeVisible();
+    } finally {
+      await deleteAllEscalationPolicies(page, token);
     }
   });
 
@@ -206,12 +237,15 @@ test.describe("Escalation policy editor", () => {
     const page = authenticatedPage;
     const token = await getAuthToken(page);
     const stamp = Date.now();
-    const policySlug = `e2e-hdr-${stamp}`;
 
-    await createEscalationPolicy(page, token, policySlug, `E2E Header ${stamp}`);
+    const policy = await createEscalationPolicy(
+      page,
+      token,
+      `E2E Header ${stamp}`,
+    );
 
     try {
-      await page.goto(`orgs/test/escalation-policies/${policySlug}`);
+      await page.goto(`orgs/test/escalation-policies/${policy.uid}`);
       await page.waitForLoadState("networkidle");
 
       const backBtn = page.getByRole("link", { name: /back/i });

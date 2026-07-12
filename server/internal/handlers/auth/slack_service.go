@@ -98,8 +98,11 @@ type OAuthState struct {
 type SlackOAuthResult struct {
 	AccessToken  string
 	RefreshToken string
-	OrgSlug      string
-	UserUID      string
+	// ExpiresIn is the access token's lifetime in seconds, so the callback
+	// can scope the access_token cookie exactly like every other provider.
+	ExpiresIn int
+	OrgSlug   string
+	UserUID   string
 }
 
 // SlackOAuthService handles Slack OAuth authentication logic.
@@ -367,6 +370,7 @@ func (s *SlackOAuthService) HandleCallback(ctx context.Context, code string) (*S
 	return &SlackOAuthResult{
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
+		ExpiresIn:    tokens.ExpiresIn,
 		OrgSlug:      org.Slug,
 		UserUID:      user.UID,
 	}, nil

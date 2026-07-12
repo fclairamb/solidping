@@ -504,6 +504,30 @@ func TestDuration_Scan(t *testing.T) {
 			wantErr:  false,
 		},
 		{
+			name:     "Go duration - 30 seconds",
+			input:    "30s",
+			expected: Duration(30 * time.Second),
+			wantErr:  false,
+		},
+		{
+			name:     "Go duration - 2 minutes",
+			input:    "2m",
+			expected: Duration(2 * time.Minute),
+			wantErr:  false,
+		},
+		{
+			name:     "Go duration - 6 hours",
+			input:    "6h",
+			expected: Duration(6 * time.Hour),
+			wantErr:  false,
+		},
+		{
+			name:     "Go duration - 1 minute 30 seconds",
+			input:    "1m30s",
+			expected: Duration(time.Minute + 30*time.Second),
+			wantErr:  false,
+		},
+		{
 			name:     "invalid format",
 			input:    caseNameInvalidFormat,
 			expected: Duration(0),

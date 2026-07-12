@@ -13,7 +13,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { JsonViewer } from "@/components/shared/json-viewer";
-import { useCheckJob, type CheckJobState } from "@/api/hooks";
+import { useCheckJob, useRegions, type CheckJobState } from "@/api/hooks";
+import { regionDisplayLabel } from "@/lib/region-label";
 
 interface CheckJobDetailSearch {
   allOrgs?: boolean;
@@ -75,6 +76,9 @@ function CheckJobDetailPage() {
 
   const scope = { allOrgs: allOrgs ?? false };
   const { data: row, isLoading, isError } = useCheckJob(org, checkJobUid, scope);
+  // The job row carries the raw region slug; show the friendly
+  // "{emoji} {name}" label from the region definitions (raw-slug fallback).
+  const { data: regionsData } = useRegions(org);
 
   if (isLoading) {
     return (
@@ -128,7 +132,11 @@ function CheckJobDetailPage() {
                 {row.checkName ?? row.checkUid}
               </Link>
             </MetaRow>
-            <MetaRow label={t("columns.region")}>{row.region ?? t("labels.none")}</MetaRow>
+            <MetaRow label={t("columns.region")}>
+              {row.region
+                ? regionDisplayLabel(regionsData?.regions, row.region)
+                : t("labels.none")}
+            </MetaRow>
             <MetaRow label={t("columns.type")}>{row.type}</MetaRow>
             <MetaRow label={t("columns.period")}>{formatPeriod(row.periodSeconds)}</MetaRow>
             <MetaRow label={t("columns.nextRun")}>{relative(row.scheduledAt)}</MetaRow>

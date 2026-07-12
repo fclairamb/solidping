@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next";
 import { format } from "date-fns";
 import { X } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { useResult } from "@/api/hooks";
+import { useRegions, useResult } from "@/api/hooks";
+import { regionDisplayLabel } from "@/lib/region-label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,8 @@ export function PinnedResultBox({
 }: PinnedResultBoxProps) {
   const { t } = useTranslation("checks");
   const { data, isLoading, error } = useResult(org, checkUid, resultUid);
+  // react-query dedupes with the parent chart's own useRegions(org) call.
+  const { data: regionsData } = useRegions(org);
 
   const boxRef = useRef<HTMLDivElement | null>(null);
   const [boxHeight, setBoxHeight] = useState(140);
@@ -138,7 +141,9 @@ export function PinnedResultBox({
           {data.region && (
             <div className="flex items-baseline justify-between gap-2">
               <span className="text-xs text-muted-foreground">{t("detail.resultBox.region")}</span>
-              <span className="text-xs">{data.region}</span>
+              <span className="text-xs">
+                {regionDisplayLabel(regionsData?.regions, data.region)}
+              </span>
             </div>
           )}
           {data.status && (

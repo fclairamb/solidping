@@ -1442,6 +1442,30 @@ type hangingConfig struct{}
 func (hangingConfig) FromMap(map[string]any) error { return nil }
 func (hangingConfig) GetConfig() map[string]any    { return map[string]any{} }
 
+// timeoutRecorder captures the `timeout` value a checker config observed via
+// FromMap. FromMap runs synchronously inside executeJob (on the calling
+// goroutine, before runCheckerGuarded spawns the child), so the test reads
+// these fields after executeJob returns without any synchronization.
+type timeoutRecorder struct {
+	seen  bool
+	value string
+}
+
+// timeoutRecordingConfig records the `timeout` value FromMap received so a test
+// can assert executeJob threads the uniform default into the checker config
+// when the user left `timeout` unset (spec 2026-07-11-09).
+type timeoutRecordingConfig struct{ rec *timeoutRecorder }
+
+func (c timeoutRecordingConfig) FromMap(configMap map[string]any) error {
+	if raw, ok := configMap[checkTimeoutConfigKey].(string); ok {
+		c.rec.seen = true
+		c.rec.value = raw
+	}
+
+	return nil
+}
+func (c timeoutRecordingConfig) GetConfig() map[string]any { return map[string]any{} }
+
 // hangingChecker's Execute blocks forever on a never-closed channel and
 // completely ignores ctx — the exact failure mode from the 2026-07-04/05
 // incident (mail checkers with unbounded socket reads).
@@ -1511,6 +1535,31 @@ func (panickingChecker) Validate(*checkerdef.CheckSpec) error { return nil }
 
 func (panickingChecker) Execute(context.Context, checkerdef.Config) (*checkerdef.Result, error) {
 	panic("simulated checker panic")
+}
+
+// deadlineRecordingChecker records the context deadline its Execute observes,
+// then returns immediately with StatusUp. Used to assert executeJob builds the
+// execution context with a checkTimeout + 1s deadline (spec 2026-07-10-11). The
+// channel send/receive inside runCheckerGuarded → executeJob establishes
+// happens-before with the test's read, but atomics keep the race detector
+// unambiguously happy regardless.
+type deadlineRecordingChecker struct {
+	deadlineUnixNano atomic.Int64
+	observed         atomic.Bool
+}
+
+func (c *deadlineRecordingChecker) Type() checkerdef.CheckType {
+	return checkerdef.CheckType("test-deadline")
+}
+func (c *deadlineRecordingChecker) Validate(*checkerdef.CheckSpec) error { return nil }
+
+func (c *deadlineRecordingChecker) Execute(ctx context.Context, _ checkerdef.Config) (*checkerdef.Result, error) {
+	if dl, ok := ctx.Deadline(); ok {
+		c.deadlineUnixNano.Store(dl.UnixNano())
+		c.observed.Store(true)
+	}
+
+	return &checkerdef.Result{Status: checkerdef.StatusUp}, nil
 }
 
 // withShortAbandonGrace overrides abandonGrace for the duration of the test
@@ -1673,6 +1722,221 @@ func TestRunCheckerGuarded_WellBehavedCtxHonoringChecker_WatchdogDoesNotFire(t *
 
 	abandonedAfter := testutil.ToFloat64(prommetrics.CheckRunnerAbandoned.WithLabelValues(checkJob.Type))
 	assert.InDelta(t, abandonedBefore, abandonedAfter, metricDelta, "abandoned counter must not move")
+}
+
+// TestExecuteJob_ExecutionContextIsCheckTimeoutPlusOneSecond drives the real
+// executeJob path and asserts the execution context handed to the checker has a
+// deadline of checkTimeout + 1s (spec 2026-07-10-11). The +1s margin lets a
+// checker that honors its own timeout report a clean StatusTimeout before the
+// hard context cancellation; without it, the context and the checker's internal
+// timeout race and the result is a generic context-deadline-exceeded.
+//
+//nolint:paralleltest // Test uses shared database state
+func TestExecuteJob_ExecutionContextIsCheckTimeoutPlusOneSecond(t *testing.T) {
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	org := models.NewOrganization("test-org", "")
+	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+	worker := models.NewWorker("test-worker", "Test Worker")
+	_, err := dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
+	require.NoError(t, err)
+	runner.setWorker(worker)
+
+	const dlType = checkerdef.CheckType("test-deadline")
+	recorder := &deadlineRecordingChecker{}
+	runner.getChecker, runner.parseConfig = stubResolvers(dlType, recorder)
+
+	// Flat 3s check timeout (cost-aware off, CostTimeoutFactor 0), so
+	// executeJob derives checkTimeout = 3s deterministically regardless of the
+	// job's cost EWMA and the execution context deadline is start + 4s.
+	const checkTimeout = 3 * time.Second
+	runner.schedParams = scheduling.Params{CheckTimeout: checkTimeout}
+
+	check := models.NewCheck(org.UID, "deadline-"+uuid.New().String()[:8], string(dlType))
+	require.NoError(t, dbSvc.CreateCheck(ctx, check))
+	checkJob := new(models.CheckJob)
+	require.NoError(t, dbSvc.DB().NewSelect().Model(checkJob).Where("check_uid = ?", check.UID).Scan(ctx))
+	claimJobForTest(t, dbSvc, ctx, checkJob, worker.UID)
+
+	start := time.Now()
+	require.NoError(t, runner.executeJob(ctx, runner.logger, checkJob))
+
+	require.True(t, recorder.observed.Load(), "the checker must observe a context deadline")
+	deadline := time.Unix(0, recorder.deadlineUnixNano.Load())
+	observed := deadline.Sub(start)
+
+	assert.InDelta(t, (checkTimeout + time.Second).Seconds(), observed.Seconds(), 0.5,
+		"execution context deadline must be checkTimeout + 1s")
+	assert.Greater(t, observed, checkTimeout,
+		"the +1s margin must be present so a ctx-honoring checker can report StatusTimeout before the hard cancel")
+}
+
+// TestExecuteJob_UnsetTimeoutThreadsUniformDefault proves that when a check has
+// no per-check `timeout`, executeJob threads the uniform 15s default into the
+// checker config (spec 2026-07-11-09) so every type honors it instead of its
+// own short internal defaultTimeout (e.g. icmp's 5s), and the execution context
+// deadline is 15s + 1s. This is the observable "unset = 15s" contract: the
+// existing deadline test proves the context is checkTimeout + 1s, but only this
+// one proves the checker itself is handed the 15s budget rather than its short
+// default.
+//
+//nolint:paralleltest // Test uses shared database state
+func TestExecuteJob_UnsetTimeoutThreadsUniformDefault(t *testing.T) {
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	org := models.NewOrganization("test-org", "")
+	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+	worker := models.NewWorker("test-worker", "Test Worker")
+	_, err := dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
+	require.NoError(t, err)
+	runner.setWorker(worker)
+
+	const dlType = checkerdef.CheckType("test-deadline")
+	recorder := &deadlineRecordingChecker{}
+	rec := &timeoutRecorder{}
+	runner.getChecker = func(ct checkerdef.CheckType) (checkerdef.Checker, bool) {
+		if ct == dlType {
+			return recorder, true
+		}
+
+		return registry.GetChecker(ct)
+	}
+	runner.parseConfig = func(ct checkerdef.CheckType) (checkerdef.Config, bool) {
+		if ct == dlType {
+			return timeoutRecordingConfig{rec: rec}, true
+		}
+
+		return registry.ParseConfig(ct)
+	}
+
+	// Uniform 15s default (cost-aware off, CostTimeoutFactor 0), so an unset
+	// timeout resolves to exactly 15s regardless of the job's cost EWMA and the
+	// execution context deadline is start + 16s.
+	const checkTimeout = 15 * time.Second
+	runner.schedParams = scheduling.Params{CheckTimeout: checkTimeout}
+
+	// Check config carries no `timeout` key.
+	check := models.NewCheck(org.UID, "unset-"+uuid.New().String()[:8], string(dlType))
+	require.NoError(t, dbSvc.CreateCheck(ctx, check))
+	checkJob := new(models.CheckJob)
+	require.NoError(t, dbSvc.DB().NewSelect().Model(checkJob).Where("check_uid = ?", check.UID).Scan(ctx))
+	claimJobForTest(t, dbSvc, ctx, checkJob, worker.UID)
+
+	start := time.Now()
+	require.NoError(t, runner.executeJob(ctx, runner.logger, checkJob))
+
+	require.True(t, rec.seen, "the checker config must observe a threaded timeout when the user left it unset")
+	require.Equal(t, checkTimeout.String(), rec.value,
+		"unset timeout must be threaded to the checker as the uniform 15s default, not left to its short internal default")
+
+	require.True(t, recorder.observed.Load(), "the checker must observe a context deadline")
+	deadline := time.Unix(0, recorder.deadlineUnixNano.Load())
+	observed := deadline.Sub(start)
+	assert.InDelta(t, (checkTimeout + time.Second).Seconds(), observed.Seconds(), 0.5,
+		"execution context deadline must be 15s + 1s for an unset timeout")
+}
+
+// TestPerCheckTimeout pins the worker-side extraction of the per-check
+// `timeout` config value (spec 2026-07-11-05): duration strings in (0, 30s]
+// are honored, legacy over-cap values are clamped at 30s, and anything
+// absent/invalid/non-positive falls back to the global rule.
+func TestPerCheckTimeout(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		config map[string]any
+		want   time.Duration
+		wantOK bool
+	}{
+		{name: "absent key", config: map[string]any{"url": "https://example.com"}, wantOK: false},
+		{name: "nil config", config: nil, wantOK: false},
+		{name: "valid 10s", config: map[string]any{"timeout": "10s"}, want: 10 * time.Second, wantOK: true},
+		{name: "sub-second", config: map[string]any{"timeout": "500ms"}, want: 500 * time.Millisecond, wantOK: true},
+		{name: "30s boundary", config: map[string]any{"timeout": "30s"}, want: 30 * time.Second, wantOK: true},
+		{name: "legacy 60s clamps to 30s", config: map[string]any{"timeout": "60s"}, want: 30 * time.Second, wantOK: true},
+		{name: "zero ignored", config: map[string]any{"timeout": "0s"}, wantOK: false},
+		{name: "negative ignored", config: map[string]any{"timeout": "-5s"}, wantOK: false},
+		{name: "garbage ignored", config: map[string]any{"timeout": "abc"}, wantOK: false},
+		{name: "empty string ignored", config: map[string]any{"timeout": ""}, wantOK: false},
+		{name: "non-string ignored", config: map[string]any{"timeout": float64(10)}, wantOK: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, ok := perCheckTimeout(tt.config)
+			require.Equal(t, tt.wantOK, ok)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestExecuteJob_PerCheckTimeoutSetsContextDeadline drives the real executeJob
+// path with a per-check `timeout` config value (spec 2026-07-11-05) and
+// asserts the execution context deadline is that timeout + 1s — taking
+// precedence over the flat/cost-aware ceiling in both directions (shorter and
+// longer than the global budget) and defensively clamped at 30s for legacy
+// over-cap configs.
+//
+//nolint:paralleltest // Test uses shared database state
+func TestExecuteJob_PerCheckTimeoutSetsContextDeadline(t *testing.T) {
+	// Flat 3s global check timeout (cost-aware off): without a per-check
+	// timeout the context deadline would be 4s — every case below must
+	// deviate from that per the per-check rule.
+	const globalCheckTimeout = 3 * time.Second
+
+	tests := []struct {
+		name         string
+		timeout      string
+		wantDeadline time.Duration
+	}{
+		{name: "shorter than the global budget", timeout: "2s", wantDeadline: 3 * time.Second},
+		{name: "longer than the global budget (user choice wins)", timeout: "8s", wantDeadline: 9 * time.Second},
+		{name: "legacy 60s clamps to 30s (+1s context)", timeout: "60s", wantDeadline: 31 * time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) { //nolint:paralleltest // shared database state
+			runner, dbSvc, ctx := setupTestRunner(t)
+			defer func() { _ = dbSvc.Close() }()
+
+			org := models.NewOrganization("test-org", "")
+			require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+			worker := models.NewWorker("test-worker", "Test Worker")
+			_, err := dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
+			require.NoError(t, err)
+			runner.setWorker(worker)
+
+			const dlType = checkerdef.CheckType("test-deadline")
+			recorder := &deadlineRecordingChecker{}
+			runner.getChecker, runner.parseConfig = stubResolvers(dlType, recorder)
+			runner.schedParams = scheduling.Params{CheckTimeout: globalCheckTimeout}
+
+			check := models.NewCheck(org.UID, "percheck-"+uuid.New().String()[:8], string(dlType))
+			check.Config = models.JSONMap{"timeout": tt.timeout}
+			require.NoError(t, dbSvc.CreateCheck(ctx, check))
+			checkJob := new(models.CheckJob)
+			require.NoError(t, dbSvc.DB().NewSelect().Model(checkJob).Where("check_uid = ?", check.UID).Scan(ctx))
+			claimJobForTest(t, dbSvc, ctx, checkJob, worker.UID)
+
+			start := time.Now()
+			require.NoError(t, runner.executeJob(ctx, runner.logger, checkJob))
+
+			require.True(t, recorder.observed.Load(), "the checker must observe a context deadline")
+			deadline := time.Unix(0, recorder.deadlineUnixNano.Load())
+			observed := deadline.Sub(start)
+
+			assert.InDelta(t, tt.wantDeadline.Seconds(), observed.Seconds(), 0.5,
+				"execution context deadline must be the per-check timeout + 1s")
+		})
+	}
 }
 
 // stubResolvers builds getChecker/parseConfig overrides that resolve exactly

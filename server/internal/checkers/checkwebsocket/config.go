@@ -9,7 +9,7 @@ import (
 
 const (
 	defaultTimeout = 10 * time.Second
-	maxTimeout     = 60 * time.Second
+	maxTimeout     = 30 * time.Second
 )
 
 // WebSocketConfig defines the configuration for WebSocket checks.

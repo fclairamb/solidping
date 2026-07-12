@@ -242,29 +242,28 @@ test.describe("Check Detail Page", () => {
     await expect(euChip).toBeVisible();
 
     await expect(page.locator(".recharts-wrapper")).toBeVisible();
-    const allDotCount = await page.locator(".recharts-wrapper circle").count();
+    // Count only the per-point data dots — each carries a <title> child. The
+    // hover/selected activeDot is a childless <circle> whose nondeterministic
+    // presence would otherwise make this total odd (17 vs 16) and the /2
+    // assertions below fractional (e.g. expected 8.5). See response-time-chart.tsx.
+    const dataDots = page.locator(".recharts-wrapper circle:has(title)");
+    const allDotCount = await dataDots.count();
 
     // Selecting the US chip narrows the chart to fewer points (only the
     // us-1 cluster) and writes ?graphRegion=us-1 into the URL.
     await usChip.click();
     await page.waitForURL(/graphRegion=us-1/);
-    await expect(page.locator(".recharts-wrapper circle")).toHaveCount(
-      allDotCount / 2,
-    );
+    await expect(dataDots).toHaveCount(allDotCount / 2);
 
     // Switching to the EU chip updates the URL and keeps a single-region
     // point count (same size class as the US selection, different region).
     await euChip.click();
     await page.waitForURL(/graphRegion=eu-1/);
-    await expect(page.locator(".recharts-wrapper circle")).toHaveCount(
-      allDotCount / 2,
-    );
+    await expect(dataDots).toHaveCount(allDotCount / 2);
 
     // Back to "All regions" restores every point and clears the param.
     await allChip.click();
-    await expect(page.locator(".recharts-wrapper circle")).toHaveCount(
-      allDotCount,
-    );
+    await expect(dataDots).toHaveCount(allDotCount);
     expect(page.url()).not.toContain("graphRegion");
   });
 

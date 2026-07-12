@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { expandSection } from "./section-helpers";
 
 test.describe("Checks", () => {
   test("should display the checks list page", async ({ authenticatedPage }) => {
@@ -88,7 +89,8 @@ test.describe("Checks", () => {
     await page.getByRole("option", { name: "1 minute" }).click();
 
     // Confirmation 120 -> "= 2 min" with the approximate probe count for the
-    // active 1-minute interval.
+    // active 1-minute interval. Incident tracking lives in a collapsed section.
+    await expandSection(page, "section-incident-tracking-trigger");
     await page.getByTestId("confirmation-period-input").fill("120");
     const confirmationEstimate = page.getByTestId("confirmation-period-estimate");
     await expect(confirmationEstimate).toContainText("= 2 min");
@@ -347,6 +349,7 @@ test.describe("Checks", () => {
     await page.waitForLoadState("networkidle");
 
     // Set flapping parameters (reopen multiplier is kept; window/factor/cap are new)
+    await expandSection(page, "section-flapping-trigger");
     await page.getByTestId("reopen-cooldown-input").fill("3");
     await page.getByTestId("flapping-window-input").fill("7200");
     await page.getByTestId("flap-backoff-input").fill("3");
@@ -367,7 +370,9 @@ test.describe("Checks", () => {
     await page.waitForURL(/\/edit$/);
     await page.waitForLoadState("networkidle");
 
-    // Verify the flapping values are still set
+    // Verify the flapping values are still set (the section auto-opens because
+    // it holds non-default values, but expand defensively in case it did not).
+    await expandSection(page, "section-flapping-trigger");
     await expect(page.getByTestId("reopen-cooldown-input")).toHaveValue("3");
     await expect(page.getByTestId("flapping-window-input")).toHaveValue("7200");
     await expect(page.getByTestId("flap-backoff-input")).toHaveValue("3");
@@ -378,6 +383,61 @@ test.describe("Checks", () => {
       path: "test-results/screenshots/checks-flapping-persisted.png",
       fullPage: true,
     });
+  });
+
+  test("should persist and clear the optional per-check timeout", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Create a check with a 10s timeout (spec 2026-07-11-05).
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    // Timeout lives in the collapsed "Advanced" section on create.
+    await expandSection(page, "section-advanced-trigger");
+    // The empty field advertises the uniform 15s default (spec 2026-07-11-09).
+    await expect(page.getByTestId("check-timeout-input")).toHaveAttribute("placeholder", "15 seconds (default)");
+    await expect(page.getByText("Empty uses the default of 15 seconds.")).toBeVisible();
+
+    const checkName = `E2E Timeout ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-url-input").fill("https://example.com/timeout-test");
+    await page.getByTestId("check-timeout-input").fill("10");
+    await page.getByTestId("check-submit-button").click();
+
+    // Wait for check detail page
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
+
+    // The edit form seeds the timeout input from config.timeout ("10s" → 10),
+    // so a fresh edit page proves the value was persisted in config.
+    await page.locator('a[href*="/edit"]').click();
+    await page.waitForURL(/\/edit$/);
+    await page.waitForLoadState("networkidle");
+    // A non-default timeout auto-opens Advanced; expand defensively regardless.
+    await expandSection(page, "section-advanced-trigger");
+    await expect(page.getByTestId("check-timeout-input")).toHaveValue("10");
+
+    // Clear the timeout and save — the key must be removed from config.
+    await page.getByTestId("check-timeout-input").fill("");
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+
+    // Back on a fresh edit page the field is empty again (key removed). With the
+    // timeout cleared, Advanced is collapsed by default, so expand it first.
+    await page.locator('a[href*="/edit"]').click();
+    await page.waitForURL(/\/edit$/);
+    await page.waitForLoadState("networkidle");
+    await expandSection(page, "section-advanced-trigger");
+    await expect(page.getByTestId("check-timeout-input")).toHaveValue("");
   });
 
   test("should show validation error when URL is empty", async ({
@@ -518,6 +578,68 @@ test.describe("Checks", () => {
     // Take screenshot of edit form with persisted values
     await page.screenshot({
       path: "test-results/screenshots/checks-ws-edit.png",
+      fullPage: true,
+    });
+  });
+
+  test("RDP check form exposes NLA and cert-expiry fields, and round-trips on edit", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Navigate to new check form
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    // Select RDP type
+    await page.getByTestId("check-type-select").click();
+    await page.getByRole("option", { name: /^RDP/i }).click();
+
+    // RDP-specific fields render
+    await expect(page.getByTestId("check-rdp-require-nla-checkbox")).toBeVisible();
+    await expect(page.getByTestId("check-rdp-warning-days-input")).toBeVisible();
+    await expect(page.getByTestId("check-rdp-critical-days-input")).toBeVisible();
+
+    const checkName = `E2E RDP ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-host-input").fill("rdp.example.internal");
+    await page.getByTestId("check-port-input").fill("3390");
+    await page.getByTestId("check-rdp-require-nla-checkbox").click();
+    await page.getByTestId("check-rdp-critical-days-input").fill("7");
+    await page.getByTestId("check-rdp-warning-days-input").fill("30");
+
+    // Take screenshot before submit
+    await page.screenshot({
+      path: "test-results/screenshots/checks-rdp-form.png",
+      fullPage: true,
+    });
+
+    // Submit — config validation is offline, so an internal placeholder host
+    // is accepted (the check itself would run from a worker with access).
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
+
+    // Navigate to edit page to verify fields round-trip
+    await page.getByRole("link", { name: /Edit/i }).click();
+    await page.waitForURL(/\/edit/);
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("check-host-input")).toHaveValue("rdp.example.internal");
+    await expect(page.getByTestId("check-port-input")).toHaveValue("3390");
+    await expect(page.getByTestId("check-rdp-require-nla-checkbox")).toBeChecked();
+    await expect(page.getByTestId("check-rdp-critical-days-input")).toHaveValue("7");
+    await expect(page.getByTestId("check-rdp-warning-days-input")).toHaveValue("30");
+
+    // Take screenshot of edit form with persisted values
+    await page.screenshot({
+      path: "test-results/screenshots/checks-rdp-edit.png",
       fullPage: true,
     });
   });

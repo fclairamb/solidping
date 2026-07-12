@@ -22,6 +22,14 @@ const (
 	JobStatusFailed JobStatus = "failed"
 )
 
+// FinishedJobStatuses returns the terminal job statuses eligible for retention
+// cleanup (jobs_cleanup stage 1 soft-delete). pending/running are deliberately
+// excluded — recovering those is the stuck-job reaper's mandate, not cleanup's.
+// A fresh slice each call keeps callers free to pass it straight into a query.
+func FinishedJobStatuses() []JobStatus {
+	return []JobStatus{JobStatusSuccess, JobStatusRetried, JobStatusFailed}
+}
+
 // Job represents a background task that can be scheduled and executed.
 type Job struct {
 	UID             string     `bun:"uid,pk,type:varchar(36)"                        json:"uid"`

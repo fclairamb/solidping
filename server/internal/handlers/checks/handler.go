@@ -419,11 +419,21 @@ func (h *Handler) ExportChecks(writer http.ResponseWriter, req bunrouter.Request
 		return h.handleListError(writer, err)
 	}
 
+	// Render the v2 wire format: pretty-printed, with the defaults block and
+	// duration strings. The document is meant to be read and diffed by humans.
+	body, err := MarshalExportDocument(doc)
+	if err != nil {
+		return h.WriteInternalError(writer, err)
+	}
+
 	// Set download headers
 	writer.Header().Set("Content-Disposition",
 		"attachment; filename=\"solidping-checks-"+orgSlug+".json\"")
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write(body)
 
-	return h.WriteJSON(writer, http.StatusOK, doc)
+	return nil
 }
 
 // ImportChecks handles importing checks from a JSON export document.
@@ -589,6 +599,17 @@ func (h *Handler) handleGetError(writer http.ResponseWriter, err error) error {
 
 // handleUpdateError handles errors from UpdateCheck.
 func (h *Handler) handleUpdateError(writer http.ResponseWriter, err error) error {
+	// Configuration validation errors (e.g. the uniform per-check timeout
+	// cap) surface as field-level VALIDATION_ERRORs, same as on create.
+	if configErr := checkerdef.IsConfigError(err); configErr != nil {
+		return h.WriteValidationError(writer, "Configuration validation failed", []base.ValidationErrorField{
+			{
+				Name:    configErr.Parameter,
+				Message: configErr.Message,
+			},
+		})
+	}
+
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
@@ -635,6 +656,15 @@ func isCheckFieldValidationError(err error) bool {
 
 // handleUpsertError handles errors from UpsertCheck.
 func (h *Handler) handleUpsertError(writer http.ResponseWriter, err error) error {
+	if configErr := checkerdef.IsConfigError(err); configErr != nil {
+		return h.WriteValidationError(writer, "Configuration validation failed", []base.ValidationErrorField{
+			{
+				Name:    configErr.Parameter,
+				Message: configErr.Message,
+			},
+		})
+	}
+
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(

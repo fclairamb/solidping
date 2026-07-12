@@ -68,7 +68,6 @@ type stepJSON struct {
 
 type policyJSON struct {
 	UID                string     `json:"uid"`
-	Slug               string     `json:"slug"`
 	Name               string     `json:"name"`
 	Description        *string    `json:"description,omitempty"`
 	RepeatMax          int        `json:"repeatMax"`
@@ -110,7 +109,6 @@ func toPolicyJSON(detail *PolicyDetail) policyJSON {
 
 	return policyJSON{
 		UID:                policy.UID,
-		Slug:               policy.Slug,
 		Name:               policy.Name,
 		Description:        policy.Description,
 		RepeatMax:          policy.RepeatMax,
@@ -159,7 +157,6 @@ type stepBody struct {
 
 // CreatePolicyBody is the POST body.
 type CreatePolicyBody struct {
-	Slug               string     `json:"slug"`
 	Name               string     `json:"name"`
 	Description        string     `json:"description"`
 	RepeatMax          int        `json:"repeatMax"`
@@ -203,7 +200,6 @@ func (h *Handler) CreatePolicy(writer http.ResponseWriter, req bunrouter.Request
 
 	policy, err := h.svc.CreatePolicy(req.Context(), &CreatePolicyInput{
 		OrganizationUID:    orgUID,
-		Slug:               body.Slug,
 		Name:               body.Name,
 		Description:        body.Description,
 		RepeatMax:          body.RepeatMax,
@@ -214,7 +210,7 @@ func (h *Handler) CreatePolicy(writer http.ResponseWriter, req bunrouter.Request
 		return h.handleError(writer, err)
 	}
 
-	detail, err := h.svc.GetPolicyBySlug(req.Context(), orgUID, policy.Slug)
+	detail, err := h.svc.GetPolicy(req.Context(), orgUID, policy.UID)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -222,15 +218,15 @@ func (h *Handler) CreatePolicy(writer http.ResponseWriter, req bunrouter.Request
 	return h.WriteJSON(writer, http.StatusCreated, toPolicyJSON(detail))
 }
 
-// GetPolicy handles GET /api/v1/orgs/:org/escalation-policies/:slug.
+// GetPolicy handles GET /api/v1/orgs/:org/escalation-policies/:uid.
 func (h *Handler) GetPolicy(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
 	if err != nil {
 		return h.handleError(writer, err)
 	}
-	identifier := req.Param("slug")
+	uid := req.Param("uid")
 
-	detail, err := h.svc.GetPolicyByUidOrSlug(req.Context(), orgUID, identifier)
+	detail, err := h.svc.GetPolicy(req.Context(), orgUID, uid)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -240,7 +236,6 @@ func (h *Handler) GetPolicy(writer http.ResponseWriter, req bunrouter.Request) e
 
 // UpdatePolicyBody is the PATCH body.
 type UpdatePolicyBody struct {
-	Slug               *string     `json:"slug"`
 	Name               *string     `json:"name"`
 	Description        *string     `json:"description"`
 	RepeatMax          *int        `json:"repeatMax"`
@@ -248,13 +243,13 @@ type UpdatePolicyBody struct {
 	Steps              *[]stepBody `json:"steps"`
 }
 
-// UpdatePolicy handles PATCH /api/v1/orgs/:org/escalation-policies/:slug.
+// UpdatePolicy handles PATCH /api/v1/orgs/:org/escalation-policies/:uid.
 func (h *Handler) UpdatePolicy(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
 	if err != nil {
 		return h.handleError(writer, err)
 	}
-	slug := req.Param("slug")
+	uid := req.Param("uid")
 
 	var body UpdatePolicyBody
 	if decodeErr := json.NewDecoder(req.Body).Decode(&body); decodeErr != nil {
@@ -262,7 +257,6 @@ func (h *Handler) UpdatePolicy(writer http.ResponseWriter, req bunrouter.Request
 	}
 
 	input := &UpdatePolicyInput{
-		Slug:               body.Slug,
 		Name:               body.Name,
 		Description:        body.Description,
 		RepeatMax:          body.RepeatMax,
@@ -274,7 +268,7 @@ func (h *Handler) UpdatePolicy(writer http.ResponseWriter, req bunrouter.Request
 		input.Steps = &converted
 	}
 
-	detail, err := h.svc.UpdatePolicy(req.Context(), orgUID, slug, input)
+	detail, err := h.svc.UpdatePolicy(req.Context(), orgUID, uid, input)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -282,15 +276,15 @@ func (h *Handler) UpdatePolicy(writer http.ResponseWriter, req bunrouter.Request
 	return h.WriteJSON(writer, http.StatusOK, toPolicyJSON(detail))
 }
 
-// DeletePolicy handles DELETE /api/v1/orgs/:org/escalation-policies/:slug.
+// DeletePolicy handles DELETE /api/v1/orgs/:org/escalation-policies/:uid.
 func (h *Handler) DeletePolicy(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
 	if err != nil {
 		return h.handleError(writer, err)
 	}
-	slug := req.Param("slug")
+	uid := req.Param("uid")
 
-	if err := h.svc.DeletePolicy(req.Context(), orgUID, slug); err != nil {
+	if err := h.svc.DeletePolicy(req.Context(), orgUID, uid); err != nil {
 		return h.handleError(writer, err)
 	}
 

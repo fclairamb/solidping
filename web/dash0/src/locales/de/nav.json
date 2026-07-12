@@ -125,7 +125,8 @@
     "groupOrganization": "Organisation",
     "groupChecks": "Prüfungen",
     "newCheck": "Neue Prüfung",
-    "newCheckDescription": "Eine neue Monitoring-Prüfung erstellen"
+    "newCheckDescription": "Eine neue Monitoring-Prüfung erstellen",
+    "aiDescription": "KI-Assistenten über MCP verbinden"
   },
   "security": "Sicherheit"
 }

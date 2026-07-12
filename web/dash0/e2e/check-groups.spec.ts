@@ -1,4 +1,5 @@
 import { test, expect, API_BASE, type Page } from "./fixtures";
+import { expandSection } from "./section-helpers";
 
 async function getAuthToken(page: Page): Promise<string> {
   const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
@@ -303,6 +304,7 @@ test.describe("Check Groups", () => {
       .fill(`https://example.com/${ts}`);
 
     // Select the group
+    await expandSection(page, "section-organization-trigger");
     const groupSelect = page.getByTestId("check-group-select");
     await expect(groupSelect).toBeVisible({ timeout: 10000 });
     await groupSelect.click();
@@ -365,6 +367,7 @@ test.describe("Check Groups", () => {
     await page.waitForLoadState("networkidle");
 
     // Select the group
+    await expandSection(page, "section-organization-trigger");
     const groupSelect = page.getByTestId("check-group-select");
     await expect(groupSelect).toBeVisible({ timeout: 10000 });
     await groupSelect.click();
@@ -412,6 +415,7 @@ test.describe("Check Groups", () => {
     );
 
     // Select "No group" to remove from group
+    await expandSection(page, "section-organization-trigger");
     const groupSelect = page.getByTestId("check-group-select");
     await expect(groupSelect).toBeVisible({ timeout: 10000 });
     await groupSelect.click();

@@ -206,13 +206,13 @@ func TestDNSBLChecker_Validate(t *testing.T) {
 			name:    "timeout too long",
 			config:  &DNSBLConfig{Target: "1.2.3.4", Timeout: 61 * time.Second},
 			wantErr: true,
-			errMsg:  "timeout: must be > 0 and <= 60s, got 1m1s",
+			errMsg:  "timeout: must be > 0 and <= 30s, got 1m1s",
 		},
 		{
 			name:    "negative timeout",
 			config:  &DNSBLConfig{Target: "1.2.3.4", Timeout: -1 * time.Second},
 			wantErr: true,
-			errMsg:  "timeout: must be > 0 and <= 60s, got -1s",
+			errMsg:  "timeout: must be > 0 and <= 30s, got -1s",
 		},
 	}
 
@@ -283,6 +283,8 @@ func TestDNSBLChecker_Execute(t *testing.T) {
 		wantClean        []string
 		wantInconclusive []string
 		wantListings     int
+		wantReturnCodes  map[string][]string
+		wantErrorCodes   map[string][]string
 	}{
 		{
 			name:   "listed on one zone",
@@ -332,6 +334,73 @@ func TestDNSBLChecker_Execute(t *testing.T) {
 			wantInconclusive: []string{zoneSpamcop, zoneSpamhaus},
 			wantListings:     0,
 		},
+		{
+			// Spamhaus refuses queries from public cloud resolvers with
+			// 127.255.255.254 — an error reply, not a listing. The clean zone
+			// keeps the check Up.
+			name:   "error code only zone is inconclusive not listed",
+			config: &DNSBLConfig{Target: sampleMailServerIP, Blocklists: []string{zoneSpamhaus, zoneSpamcop}},
+			lookuper: &fakeLookuper{
+				responses: map[string]fakeResp{
+					listedQuery: {addrs: []string{"127.255.255.254"}},
+					cleanQuery:  {err: errNXDOMAIN},
+				},
+			},
+			wantStatus:       checkerdef.StatusUp,
+			wantClean:        []string{zoneSpamcop},
+			wantInconclusive: []string{zoneSpamhaus},
+			wantListings:     0,
+			wantErrorCodes:   map[string][]string{zoneSpamhaus: {"127.255.255.254"}},
+		},
+		{
+			name:   "multiple error codes only is inconclusive",
+			config: &DNSBLConfig{Target: sampleMailServerIP, Blocklists: []string{zoneSpamhaus, zoneSpamcop}},
+			lookuper: &fakeLookuper{
+				responses: map[string]fakeResp{
+					listedQuery: {addrs: []string{"127.255.255.255", "127.255.255.252"}},
+					cleanQuery:  {err: errNXDOMAIN},
+				},
+			},
+			wantStatus:       checkerdef.StatusUp,
+			wantClean:        []string{zoneSpamcop},
+			wantInconclusive: []string{zoneSpamhaus},
+			wantListings:     0,
+			wantErrorCodes:   map[string][]string{zoneSpamhaus: {"127.255.255.255", "127.255.255.252"}},
+		},
+		{
+			// A genuine 127.0.0.x listing must still drive Down (no regression).
+			name:   "real listing is still down",
+			config: &DNSBLConfig{Target: sampleMailServerIP, Blocklists: []string{zoneSpamhaus, zoneSpamcop}},
+			lookuper: &fakeLookuper{
+				responses: map[string]fakeResp{
+					listedQuery: {addrs: []string{"127.0.0.2"}},
+					cleanQuery:  {err: errNXDOMAIN},
+				},
+			},
+			wantStatus:      checkerdef.StatusDown,
+			wantListedOn:    []string{zoneSpamhaus},
+			wantClean:       []string{zoneSpamcop},
+			wantListings:    1,
+			wantReturnCodes: map[string][]string{zoneSpamhaus: {"127.0.0.2"}},
+		},
+		{
+			// Mixed answer: keep the genuine listing, drop the error code from
+			// return_codes but surface it under error_codes.
+			name:   "mixed real and error code lists on real only",
+			config: &DNSBLConfig{Target: sampleMailServerIP, Blocklists: []string{zoneSpamhaus, zoneSpamcop}},
+			lookuper: &fakeLookuper{
+				responses: map[string]fakeResp{
+					listedQuery: {addrs: []string{"127.0.0.4", "127.255.255.254"}},
+					cleanQuery:  {err: errNXDOMAIN},
+				},
+			},
+			wantStatus:      checkerdef.StatusDown,
+			wantListedOn:    []string{zoneSpamhaus},
+			wantClean:       []string{zoneSpamcop},
+			wantListings:    1,
+			wantReturnCodes: map[string][]string{zoneSpamhaus: {"127.0.0.4"}},
+			wantErrorCodes:  map[string][]string{zoneSpamhaus: {"127.255.255.254"}},
+		},
 	}
 
 	for _, tt := range tests {
@@ -360,6 +429,45 @@ func TestDNSBLChecker_Execute(t *testing.T) {
 			if tt.wantInconclusive != nil {
 				r.Equal(tt.wantInconclusive, result.Output["inconclusive"])
 			}
+
+			if tt.wantReturnCodes != nil {
+				r.Equal(tt.wantReturnCodes, result.Output["return_codes"])
+			}
+
+			if tt.wantErrorCodes != nil {
+				r.Equal(tt.wantErrorCodes, result.Output["error_codes"])
+			} else {
+				r.NotContains(result.Output, "error_codes")
+			}
+		})
+	}
+}
+
+func TestIsDNSBLErrorCode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{name: "refused via public resolver", in: "127.255.255.254", want: true},
+		{name: "rate limited", in: "127.255.255.255", want: true},
+		{name: "malformed zone", in: "127.255.255.252", want: true},
+		{name: "block start", in: "127.255.255.0", want: true},
+		{name: "real SBL listing", in: "127.0.0.2", want: false},
+		{name: "real XBL listing", in: "127.0.0.4", want: false},
+		{name: "adjacent non-error range", in: "127.255.254.255", want: false},
+		{name: "not an ip", in: "example.com", want: false},
+		{name: "empty", in: "", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			r.Equal(tt.want, isDNSBLErrorCode(tt.in))
 		})
 	}
 }

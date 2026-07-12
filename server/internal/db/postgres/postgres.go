@@ -1697,6 +1697,31 @@ func (s *Service) CreateResult(ctx context.Context, result *models.Result) error
 	return err
 }
 
+// UpsertAggregatedResult replaces any existing aggregated row for the same
+// bucket key (organization_uid, check_uid, coalesce(region,”), period_type,
+// period_start) with the given result, in one transaction. This keeps
+// re-aggregation idempotent (exactly one row per bucket) even when region is
+// NULL — where the unique index treats NULLs as distinct. See spec
+// 2026-07-11-16.
+func (s *Service) UpsertAggregatedResult(ctx context.Context, result *models.Result) error {
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if _, err := tx.NewDelete().
+			Model((*models.Result)(nil)).
+			Where("organization_uid = ?", result.OrganizationUID).
+			Where("check_uid = ?", result.CheckUID).
+			Where("period_type = ?", result.PeriodType).
+			Where("period_start = ?", result.PeriodStart).
+			Where("COALESCE(region, '') = COALESCE(?, '')", result.Region).
+			Exec(ctx); err != nil {
+			return err
+		}
+
+		_, err := tx.NewInsert().Model(result).Exec(ctx)
+
+		return err
+	})
+}
+
 func (s *Service) SaveResultWithStatusTracking(ctx context.Context, result *models.Result) error {
 	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		// Clear previous last_for_status for this check+status combination
@@ -1766,6 +1791,19 @@ func (s *Service) ListResults(
 	// Filter by multiple statuses
 	if len(filter.Statuses) > 0 {
 		query = query.Where("status IN (?)", bun.List(filter.Statuses))
+	}
+
+	// Exclude statuses (e.g. lifecycle markers in aggregation discovery). A NULL
+	// status is never a marker, so it stays included.
+	if len(filter.ExcludeStatuses) > 0 {
+		query = query.Where("(status IS NULL OR status NOT IN (?))", bun.List(filter.ExcludeStatuses))
+	}
+
+	// Skip rows whose check has been hard-deleted (FK-orphan rows). A no-op here
+	// by FK construction (Postgres cannot hold orphans), kept for parity with
+	// SQLite and defense in depth. See RequireCheckExists.
+	if filter.RequireCheckExists {
+		query = query.Where("check_uid IN (SELECT uid FROM checks)")
 	}
 
 	// Time range filters
@@ -2065,6 +2103,78 @@ func (s *Service) DeleteJob(ctx context.Context, uid string) error {
 		Exec(ctx)
 
 	return err
+}
+
+// SoftDeleteFinishedJobs marks up to `limit` terminal jobs done before `before`
+// as soft-deleted (jobs_cleanup stage 1). Select-then-update keeps the batch
+// bounded regardless of how bun renders a LIMIT-in-UPDATE.
+func (s *Service) SoftDeleteFinishedJobs(ctx context.Context, before time.Time, limit int) (int64, error) {
+	var uids []string
+
+	err := s.db.NewSelect().
+		Model((*models.Job)(nil)).
+		Column("uid").
+		Where("status IN (?)", bun.List(models.FinishedJobStatuses())).
+		Where("deleted_at IS NULL").
+		Where("updated_at < ?", before).
+		Limit(limit).
+		Scan(ctx, &uids)
+	if err != nil {
+		return 0, fmt.Errorf("failed to select finished jobs to soft-delete: %w", err)
+	}
+
+	if len(uids) == 0 {
+		return 0, nil
+	}
+
+	res, err := s.db.NewUpdate().
+		Model((*models.Job)(nil)).
+		Set("deleted_at = ?", time.Now()).
+		Where("uid IN (?)", bun.List(uids)).
+		Where("deleted_at IS NULL").
+		Exec(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to soft-delete finished jobs: %w", err)
+	}
+
+	count, _ := res.RowsAffected()
+
+	return count, nil
+}
+
+// DeleteSoftDeletedJobs physically deletes up to `limit` jobs soft-deleted
+// before `before`, skipping any still referenced by another job's
+// previous_job_uid so the retry-chain FK never trips (jobs_cleanup stage 2).
+func (s *Service) DeleteSoftDeletedJobs(ctx context.Context, before time.Time, limit int) (int64, error) {
+	var uids []string
+
+	err := s.db.NewSelect().
+		Model((*models.Job)(nil)).
+		Column("uid").
+		Where("deleted_at IS NOT NULL").
+		Where("deleted_at < ?", before).
+		Where("uid NOT IN (SELECT previous_job_uid FROM jobs WHERE previous_job_uid IS NOT NULL)").
+		Limit(limit).
+		Scan(ctx, &uids)
+	if err != nil {
+		return 0, fmt.Errorf("failed to select soft-deleted jobs to delete: %w", err)
+	}
+
+	if len(uids) == 0 {
+		return 0, nil
+	}
+
+	res, err := s.db.NewDelete().
+		Model((*models.Job)(nil)).
+		Where("uid IN (?)", bun.List(uids)).
+		Exec(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete soft-deleted jobs: %w", err)
+	}
+
+	count, _ := res.RowsAffected()
+
+	return count, nil
 }
 
 // Incident operations

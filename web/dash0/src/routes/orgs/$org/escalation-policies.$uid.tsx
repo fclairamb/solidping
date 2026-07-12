@@ -23,16 +23,16 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 
-export const Route = createFileRoute("/orgs/$org/escalation-policies/$slug")({
+export const Route = createFileRoute("/orgs/$org/escalation-policies/$uid")({
   component: EscalationPolicyDetailPage,
 });
 
 function EscalationPolicyDetailPage() {
   const { t } = useTranslation(["escalation", "common"]);
-  const { org, slug } = Route.useParams();
+  const { org, uid } = Route.useParams();
   const navigate = useNavigate();
-  const { data: policy, isLoading } = useEscalationPolicy(org, slug);
-  const update = useUpdateEscalationPolicy(org, slug);
+  const { data: policy, isLoading } = useEscalationPolicy(org, uid);
+  const update = useUpdateEscalationPolicy(org, uid);
   const del = useDeleteEscalationPolicy(org);
 
   const [name, setName] = useState("");
@@ -89,7 +89,7 @@ function EscalationPolicyDetailPage() {
   const handleDelete = async () => {
     if (!confirm(t("escalation:editor.deleteConfirm"))) return;
     try {
-      await del.mutateAsync(slug);
+      await del.mutateAsync(uid);
       navigate({ to: "/orgs/$org/escalation-policies", params: { org } });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

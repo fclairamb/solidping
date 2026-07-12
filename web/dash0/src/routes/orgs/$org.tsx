@@ -166,7 +166,7 @@ function Breadcrumbs({ org }: { org: string }) {
   const { data: statusPage } = useStatusPage(org, params.statusPageUid ?? "");
   // Channels / on-call / escalation-policies sections — short-circuit on
   // empty/wrong-section param so each hook only fetches when its branch is
-  // active. on-call and escalation share the param name `slug`, so dispatch
+  // active. on-call and escalation share the param name `uid`, so dispatch
   // by section flag here too.
   const { data: connection } = useIntegration(
     org,
@@ -174,11 +174,11 @@ function Breadcrumbs({ org }: { org: string }) {
   );
   const { data: onCallSchedule } = useOnCallSchedule(
     org,
-    isOnCall ? (params.slug ?? "") : "",
+    isOnCall ? (params.uid ?? "") : "",
   );
   const { data: escalationPolicy } = useEscalationPolicy(
     org,
-    isEscalation ? (params.slug ?? "") : "",
+    isEscalation ? (params.uid ?? "") : "",
   );
   // Status updates section
   const { data: statusUpdate } = useStatusUpdate(
@@ -393,6 +393,7 @@ function Breadcrumbs({ org }: { org: string }) {
     const isTokens = routeIds.has("/orgs/$org/account/tokens");
     const isSessions = routeIds.has("/orgs/$org/account/sessions");
     const isSecurity = routeIds.has("/orgs/$org/account/security");
+    const isAi = routeIds.has("/orgs/$org/account/mcp");
     const subLabel = isProfile
       ? t("profile")
       : isTokens
@@ -401,7 +402,9 @@ function Breadcrumbs({ org }: { org: string }) {
           ? t("sessions")
           : isSecurity
             ? t("security")
-            : null;
+            : isAi
+              ? t("ai")
+              : null;
     return (
       <>
         {subLabel ? (
@@ -593,13 +596,13 @@ function Breadcrumbs({ org }: { org: string }) {
   }
 
   if (isOnCall) {
-    const slug = params.slug;
+    const uid = params.uid;
     const isNew = routeIds.has("/orgs/$org/on-call/new");
-    const scheduleName = onCallSchedule?.name || slug;
+    const scheduleName = onCallSchedule?.name || uid;
 
     return (
       <>
-        {slug || isNew ? (
+        {uid || isNew ? (
           <Link to="/orgs/$org/on-call" params={{ org }} className={linkClass}><CalendarClock className={iconClass} />{t("onCall")}</Link>
         ) : (
           <span className={activeClass}><CalendarClock className={iconClass} />{t("onCall")}</span>
@@ -610,7 +613,7 @@ function Breadcrumbs({ org }: { org: string }) {
             <span className={activeClass}>{t("new")}</span>
           </>
         )}
-        {slug && (
+        {uid && (
           <>
             <BreadcrumbSeparator />
             <span className={activeClass}>{scheduleName}</span>
@@ -621,13 +624,13 @@ function Breadcrumbs({ org }: { org: string }) {
   }
 
   if (isEscalation) {
-    const slug = params.slug;
+    const uid = params.uid;
     const isNew = routeIds.has("/orgs/$org/escalation-policies/new");
-    const policyName = escalationPolicy?.name || slug;
+    const policyName = escalationPolicy?.name || uid;
 
     return (
       <>
-        {slug || isNew ? (
+        {uid || isNew ? (
           <Link to="/orgs/$org/escalation-policies" params={{ org }} className={linkClass}><ArrowUpRight className={iconClass} />{t("escalationPolicies")}</Link>
         ) : (
           <span className={activeClass}><ArrowUpRight className={iconClass} />{t("escalationPolicies")}</span>
@@ -638,7 +641,7 @@ function Breadcrumbs({ org }: { org: string }) {
             <span className={activeClass}>{t("new")}</span>
           </>
         )}
-        {slug && (
+        {uid && (
           <>
             <BreadcrumbSeparator />
             <span className={activeClass}>{policyName}</span>

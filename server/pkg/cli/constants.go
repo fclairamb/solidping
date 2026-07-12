@@ -28,14 +28,38 @@ const (
 	flagAdd      = "add"
 	flagRemove   = "remove"
 
+	flagToken       = "token"
+	flagFile        = "file"
+	flagDescription = "description"
+	flagThresholdMs = "threshold-ms"
+	cmdCreate       = "create"
+	cmdUpdate       = "update"
+	cmdSet          = "set"
+	cmdTest         = "test"
+	cmdDelete       = "delete"
+	cmdCancel       = "cancel"
+	cmdConfig       = "config"
+	argChildParent  = "<child-slug> <parent-slug>"
+
 	colTimestamp = "TIMESTAMP"
 	colType      = "TYPE"
+	colPeriod    = "PERIOD"
 
-	usageHumanReadableName = "Human-readable name"
-	usagePaginationCursor  = "Pagination cursor for next page"
-	usageResultsPerPage    = "Results per page (max 100)"
+	usageHumanReadableName   = "Human-readable name"
+	usageOptionalDescription = "Optional description"
+	usagePaginationCursor    = "Pagination cursor for next page"
+	usageResultsPerPage      = "Results per page (max 100)"
+	usageResultsLimit        = "Maximum results (1-200)"
 
 	keySuccess = "success"
 	keyMessage = "message"
 	keyFailed  = "failed"
+
+	keyUser         = "user"
+	keyOrganization = "organization"
+	keyAuthMethod   = "auth_method"
+	keySlug         = "slug"
+
+	authMethodPAT = "pat"
+	authMethodJWT = "jwt"
 )

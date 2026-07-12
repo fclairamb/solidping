@@ -69,7 +69,6 @@ type StepInput struct {
 // CreatePolicyInput captures the create-policy request.
 type CreatePolicyInput struct {
 	OrganizationUID    string
-	Slug               string
 	Name               string
 	Description        string
 	RepeatMax          int
@@ -89,7 +88,7 @@ func (s *Service) CreatePolicy(ctx context.Context, input *CreatePolicyInput) (*
 		}
 	}
 
-	policy := models.NewEscalationPolicy(input.OrganizationUID, input.Slug, input.Name)
+	policy := models.NewEscalationPolicy(input.OrganizationUID, input.Name)
 	policy.RepeatMax = input.RepeatMax
 	policy.RepeatAfterSeconds = input.RepeatAfterSeconds
 
@@ -108,31 +107,12 @@ func (s *Service) CreatePolicy(ctx context.Context, input *CreatePolicyInput) (*
 	return policy, nil
 }
 
-// GetPolicyBySlug returns a policy plus its expanded steps and targets.
-func (s *Service) GetPolicyBySlug(
-	ctx context.Context, orgUID, slug string,
+// GetPolicy returns a policy (with expanded steps and targets) addressed by
+// its UID. A non-UUID or unknown identifier resolves to ErrPolicyNotFound.
+func (s *Service) GetPolicy(
+	ctx context.Context, orgUID, uid string,
 ) (*PolicyDetail, error) {
-	policy, err := s.db.GetEscalationPolicyBySlug(ctx, orgUID, slug)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrPolicyNotFound
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return s.loadDetail(ctx, policy)
-}
-
-// GetPolicyByUidOrSlug returns a policy (with expanded steps and targets)
-// addressed by either its UID or its slug. Used by GET/PATCH/DELETE so a
-// Terraform-style uid is a valid identifier alongside the slug.
-//
-//nolint:revive // ByUidOrSlug matches the established checks/status-pages naming
-func (s *Service) GetPolicyByUidOrSlug(
-	ctx context.Context, orgUID, identifier string,
-) (*PolicyDetail, error) {
-	policy, err := s.db.GetEscalationPolicyByUidOrSlug(ctx, orgUID, identifier)
+	policy, err := s.db.GetEscalationPolicy(ctx, orgUID, uid)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrPolicyNotFound
 	}
@@ -153,7 +133,6 @@ func (s *Service) ListPolicies(ctx context.Context, orgUID string) ([]*models.Es
 // UpdatePolicyInput captures partial update fields. Steps replace the entire
 // step list when non-nil (matches the spec's PATCH semantics).
 type UpdatePolicyInput struct {
-	Slug               *string
 	Name               *string
 	Description        *string
 	RepeatMax          *int
@@ -164,12 +143,11 @@ type UpdatePolicyInput struct {
 	ClearRepeatAfterSeconds bool
 }
 
-// UpdatePolicy applies a partial update. The identifier is resolved as
-// uid-or-slug so PATCH works with either form.
+// UpdatePolicy applies a partial update. The policy is addressed by UID.
 func (s *Service) UpdatePolicy(
-	ctx context.Context, orgUID, identifier string, input *UpdatePolicyInput,
+	ctx context.Context, orgUID, uid string, input *UpdatePolicyInput,
 ) (*PolicyDetail, error) {
-	policy, err := s.db.GetEscalationPolicyByUidOrSlug(ctx, orgUID, identifier)
+	policy, err := s.db.GetEscalationPolicy(ctx, orgUID, uid)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrPolicyNotFound
 	}
@@ -206,7 +184,6 @@ func (s *Service) UpdatePolicy(
 	}
 
 	update := &models.EscalationPolicyUpdate{
-		Slug:                    input.Slug,
 		Name:                    input.Name,
 		Description:             input.Description,
 		RepeatMax:               input.RepeatMax,
@@ -237,8 +214,8 @@ func (s *Service) UpdatePolicy(
 // open incident's check (or its group) still references this policy —
 // otherwise pending escalation jobs would dangle and the timeline would
 // reference a non-existent policy.
-func (s *Service) DeletePolicy(ctx context.Context, orgUID, identifier string) error {
-	policy, err := s.db.GetEscalationPolicyByUidOrSlug(ctx, orgUID, identifier)
+func (s *Service) DeletePolicy(ctx context.Context, orgUID, uid string) error {
+	policy, err := s.db.GetEscalationPolicy(ctx, orgUID, uid)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrPolicyNotFound
 	}

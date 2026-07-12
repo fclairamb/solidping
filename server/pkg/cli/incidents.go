@@ -277,6 +277,210 @@ func incidentsEventsAction(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
+// parseIncidentUID reads and validates the incident UID from the first arg.
+func parseIncidentUID(cmd *cli.Command) (uuid.UUID, error) {
+	incidentUIDStr := cmd.Args().First()
+	if incidentUIDStr == "" {
+		return uuid.Nil, cli.Exit("Error: incident UID is required", 5)
+	}
+
+	incidentUID, err := uuid.Parse(incidentUIDStr)
+	if err != nil {
+		return uuid.Nil, cli.Exit("Error: invalid incident UID: "+err.Error(), 5)
+	}
+
+	return incidentUID, nil
+}
+
+// renderIncidentActionResult prints the updated incident after a lifecycle action.
+func renderIncidentActionResult(cliCtx *Context, incident *client.IncidentDetail, successMsg string) error {
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(incident)
+	}
+
+	output.PrintSuccess(os.Stdout, successMsg)
+
+	if incident.State != nil {
+		output.PrintMessage(os.Stdout, "State: "+string(*incident.State))
+	}
+
+	return nil
+}
+
+// incidentsAckAction acknowledges an incident (POST /incidents/:uid/ack).
+func incidentsAckAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	incidentUID, err := parseIncidentUID(cmd)
+	if err != nil {
+		return err
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	body := client.AcknowledgeIncidentJSONRequestBody{}
+	if note := cmd.String("note"); note != "" {
+		body.Note = &note
+	}
+
+	resp, err := apiClient.AcknowledgeIncidentWithResponse(ctx, cliCtx.GetOrg(), incidentUID, body)
+	if err != nil {
+		return cliCtx.HandleError("Failed to acknowledge incident", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to acknowledge incident", resp.StatusCode())
+	}
+
+	return renderIncidentActionResult(cliCtx, resp.JSON200, "Incident acknowledged")
+}
+
+// incidentsUnackAction removes an acknowledgement (POST /incidents/:uid/unack).
+func incidentsUnackAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	incidentUID, err := parseIncidentUID(cmd)
+	if err != nil {
+		return err
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	resp, err := apiClient.UnacknowledgeIncidentWithResponse(ctx, cliCtx.GetOrg(), incidentUID)
+	if err != nil {
+		return cliCtx.HandleError("Failed to unacknowledge incident", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to unacknowledge incident", resp.StatusCode())
+	}
+
+	return renderIncidentActionResult(cliCtx, resp.JSON200, "Incident acknowledgement cleared")
+}
+
+// incidentsSnoozeAction snoozes an incident (POST /incidents/:uid/snooze).
+func incidentsSnoozeAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	incidentUID, err := parseIncidentUID(cmd)
+	if err != nil {
+		return err
+	}
+
+	body := client.SnoozeIncidentJSONRequestBody{}
+	if duration := cmd.String("duration"); duration != "" {
+		body.Duration = &duration
+	}
+	if until := cmd.String("until"); until != "" {
+		parsed, parseErr := time.Parse(time.RFC3339, until)
+		if parseErr != nil {
+			return cli.Exit("Error: --until must be an RFC3339 timestamp: "+parseErr.Error(), 5)
+		}
+		body.Until = &parsed
+	}
+	if reason := cmd.String("reason"); reason != "" {
+		body.Reason = &reason
+	}
+
+	if body.Duration == nil && body.Until == nil {
+		return cli.Exit("Error: one of --duration or --until is required", 5)
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	resp, err := apiClient.SnoozeIncidentWithResponse(ctx, cliCtx.GetOrg(), incidentUID, body)
+	if err != nil {
+		return cliCtx.HandleError("Failed to snooze incident", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to snooze incident", resp.StatusCode())
+	}
+
+	return renderIncidentActionResult(cliCtx, resp.JSON200, "Incident snoozed")
+}
+
+// incidentsUnsnoozeAction clears a snooze (POST /incidents/:uid/unsnooze).
+func incidentsUnsnoozeAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	incidentUID, err := parseIncidentUID(cmd)
+	if err != nil {
+		return err
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	resp, err := apiClient.UnsnoozeIncidentWithResponse(ctx, cliCtx.GetOrg(), incidentUID)
+	if err != nil {
+		return cliCtx.HandleError("Failed to unsnooze incident", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to unsnooze incident", resp.StatusCode())
+	}
+
+	return renderIncidentActionResult(cliCtx, resp.JSON200, "Incident snooze cleared")
+}
+
+// incidentsResolveAction resolves an incident (POST /incidents/:uid/resolve).
+func incidentsResolveAction(ctx context.Context, cmd *cli.Command) error {
+	cliCtx, err := NewCLIContext(cmd)
+	if err != nil {
+		return err
+	}
+
+	incidentUID, err := parseIncidentUID(cmd)
+	if err != nil {
+		return err
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	body := client.ResolveIncidentJSONRequestBody{}
+	if note := cmd.String("note"); note != "" {
+		body.Note = &note
+	}
+
+	resp, err := apiClient.ResolveIncidentWithResponse(ctx, cliCtx.GetOrg(), incidentUID, body)
+	if err != nil {
+		return cliCtx.HandleError("Failed to resolve incident", err)
+	}
+
+	if resp.StatusCode() != 200 || resp.JSON200 == nil {
+		return cliCtx.HandleStatusError("Failed to resolve incident", resp.StatusCode())
+	}
+
+	return renderIncidentActionResult(cliCtx, resp.JSON200, "Incident resolved")
+}
+
 func safeUUID(uid *openapi_types.UUID) string {
 	if uid == nil {
 		return ""

@@ -52,7 +52,7 @@ func (c *WebSocketChecker) Validate(spec *checkerdef.CheckSpec) error {
 
 	if cfg.Timeout != 0 && (cfg.Timeout <= 0 || cfg.Timeout > maxTimeout) {
 		return checkerdef.NewConfigErrorf(
-			"timeout", "must be > 0 and <= 60s, got %s", cfg.Timeout.String(),
+			"timeout", "must be > 0 and <= 30s, got %s", cfg.Timeout.String(),
 		)
 	}
 

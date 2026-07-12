@@ -32,12 +32,21 @@ var (
 	ErrRefreshTokenInvalid = errors.New("refresh token is invalid or expired")
 )
 
+// patTokenPrefix marks an opaque Personal Access Token (`pat_…`), as minted by
+// POST /orgs/:org/tokens. Used to tell a PAT credential apart from a session JWT.
+const patTokenPrefix = "pat_"
+
 // TokenData represents the stored token information.
 type TokenData struct {
 	AccessToken           string    `json:"accessToken"`
 	AccessTokenExpiresAt  time.Time `json:"accessTokenExpiresAt"`
 	RefreshToken          string    `json:"refreshToken"`
 	RefreshTokenExpiresAt time.Time `json:"refreshTokenExpiresAt"`
+	// PAT holds a Personal Access Token saved by the browser-login flow
+	// (`sp auth login`). When set, it is used directly as the bearer
+	// credential and never expires client-side — the server enforces any
+	// expiry. A PAT and a JWT session are mutually exclusive in one file.
+	PAT string `json:"pat,omitempty"`
 }
 
 // IsAccessTokenValid checks if the access token is still valid.
@@ -231,22 +240,9 @@ func (h *Helper) refreshAccessToken(ctx context.Context, tokenData *TokenData) (
 
 // resolveToken gets token from file, PAT, or auto-login.
 func (h *Helper) resolveToken(ctx context.Context) (string, error) {
-	// Priority 1: Token file (with automatic refresh)
-	tokenData, err := h.readTokenFile()
-	if err == nil && tokenData != nil {
-		// If access token is still valid, use it
-		if tokenData.IsAccessTokenValid() {
-			return tokenData.AccessToken, nil
-		}
-
-		// Access token expired, try to refresh it
-		if tokenData.IsRefreshTokenValid() {
-			newTokenData, refreshErr := h.refreshAccessToken(ctx, tokenData)
-			if refreshErr == nil {
-				return newTokenData.AccessToken, nil
-			}
-			// Refresh failed, continue to fallback methods
-		}
+	// Priority 1: Token file (saved PAT, valid JWT, or a refreshable JWT).
+	if token, ok := h.resolveFromTokenFile(ctx); ok {
+		return token, nil
 	}
 
 	// Priority 2: PAT from config
@@ -264,6 +260,36 @@ func (h *Helper) resolveToken(ctx context.Context) (string, error) {
 	}
 
 	return "", ErrNoAuthentication
+}
+
+// resolveFromTokenFile returns a usable credential from the token file, if any:
+// a saved PAT verbatim, a still-valid access token, or a freshly refreshed one.
+// The bool is false when the file is absent/unreadable or holds nothing usable,
+// letting resolveToken fall through to its other credential sources.
+func (h *Helper) resolveFromTokenFile(ctx context.Context) (string, bool) {
+	tokenData, err := h.readTokenFile()
+	if err != nil || tokenData == nil {
+		return "", false
+	}
+
+	// A saved PAT (browser login) is used verbatim — it does not expire
+	// client-side and there is nothing to refresh.
+	if tokenData.PAT != "" {
+		return tokenData.PAT, true
+	}
+
+	if tokenData.IsAccessTokenValid() {
+		return tokenData.AccessToken, true
+	}
+
+	// Access token expired: try a refresh, else fall through.
+	if tokenData.IsRefreshTokenValid() {
+		if newTokenData, refreshErr := h.refreshAccessToken(ctx, tokenData); refreshErr == nil {
+			return newTokenData.AccessToken, true
+		}
+	}
+
+	return "", false
 }
 
 // autoLogin performs automatic login with configured credentials.
@@ -440,6 +466,26 @@ func (h *Helper) SaveTokens(accessToken, refreshToken string) error {
 	}
 	h.ResetClient()
 	return h.saveTokenFile(tokenData)
+}
+
+// SavePAT saves a Personal Access Token as the sole credential in the token
+// file, replacing any prior JWT session. Used by the browser-login flow after
+// self-minting a PAT, and by the `--token` / SP_TOKEN paste fallback.
+func (h *Helper) SavePAT(pat string) error {
+	h.ResetClient()
+	return h.saveTokenFile(&TokenData{PAT: pat})
+}
+
+// AuthMethod reports how the currently-resolved credential authenticates:
+// "pat" for a Personal Access Token, "jwt" otherwise. It resolves the token the
+// same way GetClient does, so it reflects the credential a request would use.
+func (h *Helper) AuthMethod(ctx context.Context) string {
+	token, err := h.resolveToken(ctx)
+	if err == nil && strings.HasPrefix(token, patTokenPrefix) {
+		return "pat"
+	}
+
+	return "jwt"
 }
 
 // readTokenFile reads the token data from the token file.

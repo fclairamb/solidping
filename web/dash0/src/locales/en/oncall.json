@@ -57,8 +57,6 @@
     "edit": "Edit on-call schedule",
     "name": "Name",
     "namePlaceholder": "Platform EU",
-    "slug": "URL slug",
-    "slugPlaceholder": "platform-eu",
     "description": "Description",
     "descriptionPlaceholder": "Optional — who this rotation pages and when",
     "timezone": "Timezone (IANA)",
@@ -83,7 +81,6 @@
     "userUidsHelp": "First user is on call from start_at; subsequent rotations move down the list.",
     "submit": "Save",
     "cancel": "Cancel",
-    "slugReadOnly": "Slug can't be changed yet — delete and recreate to rename.",
     "startAtWarning": "Changing the rotation epoch shifts who's currently on call."
   },
   "toast": {

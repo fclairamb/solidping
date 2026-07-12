@@ -166,6 +166,13 @@ type Service interface {
 
 	// Result operations
 	CreateResult(ctx context.Context, result *models.Result) error
+	// UpsertAggregatedResult writes an aggregated (non-raw) result idempotently:
+	// it replaces any existing row for the same bucket key
+	// (organization_uid, check_uid, coalesce(region,''), period_type,
+	// period_start) inside one transaction, so re-running an aggregation for the
+	// same bucket yields exactly one row instead of a duplicate. The NULL-proof
+	// results_aggregated_unique_idx is the backstop (spec 2026-07-11-16).
+	UpsertAggregatedResult(ctx context.Context, result *models.Result) error
 	GetResult(ctx context.Context, uid string) (*models.Result, error)
 	ListResults(ctx context.Context, filter *models.ListResultsFilter) (*models.ListResultsResponse, error)
 	// GetResultNeighbors returns the UID of the next-older (prevUID) and
@@ -210,8 +217,6 @@ type Service interface {
 	// On-call schedule operations
 	CreateOnCallSchedule(ctx context.Context, schedule *models.OnCallSchedule) error
 	GetOnCallSchedule(ctx context.Context, orgUID, scheduleUID string) (*models.OnCallSchedule, error)
-	GetOnCallScheduleBySlug(ctx context.Context, orgUID, slug string) (*models.OnCallSchedule, error)
-	GetOnCallScheduleByUidOrSlug(ctx context.Context, orgUID, identifier string) (*models.OnCallSchedule, error)
 	GetOnCallScheduleByICalSecret(ctx context.Context, secret string) (*models.OnCallSchedule, error)
 	ListOnCallSchedules(ctx context.Context, orgUID string) ([]*models.OnCallSchedule, error)
 	UpdateOnCallSchedule(ctx context.Context, scheduleUID string, update *models.OnCallScheduleUpdate) error
@@ -232,8 +237,6 @@ type Service interface {
 	// Escalation policies (header)
 	CreateEscalationPolicy(ctx context.Context, policy *models.EscalationPolicy) error
 	GetEscalationPolicy(ctx context.Context, orgUID, policyUID string) (*models.EscalationPolicy, error)
-	GetEscalationPolicyBySlug(ctx context.Context, orgUID, slug string) (*models.EscalationPolicy, error)
-	GetEscalationPolicyByUidOrSlug(ctx context.Context, orgUID, identifier string) (*models.EscalationPolicy, error)
 	ListEscalationPolicies(ctx context.Context, orgUID string) ([]*models.EscalationPolicy, error)
 	UpdateEscalationPolicy(ctx context.Context, policyUID string, update *models.EscalationPolicyUpdate) error
 	DeleteEscalationPolicy(ctx context.Context, policyUID string) error
@@ -317,6 +320,18 @@ type Service interface {
 	ListJobs(ctx context.Context, orgUID *string, limit int) ([]*models.Job, error)
 	UpdateJob(ctx context.Context, uid string, update models.JobUpdate) error
 	DeleteJob(ctx context.Context, uid string) error
+	// SoftDeleteFinishedJobs marks up to `limit` terminal jobs
+	// (success/retried/failed) still live (deleted_at IS NULL) whose updated_at
+	// is before `before` as soft-deleted (deleted_at = now). Stage 1 of the
+	// jobs_cleanup retention lifecycle. Returns the number of rows affected;
+	// callers loop until a short batch to drain a backlog without a long txn.
+	SoftDeleteFinishedJobs(ctx context.Context, before time.Time, limit int) (int64, error)
+	// DeleteSoftDeletedJobs physically deletes up to `limit` jobs soft-deleted
+	// before `before`, excluding any still referenced by another job's
+	// previous_job_uid (the retry-chain FK guard — chains drain tail-first over
+	// consecutive runs). Stage 2 of the jobs_cleanup retention lifecycle.
+	// Returns the number of rows deleted.
+	DeleteSoftDeletedJobs(ctx context.Context, before time.Time, limit int) (int64, error)
 
 	// State Storage operations
 	// GetStateEntry retrieves a state entry by organization and key.

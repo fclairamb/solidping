@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -629,6 +630,42 @@ func (c *SolidPingClient) rawRequestBytes(
 	return nil
 }
 
+// HeartbeatOptions carries the optional inputs for a heartbeat ping.
+type HeartbeatOptions struct {
+	Token   string
+	Status  string
+	Message string
+}
+
+// SendHeartbeat posts a heartbeat ping for the given org + identifier. This is a
+// public ingestion route: the per-check heartbeat token (when configured) is
+// passed as the `token` query parameter, not as the bearer token.
+func (c *SolidPingClient) SendHeartbeat(
+	ctx context.Context, org, identifier string, opts HeartbeatOptions,
+) error {
+	path := fmt.Sprintf("/api/v1/heartbeat/%s/%s", org, identifier)
+
+	query := url.Values{}
+	if opts.Token != "" {
+		query.Set("token", opts.Token)
+	}
+	if opts.Status != "" {
+		query.Set("status", opts.Status)
+	}
+	if encoded := query.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+
+	var body any
+	if opts.Message != "" {
+		body = map[string]string{"message": opts.Message}
+	}
+
+	_, err := c.rawRequest(ctx, http.MethodPost, path, body, nil)
+
+	return err
+}
+
 // ExportChecks fetches the org's checks as a raw export document (JSON bytes),
 // returned verbatim so the CLI can write it to a file unchanged.
 func (c *SolidPingClient) ExportChecks(ctx context.Context, org string) (json.RawMessage, error) {
@@ -693,4 +730,40 @@ func (c *SolidPingClient) ApplyChecks(
 	}
 
 	return result, nil
+}
+
+// GetOnCallICalFeed fetches the public iCal (text/calendar) feed for an on-call
+// schedule by its feed secret. This is an unauthenticated route that returns
+// raw VCALENDAR text, not JSON, so it uses a bespoke reader rather than the
+// generated client.
+func (c *SolidPingClient) GetOnCallICalFeed(ctx context.Context, secret string) (string, error) {
+	url := strings.TrimRight(c.config.BaseURL, "/") +
+		fmt.Sprintf("/api/v1/on-call-schedules/%s/feed.ics", secret)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("build request: %w", err)
+	}
+
+	httpClient := http.DefaultClient
+	if c.loggingTransport != nil {
+		httpClient = &http.Client{Transport: c.loggingTransport}
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // best effort
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("%w: %d", ErrUnexpectedStatus, resp.StatusCode)
+	}
+
+	return string(respBody), nil
 }

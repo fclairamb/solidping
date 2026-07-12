@@ -35,9 +35,11 @@ import {
 } from "@/api/passkeys";
 import { classifyPasskeyError } from "@/lib/passkey-error";
 import {
+  isOAuthAuthorizeReturnTo,
   resolveDestination,
   type LoginDestination,
 } from "@/lib/login-destination";
+import { refreshAccessToken } from "@/lib/token-refresh";
 
 // App base path (build-time constant). `returnTo` values captured on the way
 // into /login already include it, so the destination resolver matches against
@@ -282,11 +284,33 @@ function LoginPage() {
   // (`{ href }`) needs a full navigation because it's an arbitrary path
   // outside this route's param shape; the org-root fallback (`{ to, params }`)
   // is a plain SPA navigate. `replace` keeps /login out of history.
+  //
+  // MCP OAuth consent bounce: when the destination is the embedded OAuth
+  // /authorize endpoint, force a token refresh first. That endpoint (and the
+  // consent screen's native form POST after it) authenticates via the
+  // `access_token` COOKIE, not the SPA's localStorage bearer — and the two
+  // routinely diverge: SSO logins hand tokens over in the redirect URL and
+  // never set the cookie, and an idle tab's cookie lapses while the bearer
+  // session keeps refreshing. POST /auth/refresh re-sets the cookie
+  // (server-side, alongside the rotated bearer), so refreshing right before
+  // the full-page navigation guarantees /authorize sees a session instead of
+  // bouncing straight back here in a loop. A refresh failure falls through to
+  // the navigation anyway — a definitively-dead session has already been
+  // cleared and redirected by token-refresh's escalation.
   const goToDestination = useCallback(
     (dest: LoginDestination, replace = false) => {
       if ("href" in dest) {
-        if (replace) window.location.replace(dest.href);
-        else window.location.href = dest.href;
+        const go = () => {
+          if (replace) window.location.replace(dest.href);
+          else window.location.href = dest.href;
+        };
+        if (isOAuthAuthorizeReturnTo(dest.href)) {
+          void refreshAccessToken()
+            .catch(() => null)
+            .then(go);
+        } else {
+          go();
+        }
       } else {
         navigate({ to: dest.to, params: dest.params, replace });
       }
@@ -503,7 +527,17 @@ function LoginPage() {
     // OAuth redirects away from the app, so we can't observe success here —
     // record the intent immediately before the redirect.
     setLastAuthMethod(`oauth:${providerType}`);
-    const currentPath = returnTo || `/dash0/orgs/${org}`;
+    // MCP OAuth consent bounce: the provider callback appends the session
+    // tokens to redirect_uri as query params, which only the SPA's pre-React
+    // handoff (main.tsx) knows how to persist. Sending the callback straight
+    // to /api/v1/oauth/authorize would drop those tokens on a non-SPA URL —
+    // so land back on THIS login page instead, with returnTo preserved; the
+    // handoff stores the session and the already-authenticated effect then
+    // resumes the authorize flow (with the cookie refreshed by
+    // goToDestination).
+    const currentPath = isOAuthAuthorizeReturnTo(returnTo)
+      ? `${BASE_PATH}/orgs/${org}/login?returnTo=${encodeURIComponent(returnTo)}`
+      : returnTo || `/dash0/orgs/${org}`;
     const loginUrl = `/api/v1/auth/${providerType}/login?org=${encodeURIComponent(org)}&redirect_uri=${encodeURIComponent(currentPath)}`;
     window.location.href = loginUrl;
   };

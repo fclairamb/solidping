@@ -211,7 +211,7 @@ func TestIMAPConfig_Validate(t *testing.T) {
 			name:    "timeout too long",
 			config:  IMAPConfig{Host: "x", Timeout: 61 * time.Second},
 			wantErr: true,
-			errMsg:  "timeout: must be > 0 and <= 60s, got 1m1s",
+			errMsg:  "timeout: must be > 0 and <= 30s, got 1m1s",
 		},
 		{
 			name:    "tls and starttls both set",

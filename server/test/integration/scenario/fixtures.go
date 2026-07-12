@@ -88,7 +88,7 @@ func CreateWebhookChannel(t *testing.T, s *Scenario, receiverURL string) string 
 
 // CreateEscalationPolicy creates an escalation policy with the given steps and
 // returns its UID.
-func CreateEscalationPolicy(t *testing.T, s *Scenario, policySlug string, steps []StepDef) string {
+func CreateEscalationPolicy(t *testing.T, s *Scenario, name string, steps []StepDef) string {
 	t.Helper()
 
 	r := require.New(t)
@@ -117,8 +117,7 @@ func CreateEscalationPolicy(t *testing.T, s *Scenario, policySlug string, steps 
 		s.BaseURL+"/api/v1/orgs/"+s.OrgSlug+"/escalation-policies",
 		&s.Token,
 		map[string]any{
-			"slug":      policySlug,
-			"name":      "E2E Policy " + policySlug,
+			"name":      "E2E Policy " + name,
 			"repeatMax": 0,
 			"steps":     stepsPayload,
 		},
@@ -190,7 +189,7 @@ func SendHeartbeat(t *testing.T, s *Scenario, checkSlug, token, status string) {
 
 // CreateOnCallSchedule creates a weekly on-call schedule starting 24h ago
 // (so the test user is always on call) and returns its UID.
-func CreateOnCallSchedule(t *testing.T, s *Scenario, slug string, userUIDs []string) string {
+func CreateOnCallSchedule(t *testing.T, s *Scenario, name string, userUIDs []string) string {
 	t.Helper()
 
 	r := require.New(t)
@@ -200,8 +199,7 @@ func CreateOnCallSchedule(t *testing.T, s *Scenario, slug string, userUIDs []str
 		s.BaseURL+"/api/v1/orgs/"+s.OrgSlug+"/on-call-schedules",
 		&s.Token,
 		map[string]any{
-			"name":           "E2E Schedule " + slug,
-			"slug":           slug,
+			"name":           "E2E Schedule " + name,
 			"timezone":       "UTC",
 			"rotationType":   "weekly",
 			"handoffTime":    "00:00",

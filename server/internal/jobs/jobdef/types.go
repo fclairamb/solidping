@@ -51,4 +51,9 @@ const (
 	// backoff clone) until the retry cap, then 'failed' with reason
 	// "stuck_timeout". Self-reschedules like snooze_sweep.
 	JobTypeStuckJobReaper JobType = "stuck_job_reaper"
+	// JobTypeJobsCleanup soft-deletes finished jobs older than the configured
+	// window (stage 1) and hard-deletes rows soft-deleted past the grace window
+	// (stage 2), so the jobs table stops growing unbounded. Global, self-
+	// rescheduling daily; its own terminal rows self-clean (spec 2026-07-11-17).
+	JobTypeJobsCleanup JobType = "jobs_cleanup"
 )

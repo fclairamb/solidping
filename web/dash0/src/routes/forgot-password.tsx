@@ -66,6 +66,7 @@ function ForgotPasswordPage() {
               <p className="text-muted-foreground">{t("resetLinkSent")}</p>
               <Link
                 to="/login"
+                search={{ returnTo: undefined }}
                 className="text-primary underline-offset-4 hover:underline text-sm"
               >
                 {t("backToLogin")}
@@ -107,6 +108,7 @@ function ForgotPasswordPage() {
               <div className="text-center">
                 <Link
                   to="/login"
+                  search={{ returnTo: undefined }}
                   className="text-sm text-muted-foreground hover:underline"
                 >
                   {t("backToLogin")}

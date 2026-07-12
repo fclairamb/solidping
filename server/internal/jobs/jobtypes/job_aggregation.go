@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/systemconfig"
 )
 
 var (
@@ -79,41 +83,64 @@ func (r *AggregationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) er
 		{periodDay, periodMonth}, // Priority 3: day → month
 	}
 
-	// Try each aggregation stage until one succeeds
+	// Try each aggregation stage until one succeeds or errors. A stage error is
+	// captured (not returned early) so the "schedule next run" below still fires:
+	// a poisoned bucket must degrade to "this bucket is stuck", never
+	// "aggregation for the org is dead" (spec 2026-07-12-01 §1). Discovery (§2)
+	// already excludes the FK-orphan buckets that caused the original halt; this
+	// is the backend-independent safety net for any other persistent stage error.
 	workDone := false
+	var stageErr error
 	for i := range aggregations {
 		agg := &aggregations[i]
 		aggregated, err := r.aggregatePeriod(ctx, jctx, orgUID, agg.sourcePeriod, agg.targetPeriod)
 		if err != nil {
 			log.ErrorContext(ctx, "Aggregation error", "error", err, "source", agg.sourcePeriod, "target", agg.targetPeriod)
-			return jobdef.NewRetryableError(err)
+			stageErr = err
+
+			break // Stop after a failing stage, but still schedule the follow-up.
 		}
 		if aggregated {
 			workDone = true
 			log.InfoContext(ctx, "Aggregated data", "source", agg.sourcePeriod, "target", agg.targetPeriod)
+
 			break // Process one aggregation per run
 		}
 	}
 
-	if !workDone {
+	if stageErr == nil && !workDone {
 		log.InfoContext(ctx, "No aggregation work found")
 	}
 
-	// Schedule next run
+	// Schedule next run. Only a run that actually rolled a bucket up retries
+	// immediately (delay=0) to drain the backlog; a stage error uses the +1h
+	// delay so a persistently poisoned bucket can never spin at delay=0.
 	delay := 1 * time.Hour
 	if workDone {
-		delay = 0 // Immediate retry if work was done
+		delay = 0
 	}
 
 	scheduledAt := time.Now().Add(delay)
-	_, err := jctx.Services.Jobs.CreateJob(ctx, orgUID, string(jobdef.JobTypeAggregation), nil, &jobsvc.JobOptions{
-		ScheduledAt: &scheduledAt,
-	})
-	if err != nil {
-		log.ErrorContext(ctx, "Failed to schedule next aggregation job", "error", err)
+	if _, schedErr := jctx.Services.Jobs.CreateJob(
+		ctx, orgUID, string(jobdef.JobTypeAggregation), nil, &jobsvc.JobOptions{ScheduledAt: &scheduledAt},
+	); schedErr != nil {
+		log.ErrorContext(ctx, "Failed to schedule next aggregation job", "error", schedErr)
+
+		// If there is no stage error to surface, propagate the scheduling failure
+		// so the run is visibly unhealthy; otherwise the stage error wins below.
+		if stageErr == nil {
+			return schedErr
+		}
 	}
 
-	return err // CreateJob handles duplicates automatically
+	// Surface the stage error (retryable) after the follow-up has been scheduled,
+	// so this job run still retries/fails visibly without killing the org's
+	// aggregation. CreateJob dedupes against the retry chain automatically.
+	if stageErr != nil {
+		return jobdef.NewRetryableError(stageErr)
+	}
+
+	return nil
 }
 
 // aggregatePeriod performs a single aggregation operation for a specific period type.
@@ -168,36 +195,52 @@ func (r *AggregationJobRun) aggregatePeriod(
 		return false, nil // Nothing to aggregate
 	}
 
-	log.InfoContext(ctx, "Aggregating results", "count", len(resultsResp.Results))
-
-	// 4. Aggregate in Go (calculation happens here!)
-	aggregated := aggregateResults(resultsResp.Results, targetPeriod, periodStart, periodEnd)
-
-	// 5. Insert aggregated result using existing CreateResult
-	// This will automatically set last_for_status=true for the aggregated result's status
-	// and clear any existing last_for_status for that check+status combination
-	if createErr := jctx.DBService.CreateResult(ctx, aggregated); createErr != nil {
-		return false, fmt.Errorf("failed to create aggregated result: %w", createErr)
-	}
-
-	// 6. Collect UIDs of source results to delete, skipping lifecycle-marker
+	// 4. Collect UIDs of the measurable source rows, skipping lifecycle-marker
 	// rows (created, running). They already contribute nothing to the
 	// aggregate's stats (see processRawResult), so keeping them changes no
 	// rollup numbers — it just preserves the one raw row that records e.g.
 	// "this check was created here" instead of letting its permalink morph
 	// into a misleading aggregation fallback (see GetResult).
-	resultUIDs := make([]string, 0, len(resultsResp.Results))
-	for _, result := range resultsResp.Results {
-		if result.Status != nil && models.ResultStatus(*result.Status).IsLifecycleMarker() {
-			continue
-		}
-		resultUIDs = append(resultUIDs, result.UID)
+	sourceUIDs := measurableSourceUIDs(resultsResp.Results)
+
+	// Progress guard (spec 2026-07-11-16 §2): a bucket whose only rows are
+	// lifecycle markers has nothing to roll up. Inserting a degenerate
+	// total_checks=0 rollup and returning aggregated=true would make Run
+	// reschedule at delay=0 and re-process this same bucket forever, duplicating
+	// hour rows and jobs unbounded (the poison-pill loop). Discovery (§1)
+	// already excludes such buckets; this is defense in depth for any future
+	// discovery regression. "Work done" now requires real progress.
+	if len(sourceUIDs) == 0 {
+		log.WarnContext(ctx, "Skipping marker-only aggregation bucket (no measurable rows)",
+			"check_uid", checkUID, "region", region, "period_start", periodStart,
+			"fetched", len(resultsResp.Results))
+
+		return false, nil
 	}
 
-	// 7. Delete source results by their UIDs
-	deletedCount, err := jctx.DBService.DeleteResults(ctx, orgUID, resultUIDs)
+	log.InfoContext(ctx, "Aggregating results", "count", len(resultsResp.Results))
+
+	// 5. Aggregate in Go (calculation happens here!)
+	aggregated := aggregateResults(resultsResp.Results, targetPeriod, periodStart, periodEnd)
+
+	// 6. Upsert the aggregated result idempotently: it replaces any existing row
+	// for the same bucket key (org, check, coalesce(region,''), period_type,
+	// period_start), so a re-aggregation of the same bucket yields exactly one
+	// row instead of a NULL-region duplicate (spec 2026-07-11-16 §3).
+	if upsertErr := jctx.DBService.UpsertAggregatedResult(ctx, aggregated); upsertErr != nil {
+		return false, fmt.Errorf("failed to upsert aggregated result: %w", upsertErr)
+	}
+
+	// 7. Delete the measurable source rows by their UIDs.
+	deletedCount, err := jctx.DBService.DeleteResults(ctx, orgUID, sourceUIDs)
 	if err != nil {
 		return false, fmt.Errorf("failed to delete source results: %w", err)
+	}
+
+	if deletedCount == 0 {
+		log.WarnContext(ctx, "Aggregation fetched rows but deleted none",
+			"check_uid", checkUID, "region", region, "period_start", periodStart,
+			"source_count", len(resultsResp.Results))
 	}
 
 	log.InfoContext(ctx, "Deleted source results", "count", deletedCount)
@@ -212,7 +255,7 @@ func (r *AggregationJobRun) findAggregatableResults(
 	jctx *jobdef.JobContext,
 	orgUID, sourcePeriod string,
 ) (string, *string, time.Time, bool, error) {
-	rawHours, hourDays, dayMonths := retentionFromConfig(jctx)
+	rawHours, hourDays, dayMonths := retentionFromConfig(ctx, jctx)
 
 	// 1. Calculate boundary in Go based on source period type
 	boundary, err := calculateAggregationBoundary(sourcePeriod, rawHours, hourDays, dayMonths)
@@ -226,7 +269,19 @@ func (r *AggregationJobRun) findAggregatableResults(
 		OrganizationUID: orgUID,
 		PeriodTypes:     []string{sourcePeriod},
 		PeriodEndBefore: &boundary, // period_start < boundary
-		Limit:           100,       // Get a sample to find check-region pairs
+		// Never select a bucket on the strength of lifecycle-marker rows
+		// (created/running): a marker-only bucket must simply stop being found,
+		// so the intentionally preserved markers become inert (spec
+		// 2026-07-11-16 §1). The step-3 aggregation fetch reads all statuses, so
+		// markers still contribute their skip/keep behavior there.
+		ExcludeStatuses: lifecycleMarkerStatuses(),
+		// Never select a bucket whose check has been hard-deleted: its rows are
+		// FK-orphans and rolling them up fails the INSERT (results.check_uid →
+		// checks.uid), which — without the §1 always-schedule guard — permanently
+		// halts aggregation for the org. Ordered period_start DESC, the newest
+		// orphan is otherwise a deterministic poison pill (spec 2026-07-12-01 §2).
+		RequireCheckExists: true,
+		Limit:              100, // Get a sample to find check-region pairs
 	}
 
 	resultsResp, err := jctx.DBService.ListResults(ctx, &filter)
@@ -245,31 +300,179 @@ func (r *AggregationJobRun) findAggregatableResults(
 	return firstResult.CheckUID, firstResult.Region, firstResult.PeriodStart, true, nil
 }
 
-// retentionFromConfig pulls the per-tier retention values from JobContext.AppConfig,
-// falling back to the historical "1/1/1" behavior when the config is absent (e.g.
-// in tests that don't wire AppConfig).
-func retentionFromConfig(jctx *jobdef.JobContext) (int, int, int) {
-	rawHours := 1
-	hourDays := 1
-	dayMonths := 1
+// Default per-tier aggregation retention (spec 2026-07-11-16 §4). These replace
+// the historical "1/1/1" fallback: an unconfigured deployment keeps a full day
+// of raw data (24 hours) before the hourly rollup, a month of hourly rollups,
+// and a year of daily rollups — never the most aggressive possible schedule,
+// which was what let a lifecycle marker become "aggregatable" within the hour.
+const (
+	defaultRetentionRawHours  = 24
+	defaultRetentionHourDays  = 30
+	defaultRetentionDayMonths = 12
+)
 
-	if jctx == nil || jctx.AppConfig == nil {
-		return rawHours, hourDays, dayMonths
+// lifecycleMarkerStatuses returns the raw statuses (created, running) that must
+// not, on their own, make a bucket look aggregatable. A fresh slice each call
+// keeps callers free to pass it straight into a filter without aliasing.
+func lifecycleMarkerStatuses() []int {
+	return []int{int(models.ResultStatusCreated), int(models.ResultStatusRunning)}
+}
+
+// measurableSourceUIDs returns the UIDs of the rows that carry real
+// measurements, skipping lifecycle-marker rows (created, running) — those are
+// intentionally preserved (permalink preservation) and never deleted by a
+// rollup.
+func measurableSourceUIDs(results []*models.Result) []string {
+	uids := make([]string, 0, len(results))
+	for _, result := range results {
+		if result.Status != nil && models.ResultStatus(*result.Status).IsLifecycleMarker() {
+			continue
+		}
+
+		uids = append(uids, result.UID)
 	}
 
-	if v := jctx.AppConfig.Aggregation.RetentionRaw; v >= 1 {
-		rawHours = v
+	return uids
+}
+
+// retentionFromConfig resolves the per-tier aggregation retention (raw→hour,
+// hour→day, day→month) at job-run time from the performance.* global
+// parameters, with precedence: env SP_PERFORMANCE_* → global DB parameter
+// (organization_uid IS NULL) → legacy koanf AppConfig.Aggregation.Retention*
+// (deprecated, one release) → hardcoded default (24/30/12). The historical
+// 1/1/1 fallback is gone (spec 2026-07-11-16 §4).
+func retentionFromConfig(ctx context.Context, jctx *jobdef.JobContext) (int, int, int) {
+	legacyRaw, legacyHour, legacyDay := 0, 0, 0
+	if jctx != nil && jctx.AppConfig != nil {
+		legacyRaw = jctx.AppConfig.Aggregation.RetentionRaw
+		legacyHour = jctx.AppConfig.Aggregation.RetentionHour
+		legacyDay = jctx.AppConfig.Aggregation.RetentionDay
 	}
 
-	if v := jctx.AppConfig.Aggregation.RetentionHour; v >= 1 {
-		hourDays = v
-	}
-
-	if v := jctx.AppConfig.Aggregation.RetentionDay; v >= 1 {
-		dayMonths = v
-	}
+	rawHours := resolveRetentionTier(ctx, jctx,
+		systemconfig.KeyPerfAggRetentionRawHours, "SP_PERFORMANCE_AGGREGATION_RETENTION_RAW_HOURS",
+		legacyRaw, defaultRetentionRawHours)
+	hourDays := resolveRetentionTier(ctx, jctx,
+		systemconfig.KeyPerfAggRetentionHourDays, "SP_PERFORMANCE_AGGREGATION_RETENTION_HOUR_DAYS",
+		legacyHour, defaultRetentionHourDays)
+	dayMonths := resolveRetentionTier(ctx, jctx,
+		systemconfig.KeyPerfAggRetentionDayMonths, "SP_PERFORMANCE_AGGREGATION_RETENTION_DAY_MONTHS",
+		legacyDay, defaultRetentionDayMonths)
 
 	return rawHours, hourDays, dayMonths
+}
+
+// resolveRetentionTier resolves a single retention tier through the documented
+// precedence. Values must be >= 1; an invalid env/DB value logs a warning and
+// falls through to the next layer rather than breaking the job.
+func resolveRetentionTier(
+	ctx context.Context, jctx *jobdef.JobContext,
+	key systemconfig.ParameterKey, envVar string, legacy, def int,
+) int {
+	log := aggregationLogger(jctx)
+
+	// 1. Environment variable (highest precedence).
+	if n, ok := retentionFromEnv(ctx, envVar, log); ok {
+		return n
+	}
+
+	// 2. Global DB parameter (organization_uid IS NULL).
+	if n, ok := retentionFromDBParam(ctx, jctx, key, log); ok {
+		return n
+	}
+
+	// 3. Legacy koanf field (deprecated back-compat, removed a release from now).
+	if legacy >= 1 {
+		log.WarnContext(ctx, "Using deprecated koanf aggregation retention; set the performance.* parameter instead",
+			"key", string(key), "value", legacy)
+
+		return legacy
+	}
+
+	// 4. Hardcoded default.
+	return def
+}
+
+// retentionFromEnv reads a retention tier from an SP_PERFORMANCE_* env var.
+// Returns ok=false (and warns) on absent or invalid (< 1 / unparseable) values.
+func retentionFromEnv(ctx context.Context, envVar string, log *slog.Logger) (int, bool) {
+	raw := strings.TrimSpace(os.Getenv(envVar))
+	if raw == "" {
+		return 0, false
+	}
+
+	if n, err := strconv.Atoi(raw); err == nil && n >= 1 {
+		return n, true
+	}
+
+	log.WarnContext(ctx, "Ignoring invalid retention env override, falling through",
+		"env", envVar, "value", raw)
+
+	return 0, false
+}
+
+// retentionFromDBParam reads a retention tier from the global (organization_uid
+// IS NULL) system parameter. Returns ok=false on absent/unreadable values, and
+// warns (then ok=false) on a present-but-invalid (< 1) value.
+func retentionFromDBParam(
+	ctx context.Context, jctx *jobdef.JobContext, key systemconfig.ParameterKey, log *slog.Logger,
+) (int, bool) {
+	if jctx == nil || jctx.DBService == nil {
+		return 0, false
+	}
+
+	param, err := jctx.DBService.GetSystemParameter(ctx, string(key))
+	if err != nil || param == nil {
+		return 0, false
+	}
+
+	n, ok := parameterInt(param)
+	if !ok {
+		return 0, false
+	}
+
+	if n >= 1 {
+		return n, true
+	}
+
+	log.WarnContext(ctx, "Ignoring invalid retention parameter, falling through",
+		"key", string(key), "value", n)
+
+	return 0, false
+}
+
+// parameterInt extracts an integer from a system parameter's stored value,
+// which arrives as float64 from encoding/json (or int/string in tests).
+func parameterInt(param *models.Parameter) (int, bool) {
+	value, ok := param.Value["value"]
+	if !ok {
+		return 0, false
+	}
+
+	switch n := value.(type) {
+	case float64:
+		return int(n), true
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	case string:
+		if parsed, err := strconv.Atoi(strings.TrimSpace(n)); err == nil {
+			return parsed, true
+		}
+	}
+
+	return 0, false
+}
+
+// aggregationLogger returns the job's logger, falling back to the default so
+// retention resolution never panics when a test wires a bare JobContext.
+func aggregationLogger(jctx *jobdef.JobContext) *slog.Logger {
+	if jctx != nil && jctx.Logger != nil {
+		return jctx.Logger
+	}
+
+	return slog.Default()
 }
 
 // calculateAggregationBoundary returns the timestamp before which data of

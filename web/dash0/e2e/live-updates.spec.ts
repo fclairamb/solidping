@@ -23,6 +23,10 @@ async function getAuthToken(page: Page): Promise<string> {
 interface HeartbeatCheck {
   uid: string;
   name: string;
+  /** Server-generated slug (e.g. "heartbeat-heartbeat-2") — the incidents
+   * list renders the incident title ("<slug> is down") and the check slug,
+   * never the check *name*, so incident-row assertions must match on this. */
+  slug: string;
   hbToken: string;
 }
 
@@ -46,7 +50,7 @@ async function createHeartbeatCheck(
   });
   expect(resp.status()).toBe(201);
   const body = await resp.json();
-  return { uid: body.uid, name, hbToken };
+  return { uid: body.uid, name, slug: body.slug, hbToken };
 }
 
 async function sendHeartbeat(
@@ -94,6 +98,42 @@ async function waitForLiveSubscribed(page: Page): Promise<WebSocket> {
   return ws;
 }
 
+/** Like waitForLiveSubscribed, but for one *specific* entity scope: resolves
+ * only on that entity's `subscribed` ack. On a list page the page component
+ * is the sole subscriber of its collection scope, so this doubles as the
+ * regression guard that the page actually registers its scope — a refactor
+ * that drops the useLiveSubscription call times out here, it can't pass by
+ * riding on some other component's subscription. */
+async function waitForScopeSubscribed(
+  page: Page,
+  entity: "checks" | "incidents" | "events" | "jobs",
+): Promise<WebSocket> {
+  const ws = await page.waitForEvent("websocket", {
+    predicate: (socket) => socket.url().includes("/events/ws"),
+    timeout: 15000,
+  });
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(
+      () =>
+        reject(
+          new Error(`timed out waiting for a subscribed ack for entity "${entity}"`),
+        ),
+      15000,
+    );
+    ws.on("framereceived", (frame) => {
+      const text = typeof frame.payload === "string" ? frame.payload : "";
+      if (
+        text.includes('"type":"subscribed"') &&
+        text.includes(`"entity":"${entity}"`)
+      ) {
+        clearTimeout(timer);
+        resolve();
+      }
+    });
+  });
+  return ws;
+}
+
 test.describe("Live dashboard updates", () => {
   test("an incident opened by a failing heartbeat appears on the dashboard within ~2s", async ({
     authenticatedPage,
@@ -125,11 +165,15 @@ test.describe("Live dashboard updates", () => {
         page.getByTestId("active-incidents").getByText(check.name),
       ).toBeVisible({ timeout: 4000 });
 
-      // Recovery closes the incident live too.
+      // Recovery closes the incident live too. The open invalidation just armed
+      // the per-scope refetch damper (LIVE_INVALIDATE_MIN_INTERVAL_MS = 3s in
+      // LiveEventsContext), so a resolve fired immediately after the open is
+      // coalesced into a trailing-edge refetch ~3s later. Allow headroom over
+      // that deferral plus CI refetch latency so the drop-off isn't raced.
       await sendHeartbeat(page, check, "up");
       await expect(
         page.getByTestId("active-incidents").getByText(check.name),
-      ).toBeHidden({ timeout: 4000 });
+      ).toBeHidden({ timeout: 15_000 });
     } finally {
       await deleteCheck(page, token, check.uid);
     }
@@ -153,33 +197,60 @@ test.describe("Live dashboard updates", () => {
       await subscribedPromise;
       await expect(page.getByTestId("check-detail-header")).toBeVisible();
 
-      // While the check scope is live, the 1.5s first-result hot poll is
-      // disabled: count the check-detail refetches over an idle window. A
-      // 1.5s poll would fire at least twice; the live path fires none.
-      let detailFetches = 0;
+      // Count check-detail GETs, split by URL shape. `useCheck` now keys every
+      // consumer on ["check", org, uid] and always requests
+      // ?with=last_result,last_status_change, so the canonical fetch carries a
+      // query string. The bare (no-query) form is what the breadcrumb used to
+      // fetch as a *second* cache entry (["check", org, uid, {with:undefined}]),
+      // double-fetching the check on every live hint — after the single-key
+      // unification it must never be requested at all.
+      let withFetches = 0;
+      let bareFetches = 0;
+      const detailPath = `/api/v1/orgs/test/checks/${check.uid}`;
       const onRequest = (req: { url: () => string; method: () => string }) => {
-        if (
-          req.method() === "GET" &&
-          req.url().includes(`/api/v1/orgs/test/checks/${check.uid}?`)
-        ) {
-          detailFetches += 1;
+        if (req.method() !== "GET") return;
+        let parsed: URL;
+        try {
+          parsed = new URL(req.url());
+        } catch {
+          return;
         }
+        // Match the check-detail endpoint exactly — not sub-resources like
+        // /results/… or /availability (their path continues past the uid).
+        if (parsed.pathname !== detailPath) return;
+        if (parsed.search) withFetches += 1;
+        else bareFetches += 1;
       };
       page.on("request", onRequest);
       await page.waitForTimeout(3500);
-      const idleFetches = detailFetches;
+      // While the check scope is live, the 1.5s first-result hot poll is
+      // disabled: a 1.5s poll would fire at least twice over this idle window;
+      // the live path fires none.
       expect(
-        idleFetches,
+        withFetches,
         "no 1.5s hot poll may run while the check's live subscription is acked",
       ).toBeLessThan(2);
 
       // First real result: must appear live, driven by the hint. The summary
       // card flips from the pending fallback to "Currently up for …".
+      withFetches = 0;
+      bareFetches = 0;
       await sendHeartbeat(page, check, "up");
       await expect(page.getByText("Currently up for")).toBeVisible({
         timeout: 4000,
       });
       page.off("request", onRequest);
+      // The single live hint fetched the check through its one canonical cache
+      // entry (?with=…) and never through the retired bare breadcrumb entry —
+      // one request per hint, not two.
+      expect(
+        bareFetches,
+        "a live hint must not fetch the bare (no-with) check URL — the retired duplicate cache entry",
+      ).toBe(0);
+      expect(
+        withFetches,
+        "the live hint must drive the canonical ?with= check fetch",
+      ).toBeGreaterThanOrEqual(1);
     } finally {
       await deleteCheck(page, token, check.uid);
     }
@@ -245,6 +316,93 @@ test.describe("Live dashboard updates", () => {
       await expect(
         page.getByTestId("active-incidents").getByText(check.name),
       ).toBeVisible({ timeout: 4000 });
+    } finally {
+      await deleteCheck(page, token, check.uid);
+    }
+  });
+
+  test("the incidents list page subscribes to the incidents scope and updates live (filtered state=active)", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const check = await createHeartbeatCheck(
+      page,
+      token,
+      `E2E Live Incidents List ${Date.now()}`,
+    );
+
+    try {
+      await sendHeartbeat(page, check, "up");
+
+      // The `state=active` variant exercises a filtered query: the incidents
+      // org-root invalidation matches every options variant, so the filtered
+      // list must refetch live exactly like the default one.
+      const subscribed = waitForScopeSubscribed(page, "incidents");
+      await page.goto("orgs/test/incidents?state=active");
+      await subscribed;
+      await expect(page.getByTestId("incidents-state-filter")).toBeVisible();
+
+      // Fail the check: with a zero confirmation window the incident opens
+      // on this heartbeat and must appear in the table without any reload —
+      // the page has no fast poll, so only the live hint can deliver this.
+      // Match on the full title ("<slug> is down"): the row shows the
+      // incident title and the check slug, not the check name — and a bare
+      // slug is a substring prefix of its "-2"/"-3" siblings, which would
+      // trip Playwright's strict mode when several such incidents exist.
+      const incidentTitle = `${check.slug} is down`;
+      await sendHeartbeat(page, check, "down");
+      await expect(
+        page.getByTestId("incident-row").filter({ hasText: incidentTitle }),
+      ).toBeVisible({ timeout: 6000 });
+
+      // Recovery resolves the incident: it must drop off the active-only view
+      // live too. The open invalidation just armed the per-scope refetch damper
+      // (LIVE_INVALIDATE_MIN_INTERVAL_MS = 3s in LiveEventsContext), so this
+      // resolve — sent right after the open — is coalesced into a trailing-edge
+      // refetch ~3s later; allow headroom over that deferral plus CI latency.
+      await sendHeartbeat(page, check, "up");
+      await expect(
+        page.getByTestId("incident-row").filter({ hasText: incidentTitle }),
+      ).toBeHidden({ timeout: 15_000 });
+    } finally {
+      await deleteCheck(page, token, check.uid);
+    }
+  });
+
+  test("the checks list page subscribes to the checks scope and flips a row's status live", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const check = await createHeartbeatCheck(
+      page,
+      token,
+      `E2E Live Checks List ${Date.now()}`,
+    );
+
+    try {
+      await sendHeartbeat(page, check, "up");
+
+      const subscribed = waitForScopeSubscribed(page, "checks");
+      await page.goto("orgs/test/checks");
+      await subscribed;
+
+      // Narrow the paginated list to just this check — the shared test org
+      // can hold more checks than one page (20), and the search-filtered
+      // infinite query must be invalidated by hints all the same.
+      await page.getByPlaceholder("Search checks...").fill(check.name);
+      const row = page.getByRole("row").filter({ hasText: check.name });
+      await expect(row).toBeVisible();
+      await expect(row.getByText("Up", { exact: true })).toBeVisible();
+
+      // Fail the check: the row's status badge must flip to Down without a
+      // reload. The status transition publishes a `checks`-kind hint, which
+      // must reach the infinite checks queries this page renders from.
+      await sendHeartbeat(page, check, "down");
+      await expect(row.getByText("Down", { exact: true })).toBeVisible({
+        timeout: 6000,
+      });
     } finally {
       await deleteCheck(page, token, check.uid);
     }
