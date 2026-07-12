@@ -45,6 +45,11 @@ var errResourceNotInSection = errors.New("resource not in section")
 // referenced a section UID that is not part of the targeted page.
 var errSectionNotInPage = errors.New("section not in status page")
 
+// errForeignKeysNotEnabled signals that a freshly opened SQLite connection is
+// not enforcing foreign keys, which would let a hard delete leave orphaned
+// results rows and permanently halt aggregation (spec 2026-07-12-01 §4).
+var errForeignKeysNotEnabled = errors.New("sqlite foreign key enforcement is not active on a fresh connection")
+
 // Config holds SQLite configuration.
 type Config struct {
 	// DataDir is the directory where the database file will be stored
@@ -109,11 +114,17 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 		return nil, err
 	}
 
-	// Build connection string with SQLite parameters
+	// Build connection string with SQLite parameters. Foreign keys go into the
+	// DSN so EVERY connection — including ones database/sql re-opens after an
+	// error — enforces them; a per-pool one-shot PRAGMA is silently skipped by
+	// such recycled connections and let hard deletes orphan results rows (spec
+	// 2026-07-12-01 §4). The :memory: DSN carries no query string, so the
+	// one-shot PRAGMA below is its (single-connection) belt-and-braces.
 	connStr := dbPath
 	if !cfg.InMemory {
 		// Only add parameters for file-based databases (not :memory:)
-		connStr = fmt.Sprintf("file:%s?cache=shared&mode=rwc&_journal_mode=WAL&_busy_timeout=30000", dbPath)
+		connStr = fmt.Sprintf("file:%s?cache=shared&mode=rwc&_journal_mode=WAL&_busy_timeout=30000&%s",
+			dbPath, foreignKeysDSNParam())
 	}
 
 	sqldb, err := sql.Open(sqliteshim.ShimName, connStr)
@@ -126,9 +137,15 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	sqldb.SetMaxIdleConns(1)    // Keep one connection alive
 	sqldb.SetConnMaxLifetime(0) // No connection expiration
 
-	// Enable foreign keys
+	// Enable foreign keys (belt-and-braces; the DSN param above is the
+	// connection-safe enforcement for file-based databases).
 	if _, err := sqldb.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
 		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
+	}
+
+	// Fail fast if foreign keys are not actually being enforced.
+	if err := verifyForeignKeysEnabled(ctx, sqldb, cfg.InMemory); err != nil {
+		return nil, err
 	}
 
 	// Vacuum to reclaim unused space on startup
@@ -159,6 +176,49 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 		db:      bunDB,
 		dataDir: cfg.DataDir,
 	}, nil
+}
+
+// foreignKeysDSNParam returns the connection-string parameter that turns on
+// foreign-key enforcement for whichever SQLite driver sqliteshim resolved at
+// build time. The Cgo mattn driver (registered as "sqlite3") reads
+// `_foreign_keys=on`; the pure-Go modernc driver (registered as "sqlite")
+// applies `_pragma=foreign_keys(1)` on every connection it opens. Selecting by
+// driver name keeps enforcement working regardless of the build target.
+func foreignKeysDSNParam() string {
+	if sqliteshim.DriverName() == "sqlite3" {
+		return "_foreign_keys=on"
+	}
+
+	return "_pragma=foreign_keys(1)"
+}
+
+// verifyForeignKeysEnabled reads PRAGMA foreign_keys back and fails fast if
+// enforcement is off — the exact silent state that let hard deletes orphan
+// results rows and halt aggregation (spec 2026-07-12-01 §4).
+//
+// For a file-based database it first drops idle connections so the read lands
+// on a genuinely fresh connection, exercising the DSN-level enforcement rather
+// than the one-shot PRAGMA the pool's current connection already ran — a
+// malformed DSN param is caught here. For :memory: the read stays on the
+// existing connection: each :memory: connection is a separate database, so
+// dropping it would both destroy the schema and (there being no DSN param for
+// :memory:) read back a fresh connection with foreign keys off.
+func verifyForeignKeysEnabled(ctx context.Context, sqldb *sql.DB, inMemory bool) error {
+	if !inMemory {
+		sqldb.SetMaxIdleConns(0)
+		defer sqldb.SetMaxIdleConns(1)
+	}
+
+	var enabled int
+	if err := sqldb.QueryRowContext(ctx, "PRAGMA foreign_keys").Scan(&enabled); err != nil {
+		return fmt.Errorf("failed to read foreign_keys pragma: %w", err)
+	}
+
+	if enabled != 1 {
+		return fmt.Errorf("%w (PRAGMA foreign_keys=%d)", errForeignKeysNotEnabled, enabled)
+	}
+
+	return nil
 }
 
 // resetSQLiteDatabase removes the database file and its WAL/SHM files to reset the database.
