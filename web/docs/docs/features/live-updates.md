@@ -42,7 +42,6 @@ refetches once, which is what a real mass outage would require anyway.
 
 | Message | Purpose |
 |---|---|
-| `{"type":"auth","token":"..."}` | Authenticate (browsers — see Handshake below). |
 | `{"type":"subscribe","entity":"check","uid":"<uuid>"}` | Watch one check (detail pages). |
 | `{"type":"subscribe","entity":"checks"}` | Watch the org's check collection: membership + any check's status/results. |
 | `{"type":"subscribe","entity":"incidents"}` / `"events"` / `"jobs"` | Watch the corresponding org-level collection. |
@@ -72,17 +71,29 @@ compat); an unknown client→server type gets an `error` reply.
 
 ## Handshake
 
-Browsers cannot set an `Authorization` header on a WebSocket upgrade, so
-authentication happens one of two ways:
+Authentication happens at the **HTTP level, before the WebSocket upgrade** —
+the same way as any other authenticated endpoint. The upgrade request is
+authenticated from either transport (both are supported and coexist):
 
-1. **Header/cookie pre-auth** (CLI, tests, `curl`/`websocat`): if the upgrade
-   request carries a valid `Authorization: Bearer <jwt>` header or
-   `access_token` cookie, the connection is authenticated immediately and the
-   server replies `hello` right away.
-2. **`auth` message** (browsers): within `SP_REALTIME_AUTH_GRACE` (default
-   5s) the client must send `{"type":"auth","token":"<jwt>"}`. Tokens never
-   go in the URL. Any other message before authentication — including a
-   `subscribe` sent too early — closes the connection.
+- **`Authorization: Bearer <jwt>` header** (CLI, tests, `curl`/`websocat`).
+- **`access_token` cookie** (browsers, which cannot set an `Authorization`
+  header on a WebSocket upgrade — the browser attaches this same-origin cookie
+  automatically). The dashboard keeps the cookie fresh on every login/refresh.
+
+If both are present, the header wins. Tokens never go in the URL, and there is
+**no in-band `auth` message** — a token supplied any other way is ignored.
+
+If the token is **missing, invalid, or expired**, the server responds with a
+normal **HTTP `401`** and does not upgrade. An explicit-auth client (header)
+reads that status directly. A browser cannot read the status of a failed
+upgrade — it sees only a generic `1006` — so the dashboard treats any
+pre-`hello` failure as a retryable drop, refreshes its token, and reconnects
+(the refresh re-mints a live `access_token` cookie for the next attempt).
+
+Once authenticated, the server replies `hello`. Organization-scope and
+feature-disabled checks still run *after* the upgrade and are reported as
+close codes (see below), because those are the terminal states a browser must
+react to differently and can only read as WebSocket close codes.
 
 ## Close codes
 
@@ -92,7 +103,7 @@ closing with an application code:
 
 | Code | Condition | Client reaction |
 |---|---|---|
-| `4401` | Auth missing/invalid/timed out, or the access token expired mid-connection | Reconnect with backoff and a fresh token. |
+| `4401` | The access token expired *mid-connection* (a missing/invalid token at connect time is an HTTP `401` before the upgrade, not this code) | Reconnect with backoff and a fresh token. |
 | `4403` | Authenticated but not a member of this organization | Stop permanently; fall back to polling. |
 | `4404` | `SP_REALTIME_ENABLED=false` | Stop permanently; fall back to polling. |
 | `1012` | Server shutdown / hub closed | Reconnect with backoff. |
@@ -109,7 +120,6 @@ never writes anything itself.
 | `SP_REALTIME_FLUSH_INTERVAL` | `1s` | Coalescing window for high-volume hints (per org, per instance). |
 | `SP_REALTIME_PING_INTERVAL` | `25s` | Transport-level ping keep-alive interval. |
 | `SP_REALTIME_MAX_CONNECTIONS` | `1000` | Maximum concurrent connections per instance (0 = unlimited). |
-| `SP_REALTIME_AUTH_GRACE` | `5s` | How long an unauthenticated connection has to send an `auth` message before it's closed `4401`. |
 | `SP_REALTIME_MAX_SUBSCRIPTIONS_PER_CONNECTION` | `512` | Maximum scopes a single connection may subscribe to (0 = unlimited). |
 
 ## Consuming the socket yourself
@@ -134,12 +144,11 @@ Then subscribe to whatever you're interested in:
 {"type":"update","entity":"checks","kinds":["results"]}
 ```
 
-Without `-H` support (or from a browser), send the token as the first
-message instead:
-
-```json
-{"type":"auth","token":"<jwt>"}
-```
+From a browser, no header is needed — the `access_token` cookie set at login
+is attached to the same-origin upgrade automatically. Other clients that
+prefer a cookie can send `Cookie: access_token=<jwt>` instead of the
+`Authorization` header. A missing or invalid token is rejected with an HTTP
+`401` before the upgrade; there is no in-band `auth` message.
 
 The server closes the connection when your access token expires — reconnect
 with a fresh token and re-subscribe to whatever scopes you cared about.
