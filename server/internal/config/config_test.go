@@ -811,8 +811,8 @@ func validBaseConfig() *Config {
 		Node:     NodeConfig{Role: NodeRoleAll},
 		Aggregation: AggregationConfig{
 			RetentionRaw:  24,
-			RetentionHour: 30,
-			RetentionDay:  12,
+			RetentionHour: 7,
+			RetentionDay:  2,
 		},
 		Deployment: DeploymentConfig{Mode: DeploymentModeSelfHosted},
 		Auth:       AuthConfig{Password: defaultPasswordConfig()},

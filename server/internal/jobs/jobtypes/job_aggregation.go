@@ -300,15 +300,18 @@ func (r *AggregationJobRun) findAggregatableResults(
 	return firstResult.CheckUID, firstResult.Region, firstResult.PeriodStart, true, nil
 }
 
-// Default per-tier aggregation retention (spec 2026-07-11-16 §4). These replace
-// the historical "1/1/1" fallback: an unconfigured deployment keeps a full day
-// of raw data (24 hours) before the hourly rollup, a month of hourly rollups,
-// and a year of daily rollups — never the most aggressive possible schedule,
-// which was what let a lifecycle marker become "aggregatable" within the hour.
+// Default per-tier aggregation retention. These replace the historical "1/1/1"
+// fallback: an unconfigured deployment keeps a full day of raw data (24 hours)
+// before the hourly rollup, a week of hourly rollups, and two months of daily
+// rollups — never the most aggressive possible schedule, which was what let a
+// lifecycle marker become "aggregatable" within the hour. The raw floor stays
+// 24h; the hourly (30→7) and daily (12→2) defaults were tightened by spec
+// 2026-07-14-02 to bound how much granular history accumulates by default.
+// Operators raise them from the server "Aggregation" settings tab.
 const (
 	defaultRetentionRawHours  = 24
-	defaultRetentionHourDays  = 30
-	defaultRetentionDayMonths = 12
+	defaultRetentionHourDays  = 7
+	defaultRetentionDayMonths = 2
 )
 
 // lifecycleMarkerStatuses returns the raw statuses (created, running) that must
@@ -339,8 +342,9 @@ func measurableSourceUIDs(results []*models.Result) []string {
 // hour→day, day→month) at job-run time from the performance.* global
 // parameters, with precedence: env SP_PERFORMANCE_* → global DB parameter
 // (organization_uid IS NULL) → legacy koanf AppConfig.Aggregation.Retention*
-// (deprecated, one release) → hardcoded default (24/30/12). The historical
-// 1/1/1 fallback is gone (spec 2026-07-11-16 §4).
+// (deprecated, one release) → hardcoded default (24/7/2). Resolving live on
+// each run is what lets a server "Aggregation" settings edit take effect on the
+// next scheduled run without a restart. The historical 1/1/1 fallback is gone.
 func retentionFromConfig(ctx context.Context, jctx *jobdef.JobContext) (int, int, int) {
 	legacyRaw, legacyHour, legacyDay := 0, 0, 0
 	if jctx != nil && jctx.AppConfig != nil {

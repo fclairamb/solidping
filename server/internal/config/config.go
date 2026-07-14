@@ -360,10 +360,16 @@ type AppGitHubConfig struct {
 // AggregationConfig controls how aggressively raw/hour/day result data is compacted.
 // Each value is the number of completed periods of that tier to retain before
 // rolling up to the next tier. Minimum 1 (the previous behavior).
+//
+// These koanf fields are the deprecated legacy fallback: the aggregation job and
+// its read-side consumers resolve retention live from the
+// performance.aggregation_retention_* system parameters (see
+// jobtypes.retentionFromConfig), which is what the server "Aggregation" settings
+// tab writes. Keep the defaults here in sync with jobtypes' default constants.
 type AggregationConfig struct {
 	RetentionRaw  int `koanf:"retention_raw"`  // hours of raw to keep (default 24)
-	RetentionHour int `koanf:"retention_hour"` // days of hourly to keep (default 30)
-	RetentionDay  int `koanf:"retention_day"`  // months of daily to keep (default 12)
+	RetentionHour int `koanf:"retention_hour"` // days of hourly to keep (default 7)
+	RetentionDay  int `koanf:"retention_day"`  // months of daily to keep (default 2)
 }
 
 // AuthConfig contains authentication configuration.
@@ -730,8 +736,8 @@ func Load() (*Config, error) {
 		},
 		Aggregation: AggregationConfig{
 			RetentionRaw:  24,
-			RetentionHour: 30,
-			RetentionDay:  12,
+			RetentionHour: 7,
+			RetentionDay:  2,
 		},
 		Jobs: JobsConfig{
 			StuckTimeout:   15 * time.Minute,

@@ -105,9 +105,11 @@ func (b *BucketStats) accumulateAgg(result *models.Result) {
 }
 
 // Defaults used by safetyRowCap when the caller doesn't have a real retention
-// config to hand (e.g. a test exercising the bucketing logic in isolation).
-// These mirror config.AggregationConfig's documented defaults (see
-// config.go's Load) — never used on the production call path, which always
+// config to hand (e.g. the MCP handler passes cfg=nil, or a test exercising the
+// bucketing logic in isolation). These are a deliberately generous upper bound
+// for the row cap, not the tightened live defaults (jobtypes' 24/7/2) — a wider
+// cap only ever admits more rows, never truncates, which is the safe direction
+// for a fallback. Never used on the normal production call path, which always
 // passes the org's actual configured retention.
 const (
 	defaultRetentionRawHours = 24

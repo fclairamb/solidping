@@ -323,10 +323,10 @@ func TestRun_MarkerOnlyReschedulesInOneHour(t *testing.T) {
 	r.Empty(listHourRows(t, dbSvc, org, check), "no hour row may be produced")
 }
 
-// TestRetentionFromConfig_DefaultsAndDBParameter pins spec 2026-07-11-16 §4: an
-// unconfigured deployment resolves to the real defaults (24/30/12), never the
-// old 1/1/1; a global DB parameter overrides its tier; an invalid (< 1) DB
-// value warns and falls through to the default.
+// TestRetentionFromConfig_DefaultsAndDBParameter pins that an unconfigured
+// deployment resolves to the real defaults (24/7/2), never the old 1/1/1; a
+// global DB parameter overrides its tier; an invalid (< 1) DB value warns and
+// falls through to the default.
 func TestRetentionFromConfig_DefaultsAndDBParameter(t *testing.T) {
 	t.Parallel()
 
@@ -335,6 +335,12 @@ func TestRetentionFromConfig_DefaultsAndDBParameter(t *testing.T) {
 	dbSvc, _, _ := newAggTestEnv(t)
 
 	jctx := &jobdef.JobContext{DBService: dbSvc, Logger: slog.Default()}
+
+	// The literal default triple is the user-facing contract (spec 2026-07-14-02):
+	// raw stays 24h, hourly tightened to 7 days, daily to 2 months.
+	r.Equal(24, defaultRetentionRawHours)
+	r.Equal(7, defaultRetentionHourDays)
+	r.Equal(2, defaultRetentionDayMonths)
 
 	raw, hour, day := retentionFromConfig(ctx, jctx)
 	r.Equal(defaultRetentionRawHours, raw, "raw retention defaults to 24h, not 1")
