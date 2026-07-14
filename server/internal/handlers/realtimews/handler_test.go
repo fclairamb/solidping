@@ -36,10 +36,9 @@ type wsFixture struct {
 }
 
 // wsFixtureOpts allows individual tests to tweak the realtime config (e.g.
-// disable the feature, shrink the auth grace, lower the subscription cap).
+// disable the feature, lower the subscription cap).
 type wsFixtureOpts struct {
 	disabled         bool
-	authGrace        time.Duration
 	maxSubscriptions int
 	pingInterval     time.Duration
 }
@@ -63,9 +62,6 @@ func newWSFixture(t *testing.T, opts wsFixtureOpts) *wsFixture {
 	// fullCfg.Auth when it mints/validates the session tokens this fixture uses.
 	authService := auth.NewService(dbSvc, authCfg, &config.Config{Auth: authCfg}, nil, nil)
 
-	if opts.authGrace <= 0 {
-		opts.authGrace = time.Second
-	}
 	if opts.pingInterval <= 0 {
 		opts.pingInterval = time.Minute
 	}
@@ -77,7 +73,6 @@ func newWSFixture(t *testing.T, opts wsFixtureOpts) *wsFixture {
 			FlushInterval:                 50 * time.Millisecond,
 			PingInterval:                  opts.pingInterval,
 			MaxConnections:                0,
-			AuthGrace:                     opts.authGrace,
 			MaxSubscriptionsPerConnection: opts.maxSubscriptions,
 		},
 	}
@@ -152,20 +147,24 @@ func (fx *wsFixture) token(t *testing.T) string {
 	return resp.AccessToken
 }
 
-// dial opens a raw WebSocket connection with no pre-auth header (the
-// "browser" path — auth must be sent as the first message).
-func (fx *wsFixture) dial(t *testing.T) *websocket.Conn {
+// dialExpect401 attempts an upgrade with the given dial options and asserts the
+// handshake is rejected with an HTTP 401 BEFORE any upgrade — no socket. Token
+// authentication now runs at the HTTP level, so coder/websocket surfaces the
+// non-101 response on (err, resp) rather than upgrading and closing.
+func (fx *wsFixture) dialExpect401(t *testing.T, opts *websocket.DialOptions) {
 	t.Helper()
 	r := require.New(t)
 
-	conn, resp, err := websocket.Dial(t.Context(), fx.wsURL, nil)
-	r.NoError(err)
-	if resp != nil && resp.Body != nil {
+	conn, resp, err := websocket.Dial(t.Context(), fx.wsURL, opts)
+	if conn != nil {
+		_ = conn.CloseNow()
+	}
+	r.Error(err)
+	r.NotNil(resp)
+	if resp.Body != nil {
 		t.Cleanup(func() { _ = resp.Body.Close() })
 	}
-	t.Cleanup(func() { _ = conn.CloseNow() })
-
-	return conn
+	r.Equal(http.StatusUnauthorized, resp.StatusCode)
 }
 
 // dialPreAuth opens a connection with an Authorization header (the
@@ -342,97 +341,10 @@ func TestServe_PreAuthHeaderThenHello(t *testing.T) {
 	_ = org
 }
 
-func TestServe_BrowserAuthMessageThenHello(t *testing.T) {
-	t.Parallel()
-	r := require.New(t)
-
-	fx := newWSFixture(t, wsFixtureOpts{})
-	fx.seedOrgAndUser(t)
-	token := fx.token(t)
-
-	conn := fx.dial(t)
-	writeJSON(t, conn, map[string]string{"type": "auth", "token": token})
-
-	hello := readJSON[helloFrame](t, conn)
-	r.Equal("hello", hello.Type)
-}
-
-func TestServe_NoAuthWithinGraceWindowCloses4401(t *testing.T) {
-	t.Parallel()
-	r := require.New(t)
-
-	fx := newWSFixture(t, wsFixtureOpts{authGrace: 200 * time.Millisecond})
-	fx.seedOrgAndUser(t)
-
-	conn := fx.dial(t)
-
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	_, _, err := conn.Read(ctx)
-	r.Error(err)
-	r.Equal(realtimews.CloseAuthFailed, websocket.CloseStatus(err))
-}
-
-func TestServe_SubscribeBeforeAuthCloses4401(t *testing.T) {
-	t.Parallel()
-	r := require.New(t)
-
-	fx := newWSFixture(t, wsFixtureOpts{authGrace: 2 * time.Second})
-	fx.seedOrgAndUser(t)
-
-	conn := fx.dial(t)
-	writeJSON(t, conn, map[string]string{"type": "subscribe", "entity": "checks"})
-
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	_, _, err := conn.Read(ctx)
-	r.Error(err)
-	r.Equal(realtimews.CloseAuthFailed, websocket.CloseStatus(err))
-}
-
-func TestServe_InvalidPreAuthTokenClosesImmediately(t *testing.T) {
-	t.Parallel()
-	r := require.New(t)
-
-	fx := newWSFixture(t, wsFixtureOpts{authGrace: 2 * time.Second})
-	fx.seedOrgAndUser(t)
-
-	conn := fx.dialPreAuth(t, "not-a-valid-token")
-
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	_, _, err := conn.Read(ctx)
-	r.Error(err)
-	r.Equal(realtimews.CloseAuthFailed, websocket.CloseStatus(err))
-}
-
-// TestServe_StaleCookieFallsThroughToAuthMessage covers the browser bug: the
-// login/refresh endpoints set an access_token cookie for the unrelated
-// OAuth-consent flow, and browsers attach it to every same-origin request
-// automatically — including this upgrade. A stale/mismatched cookie (e.g.
-// left over from an earlier login than the token the page currently holds)
-// must not permanently kill the socket the way an explicit-but-invalid
-// Authorization header does; the client's fresh in-band `auth` message gets
-// a chance instead.
-func TestServe_StaleCookieFallsThroughToAuthMessage(t *testing.T) {
-	t.Parallel()
-	r := require.New(t)
-
-	fx := newWSFixture(t, wsFixtureOpts{authGrace: 2 * time.Second})
-	fx.seedOrgAndUser(t)
-	token := fx.token(t)
-
-	conn := fx.dialWithCookie(t, "stale-invalid-cookie-token")
-	writeJSON(t, conn, map[string]string{"type": "auth", "token": token})
-
-	hello := readJSON[helloFrame](t, conn)
-	r.Equal("hello", hello.Type)
-}
-
-// TestServe_ValidCookieAuthenticatesImmediately covers the CLI/websocat use
-// case the cookie path exists for: a cookie that DOES validate authenticates
-// at upgrade time, same as a valid Authorization header, without waiting for
-// an auth message.
+// TestServe_ValidCookieAuthenticatesImmediately covers the browser path: an
+// access_token cookie (the browser attaches it to the same-origin upgrade
+// automatically) authenticates at the HTTP level and the socket gets `hello`,
+// same as a valid Authorization header.
 func TestServe_ValidCookieAuthenticatesImmediately(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -444,6 +356,99 @@ func TestServe_ValidCookieAuthenticatesImmediately(t *testing.T) {
 	conn := fx.dialWithCookie(t, token)
 	hello := readJSON[helloFrame](t, conn)
 	r.Equal("hello", hello.Type)
+}
+
+// TestServe_MissingTokenRejectedWith401 pins the "explicit auth gets an answer"
+// guarantee: with no Authorization header and no access_token cookie the
+// handshake is answered with HTTP 401 before any upgrade (no socket).
+func TestServe_MissingTokenRejectedWith401(t *testing.T) {
+	t.Parallel()
+
+	fx := newWSFixture(t, wsFixtureOpts{})
+	fx.seedOrgAndUser(t)
+
+	fx.dialExpect401(t, nil)
+}
+
+// TestServe_InvalidHeaderTokenRejectedWith401 covers a deliberately-set but
+// invalid Authorization header: answered at the HTTP level with 401, no upgrade
+// (this was a post-upgrade 4401 close before this spec).
+func TestServe_InvalidHeaderTokenRejectedWith401(t *testing.T) {
+	t.Parallel()
+
+	fx := newWSFixture(t, wsFixtureOpts{})
+	fx.seedOrgAndUser(t)
+
+	fx.dialExpect401(t, &websocket.DialOptions{
+		HTTPHeader: http.Header{"Authorization": []string{"Bearer not-a-valid-token"}},
+	})
+}
+
+// TestServe_InvalidCookieTokenRejectedWith401 covers a stale/invalid
+// access_token cookie: it now simply fails at the HTTP layer (401) instead of
+// falling through to an in-band auth message, which no longer exists.
+func TestServe_InvalidCookieTokenRejectedWith401(t *testing.T) {
+	t.Parallel()
+
+	fx := newWSFixture(t, wsFixtureOpts{})
+	fx.seedOrgAndUser(t)
+
+	fx.dialExpect401(t, &websocket.DialOptions{
+		HTTPHeader: http.Header{"Cookie": []string{"access_token=stale-invalid-cookie-token"}},
+	})
+}
+
+// TestServe_HeaderTokenWinsOverCookie pins precedence: a valid Authorization
+// header alongside an invalid cookie authenticates via the header (mirrors
+// middleware.extractToken — the header wins).
+func TestServe_HeaderTokenWinsOverCookie(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	fx := newWSFixture(t, wsFixtureOpts{})
+	fx.seedOrgAndUser(t)
+	token := fx.token(t)
+
+	conn, resp, err := websocket.Dial(t.Context(), fx.wsURL, &websocket.DialOptions{
+		HTTPHeader: http.Header{
+			"Authorization": []string{"Bearer " + token},
+			"Cookie":        []string{"access_token=garbage-cookie-token"},
+		},
+	})
+	r.NoError(err)
+	if resp != nil && resp.Body != nil {
+		t.Cleanup(func() { _ = resp.Body.Close() })
+	}
+	t.Cleanup(func() { _ = conn.CloseNow() })
+
+	hello := readJSON[helloFrame](t, conn)
+	r.Equal("hello", hello.Type)
+}
+
+// TestServe_FirstMessageAuthFrameIsNotAuthentication pins the removal of the
+// in-band auth path: the socket is already authenticated at the HTTP level, so
+// a first-message {"type":"auth"} frame is treated as any other frame — it hits
+// the default "Unknown message type" branch and the socket stays open.
+func TestServe_FirstMessageAuthFrameIsNotAuthentication(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	fx := newWSFixture(t, wsFixtureOpts{})
+	fx.seedOrgAndUser(t)
+	token := fx.token(t)
+
+	conn := fx.dialPreAuth(t, token)
+	_ = readJSON[helloFrame](t, conn)
+
+	writeJSON(t, conn, map[string]string{"type": "auth", "token": token})
+	errFrame := readJSON[errorFrame](t, conn)
+	r.Equal("error", errFrame.Type)
+	r.Equal("VALIDATION_ERROR", errFrame.Code)
+
+	// Socket stays open: a valid subscribe still works afterward.
+	writeJSON(t, conn, map[string]string{"type": "subscribe", "entity": "checks"})
+	sub := readJSON[subscribedFrame](t, conn)
+	r.Equal("subscribed", sub.Type)
 }
 
 func TestServe_ForeignOrgClosesForbidden(t *testing.T) {
@@ -523,8 +528,12 @@ func TestServe_DisabledClosesImmediately4404(t *testing.T) {
 
 	fx := newWSFixture(t, wsFixtureOpts{disabled: true})
 	fx.seedOrgAndUser(t)
+	token := fx.token(t)
 
-	conn := fx.dial(t)
+	// Token auth succeeds at the HTTP level (validity does not depend on the
+	// feature flag); the disabled feature is a post-upgrade 4404 close, so a
+	// valid token is required to observe it.
+	conn := fx.dialPreAuth(t, token)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
@@ -689,14 +698,12 @@ func TestServe_TokenExpiryCloses4401(t *testing.T) {
 	fx.seedOrgAndUser(t)
 
 	// authService config's AccessTokenExpiry is 1h in the fixture; instead of
-	// waiting an hour, build a token directly with a short expiry via a
-	// second auth service sharing the same JWT secret and db. To avoid a
-	// race against connection setup under load (a slow dial/hello round-trip
-	// could otherwise let the token expire before the handler even validates
-	// it — a real flake observed under `go test ./...` parallelism), the
-	// token is minted with a generous 5s window and via the browser `auth`
-	// message path (not pre-auth), so validation happens immediately after
-	// the socket opens rather than after the full TCP+TLS dial.
+	// waiting an hour, build a token directly with a short expiry via a second
+	// auth service sharing the same JWT secret and db. A generous 5s window
+	// keeps a slow dial from expiring the token before the pre-upgrade
+	// validation runs (a real flake observed under `go test ./...`
+	// parallelism); pre-upgrade validation happens during the handshake, so the
+	// mint→validate window is just the dial itself.
 	const tokenTTL = 5 * time.Second
 	shortCfg := config.AuthConfig{
 		JWTSecret:          "test-jwt-secret",
@@ -709,8 +716,7 @@ func TestServe_TokenExpiryCloses4401(t *testing.T) {
 	resp, err := shortAuthService.Login(t.Context(), "test", "member@example.com", "pw", auth.Context{})
 	r.NoError(err)
 
-	conn := fx.dial(t)
-	writeJSON(t, conn, map[string]string{"type": "auth", "token": resp.AccessToken})
+	conn := fx.dialPreAuth(t, resp.AccessToken)
 	_ = readJSON[helloFrame](t, conn)
 
 	ctx, cancel := context.WithTimeout(t.Context(), tokenTTL+10*time.Second)

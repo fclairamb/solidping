@@ -40,7 +40,6 @@ const (
 
 // Message-type metric labels.
 const (
-	msgLabelAuth        = "auth"
 	msgLabelSubscribe   = "subscribe"
 	msgLabelUnsubscribe = "unsubscribe"
 	msgLabelUnknown     = "unknown"
@@ -52,9 +51,14 @@ const pingPongGrace = 5 * time.Second
 
 // Handler upgrades and serves the realtime WebSocket for authenticated org
 // members. Unlike v1 (registered behind RequireAuth/RequireOrgAccess), this
-// route is registered unconditionally and performs its own auth in-handler,
-// because browsers cannot present credentials at WebSocket-upgrade time.
+// route is registered unconditionally and performs its own auth in-handler.
+// Token authentication happens at the HTTP level, before the upgrade (a bad
+// token gets a real 401); org-scope and feature-disabled remain post-upgrade
+// close codes because a browser cannot read the HTTP status of a failed
+// WebSocket handshake.
 type Handler struct {
+	base.HandlerBase
+
 	hub         *realtime.Hub
 	authService *auth.Service
 	dbService   db.Service
@@ -62,7 +66,6 @@ type Handler struct {
 	logger      *slog.Logger
 
 	pingInterval time.Duration
-	authGrace    time.Duration
 }
 
 // NewHandler creates the realtime WebSocket handler on the process-wide hub.
@@ -73,27 +76,37 @@ func NewHandler(
 	if pingInterval <= 0 {
 		pingInterval = 25 * time.Second
 	}
-	authGrace := cfg.Realtime.AuthGrace
-	if authGrace <= 0 {
-		authGrace = 5 * time.Second
-	}
 
 	return &Handler{
+		HandlerBase:  base.NewHandlerBase(cfg),
 		hub:          hub,
 		authService:  authService,
 		dbService:    dbService,
 		cfg:          cfg,
 		logger:       slog.Default().With("component", "realtimews"),
 		pingInterval: pingInterval,
-		authGrace:    authGrace,
 	}
 }
 
-// Serve handles GET /api/v1/orgs/:org/events/ws. It always accepts the
-// upgrade — even when the feature is disabled or auth fails — because a
-// rejected upgrade is invisible to browser JS; terminal conditions are
-// instead signaled with a specific close code (see the Close* constants).
+// Serve handles GET /api/v1/orgs/:org/events/ws. Token authentication runs
+// BEFORE the upgrade: an invalid/missing token is answered with an HTTP 401
+// (readable by explicit-auth clients; a browser sees a generic 1006 and
+// self-heals). The remaining terminal conditions — feature-disabled and
+// org-scope denial — stay post-upgrade close codes (4404/4403) because a
+// rejected upgrade is invisible to browser JS and those are the states the
+// browser must act on differently (see the Close* constants).
 func (h *Handler) Serve(writer http.ResponseWriter, req bunrouter.Request) error {
+	ctx := req.Context()
+	orgSlug := req.Param("org")
+
+	// Authenticate the token at the HTTP level, before upgrading, so a bad
+	// token gets a real 401 instead of a dangling socket closed with an
+	// app-defined code the caller may not read.
+	claims, user, errCode, errMsg := h.authenticateToken(ctx, extractToken(req.Request))
+	if claims == nil {
+		return h.WriteError(writer, http.StatusUnauthorized, errCode, errMsg)
+	}
+
 	conn, err := websocket.Accept(writer, req.Request, &websocket.AcceptOptions{
 		CompressionMode: websocket.CompressionDisabled,
 	})
@@ -101,18 +114,14 @@ func (h *Handler) Serve(writer http.ResponseWriter, req bunrouter.Request) error
 		return nil // the client never got a socket; nothing more to do
 	}
 
-	ctx := req.Context()
-
 	if !h.cfg.Realtime.Enabled {
 		_ = conn.Close(CloseDisabled, "realtime updates are disabled")
 
 		return nil
 	}
 
-	orgSlug := req.Param("org")
-
-	claims, org, closeCode, reason := h.handshake(ctx, req.Request, conn, orgSlug)
-	if claims == nil {
+	org, closeCode, reason := h.authorizeOrg(ctx, claims, user, orgSlug)
+	if org == nil {
 		_ = conn.Close(closeCode, reason)
 
 		return nil
@@ -201,10 +210,10 @@ func (h *Handler) writeLoop(ctx context.Context, conn *websocket.Conn, sub *real
 	}
 }
 
-// readLoop authenticates (if not already) and then processes
-// subscribe/unsubscribe/auth messages until the connection ends. Runs on the
-// caller's goroutine; returns when the connection closes or the token
-// expires.
+// readLoop processes subscribe/unsubscribe messages until the connection ends.
+// The connection is already authenticated at this point (token auth happens at
+// the HTTP level before the upgrade). Runs on the caller's goroutine; returns
+// when the connection closes or the token expires.
 func (h *Handler) readLoop(
 	ctx context.Context, conn *websocket.Conn, sub *realtime.Subscriber, org *models.Organization, claims *auth.Claims,
 ) {
@@ -244,10 +253,6 @@ func (h *Handler) handleMessage(
 	org *models.Organization, msg clientMessage, checkedUIDs map[string]bool,
 ) {
 	switch msg.Type {
-	case msgTypeAuth:
-		prommetrics.RealtimeMessagesReceived.WithLabelValues(msgLabelAuth).Inc()
-		// Already authenticated (this handler only reaches handleMessage
-		// post-handshake) — a stray auth message is harmless, ignore it.
 	case msgTypeSubscribe:
 		prommetrics.RealtimeMessagesReceived.WithLabelValues(msgLabelSubscribe).Inc()
 		h.handleSubscribe(ctx, conn, sub, org, msg, checkedUIDs)

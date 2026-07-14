@@ -8,7 +8,6 @@ const ProtocolVersion = 2
 
 // Client -> server message types.
 const (
-	msgTypeAuth        = "auth"
 	msgTypeSubscribe   = "subscribe"
 	msgTypeUnsubscribe = "unsubscribe"
 )
@@ -26,7 +25,6 @@ const (
 // Fields not relevant to the message's type are simply left zero.
 type clientMessage struct {
 	Type   string `json:"type"`
-	Token  string `json:"token,omitempty"`
 	Entity string `json:"entity,omitempty"`
 	UID    string `json:"uid,omitempty"`
 }

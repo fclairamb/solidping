@@ -2,15 +2,14 @@ package realtimews
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/coder/websocket"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
+	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
 
 // cookieAuthToken mirrors middleware.CookieAuthToken — duplicated here rather
@@ -21,44 +20,25 @@ const cookieAuthToken = "access_token"
 
 const bearerTokenParts = 2
 
-// handshake authenticates the connection, either immediately from the
-// upgrade request's Authorization header (CLI, tests, curl/websocat —
-// anything that can set headers) or access_token cookie, or by waiting up to
-// authGrace for a client `{"type":"auth","token":"..."}` message (browsers,
-// which cannot set headers on a WebSocket upgrade).
-//
-// On success it returns the validated claims and organization. On failure it
-// returns (nil, nil, closeCode, reason) — the caller closes the socket with
-// that code without ever having sent `hello`.
-func (h *Handler) handshake(
-	ctx context.Context, req *http.Request, conn *websocket.Conn, orgSlug string,
-) (*auth.Claims, *models.Organization, websocket.StatusCode, string) {
-	if token := extractHeaderToken(req); token != "" {
-		claims, org, code, reason := h.authenticate(ctx, token, orgSlug)
-		if claims != nil {
-			return claims, org, 0, ""
-		}
-		// An Authorization header is a credential the caller deliberately
-		// set (a browser cannot) — a present-but-invalid one fails fast
-		// rather than falling through to the grace window.
-		return nil, nil, code, reason
+// extractToken returns the request's bearer token from the Authorization
+// header, falling back to the access_token cookie only when no Authorization
+// header is present (the header wins). This mirrors middleware.extractToken
+// exactly: a present-but-malformed Authorization header yields "" and does NOT
+// fall back to the cookie. Browsers attach the cookie to the same-origin
+// upgrade automatically; explicit-auth clients (CLI/curl/websocat/tests) set
+// the header deliberately.
+func extractToken(req *http.Request) string {
+	authHeader := req.Header.Get("Authorization")
+	if authHeader == "" {
+		return extractCookieToken(req)
 	}
 
-	// The access_token cookie is set by the login/refresh endpoints for an
-	// unrelated server-rendered flow (OAuth consent) — browsers attach it
-	// to EVERY same-origin request automatically, including this upgrade,
-	// so its presence is incidental rather than a deliberate credential
-	// choice. Unlike the header, a stale/mismatched cookie (e.g. left over
-	// from an earlier login than the token the page currently holds) must
-	// not permanently fail the socket: fall through and give the client's
-	// fresh in-band `auth` message a chance.
-	if token := extractCookieToken(req); token != "" {
-		if claims, org, _, _ := h.authenticate(ctx, token, orgSlug); claims != nil {
-			return claims, org, 0, ""
-		}
+	parts := strings.SplitN(authHeader, " ", bearerTokenParts)
+	if len(parts) != bearerTokenParts || !strings.EqualFold(parts[0], "bearer") {
+		return ""
 	}
 
-	return h.awaitAuthMessage(ctx, conn, orgSlug)
+	return parts[1]
 }
 
 // extractHeaderToken mirrors middleware.extractToken's Authorization header
@@ -87,76 +67,44 @@ func extractCookieToken(req *http.Request) string {
 	return ""
 }
 
-// awaitAuthMessage waits up to h.authGrace for the first client message. Only
-// `auth` is accepted before authentication; anything else — including a
-// subscribe sent too early — closes with 4401.
-//
-// conn.Read closes the connection itself on ANY error, including a context
-// deadline (see the Conn doc comment in coder/websocket) — with the
-// library's own default status, not ours. So the grace window cannot be a
-// context passed straight into Read: that would race our intended 4401
-// against the library's own close. Instead the read runs on the request
-// context (no deadline of its own) in a goroutine, and a separate timer
-// decides whether we ever waited long enough to give up and close 4401
-// ourselves first.
-func (h *Handler) awaitAuthMessage(
-	ctx context.Context, conn *websocket.Conn, orgSlug string,
-) (*auth.Claims, *models.Organization, websocket.StatusCode, string) {
-	type readResult struct {
-		data []byte
-		err  error
+// authenticateToken validates the token (signature/expiry) and confirms the
+// user still exists. It runs BEFORE websocket.Accept so a bad token is
+// answered with a real HTTP 401 that explicit-auth clients (CLI/curl/tests)
+// can read — a browser sees only a generic 1006 on the failed handshake and
+// self-heals by refreshing its cookie and reconnecting. On success it returns
+// the validated claims and user; on failure it returns the HTTP error code and
+// message the caller writes as a 401.
+func (h *Handler) authenticateToken(
+	ctx context.Context, token string,
+) (*auth.Claims, *models.User, base.ErrorCode, string) {
+	if token == "" {
+		return nil, nil, base.ErrorCodeNoToken, "Authorization token is required"
 	}
 
-	resultCh := make(chan readResult, 1)
-	go func() {
-		_, data, err := conn.Read(ctx)
-		resultCh <- readResult{data: data, err: err}
-	}()
-
-	select {
-	case <-time.After(h.authGrace):
-		return nil, nil, CloseAuthFailed, "no auth message within the grace window"
-	case <-ctx.Done():
-		return nil, nil, CloseAuthFailed, "connection ended before authentication"
-	case res := <-resultCh:
-		if res.err != nil {
-			return nil, nil, CloseAuthFailed, "connection ended before authentication"
-		}
-
-		var msg clientMessage
-		if jsonErr := json.Unmarshal(res.data, &msg); jsonErr != nil || msg.Type != msgTypeAuth || msg.Token == "" {
-			return nil, nil, CloseAuthFailed, "first message must be auth"
-		}
-
-		claims, org, code, reason := h.authenticate(ctx, msg.Token, orgSlug)
-		if claims == nil {
-			return nil, nil, code, reason
-		}
-
-		return claims, org, 0, ""
-	}
-}
-
-// authenticate validates the token and checks org membership, mirroring
-// middleware.RequireAuth + RequireOrgAccess but executed in-handler (the
-// route is registered outside that middleware chain — browsers cannot
-// present credentials at WebSocket-upgrade time).
-func (h *Handler) authenticate(
-	ctx context.Context, token, orgSlug string,
-) (*auth.Claims, *models.Organization, websocket.StatusCode, string) {
 	claims, err := h.authService.ValidateToken(ctx, token)
 	if err != nil {
-		return nil, nil, CloseAuthFailed, "invalid or expired token"
+		return nil, nil, base.ErrorCodeInvalidToken, "Invalid or expired token"
 	}
 
 	user, err := h.dbService.GetUser(ctx, claims.UserUID)
 	if err != nil {
-		return nil, nil, CloseAuthFailed, "user not found"
+		return nil, nil, base.ErrorCodeUserNotFound, "User not found"
 	}
 
+	return claims, user, "", ""
+}
+
+// authorizeOrg mirrors middleware.RequireOrgAccess but runs AFTER the upgrade,
+// because the browser must be able to act on the outcome and it can only read a
+// WebSocket close code (never an HTTP status) once the socket exists. On
+// success it returns the organization; on failure it returns a 4403 close code
+// and reason.
+func (h *Handler) authorizeOrg(
+	ctx context.Context, claims *auth.Claims, user *models.User, orgSlug string,
+) (*models.Organization, websocket.StatusCode, string) {
 	org, err := h.dbService.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
-		return nil, nil, CloseForbidden, "organization not found"
+		return nil, CloseForbidden, "organization not found"
 	}
 
 	// Mirror middleware.RequireOrgAccess exactly. Only a *claims* super-admin
@@ -167,16 +115,16 @@ func (h *Handler) authenticate(
 	// with super-admin claims, so this divergence is currently unreachable —
 	// but the two paths claim to mirror each other and now provably do.)
 	if !claims.IsSuperAdmin() && claims.OrgSlug != orgSlug {
-		return nil, nil, CloseForbidden, "access to this organization is denied"
+		return nil, CloseForbidden, "access to this organization is denied"
 	}
 
 	// Regular users must be members of the org; claims and DB super-admins skip
 	// the membership check (mirrors RequireOrgAccess's second guard).
 	if !claims.IsSuperAdmin() && !user.SuperAdmin {
 		if _, err := h.dbService.GetMemberByUserAndOrg(ctx, user.UID, org.UID); err != nil {
-			return nil, nil, CloseForbidden, "access to this organization is denied"
+			return nil, CloseForbidden, "access to this organization is denied"
 		}
 	}
 
-	return claims, org, 0, ""
+	return org, 0, ""
 }
