@@ -146,3 +146,46 @@ fallback is removed. **Action:** keep the pre-dial refresh; no extra work.
 header**, confirmed by `extractHeaderToken` in `handshake.go`, the curl examples
 in `server/CLAUDE.md`, and `handler_test.go`. The header path is preserved and is
 exactly the "explicit auth gets an HTTP answer" path above.
+
+## Implementation Plan
+
+### Backend (`server/internal/handlers/realtimews/`)
+1. **`handshake.go` — pre-upgrade token auth + post-upgrade org authz.**
+   Replace the `handshake`/`awaitAuthMessage` machinery with:
+   - `extractToken(req)` mirroring `middleware.extractToken` (Authorization
+     header wins; `access_token` cookie fallback only when no header present),
+     plus `extractHeaderToken`/`extractCookieToken` helpers.
+   - `authenticateToken(ctx, token) → (claims, user, base.ErrorCode, msg)`:
+     empty token → `NO_TOKEN`; `ValidateToken` fail → `INVALID_TOKEN`; user
+     missing → `USER_NOT_FOUND`. Runs **before** `websocket.Accept`.
+   - `authorizeOrg(ctx, claims, user, orgSlug) → (org, closeCode, reason)`:
+     org lookup + super-admin/org-slug/membership checks → `4403` on failure.
+     Runs **after** the upgrade (browser must read it as a close code).
+   Delete `awaitAuthMessage`, the grace window, and the stale cookie comment.
+2. **`handler.go` — reorder `Serve`.** Extract+authenticate the token first; on
+   failure write **HTTP 401** (`base.HandlerBase.WriteError`, standard shape) and
+   return without upgrading. Then `websocket.Accept`; then feature-disabled
+   (`4404`); then `authorizeOrg` (`4403`); then subscribe → `hello` → loop.
+   Remove the `authGrace` field, its init, `msgLabelAuth`, and the `msgTypeAuth`
+   branch in `handleMessage` (a stray `auth` frame now falls to the default
+   "Unknown message type" error). Embed `base.HandlerBase`.
+3. **`messages.go`** — drop `msgTypeAuth` const and the `Token` field on
+   `clientMessage`.
+4. **`config.go` + tests** — remove the now-dead `RealtimeConfig.AuthGrace`
+   field, its default, `SP_REALTIME_AUTH_GRACE` env parsing, and the assertions
+   in `config_test.go`; drop `AuthGrace` from the integration fixture.
+
+### Backend tests
+5. `handler_test.go`: valid header → 101+hello; valid cookie → 101+hello;
+   missing/invalid token → **HTTP 401, no upgrade** (assert status); header wins
+   over cookie; wrong org → `4403`; first-message `auth` frame → "Unknown message
+   type" error, not authentication. Update disabled/expiry tests to pre-auth.
+6. `test/integration/realtime_stream_test.go`: unauthenticated dial now → HTTP
+   `401` (Dial fails with a 401 response), not a grace-window `4401` close.
+
+### Frontend (`web/dash0/src/lib/live-socket.ts` + tests)
+7. Remove the `sock.onopen` in-band `{type:"auth",token}` send; drop the `token`
+   arg from `connectOnce`; keep the run()-loop pre-dial refresh (re-mints the
+   cookie). Update `live-socket.test.ts` (no auth frame on the wire) and the
+   `live-updates-handshake.spec.ts` E2E (first client frame is `subscribe`;
+   wrong-org path seeds the cookie).
