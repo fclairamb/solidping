@@ -11,6 +11,7 @@ import {
   useDeleteCheckDependency,
   useDependencyGraph,
   useUpdateCheckDependency,
+  type CheckRef,
   type DependencyEdge,
   type DependencyKind,
   type GraphResponse,
@@ -38,7 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ancestorsAndDescendants } from "@/lib/dependency-graph";
+import { ancestorsAndDescendants, resolveCheckRefLabel } from "@/lib/dependency-graph";
 import { formatCyclePath } from "@/components/shared/dependency-cycle-path";
 
 interface DependenciesCardProps {
@@ -179,7 +180,9 @@ function DependsOnRow({ org, checkUid, edge }: DependsOnRowProps) {
   if (editing) {
     return (
       <div className="flex flex-wrap items-center gap-2 rounded-md border p-2">
-        <span className="font-medium">{edge.parentCheck.name || edge.parentCheck.slug}</span>
+        <span className="font-medium">
+          {resolveCheckRefLabel(edge.parentCheck) || t("dependencies:unknownCheck")}
+        </span>
         <Select value={kind} onValueChange={(v) => setKind(v as DependencyKind)}>
           <SelectTrigger className="h-8 w-24">
             <SelectValue />
@@ -207,14 +210,7 @@ function DependsOnRow({ org, checkUid, edge }: DependsOnRowProps) {
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border p-2">
-      <Link
-        to="/orgs/$org/checks/$checkUid"
-        params={{ org, checkUid: edge.parentCheck.uid }}
-        search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }}
-        className="font-medium hover:underline"
-      >
-        {edge.parentCheck.name || edge.parentCheck.slug}
-      </Link>
+      <DependencyCheckLink org={org} check={edge.parentCheck} />
       <KindBadge kind={edge.kind} />
       {edge.description && (
         <span className="text-sm text-muted-foreground">{edge.description}</span>
@@ -246,7 +242,7 @@ function DependsOnRow({ org, checkUid, edge }: DependsOnRowProps) {
             <AlertDialogHeader>
               <AlertDialogTitle>
                 {t("dependencies:removeConfirmTitle", {
-                  parent: edge.parentCheck.name || edge.parentCheck.slug,
+                  parent: resolveCheckRefLabel(edge.parentCheck) || t("dependencies:unknownCheck"),
                 })}
               </AlertDialogTitle>
               <AlertDialogDescription>
@@ -409,14 +405,7 @@ function DependedOnBySection({
             key={edge.uid}
             className="flex flex-wrap items-center gap-2 rounded-md border p-2"
           >
-            <Link
-              to="/orgs/$org/checks/$checkUid"
-              params={{ org, checkUid: edge.childCheck.uid }}
-              search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }}
-              className="font-medium hover:underline"
-            >
-              {edge.childCheck.name || edge.childCheck.slug}
-            </Link>
+            <DependencyCheckLink org={org} check={edge.childCheck} />
             <KindBadge kind={edge.kind} />
             {edge.description && (
               <span className="text-sm text-muted-foreground">
@@ -432,6 +421,41 @@ function DependedOnBySection({
         )}
       </div>
     </div>
+  );
+}
+
+// DependencyCheckLink renders a dependency row's check reference as a link to
+// its detail page. The backend omits edges whose check ref didn't resolve
+// (see checkdependencies.Service.ListForCheck), but this stays defensive: if
+// `check.uid` is ever empty (e.g. a legacy row from before that filter
+// shipped), render muted placeholder text instead of a link to nowhere, so
+// the row never shows up as just a bare kind badge (issue #129).
+function DependencyCheckLink({ org, check }: { org: string; check: CheckRef }) {
+  const { t } = useTranslation(["dependencies"]);
+  const label = resolveCheckRefLabel(check);
+
+  if (!check.uid) {
+    return (
+      <span className="font-medium text-muted-foreground italic">
+        {t("dependencies:unknownCheck")}
+      </span>
+    );
+  }
+
+  return (
+    <Link
+      to="/orgs/$org/checks/$checkUid"
+      params={{ org, checkUid: check.uid }}
+      search={{
+        graphPeriod: undefined,
+        graphFull: undefined,
+        graphRegion: undefined,
+        resultsRegion: undefined,
+      }}
+      className="font-medium hover:underline"
+    >
+      {label}
+    </Link>
   );
 }
 

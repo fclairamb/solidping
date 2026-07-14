@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { ArrowLeft, Loader2, ChevronsUpDown, Check, Search } from "lucide-react";
 import { useCheckValidation, getFieldError } from "@/hooks/use-check-validation";
 import { cn } from "@/lib/utils";
+import { resolveCheckRefLabel } from "@/lib/dependency-graph";
 import { describePeriod, formatDuration } from "@/lib/period-estimate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -333,7 +334,7 @@ export function CheckForm({
       setDependsOnParents(
         existingDeps.dependsOn.map((e) => ({
           uid: e.parentCheck.uid,
-          label: e.parentCheck.name || e.parentCheck.slug,
+          label: resolveCheckRefLabel(e.parentCheck),
         })),
       );
     }

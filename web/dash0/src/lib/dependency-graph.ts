@@ -1,4 +1,16 @@
-import type { GraphResponse } from "@/api/hooks";
+import type { CheckRef, GraphResponse } from "@/api/hooks";
+
+// resolveCheckRefLabel picks the best available display label for a check
+// reference: name, falling back to slug, then to the raw uid. Mirrors the
+// fallback chain used when adding a dependency
+// (components/checks/form/sections/dependencies.tsx). Returns "" only when
+// every field is empty — i.e. the reference itself never resolved to a real
+// check (see issue #129: a dependency edge whose check had been deleted
+// used to render as a bare kind badge with no name).
+export function resolveCheckRefLabel(ref: CheckRef | undefined | null): string {
+  if (!ref) return "";
+  return ref.name || ref.slug || ref.uid || "";
+}
 
 export function ancestorsAndDescendants(
   graph: GraphResponse,
