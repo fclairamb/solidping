@@ -1482,7 +1482,7 @@ paths:
         - $ref: "#/components/parameters/OrgPath"
         - name: checkUid
           in: query
-          description: Filter by check UID (comma-separated for multiple)
+          description: Filter by check UID or slug (comma-separated for multiple)
           schema:
             type: string
         - name: state

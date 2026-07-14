@@ -571,7 +571,16 @@ function CheckDetailPage() {
     refetchInterval,
   });
 
-  const { data: incidents } = useIncidents(org, { checkUid, size: 100 });
+  // Always send the resolved UUID, never the raw route param — `checkUid`
+  // may be a slug, and unlike /results and the other check-scoped queries on
+  // this page, /incidents does not resolve a slug filter (issue #127: a
+  // slug-addressed page 500ed loading incidents). Gate on check.uid so the
+  // query fires only once the check has resolved.
+  const { data: incidents } = useIncidents(org, {
+    checkUid: check?.uid,
+    size: 100,
+    enabled: !!check?.uid,
+  });
 
   const { data: regionsData } = useRegions(org);
   const deleteCheck = useDeleteCheck(org);

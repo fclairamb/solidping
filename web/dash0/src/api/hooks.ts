@@ -841,9 +841,15 @@ export function useIncidents(
     hideSuppressed?: boolean;
     causedByIncidentUid?: string;
     refetchInterval?: number;
+    // Lets a caller gate the query on data that isn't ready yet — e.g. the
+    // check detail page must wait for useCheck to resolve check.uid (the
+    // route param may be a slug) before firing the incidents query, so the
+    // wire request always carries a UID and never a slug (issue #127).
+    // Defaults to true so existing callers are unaffected.
+    enabled?: boolean;
   }
 ) {
-  const { refetchInterval, ...queryOptions } = options || {};
+  const { refetchInterval, enabled, ...queryOptions } = options || {};
   return useQuery({
     queryKey: ["incidents", org, queryOptions],
     refetchInterval,
@@ -870,7 +876,7 @@ export function useIncidents(
         total: response.pagination?.total,
       };
     },
-    enabled: !!org,
+    enabled: (enabled ?? true) && !!org,
   });
 }
 
