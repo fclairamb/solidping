@@ -41,22 +41,6 @@ func extractToken(req *http.Request) string {
 	return parts[1]
 }
 
-// extractHeaderToken mirrors middleware.extractToken's Authorization header
-// handling.
-func extractHeaderToken(req *http.Request) string {
-	authHeader := req.Header.Get("Authorization")
-	if authHeader == "" {
-		return ""
-	}
-
-	parts := strings.SplitN(authHeader, " ", bearerTokenParts)
-	if len(parts) != bearerTokenParts || !strings.EqualFold(parts[0], "bearer") {
-		return ""
-	}
-
-	return parts[1]
-}
-
 // extractCookieToken mirrors middleware.extractToken's access_token cookie
 // fallback.
 func extractCookieToken(req *http.Request) string {
