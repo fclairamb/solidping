@@ -1716,6 +1716,44 @@ func stringToState(s string) (models.IncidentState, bool) {
 	}
 }
 
+// buildListIncidentsFilter builds the DB filter from already-resolved
+// options (opts.CheckUIDs has already been resolved to UIDs by ListIncidents
+// by this point). Split out so ListIncidents stays under the funlen limit.
+func buildListIncidentsFilter(orgUID string, opts *ListIncidentsOptions) *models.ListIncidentsFilter {
+	filter := &models.ListIncidentsFilter{
+		OrganizationUID: orgUID,
+		CheckUIDs:       opts.CheckUIDs,
+		CheckGroupUID:   opts.CheckGroupUID,
+		MemberCheckUID:  opts.MemberCheckUID,
+		Since:           opts.Since,
+		Until:           opts.Until,
+		HideSuppressed:  opts.HideSuppressed,
+		CausedByUID:     opts.CausedByUID,
+		Limit:           opts.Size + 1, // Fetch one extra to determine hasMore
+	}
+
+	// Convert state strings to state values. "acked" / "snoozed" are derived
+	// states (active + acknowledged_at | snoozed_until) — they imply
+	// state=active so the SQL stays consistent (an acked-and-resolved
+	// incident shouldn't appear under "acked").
+	for _, stateStr := range opts.States {
+		switch stateStr {
+		case "acked":
+			filter.AckedOnly = true
+			filter.States = append(filter.States, models.IncidentStateActive)
+		case "snoozed":
+			filter.SnoozedOnly = true
+			filter.States = append(filter.States, models.IncidentStateActive)
+		default:
+			if state, ok := stringToState(stateStr); ok {
+				filter.States = append(filter.States, state)
+			}
+		}
+	}
+
+	return filter
+}
+
 // ListIncidents lists incidents for an organization.
 func (s *Service) ListIncidents(
 	ctx context.Context, orgSlug string, opts *ListIncidentsOptions,
@@ -1746,37 +1784,7 @@ func (s *Service) ListIncidents(
 		opts.CheckUIDs = resolvedUIDs
 	}
 
-	// Build filter
-	filter := &models.ListIncidentsFilter{
-		OrganizationUID: org.UID,
-		CheckUIDs:       opts.CheckUIDs,
-		CheckGroupUID:   opts.CheckGroupUID,
-		MemberCheckUID:  opts.MemberCheckUID,
-		Since:           opts.Since,
-		Until:           opts.Until,
-		HideSuppressed:  opts.HideSuppressed,
-		CausedByUID:     opts.CausedByUID,
-		Limit:           opts.Size + 1, // Fetch one extra to determine hasMore
-	}
-
-	// Convert state strings to state values. "acked" / "snoozed" are derived
-	// states (active + acknowledged_at | snoozed_until) — they imply
-	// state=active so the SQL stays consistent (an acked-and-resolved
-	// incident shouldn't appear under "acked").
-	for _, stateStr := range opts.States {
-		switch stateStr {
-		case "acked":
-			filter.AckedOnly = true
-			filter.States = append(filter.States, models.IncidentStateActive)
-		case "snoozed":
-			filter.SnoozedOnly = true
-			filter.States = append(filter.States, models.IncidentStateActive)
-		default:
-			if state, ok := stringToState(stateStr); ok {
-				filter.States = append(filter.States, state)
-			}
-		}
-	}
+	filter := buildListIncidentsFilter(org.UID, opts)
 
 	// TODO: Parse cursor
 
