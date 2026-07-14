@@ -10,7 +10,21 @@
     "authentication": "Authentification",
     "hashing": "Hachage des mots de passe",
     "performance": "Performances",
+    "aggregation": "Agrégation",
     "slack": "Slack"
+  },
+  "aggregation": {
+    "title": "Agrégation",
+    "description": "Configurez la durée de conservation des résultats bruts et agrégés avant leur compaction dans le palier suivant. Ces fenêtres sont globales, à l'échelle du système. Les modifications prennent effet au prochain passage du job d'agrégation — aucun redémarrage nécessaire.",
+    "rawHours": "Rétention brute (heures)",
+    "rawHoursHelp": "Nombre d'heures de résultats bruts à conserver avant leur agrégation en paliers horaires.",
+    "hourDays": "Rétention horaire (jours)",
+    "hourDaysHelp": "Nombre de jours d'agrégats horaires à conserver avant leur agrégation en paliers journaliers.",
+    "dayMonths": "Rétention journalière (mois)",
+    "dayMonthsHelp": "Nombre de mois d'agrégats journaliers à conserver avant leur agrégation en paliers mensuels.",
+    "floorError": "Doit être un entier supérieur ou égal à 1.",
+    "noteNoReaggregate": "Modifier une fenêtre ne retraite jamais les données déjà agrégées ; le job ne fait qu'agréger les nouvelles lignes à l'avenir.",
+    "noteRaiseNoRestore": "Augmenter une fenêtre ne restaure pas les données déjà agrégées. La diminuer rend davantage de lignes non encore agrégées éligibles aux prochains passages."
   },
   "web": {
     "title": "Web",

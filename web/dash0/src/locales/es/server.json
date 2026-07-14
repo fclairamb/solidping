@@ -10,7 +10,21 @@
     "authentication": "Autenticación",
     "hashing": "Hash de contraseñas",
     "performance": "Rendimiento",
+    "aggregation": "Agregación",
     "slack": "Slack"
+  },
+  "aggregation": {
+    "title": "Agregación",
+    "description": "Configura cuánto tiempo se conservan los resultados en bruto y agregados antes de compactarse al siguiente nivel. Estas ventanas son globales, de todo el sistema. Los cambios se aplican en la próxima ejecución del trabajo de agregación, sin necesidad de reiniciar.",
+    "rawHours": "Retención en bruto (horas)",
+    "rawHoursHelp": "Horas de resultados en bruto que se conservan antes de agregarlos en niveles por hora.",
+    "hourDays": "Retención por hora (días)",
+    "hourDaysHelp": "Días de agregados por hora que se conservan antes de agregarlos en niveles diarios.",
+    "dayMonths": "Retención diaria (meses)",
+    "dayMonthsHelp": "Meses de agregados diarios que se conservan antes de agregarlos en niveles mensuales.",
+    "floorError": "Debe ser un número entero mayor o igual que 1.",
+    "noteNoReaggregate": "Cambiar una ventana nunca reprocesa los datos ya agregados; el trabajo solo agrega las filas nuevas en adelante.",
+    "noteRaiseNoRestore": "Aumentar una ventana no restaura los datos ya agregados. Reducirla hace que más filas aún no agregadas sean elegibles en las próximas ejecuciones."
   },
   "web": {
     "title": "Web",

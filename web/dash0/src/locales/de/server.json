@@ -10,7 +10,21 @@
     "authentication": "Authentifizierung",
     "hashing": "Passwort-Hashing",
     "performance": "Leistung",
+    "aggregation": "Aggregation",
     "slack": "Slack"
+  },
+  "aggregation": {
+    "title": "Aggregation",
+    "description": "Legen Sie fest, wie lange Roh- und aggregierte Prüfergebnisse aufbewahrt werden, bevor sie in die nächste Stufe verdichtet werden. Diese Fenster gelten global, systemweit. Änderungen werden beim nächsten Lauf des Aggregations-Jobs wirksam — kein Neustart erforderlich.",
+    "rawHours": "Rohdaten-Aufbewahrung (Stunden)",
+    "rawHoursHelp": "Stunden an Roh-Prüfergebnissen, die vor der Aggregation zu Stunden-Rollups aufbewahrt werden.",
+    "hourDays": "Stunden-Aufbewahrung (Tage)",
+    "hourDaysHelp": "Tage an Stunden-Rollups, die vor der Aggregation zu Tages-Rollups aufbewahrt werden.",
+    "dayMonths": "Tages-Aufbewahrung (Monate)",
+    "dayMonthsHelp": "Monate an Tages-Rollups, die vor der Aggregation zu Monats-Rollups aufbewahrt werden.",
+    "floorError": "Muss eine ganze Zahl größer oder gleich 1 sein.",
+    "noteNoReaggregate": "Das Ändern eines Fensters verarbeitet bereits aggregierte Daten nie neu; der Job aggregiert nur neue Zeilen von nun an.",
+    "noteRaiseNoRestore": "Das Vergrößern eines Fensters stellt bereits aggregierte Daten nicht wieder her. Das Verkleinern macht mehr noch nicht aggregierte Zeilen bei den nächsten Läufen zulässig."
   },
   "web": {
     "title": "Web",

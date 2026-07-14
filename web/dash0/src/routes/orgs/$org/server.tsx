@@ -21,6 +21,7 @@ function ServerLayout() {
     { label: t("tabs.hashing"), path: "/orgs/$org/server/hashing" },
     { label: t("tabs.slack"), path: "/orgs/$org/server/slack" },
     { label: t("tabs.performance"), path: "/orgs/$org/server/performance" },
+    { label: t("tabs.aggregation"), path: "/orgs/$org/server/aggregation" },
     { label: t("tabs.activation", "Activation"), path: "/orgs/$org/server/activation" },
   ];
 
