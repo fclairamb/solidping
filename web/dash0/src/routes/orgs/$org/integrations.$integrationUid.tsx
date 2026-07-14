@@ -273,7 +273,7 @@ function IntegrationDetailPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form) return;
+    if (!form || form.isValid === false) return;
     try {
       await update.mutateAsync({
         name: form.name,
@@ -359,7 +359,12 @@ function IntegrationDetailPage() {
           <div className="flex justify-end">
             <Button
               type="submit"
-              disabled={update.isPending || !form?.name || !isDirty}
+              disabled={
+                update.isPending ||
+                !form?.name ||
+                !isDirty ||
+                form?.isValid === false
+              }
               aria-label={saveLabel}
               data-testid="integration-save"
             >

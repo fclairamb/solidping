@@ -45,6 +45,66 @@ func TestBuildDependencyResponse(t *testing.T) {
 	r.Equal(&desc, resp.Description)
 }
 
+func TestResolvedDependencyResponse(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	dep := &models.CheckDependency{
+		UID:            "edge-1",
+		ParentCheckUID: "p1",
+		ChildCheckUID:  "c1",
+		Kind:           models.CheckDependencyKindHard,
+	}
+
+	t.Run("both endpoints resolved", func(t *testing.T) {
+		t.Parallel()
+
+		checks := map[string]CheckRef{
+			"p1": {UID: "p1", Slug: "rabbit", Name: "RabbitMQ"},
+			"c1": {UID: "c1", Slug: "worker", Name: "Worker"},
+		}
+
+		resp, ok := resolvedDependencyResponse(dep, checks)
+		r.True(ok)
+		r.Equal("edge-1", resp.UID)
+		r.Equal("p1", resp.ParentCheck.UID)
+		r.Equal("c1", resp.ChildCheck.UID)
+	})
+
+	// Reproduces issue #129: a dependency edge outlives the check it points
+	// to (e.g. the parent/child check was deleted but the edge wasn't
+	// cleaned up). loadCheckRefs then never populates that UID in the map,
+	// so the lookup returns the CheckRef zero value. Previously this edge
+	// was still rendered — a kind badge with no check name attached. It must
+	// now be omitted entirely instead.
+	t.Run("child check missing (deleted) is omitted, not rendered empty", func(t *testing.T) {
+		t.Parallel()
+
+		checks := map[string]CheckRef{
+			"p1": {UID: "p1", Slug: "rabbit", Name: "RabbitMQ"},
+			// "c1" absent: the child check was deleted and never resolved.
+		}
+
+		resp, ok := resolvedDependencyResponse(dep, checks)
+		r.False(ok)
+		r.Equal(DependencyResponse{}, resp)
+	})
+
+	t.Run("parent check missing (deleted) is omitted, not rendered empty", func(t *testing.T) {
+		t.Parallel()
+
+		checks := map[string]CheckRef{
+			"c1": {UID: "c1", Slug: "worker", Name: "Worker"},
+			// "p1" absent.
+		}
+
+		resp, ok := resolvedDependencyResponse(dep, checks)
+		r.False(ok)
+		r.Equal(DependencyResponse{}, resp)
+	})
+}
+
 func TestCollectCheckUIDs(t *testing.T) {
 	t.Parallel()
 

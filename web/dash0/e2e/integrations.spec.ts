@@ -673,3 +673,133 @@ test.describe("Email suppressions section", () => {
     await deleteConnection(page, token, integration.uid);
   });
 });
+
+// Multi-address recipients input (spec 2026-07-14-06). The email panel's
+// Textarea was replaced by a RecipientsInput chip control that parses any
+// separator (space/comma/semicolon/newline) via parseEmailList and blocks
+// save while any chip fails isValidEmail.
+test.describe("Email integration recipients", () => {
+  test("space-separated addresses become two chips and persist on reload", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    await page.goto("orgs/test/integrations/new?type=email");
+    await page.waitForLoadState("networkidle");
+
+    const name = `E2E Email Multi ${Date.now()}`;
+    await page.getByLabel("Name").fill(name);
+
+    // Type a single space-separated string into the chip input's free-text
+    // field, then blur — commits both tokens via parseEmailList.
+    const recipientsField = page.getByTestId("email-recipients-input");
+    await recipientsField.fill("a@x.example.com b@y.example.com");
+    await page.getByLabel("Name").click(); // blur the recipients field
+
+    await expect(page.getByTestId("email-recipients-chip-0")).toContainText(
+      "a@x.example.com",
+    );
+    await expect(page.getByTestId("email-recipients-chip-1")).toContainText(
+      "b@y.example.com",
+    );
+
+    await page.getByRole("button", { name: /create integration/i }).click();
+    await page.waitForURL((url) =>
+      /\/integrations\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+        url.pathname,
+      ),
+    );
+    const uid = page.url().split("/").pop()!;
+
+    // Reload the edit page — both recipients persist as chips.
+    await page.goto(`orgs/test/integrations/${uid}`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("email-recipients-chip-0")).toContainText(
+      "a@x.example.com",
+    );
+    await expect(page.getByTestId("email-recipients-chip-1")).toContainText(
+      "b@y.example.com",
+    );
+
+    await deleteConnection(page, token, uid);
+  });
+
+  test("comma-separated paste yields two distinct recipients", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    await page.goto("orgs/test/integrations/new?type=email");
+    await page.waitForLoadState("networkidle");
+    await page
+      .getByLabel("Name")
+      .fill(`E2E Email Comma ${Date.now()}`);
+
+    const recipientsField = page.getByTestId("email-recipients-input");
+    // Simulate a paste event carrying a comma-separated blob.
+    await recipientsField.evaluate((el, text) => {
+      const input = el as HTMLInputElement;
+      const dt = new DataTransfer();
+      dt.setData("text", text);
+      const event = new ClipboardEvent("paste", {
+        clipboardData: dt,
+        bubbles: true,
+        cancelable: true,
+      });
+      input.dispatchEvent(event);
+    }, "c@x.example.com, d@y.example.com");
+
+    await expect(page.getByTestId("email-recipients-chip-0")).toContainText(
+      "c@x.example.com",
+    );
+    await expect(page.getByTestId("email-recipients-chip-1")).toContainText(
+      "d@y.example.com",
+    );
+  });
+
+  test("invalid address renders a destructive chip and blocks create", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Uses the create flow (rather than edit) so the assertion on the submit
+    // button's disabled state is driven purely by recipient validity, not
+    // entangled with the edit page's separate isDirty gating.
+    await page.goto("orgs/test/integrations/new?type=email");
+    await page.waitForLoadState("networkidle");
+    await page.getByLabel("Name").fill(`E2E Email Invalid ${Date.now()}`);
+
+    const recipientsField = page.getByTestId("email-recipients-input");
+    const createBtn = page.getByRole("button", {
+      name: /create integration/i,
+    });
+
+    await recipientsField.fill("ops@example.com");
+    await recipientsField.press("Enter");
+    await expect(page.getByTestId("email-recipients-chip-0")).toContainText(
+      "ops@example.com",
+    );
+    await expect(createBtn).toBeEnabled();
+
+    await recipientsField.fill("not-an-email");
+    await recipientsField.press("Enter");
+
+    // The invalid chip is visibly flagged (destructive + inline error) and
+    // blocks Create, without dropping the valid entry already committed.
+    await expect(page.getByTestId("email-recipients-chip-1")).toContainText(
+      "not-an-email",
+    );
+    await expect(page.getByTestId("email-recipients-error")).toBeVisible();
+    await expect(createBtn).toBeDisabled();
+
+    // Removing the invalid chip restores validity; the valid entry remains.
+    await page.getByTestId("email-recipients-chip-remove-1").click();
+    await expect(page.getByTestId("email-recipients-error")).toHaveCount(0);
+    await expect(page.getByTestId("email-recipients-chip-0")).toContainText(
+      "ops@example.com",
+    );
+    await expect(createBtn).toBeEnabled();
+  });
+});

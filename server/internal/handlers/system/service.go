@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/jmap"
+	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
@@ -195,11 +196,19 @@ func (s *Service) GetParameter(ctx context.Context, key string) (*ParameterRespo
 
 // SetParameter creates or updates a system parameter. The auth.password.* keys
 // are validated against the exact bounds enforced at config load (see
-// config.ValidatePasswordParameter), so a value that would abort the next
-// startup is rejected here with a validation error instead of being persisted.
+// config.ValidatePasswordParameter), and the live aggregation-retention keys
+// against the floor the aggregation job requires (integer >= 1), so a value
+// that would abort the next startup or be silently ignored by the job is
+// rejected here with a validation error instead of being persisted.
 func (s *Service) SetParameter(ctx context.Context, key string, value any, secret bool) (*ParameterResponse, error) {
 	if config.IsPasswordParameterKey(key) {
 		if err := config.ValidatePasswordParameter(key, value); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidParameter, err)
+		}
+	}
+
+	if systemconfig.IsAggregationRetentionKey(key) {
+		if err := systemconfig.ValidateAggregationRetentionParameter(key, value); err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrInvalidParameter, err)
 		}
 	}

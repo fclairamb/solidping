@@ -102,19 +102,21 @@ test.describe("Chart point preview", () => {
     // First click: preview should appear. Hover first so recharts establishes
     // the active data point before the click (mirrors real mouse interaction;
     // a synthetic click with no prior pointer movement leaves the chart state
-    // empty).
+    // empty). The selection is now URL-driven (spec 2026-07-14-01 §3), so the
+    // click also writes a graphSelected param.
     await firstDot.hover({ force: true });
     await firstDot.click({ force: true });
     const previewBox = page.getByTestId("pinned-result-box");
     await expect(previewBox).toBeVisible({ timeout: 5000 });
+    await page.waitForURL(/graphSelected=/, { timeout: 5000 });
 
-    const urlBefore = page.url();
-
-    // Second click on the same dot: preview should disappear, URL unchanged.
+    // Second click on the same dot: preview dismisses (does NOT navigate to the
+    // result detail page) and the graphSelected param is cleared.
     await firstDot.hover({ force: true });
     await firstDot.click({ force: true });
     await expect(previewBox).not.toBeVisible({ timeout: 5000 });
-    expect(page.url()).toBe(urlBefore);
+    expect(page.url()).not.toContain("/results/");
+    expect(page.url()).not.toMatch(/graphSelected=/);
   });
 
   test("More details link navigates to the result detail page", async ({

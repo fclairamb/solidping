@@ -547,6 +547,10 @@ type Service interface {
 	FindCheckDependencyEdge(ctx context.Context, parentUID, childUID string) (*models.CheckDependency, error)
 	UpdateCheckDependency(ctx context.Context, depUID string, update *models.CheckDependencyUpdate) error
 	DeleteCheckDependency(ctx context.Context, depUID string) error
+	// DeleteCheckDependenciesForCheck soft-deletes every edge where checkUID is
+	// either the parent or the child. Called when a check is deleted so its
+	// dependency edges don't linger and resolve to an empty check ref later.
+	DeleteCheckDependenciesForCheck(ctx context.Context, checkUID string) error
 	ListSuppressedChildIncidents(ctx context.Context, parentIncidentUID string) ([]*models.Incident, error)
 	FindActiveIncidentsForChecksInWindow(
 		ctx context.Context, checkUIDs []string, since, until time.Time,

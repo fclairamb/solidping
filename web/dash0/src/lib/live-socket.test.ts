@@ -130,7 +130,7 @@ describe("connectLiveSocket", () => {
     globalThis.WebSocket = originalWebSocket;
   });
 
-  it("sends auth as the first message once the socket opens", async () => {
+  it("sends nothing on open (auth is at the HTTP level via the access_token cookie)", async () => {
     const sockets: FakeSocket[] = [];
     const factory = (url: string) => {
       const s = new FakeSocket(url);
@@ -143,7 +143,9 @@ describe("connectLiveSocket", () => {
 
     sockets[0].open();
 
-    expect(sockets[0].sent).toEqual([JSON.stringify({ type: "auth", token: "test-token" })]);
+    // No in-band auth frame — the browser authenticated the handshake with the
+    // cookie, so the client only waits for the server's `hello`.
+    expect(sockets[0].sent).toEqual([]);
   });
 
   it("calls onOpen only after hello, not after the raw socket open", async () => {
@@ -281,7 +283,6 @@ describe("connectLiveSocket", () => {
     handle.send({ entity: "checks" }, "unsubscribe");
 
     expect(sockets[0].sent).toEqual([
-      JSON.stringify({ type: "auth", token: "test-token" }),
       JSON.stringify({ type: "subscribe", entity: "check", uid: "u1" }),
       JSON.stringify({ type: "unsubscribe", entity: "checks" }),
     ]);
@@ -306,7 +307,9 @@ describe("connectLiveSocket", () => {
     expect(() => handle.send({ entity: "checks" }, "unsubscribe")).not.toThrow();
 
     sockets[0].open();
-    expect(sockets[0].sent).toEqual([JSON.stringify({ type: "auth", token: "test-token" })]);
+    // Nothing is sent on open (auth is via the cookie), and the dropped
+    // pre-hello sends left no frames behind.
+    expect(sockets[0].sent).toEqual([]);
   });
 
   it("drops send() between open and hello (server not yet authenticated)", async () => {
@@ -321,15 +324,14 @@ describe("connectLiveSocket", () => {
     await vi.waitFor(() => expect(sockets).toHaveLength(1));
     sockets[0].open();
 
-    // Open but pre-hello: the server's handshake expects `auth` as the
-    // first frame, so nothing else may be sent yet.
+    // Open but pre-hello: caller frames must wait for the server's `hello`
+    // (the socket exposes its send surface only then), so this is dropped.
     handle.send({ entity: "checks" }, "subscribe");
-    expect(sockets[0].sent).toEqual([JSON.stringify({ type: "auth", token: "test-token" })]);
+    expect(sockets[0].sent).toEqual([]);
 
     sockets[0].message({ type: "hello", protocol: 2 });
     handle.send({ entity: "checks" }, "subscribe");
     expect(sockets[0].sent).toEqual([
-      JSON.stringify({ type: "auth", token: "test-token" }),
       JSON.stringify({ type: "subscribe", entity: "checks" }),
     ]);
   });
@@ -359,7 +361,6 @@ describe("connectLiveSocket", () => {
     sockets[1].message({ type: "hello", protocol: 2 });
     handle.send({ entity: "checks" }, "subscribe");
     expect(sockets[1].sent).toEqual([
-      JSON.stringify({ type: "auth", token: "test-token" }),
       JSON.stringify({ type: "subscribe", entity: "checks" }),
     ]);
   });
@@ -546,7 +547,11 @@ describe("connectLiveSocket", () => {
     await vi.waitFor(() => expect(sockets.length).toBeGreaterThanOrEqual(2));
   });
 
-  it("re-reads the token from storage on every reconnect attempt", async () => {
+  it("re-reads the token from storage on every reconnect attempt (does not dial while logged out)", async () => {
+    // The token is no longer sent on the wire (the browser authenticates the
+    // handshake with the access_token cookie), but the run() loop still reads
+    // getToken() each attempt: a null token means "logged out", so it must NOT
+    // dial, and once a token reappears it dials again.
     const sockets: FakeSocket[] = [];
     const factory = (url: string) => {
       const s = new FakeSocket(url);
@@ -558,13 +563,17 @@ describe("connectLiveSocket", () => {
     await vi.waitFor(() => expect(sockets).toHaveLength(1));
     sockets[0].open();
 
-    currentToken = "refreshed-token";
+    // Logged out between attempts: the reconnect loop re-reads getToken(),
+    // sees null, and waits instead of opening a second socket.
+    currentToken = null;
     sockets[0].serverClose(4401, "token expired");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sockets).toHaveLength(1);
 
+    // Token reappears (re-login/refresh) — the next attempt re-reads it and dials.
+    currentToken = "refreshed-token";
     await vi.advanceTimersByTimeAsync(35_000);
     await vi.waitFor(() => expect(sockets.length).toBeGreaterThanOrEqual(2));
-    sockets[1].open();
-    expect(sockets[1].sent).toEqual([JSON.stringify({ type: "auth", token: "refreshed-token" })]);
   });
 
   it("disconnect() aborts the loop and closes the active socket", async () => {
@@ -614,7 +623,7 @@ describe("connectLiveSocket pre-dial expiry check", () => {
 
     expect(refreshWithOutcomeMock).not.toHaveBeenCalled();
     sockets[0].open();
-    expect(sockets[0].sent).toEqual([JSON.stringify({ type: "auth", token: "test-token" })]);
+    expect(sockets[0].sent).toEqual([]);
   });
 
   it("dials immediately when the stored expiry is still in the future", async () => {
@@ -632,7 +641,7 @@ describe("connectLiveSocket pre-dial expiry check", () => {
     expect(refreshWithOutcomeMock).not.toHaveBeenCalled();
   });
 
-  it("refreshes before dialing when the stored token's expiry is already past, then dials with the fresh token", async () => {
+  it("refreshes before dialing when the stored token's expiry is already past, then dials (fresh cookie)", async () => {
     const sockets: FakeSocket[] = [];
     const factory = (url: string) => {
       const s = new FakeSocket(url);
@@ -646,8 +655,10 @@ describe("connectLiveSocket pre-dial expiry check", () => {
     await vi.waitFor(() => expect(refreshWithOutcomeMock).toHaveBeenCalledTimes(1));
     await vi.waitFor(() => expect(sockets).toHaveLength(1));
 
+    // The refresh's side effect (re-set access_token cookie) authenticates the
+    // handshake; nothing is sent in-band, so no auth frame appears on the wire.
     sockets[0].open();
-    expect(sockets[0].sent).toEqual([JSON.stringify({ type: "auth", token: "fresh-token" })]);
+    expect(sockets[0].sent).toEqual([]);
   });
 
   it("gives up without ever dialing when the pre-dial refresh fails for a non-network reason", async () => {

@@ -166,11 +166,13 @@ export interface LiveSocketHandle {
 
 /**
  * Opens the live hint WebSocket for an org and keeps it open: reconnects
- * with jittered capped backoff on drops, re-reading the (possibly refreshed)
- * token from storage on every attempt. Sends `auth` as the first message
- * (browsers cannot set headers on a WebSocket upgrade). The server closes the
- * socket at access-token expiry (4401); the reconnect then carries the fresh
- * token and the caller replays its subscriptions via onOpen.
+ * with jittered capped backoff on drops. Authentication happens at the HTTP
+ * level — the browser attaches the `access_token` cookie to the same-origin
+ * handshake automatically, so there is no in-band `auth` frame. The run() loop
+ * still re-reads the stored token on every attempt to skip dialing while
+ * logged out and to refresh a known-dead token before dialing (which re-mints
+ * the cookie the handshake relies on). The server closes the socket at
+ * access-token expiry (4401); the caller replays its subscriptions via onOpen.
  */
 export function connectLiveSocket(
   org: string,
@@ -184,7 +186,7 @@ export function connectLiveSocket(
   // while CONNECTING (WebSocket.send() throws "Still in CONNECTING state"
   // there, and a registry-driven subscribe can land in exactly that window:
   // a component mounting while the socket dials) and never before the server
-  // acked auth (its handshake expects `auth` as the first frame).
+  // acked the connection with `hello` (the earliest point a frame may be sent).
   let activeSocket: WebSocketLike | null = null;
 
   const send = (scope: LiveScope, action: "subscribe" | "unsubscribe") => {
@@ -197,7 +199,7 @@ export function connectLiveSocket(
   const run = async () => {
     let attempt = 0;
     while (!signal.aborted) {
-      let token = getToken();
+      const token = getToken();
       if (!token) {
         // Not authenticated (yet) — wait and re-check without hammering.
         await sleep(backoffDelay(attempt), signal);
@@ -207,10 +209,11 @@ export function connectLiveSocket(
       const expiresAt = getExpiresAt();
       if (expiresAt !== null && expiresAt <= Date.now()) {
         // Known-dead token (exp already past — e.g. this tab was suspended
-        // through one or more access-token lifetimes). Refresh before
-        // dialing instead of burning a socket attempt on a token the server
-        // will just 4401 (see spec Evidence: 139 dead-token attempts in one
-        // 70-minute HAR capture).
+        // through one or more access-token lifetimes). Refresh before dialing:
+        // the refresh endpoint re-sets the access_token cookie, so the browser
+        // attaches a live cookie to the handshake instead of burning a socket
+        // attempt on a token the server will just 401 (see spec Evidence: 139
+        // dead-token attempts in one 70-minute HAR capture).
         const refreshed = await refreshWithOutcome();
         if (!refreshed.accessToken) {
           if (refreshed.failureReason === "network-error") {
@@ -224,13 +227,15 @@ export function connectLiveSocket(
           callbacks.onDisabled();
           return;
         }
-        token = refreshed.accessToken;
+        // refreshed.accessToken is intentionally not read here: the refresh's
+        // side effect (re-setting the access_token cookie) is what the
+        // cookie-authenticated handshake relies on.
       }
 
       await waitForApiQuiet(signal);
       if (signal.aborted) break;
 
-      const outcome = await connectOnce(org, token, factory, callbacks, signal, (sock) => {
+      const outcome = await connectOnce(org, factory, callbacks, signal, (sock) => {
         activeSocket = sock;
       });
       activeSocket = null;
@@ -264,11 +269,15 @@ type ConnectOutcome = "disconnected" | "disabled";
  * outcome (network drop, 4401 expiry, server restart 1012) is
  * "disconnected" and the caller reconnects with backoff.
  *
- * `onAuthenticated` fires when the server acks auth (`hello`), just before
- * callbacks.onOpen — the earliest point the socket may carry caller frames. */
+ * Authentication is at the HTTP level: the browser attaches the access_token
+ * cookie to the same-origin handshake automatically, so there is no in-band
+ * auth frame — the client just waits for the server's `hello`.
+ *
+ * `onAuthenticated` fires when the server acks the connection (`hello`), just
+ * before callbacks.onOpen — the earliest point the socket may carry caller
+ * frames. */
 function connectOnce(
   org: string,
-  token: string,
   factory: WebSocketFactory,
   callbacks: LiveEventsCallbacks,
   signal: AbortSignal,
@@ -292,9 +301,9 @@ function connectOnce(
     }
     signal.addEventListener("abort", onAbort, { once: true });
 
-    sock.onopen = () => {
-      sock.send(JSON.stringify({ type: "auth", token }));
-    };
+    // No sock.onopen handler: authentication is at the HTTP level (the browser
+    // sent the access_token cookie with the handshake), so nothing is sent on
+    // open — the client waits for the server's `hello`.
 
     sock.onerror = () => {
       // onclose always follows onerror for browser WebSockets; nothing to do here.

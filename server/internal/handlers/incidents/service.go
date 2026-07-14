@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -1715,19 +1716,12 @@ func stringToState(s string) (models.IncidentState, bool) {
 	}
 }
 
-// ListIncidents lists incidents for an organization.
-func (s *Service) ListIncidents(
-	ctx context.Context, orgSlug string, opts *ListIncidentsOptions,
-) (*ListIncidentsResponse, error) {
-	// Get organization
-	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
-	if err != nil {
-		return nil, ErrOrganizationNotFound
-	}
-
-	// Build filter
+// buildListIncidentsFilter builds the DB filter from already-resolved
+// options (opts.CheckUIDs has already been resolved to UIDs by ListIncidents
+// by this point). Split out so ListIncidents stays under the funlen limit.
+func buildListIncidentsFilter(orgUID string, opts *ListIncidentsOptions) *models.ListIncidentsFilter {
 	filter := &models.ListIncidentsFilter{
-		OrganizationUID: org.UID,
+		OrganizationUID: orgUID,
 		CheckUIDs:       opts.CheckUIDs,
 		CheckGroupUID:   opts.CheckGroupUID,
 		MemberCheckUID:  opts.MemberCheckUID,
@@ -1756,6 +1750,41 @@ func (s *Service) ListIncidents(
 			}
 		}
 	}
+
+	return filter
+}
+
+// ListIncidents lists incidents for an organization.
+func (s *Service) ListIncidents(
+	ctx context.Context, orgSlug string, opts *ListIncidentsOptions,
+) (*ListIncidentsResponse, error) {
+	// Get organization
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, ErrOrganizationNotFound
+	}
+
+	// Resolve the checkUid filter (uid or slug) before it reaches the DB
+	// layer, whose `check_uid IN (?)` filter only applies when the resolved
+	// slice is non-empty (models.ListIncidentsFilter.CheckUIDs). If the
+	// caller asked for specific checks and NONE of them resolved, that empty
+	// slice would otherwise be indistinguishable from "no filter requested"
+	// and silently return every incident in the org — so short-circuit to an
+	// explicit empty page instead, matching the "unknown identifier -> no
+	// match" contract (no DB round trip needed).
+	if len(opts.CheckUIDs) > 0 {
+		resolvedUIDs := s.resolveCheckIdentifiers(ctx, org.UID, opts.CheckUIDs)
+		if len(resolvedUIDs) == 0 {
+			return &ListIncidentsResponse{
+				Data:       []IncidentResponse{},
+				Pagination: PaginationResponse{Size: opts.Size},
+			}, nil
+		}
+
+		opts.CheckUIDs = resolvedUIDs
+	}
+
+	filter := buildListIncidentsFilter(org.UID, opts)
 
 	// TODO: Parse cursor
 
@@ -1804,6 +1833,37 @@ func (s *Service) ListIncidents(
 	}
 
 	return response, nil
+}
+
+// resolveCheckIdentifiers resolves a mix of check UIDs and slugs to UIDs, the
+// same way results.Service.resolveCheckIdentifiers does for `/results`. The
+// `check_uid` column is a Postgres uuid, so passing a raw slug straight into
+// an `IN (...)` filter fails with "invalid input syntax for type uuid"
+// (issue #127) — resolving through GetCheckByUidOrSlug first lets `/incidents`
+// accept a slug just like every other check-scoped endpoint. Identifiers that
+// don't match any check are silently dropped, matching `/results`: an unknown
+// identifier simply yields no match instead of a DB error.
+func (s *Service) resolveCheckIdentifiers(ctx context.Context, orgUID string, identifiers []string) []string {
+	if len(identifiers) == 0 {
+		return identifiers
+	}
+
+	uids := make([]string, 0, len(identifiers))
+
+	for _, id := range identifiers {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+
+		check, err := s.db.GetCheckByUidOrSlug(ctx, orgUID, id)
+		if err == nil && check != nil {
+			uids = append(uids, check.UID)
+		}
+		// Silently ignore identifiers that don't match any check.
+	}
+
+	return uids
 }
 
 // GetIncidentOptions contains options for getting a single incident.

@@ -16,6 +16,7 @@
   "descriptionPlaceholder": "Opcional — ¿cuál es la relación?",
   "noDependencies": "No hay dependencias configuradas. Añade un padre arriba para iniciar la agrupación de incidentes.",
   "noDependents": "Nada depende todavía de esta verificación.",
+  "unknownCheck": "Verificación desconocida",
   "remove": "Eliminar dependencia",
   "removeConfirmTitle": "¿Eliminar la dependencia de {{parent}}?",
   "removeConfirmBody": "Esto detiene la agrupación de incidentes para esta arista.",

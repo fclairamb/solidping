@@ -150,11 +150,15 @@ func (s *Service) ListForCheck(
 	}
 
 	for _, dep := range parents {
-		resp.DependsOn = append(resp.DependsOn, buildDependencyResponse(dep, checkMap))
+		if edge, ok := resolvedDependencyResponse(dep, checkMap); ok {
+			resp.DependsOn = append(resp.DependsOn, edge)
+		}
 	}
 
 	for _, dep := range children {
-		resp.DependedOnBy = append(resp.DependedOnBy, buildDependencyResponse(dep, checkMap))
+		if edge, ok := resolvedDependencyResponse(dep, checkMap); ok {
+			resp.DependedOnBy = append(resp.DependedOnBy, edge)
+		}
 	}
 
 	return resp, nil
@@ -217,6 +221,22 @@ func buildDependencyResponse(dep *models.CheckDependency, checks map[string]Chec
 		Kind:        string(dep.Kind),
 		Description: dep.Description,
 	}
+}
+
+// resolvedDependencyResponse builds a DependencyResponse and reports whether
+// both endpoints resolved to a real check. An edge can survive in
+// check_dependencies referencing a check that's since been (soft-)deleted —
+// DeleteCheck cleans up matching edges going forward (see
+// checks.Service.DeleteCheck), but this guards any row that predates that
+// cleanup or otherwise slips through, so the UI never renders a check-less
+// edge (see issue #129: a bare kind badge with no check name attached).
+func resolvedDependencyResponse(dep *models.CheckDependency, checks map[string]CheckRef) (DependencyResponse, bool) {
+	resp := buildDependencyResponse(dep, checks)
+	if resp.ParentCheck.UID == "" || resp.ChildCheck.UID == "" {
+		return DependencyResponse{}, false
+	}
+
+	return resp, true
 }
 
 // Create writes a new edge after validation: cross-org, self, duplicate, cycle.

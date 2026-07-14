@@ -17,14 +17,12 @@ import (
 )
 
 // enableRealtime turns the live hint WebSocket on with a short flush window
-// and auth grace for fast tests, plus a small subscription cap for the
-// dedicated cap test.
+// for fast tests, plus a small subscription cap for the dedicated cap test.
 func enableRealtime(cfg *config.Config) {
 	cfg.Realtime = config.RealtimeConfig{
 		Enabled:                       true,
 		FlushInterval:                 50 * time.Millisecond,
 		PingInterval:                  25 * time.Second,
-		AuthGrace:                     2 * time.Second,
 		MaxSubscriptionsPerConnection: 512,
 	}
 }
@@ -181,31 +179,27 @@ func TestRealtimeWS_ForbiddenForOtherOrgToken(t *testing.T) {
 	r.Equal(realtimews.CloseForbidden, websocket.CloseStatus(err))
 }
 
-// TestRealtimeWS_UnauthenticatedTimesOutWithAuthFailed pins the auth gate:
-// no Authorization header and no `auth` message within the grace window
-// closes 4401.
-func TestRealtimeWS_UnauthenticatedTimesOutWithAuthFailed(t *testing.T) {
+// TestRealtimeWS_UnauthenticatedRejectedWith401 pins the auth gate: with no
+// Authorization header and no access_token cookie, the handshake is answered
+// with an HTTP 401 BEFORE the upgrade (token auth now lives at the HTTP level),
+// so the dial fails with a 401 response rather than upgrading and closing 4401.
+func TestRealtimeWS_UnauthenticatedRejectedWith401(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	ctx := t.Context()
 
-	ts := NewTestServerWithConfig(t, func(cfg *config.Config) {
-		enableRealtime(cfg)
-		cfg.Realtime.AuthGrace = 300 * time.Millisecond
-	})
+	ts := NewTestServerWithConfig(t, enableRealtime)
 
 	conn, resp, err := websocket.Dial(ctx, wsURL(ts, TestOrgSlug), nil)
-	r.NoError(err)
-	if resp != nil && resp.Body != nil {
+	r.Error(err)
+	if conn != nil {
+		_ = conn.CloseNow()
+	}
+	r.NotNil(resp)
+	if resp.Body != nil {
 		t.Cleanup(func() { _ = resp.Body.Close() })
 	}
-	t.Cleanup(func() { _ = conn.CloseNow() })
-
-	readCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	_, _, readErr := conn.Read(readCtx)
-	r.Error(readErr)
-	r.Equal(realtimews.CloseAuthFailed, websocket.CloseStatus(readErr))
+	r.Equal(http.StatusUnauthorized, resp.StatusCode)
 }
 
 // TestRealtimeWS_DisabledClosesImmediately4404 pins the SP_REALTIME_ENABLED=false

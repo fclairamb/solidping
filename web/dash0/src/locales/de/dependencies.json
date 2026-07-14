@@ -16,6 +16,7 @@
   "descriptionPlaceholder": "Optional — wie ist die Beziehung?",
   "noDependencies": "Keine Abhängigkeiten konfiguriert. Fügen Sie oben ein Elternteil hinzu, um das Vorfall-Rollup zu starten.",
   "noDependents": "Noch hängt nichts von dieser Prüfung ab.",
+  "unknownCheck": "Unbekannte Prüfung",
   "remove": "Abhängigkeit entfernen",
   "removeConfirmTitle": "Abhängigkeit von {{parent}} entfernen?",
   "removeConfirmBody": "Dies stoppt das Vorfall-Rollup für diese Kante.",

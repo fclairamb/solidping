@@ -175,11 +175,6 @@ type RealtimeConfig struct {
 	// MaxConnections caps concurrent hint connections per instance
 	// (SP_REALTIME_MAX_CONNECTIONS, default 1000; 0 = unlimited).
 	MaxConnections int `koanf:"max_connections"`
-	// AuthGrace is how long an unauthenticated connection has to send an
-	// `auth` message before the server closes it with 4401
-	// (SP_REALTIME_AUTH_GRACE, default 5s). Only applies to connections that
-	// didn't pre-authenticate via header/cookie at upgrade time.
-	AuthGrace time.Duration `koanf:"auth_grace"`
 	// MaxSubscriptionsPerConnection caps how many scopes a single connection
 	// may subscribe to (SP_REALTIME_MAX_SUBSCRIPTIONS_PER_CONNECTION, default
 	// 512; 0 = unlimited).
@@ -360,10 +355,16 @@ type AppGitHubConfig struct {
 // AggregationConfig controls how aggressively raw/hour/day result data is compacted.
 // Each value is the number of completed periods of that tier to retain before
 // rolling up to the next tier. Minimum 1 (the previous behavior).
+//
+// These koanf fields are the deprecated legacy fallback: the aggregation job and
+// its read-side consumers resolve retention live from the
+// performance.aggregation_retention_* system parameters (see
+// jobtypes.retentionFromConfig), which is what the server "Aggregation" settings
+// tab writes. Keep the defaults here in sync with jobtypes' default constants.
 type AggregationConfig struct {
 	RetentionRaw  int `koanf:"retention_raw"`  // hours of raw to keep (default 24)
-	RetentionHour int `koanf:"retention_hour"` // days of hourly to keep (default 30)
-	RetentionDay  int `koanf:"retention_day"`  // months of daily to keep (default 12)
+	RetentionHour int `koanf:"retention_hour"` // days of hourly to keep (default 7)
+	RetentionDay  int `koanf:"retention_day"`  // months of daily to keep (default 2)
 }
 
 // AuthConfig contains authentication configuration.
@@ -730,8 +731,8 @@ func Load() (*Config, error) {
 		},
 		Aggregation: AggregationConfig{
 			RetentionRaw:  24,
-			RetentionHour: 30,
-			RetentionDay:  12,
+			RetentionHour: 7,
+			RetentionDay:  2,
 		},
 		Jobs: JobsConfig{
 			StuckTimeout:   15 * time.Minute,
@@ -776,7 +777,6 @@ func Load() (*Config, error) {
 			FlushInterval:                 time.Second,
 			PingInterval:                  25 * time.Second,
 			MaxConnections:                1000,
-			AuthGrace:                     5 * time.Second,
 			MaxSubscriptionsPerConnection: 512,
 		},
 		Encryption: EncryptionConfig{
@@ -1060,11 +1060,6 @@ func applyRealtimeEnv(cfg *RealtimeConfig) {
 	if v := os.Getenv("SP_REALTIME_MAX_CONNECTIONS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.MaxConnections = n
-		}
-	}
-	if v := os.Getenv("SP_REALTIME_AUTH_GRACE"); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			cfg.AuthGrace = d
 		}
 	}
 	if v := os.Getenv("SP_REALTIME_MAX_SUBSCRIPTIONS_PER_CONNECTION"); v != "" {

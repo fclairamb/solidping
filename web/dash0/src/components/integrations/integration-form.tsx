@@ -14,6 +14,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { RecipientsInput } from "@/components/shared/recipients-input";
+import { isValidEmail } from "@/lib/email";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +55,13 @@ export interface IntegrationFormState {
   enabled: boolean;
   isDefault: boolean;
   settings: Record<string, unknown>;
+  /**
+   * Whether the per-type settings panel considers its current values valid.
+   * Defaults to true for types with no client-side validation. The email
+   * panel sets this to false while any recipient fails isValidEmail, so the
+   * caller can block Save/Create until every address is fixed.
+   */
+  isValid?: boolean;
 }
 
 interface IntegrationFormProps {
@@ -94,9 +103,19 @@ export function IntegrationForm({ type, initial, initialName, onChange, org, cha
     setSettings(initial?.settings ?? {});
   }, [initial]);
 
+  // Per-type client-side validity. Only the email panel has any today: every
+  // stored recipient must pass isValidEmail. Other types have nothing to
+  // validate client-side, so they're always valid.
+  const isValid =
+    type === "email"
+      ? (Array.isArray(settings.to) ? (settings.to as unknown[]) : []).every(
+          (v) => typeof v === "string" && isValidEmail(v),
+        )
+      : true;
+
   useEffect(() => {
-    onChange({ name, enabled, isDefault, settings });
-  }, [name, enabled, isDefault, settings, onChange]);
+    onChange({ name, enabled, isDefault, settings, isValid });
+  }, [name, enabled, isDefault, settings, isValid, onChange]);
 
   return (
     <div className="space-y-4">
@@ -319,33 +338,46 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
           onChange={(v) => update("webhook_url", v)}
         />
       );
-    case "email":
+    case "email": {
+      const recipients = Array.isArray(settings.to)
+        ? (settings.to as string[])
+        : [];
+      const hasInvalid = recipients.some((v) => !isValidEmail(v));
       return (
         <div className="space-y-2">
           <Label htmlFor="ch-to">
-            {t("form.recipients", "Recipients (one per line)")}
+            {t("form.recipients", "Recipients")}
           </Label>
-          <Textarea
+          <RecipientsInput
             id="ch-to"
-            rows={3}
-            value={
-              Array.isArray(settings.to)
-                ? (settings.to as string[]).join("\n")
-                : ""
-            }
-            onChange={(e) =>
-              update(
-                "to",
-                e.target.value
-                  .split("\n")
-                  .map((s) => s.trim())
-                  .filter(Boolean),
-              )
-            }
-            placeholder="ops@example.com&#10;oncall@example.com"
+            value={recipients}
+            onChange={(next) => update("to", next)}
+            placeholder={t(
+              "form.recipientsPlaceholder",
+              "ops@example.com, oncall@example.com",
+            )}
+            data-testid="email-recipients"
           />
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "form.recipientsHint",
+              "Separate addresses with a space, comma, semicolon, or newline — or paste a list.",
+            )}
+          </p>
+          {hasInvalid && (
+            <p
+              className="text-xs text-destructive"
+              data-testid="email-recipients-error"
+            >
+              {t(
+                "form.recipientsInvalidHint",
+                "Fix or remove the highlighted address before saving.",
+              )}
+            </p>
+          )}
         </div>
       );
+    }
     case "ntfy":
       return (
         <div className="space-y-3">

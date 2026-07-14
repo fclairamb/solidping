@@ -8,9 +8,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1020,6 +1023,83 @@ func parseUint8(value any) (uint8, bool) {
 	}
 
 	return uint8(n), true
+}
+
+// Sentinel errors for aggregation-retention write validation. Wrapped (with the
+// offending key/value) by ValidateAggregationRetentionParameter so callers can
+// match on them while the message stays specific.
+var (
+	errRetentionNotInteger = errors.New("aggregation retention must be a whole number")
+	errRetentionBelowFloor = errors.New("aggregation retention must be at least 1")
+)
+
+// IsAggregationRetentionKey reports whether key is one of the three live
+// aggregation-retention parameters (raw hours / hourly days / daily months) the
+// server "Aggregation" settings tab writes and the aggregation job reads at run
+// time (see jobtypes.retentionFromConfig), so the write handler can route it
+// through ValidateAggregationRetentionParameter.
+func IsAggregationRetentionKey(key string) bool {
+	pk := ParameterKey(key)
+
+	return pk == KeyPerfAggRetentionRawHours ||
+		pk == KeyPerfAggRetentionHourDays ||
+		pk == KeyPerfAggRetentionDayMonths
+}
+
+// ValidateAggregationRetentionParameter enforces, at write time, the same floor
+// the aggregation job requires: a whole number >= 1. A fractional, negative,
+// below-floor, or non-numeric value is rejected so a PUT that the job would
+// otherwise silently ignore (falling back to the default) never lands in the
+// parameters table. Returns nil for keys that are not retention keys.
+func ValidateAggregationRetentionParameter(key string, value any) error {
+	if !IsAggregationRetentionKey(key) {
+		return nil
+	}
+
+	n, ok := aggregationRetentionInt(value)
+	if !ok {
+		return fmt.Errorf("%s: %w", key, errRetentionNotInteger)
+	}
+
+	if n < 1 {
+		return fmt.Errorf("%s (got %d): %w", key, n, errRetentionBelowFloor)
+	}
+
+	return nil
+}
+
+// aggregationRetentionInt coerces a write value to an integer, rejecting
+// fractional floats (unlike parseInt, which truncates) so 1.5 is treated as
+// invalid rather than silently floored to 1.
+func aggregationRetentionInt(value any) (int, bool) {
+	switch typed := value.(type) {
+	case int:
+		return typed, true
+	case int64:
+		return int(typed), true
+	case float64:
+		if typed != math.Trunc(typed) {
+			return 0, false
+		}
+
+		return int(typed), true
+	case float32:
+		f := float64(typed)
+		if f != math.Trunc(f) {
+			return 0, false
+		}
+
+		return int(f), true
+	case string:
+		n, err := strconv.Atoi(strings.TrimSpace(typed))
+		if err != nil {
+			return 0, false
+		}
+
+		return n, true
+	default:
+		return 0, false
+	}
 }
 
 const (

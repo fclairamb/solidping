@@ -294,7 +294,10 @@
       "allRegions": "Alle Regionen",
       "tooltipClickPoint": "Punkt anklicken für Details",
       "dotClickForDetails": "Für Details anklicken",
-      "dotClickToClose": "Zum Schließen anklicken"
+      "dotClickToClose": "Zum Schließen anklicken",
+      "resetZoom": "Zoom zurücksetzen",
+      "zoomHint": "Ziehen Sie über das Diagramm, um einen Zeitbereich zu vergrößern",
+      "zoomHintReset": "Vergrößert — ziehen zum Verfeinern oder doppelklicken zum Zurücksetzen"
     },
     "resultBox": {
       "close": "Schließen",

@@ -16,6 +16,7 @@
   "descriptionPlaceholder": "Facultatif — quelle est la relation ?",
   "noDependencies": "Aucune dépendance configurée. Ajoutez un parent ci-dessus pour activer le regroupement d'incidents.",
   "noDependents": "Aucun contrôle ne dépend encore de celui-ci.",
+  "unknownCheck": "Contrôle inconnu",
   "remove": "Supprimer la dépendance",
   "removeConfirmTitle": "Supprimer la dépendance vers {{parent}} ?",
   "removeConfirmBody": "Cela arrête le regroupement d'incidents pour ce lien.",

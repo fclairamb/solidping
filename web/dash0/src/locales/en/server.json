@@ -10,7 +10,21 @@
     "authentication": "Authentication",
     "hashing": "Password Hashing",
     "performance": "Performance",
+    "aggregation": "Aggregation",
     "slack": "Slack"
+  },
+  "aggregation": {
+    "title": "Aggregation",
+    "description": "Configure how long raw and rolled-up check results are kept before being compacted into the next tier. These are global, system-wide windows. Changes take effect on the aggregation job's next run — no restart required.",
+    "rawHours": "Raw retention (hours)",
+    "rawHoursHelp": "Hours of raw per-check results to keep before rolling them up into hourly rollups.",
+    "hourDays": "Hourly retention (days)",
+    "hourDaysHelp": "Days of hourly rollups to keep before rolling them up into daily rollups.",
+    "dayMonths": "Daily retention (months)",
+    "dayMonthsHelp": "Months of daily rollups to keep before rolling them up into monthly rollups.",
+    "floorError": "Must be a whole number of at least 1.",
+    "noteNoReaggregate": "Changing a window never re-processes data that has already been aggregated; the job only rolls up new rows going forward.",
+    "noteRaiseNoRestore": "Raising a window does not restore data that was already rolled up. Lowering a window makes more not-yet-rolled-up rows eligible on the next runs."
   },
   "web": {
     "title": "Web",

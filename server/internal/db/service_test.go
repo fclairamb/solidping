@@ -911,6 +911,58 @@ func testChecksWithOrgDelete(ctx context.Context, t *testing.T, svc db.Service, 
 		_, err = svc.GetCheckByUidOrSlug(ctx, "wrong-org-uid", check.UID)
 		r.Error(err, "GetCheckByUidOrSlug should fail with wrong org UID")
 	})
+
+	// Reproduces issue #129: deleting a check used to leave its
+	// check_dependencies edges (as either parent or child) alive forever,
+	// since GetCheck's deleted_at filter made the check invisible without
+	// the FK's ON DELETE CASCADE ever firing (checks are only soft-deleted).
+	// DeleteCheckDependenciesForCheck is what checks.Service.DeleteCheck now
+	// calls to clean those edges up.
+	t.Run("DeleteCheckDependenciesForCheck", func(t *testing.T) {
+		r := require.New(t)
+
+		upstream := models.NewCheck(org.UID, "dep-upstream", "http")
+		r.NoError(svc.CreateCheck(ctx, upstream))
+		middle := models.NewCheck(org.UID, "dep-middle", "http")
+		r.NoError(svc.CreateCheck(ctx, middle))
+		downstream := models.NewCheck(org.UID, "dep-downstream", "http")
+		r.NoError(svc.CreateCheck(ctx, downstream))
+		sibling := models.NewCheck(org.UID, "dep-sibling", "http")
+		r.NoError(svc.CreateCheck(ctx, sibling))
+
+		// middle depends on upstream (middle is child, upstream is parent);
+		// downstream depends on middle (downstream is child, middle is parent).
+		// So `middle` appears as both a parent and a child. `sibling` depends
+		// on `upstream` too, as a completely unrelated edge that must survive.
+		edgeUp := models.NewCheckDependency(
+			org.UID, upstream.UID, middle.UID, models.CheckDependencyKindHard, nil,
+		)
+		r.NoError(svc.CreateCheckDependency(ctx, edgeUp))
+		edgeDown := models.NewCheckDependency(
+			org.UID, middle.UID, downstream.UID, models.CheckDependencyKindHard, nil,
+		)
+		r.NoError(svc.CreateCheckDependency(ctx, edgeDown))
+		edgeUnrelated := models.NewCheckDependency(
+			org.UID, upstream.UID, sibling.UID, models.CheckDependencyKindHard, nil,
+		)
+		r.NoError(svc.CreateCheckDependency(ctx, edgeUnrelated))
+
+		err := svc.DeleteCheckDependenciesForCheck(ctx, middle.UID)
+		r.NoError(err)
+
+		parentsOfDownstream, err := svc.ListCheckDependencyParents(ctx, downstream.UID)
+		r.NoError(err)
+		r.Empty(parentsOfDownstream, "edge where middle is the parent should be gone")
+
+		childrenOfUpstream, err := svc.ListCheckDependencyChildren(ctx, upstream.UID)
+		r.NoError(err)
+		r.Len(childrenOfUpstream, 1, "only middle's edge should be gone, sibling's should survive")
+		r.Equal(sibling.UID, childrenOfUpstream[0].ChildCheckUID)
+
+		unrelatedEdge, err := svc.FindCheckDependencyEdge(ctx, upstream.UID, sibling.UID)
+		r.NoError(err, "the unrelated upstream->sibling edge must survive")
+		r.NotNil(unrelatedEdge)
+	})
 }
 
 func testResultsWithCheckAndOrg(ctx context.Context, t *testing.T, svc db.Service) {
