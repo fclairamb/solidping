@@ -122,3 +122,42 @@ confirming no other client query needs a fix:
   The only naming-related change in scope is a **doc-only** tweak: update the
   OpenAPI description of `checkUid` to "check UID or slug" so the contract is
   honest, matching what `/results` already documents.
+
+## Implementation Plan
+
+1. **Backend root-cause fix** — `server/internal/handlers/incidents/service.go`,
+   `ListIncidents`: resolve `opts.CheckUIDs` (raw uid-or-slug identifiers) via
+   a new `(s *Service) resolveCheckIdentifiers` helper (mirrors
+   `results.Service.resolveCheckIdentifiers`, calling `GetCheckByUidOrSlug`
+   per identifier) before building `models.ListIncidentsFilter`. Handles the
+   edge case the literal `/results` parity misses: if identifiers were
+   supplied but none resolved to a real check, short-circuit to an explicit
+   empty page instead of falling through to "no filter" (which would
+   silently return every incident in the org, since the DB layer's
+   `check_uid IN (?)` gate is `len(filter.CheckUIDs) > 0`).
+2. **Frontend client fix** — `web/dash0/src/routes/orgs/$org/checks.$checkUid.index.tsx`:
+   drive `useIncidents` off `check.uid` instead of the raw `checkUid` route
+   param, gated with `enabled: !!check?.uid` so the query fires only once the
+   check has resolved. Add an `enabled?: boolean` option to
+   `useIncidents` in `web/dash0/src/api/hooks.ts` (same pattern as
+   `useLabelSuggestions`/`useCheckAvailability`: `(options?.enabled ?? true) && !!org`)
+   since the hook has other callers that don't want this gating.
+3. **Tests**:
+   - Backend: `server/internal/handlers/incidents/list_by_slug_test.go` —
+     SQLite-backed handler-level tests (fast, run under `make test`) proving
+     `GET /incidents?checkUid=<slug>` returns 200 with the right incidents,
+     `checkUid=<uid>` still works, and an unmatched identifier returns an
+     empty page (not every incident).
+   - Backend: `server/internal/handlers/incidents/list_by_slug_postgres_test.go` —
+     embedded-Postgres regression test (self-skips under `-short`/CI,
+     mirroring `results.TestGetResultNeighbors_Postgres`) that reproduces the
+     actual reported 500 against a real `uuid`-typed `check_uid` column.
+     Manually verified to fail with the exact reported SQLSTATE=22P02 error
+     when the fix is reverted, and pass with it applied.
+   - E2E: extend `web/dash0/e2e/` to deep-link a check by slug and assert (a)
+     no incidents-section error and (b) the outgoing `/incidents` request
+     carries the resolved UUID, not the slug.
+4. **Doc-only**: update the OpenAPI description of `checkUid` on `/incidents`
+   to "check UID or slug".
+5. QA: `make build-backend lint-back test`, `make build-dash0` + dash0 lint,
+   Playwright E2E for the new/extended spec file.
