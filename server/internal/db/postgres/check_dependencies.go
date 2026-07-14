@@ -174,6 +174,26 @@ func (s *Service) DeleteCheckDependency(ctx context.Context, depUID string) erro
 	return nil
 }
 
+// DeleteCheckDependenciesForCheck soft-deletes every active edge where
+// checkUID is either the parent or the child. Called from check deletion so
+// dependency edges don't outlive the check they reference.
+func (s *Service) DeleteCheckDependenciesForCheck(ctx context.Context, checkUID string) error {
+	now := time.Now()
+
+	_, err := s.db.NewUpdate().
+		Model((*models.CheckDependency)(nil)).
+		Set("deleted_at = ?", now).
+		Set("updated_at = ?", now).
+		Where("(parent_check_uid = ? OR child_check_uid = ?)", checkUID, checkUID).
+		Where("deleted_at IS NULL").
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("delete check dependencies for check: %w", err)
+	}
+
+	return nil
+}
+
 // ListSuppressedChildIncidents returns active incidents whose
 // caused_by_incident_uid points at the supplied parent and which are still
 // flagged paging_suppressed = TRUE. Used by the resolve hook to re-evaluate.

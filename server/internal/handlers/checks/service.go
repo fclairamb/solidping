@@ -1778,6 +1778,12 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 		}
 	}
 
+	// Delete dependency edges referencing this check (either side), so they
+	// don't outlive the check and later resolve to an empty check ref (#129).
+	if err := s.db.DeleteCheckDependenciesForCheck(ctx, check.UID); err != nil {
+		return fmt.Errorf("failed to delete check dependencies: %w", err)
+	}
+
 	// Delete check
 	if err := s.db.DeleteCheck(ctx, check.UID); err != nil {
 		return fmt.Errorf("failed to delete check: %w", err)
