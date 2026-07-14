@@ -79,3 +79,64 @@ window:
 - The narrowed fetch reuses the existing `periodStartAfter` / `periodEndBefore`
   results filter (see Proposal §2) — no new backend endpoint or query param is
   required; the work is wiring the URL window onto those params.
+
+## Implementation Plan
+
+All frontend; **no backend change** (`results/handler.go` already parses
+`periodStartAfter`/`periodEndBefore` as RFC3339, and `useResults`/`useAllResults`
+already forward both). URL params are namespaced with the route's existing
+`graph*` prefix: `graphFrom` / `graphTo` (epoch-ms numbers) for the zoom window
+and `graphSelected` (resultUid string) for the highlighted element — they sit in
+the same `validateSearch` as `graphPeriod` / `graphFull` / `graphRegion`.
+
+1. **Route search params** (`checks.$checkUid.index.tsx`): add `graphFrom`,
+   `graphTo` (finite-number coercion, else undefined) and `graphSelected` (string,
+   else undefined) to `validateSearch`. Add the three keys (`undefined`) to the
+   three slug/uid navigation literals so the search schema stays satisfied. Treat
+   the zoom as active only when `graphFrom < graphTo`.
+
+2. **`chartFetchParams` gains an optional `zoom` arg** (response-time-chart.tsx):
+   when `zoom={from,to}` is passed, return `periodStartAfter=from` /
+   `periodEndBefore=to` (RFC3339) and choose the aggregation tier from the zoom
+   *span* (`rangeForSpan`: ≤1h→hour, ≤24h→day, ≤7d→week, else month), reusing the
+   existing per-range `periodType` logic. Absent zoom → byte-identical to today
+   (so the react-query key and the parent's cache-hit are preserved). Add optional
+   `periodEndBefore` to `ChartFetchParams`.
+
+3. **Chart fetch + domain honor the zoom** (response-time-chart.tsx): compute
+   `zoom` from new `zoomFrom`/`zoomTo` props; feed it to `chartFetchParams`; pass
+   `...fetchParams` (incl. `periodEndBefore`) to `useAllResults`. In the chartData
+   `useMemo`, when zoomed force full-range-style boundary clamping with the window
+   `[from,to]` so the x-domain is exactly the selected window.
+
+4. **Drag-to-select X zoom** (response-time-chart.tsx): track `refAreaLeft` /
+   `refAreaRight` via recharts `onMouseDown`/`onMouseMove`/`onMouseUp` **and**
+   `onTouchStart`/`onTouchMove`/`onTouchEnd` (both deliver `MouseHandlerDataParam`
+   with `activeLabel`, so touch drag works with the same code — mobile requirement
+   §5). Render an in-progress `<ReferenceArea>`. On release, if the span exceeds a
+   small floor (≥1% of the visible domain), call `onZoomChange(from,to)`; a
+   `didZoomRef` guard stops the trailing chart `onClick` from also toggling a
+   point selection.
+
+5. **Selected element is URL-driven** (response-time-chart.tsx +
+   checks.$checkUid.index.tsx): make `selectedUid` a controlled prop
+   (`selectedUid` + `onSelectChange`) instead of local state. Always render the
+   selected point's dot (so its anchor is cached even in dense views), and bump a
+   nonce in an effect once the anchor is known so a cold deep-link
+   (`?graphSelected=…`) positions the `PinnedResultBox` after the dots cache their
+   coordinates.
+
+6. **Reset** (both files): a "Reset zoom" `Button` (outline, `ZoomOut` icon) in the
+   chart header, shown only while zoomed, plus double-click on the chart wrapper —
+   both call `onZoomChange(undefined, undefined)`; the parent clears `graphFrom` /
+   `graphTo` **and** `graphSelected`. Changing the time range (hour/day/week/month)
+   also clears the zoom + selection.
+
+7. **i18n**: add `detail.chart.resetZoom` and `detail.chart.zoomHint` to
+   en/fr/es/de `checks.json`; render a muted drag hint under the chart.
+
+8. **QA**: `make build-dash0` + `bun run lint` (no new errors in touched files);
+   `make build-backend` (no Go changed, confirm binary compiles); author/extend a
+   Playwright spec (`e2e/check-chart-zoom.spec.ts`) for drag-zoom → URL params →
+   narrowed fetch → reset, run it if the local devloop is in test mode else report
+   authored-but-not-run. No design-reference change (reuses `Button`).
