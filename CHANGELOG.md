@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+
+### Features
+
+* **dash0 (checks):** drag-to-select **X-axis time zoom** on the response-time chart — the zoom window lives in the URL (`graphFrom`/`graphTo`) and drives a **server-side fetch of just that window** (picking a finer aggregation tier for narrow spans); the selected point is also URL-persisted (`graphSelected`), so a shared link reproduces both the zoomed window and the highlighted result with its details; "Reset zoom" button + double-click reset; touch-drag works on mobile
+* **admin:** new super-admin **"Aggregation" server-settings tab** to configure the three retention windows (raw→hour in hours, hour→day in days, day→month in months) on the live `performance.aggregation_retention_*` parameters — server-side write validation (integer `>= 1`, else `VALIDATION_ERROR`), client-side floors, and inline notes that changes never re-aggregate or restore already-rolled-up data
+* **aggregation:** tighter default retention — hourly rows now roll up after **7 days** (was 30) and daily rows after **2 months** (was 12); raw stays 24h. Values remain configurable via the new Aggregation tab (**behavior change**: shortens how far back granular history stays queryable for deployments on defaults)
+* **realtime:** WebSocket authentication moved to the **HTTP level, before the upgrade** — the handshake authenticates via `Authorization: Bearer` header or the `access_token` cookie (header wins) and answers a bad/missing token with a plain **HTTP `401`** instead of upgrading-then-closing; the in-band `{"type":"auth","token":…}` message and the `SP_REALTIME_AUTH_GRACE` grace window are **removed** (**breaking** for custom WS clients that authenticated in-band — send the token as a header or cookie instead); org-scope (`4403`) and disabled (`4404`) remain post-upgrade close codes, `4401` now means mid-connection token expiry only
+* **integrations (email):** notification emails can target **multiple recipient addresses** — chip/tag input with paste support (comma/semicolon/space/newline separators), per-address validation with invalid chips flagged in red and blocking save, deduplication, and mobile-friendly tap targets
+
+### Bug Fixes
+
+* **incidents:** `GET /api/v1/orgs/:org/incidents?checkUid=…` no longer **500s when given a check slug** — the identifier resolves slug-or-uid exactly like `/results`, and an unknown identifier returns an empty page instead of an error (or an unfiltered list); the check detail page now passes the resolved uid (#127)
+* **dash0 (checks):** dependency edges pointing at a **deleted check** no longer render as bogus bare "Hard"/"Soft" badges — orphaned edges are filtered out of the API response, a check's dependency rows are now cleaned up when it is deleted, and the UI falls back to a muted "Unknown check" label for any unresolved ref (#129)
+
 ## [0.3.0](https://github.com/fclairamb/solidping/compare/v0.2.3...v0.3.0) (2026-07-12)
 
 
