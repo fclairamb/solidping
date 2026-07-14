@@ -16,6 +16,13 @@
 * **incidents:** `GET /api/v1/orgs/:org/incidents?checkUid=…` no longer **500s when given a check slug** — the identifier resolves slug-or-uid exactly like `/results`, and an unknown identifier returns an empty page instead of an error (or an unfiltered list); the check detail page now passes the resolved uid (#127)
 * **dash0 (checks):** dependency edges pointing at a **deleted check** no longer render as bogus bare "Hard"/"Soft" badges — orphaned edges are filtered out of the API response, a check's dependency rows are now cleaned up when it is deleted, and the UI falls back to a muted "Unknown check" label for any unresolved ref (#129)
 
+## [0.4.0](https://github.com/fclairamb/solidping/compare/v0.3.0...v0.4.0) (2026-07-14)
+
+
+### Features
+
+* batch 2026-07-14 — graph zoom, aggregation retention UI, HTTP-level WS auth, incidents slug 500 fix, multi-address email, dependency fix ([#131](https://github.com/fclairamb/solidping/issues/131)) ([33bad40](https://github.com/fclairamb/solidping/commit/33bad40d6725ce1cf72b4c863bcf6f1f4af3989a))
+
 ## [0.3.0](https://github.com/fclairamb/solidping/compare/v0.2.3...v0.3.0) (2026-07-12)
 
 
