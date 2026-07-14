@@ -1128,6 +1128,10 @@ func (m *mockDBService) DeleteCheckDependency(_ context.Context, _ string) error
 	panic("not implemented")
 }
 
+func (m *mockDBService) DeleteCheckDependenciesForCheck(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
 func (m *mockDBService) ListSuppressedChildIncidents(
 	_ context.Context, _ string,
 ) ([]*models.Incident, error) {
