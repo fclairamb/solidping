@@ -115,7 +115,10 @@ export function RecipientsInput({
                 email,
               })}
               className={cn(
-                "inline-flex h-4 w-4 items-center justify-center rounded-sm hover:bg-black/10 dark:hover:bg-white/10",
+                // Visually a small 12px X, but padded to a ~24px hit target
+                // via negative margin so it stays touch-friendly on mobile
+                // without inflating the chip's visual size.
+                "-m-1 inline-flex h-6 w-6 items-center justify-center rounded-sm p-1.5 hover:bg-black/10 dark:hover:bg-white/10",
               )}
               data-testid={testid ? `${testid}-chip-remove-${i}` : undefined}
             >
