@@ -228,3 +228,65 @@ far back granular history is queryable.
   partial month"); only its default changes (12 → 2).
 - Fixing the general "server settings need a restart" limitation for other
   parameter families — this spec only makes the three aggregation keys live.
+
+## Implementation Plan
+
+### Reconciliation note (spec premises vs. current code)
+
+The spec's "Current state" is partly stale. A later spec (2026-07-11-16 / -17)
+already added a **second, live** aggregation-retention key family and made the
+job use it:
+
+- `performance.aggregation_retention_raw_hours` (hours)
+- `performance.aggregation_retention_hour_days` (days)
+- `performance.aggregation_retention_day_months` (months)
+
+`AggregationJobRun.Run` → `retentionFromConfig` already resolves these at
+job-run time with precedence **env `SP_PERFORMANCE_*` → global DB parameter →
+legacy koanf `aggregation.retention_*` → hardcoded default (24/30/12)** — i.e.
+**decision 4 (live apply) is already implemented**, and there is a passing test
+(`TestRetentionFromConfig_DefaultsAndDBParameter` / `_EnvOverrides`). These keys
+also **already embed their unit** in the name, which is exactly the goal of
+decision 5's rename.
+
+Given that, introducing a third renamed `aggregation.raw_retention_hours`
+family (decision 5) would be redundant and would create a key the running job
+does **not** read — the opposite of the spec's own "no silent no-op" intent.
+**Therefore this implementation builds the UI + validation on the existing live
+`performance.aggregation_retention_*` keys** and does **not** perform the
+literal key/env/struct rename. The legacy koanf `aggregation.retention_*`
+fields stay as the deprecated fallback they already are.
+
+### Steps
+
+1. **Backend — validation (decision 3).** Add `IsAggregationRetentionKey` +
+   `ValidateAggregationRetentionParameter` to `systemconfig` (integer, `>= 1`,
+   reject non-integer / below-floor / negative). Wire into
+   `handlers/system.Service.SetParameter` after the password check; the handler
+   already maps `ErrInvalidParameter` → 422 `VALIDATION_ERROR`. Table test in
+   `service_test.go` (valid + each invalid case).
+
+2. **Backend — defaults (decision 4 / the table).** `hour→day` 30 → **7**,
+   `day→month` 12 → **2** (raw stays 24). Update the live default constants in
+   `job_aggregation.go` (`defaultRetentionHourDays`, `defaultRetentionDayMonths`),
+   the koanf defaults in `config.go`, and the doc comments; fix
+   `config_test.go`'s expected defaults. Add a test pinning the new default
+   triple (24/7/2). No roll-up/boundary logic changes.
+
+3. **Frontend — UI (decisions 1, 2, 5).** New
+   `web/dash0/src/routes/orgs/$org/server.aggregation.tsx` cloning
+   `server.performance.tsx`: three unit-labelled numeric fields (Raw hours /
+   Hourly days / Daily months) read via `useSystemParameters()` and written
+   per-key via `useSetSystemParameter()` against the `performance.*` keys;
+   client-side floor `>= 1`; inline notes for the two decision-2 behaviours (no
+   re-aggregation; raising a window doesn't restore rolled-up data). Add the
+   "Aggregation" tab to `server.tsx` and i18n keys (all locales). Regenerate
+   `routeTree.gen.ts`. Design-reference primitives, responsive.
+
+4. **Tests.** Backend validation table test; backend default-triple test
+   (live-apply itself is already covered). Playwright E2E in
+   `web/dash0/e2e/server-admin.spec.ts`: load tab, edit, save, reload-persists,
+   validation error.
+
+5. **QA.** `make build-backend lint-back test`, `make build-dash0`,
+   `cd web/dash0 && bun run lint`.
