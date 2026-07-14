@@ -442,3 +442,86 @@ test.describe("Server Performance", () => {
     );
   });
 });
+
+// The Aggregation tab writes the shared performance.aggregation_retention_*
+// system parameters; the file is already configured serial above, so these
+// don't stomp each other or the other parameter-writing suites.
+test.describe("Server Aggregation", () => {
+  test("tab shows three unit-labelled retention fields and the behaviour notes", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/server/aggregation");
+    await page.waitForLoadState("networkidle");
+
+    // Each tier's field is labelled with its unit (hours / days / months).
+    await expect(page.getByLabel("Raw retention (hours)")).toBeVisible();
+    await expect(page.getByLabel("Hourly retention (days)")).toBeVisible();
+    await expect(page.getByLabel("Daily retention (months)")).toBeVisible();
+
+    // The two decision-2 behaviours are surfaced inline so the compaction
+    // semantics aren't a surprise.
+    await expect(page.getByText(/never re-processes data/i)).toBeVisible();
+    await expect(
+      page.getByText(/does not restore data that was already rolled up/i),
+    ).toBeVisible();
+  });
+
+  test("navigating via the Aggregation tab lands on the retention form", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
+    await navigateToServer(page);
+
+    await page.getByRole("link", { name: "Aggregation" }).click();
+    await page.waitForURL(/\/server\/aggregation/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("aggregation-raw-hours-input")).toBeVisible();
+  });
+
+  test("editing and saving persists across reload", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/server/aggregation");
+    await page.waitForLoadState("networkidle");
+
+    // Set explicit, valid windows so the test is deterministic regardless of
+    // any previously-persisted value.
+    await page.getByTestId("aggregation-raw-hours-input").fill("24");
+    await page.getByTestId("aggregation-hour-days-input").fill("14");
+    await page.getByTestId("aggregation-day-months-input").fill("3");
+
+    await page.getByTestId("aggregation-save").click();
+    await expect(page.getByTestId("aggregation-saved")).toBeVisible({
+      timeout: 10000,
+    });
+
+    // The non-secret values round-trip from GET /system/parameters.
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("aggregation-hour-days-input")).toHaveValue(
+      "14",
+    );
+    await expect(page.getByTestId("aggregation-day-months-input")).toHaveValue(
+      "3",
+    );
+  });
+
+  test("a below-floor window is rejected client-side (save disabled, no save)", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/server/aggregation");
+    await page.waitForLoadState("networkidle");
+
+    // 0 is below the floor of 1; the field flags an inline error and the Save
+    // button disarms so the invalid value never round-trips.
+    await page.getByTestId("aggregation-hour-days-input").fill("0");
+    await expect(page.getByText(/whole number of at least 1/i)).toBeVisible();
+    await expect(page.getByTestId("aggregation-save")).toBeDisabled();
+    await expect(page.getByTestId("aggregation-saved")).toHaveCount(0);
+  });
+});
