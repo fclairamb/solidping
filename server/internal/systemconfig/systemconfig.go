@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -1024,23 +1025,25 @@ func parseUint8(value any) (uint8, bool) {
 	return uint8(n), true
 }
 
-// aggregationRetentionKeys is the set of live retention parameters the server
-// "Aggregation" settings tab writes and the aggregation job reads at run time
-// (see jobtypes.retentionFromConfig). Each carries a per-tier integer window:
-// raw hours, hourly days, daily months.
-var aggregationRetentionKeys = map[ParameterKey]struct{}{
-	KeyPerfAggRetentionRawHours:  {},
-	KeyPerfAggRetentionHourDays:  {},
-	KeyPerfAggRetentionDayMonths: {},
-}
+// Sentinel errors for aggregation-retention write validation. Wrapped (with the
+// offending key/value) by ValidateAggregationRetentionParameter so callers can
+// match on them while the message stays specific.
+var (
+	errRetentionNotInteger = errors.New("aggregation retention must be a whole number")
+	errRetentionBelowFloor = errors.New("aggregation retention must be at least 1")
+)
 
 // IsAggregationRetentionKey reports whether key is one of the three live
-// aggregation-retention parameters, so the write handler can route it through
-// ValidateAggregationRetentionParameter.
+// aggregation-retention parameters (raw hours / hourly days / daily months) the
+// server "Aggregation" settings tab writes and the aggregation job reads at run
+// time (see jobtypes.retentionFromConfig), so the write handler can route it
+// through ValidateAggregationRetentionParameter.
 func IsAggregationRetentionKey(key string) bool {
-	_, ok := aggregationRetentionKeys[ParameterKey(key)]
+	pk := ParameterKey(key)
 
-	return ok
+	return pk == KeyPerfAggRetentionRawHours ||
+		pk == KeyPerfAggRetentionHourDays ||
+		pk == KeyPerfAggRetentionDayMonths
 }
 
 // ValidateAggregationRetentionParameter enforces, at write time, the same floor
@@ -1055,11 +1058,11 @@ func ValidateAggregationRetentionParameter(key string, value any) error {
 
 	n, ok := aggregationRetentionInt(value)
 	if !ok {
-		return fmt.Errorf("%s must be a whole number", key)
+		return fmt.Errorf("%s: %w", key, errRetentionNotInteger)
 	}
 
 	if n < 1 {
-		return fmt.Errorf("%s must be at least 1, got %d", key, n)
+		return fmt.Errorf("%s (got %d): %w", key, n, errRetentionBelowFloor)
 	}
 
 	return nil
