@@ -34,6 +34,7 @@ import {
 import { toast } from "sonner";
 
 import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
+import { RecipientsInput } from "@/components/shared/recipients-input";
 import {
   CollapsibleCode,
   CopyableCode,
@@ -144,6 +145,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "feedback", label: "Feedback" },
   { id: "label-filter", label: "Label filter" },
   { id: "check-multi-picker", label: "Check multi-picker" },
+  { id: "recipients-input", label: "Recipients input" },
   { id: "kpi-tiles", label: "KPI tiles" },
   { id: "uptime-strip", label: "Uptime strip" },
   { id: "jobs-primitives", label: "Jobs primitives" },
@@ -178,6 +180,7 @@ function DesignReferencePage() {
       <FeedbackSection />
       <LabelFilterSection />
       <CheckMultiPickerSection />
+      <RecipientsInputSection />
       <KpiTileSection />
       <UptimeStripSection />
       <JobsPrimitivesSection />
@@ -2121,6 +2124,36 @@ function CheckMultiPickerSection() {
         <div className="space-y-2">
           <Label>Check groups</Label>
           <CheckMultiPicker org={org} kind="groups" value={groupUids} onChange={setGroupUids} />
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function RecipientsInputSection() {
+  const [valid, setValid] = useState<string[]>(["ops@example.com"]);
+  const [withInvalid, setWithInvalid] = useState<string[]>([
+    "oncall@example.com",
+    "not-an-email",
+  ]);
+
+  return (
+    <Section
+      id="recipients-input"
+      title="Recipients input"
+      description="Chip/tag input for a free-form list of addresses (currently used for the email integration's recipients). Each entry is a removable Badge chip — destructive-red when it fails isValidEmail. Typing a separator (space/comma/semicolon), pressing Enter, pasting a delimited list, or blurring all commit the current token(s). Backspace on an empty field pops the last chip."
+    >
+      <p className="text-xs text-muted-foreground">
+        import {"{ RecipientsInput }"} from "@/components/shared/recipients-input"
+      </p>
+      <div className="grid gap-4 sm:grid-cols-2 max-w-2xl">
+        <div className="space-y-2">
+          <Label>All valid</Label>
+          <RecipientsInput value={valid} onChange={setValid} placeholder="ops@example.com" />
+        </div>
+        <div className="space-y-2">
+          <Label>With an invalid entry</Label>
+          <RecipientsInput value={withInvalid} onChange={setWithInvalid} placeholder="ops@example.com" />
         </div>
       </div>
     </Section>

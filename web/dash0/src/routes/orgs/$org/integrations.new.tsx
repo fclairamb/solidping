@@ -66,7 +66,7 @@ function NewIntegrationPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!type || !form) return;
+    if (!type || !form || form.isValid === false) return;
 
     try {
       const created = await create.mutateAsync({
@@ -270,7 +270,9 @@ function NewIntegrationPage() {
             </Button>
             <Button
               type="submit"
-              disabled={create.isPending || !form?.name}
+              disabled={
+                create.isPending || !form?.name || form?.isValid === false
+              }
             >
               {create.isPending ? (
                 <>
