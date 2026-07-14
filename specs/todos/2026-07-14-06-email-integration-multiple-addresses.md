@@ -130,3 +130,62 @@ notifications package). Do **not** add a backend migration or schema change.
 - [ ] The chip input is added to the design reference and reused (not a one-off).
 - [ ] Fully usable on mobile.
 - [ ] Frontend unit + Playwright E2E pass; `make lint` and `make test-dash` green.
+
+## Implementation Plan
+
+Frontend-only, per the Findings section (no Go/DB changes).
+
+1. **Parse/validate helper** — `web/dash0/src/lib/email.ts`:
+   - `isValidEmail(s: string): boolean` — pragmatic `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`.
+   - `parseEmailList(raw: string): string[]` — split on `/[\s,;]+/`, trim, drop
+     empties, de-dupe on exact trimmed string (case preserved).
+   - Colocated `email.test.ts` (vitest) covering separators (space/comma/
+     semicolon/newline/mixed), trimming, empties, duplicates.
+
+2. **`RecipientsInput` chip component** — new
+   `web/dash0/src/components/shared/recipients-input.tsx`:
+   - Props: `value: string[]`, `onChange: (v: string[]) => void`, optional
+     `placeholder`/`data-testid`.
+   - Modeled on `check-multi-picker.tsx`'s chip rendering: `Badge` (default
+     variant for valid, `destructive` for invalid, using `isValidEmail`) +
+     dismiss `X` icon button per chip (not `Trash2` — not a resource delete).
+   - Free-text `Input` alongside the chips; commits the current token to a
+     chip on Enter, on typing a separator char (space/comma/semicolon), and on
+     blur; Backspace on an empty input pops the last chip. Paste is handled by
+     the `onChange`/`onPaste` path splitting through `parseEmailList` so a
+     multi-address paste yields multiple chips in one step.
+   - Wrapping flex layout, large enough touch targets — responsive/mobile per
+     project convention.
+   - Invalid chips carry a `title` tooltip explaining the problem.
+
+3. **Wire into `integration-form.tsx`**:
+   - Replace the `case "email"` `Textarea` block with `RecipientsInput`,
+     reading/writing `settings.to` as `string[]` (unchanged persisted shape —
+     backward compatible with existing single/multi-address connections).
+   - Track per-form validity (any invalid chip) and block Save — surface via
+     the existing save-disabled wiring in the parent create/edit pages (same
+     mechanism already used for name-required).
+
+4. **Design reference** — add a `RecipientsInputSection` in
+   `web/dash0/src/routes/orgs/$org/design-reference.tsx`: register in
+   `SECTIONS`, render valid + invalid chip examples with the import line,
+   call it from `DesignReferencePage`.
+
+5. **i18n** — update `form.recipients` (drop "one per line" framing) and add
+   `form.recipientsPlaceholder` / `form.recipientsInvalid` (or similar) keys
+   across `en/fr/es/de` `integrations.json`.
+
+6. **Tests**:
+   - Unit: `email.test.ts` (step 1).
+   - Playwright: new `describe` block in `web/dash0/e2e/integrations.spec.ts`
+     — create an email integration, type `a@x.com b@x.com` (space-separated)
+     into the chip input, save, reload the edit page, assert both chips
+     persist; assert an invalid address renders a destructive chip and blocks
+     save.
+   - Backend: none — re-run `make test` on `server/internal/notifications`
+     only to confirm existing multi-recipient coverage still passes
+     unmodified.
+
+7. **QA**: `make build-dash0`, `cd web/dash0 && bun run lint` (no new errors),
+   `bun run test` (vitest) for the new unit test, Playwright run of the new
+   E2E block if a local test-mode server is reachable.
