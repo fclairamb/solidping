@@ -466,7 +466,11 @@ export function ResponseTimeChart({
   // chart onClick so a completed drag never also toggles a point selection.
   const [refAreaLeft, setRefAreaLeft] = useState<number | null>(null);
   const [refAreaRight, setRefAreaRight] = useState<number | null>(null);
+  // Refs mirror the drag bounds so the mouseup/touchend handler reads the
+  // latest values directly, never a stale render closure (the state copies
+  // exist only to render the in-progress <ReferenceArea>).
   const dragStartRef = useRef<number | null>(null);
+  const dragEndRef = useRef<number | null>(null);
   const didZoomRef = useRef(false);
   // Bumped once the selected point's dot anchor is cached, so a cold deep-link
   // (?graphSelected=…) re-renders to position the pinned box correctly.
@@ -848,6 +852,7 @@ export function ResponseTimeChart({
     const ts = activeTs(state);
     if (ts == null) return;
     dragStartRef.current = ts;
+    dragEndRef.current = null;
     setRefAreaLeft(ts);
     setRefAreaRight(null);
   };
@@ -856,13 +861,15 @@ export function ResponseTimeChart({
     if (dragStartRef.current == null) return;
     const ts = activeTs(state);
     if (ts == null) return;
+    dragEndRef.current = ts;
     setRefAreaRight(ts);
   };
 
   const handleSelectEnd = () => {
     const start = dragStartRef.current;
-    const end = refAreaRight;
+    const end = dragEndRef.current;
     dragStartRef.current = null;
+    dragEndRef.current = null;
     setRefAreaLeft(null);
     setRefAreaRight(null);
     if (start == null || end == null) return;
