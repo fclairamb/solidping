@@ -141,6 +141,73 @@ func TestSetParameterValidatesPasswordParams(t *testing.T) {
 	}
 }
 
+// TestSetParameterValidatesAggregationRetention verifies that SetParameter
+// rejects the live performance.aggregation_retention_* keys unless the value is
+// a whole number >= 1 (mapped to 422 by the handler), and persists valid ones.
+// This is the write-time floor the aggregation job requires; without it a bad
+// value would land in the parameters table and be silently ignored by the job.
+func TestSetParameterValidatesAggregationRetention(t *testing.T) {
+	t.Parallel()
+
+	const (
+		rawKey   = "performance.aggregation_retention_raw_hours"
+		hourKey  = "performance.aggregation_retention_hour_days"
+		monthKey = "performance.aggregation_retention_day_months"
+	)
+
+	tests := []struct {
+		name    string
+		key     string
+		value   any
+		wantErr bool
+	}{
+		{name: "raw below floor rejected", key: rawKey, value: float64(0), wantErr: true},
+		{name: "raw negative rejected", key: rawKey, value: float64(-5), wantErr: true},
+		{name: "raw fractional rejected", key: rawKey, value: float64(1.5), wantErr: true},
+		{name: "raw non-numeric string rejected", key: rawKey, value: "abc", wantErr: true},
+		{name: "hourly below floor rejected", key: hourKey, value: float64(0), wantErr: true},
+		{name: "monthly negative rejected", key: monthKey, value: float64(-1), wantErr: true},
+		{name: "valid raw accepted", key: rawKey, value: float64(24), wantErr: false},
+		{name: "valid hourly accepted", key: hourKey, value: float64(7), wantErr: false},
+		{name: "valid monthly floor accepted", key: monthKey, value: float64(1), wantErr: false},
+		{name: "numeric string accepted", key: monthKey, value: "2", wantErr: false},
+		// A non-retention key is passed through untouched (no validation here).
+		{name: "non-retention key not validated", key: "server.base_url", value: "https://x", wantErr: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+			ctx := context.Background()
+
+			dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+			r.NoError(err)
+			r.NoError(dbSvc.Initialize(ctx))
+			t.Cleanup(func() { _ = dbSvc.Close() })
+
+			svc := NewService(dbSvc)
+			resp, err := svc.SetParameter(ctx, tt.key, tt.value, false)
+
+			if tt.wantErr {
+				r.ErrorIs(err, ErrInvalidParameter)
+				r.Nil(resp)
+
+				// The bad value must NOT have been persisted.
+				stored, getErr := dbSvc.GetSystemParameter(ctx, tt.key)
+				r.NoError(getErr)
+				r.Nil(stored, "rejected value must not be persisted")
+
+				return
+			}
+
+			r.NoError(err)
+			r.NotNil(resp)
+			r.Equal(tt.key, resp.Key)
+		})
+	}
+}
+
 // MockDBService is a mock implementation of db.Service for testing.
 type MockDBService struct {
 	params map[string]*models.Parameter

@@ -10,7 +10,9 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1020,6 +1022,81 @@ func parseUint8(value any) (uint8, bool) {
 	}
 
 	return uint8(n), true
+}
+
+// aggregationRetentionKeys is the set of live retention parameters the server
+// "Aggregation" settings tab writes and the aggregation job reads at run time
+// (see jobtypes.retentionFromConfig). Each carries a per-tier integer window:
+// raw hours, hourly days, daily months.
+var aggregationRetentionKeys = map[ParameterKey]struct{}{
+	KeyPerfAggRetentionRawHours:  {},
+	KeyPerfAggRetentionHourDays:  {},
+	KeyPerfAggRetentionDayMonths: {},
+}
+
+// IsAggregationRetentionKey reports whether key is one of the three live
+// aggregation-retention parameters, so the write handler can route it through
+// ValidateAggregationRetentionParameter.
+func IsAggregationRetentionKey(key string) bool {
+	_, ok := aggregationRetentionKeys[ParameterKey(key)]
+
+	return ok
+}
+
+// ValidateAggregationRetentionParameter enforces, at write time, the same floor
+// the aggregation job requires: a whole number >= 1. A fractional, negative,
+// below-floor, or non-numeric value is rejected so a PUT that the job would
+// otherwise silently ignore (falling back to the default) never lands in the
+// parameters table. Returns nil for keys that are not retention keys.
+func ValidateAggregationRetentionParameter(key string, value any) error {
+	if !IsAggregationRetentionKey(key) {
+		return nil
+	}
+
+	n, ok := aggregationRetentionInt(value)
+	if !ok {
+		return fmt.Errorf("%s must be a whole number", key)
+	}
+
+	if n < 1 {
+		return fmt.Errorf("%s must be at least 1, got %d", key, n)
+	}
+
+	return nil
+}
+
+// aggregationRetentionInt coerces a write value to an integer, rejecting
+// fractional floats (unlike parseInt, which truncates) so 1.5 is treated as
+// invalid rather than silently floored to 1.
+func aggregationRetentionInt(value any) (int, bool) {
+	switch typed := value.(type) {
+	case int:
+		return typed, true
+	case int64:
+		return int(typed), true
+	case float64:
+		if typed != math.Trunc(typed) {
+			return 0, false
+		}
+
+		return int(typed), true
+	case float32:
+		f := float64(typed)
+		if f != math.Trunc(f) {
+			return 0, false
+		}
+
+		return int(f), true
+	case string:
+		n, err := strconv.Atoi(strings.TrimSpace(typed))
+		if err != nil {
+			return 0, false
+		}
+
+		return n, true
+	default:
+		return 0, false
+	}
 }
 
 const (
