@@ -294,7 +294,10 @@
       "allRegions": "Todas las regiones",
       "tooltipClickPoint": "Haga clic en un punto para ver detalles",
       "dotClickForDetails": "Haga clic para ver detalles",
-      "dotClickToClose": "Haga clic para cerrar"
+      "dotClickToClose": "Haga clic para cerrar",
+      "resetZoom": "Restablecer zoom",
+      "zoomHint": "Arrastra sobre el gráfico para ampliar un intervalo de tiempo",
+      "zoomHintReset": "Zoom activo: arrastra para ajustar o haz doble clic para restablecer"
     },
     "resultBox": {
       "close": "Cerrar",

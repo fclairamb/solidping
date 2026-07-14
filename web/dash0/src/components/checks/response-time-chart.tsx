@@ -1,5 +1,6 @@
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { ZoomOut } from "lucide-react";
 import {
   AreaChart,
   Area,
@@ -39,6 +40,17 @@ interface ResponseTimeChartProps {
     fullRange: boolean,
     region: string | null,
   ) => void;
+  // Zoom window (X/time axis only), driven by the URL. Absent → full default
+  // range. When set (from < to) the results fetch requests only this window.
+  zoomFrom?: number;
+  zoomTo?: number;
+  // Called on drag-release with the selected window, or with (undefined,
+  // undefined) to reset the zoom.
+  onZoomChange?: (from?: number, to?: number) => void;
+  // Currently-highlighted result (its pinned detail box), driven by the URL so
+  // a shared link reproduces the selection. Controlled — no local fallback.
+  selectedUid?: string;
+  onSelectChange?: (uid?: string) => void;
 }
 
 interface ChartPoint {
@@ -115,21 +127,49 @@ export const CHART_WITH_FIELDS =
 
 export interface ChartFetchParams {
   periodStartAfter: string;
+  /** Only present when a zoom window is active — maps the URL `graphTo` onto the
+   * results endpoint's existing `periodEndBefore` (RFC3339) filter. */
+  periodEndBefore?: string;
   periodType: string;
   with: string;
   size: number;
 }
 
+/** A drag-selected X (time) zoom window, epoch-ms, `from < to`. */
+export interface ZoomWindow {
+  from: number;
+  to: number;
+}
+
+/** Maps a zoom span (ms) onto the equivalent default TimeRange bucket, so the
+ * aggregation-tier choice for a zoomed window matches what that span would use
+ * as a normal range (a narrow window naturally lands on the finer, less
+ * aggregated tiers). */
+function rangeForSpan(spanMs: number): TimeRange {
+  const ONE_HOUR = 3_600_000;
+  const ONE_DAY = 24 * ONE_HOUR;
+  if (spanMs <= ONE_HOUR) return "hour";
+  if (spanMs <= ONE_DAY) return "day";
+  if (spanMs <= 7 * ONE_DAY) return "week";
+  return "month";
+}
+
 /** Builds the exact `useAllResults` query params for the chart's current
- * window (time range + check period). Exported so the results-list route can
- * issue an identical query (same react-query key) to derive the observed
- * region set and duration stats from the chart's already-fetched window,
- * with zero extra HTTP requests. */
+ * window (time range + check period, or an explicit zoom window). Exported so
+ * the results-list route can issue an identical query (same react-query key) to
+ * derive the observed region set and duration stats from the chart's
+ * already-fetched window, with zero extra HTTP requests. When `zoom` is passed,
+ * the window is `[zoom.from, zoom.to]` (server-side fetch, not a client
+ * re-scale) and the tier is chosen from the zoom span; when it is absent the
+ * result is byte-identical to the pre-zoom behaviour so the cache key is
+ * unchanged. */
 export function chartFetchParams(
   timeRange: TimeRange,
   periodMs: number | undefined,
+  zoom?: ZoomWindow,
 ): ChartFetchParams {
-  const periodStartAfter = getStartFor(timeRange);
+  // For tier selection a zoomed window behaves like its span's default range.
+  const effectiveRange = zoom ? rangeForSpan(zoom.to - zoom.from) : timeRange;
 
   // Include raw as a co-tier so the current open bucket (which the aggregator
   // never rolls up until it closes) is always represented. The aggregator
@@ -137,18 +177,28 @@ export function chartFetchParams(
   // time — no duplicates. detectGaps() already handles tier transitions.
   const denseEnoughForHourly = (periodMs ?? 60_000) < 5 * 60_000;
   const periodType =
-    timeRange === "month"
+    effectiveRange === "month"
       ? "raw,hour,day"
-      : timeRange === "week"
+      : effectiveRange === "week"
         ? "raw,hour"
-        : timeRange === "day"
+        : effectiveRange === "day"
           ? denseEnoughForHourly
             ? "raw,hour"
             : "raw"
           : "raw";
 
+  if (zoom) {
+    return {
+      periodStartAfter: new Date(zoom.from).toISOString(),
+      periodEndBefore: new Date(zoom.to).toISOString(),
+      periodType,
+      with: CHART_WITH_FIELDS,
+      size: 1000,
+    };
+  }
+
   return {
-    periodStartAfter,
+    periodStartAfter: getStartFor(timeRange),
     periodType,
     with: CHART_WITH_FIELDS,
     size: 1000,
@@ -394,6 +444,11 @@ export function ResponseTimeChart({
   initialFullRange,
   initialRegion,
   onSettingsChange,
+  zoomFrom,
+  zoomTo,
+  onZoomChange,
+  selectedUid,
+  onSelectChange,
 }: ResponseTimeChartProps) {
   const { t } = useTranslation("checks");
   const [timeRange, setTimeRange] = useState<TimeRange>(initialPeriod ?? "day");
@@ -401,7 +456,21 @@ export function ResponseTimeChart({
   const [selectedRegion, setSelectedRegion] = useState<string | null>(
     initialRegion ?? null,
   );
-  const [selectedUid, setSelectedUid] = useState<string | null>(null);
+  // A zoom is active only for a well-formed forward window.
+  const zoom: ZoomWindow | undefined =
+    zoomFrom != null && zoomTo != null && zoomTo > zoomFrom
+      ? { from: zoomFrom, to: zoomTo }
+      : undefined;
+  // In-progress drag selection (recharts x-axis ts bounds). `dragStartRef`
+  // holds the mouse/touch-down anchor; `didZoomRef` suppresses the trailing
+  // chart onClick so a completed drag never also toggles a point selection.
+  const [refAreaLeft, setRefAreaLeft] = useState<number | null>(null);
+  const [refAreaRight, setRefAreaRight] = useState<number | null>(null);
+  const dragStartRef = useRef<number | null>(null);
+  const didZoomRef = useRef(false);
+  // Bumped once the selected point's dot anchor is cached, so a cold deep-link
+  // (?graphSelected=…) re-renders to position the pinned box correctly.
+  const [, bumpAnchorTick] = useState(0);
   // react-query dedupes with the page's own useRegions(org) call.
   const { data: regionsData } = useRegions(org);
   const dotPositions = useRef<Record<string, { cx: number; cy: number }>>({});
@@ -445,15 +514,19 @@ export function ResponseTimeChart({
   };
 
   const handleDotClick = (uid: string) => {
-    if (selectedUid === uid) {
-      setSelectedUid(null);
-      return;
-    }
-    setSelectedUid(uid);
+    // Controlled selection: toggle via the URL-backed callback.
+    onSelectChange?.(selectedUid === uid ? undefined : uid);
   };
 
-  const { periodStartAfter, periodType, with: chartWith, size: chartSize } =
-    useMemo(() => chartFetchParams(timeRange, periodMs), [timeRange, periodMs]);
+  const resetZoom = () => onZoomChange?.(undefined, undefined);
+
+  const fetchParams = useMemo(
+    () => chartFetchParams(timeRange, periodMs, zoom),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- zoom is derived from zoomFrom/zoomTo
+    [timeRange, periodMs, zoomFrom, zoomTo],
+  );
+  // periodStartAfter also drives the full-range boundary fallback below.
+  const { periodStartAfter } = fetchParams;
 
   // Derive a chart-specific refetch floor: 30s for hour/day, 5min for
   // week/month. The user just wants the line to move within a minute or two
@@ -466,10 +539,9 @@ export function ResponseTimeChart({
 
   const { data: results, isLoading } = useAllResults(org, {
     checkUid,
-    periodStartAfter,
-    periodType,
-    with: chartWith,
-    size: chartSize,
+    // Spread the full params (incl. periodEndBefore when zoomed) so this query's
+    // key stays identical to the results route's chartWindowParams cache-hit.
+    ...fetchParams,
     refetchInterval: chartRefetchInterval,
   });
 
@@ -485,7 +557,12 @@ export function ResponseTimeChart({
   } = useMemo(() => {
     const hasData = !!results?.data?.length;
 
-    if (!hasData && !fullRange)
+    // A zoom pins the x-domain to the selected window (like full-range does for
+    // the default window), so boundary-clamp and render even with no data in
+    // that window — the user still sees the window and the Reset control.
+    const effectiveFullRange = fullRange || zoom != null;
+
+    if (!hasData && !effectiveFullRange)
       return {
         chartData: [] as ChartPoint[],
         regions: [] as string[],
@@ -542,11 +619,18 @@ export function ResponseTimeChart({
     // only on that region's own line, never bridged by another region's
     // points. Computed unconditionally (cheap relative to the fetch) —
     // only rendered when effectiveRegion === null && regionSet.size > 1.
-    const rangeStartMsForRegions = fullRange
-      ? new Date(periodStartAfter).getTime()
+    // When zoomed, the window is exactly [zoom.from, zoom.to]; otherwise the
+    // full default range is [range start, now]. periodStartAfter already equals
+    // zoom.from's ISO when zoomed, but zoom.to (not `now`) bounds the end.
+    const rangeStartMsForRegions = effectiveFullRange
+      ? zoom
+        ? zoom.from
+        : new Date(periodStartAfter).getTime()
       : 0;
-    const rangeEndMsForRegions = fullRange
-      ? startOfMinute(new Date()).getTime()
+    const rangeEndMsForRegions = effectiveFullRange
+      ? zoom
+        ? zoom.to
+        : startOfMinute(new Date()).getTime()
       : 0;
     const seriesByRegion: Record<string, ChartPoint[]> = {};
     for (const slug of regionSet) {
@@ -554,7 +638,7 @@ export function ResponseTimeChart({
       const key = regionDataKey(slug);
       const built = buildSeriesForRange(
         regionData,
-        fullRange,
+        effectiveFullRange,
         rangeStartMsForRegions,
         rangeEndMsForRegions,
       ).series;
@@ -566,7 +650,7 @@ export function ResponseTimeChart({
       seriesByRegion[slug] = built.map((p) => ({ ...p, [key]: p.durationMs }));
     }
 
-    if (fullRange) {
+    if (effectiveFullRange) {
       const rangeStartMs = rangeStartMsForRegions;
       const rangeEndMs = rangeEndMsForRegions;
       const fullSpan = rangeEndMs - rangeStartMs;
@@ -614,7 +698,9 @@ export function ResponseTimeChart({
       effectiveRegion,
       seriesByRegion,
     };
-  }, [results, fullRange, periodStartAfter, selectedRegion]);
+    // zoomFrom/zoomTo drive the derived `zoom` window used above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results, fullRange, periodStartAfter, selectedRegion, zoomFrom, zoomTo]);
 
   const ticks = useMemo(
     () => computeTicks(domainMin, domainMax, chartData),
@@ -705,6 +791,12 @@ export function ResponseTimeChart({
   // dot/activeDot renderer) sits closest to the click — i.e. the line the
   // user actually clicked on screen.
   const handleChartClick = (state: MouseHandlerDataParam) => {
+    // A drag-to-zoom just finished: recharts still fires this trailing click —
+    // swallow it once so the zoom gesture never also toggles a point selection.
+    if (didZoomRef.current) {
+      didZoomRef.current = false;
+      return;
+    }
     if (isMultiSeries) {
       const label = state?.activeLabel;
       const ts = typeof label === "number" ? label : Number(label);
@@ -725,7 +817,7 @@ export function ResponseTimeChart({
       if (best) {
         handleDotClick(best.uid);
       } else {
-        setSelectedUid(null);
+        onSelectChange?.(undefined);
       }
       return;
     }
@@ -737,15 +829,83 @@ export function ResponseTimeChart({
     if (point?.uid) {
       handleDotClick(point.uid);
     } else {
-      setSelectedUid(null);
+      onSelectChange?.(undefined);
     }
   };
+
+  // ---- Drag-to-select X (time) zoom -------------------------------------
+  // recharts delivers MouseHandlerDataParam (with `activeLabel` = the x-axis ts)
+  // to BOTH the mouse and the touch handlers, so one implementation covers
+  // desktop drag and mobile touch-drag alike.
+  const activeTs = (state: MouseHandlerDataParam): number | null => {
+    const label = state?.activeLabel;
+    const ts = typeof label === "number" ? label : Number(label);
+    return Number.isFinite(ts) ? ts : null;
+  };
+
+  const handleSelectStart = (state: MouseHandlerDataParam) => {
+    didZoomRef.current = false;
+    const ts = activeTs(state);
+    if (ts == null) return;
+    dragStartRef.current = ts;
+    setRefAreaLeft(ts);
+    setRefAreaRight(null);
+  };
+
+  const handleSelectMove = (state: MouseHandlerDataParam) => {
+    if (dragStartRef.current == null) return;
+    const ts = activeTs(state);
+    if (ts == null) return;
+    setRefAreaRight(ts);
+  };
+
+  const handleSelectEnd = () => {
+    const start = dragStartRef.current;
+    const end = refAreaRight;
+    dragStartRef.current = null;
+    setRefAreaLeft(null);
+    setRefAreaRight(null);
+    if (start == null || end == null) return;
+    const from = Math.min(start, end);
+    const to = Math.max(start, end);
+    // Ignore a jittery near-zero drag (treat as a click): require the window to
+    // span at least 1% of the currently-visible domain (floor 1s).
+    const domainSpan = domainMax - domainMin;
+    const minSpan = Math.max(domainSpan * 0.01, 1000);
+    if (to - from < minSpan) return;
+    didZoomRef.current = true;
+    onZoomChange?.(from, to);
+  };
+
+  // Cold deep-link (?graphSelected=…): the pinned box reads the dot anchor from
+  // dotPositions, which only fills in while the dots render. Bump a tick once
+  // the anchor exists so the box re-renders into position. Guarded on the
+  // anchor's presence so this settles in one extra render (no loop).
+  useEffect(() => {
+    if (selectedUid && dotPositions.current[selectedUid]) {
+      bumpAnchorTick((n) => n + 1);
+    }
+  }, [selectedUid, chartData, chartWidth, chartHeight]);
+
+  const zoomed = zoom != null;
 
   return (
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between space-y-0 pb-2">
         <CardTitle>{t("detail.chart.title")}</CardTitle>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          {zoomed && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={resetZoom}
+              className="gap-1 px-2 text-xs"
+              data-testid="response-time-chart-reset-zoom"
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{t("detail.chart.resetZoom")}</span>
+            </Button>
+          )}
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
             <Switch
               checked={fullRange}
@@ -818,9 +978,26 @@ export function ResponseTimeChart({
             {t("detail.chart.noDataAvailable")}
           </div>
         ) : (
-          <div ref={chartWrapperRef} className="relative">
+          <div
+            ref={chartWrapperRef}
+            className="relative select-none"
+            // Double-click anywhere on the chart resets an active zoom.
+            onDoubleClick={() => {
+              if (zoomed) resetZoom();
+            }}
+          >
           <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={isMultiSeries ? undefined : chartData} onClick={handleChartClick}>
+            <AreaChart
+              data={isMultiSeries ? undefined : chartData}
+              onClick={handleChartClick}
+              onMouseDown={handleSelectStart}
+              onMouseMove={handleSelectMove}
+              onMouseUp={handleSelectEnd}
+              onMouseLeave={handleSelectEnd}
+              onTouchStart={handleSelectStart}
+              onTouchMove={handleSelectMove}
+              onTouchEnd={handleSelectEnd}
+            >
               {!isMultiSeries && (
                 <defs>
                   <linearGradient
@@ -994,6 +1171,17 @@ export function ResponseTimeChart({
                     }
                   />
                 ))}
+              {/* In-progress drag-to-zoom selection band. */}
+              {refAreaLeft != null && refAreaRight != null && (
+                <ReferenceArea
+                  x1={Math.min(refAreaLeft, refAreaRight)}
+                  x2={Math.max(refAreaLeft, refAreaRight)}
+                  fill="var(--primary)"
+                  fillOpacity={0.12}
+                  stroke="var(--primary)"
+                  strokeOpacity={0.4}
+                />
+              )}
               {!isMultiSeries && (
               <Area
                 type="monotone"
@@ -1021,7 +1209,13 @@ export function ResponseTimeChart({
                   if (cx == null || cy == null || !payload?.uid) {
                     return <g key={reactKey} />;
                   }
-                  if (!dotsEnabled && !isDownPoint(payload)) {
+                  // Selected point always renders (even in dense views) so its
+                  // anchor is cached for the pinned box on a cold deep-link.
+                  if (
+                    !dotsEnabled &&
+                    !isDownPoint(payload) &&
+                    payload.uid !== selectedUid
+                  ) {
                     return <g key={reactKey} />;
                   }
                   const uid = payload.uid;
@@ -1122,7 +1316,11 @@ export function ResponseTimeChart({
                         if (cx == null || cy == null || !payload?.uid) {
                           return <g key={reactKey} />;
                         }
-                        if (!dotsEnabled && !isDownPoint(payload)) {
+                        if (
+                          !dotsEnabled &&
+                          !isDownPoint(payload) &&
+                          payload.uid !== selectedUid
+                        ) {
                           return <g key={reactKey} />;
                         }
                         const uid = payload.uid;
@@ -1198,10 +1396,15 @@ export function ResponseTimeChart({
               anchor={dotPositions.current[selectedUid]}
               width={chartWidth}
               height={chartHeight}
-              onClose={() => setSelectedUid(null)}
+              onClose={() => onSelectChange?.(undefined)}
             />
           )}
           </div>
+        )}
+        {!isLoading && chartData.length > 0 && (
+          <p className="mt-2 text-center text-xs text-muted-foreground">
+            {zoomed ? t("detail.chart.zoomHintReset") : t("detail.chart.zoomHint")}
+          </p>
         )}
       </CardContent>
     </Card>

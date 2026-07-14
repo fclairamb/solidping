@@ -78,8 +78,25 @@ import { ResponseTimeChart, chartFetchParams, formatMs } from "@/components/chec
 import { AvailabilityTable } from "@/components/checks/availability-table";
 import { DependenciesCard } from "@/components/checks/dependencies-card";
 
+/**
+ * Check-detail search schema. `graphFrom` / `graphTo` / `graphSelected` are
+ * declared **optional** so the ~20 existing literal navigations to this route
+ * (which pass only the original four keys) keep compiling — omitting an
+ * optional key is legal, whereas a required key would force every call site to
+ * add all three.
+ */
+interface CheckDetailSearch {
+  graphPeriod?: "hour" | "day" | "week" | "month";
+  graphFull?: true;
+  graphRegion?: string;
+  resultsRegion?: string;
+  graphFrom?: number;
+  graphTo?: number;
+  graphSelected?: string;
+}
+
 export const Route = createFileRoute("/orgs/$org/checks/$checkUid/")({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): CheckDetailSearch => ({
     graphPeriod: (["hour", "day", "week", "month"].includes(search.graphPeriod as string)
       ? search.graphPeriod
       : undefined) as "hour" | "day" | "week" | "month" | undefined,
@@ -98,9 +115,33 @@ export const Route = createFileRoute("/orgs/$org/checks/$checkUid/")({
     // follow-up, not assumed here (see spec 2026-07-05-13).
     resultsRegion:
       typeof search.resultsRegion === "string" ? search.resultsRegion : undefined,
+    // Drag-to-zoom X (time) window, epoch-ms. Maps onto the results endpoint's
+    // periodStartAfter/periodEndBefore so a shared link fetches just this
+    // window. Coerced to a finite number; anything else → undefined (full
+    // default range). The chart treats the zoom as active only when from < to.
+    graphFrom: coerceEpochMs(search.graphFrom),
+    graphTo: coerceEpochMs(search.graphTo),
+    // The currently-highlighted result (its pinned detail box); persisted so a
+    // shared link reproduces the selection.
+    graphSelected:
+      typeof search.graphSelected === "string" && search.graphSelected !== ""
+        ? search.graphSelected
+        : undefined,
   }),
   component: CheckDetailPage,
 });
+
+/** Coerce a search value to a finite epoch-ms number, else undefined. The
+ * TanStack default parser already turns a bare numeric query value into a
+ * number, but tolerate a string form too for hand-edited/deep-linked URLs. */
+function coerceEpochMs(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value !== "") {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
+}
 
 function formatDuration(ms: number): string {
   const seconds = Math.floor(ms / 1000);
@@ -401,7 +442,8 @@ function EmailEndpoint({ check }: { check: { config?: Record<string, unknown> } 
 function CheckDetailPage() {
   const { t } = useTranslation(["checks", "common"]);
   const { org, checkUid } = Route.useParams();
-  const { graphPeriod, graphFull, graphRegion, resultsRegion } = Route.useSearch();
+  const { graphPeriod, graphFull, graphRegion, resultsRegion, graphFrom, graphTo, graphSelected } =
+    Route.useSearch();
   const navigate = useNavigate();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editingSlug, setEditingSlug] = useState(false);
@@ -472,9 +514,18 @@ function CheckDetailPage() {
   // tier-aware duration stats strip, both scoped to the chart's current
   // graphPeriod window — one page, one time window, per the spec.
   const graphTimeRange = graphPeriod ?? "day";
+  // A zoom is active only for a well-formed forward window; when set, the same
+  // window is fed to chartFetchParams here as in the chart, keeping this a
+  // react-query cache hit (identical key) rather than a second HTTP request.
+  const graphZoom =
+    graphFrom != null && graphTo != null && graphTo > graphFrom
+      ? { from: graphFrom, to: graphTo }
+      : undefined;
   const chartWindowParams = useMemo(
-    () => chartFetchParams(graphTimeRange, periodMs),
-    [graphTimeRange, periodMs],
+    () => chartFetchParams(graphTimeRange, periodMs, graphZoom),
+    // graphZoom is derived from graphFrom/graphTo (already deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [graphTimeRange, periodMs, graphFrom, graphTo],
   );
   const { data: chartWindowResults } = useAllResults(org, {
     checkUid,
@@ -551,6 +602,9 @@ function CheckDetailPage() {
           graphFull: undefined,
           graphRegion: undefined,
           resultsRegion: undefined,
+          graphFrom: undefined,
+          graphTo: undefined,
+          graphSelected: undefined,
         },
         replace: true,
       });
@@ -700,6 +754,9 @@ function CheckDetailPage() {
                       graphFull: undefined,
                       graphRegion: undefined,
                       resultsRegion: undefined,
+                      graphFrom: undefined,
+                      graphTo: undefined,
+                      graphSelected: undefined,
                     }}
                     className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
                   >
@@ -757,6 +814,9 @@ function CheckDetailPage() {
                       graphFull: undefined,
                       graphRegion: undefined,
                       resultsRegion: undefined,
+                      graphFrom: undefined,
+                      graphTo: undefined,
+                      graphSelected: undefined,
                     }}
                     className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
                   >
@@ -930,18 +990,54 @@ function CheckDetailPage() {
         initialPeriod={graphPeriod}
         initialFullRange={graphFull}
         initialRegion={graphRegion}
+        zoomFrom={graphFrom}
+        zoomTo={graphTo}
+        selectedUid={graphSelected}
         onSettingsChange={(period, full, region) =>
           navigate({
             to: ".",
             // Functional form so the independent resultsRegion param (Recent
             // Results' own filter) survives chart period/range/region changes
             // instead of being wiped by this literal-object search.
+            search: (prev) => {
+              const nextPeriod = period !== "day" ? period : undefined;
+              // Changing the time range invalidates the zoom window (and its
+              // selected point), which belongs to the previous range's context.
+              const periodChanged = nextPeriod !== prev.graphPeriod;
+              return {
+                ...prev,
+                graphPeriod: nextPeriod,
+                graphFull: full ? true : undefined,
+                graphRegion: region ?? undefined,
+                ...(periodChanged
+                  ? {
+                      graphFrom: undefined,
+                      graphTo: undefined,
+                      graphSelected: undefined,
+                    }
+                  : {}),
+              };
+            },
+            replace: true,
+          })
+        }
+        onZoomChange={(from, to) =>
+          navigate({
+            to: ".",
             search: (prev) => ({
               ...prev,
-              graphPeriod: period !== "day" ? period : undefined,
-              graphFull: full ? true : undefined,
-              graphRegion: region ?? undefined,
+              graphFrom: from,
+              graphTo: to,
+              // Reset (from/to cleared) also clears the selected point (spec §4).
+              ...(from == null || to == null ? { graphSelected: undefined } : {}),
             }),
+            replace: true,
+          })
+        }
+        onSelectChange={(uid) =>
+          navigate({
+            to: ".",
+            search: (prev) => ({ ...prev, graphSelected: uid }),
             replace: true,
           })
         }
