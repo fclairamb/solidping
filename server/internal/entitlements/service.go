@@ -16,12 +16,12 @@ import (
 // Errors returned by the entitlements service.
 var (
 	// ErrEntitlementExceeded is returned when a request would breach a
-	// numeric quota (MaxSSOUsers / MaxChecksPerMinute).
+	// numeric quota (MaxUsers / MaxChecksPerMinute).
 	ErrEntitlementExceeded = errors.New("entitlement exceeded")
 )
 
 // QuotaError carries the precise numbers a frontend needs to render a
-// "you're at 30/30 SSO users" message. Returned from CheckSSOMembership
+// "you're at 30/30 users" message. Returned from CheckMembership
 // and ReserveCheckExecution.
 type QuotaError struct {
 	LimitName    string
@@ -41,7 +41,7 @@ func (e *QuotaError) Error() string {
 func (e *QuotaError) Unwrap() error { return ErrEntitlementExceeded }
 
 // Service exposes Resolve / Set, plus the two enforcement methods
-// CheckSSOMembership and ReserveCheckExecution. The token bucket used
+// CheckMembership and ReserveCheckExecution. The token bucket used
 // by ReserveCheckExecution is process-local — multi-replica
 // deployments need a shared store (Redis / PG advisory) which is a
 // follow-up.
@@ -174,34 +174,34 @@ func (s *Service) denormalizePlanWeight(ctx context.Context, orgUID string, sour
 	}
 }
 
-// CheckSSOMembership returns ErrEntitlementExceeded (wrapped in
-// QuotaError) when the org has reached its MaxSSOUsers quota. Counts
-// distinct organization members linked to any user_providers row.
-// nil cap = unlimited.
+// CheckMembership returns ErrEntitlementExceeded (wrapped in
+// QuotaError) when the org has reached its MaxUsers quota. Counts every
+// organization member regardless of how they joined (SSO, invitation,
+// email). nil cap = unlimited.
 //
 // Race window: the count + caller's insert are not atomic, so a tight
 // race may slip a 31st user in. Acceptable for a 30-seat self-hosted
 // guard; tighten with a transactional lock if it ever matters.
-func (s *Service) CheckSSOMembership(ctx context.Context, orgUID string) error {
+func (s *Service) CheckMembership(ctx context.Context, orgUID string) error {
 	resolved, err := s.Resolve(ctx, orgUID)
 	if err != nil {
 		return fmt.Errorf("resolve entitlements: %w", err)
 	}
 
-	if resolved.Limits.MaxSSOUsers == nil {
+	if resolved.Limits.MaxUsers == nil {
 		return nil
 	}
 
-	limit := *resolved.Limits.MaxSSOUsers
+	limit := *resolved.Limits.MaxUsers
 
-	count, err := s.db.CountSSOMembersForOrg(ctx, orgUID)
+	count, err := s.db.CountMembersForOrg(ctx, orgUID)
 	if err != nil {
-		return fmt.Errorf("count sso members: %w", err)
+		return fmt.Errorf("count members: %w", err)
 	}
 
 	if count >= limit {
 		return &QuotaError{
-			LimitName:    "MaxSSOUsers",
+			LimitName:    "MaxUsers",
 			Limit:        limit,
 			CurrentUsage: count,
 		}
@@ -342,8 +342,8 @@ func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	if limits.MaxChecks != nil {
 		out.Limits.MaxChecks = limits.MaxChecks
 	}
-	if limits.MaxSSOUsers != nil {
-		out.Limits.MaxSSOUsers = limits.MaxSSOUsers
+	if limits.MaxUsers != nil {
+		out.Limits.MaxUsers = limits.MaxUsers
 	}
 	if limits.MaxChecksPerMinute != nil {
 		out.Limits.MaxChecksPerMinute = limits.MaxChecksPerMinute

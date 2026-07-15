@@ -181,8 +181,10 @@ func (h *Handler) write(writer http.ResponseWriter, req bunrouter.Request, parti
 	dec.DisallowUnknownFields()
 	if decErr := dec.Decode(&input); decErr != nil {
 		// DisallowUnknownFields rejects keys outside the modeled limits
-		// (maxChecks / maxSsoUsers / maxChecksPerMinute) so typos surface
-		// loudly instead of silently no-op-ing.
+		// (maxChecks / maxUsers / maxChecksPerMinute; maxSsoUsers is
+		// accepted as a deprecated alias for maxUsers) so typos surface
+		// loudly instead of silently no-op-ing. Sending both maxUsers and
+		// maxSsoUsers is likewise rejected (ErrConflictingUserLimitKeys).
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
 			{Name: "body", Message: decErr.Error()},
 		})
@@ -303,8 +305,8 @@ func overlayLimits(dst *entcore.Limits, src entcore.Limits) {
 	if src.MaxChecks != nil {
 		dst.MaxChecks = src.MaxChecks
 	}
-	if src.MaxSSOUsers != nil {
-		dst.MaxSSOUsers = src.MaxSSOUsers
+	if src.MaxUsers != nil {
+		dst.MaxUsers = src.MaxUsers
 	}
 	if src.MaxChecksPerMinute != nil {
 		dst.MaxChecksPerMinute = src.MaxChecksPerMinute

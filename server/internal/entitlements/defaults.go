@@ -2,8 +2,8 @@
 //
 // The OSS knows nothing about plan SKUs, prices, trials, or invoices —
 // those live in a separate billing service. This package stores raw
-// numbers, exposes them via HTTP, and enforces them at the SSO callback
-// (MaxSSOUsers) and at the worker dispatch (MaxChecksPerMinute).
+// numbers, exposes them via HTTP, and enforces them at every membership-
+// creation path (MaxUsers) and at the worker dispatch (MaxChecksPerMinute).
 //
 // nil = unlimited. Defaults vary by deployment mode; everything else is
 // unbounded.
@@ -62,10 +62,10 @@ func Int(i int) *int { return &i }
 // The SaaS numbers implement the Free tier of the pricing decision of
 // 2026-07-12 (Free €0: 100 checks, 6 checks/min, 5 seats).
 const (
-	defaultMaxSSOUsersSelfHosted  = 30
+	defaultMaxUsersSelfHosted     = 30
 	defaultMaxChecksSaaS          = 100
 	defaultMaxChecksPerMinuteSaaS = 6
-	defaultMaxSSOUsersSaaS        = 5
+	defaultMaxUsersSaaS           = 5
 )
 
 // Display identity shown on the usage page when a row has none of its
@@ -84,7 +84,7 @@ func strPtr(s string) *string { return &s }
 
 // DefaultsFor returns the in-memory seed for a fresh org under the
 // given deployment mode. SaaS caps mirror the billing Free plan
-// (checks + aggregate check rate); self-hosted caps SSO seats.
+// (checks + aggregate check rate); self-hosted caps total members.
 // Anything else is nil = unlimited.
 //
 // Unknown modes log a warning and fall back to self-hosted defaults
@@ -97,7 +97,7 @@ func DefaultsFor(mode string) Entitlements {
 			Limits: Limits{
 				MaxChecks:          Int(defaultMaxChecksSaaS),
 				MaxChecksPerMinute: Int(defaultMaxChecksPerMinuteSaaS),
-				MaxSSOUsers:        Int(defaultMaxSSOUsersSaaS),
+				MaxUsers:           Int(defaultMaxUsersSaaS),
 			},
 			Source:       models.EntitlementSourceDefault,
 			DisplayName:  strPtr(displayNameSaaS),
@@ -106,7 +106,7 @@ func DefaultsFor(mode string) Entitlements {
 	case config.DeploymentModeSelfHosted:
 		return Entitlements{
 			Limits: Limits{
-				MaxSSOUsers: Int(defaultMaxSSOUsersSelfHosted),
+				MaxUsers: Int(defaultMaxUsersSelfHosted),
 			},
 			Source:       models.EntitlementSourceDefault,
 			DisplayName:  strPtr(displayNameSelfHosted),
@@ -118,7 +118,7 @@ func DefaultsFor(mode string) Entitlements {
 
 		return Entitlements{
 			Limits: Limits{
-				MaxSSOUsers: Int(defaultMaxSSOUsersSelfHosted),
+				MaxUsers: Int(defaultMaxUsersSelfHosted),
 			},
 			Source:       models.EntitlementSourceDefault,
 			DisplayName:  strPtr(displayNameSelfHosted),
