@@ -110,7 +110,7 @@ import (
 
 const (
 	// embeddedPostgresPort is the default port for embedded PostgreSQL.
-	embeddedPostgresPort = 5434
+	embeddedPostgresPort = 5433
 
 	// Content type constants for static file serving.
 	contentTypeCSS  = "text/css"
