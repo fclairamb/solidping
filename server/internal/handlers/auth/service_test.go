@@ -891,6 +891,51 @@ func TestStateEntryUpsertWithNullOrg(t *testing.T) {
 	r.InEpsilon(2.0, (*got.Value)["count"], 0.0001)
 }
 
+// TestAcceptInviteEnforcesMaxUsers verifies invitation acceptance honors the
+// MaxUsers seat cap: when the entitlements checker rejects, the invite fails
+// and no membership is created.
+func TestAcceptInviteEnforcesMaxUsers(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, dbSvc, ctx := setupAuthTestServiceWithConfig(t, "http://127.0.0.1:4000")
+
+	// Force the seat cap to reject the next join.
+	svc.entitlements = &stubEntitlementsChecker{err: errSSOQuotaTest}
+
+	org := models.NewOrganization("capped", "Capped Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	inviter := models.NewUser("inviter@example.com")
+	r.NoError(dbSvc.CreateUser(ctx, inviter))
+	r.NoError(dbSvc.CreateOrganizationMember(ctx,
+		models.NewOrganizationMember(org.UID, inviter.UID, models.MemberRoleAdmin)))
+
+	// Pre-create the invitee so AcceptInvite reaches the membership-creation
+	// branch (where the cap is enforced) rather than the new-user path.
+	invitee := models.NewUser("invitee@example.com")
+	inviteeHash, hashErr := passwords.Hash("solidpass1234")
+	r.NoError(hashErr)
+	invitee.PasswordHash = &inviteeHash
+	r.NoError(dbSvc.CreateUser(ctx, invitee))
+
+	resp, err := svc.CreateInvitation(ctx, "capped", inviter.UID, InviteRequest{
+		Email:     "invitee@example.com",
+		Role:      "user",
+		ExpiresIn: "24h",
+		App:       "dash0",
+	})
+	r.NoError(err)
+
+	_, err = svc.AcceptInvite(ctx, AcceptInviteRequest{Token: resp.Token})
+	r.Error(err, "invite acceptance must fail when the org is at its seat cap")
+	r.ErrorIs(err, errSSOQuotaTest)
+
+	// The invitee must NOT have become a member of the capped org.
+	_, memErr := dbSvc.GetMemberByUserAndOrg(ctx, invitee.UID, org.UID)
+	r.Error(memErr, "no membership must be created when the cap rejects")
+}
+
 func TestAcceptInviteReturnsOrganizations(t *testing.T) {
 	t.Parallel()
 

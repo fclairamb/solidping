@@ -174,6 +174,75 @@ func TestPutAcceptsMaxChecks(t *testing.T) {
 	r.Equal(7, *body.Limits.MaxChecks)
 }
 
+// putMaxUsers PUTs a limits body and returns the recorder. rawLimits is the
+// raw limits object so tests can send the deprecated alias or both keys.
+func (h *entHandlerSetup) putLimits(t *testing.T, rawLimits map[string]any) *httptest.ResponseRecorder {
+	t.Helper()
+
+	return h.do(t, http.MethodPut, h.path(), map[string]any{
+		"source": string(models.EntitlementSourceAdmin),
+		"limits": rawLimits,
+	})
+}
+
+func readMaxUsers(t *testing.T, body []byte) *int {
+	t.Helper()
+
+	var parsed struct {
+		Limits struct {
+			MaxUsers *int `json:"maxUsers"`
+		} `json:"limits"`
+	}
+	require.NoError(t, json.Unmarshal(body, &parsed))
+
+	return parsed.Limits.MaxUsers
+}
+
+func TestPutAcceptsMaxUsers(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	h := newEntHandlerSetup(t)
+
+	rec := h.putLimits(t, map[string]any{"maxUsers": 11})
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+	getRec := h.do(t, http.MethodGet, h.path(), nil)
+	got := readMaxUsers(t, getRec.Body.Bytes())
+	r.NotNil(got)
+	r.Equal(11, *got)
+	// Response must never carry the deprecated key.
+	r.NotContains(getRec.Body.String(), "maxSsoUsers")
+}
+
+// TestPutAcceptsMaxSsoUsersAlias exercises the decode-only alias that keeps
+// already-deployed billing services working during the transition.
+func TestPutAcceptsMaxSsoUsersAlias(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	h := newEntHandlerSetup(t)
+
+	rec := h.putLimits(t, map[string]any{"maxSsoUsers": 8})
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+	getRec := h.do(t, http.MethodGet, h.path(), nil)
+	got := readMaxUsers(t, getRec.Body.Bytes())
+	r.NotNil(got)
+	r.Equal(8, *got)
+}
+
+// TestPutRejectsBothUserKeys verifies sending both maxUsers and the deprecated
+// maxSsoUsers alias is rejected as a client validation error (the decode error
+// flows through WriteValidationError → 422).
+func TestPutRejectsBothUserKeys(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	h := newEntHandlerSetup(t)
+
+	rec := h.putLimits(t, map[string]any{"maxUsers": 5, "maxSsoUsers": 5})
+	r.Equal(http.StatusUnprocessableEntity, rec.Code, rec.Body.String())
+	r.Contains(rec.Body.String(), "mutually exclusive")
+}
+
 // getUpgradeURL extracts the upgradeUrl field from a GET response.
 func getUpgradeURL(t *testing.T, rec *httptest.ResponseRecorder) (string, bool) {
 	t.Helper()
