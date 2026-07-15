@@ -168,30 +168,21 @@ func (m *AuthMiddleware) RequireOrgAccess(next bunrouter.HandlerFunc) bunrouter.
 				writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 		}
 
-		// Super admins can access any organization
-		if !claims.IsSuperAdmin() {
-			// Verify the org in the token matches the request
-			if claims.OrgSlug != orgSlug {
-				return m.WriteError(
-					writer, http.StatusForbidden, base.ErrorCodeForbidden, "Access to this organization is denied")
-			}
-		}
-
-		// Load organization
-		org, err := m.dbService.GetOrganizationBySlug(req.Context(), orgSlug)
-		if err != nil {
-			return m.WriteErrorErr(
-				writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
-		}
-
-		// For super admins accessing different org, verify membership exists or allow super admin access
-		if !claims.IsSuperAdmin() && !user.SuperAdmin {
-			// Check membership for regular users
-			_, memberErr := m.dbService.GetMemberByUserAndOrg(req.Context(), user.UID, org.UID)
-			if memberErr != nil {
-				return m.WriteError(
-					writer, http.StatusForbidden, base.ErrorCodeForbidden, "Access to this organization is denied")
-			}
+		// Delegate the actual rule to the shared authorizer so REST and the
+		// realtime WS handshake can never diverge (spec 2026-07-15-01).
+		org, denial := auth.AuthorizeOrgAccess(req.Context(), m.dbService, claims, user, orgSlug)
+		switch denial {
+		case auth.OrgAccessGranted:
+			// fall through
+		case auth.OrgAccessOrgNotFound:
+			return m.WriteError(
+				writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
+		case auth.OrgAccessDenied:
+			return m.WriteError(
+				writer, http.StatusForbidden, base.ErrorCodeForbidden, "Access to this organization is denied")
+		default:
+			return m.WriteError(
+				writer, http.StatusForbidden, base.ErrorCodeForbidden, "Access to this organization is denied")
 		}
 
 		// Add organization to context
