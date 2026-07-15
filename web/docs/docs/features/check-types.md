@@ -733,6 +733,50 @@ curl -X POST -H "Authorization: Bearer <TOKEN>" \
   "https://your-solidping.example.com/api/v1/heartbeat/default/my-cron-job"
 ```
 
+#### Monitoring GitHub Actions
+
+Your nightly workflow can stop running and nobody notices. GitHub already
+emails you when a workflow *fails*, but it has no way to tell you a scheduled
+workflow never *ran* at all — and GitHub **auto-disables scheduled workflows
+after 60 days of repository inactivity**, silently. A broken cron expression,
+a renamed default branch, or a deleted secret can just as easily stop a
+schedule from firing, with zero notifications either way. This is exactly the
+gap a heartbeat check closes: `period` + `grace` is an assertion about
+*absence* — "if no ping arrives in time, open an incident" — which no
+notify-on-failure system can make.
+
+[`fclairamb/solidping-action`](https://github.com/fclairamb/solidping-action)
+wraps the ping in one step, mapping the job's outcome to the right heartbeat
+status and building an actionable message (run URL, workflow name, run
+number, commit SHA, actor) from the `github` context:
+
+```yaml
+- uses: fclairamb/solidping-action@v1
+  if: always()
+  with:
+    org: acme
+    check: nightly-backup
+    token: ${{ secrets.SOLIDPING_HEARTBEAT_TOKEN }}
+    status: ${{ job.status }}
+```
+
+`status` should always be `${{ job.status }}`; the action maps it to
+SolidPing's vocabulary:
+
+| `job.status` | Heartbeat status |
+|---|---|
+| `success` | `up` |
+| `failure` | `down` |
+| `cancelled` | no ping sent |
+| anything else | `error` |
+
+This is for **`on: schedule` workflows only** — not push-triggered CI. A
+heartbeat's `period` is meaningful for a cron job that's expected to run
+every N minutes; a push-triggered job has no period, so a quiet repo with no
+pushes for a few days would trip the grace window and page someone for
+nothing. Reporting push-triggered CI failures is a different, useful feature,
+but it isn't this one.
+
 ### JavaScript
 
 Custom monitoring scripts with arbitrary logic. Write JavaScript code that runs on each check cycle.
