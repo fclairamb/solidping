@@ -28,7 +28,7 @@
     "plan": "Aktueller Tarif",
     "checks": "Prüfungen",
     "checksPerMinute": "Prüfungen pro Minute",
-    "ssoUsers": "SSO-Benutzer",
+    "users": "Benutzer",
     "unlimited": "Unbegrenzt",
     "upgrade": "Upgrade",
     "loadError": "Nutzung konnte nicht geladen werden."

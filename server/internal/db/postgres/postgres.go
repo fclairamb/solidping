@@ -4567,16 +4567,15 @@ func (s *Service) ListOrgEntitlementAudits(
 	return rows, nil
 }
 
-// CountSSOMembersForOrg counts org members linked to at least one
-// user_providers row. Used by the entitlements service to enforce
-// MaxSSOUsers at the OAuth callback.
-func (s *Service) CountSSOMembersForOrg(ctx context.Context, orgUID string) (int, error) {
+// CountMembersForOrg counts every organization member, regardless of how
+// they joined (SSO, invitation, email). Used by the entitlements service
+// to enforce MaxUsers at every membership-creation path.
+func (s *Service) CountMembersForOrg(ctx context.Context, orgUID string) (int, error) {
 	var count int
 
 	err := s.db.NewSelect().
 		Table("organization_members").
 		ColumnExpr("COUNT(DISTINCT organization_members.user_uid)").
-		Join("JOIN user_providers ON user_providers.user_uid = organization_members.user_uid").
 		Where("organization_members.organization_uid = ?", orgUID).
 		Scan(ctx, &count)
 

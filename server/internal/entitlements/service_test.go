@@ -36,8 +36,8 @@ func TestDefaultsForSelfHosted(t *testing.T) {
 	r := require.New(t)
 
 	defaults := entitlements.DefaultsFor(config.DeploymentModeSelfHosted)
-	r.NotNil(defaults.Limits.MaxSSOUsers)
-	r.Equal(30, *defaults.Limits.MaxSSOUsers)
+	r.NotNil(defaults.Limits.MaxUsers)
+	r.Equal(30, *defaults.Limits.MaxUsers)
 	r.Nil(defaults.Limits.MaxChecksPerMinute)
 	r.Nil(defaults.Limits.MaxChecks)
 	r.NotNil(defaults.DisplayName)
@@ -51,8 +51,8 @@ func TestDefaultsForSaaS(t *testing.T) {
 	defaults := entitlements.DefaultsFor(config.DeploymentModeSaaS)
 	// Aligned with the billing Free plan (pricing decision 2026-07-12:
 	// 100 checks, 6 checks/min, 5 seats).
-	r.NotNil(defaults.Limits.MaxSSOUsers)
-	r.Equal(5, *defaults.Limits.MaxSSOUsers)
+	r.NotNil(defaults.Limits.MaxUsers)
+	r.Equal(5, *defaults.Limits.MaxUsers)
 	r.NotNil(defaults.Limits.MaxChecksPerMinute)
 	r.Equal(6, *defaults.Limits.MaxChecksPerMinute)
 	r.NotNil(defaults.Limits.MaxChecks)
@@ -68,8 +68,8 @@ func TestDefaultsForUnknownFallsBackToSelfHosted(t *testing.T) {
 	r := require.New(t)
 
 	defaults := entitlements.DefaultsFor("nope")
-	r.NotNil(defaults.Limits.MaxSSOUsers)
-	r.Equal(30, *defaults.Limits.MaxSSOUsers)
+	r.NotNil(defaults.Limits.MaxUsers)
+	r.Equal(30, *defaults.Limits.MaxUsers)
 	r.NotNil(defaults.DisplayName)
 	r.Equal("Self-hosted", *defaults.DisplayName)
 }
@@ -83,9 +83,9 @@ func TestResolveDefaultsWhenNoRow(t *testing.T) {
 	r.NoError(err)
 	r.Equal(models.EntitlementSourceDefault, resolved.Source)
 	r.False(resolved.Stale)
-	// Self-hosted defaults: MaxSSOUsers=30, MaxChecksPerMinute nil.
-	r.NotNil(resolved.Limits.MaxSSOUsers)
-	r.Equal(30, *resolved.Limits.MaxSSOUsers)
+	// Self-hosted defaults: MaxUsers=30, MaxChecksPerMinute nil.
+	r.NotNil(resolved.Limits.MaxUsers)
+	r.Equal(30, *resolved.Limits.MaxUsers)
 	r.Nil(resolved.Limits.MaxChecksPerMinute)
 	// No row at all still inherits the default display identity.
 	r.NotNil(resolved.DisplayName)
@@ -113,8 +113,8 @@ func TestResolveSaaSDefaultsWhenNoRow(t *testing.T) {
 	r.Equal(100, *resolved.Limits.MaxChecks)
 	r.NotNil(resolved.Limits.MaxChecksPerMinute)
 	r.Equal(6, *resolved.Limits.MaxChecksPerMinute)
-	r.NotNil(resolved.Limits.MaxSSOUsers)
-	r.Equal(5, *resolved.Limits.MaxSSOUsers)
+	r.NotNil(resolved.Limits.MaxUsers)
+	r.Equal(5, *resolved.Limits.MaxUsers)
 	r.NotNil(resolved.DisplayName)
 	r.Equal("Free", *resolved.DisplayName)
 	r.NotNil(resolved.DisplayEmoji)
@@ -138,9 +138,9 @@ func TestSetMergesWithDefaults(t *testing.T) {
 	r.Equal(models.EntitlementSourceBilling, resolved.Source)
 	r.NotNil(resolved.Limits.MaxChecksPerMinute)
 	r.Equal(12, *resolved.Limits.MaxChecksPerMinute)
-	// Default MaxSSOUsers still surfaces for unset fields.
-	r.NotNil(resolved.Limits.MaxSSOUsers)
-	r.Equal(30, *resolved.Limits.MaxSSOUsers)
+	// Default MaxUsers still surfaces for unset fields.
+	r.NotNil(resolved.Limits.MaxUsers)
+	r.Equal(30, *resolved.Limits.MaxUsers)
 	// A row that never set a display identity inherits the default one.
 	r.NotNil(resolved.DisplayName)
 	r.Equal("Self-hosted", *resolved.DisplayName)
@@ -174,12 +174,12 @@ func TestSetWritesAuditRow(t *testing.T) {
 	svc, org, dbSvc := setup(t)
 
 	r.NoError(svc.Set(t.Context(), org.UID, entitlements.Entitlements{
-		Limits: entitlements.Limits{MaxSSOUsers: entitlements.Int(10)},
+		Limits: entitlements.Limits{MaxUsers: entitlements.Int(10)},
 		Source: models.EntitlementSourceBilling,
 	}, "actor-1", "stripe.event.123"))
 
 	r.NoError(svc.Set(t.Context(), org.UID, entitlements.Entitlements{
-		Limits: entitlements.Limits{MaxSSOUsers: entitlements.Int(20)},
+		Limits: entitlements.Limits{MaxUsers: entitlements.Int(20)},
 		Source: models.EntitlementSourceBilling,
 	}, "actor-2", "stripe.event.456"))
 
@@ -222,7 +222,7 @@ func TestStaleFallsBackToDefaults(t *testing.T) {
 
 	old := time.Now().Add(-72 * time.Hour)
 	r.NoError(svc.Set(ctx, org.UID, entitlements.Entitlements{
-		Limits:       entitlements.Limits{MaxSSOUsers: entitlements.Int(3)},
+		Limits:       entitlements.Limits{MaxUsers: entitlements.Int(3)},
 		Source:       models.EntitlementSourceBilling,
 		LastSyncedAt: &old,
 	}, "service:entitlements", ""))
@@ -230,9 +230,9 @@ func TestStaleFallsBackToDefaults(t *testing.T) {
 	resolved, err := svc.Resolve(ctx, org.UID)
 	r.NoError(err)
 	r.True(resolved.Stale)
-	// MaxSSOUsers reverts to default (30) since stale.
-	r.NotNil(resolved.Limits.MaxSSOUsers)
-	r.Equal(30, *resolved.Limits.MaxSSOUsers)
+	// MaxUsers reverts to default (30) since stale.
+	r.NotNil(resolved.Limits.MaxUsers)
+	r.Equal(30, *resolved.Limits.MaxUsers)
 }
 
 func TestStaleDoesNotApplyToAdminOverride(t *testing.T) {
@@ -255,7 +255,7 @@ func TestStaleDoesNotApplyToAdminOverride(t *testing.T) {
 
 	old := time.Now().Add(-72 * time.Hour)
 	r.NoError(svc.Set(ctx, org.UID, entitlements.Entitlements{
-		Limits:       entitlements.Limits{MaxSSOUsers: entitlements.Int(7)},
+		Limits:       entitlements.Limits{MaxUsers: entitlements.Int(7)},
 		Source:       models.EntitlementSourceAdmin,
 		LastSyncedAt: &old,
 	}, "user:abc", ""))
@@ -263,13 +263,13 @@ func TestStaleDoesNotApplyToAdminOverride(t *testing.T) {
 	resolved, err := svc.Resolve(ctx, org.UID)
 	r.NoError(err)
 	r.False(resolved.Stale)
-	r.NotNil(resolved.Limits.MaxSSOUsers)
-	r.Equal(7, *resolved.Limits.MaxSSOUsers)
+	r.NotNil(resolved.Limits.MaxUsers)
+	r.Equal(7, *resolved.Limits.MaxUsers)
 }
 
-// TestCheckSSOMembershipUnlimitedWhenNil exercises the no-cap path
-// (a SaaS org by default, where MaxSSOUsers is nil).
-func TestCheckSSOMembershipUnlimitedWhenNil(t *testing.T) {
+// TestCheckMembershipUnlimitedWhenNil exercises the no-cap path
+// (a SaaS org by default, where MaxUsers is nil).
+func TestCheckMembershipUnlimitedWhenNil(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	ctx := t.Context()
@@ -283,10 +283,10 @@ func TestCheckSSOMembershipUnlimitedWhenNil(t *testing.T) {
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
 	svc := entitlements.NewService(dbSvc, entitlements.DefaultsFor(config.DeploymentModeSaaS), 0)
-	r.NoError(svc.CheckSSOMembership(ctx, org.UID))
+	r.NoError(svc.CheckMembership(ctx, org.UID))
 }
 
-func TestCheckSSOMembershipBlocksAtCap(t *testing.T) {
+func TestCheckMembershipBlocksAtCap(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	ctx := t.Context()
@@ -294,30 +294,29 @@ func TestCheckSSOMembershipBlocksAtCap(t *testing.T) {
 
 	// Lower the cap to 2 for a fast test.
 	r.NoError(svc.Set(ctx, org.UID, entitlements.Entitlements{
-		Limits: entitlements.Limits{MaxSSOUsers: entitlements.Int(2)},
+		Limits: entitlements.Limits{MaxUsers: entitlements.Int(2)},
 		Source: models.EntitlementSourceAdmin,
 	}, "user:tester", ""))
 
-	// Seed two SSO-linked members.
+	// Seed two members WITHOUT any user_providers row. The cap now counts
+	// every member regardless of how they joined (SSO, invitation, email),
+	// so provider-less members must still count.
 	for _, label := range []string{"alice", "bob"} {
 		user := models.NewUser(label + "@example.com")
 		r.NoError(dbSvc.CreateUser(ctx, user))
 
 		member := models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleUser)
 		r.NoError(dbSvc.CreateOrganizationMember(ctx, member))
-
-		provider := models.NewUserProvider(user.UID, models.ProviderTypeGoogle, label+"-sub")
-		r.NoError(dbSvc.CreateUserProvider(ctx, provider))
 	}
 
 	// Cap reached: third call must fail.
-	err := svc.CheckSSOMembership(ctx, org.UID)
+	err := svc.CheckMembership(ctx, org.UID)
 	r.Error(err)
 	r.ErrorIs(err, entitlements.ErrEntitlementExceeded)
 
 	var quotaErr *entitlements.QuotaError
 	r.ErrorAs(err, &quotaErr)
-	r.Equal("MaxSSOUsers", quotaErr.LimitName)
+	r.Equal("MaxUsers", quotaErr.LimitName)
 	r.Equal(2, quotaErr.Limit)
 	r.Equal(2, quotaErr.CurrentUsage)
 }
@@ -556,7 +555,7 @@ func TestPayloadRoundTrip(t *testing.T) {
 
 	in := entitlements.Entitlements{
 		Limits: entitlements.Limits{
-			MaxSSOUsers:        entitlements.Int(50),
+			MaxUsers:           entitlements.Int(50),
 			MaxChecksPerMinute: entitlements.Int(120),
 		},
 		Source:       models.EntitlementSourceBilling,

@@ -136,12 +136,19 @@ function ResultDetailPage() {
   const isAggregate = data.periodType && data.periodType !== "raw";
 
   // Caller metadata (heartbeat checks) gets its own "Caller" card below —
-  // strip those keys from the raw Output dump so nothing is duplicated.
-  const { userAgent, remoteAddr, httpMethod, ...remainingOutput } = data.output ?? {};
+  // strip those keys from the raw Output dump so nothing is duplicated. The
+  // heartbeat "data" key (caller-supplied structured body, server-observed
+  // fields deliberately excluded — see heartbeat/service.go) gets its own
+  // "Data" card and is stripped from the raw dump too.
+  const { userAgent, remoteAddr, httpMethod, data: heartbeatData, ...remainingOutput } = data.output ?? {};
   const callerUserAgent = typeof userAgent === "string" && userAgent ? userAgent : undefined;
   const callerRemoteAddr = typeof remoteAddr === "string" && remoteAddr ? remoteAddr : undefined;
   const callerHttpMethod = typeof httpMethod === "string" && httpMethod ? httpMethod : undefined;
   const hasCallerInfo = Boolean(callerUserAgent || callerRemoteAddr || callerHttpMethod);
+  const dataEntries =
+    heartbeatData && typeof heartbeatData === "object" && !Array.isArray(heartbeatData)
+      ? Object.entries(heartbeatData as Record<string, unknown>)
+      : [];
 
   // DNSBL zone/code fields get a dedicated DnsblCard below (human-readable
   // status codes); drop them from the raw JSON dump so nothing is shown twice.
@@ -337,6 +344,28 @@ function ResultDetailPage() {
                 <code className="font-mono">{callerHttpMethod}</code>
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {dataEntries.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{t("checks:resultDetail.data")}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {dataEntries.map(([key, value]) => (
+              <div key={key} className="flex justify-between gap-4 border-b py-1 last:border-0">
+                <span className="text-muted-foreground">{key}</span>
+                {value !== null && typeof value === "object" ? (
+                  <pre className="max-w-full overflow-auto rounded-md bg-muted p-2 text-xs">
+                    {JSON.stringify(value, null, 2)}
+                  </pre>
+                ) : (
+                  <code className="font-mono break-all">{String(value)}</code>
+                )}
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}

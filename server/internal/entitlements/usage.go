@@ -18,7 +18,10 @@ import (
 type Usage struct {
 	Checks          int     `json:"checks"`
 	ChecksPerMinute float64 `json:"checksPerMinute"`
-	SSOUsers        int     `json:"ssoUsers"`
+	// SSOUsers is the org's total member count (all members, regardless
+	// of how they joined). The wire key stays `ssoUsers` for backward
+	// compatibility; it is enforced against the MaxUsers cap.
+	SSOUsers int `json:"ssoUsers"`
 }
 
 // Usage computes the org's current resource consumption. Non-internal
@@ -36,12 +39,12 @@ func (s *Service) Usage(ctx context.Context, orgUID string) (Usage, error) {
 		}
 	}
 
-	ssoUsers, err := s.db.CountSSOMembersForOrg(ctx, orgUID)
+	members, err := s.db.CountMembersForOrg(ctx, orgUID)
 	if err != nil {
-		return Usage{}, fmt.Errorf("count sso members: %w", err)
+		return Usage{}, fmt.Errorf("count members: %w", err)
 	}
 
-	return Usage{Checks: len(rates), ChecksPerMinute: perMin, SSOUsers: ssoUsers}, nil
+	return Usage{Checks: len(rates), ChecksPerMinute: perMin, SSOUsers: members}, nil
 }
 
 // CheckCreateAllowed returns ErrEntitlementExceeded (wrapped in QuotaError)
@@ -51,7 +54,7 @@ func (s *Service) Usage(ctx context.Context, orgUID string) (Usage, error) {
 // must skip this guard for internal checks anyway.
 //
 // Race window: the count and the caller's insert are not atomic, mirroring
-// CheckSSOMembership. A tight race may slip one extra check past the cap;
+// CheckMembership. A tight race may slip one extra check past the cap;
 // acceptable for a soft quota guard.
 func (s *Service) CheckCreateAllowed(ctx context.Context, orgUID string) error {
 	resolved, err := s.Resolve(ctx, orgUID)

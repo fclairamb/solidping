@@ -553,7 +553,7 @@ func (s *SAMLService) HandleACS(
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
 	}
 
-	// Ensure organization membership (enforces maxSsoUsers via CheckSSOSlot)
+	// Ensure organization membership (enforces MaxUsers via CheckMembershipSlot)
 	member, err := s.ensureMembership(ctx, org.UID, user.UID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure membership: %w", err)
@@ -721,10 +721,10 @@ func (s *SAMLService) ensureMembership(
 		role = models.MemberRoleAdmin
 	}
 
-	// Enforce MaxSSOUsers before creating the membership. The very first
+	// Enforce MaxUsers before creating the membership. The very first
 	// member of an org bypasses any cap (count=0 < cap) so bootstrapping
 	// always succeeds.
-	if err := s.authService.CheckSSOSlot(ctx, orgUID); err != nil {
+	if err := s.authService.CheckMembershipSlot(ctx, orgUID); err != nil {
 		return nil, err
 	}
 

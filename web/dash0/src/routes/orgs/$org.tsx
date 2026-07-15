@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   createFileRoute,
   Link,
@@ -811,6 +811,43 @@ function OrgLayout() {
   const { data: features } = useFeatures();
   const feedback = useFeedback({ enabled: features?.bugReport === true, org });
 
+  // Auto switch-org on cross-org navigation. Org access is enforced by
+  // token-scope equality on every surface (REST + live WS): a token minted for
+  // org A is denied on org B even for a genuine member (spec 2026-07-15-01). So
+  // when a non-super-admin member lands on an org that differs from the token's
+  // org, re-mint the session for the URL's org BEFORE any org-scoped request or
+  // WS dial fires — otherwise the whole page 403s and the live socket 4403s.
+  // Super-admins cross orgs on their claims alone and never need a switch;
+  // non-members fall through to the normal 403 ("Permission Denied") handling.
+  // orgSwitchFailed holds the slug a switch attempt failed for (so we stop
+  // gating and let normal 403 handling take over); switchingForOrgRef dedupes
+  // the in-flight switch so the effect fires switchOrg at most once per target.
+  const [orgSwitchFailed, setOrgSwitchFailed] = useState<string | null>(null);
+  const switchingForOrgRef = useRef<string | null>(null);
+  const needsOrgSwitch =
+    auth.isAuthenticated &&
+    !auth.isLoading &&
+    !isLoginPage &&
+    auth.org !== null &&
+    auth.org !== org &&
+    auth.user?.isSuperAdmin !== true &&
+    auth.organizations.some((o) => o.slug === org);
+
+  useEffect(() => {
+    if (!needsOrgSwitch) {
+      switchingForOrgRef.current = null;
+      return;
+    }
+    // Already switching for, or already gave up on, this exact org.
+    if (switchingForOrgRef.current === org || orgSwitchFailed === org) return;
+    switchingForOrgRef.current = org;
+    // On success, auth.org updates and needsOrgSwitch flips false, clearing the
+    // gate below. On failure (transient/race), record it so we fall through to
+    // normal request handling rather than pinning a loader forever.
+    auth.switchOrg(org).catch(() => setOrgSwitchFailed(org));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsOrgSwitch, org, orgSwitchFailed]);
+
   // Handle OAuth callback tokens in URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -861,6 +898,17 @@ function OrgLayout() {
       });
     }
     return <div className="flex items-center justify-center h-screen"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
+  }
+
+  // Block child rendering (and the LiveEventsProvider's WS dial) until the
+  // session token is scoped to the URL's org. Skip the gate if the switch
+  // failed — better to render and let per-request 403s surface than to hang.
+  if (needsOrgSwitch && orgSwitchFailed !== org) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
   }
 
   return (

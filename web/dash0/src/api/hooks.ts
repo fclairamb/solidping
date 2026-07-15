@@ -3833,7 +3833,7 @@ export function useTestNotificationRoute(org: string) {
 export interface EntitlementsLimits {
   maxChecks?: number | null;
   maxChecksPerMinute?: number | null;
-  maxSsoUsers?: number | null;
+  maxUsers?: number | null;
 }
 
 export interface EntitlementsUsage {

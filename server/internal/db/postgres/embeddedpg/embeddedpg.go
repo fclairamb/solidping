@@ -149,7 +149,7 @@ func Start(opts *Options) (*Instance, error) {
 
 	port := opts.Port
 	if port == 0 {
-		port = 5434
+		port = 5433
 	}
 
 	startParams := opts.StartParameters

@@ -28,7 +28,7 @@
     "plan": "Current plan",
     "checks": "Checks",
     "checksPerMinute": "Checks per minute",
-    "ssoUsers": "SSO users",
+    "users": "Users",
     "unlimited": "Unlimited",
     "upgrade": "Upgrade",
     "loadError": "Could not load usage."

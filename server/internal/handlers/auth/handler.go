@@ -9,6 +9,7 @@ import (
 	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
 
@@ -898,6 +899,9 @@ func (h *Handler) handleInvitationError(writer http.ResponseWriter, err error) e
 	case errors.Is(err, ErrInvalidApp):
 		return h.WriteErrorErr(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
 			err.Error(), err)
+	case errors.Is(err, entitlements.ErrEntitlementExceeded):
+		return h.WriteErrorErr(writer, http.StatusForbidden, base.ErrorCodeEntitlementExceeded,
+			"This organization has reached its user limit", err)
 	default:
 		return h.WriteInternalError(writer, err)
 	}

@@ -110,7 +110,7 @@ import (
 
 const (
 	// embeddedPostgresPort is the default port for embedded PostgreSQL.
-	embeddedPostgresPort = 5434
+	embeddedPostgresPort = 5433
 
 	// Content type constants for static file serving.
 	contentTypeCSS  = "text/css"
@@ -457,28 +457,45 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	rootAuthProtected.GET("/membership-requests", authHandler.ListOwnMembershipRequestsHandler)
 	rootAuthProtected.DELETE("/membership-requests/:uid", authHandler.CancelMembershipRequestHandler)
 
+	// orgGroup builds an org-scoped route group guarded by RequireAuth +
+	// RequireOrgAccess. Every /orgs/:org/* group MUST be created through this
+	// helper rather than api.NewGroup(...).Use(RequireAuth): org authorization
+	// is then structural, so a new org route can't silently ship without the
+	// membership check the way ~30 groups did before spec 2026-07-15-01 (a
+	// cross-tenant leak — RequireAuth never reads :org, so any authenticated
+	// user could read any other org's checks, incidents and member emails).
+	//
+	// Intentionally public /orgs/:org/* routes (status-page badges, the
+	// magic-link incident ack, the realtime WS, the public status-page
+	// subscribe) are registered directly on `api` and deliberately do NOT go
+	// through here; the service-token entitlements group keeps its own
+	// ServiceTokenBypass -> RequireAuth -> RequireOrgAccess chain.
+	orgGroup := func(path string) *bunrouter.Group {
+		return api.NewGroup(path).Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	}
+
 	// Org creation (protected)
 	orgsGroup := api.NewGroup("/orgs").Use(authMiddleware.RequireAuth)
 	orgsGroup.POST("", authHandler.CreateOrg)
 
 	// Org-scoped token management (protected)
-	orgTokens := api.NewGroup("/orgs/:org/tokens").Use(authMiddleware.RequireAuth)
+	orgTokens := orgGroup("/orgs/:org/tokens")
 	orgTokens.GET("", authHandler.GetOrgTokens)
 	orgTokens.POST("", authHandler.CreateToken)
 
 	// Org invitations (protected, admin-only checked in handler)
-	orgInvitations := api.NewGroup("/orgs/:org/invitations").Use(authMiddleware.RequireAuth)
+	orgInvitations := orgGroup("/orgs/:org/invitations")
 	orgInvitations.GET("", authHandler.ListInvitations)
 	orgInvitations.POST("", authHandler.CreateInvitation)
 	orgInvitations.DELETE("/:uid", authHandler.RevokeInvitation)
 
 	// Org settings (protected, admin-only checked in handler)
-	orgSettings := api.NewGroup("/orgs/:org/settings").Use(authMiddleware.RequireAuth)
+	orgSettings := orgGroup("/orgs/:org/settings")
 	orgSettings.GET("", authHandler.GetOrgSettings)
 	orgSettings.PATCH("", authHandler.UpdateOrgSettings)
 
 	// Org membership requests (protected, admin-only checked in handler)
-	orgMembershipRequests := api.NewGroup("/orgs/:org/membership-requests").Use(authMiddleware.RequireAuth)
+	orgMembershipRequests := orgGroup("/orgs/:org/membership-requests")
 	orgMembershipRequests.GET("", authHandler.ListOrgMembershipRequestsHandler)
 	orgMembershipRequests.POST("/:uid/approve", authHandler.ApproveMembershipRequestHandler)
 	orgMembershipRequests.POST("/:uid/reject", authHandler.RejectMembershipRequestHandler)
@@ -638,14 +655,14 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	checkTypesHandler := checktypes.NewHandler(checkTypesService, s.config)
 	api.GET("/check-types", checkTypesHandler.ListServerCheckTypes)      // Public, no auth
 	api.GET("/check-types/samples", checkTypesHandler.ListSampleConfigs) // Public, no auth
-	orgCheckTypes := api.NewGroup("/orgs/:org/check-types").Use(authMiddleware.RequireAuth)
+	orgCheckTypes := orgGroup("/orgs/:org/check-types")
 	orgCheckTypes.GET("", checkTypesHandler.ListOrgCheckTypes)
 
 	// Check routes (authentication required)
 	checksService := checks.NewService(
 		s.dbService, s.services.EventNotifier, s.services.Credentials, s.services.Entitlements)
 	checksHandler := checks.NewHandler(checksService, s.config)
-	orgChecks := api.NewGroup("/orgs/:org/checks").Use(authMiddleware.RequireAuth)
+	orgChecks := orgGroup("/orgs/:org/checks")
 	orgChecks.GET("", checksHandler.ListChecks)
 	orgChecks.POST("", checksHandler.CreateCheck)
 
@@ -678,20 +695,20 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Label autocomplete routes
 	labelsService := labels.NewService(s.dbService)
 	labelsHandler := labels.NewHandler(labelsService, s.config)
-	orgLabels := api.NewGroup("/orgs/:org/labels").Use(authMiddleware.RequireAuth)
+	orgLabels := orgGroup("/orgs/:org/labels")
 	orgLabels.GET("", labelsHandler.ListLabels)
 
 	// Region routes
 	regionsService := regionshandler.NewService(s.dbService)
 	regionsHandler := regionshandler.NewHandler(regionsService, s.config)
 	api.GET("/regions", regionsHandler.ListGlobalRegions) // Public, no auth
-	orgRegions := api.NewGroup("/orgs/:org/regions").Use(authMiddleware.RequireAuth)
+	orgRegions := orgGroup("/orgs/:org/regions")
 	orgRegions.GET("", regionsHandler.ListOrgRegions)
 
 	// Check group routes (authentication required)
 	checkGroupsService := checkgroups.NewService(s.dbService)
 	checkGroupsHandler := checkgroups.NewHandler(checkGroupsService, s.config)
-	orgCheckGroups := api.NewGroup("/orgs/:org/check-groups").Use(authMiddleware.RequireAuth)
+	orgCheckGroups := orgGroup("/orgs/:org/check-groups")
 	orgCheckGroups.GET("", checkGroupsHandler.ListCheckGroups)
 	orgCheckGroups.POST("", checkGroupsHandler.CreateCheckGroup)
 	orgCheckGroups.GET("/:uid", checkGroupsHandler.GetCheckGroup)
@@ -702,7 +719,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// primitive consumed by escalation step fan-out — spec 2026-05-08-03.
 	severitiesService := severities.NewService(s.dbService)
 	severitiesHandler := severities.NewHandler(severitiesService, s.config)
-	orgSeverities := api.NewGroup("/orgs/:org/severities").Use(authMiddleware.RequireAuth)
+	orgSeverities := orgGroup("/orgs/:org/severities")
 	orgSeverities.GET("", severitiesHandler.ListSeverities)
 	orgSeverities.POST("", severitiesHandler.CreateSeverity)
 	orgSeverities.GET("/:uid", severitiesHandler.GetSeverity)
@@ -716,7 +733,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecks.POST("/:check/dependencies", depsHandler.Create)
 	orgChecks.PATCH("/:check/dependencies/:uid", depsHandler.Update)
 	orgChecks.DELETE("/:check/dependencies/:uid", depsHandler.Delete)
-	orgDeps := api.NewGroup("/orgs/:org/dependencies").Use(authMiddleware.RequireAuth)
+	orgDeps := orgGroup("/orgs/:org/dependencies")
 	orgDeps.GET("", depsHandler.Graph)
 
 	// Check-channel binding routes (authentication required). Same alias
@@ -762,23 +779,23 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Results routes (authentication required)
 	resultsService := results.NewService(s.dbService)
 	resultsHandler := results.NewHandler(resultsService, s.config)
-	orgResults := api.NewGroup("/orgs/:org/results").Use(authMiddleware.RequireAuth)
+	orgResults := orgGroup("/orgs/:org/results")
 	orgResults.GET("", resultsHandler.ListResults)
 
 	// Per-check single result fetch (with fallback to covering aggregation)
-	orgChecksResults := api.NewGroup("/orgs/:org/checks/:check/results").Use(authMiddleware.RequireAuth)
+	orgChecksResults := orgGroup("/orgs/:org/checks/:check/results")
 	orgChecksResults.GET("/:uid", resultsHandler.GetResult)
 
 	// Per-check availability statistics (real per-period probe-ratio + incidents)
 	availabilityService := availability.NewService(s.dbService)
 	availabilityHandler := availability.NewHandler(availabilityService, s.config)
-	orgChecksAvail := api.NewGroup("/orgs/:org/checks/:check/availability").Use(authMiddleware.RequireAuth)
+	orgChecksAvail := orgGroup("/orgs/:org/checks/:check/availability")
 	orgChecksAvail.GET("", availabilityHandler.GetAvailability)
 
 	// Incidents routes (authentication required)
 	incidentsService := incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime)
 	incidentsHandler := incidents.NewHandler(incidentsService, s.config)
-	orgIncidents := api.NewGroup("/orgs/:org/incidents").Use(authMiddleware.RequireAuth)
+	orgIncidents := orgGroup("/orgs/:org/incidents")
 	orgIncidents.GET("", incidentsHandler.ListIncidents)
 	orgIncidents.GET("/:uid", incidentsHandler.GetIncident)
 	orgIncidents.POST("/:uid/ack", incidentsHandler.AcknowledgeIncident)
@@ -808,19 +825,19 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	incidentNotifHandler := incidentnotifications.NewHandler(incidentNotifService, s.config)
 	orgIncidents.GET("/:uid/notifications", incidentNotifHandler.ListForIncident)
 	orgIncidents.GET("/:uid/notifications/:notifUid", incidentNotifHandler.GetForIncident)
-	api.NewGroup("/orgs/:org/users").Use(authMiddleware.RequireAuth).
+	orgGroup("/orgs/:org/users").
 		GET("/:uid/notifications", incidentNotifHandler.ListForUser)
-	api.NewGroup("/orgs/:org/me").Use(authMiddleware.RequireAuth).
+	orgGroup("/orgs/:org/me").
 		GET("/notifications", incidentNotifHandler.ListForMe)
 	// Org-level notification endpoints (flat, no incident required)
-	orgNotifs := api.NewGroup("/orgs/:org/notifications").Use(authMiddleware.RequireAuth)
+	orgNotifs := orgGroup("/orgs/:org/notifications")
 	orgNotifs.GET("", incidentNotifHandler.ListByOrg)
 	orgNotifs.GET("/:notifUid", incidentNotifHandler.GetByOrg)
 
 	// On-call schedules (authentication required)
 	onCallService := oncallschedules.NewService(s.dbService)
 	onCallHandler := oncallschedules.NewHandler(onCallService, s.dbService, s.config)
-	orgOnCall := api.NewGroup("/orgs/:org/on-call-schedules").Use(authMiddleware.RequireAuth)
+	orgOnCall := orgGroup("/orgs/:org/on-call-schedules")
 	orgOnCall.GET("", onCallHandler.ListSchedules)
 	orgOnCall.POST("", onCallHandler.CreateSchedule)
 	orgOnCall.GET("/:uid", onCallHandler.GetSchedule)
@@ -851,7 +868,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Escalation policies (authentication required)
 	escalationService := escalationpolicies.NewService(s.dbService)
 	escalationHandler := escalationpolicies.NewHandler(escalationService, s.config)
-	orgEscalation := api.NewGroup("/orgs/:org/escalation-policies").Use(authMiddleware.RequireAuth)
+	orgEscalation := orgGroup("/orgs/:org/escalation-policies")
 	orgEscalation.GET("", escalationHandler.ListPolicies)
 	orgEscalation.POST("", escalationHandler.CreatePolicy)
 	orgEscalation.GET("/:uid", escalationHandler.GetPolicy)
@@ -865,7 +882,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	userNotifHandler := usernotifications.NewHandler(
 		userNotifService, s.config, emailAdapter, slackAdapter, s.services.WebPushOptions,
 	)
-	orgUserNotif := api.NewGroup("/orgs/:org/users/me").Use(authMiddleware.RequireAuth)
+	orgUserNotif := orgGroup("/orgs/:org/users/me")
 	orgUserNotif.GET("/notification-routes", userNotifHandler.ListRoutes)
 	orgUserNotif.POST("/notification-contacts", userNotifHandler.CreateContact)
 	orgUserNotif.PATCH("/notification-routes/:routeUid", userNotifHandler.PatchRoute)
@@ -875,7 +892,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Events routes (authentication required)
 	eventsService := events.NewService(s.dbService)
 	eventsHandler := events.NewHandler(eventsService, s.config)
-	orgEvents := api.NewGroup("/orgs/:org/events").Use(authMiddleware.RequireAuth)
+	orgEvents := orgGroup("/orgs/:org/events")
 	orgEvents.GET("", eventsHandler.ListEvents)
 
 	// Realtime hint WebSocket. The hub/handler are always constructed and the
@@ -898,7 +915,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Files routes (authentication required for org-scoped, plus public signed-URL route)
 	filesService := files.NewService(s.dbService, s.config)
 	filesHandler := files.NewHandler(filesService, s.config)
-	orgFiles := api.NewGroup("/orgs/:org/files").Use(authMiddleware.RequireAuth)
+	orgFiles := orgGroup("/orgs/:org/files")
 	orgFiles.GET("", filesHandler.List)
 	orgFiles.GET("/:uid", filesHandler.Get)
 	orgFiles.GET("/:uid/content", filesHandler.GetContent)
@@ -915,7 +932,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Members routes (authentication required)
 	membersService := members.NewService(s.dbService)
 	membersHandler := members.NewHandler(membersService, s.config)
-	orgMembers := api.NewGroup("/orgs/:org/members").Use(authMiddleware.RequireAuth)
+	orgMembers := orgGroup("/orgs/:org/members")
 	orgMembers.GET("", membersHandler.ListMembers)
 	orgMembers.POST("", membersHandler.AddMember)
 	orgMembers.GET("/:uid", membersHandler.GetMember)
@@ -981,7 +998,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Web Push routes (authentication required).
 	webpushHandler := webpushhandler.NewHandler(s.config)
-	orgWebPush := api.NewGroup("/orgs/:org/webpush").Use(authMiddleware.RequireAuth)
+	orgWebPush := orgGroup("/orgs/:org/webpush")
 	orgWebPush.GET("/vapid-public-key", webpushHandler.GetVAPIDPublicKey)
 
 	// Integration routes (authentication required).
@@ -997,7 +1014,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		"/orgs/:org/integrations",
 		"/orgs/:org/channels",
 	} {
-		group := api.NewGroup(prefix).Use(authMiddleware.RequireAuth)
+		group := orgGroup(prefix)
 		group.GET("", integrationsHandler.ListIntegrations)
 		group.POST("", integrationsHandler.CreateIntegration)
 		group.GET("/:uid", integrationsHandler.GetIntegration)
@@ -1015,7 +1032,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// they wrap the multi-step LCD-approval handshake. POST creates the
 	// integration in `pairing` status and asks the Freebox for an
 	// app_token; GET polls until the user approves the prompt.
-	orgFreebox := api.NewGroup("/orgs/:org/integrations/freebox").Use(authMiddleware.RequireAuth)
+	orgFreebox := orgGroup("/orgs/:org/integrations/freebox")
 	orgFreebox.POST("/pair", integrationsHandler.StartFreeboxPairing)
 	orgFreebox.GET("/pair/:uid/status", integrationsHandler.GetFreeboxPairingStatus)
 	// LAN discovery: returns the list of hosts currently visible to the
@@ -1028,7 +1045,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// handlers/unsubscribe surface, never through this authenticated API.
 	emailSuppressionsService := emailsuppressions.NewService(s.dbService)
 	emailSuppressionsHandler := emailsuppressions.NewHandler(emailSuppressionsService, s.config)
-	orgEmailSuppressions := api.NewGroup("/orgs/:org/email-suppressions").Use(authMiddleware.RequireAuth)
+	orgEmailSuppressions := orgGroup("/orgs/:org/email-suppressions")
 	orgEmailSuppressions.GET("", emailSuppressionsHandler.ListSuppressions)
 	orgEmailSuppressions.DELETE("/:uid", emailSuppressionsHandler.DeleteSuppression)
 
@@ -1040,7 +1057,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.dbService, s.services.EmailSender, s.config.Server.BaseURL, slog.Default())
 	statusUpdatesService.SetSubscriberNotifier(statusSubscriberNotifier)
 	statusUpdatesHandler := statusupdates.NewHandler(statusUpdatesService, s.config)
-	orgStatusUpdates := api.NewGroup("/orgs/:org/status-updates").Use(authMiddleware.RequireAuth)
+	orgStatusUpdates := orgGroup("/orgs/:org/status-updates")
 	orgStatusUpdates.GET("", statusUpdatesHandler.ListStatusUpdates)
 	orgStatusUpdates.POST("", statusUpdatesHandler.CreateStatusUpdate)
 	orgStatusUpdates.GET("/:uid", statusUpdatesHandler.GetStatusUpdate)
@@ -1053,7 +1070,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// per-page Open Graph / Twitter Card metadata injection.
 	s.statusPagesService = statusPagesService
 	statusPagesHandler := statuspages.NewHandler(statusPagesService, s.config)
-	orgStatusPages := api.NewGroup("/orgs/:org/status-pages").Use(authMiddleware.RequireAuth)
+	orgStatusPages := orgGroup("/orgs/:org/status-pages")
 	orgStatusPages.GET("", statusPagesHandler.ListStatusPages)
 	orgStatusPages.POST("", statusPagesHandler.CreateStatusPage)
 	orgStatusPages.GET("/:statusPageUid", statusPagesHandler.GetStatusPage)
@@ -1085,7 +1102,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Maintenance windows routes (authentication required)
 	mwService := maintenancewindows.NewService(s.dbService)
 	mwHandler := maintenancewindows.NewHandler(mwService, s.config)
-	orgMW := api.NewGroup("/orgs/:org/maintenance-windows").Use(authMiddleware.RequireAuth)
+	orgMW := orgGroup("/orgs/:org/maintenance-windows")
 	orgMW.GET("", mwHandler.List)
 	orgMW.POST("", mwHandler.Create)
 	orgMW.GET("/:uid", mwHandler.Get)
@@ -1131,7 +1148,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	slackIntegration.POST("/interaction", slackHandler.VerifyMiddleware(slackHandler.HandleInteraction))
 
 	// Slack destinations picker (authenticated, org-scoped)
-	slackOrgRoutes := api.NewGroup("/orgs/:org/channels/:uid/slack").Use(authMiddleware.RequireAuth)
+	slackOrgRoutes := orgGroup("/orgs/:org/channels/:uid/slack")
 	slackOrgRoutes.GET("/destinations", slackHandler.GetDestinations)
 
 	// Org-scoped install-URL minting (spec 2026-07-05-01): the org comes from

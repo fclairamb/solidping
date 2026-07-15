@@ -52,7 +52,15 @@ func defaultOutputMessage(status string) string {
 // message plus best-effort caller metadata. Keys the caller didn't send are
 // omitted entirely rather than persisted as empty strings (e.g. no
 // User-Agent header on the ping).
-func buildHeartbeatOutput(message, userAgent, remoteAddr, httpMethod string) models.JSONMap {
+//
+// callerData — the caller-supplied JSON body keys other than "message" — is
+// nested under a "data" key rather than flattened into the top level. This is
+// deliberate: flattening would let a caller overwrite the server-observed
+// remoteAddr/userAgent/httpMethod simply by including those keys in its own
+// JSON body. Nesting removes that forgery vector entirely. The "data" key is
+// omitted altogether (not stored as an empty object) when callerData is
+// empty.
+func buildHeartbeatOutput(message, userAgent, remoteAddr, httpMethod string, callerData map[string]any) models.JSONMap {
 	output := models.JSONMap{"message": message}
 
 	if userAgent != "" {
@@ -65,6 +73,10 @@ func buildHeartbeatOutput(message, userAgent, remoteAddr, httpMethod string) mod
 
 	if httpMethod != "" {
 		output["httpMethod"] = httpMethod
+	}
+
+	if len(callerData) > 0 {
+		output["data"] = models.JSONMap(callerData)
 	}
 
 	return output
@@ -105,9 +117,12 @@ func NewService(dbService db.Service, jobSvc jobsvc.Service, rt *realtime.Publis
 
 // ReceiveHeartbeat processes an incoming heartbeat ping. userAgent, remoteAddr,
 // and httpMethod are caller metadata (display-only forensics, not used for any
-// security decision) persisted alongside the ping's message.
+// security decision) persisted alongside the ping's message. callerData is the
+// caller-supplied JSON body minus "message", persisted nested under
+// Output["data"] — see buildHeartbeatOutput for why it is never flattened.
 func (s *Service) ReceiveHeartbeat(
 	ctx context.Context, orgSlug, identifier, token, statusStr, message, userAgent, remoteAddr, httpMethod string,
+	callerData map[string]any,
 ) error {
 	// Look up organization
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
@@ -173,7 +188,7 @@ func (s *Service) ReceiveHeartbeat(
 		Status:          &status,
 		Duration:        &durationMs,
 		Metrics:         make(models.JSONMap),
-		Output:          buildHeartbeatOutput(outputMessage, userAgent, remoteAddr, httpMethod),
+		Output:          buildHeartbeatOutput(outputMessage, userAgent, remoteAddr, httpMethod, callerData),
 		CreatedAt:       time.Now(),
 		LastForStatus:   &lastForStatus,
 	}

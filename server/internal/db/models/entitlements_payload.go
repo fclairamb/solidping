@@ -1,6 +1,7 @@
 package models
 
 import (
+	"bytes"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
@@ -21,16 +22,62 @@ var ErrUnknownEntitlementsPayloadVersion = errors.New("unknown entitlements payl
 // nil = unlimited. JSON tags are the wire format consumed by the API.
 //
 // Three limits are modeled: MaxChecks (total non-internal checks an org
-// may own, enforced at check creation), MaxSSOUsers (capped on
-// self-hosted by default) and MaxChecksPerMinute (aggregate dispatch
-// rate, capped on SaaS). Adding an optional field to the v1 JSONB
-// payload is backward-compatible — absent keys unmarshal to nil
-// (= unlimited), so no version bump is needed. Other extra keys
-// (retention, feature flags, …) remain silently ignored on read.
+// may own, enforced at check creation), MaxUsers (total org members —
+// capped on self-hosted by default) and MaxChecksPerMinute (aggregate
+// dispatch rate, capped on SaaS). Adding an optional field to the v1
+// JSONB payload is backward-compatible — absent keys unmarshal to nil
+// (= unlimited), so no version bump is needed.
+//
+// MaxUsers is decoded from either the canonical `maxUsers` key or the
+// deprecated `maxSsoUsers` alias (see UnmarshalJSON) so already-deployed
+// billing services and stored v1 rows that still use the old key keep
+// working forever. It is always marshaled back as `maxUsers`.
 type EntitlementLimits struct {
 	MaxChecks          *int `json:"maxChecks,omitempty"`
-	MaxSSOUsers        *int `json:"maxSsoUsers,omitempty"`
+	MaxUsers           *int `json:"maxUsers,omitempty"`
 	MaxChecksPerMinute *int `json:"maxChecksPerMinute,omitempty"`
+}
+
+// ErrConflictingUserLimitKeys is returned when a payload sends both the
+// canonical maxUsers key and its deprecated maxSsoUsers alias at once.
+var ErrConflictingUserLimitKeys = errors.New(
+	"maxUsers and maxSsoUsers are mutually exclusive; send only maxUsers",
+)
+
+// UnmarshalJSON decodes the limits object, accepting `maxSsoUsers` as a
+// deprecated decode-only alias for `maxUsers`. Sending both is an error.
+// Unknown limit keys are still rejected so typos surface loudly, matching
+// the DisallowUnknownFields contract the PUT decoder used before this
+// type grew a custom unmarshaler.
+func (l *EntitlementLimits) UnmarshalJSON(data []byte) error {
+	// Local wire shape: same fields plus the deprecated alias. Decoded
+	// strictly so unknown keys are rejected (loud typos).
+	var wire struct {
+		MaxChecks          *int `json:"maxChecks"`
+		MaxUsers           *int `json:"maxUsers"`
+		MaxSSOUsers        *int `json:"maxSsoUsers"` // deprecated alias for maxUsers
+		MaxChecksPerMinute *int `json:"maxChecksPerMinute"`
+	}
+
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&wire); err != nil {
+		return err
+	}
+
+	if wire.MaxUsers != nil && wire.MaxSSOUsers != nil {
+		return ErrConflictingUserLimitKeys
+	}
+
+	l.MaxChecks = wire.MaxChecks
+	l.MaxChecksPerMinute = wire.MaxChecksPerMinute
+	if wire.MaxUsers != nil {
+		l.MaxUsers = wire.MaxUsers
+	} else {
+		l.MaxUsers = wire.MaxSSOUsers
+	}
+
+	return nil
 }
 
 // EntitlementsPayload is the structured-by-OSS portion of an

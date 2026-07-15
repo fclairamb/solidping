@@ -140,10 +140,10 @@ type Service struct {
 // package needs. Defined as an interface so we can stub it in tests
 // without dragging the full service in.
 type EntitlementsChecker interface {
-	// CheckSSOMembership returns a non-nil error (wrapping
-	// entitlements.ErrEntitlementExceeded) when adding another SSO-linked
-	// member to orgUID would breach the MaxSSOUsers cap.
-	CheckSSOMembership(ctx context.Context, orgUID string) error
+	// CheckMembership returns a non-nil error (wrapping
+	// entitlements.ErrEntitlementExceeded) when adding another member to
+	// orgUID would breach the MaxUsers cap.
+	CheckMembership(ctx context.Context, orgUID string) error
 }
 
 type cachedPATClaims struct {
@@ -398,15 +398,15 @@ func NewService(
 	}
 }
 
-// CheckSSOSlot is exposed for OAuth services that already share the
+// CheckMembershipSlot is exposed for OAuth services that already share the
 // auth Service. It delegates to the configured entitlements checker;
 // nil checker = no-op (passes through).
-func (s *Service) CheckSSOSlot(ctx context.Context, orgUID string) error {
+func (s *Service) CheckMembershipSlot(ctx context.Context, orgUID string) error {
 	if s.entitlements == nil {
 		return nil
 	}
 
-	return s.entitlements.CheckSSOMembership(ctx, orgUID)
+	return s.entitlements.CheckMembership(ctx, orgUID)
 }
 
 // enqueueEmail builds an email job and pushes it onto the job queue.
@@ -2313,9 +2313,9 @@ func (s *Service) autoJoinMatchingOrgs(ctx context.Context, userUID, userEmail s
 			continue // Already a member
 		}
 
-		// Skip orgs that are at their MaxSSOUsers cap. Logged at INFO so
+		// Skip orgs that are at their MaxUsers cap. Logged at INFO so
 		// operators can see why an auto-join didn't happen.
-		if err := s.CheckSSOSlot(ctx, *param.OrganizationUID); err != nil {
+		if err := s.CheckMembershipSlot(ctx, *param.OrganizationUID); err != nil {
 			slog.InfoContext(ctx, "Skipping SSO auto-join, org at cap",
 				"orgUID", *param.OrganizationUID, "userUID", userUID, "error", err)
 
@@ -2996,6 +2996,13 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 		// Already a member, just clean up and login
 		_, _ = s.db.DeleteStateEntry(ctx, &matchedOrg.UID, stateKey)
 	} else {
+		// Enforce the MaxUsers cap before adding this member. Invitation
+		// acceptance is a membership-creation path, so it must honor the
+		// same seat limit as the SSO join paths.
+		if slotErr := s.CheckMembershipSlot(ctx, matchedOrg.UID); slotErr != nil {
+			return nil, slotErr
+		}
+
 		// Create membership
 		role := models.MemberRole(inviteRole)
 		member := models.NewOrganizationMember(matchedOrg.UID, user.UID, role)

@@ -256,6 +256,7 @@
     "callerRemoteAddr": "IP de origen",
     "callerHttpMethod": "Método",
     "output": "Salida",
+    "data": "Datos",
     "viewAll": "Ver todos los resultados de esta comprobación",
     "fallback": {
       "title": "El resultado exacto solicitado ya no se almacena.",

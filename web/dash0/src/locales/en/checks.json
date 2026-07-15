@@ -301,6 +301,7 @@
     "callerRemoteAddr": "Source IP",
     "callerHttpMethod": "Method",
     "output": "Output",
+    "data": "Data",
     "viewAll": "View all results for this check",
     "fallback": {
       "title": "The exact result you requested is no longer stored.",

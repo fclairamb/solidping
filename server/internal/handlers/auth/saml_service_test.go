@@ -517,7 +517,7 @@ func TestSAMLHandleACS_EnforcesMaxSSOUsers(t *testing.T) {
 	require.ErrorIs(t, err, errSSOQuotaTest)
 
 	// The membership must not have been created since the quota check
-	// (CheckSSOSlot -> entitlements.CheckSSOMembership) failed before
+	// (CheckMembershipSlot -> entitlements.CheckMembership) failed before
 	// CreateOrganizationMember ran.
 	members, err := svc.db.ListMembersByOrg(ctx, org.UID)
 	require.NoError(t, err)

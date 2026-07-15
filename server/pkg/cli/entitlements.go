@@ -16,7 +16,8 @@ import (
 // Entitlements CLI shared strings.
 const (
 	flagMaxChecks          = "max-checks"
-	flagMaxSSOUsers        = "max-sso-users"
+	flagMaxUsers           = "max-users"
+	flagMaxUsersDeprecated = "max-sso-users"
 	flagMaxChecksPerMinute = "max-checks-per-minute"
 	flagDisplayName        = "display-name"
 	flagDisplayEmoji       = "display-emoji"
@@ -27,13 +28,13 @@ const (
 	valUnlimited = "unlimited"
 
 	usageMaxChecks          = "Maximum non-internal checks (omit for unchanged/unlimited)"
-	usageMaxSSOUsers        = "Maximum SSO users (omit for unchanged/unlimited)"
+	usageMaxUsers           = "Maximum organization members (omit for unchanged/unlimited)"
 	usageMaxChecksPerMinute = "Aggregate check dispatch rate per minute"
 	usageDisplayName        = "Display plan name (e.g. Team)"
 	usageDisplayEmoji       = "Display plan emoji (e.g. 🚀)"
 
 	msgEntitlementsNoFields = "Error: specify at least one field to update " +
-		"(--max-checks, --max-sso-users, --max-checks-per-minute, --display-name, --display-emoji)"
+		"(--max-checks, --max-users, --max-checks-per-minute, --display-name, --display-emoji)"
 )
 
 // entitlementsCommand builds the "entitlements" command group.
@@ -80,7 +81,7 @@ func entitlementsCommand() *cli.Command {
 func entitlementsWriteFlags() []cli.Flag {
 	return []cli.Flag{
 		&cli.IntFlag{Name: flagMaxChecks, Usage: usageMaxChecks},
-		&cli.IntFlag{Name: flagMaxSSOUsers, Usage: usageMaxSSOUsers},
+		&cli.IntFlag{Name: flagMaxUsers, Aliases: []string{flagMaxUsersDeprecated}, Usage: usageMaxUsers},
 		&cli.IntFlag{Name: flagMaxChecksPerMinute, Usage: usageMaxChecksPerMinute},
 		&cli.StringFlag{Name: flagDisplayName, Usage: usageDisplayName},
 		&cli.StringFlag{Name: flagDisplayEmoji, Usage: usageDisplayEmoji},
@@ -193,7 +194,7 @@ func entitlementsWrite(ctx context.Context, cmd *cli.Command, partial bool) erro
 func buildEntitlementsBody(cmd *cli.Command) (client.SetEntitlementsRequest, bool) {
 	limits := client.EntitlementLimits{
 		MaxChecks:          optInt(cmd, flagMaxChecks),
-		MaxSsoUsers:        optInt(cmd, flagMaxSSOUsers),
+		MaxUsers:           optInt(cmd, flagMaxUsers),
 		MaxChecksPerMinute: optInt(cmd, flagMaxChecksPerMinute),
 	}
 
@@ -203,7 +204,7 @@ func buildEntitlementsBody(cmd *cli.Command) (client.SetEntitlementsRequest, boo
 		DisplayEmoji: optString(cmd, flagDisplayEmoji),
 	}
 
-	hasField := cmd.IsSet(flagMaxChecks) || cmd.IsSet(flagMaxSSOUsers) ||
+	hasField := cmd.IsSet(flagMaxChecks) || cmd.IsSet(flagMaxUsers) ||
 		cmd.IsSet(flagMaxChecksPerMinute) || cmd.IsSet(flagDisplayName) ||
 		cmd.IsSet(flagDisplayEmoji)
 
@@ -266,7 +267,7 @@ func entitlementsAuditsAction(ctx context.Context, cmd *cli.Command) error {
 func renderEntitlements(ent *client.EntitlementsResponse) {
 	output.PrintMessage(os.Stdout, "Source:               "+ent.Source)
 	output.PrintMessage(os.Stdout, "Max checks:           "+limitStr(ent.Limits.MaxChecks))
-	output.PrintMessage(os.Stdout, "Max SSO users:        "+limitStr(ent.Limits.MaxSsoUsers))
+	output.PrintMessage(os.Stdout, "Max users:            "+limitStr(ent.Limits.MaxUsers))
 	output.PrintMessage(os.Stdout, "Max checks/minute:    "+limitStr(ent.Limits.MaxChecksPerMinute))
 	output.PrintMessage(os.Stdout, "Display name:         "+derefStr(ent.DisplayName))
 	output.PrintMessage(os.Stdout, "Display emoji:        "+derefStr(ent.DisplayEmoji))
@@ -280,7 +281,7 @@ func renderEntitlements(ent *client.EntitlementsResponse) {
 		output.PrintMessage(os.Stdout, "Usage - checks:       "+strconv.Itoa(ent.Usage.Checks))
 		output.PrintMessage(os.Stdout, "Usage - checks/min:   "+
 			strconv.FormatFloat(ent.Usage.ChecksPerMinute, 'f', -1, 64))
-		output.PrintMessage(os.Stdout, "Usage - SSO users:    "+strconv.Itoa(ent.Usage.SsoUsers))
+		output.PrintMessage(os.Stdout, "Usage - users:        "+strconv.Itoa(ent.Usage.SsoUsers))
 	}
 }
 

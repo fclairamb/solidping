@@ -33,8 +33,9 @@ import (
 // accepting the socket and closing with one of these application codes.
 const (
 	CloseAuthFailed        websocket.StatusCode = 4401 // missing/invalid/timed-out auth, or token expiry mid-connection
-	CloseForbidden         websocket.StatusCode = 4403 // authenticated but not an org member
+	CloseForbidden         websocket.StatusCode = 4403 // not authorized for this org (retryable after a session refresh)
 	CloseDisabled          websocket.StatusCode = 4404 // SP_REALTIME_ENABLED=false
+	CloseNotFound          websocket.StatusCode = 4410 // organization does not exist (terminal — a refresh cannot help)
 	CloseServiceRestarting websocket.StatusCode = 1012 // server shutdown / hub closed
 )
 

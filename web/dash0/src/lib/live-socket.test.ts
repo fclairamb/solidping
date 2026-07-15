@@ -384,7 +384,7 @@ describe("connectLiveSocket", () => {
     expect(sockets).toHaveLength(1);
   });
 
-  it("close code 4403 (forbidden) stops reconnecting and calls onDisabled", async () => {
+  it("close code 4410 (org not found) stops reconnecting and calls onDisabled", async () => {
     const sockets: FakeSocket[] = [];
     const factory = (url: string) => {
       const s = new FakeSocket(url);
@@ -395,9 +395,65 @@ describe("connectLiveSocket", () => {
 
     connectLiveSocket("acme", noopCallbacks({ onDisabled }), factory);
     await vi.waitFor(() => expect(sockets).toHaveLength(1));
-    sockets[0].serverClose(4403, "forbidden");
+    sockets[0].serverClose(4410, "organization not found");
 
     await vi.waitFor(() => expect(onDisabled).toHaveBeenCalledTimes(1));
+    // Terminal — no retry, no refresh.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sockets).toHaveLength(1);
+    expect(refreshWithOutcomeMock).not.toHaveBeenCalled();
+  });
+
+  it("close code 4403 (forbidden) refreshes and redials once before disabling on a second 4403", async () => {
+    const sockets: FakeSocket[] = [];
+    const factory = (url: string) => {
+      const s = new FakeSocket(url);
+      sockets.push(s);
+      return s;
+    };
+    const onDisabled = vi.fn();
+    refreshWithOutcomeMock.mockResolvedValue({ accessToken: "fresh-token" });
+
+    connectLiveSocket("acme", noopCallbacks({ onDisabled }), factory);
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+
+    // First 4403: must NOT give up. Instead, refresh the session and redial.
+    sockets[0].serverClose(4403, "forbidden");
+    await vi.waitFor(() => expect(refreshWithOutcomeMock).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(sockets.length).toBeGreaterThanOrEqual(2));
+    expect(onDisabled).not.toHaveBeenCalled();
+
+    // Second consecutive 4403 (refresh didn't change the outcome): now give up.
+    sockets[1].serverClose(4403, "forbidden");
+    await vi.waitFor(() => expect(onDisabled).toHaveBeenCalledTimes(1));
+  });
+
+  it("a 4403 that succeeds on the redial does not disable, and re-arms the retry for a later 4403", async () => {
+    const sockets: FakeSocket[] = [];
+    const factory = (url: string) => {
+      const s = new FakeSocket(url);
+      sockets.push(s);
+      return s;
+    };
+    const onDisabled = vi.fn();
+    refreshWithOutcomeMock.mockResolvedValue({ accessToken: "fresh-token" });
+
+    connectLiveSocket("acme", noopCallbacks({ onDisabled }), factory);
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+
+    // 4403 -> refresh + redial.
+    sockets[0].serverClose(4403, "forbidden");
+    await vi.waitFor(() => expect(sockets.length).toBeGreaterThanOrEqual(2));
+
+    // The redial authenticates (hello) — the retry budget must re-arm so a
+    // LATER 4403 (e.g. another org switch) gets its own refresh-and-redial
+    // instead of immediately disabling.
+    sockets[1].open();
+    sockets[1].message({ type: "hello", protocol: 2 });
+    sockets[1].serverClose(4403, "forbidden");
+    await vi.waitFor(() => expect(refreshWithOutcomeMock).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(sockets.length).toBeGreaterThanOrEqual(3));
+    expect(onDisabled).not.toHaveBeenCalled();
   });
 
   it("signals onDisconnected even for a close that never authenticated (failed attempt)", async () => {

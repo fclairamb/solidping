@@ -9161,10 +9161,13 @@ components:
           type: integer
           nullable: true
           description: Maximum non-internal checks (null = unlimited)
-        maxSsoUsers:
+        maxUsers:
           type: integer
           nullable: true
-          description: Maximum SSO users (null = unlimited)
+          description: >-
+            Maximum organization members (null = unlimited). The deprecated
+            key `maxSsoUsers` is still accepted as a decode-only alias on
+            write; responses always use `maxUsers`.
         maxChecksPerMinute:
           type: integer
           nullable: true

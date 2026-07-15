@@ -426,9 +426,12 @@ func TestIncidentDashboardClickFlow(t *testing.T) {
 	})
 	r.Equal(http.StatusOK, status, "resolve should succeed; got body=%v", body)
 
-	// Unknown org returns 404 (exercises the org-resolution branch).
+	// Unknown org: the non-super-admin's token is scoped to TestOrgSlug, so
+	// RequireOrgAccess denies the foreign org (403) before the handler's
+	// org-resolution runs — returning 404 would leak org existence to any
+	// member (spec 2026-07-15-01).
 	status, _ = doIncidentAction(ctx, t, testServer, token, "no-such-org", testIncidentUID1, "ack", nil)
-	r.Equal(http.StatusNotFound, status, "ack on unknown org should be 404")
+	r.Equal(http.StatusForbidden, status, "ack on unknown org should be 403 (token scoped elsewhere)")
 
 	// Unknown incident returns 404 (exercises the GetIncident branch).
 	status, _ = doIncidentAction(ctx, t, testServer, token, TestOrgSlug,

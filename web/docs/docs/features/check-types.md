@@ -704,6 +704,79 @@ Each ping's caller metadata (User-Agent header, source IP, and HTTP method)
 is recorded and shown on that ping's result detail page — useful for
 confirming which script or host is actually pinging the check.
 
+**Sending the token.** The dashboard generates a `?token=` URL that works
+everywhere, but the token can also travel as an `Authorization: Bearer`
+header instead — useful when you'd rather not put a secret in a URL (proxy
+and CDN access logs, shell history, `Referer` headers). Both forms are
+accepted forever; if a request supplies both, the header wins.
+
+```bash
+# Query string (works everywhere, including a bare browser tab)
+curl "https://your-solidping.example.com/api/v1/heartbeat/default/my-cron-job?token=<TOKEN>"
+
+# Authorization header (keeps the token out of logs and URLs)
+curl -H "Authorization: Bearer <TOKEN>" \
+  "https://your-solidping.example.com/api/v1/heartbeat/default/my-cron-job"
+```
+
+**Structured body.** A JSON body's `message` key still becomes the ping's
+message exactly as before. Any other keys in the body are stored alongside
+it and shown in a "Data" card on the result detail page — handy for a CI run
+URL, commit SHA, record count, or batch ID. The body is capped at 8 KiB;
+malformed JSON is tolerated (the ping is still recorded with an empty
+message), but an over-cap body is rejected with `400`.
+
+```bash
+curl -X POST -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"backup completed","recordCount":18234,"runUrl":"https://ci.example.com/runs/512"}' \
+  "https://your-solidping.example.com/api/v1/heartbeat/default/my-cron-job"
+```
+
+#### Monitoring GitHub Actions
+
+Your nightly workflow can stop running and nobody notices. GitHub already
+emails you when a workflow *fails*, but it has no way to tell you a scheduled
+workflow never *ran* at all — and GitHub **auto-disables scheduled workflows
+after 60 days of repository inactivity**, silently. A broken cron expression,
+a renamed default branch, or a deleted secret can just as easily stop a
+schedule from firing, with zero notifications either way. This is exactly the
+gap a heartbeat check closes: `period` + `grace` is an assertion about
+*absence* — "if no ping arrives in time, open an incident" — which no
+notify-on-failure system can make.
+
+[`fclairamb/solidping-action`](https://github.com/fclairamb/solidping-action)
+wraps the ping in one step, mapping the job's outcome to the right heartbeat
+status and building an actionable message (run URL, workflow name, run
+number, commit SHA, actor) from the `github` context:
+
+```yaml
+- uses: fclairamb/solidping-action@v1
+  if: always()
+  with:
+    org: acme
+    check: nightly-backup
+    token: ${{ secrets.SOLIDPING_HEARTBEAT_TOKEN }}
+    status: ${{ job.status }}
+```
+
+`status` should always be `${{ job.status }}`; the action maps it to
+SolidPing's vocabulary:
+
+| `job.status` | Heartbeat status |
+|---|---|
+| `success` | `up` |
+| `failure` | `down` |
+| `cancelled` | no ping sent |
+| anything else | `error` |
+
+This is for **`on: schedule` workflows only** — not push-triggered CI. A
+heartbeat's `period` is meaningful for a cron job that's expected to run
+every N minutes; a push-triggered job has no period, so a quiet repo with no
+pushes for a few days would trip the grace window and page someone for
+nothing. Reporting push-triggered CI failures is a different, useful feature,
+but it isn't this one.
+
 ### JavaScript
 
 Custom monitoring scripts with arbitrary logic. Write JavaScript code that runs on each check cycle.

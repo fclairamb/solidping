@@ -16,7 +16,7 @@ import (
 )
 
 // Ports 15438-15444 below are distinct from every other _postgres_test.go
-// file in this repo (5434 is the app default; 15434/15437 are already used
+// file in this repo (5433 is the app default; 15434/15437 are already used
 // by costdist/checkjobsvc's embedded-Postgres tests) and from each other, so
 // every test in this file gets its own embedded instance with no port
 // collision. Tests still don't call t.Parallel() (see the //nolint on each):

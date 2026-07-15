@@ -28,7 +28,7 @@ import (
 
 const (
 	// embeddedPostgresPort is the default port for embedded PostgreSQL.
-	embeddedPostgresPort = 5434
+	embeddedPostgresPort = 5433
 )
 
 func main() {

@@ -564,10 +564,10 @@ type Service interface {
 	ListOrgEntitlementAudits(
 		ctx context.Context, filter models.ListOrgEntitlementAuditsFilter,
 	) ([]*models.OrgEntitlementAudit, error)
-	// CountSSOMembersForOrg counts org members linked to at least one
-	// row in user_providers. Used by the entitlements service to enforce
-	// MaxSSOUsers.
-	CountSSOMembersForOrg(ctx context.Context, orgUID string) (int, error)
+	// CountMembersForOrg counts every organization member, regardless of
+	// how they joined. Used by the entitlements service to enforce
+	// MaxUsers.
+	CountMembersForOrg(ctx context.Context, orgUID string) (int, error)
 	// ListOrgCheckRates returns (enabled, period) for all non-deleted,
 	// non-internal checks of the given org. Used to compute usage stats
 	// (count + aggregate checks-per-minute) and to enforce MaxChecks.

@@ -48,3 +48,35 @@ The OSS model doesn't match:
 - The quota error `LimitName` string is user-visible in API errors —
   rename to `MaxUsers` and keep the old string accepted in any client
   that matches on it (grep first).
+
+## Implementation Plan
+
+1. **Model wire rename + alias** (`server/internal/db/models/entitlements_payload.go`):
+   rename `EntitlementLimits.MaxSSOUsers` (`maxSsoUsers`) → `MaxUsers` (`maxUsers`).
+   Add a custom `UnmarshalJSON` on `EntitlementLimits` that accepts `maxSsoUsers`
+   as a decode-only alias mapping onto `MaxUsers`, rejects sending both keys
+   (400 at the handler), and still rejects unknown limit keys (preserves the
+   loud-typo contract). Marshal emits only `maxUsers`. Alias decode works forever
+   for stored v1 rows via the same method.
+2. **Core service semantics** (`entitlements/service.go`, `usage.go`, `defaults.go`):
+   rename `CheckSSOMembership` → `CheckMembership`, count ALL org members via the
+   renamed DB method, `QuotaError.LimitName` = `MaxUsers`. Update `merge`, defaults
+   constants, comments.
+3. **DB count-all** (`db/service.go`, `db/sqlite/sqlite.go`, `db/postgres/postgres.go`):
+   rename `CountSSOMembersForOrg` → `CountMembersForOrg`, drop the `user_providers`
+   JOIN so every org member counts.
+4. **Enforcement wiring** (`handlers/auth/*`): rename interface method
+   `CheckSSOMembership` → `CheckMembership` and wrapper `CheckSSOSlot` →
+   `CheckMembershipSlot`; update all SSO call sites; add the cap check to
+   `AcceptInvite` (invitation acceptance) and map `ErrEntitlementExceeded` → 403
+   in `handleInvitationError`.
+5. **API surface**: `handlers/entitlements/handler.go` mergePartial field;
+   `openapi.yaml` `maxSsoUsers` → `maxUsers`; regenerate `pkg/client/client_generated.go`;
+   CLI flag `--max-sso-users` → `--max-users` (keep old as alias).
+6. **Display** (dash0): `hooks.ts` `maxSsoUsers` → `maxUsers`; `organization.usage.tsx`
+   reads `maxUsers`; locale label "SSO users" → "Users" (key `ssoUsers` → `users`).
+7. **Tests**: update entitlements/auth tests to the new names; add coverage for the
+   `maxSsoUsers` alias decode (stored-JSON + PUT), both-keys-400, and that a
+   provider-less member counts toward the cap.
+
+(Item 5 "Follow-up (billing repo)" is out of scope — separate repo.)

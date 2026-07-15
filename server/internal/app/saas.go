@@ -14,9 +14,10 @@ import (
 // name into a dot, so these multi-word keys are read manually here
 // (same pattern as SP_RUN_MODE / SP_SHUTDOWN_TIMEOUT in config.Load).
 const (
-	envEntitlementsServiceToken = "SP_ENTITLEMENTS_SERVICE_TOKEN"
-	envEntitlementsUpgradeURL   = "SP_ENTITLEMENTS_UPGRADE_URL_TEMPLATE"
-	envEntitlementsAdminWrites  = "SP_ENTITLEMENTS_ADMIN_WRITES_ENABLED"
+	envEntitlementsServiceToken  = "SP_ENTITLEMENTS_SERVICE_TOKEN"
+	envEntitlementsUpgradeURL    = "SP_ENTITLEMENTS_UPGRADE_URL_TEMPLATE"
+	envEntitlementsAdminWrites   = "SP_ENTITLEMENTS_ADMIN_WRITES_ENABLED"
+	envEntitlementsBillingSecret = "SP_ENTITLEMENTS_BILLING_INBOUND_SECRET"
 )
 
 // SeedSaaSEntitlements wires the system parameters the entitlements handler
@@ -49,6 +50,14 @@ func (s *Server) SeedSaaSEntitlements(ctx context.Context) error {
 		}
 		slog.InfoContext(ctx, "SaaS: seeded entitlements upgrade URL template",
 			"key", entitlements.ParamUpgradeURLTemplate, "template", tmpl)
+	}
+
+	if secret := os.Getenv(envEntitlementsBillingSecret); secret != "" {
+		if err := s.dbService.SetSystemParameter(ctx, entitlements.ParamBillingInboundSecret, secret, true); err != nil {
+			return err
+		}
+		slog.InfoContext(ctx, "SaaS: seeded entitlements billing inbound secret",
+			"key", entitlements.ParamBillingInboundSecret)
 	}
 
 	if raw := os.Getenv(envEntitlementsAdminWrites); raw != "" {
