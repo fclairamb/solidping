@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.1](https://github.com/fclairamb/solidping/compare/v0.4.0...v0.4.1) (2026-07-15)
+
+
+### Bug Fixes
+
+* cross-org WS authorization, heartbeat auth, entitlements rename, LDAP flake ([#138](https://github.com/fclairamb/solidping/issues/138)) ([aa1ff56](https://github.com/fclairamb/solidping/commit/aa1ff5617c533aa2d438b04cf8f40b0894b69b4d))
+* **deps:** update docusaurus monorepo to v3.10.2 ([#135](https://github.com/fclairamb/solidping/issues/135)) ([527e211](https://github.com/fclairamb/solidping/commit/527e21135a972567925e7956efa6678388331dce))
+* **deps:** update github.com/go-asn1-ber/asn1-ber digest to e7dc790 ([#133](https://github.com/fclairamb/solidping/issues/133)) ([8bca879](https://github.com/fclairamb/solidping/commit/8bca87987ada0c87af4f1e4838c55f8a1a529fad))
+* **deps:** update go dependencies (non-major) ([#136](https://github.com/fclairamb/solidping/issues/136)) ([0f8dfc1](https://github.com/fclairamb/solidping/commit/0f8dfc1fe02647e2bfe4c1ff967205e775d4bdf5))
+
 ## [0.4.0](https://github.com/fclairamb/solidping/compare/v0.3.0...v0.4.0) (2026-07-14)
 
 
