@@ -28,7 +28,7 @@
     "plan": "Plan actual",
     "checks": "Comprobaciones",
     "checksPerMinute": "Comprobaciones por minuto",
-    "ssoUsers": "Usuarios SSO",
+    "users": "Usuarios",
     "unlimited": "Ilimitado",
     "upgrade": "Mejorar plan",
     "loadError": "No se pudo cargar el uso."

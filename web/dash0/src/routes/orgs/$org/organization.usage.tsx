@@ -106,9 +106,9 @@ function UsagePage() {
                 format={(n) => (Number.isInteger(n) ? String(n) : n.toFixed(1))}
               />
               <UsageRow
-                label={t("usage.ssoUsers")}
+                label={t("usage.users")}
                 current={data.usage?.ssoUsers ?? 0}
-                limit={data.limits.maxSsoUsers}
+                limit={data.limits.maxUsers}
                 unlimitedLabel={t("usage.unlimited")}
               />
             </div>

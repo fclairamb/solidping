@@ -28,7 +28,7 @@
     "plan": "Offre actuelle",
     "checks": "Vérifications",
     "checksPerMinute": "Vérifications par minute",
-    "ssoUsers": "Utilisateurs SSO",
+    "users": "Utilisateurs",
     "unlimited": "Illimité",
     "upgrade": "Mettre à niveau",
     "loadError": "Impossible de charger l'utilisation."
