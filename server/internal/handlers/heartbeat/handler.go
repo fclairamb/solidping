@@ -61,7 +61,9 @@ func extractToken(req bunrouter.Request) string {
 // swallowed and an empty result is returned, exactly like the previous
 // fixed-struct decode — but exceeding the cap is a hard rejection
 // (ErrBodyTooLarge).
-func decodeHeartbeatBody(writer http.ResponseWriter, req bunrouter.Request) (message string, callerData map[string]any, err error) {
+func decodeHeartbeatBody(
+	writer http.ResponseWriter, req bunrouter.Request,
+) (string, map[string]any, error) {
 	if req.Body == nil || req.Header.Get("Content-Type") != "application/json" {
 		return "", nil, nil
 	}
@@ -80,6 +82,7 @@ func decodeHeartbeatBody(writer http.ResponseWriter, req bunrouter.Request) (mes
 		return "", nil, nil
 	}
 
+	var message string
 	if raw, ok := body["message"]; ok {
 		if str, ok := raw.(string); ok {
 			message = str
@@ -88,6 +91,7 @@ func decodeHeartbeatBody(writer http.ResponseWriter, req bunrouter.Request) (mes
 		delete(body, "message")
 	}
 
+	var callerData map[string]any
 	if len(body) > 0 {
 		callerData = body
 	}
