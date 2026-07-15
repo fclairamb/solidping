@@ -34,3 +34,30 @@ session key; org-admin role lives in the OSS DB, not in token claims).
      `upgradeUrl` is present, so no frontend change is needed.
 3. Verification is billing-side and stateless (signature, expiry,
    purpose, org match) — no OSS callback.
+
+## Implementation Plan
+
+All changes are in `server/internal/handlers/entitlements/handler.go`
+(+ test).
+
+1. **New system parameter constant** `ParamBillingInboundSecret =
+   "entitlements.billing_inbound_secret"` and a `billingInboundSecret(ctx)`
+   reader mirroring the existing `serviceToken(ctx)` reader (same
+   `param.Value["value"].(string)` shape).
+2. **Capture the principal in `Get`.** `authorize(req, false)` already
+   returns a `*principal` with `isAdmin`; stop discarding it.
+3. **Gate `upgradeUrl` on admin.** Only compute/return `upgradeUrl` when
+   the caller is an org admin (`prin.isAdmin`). Non-admins (and the
+   billing service principal) get no `upgradeUrl` — matches the spec's
+   "omit entirely; the dashboard only renders the button when present".
+4. **Mint the billing token.** When admin and a non-empty
+   `billing_inbound_secret` is configured, build an HS256 JWT with claims
+   `{purpose:"billing", org:<slug>, sub:<user uid>, email, iat, exp:iat+1h}`
+   signed with the secret (reuse `github.com/golang-jwt/jwt/v5`, already a
+   direct dependency and used by the auth package). Append it to the
+   upgrade URL as a fragment `#bt=<token>`. If no secret is configured,
+   return the plain upgrade URL with no fragment (self-hosted-without-billing).
+5. **Tests** (`handler_test.go`): admin gets `upgradeUrl` with a `#bt=`
+   fragment whose token verifies against the secret and carries the right
+   claims; no-secret configured yields a fragment-less URL; non-admin gets
+   no `upgradeUrl`.
