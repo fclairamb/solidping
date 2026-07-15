@@ -52,7 +52,8 @@ func TestRequireOrgAccess_RESTRoutesRejectForeignOrg(t *testing.T) {
 	pwd := "$plaintext$pw"
 	user.PasswordHash = &pwd
 	r.NoError(dbSvc.CreateUser(ctx, user))
-	r.NoError(dbSvc.CreateOrganizationMember(ctx, models.NewOrganizationMember(orgTest.UID, user.UID, models.MemberRoleAdmin)))
+	r.NoError(dbSvc.CreateOrganizationMember(
+		ctx, models.NewOrganizationMember(orgTest.UID, user.UID, models.MemberRoleAdmin)))
 
 	loginResp, err := authService.Login(ctx, "test", "member@example.com", "pw", auth.Context{})
 	r.NoError(err)

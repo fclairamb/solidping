@@ -40,8 +40,10 @@ func TestAuthorizeOrgAccess_TwoOrgMemberMatrix(t *testing.T) {
 	// token is minted for one org while they browse the other.
 	dual := models.NewUser("dual@example.com")
 	r.NoError(dbSvc.CreateUser(ctx, dual))
-	r.NoError(dbSvc.CreateOrganizationMember(ctx, models.NewOrganizationMember(orgDefault.UID, dual.UID, models.MemberRoleAdmin)))
-	r.NoError(dbSvc.CreateOrganizationMember(ctx, models.NewOrganizationMember(orgTest.UID, dual.UID, models.MemberRoleUser)))
+	r.NoError(dbSvc.CreateOrganizationMember(
+		ctx, models.NewOrganizationMember(orgDefault.UID, dual.UID, models.MemberRoleAdmin)))
+	r.NoError(dbSvc.CreateOrganizationMember(
+		ctx, models.NewOrganizationMember(orgTest.UID, dual.UID, models.MemberRoleUser)))
 
 	// stranger is a member of neither org.
 	stranger := models.NewUser("stranger@example.com")

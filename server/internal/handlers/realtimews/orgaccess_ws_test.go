@@ -82,10 +82,22 @@ func TestServe_TwoOrgMemberMatchesREST(t *testing.T) {
 		rr.Equal(realtimews.CloseForbidden, websocket.CloseStatus(readErr))
 	}
 
-	t.Run("test-token reaches test", func(t *testing.T) { t.Parallel(); expectHello(t, "test", testResp.AccessToken) })
-	t.Run("test-token denied on default", func(t *testing.T) { t.Parallel(); expectForbidden(t, "default", testResp.AccessToken) })
-	t.Run("default-token reaches default", func(t *testing.T) { t.Parallel(); expectHello(t, "default", defaultResp.AccessToken) })
-	t.Run("default-token denied on test", func(t *testing.T) { t.Parallel(); expectForbidden(t, "test", defaultResp.AccessToken) })
+	t.Run("test-token reaches test", func(t *testing.T) {
+		t.Parallel()
+		expectHello(t, "test", testResp.AccessToken)
+	})
+	t.Run("test-token denied on default", func(t *testing.T) {
+		t.Parallel()
+		expectForbidden(t, "default", testResp.AccessToken)
+	})
+	t.Run("default-token reaches default", func(t *testing.T) {
+		t.Parallel()
+		expectHello(t, "default", defaultResp.AccessToken)
+	})
+	t.Run("default-token denied on test", func(t *testing.T) {
+		t.Parallel()
+		expectForbidden(t, "test", defaultResp.AccessToken)
+	})
 }
 
 // TestServe_OrgNotFoundCloses4410 covers the split close code: an org that does
