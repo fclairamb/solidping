@@ -38,8 +38,10 @@ export interface LiveEventsCallbacks {
   /** Socket dropped; the manager will retry with backoff. */
   onDisconnected: () => void;
   /**
-   * Permanent stop: the feature is disabled (close 4404) or access is denied
-   * (close 4403). The dashboard silently keeps polling as before.
+   * Permanent stop: the feature is disabled (close 4404), the org does not
+   * exist (close 4410), or access was denied twice in a row (close 4403, after
+   * a session refresh failed to change the outcome). The dashboard silently
+   * keeps polling as before.
    */
   onDisabled: () => void;
 }
@@ -128,8 +130,14 @@ async function waitForApiQuiet(signal: AbortSignal): Promise<void> {
 /** Close codes the server sends for permanent-stop conditions (see
  * server/internal/handlers/realtimews). Any other close code (including the
  * generic 1006 a browser reports for network drops) reconnects with backoff. */
+/** Org access denied. NOT terminal: a cross-org navigation can leave the
+ * handshake cookie scoped to the previous org, so the client refreshes the
+ * session once and redials before giving up (see run()). */
 const CLOSE_FORBIDDEN = 4403;
 const CLOSE_DISABLED = 4404;
+/** The organization does not exist. Terminal — a session refresh cannot
+ * conjure the org, so there is nothing to retry. */
+const CLOSE_NOT_FOUND = 4410;
 /** The server closes the socket with this code when the access token used
  * to authenticate it has expired. Refresh before reconnecting so the next
  * attempt's getToken() read (in the run() loop) picks up a live token
@@ -198,6 +206,8 @@ export function connectLiveSocket(
 
   const run = async () => {
     let attempt = 0;
+    // Whether we've already spent the one-shot refresh-and-redial on a 4403.
+    let forbiddenRetried = false;
     while (!signal.aborted) {
       const token = getToken();
       if (!token) {
@@ -237,6 +247,9 @@ export function connectLiveSocket(
 
       const outcome = await connectOnce(org, factory, callbacks, signal, (sock) => {
         activeSocket = sock;
+        // A successful handshake re-arms the one-shot 4403 retry, so a later
+        // org switch during the same page lifetime gets its own retry.
+        forbiddenRetried = false;
       });
       activeSocket = null;
 
@@ -245,6 +258,25 @@ export function connectLiveSocket(
         callbacks.onDisabled();
         return;
       }
+      if (outcome === "forbidden") {
+        if (forbiddenRetried) {
+          // A second consecutive 4403 after a session refresh: the denial is
+          // real (not a stale cross-org cookie), so stop. The dashboard keeps
+          // polling over REST as before.
+          callbacks.onDisabled();
+          return;
+        }
+        forbiddenRetried = true;
+        // A 4403 can be a transient cross-org mismatch — the handshake cookie
+        // is still scoped to the previous org (e.g. a switch-org that landed
+        // after this socket dialed). Re-mint the session cookie once and redial
+        // immediately; only a second 4403 is treated as a genuine denial.
+        await refreshWithOutcome();
+        continue;
+      }
+      // Any non-forbidden outcome resets the one-shot retry budget, so a later
+      // org switch during the same page lifetime gets its own retry.
+      forbiddenRetried = false;
 
       attempt += 1;
       await sleep(backoffDelay(attempt), signal);
@@ -262,12 +294,13 @@ export function connectLiveSocket(
   };
 }
 
-type ConnectOutcome = "disconnected" | "disabled";
+type ConnectOutcome = "disconnected" | "disabled" | "forbidden";
 
 /** Opens one socket attempt and resolves once it closes (or the caller
- * aborts). Resolves "disabled" only for a 4403/4404 close — every other
- * outcome (network drop, 4401 expiry, server restart 1012) is
- * "disconnected" and the caller reconnects with backoff.
+ * aborts). Resolves "disabled" for a terminal 4404/4410 close, "forbidden"
+ * for a 4403 (the caller refreshes and redials once before giving up), and
+ * "disconnected" for everything else (network drop, 4401 expiry, server
+ * restart 1012), which reconnects with backoff.
  *
  * Authentication is at the HTTP level: the browser attaches the access_token
  * cookie to the same-origin handshake automatically, so there is no in-band
@@ -310,7 +343,9 @@ function connectOnce(
     };
 
     sock.onclose = (ev) => {
-      if (ev.code === CLOSE_FORBIDDEN || ev.code === CLOSE_DISABLED) {
+      // Terminal conditions: feature disabled or org doesn't exist. Nothing a
+      // refresh could fix, so stop the loop.
+      if (ev.code === CLOSE_DISABLED || ev.code === CLOSE_NOT_FOUND) {
         finish("disabled");
         return;
       }
@@ -322,6 +357,15 @@ function connectOnce(
       // loop. The registry is the only consumer and treats a repeat
       // "still down" notification as an idempotent no-op.
       callbacks.onDisconnected();
+
+      if (ev.code === CLOSE_FORBIDDEN) {
+        // Org access denied. Non-terminal: the run() loop refreshes the
+        // session cookie and redials once (a cross-org navigation may have left
+        // this socket dialing with a cookie scoped to the previous org) before
+        // treating a repeat 4403 as a genuine denial.
+        finish("forbidden");
+        return;
+      }
 
       if (ev.code === CLOSE_TOKEN_EXPIRED) {
         const expiresAt = getExpiresAt();
