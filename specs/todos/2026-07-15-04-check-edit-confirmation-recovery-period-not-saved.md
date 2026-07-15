@@ -82,3 +82,35 @@ this spec, which is about the reported *edit* bug.
    values, save, reload/re-navigate to the edit page, and assert the new
    values are shown (i.e. actually persisted server-side, not just held in
    client state).
+
+## Implementation Plan
+
+1. **Fix the submit handler** in
+   [checks.$checkUid.edit.tsx](web/dash0/src/routes/orgs/$org/checks.$checkUid.edit.tsx):
+   add `confirmationPeriodSeconds: data.confirmationPeriodSeconds` and
+   `recoveryPeriodSeconds: data.recoveryPeriodSeconds` to the object passed to
+   `updateCheck.mutateAsync(...)`.
+   - Decision: keep the explicit hand-listed object rather than spreading the
+     full `data` object. `CheckFormData` (check-form.tsx) is a superset of
+     `UpdateCheckRequest` (hooks.ts) — it also carries `type`,
+     `connectionUids`, `dependsOnParentUids`, and
+     `initialDependsOnParentUids`, which are not PATCH-check fields and are
+     applied separately in this same handler via `setConnections`,
+     `createDep`/`deleteDep`. Spreading `data` directly into the PATCH body
+     would ship those extra client-only fields to the server. So: keep the
+     explicit list (matching the Proposal's documented fallback) and add a
+     comment at the call site noting the list must be kept in sync with the
+     form's `data` shape, so a future field addition fails loudly (via a
+     missing-field bug report) rather than silently.
+2. **Run `make fmt`** to keep formatting consistent.
+3. **Add an e2e regression test** — new file
+   `web/dash0/e2e/check-edit-period-persistence.spec.ts`, following the
+   login/setup pattern of `web/dash0/e2e/checks.spec.ts`: create (or reuse) a
+   check, open its edit route, change
+   `[data-testid=confirmation-period-input]` and
+   `[data-testid=recovery-period-input]`, save, re-navigate to the edit route
+   (or reload), and assert both inputs show the newly saved values — proving
+   server-side persistence, not just client state.
+4. **QA**: `make build-dash0`, `cd web/dash0 && bun run lint` (no new errors
+   in touched files), then run the new e2e spec against a `SP_RUNMODE=test`
+   server if one can be stood up without disturbing the `:4000` devloop.
