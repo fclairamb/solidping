@@ -301,6 +301,7 @@
     "callerRemoteAddr": "IP source",
     "callerHttpMethod": "Méthode",
     "output": "Sortie",
+    "data": "Données",
     "viewAll": "Voir tous les résultats de ce contrôle",
     "fallback": {
       "title": "Le résultat exact demandé n'est plus stocké.",

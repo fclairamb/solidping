@@ -256,6 +256,7 @@
     "callerRemoteAddr": "Quell-IP",
     "callerHttpMethod": "Methode",
     "output": "Ausgabe",
+    "data": "Daten",
     "viewAll": "Alle Ergebnisse dieser Prüfung anzeigen",
     "fallback": {
       "title": "Das angeforderte Ergebnis wird nicht mehr gespeichert.",
