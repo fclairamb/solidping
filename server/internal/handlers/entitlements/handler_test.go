@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bunrouter"
 
@@ -62,6 +64,14 @@ func (h *entHandlerSetup) do(
 ) *httptest.ResponseRecorder {
 	t.Helper()
 
+	return h.doWithRole(t, method, path, body, "admin")
+}
+
+func (h *entHandlerSetup) doWithRole(
+	t *testing.T, method, path string, body any, role string,
+) *httptest.ResponseRecorder {
+	t.Helper()
+
 	var bodyBytes []byte
 	if body != nil {
 		var err error
@@ -73,7 +83,7 @@ func (h *entHandlerSetup) do(
 	ctx = context.WithValue(ctx, base.ContextKeyClaims, &authpkg.Claims{
 		UserUID: h.user.UID,
 		OrgSlug: h.org.Slug,
-		Role:    "admin",
+		Role:    role,
 	})
 	req := httptest.NewRequestWithContext(ctx, method, path, bytes.NewBuffer(bodyBytes))
 	if body != nil {
@@ -162,4 +172,104 @@ func TestPutAcceptsMaxChecks(t *testing.T) {
 	r.NoError(json.Unmarshal(getRec.Body.Bytes(), &body))
 	r.NotNil(body.Limits.MaxChecks)
 	r.Equal(7, *body.Limits.MaxChecks)
+}
+
+// getUpgradeURL extracts the upgradeUrl field from a GET response.
+func getUpgradeURL(t *testing.T, rec *httptest.ResponseRecorder) (string, bool) {
+	t.Helper()
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	raw, ok := body["upgradeUrl"]
+	if !ok {
+		return "", false
+	}
+	s, ok := raw.(string)
+
+	return s, ok
+}
+
+func TestGetAdminUpgradeURLHasSignedBillingToken(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	h := newEntHandlerSetup(t)
+	ctx := t.Context()
+
+	const secret = "shared-billing-secret"
+	r.NoError(h.dbSvc.SetSystemParameter(ctx, enthandler.ParamUpgradeURLTemplate,
+		"https://billing.example.com/upgrade?org={org}", false))
+	r.NoError(h.dbSvc.SetSystemParameter(ctx, enthandler.ParamBillingInboundSecret, secret, true))
+
+	rec := h.do(t, http.MethodGet, h.path(), nil)
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+	upgradeURL, ok := getUpgradeURL(t, rec)
+	r.True(ok, "admin must receive an upgradeUrl")
+
+	base, frag, found := strings.Cut(upgradeURL, "#bt=")
+	r.True(found, "upgradeUrl must carry a #bt= token fragment: %s", upgradeURL)
+	r.Equal("https://billing.example.com/upgrade?org="+h.org.Slug, base)
+	r.NotEmpty(frag)
+
+	// The fragment token must verify against the configured secret and carry
+	// the expected claims.
+	parsed, err := jwt.Parse(frag, func(token *jwt.Token) (any, error) {
+		_, isHMAC := token.Method.(*jwt.SigningMethodHMAC)
+		r.True(isHMAC, "token must be HS256")
+
+		return []byte(secret), nil
+	})
+	r.NoError(err)
+	r.True(parsed.Valid)
+
+	claims, ok := parsed.Claims.(jwt.MapClaims)
+	r.True(ok)
+	r.Equal("billing", claims["purpose"])
+	r.Equal(h.org.Slug, claims["org"])
+	r.Equal(h.user.UID, claims["sub"])
+	r.Equal(h.user.Email, claims["email"])
+	r.NotNil(claims["iat"])
+	r.NotNil(claims["exp"])
+	// exp must be ~1h after iat.
+	iat, ok := claims["iat"].(float64)
+	r.True(ok)
+	exp, ok := claims["exp"].(float64)
+	r.True(ok)
+	r.InDelta(3600, exp-iat, 5)
+}
+
+func TestGetAdminUpgradeURLNoSecretHasNoFragment(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	h := newEntHandlerSetup(t)
+	ctx := t.Context()
+
+	r.NoError(h.dbSvc.SetSystemParameter(ctx, enthandler.ParamUpgradeURLTemplate,
+		"https://billing.example.com/upgrade?org={org}", false))
+	// No billing_inbound_secret configured.
+
+	rec := h.do(t, http.MethodGet, h.path(), nil)
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+	upgradeURL, ok := getUpgradeURL(t, rec)
+	r.True(ok, "admin must still receive an upgradeUrl without a secret")
+	r.Equal("https://billing.example.com/upgrade?org="+h.org.Slug, upgradeURL)
+	r.NotContains(upgradeURL, "#bt=")
+}
+
+func TestGetNonAdminOmitsUpgradeURL(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	h := newEntHandlerSetup(t)
+	ctx := t.Context()
+
+	r.NoError(h.dbSvc.SetSystemParameter(ctx, enthandler.ParamUpgradeURLTemplate,
+		"https://billing.example.com/upgrade?org={org}", false))
+	r.NoError(h.dbSvc.SetSystemParameter(ctx, enthandler.ParamBillingInboundSecret, "s", true))
+
+	rec := h.doWithRole(t, http.MethodGet, h.path(), nil, "user")
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+	_, ok := getUpgradeURL(t, rec)
+	r.False(ok, "non-admin must not receive an upgradeUrl")
 }
