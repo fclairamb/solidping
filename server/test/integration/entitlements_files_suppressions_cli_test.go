@@ -32,14 +32,14 @@ func TestCLICoverage_Entitlements(t *testing.T) {
 	r.NoError(err)
 	r.Equal(200, getResp.StatusCode())
 	r.NotNil(getResp.JSON200)
-	r.NotNil(getResp.JSON200.Limits.MaxSsoUsers)
-	r.Equal(30, *getResp.JSON200.Limits.MaxSsoUsers)
+	r.NotNil(getResp.JSON200.Limits.MaxUsers)
+	r.Equal(30, *getResp.JSON200.Limits.MaxUsers)
 
 	// SET (PUT) replaces the row with explicit limits + display identity.
 	setResp, err := apiClient.SetEntitlementsWithResponse(ctx, TestOrgSlug, client.SetEntitlementsRequest{
 		Limits: &client.EntitlementLimits{
 			MaxChecks:          ptrOf(100),
-			MaxSsoUsers:        ptrOf(50),
+			MaxUsers:           ptrOf(50),
 			MaxChecksPerMinute: ptrOf(12),
 		},
 		DisplayName:  ptrOf("Team"),
@@ -60,8 +60,8 @@ func TestCLICoverage_Entitlements(t *testing.T) {
 	r.Equal(200, getResp2.StatusCode())
 	r.NotNil(getResp2.JSON200.Limits.MaxChecks)
 	r.Equal(100, *getResp2.JSON200.Limits.MaxChecks)
-	r.NotNil(getResp2.JSON200.Limits.MaxSsoUsers)
-	r.Equal(50, *getResp2.JSON200.Limits.MaxSsoUsers)
+	r.NotNil(getResp2.JSON200.Limits.MaxUsers)
+	r.Equal(50, *getResp2.JSON200.Limits.MaxUsers)
 	r.Equal("admin", getResp2.JSON200.Source)
 	r.NotNil(getResp2.JSON200.Usage)
 
@@ -73,8 +73,8 @@ func TestCLICoverage_Entitlements(t *testing.T) {
 	r.Equal(200, patchResp.StatusCode())
 	r.NotNil(patchResp.JSON200.Limits.MaxChecks)
 	r.Equal(200, *patchResp.JSON200.Limits.MaxChecks)
-	r.NotNil(patchResp.JSON200.Limits.MaxSsoUsers)
-	r.Equal(50, *patchResp.JSON200.Limits.MaxSsoUsers)
+	r.NotNil(patchResp.JSON200.Limits.MaxUsers)
+	r.Equal(50, *patchResp.JSON200.Limits.MaxUsers)
 	r.NotNil(patchResp.JSON200.DisplayName)
 	r.Equal("Team", *patchResp.JSON200.DisplayName)
 

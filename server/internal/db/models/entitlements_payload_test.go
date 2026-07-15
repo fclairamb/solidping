@@ -2,7 +2,6 @@ package models
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -94,5 +93,5 @@ func TestEntitlementsPayload_ValueRoundTripAlias(t *testing.T) {
 	s, ok := v.(string)
 	r.True(ok)
 	r.Contains(s, `"maxUsers":15`)
-	r.False(strings.Contains(s, "maxSsoUsers"))
+	r.NotContains(s, "maxSsoUsers")
 }

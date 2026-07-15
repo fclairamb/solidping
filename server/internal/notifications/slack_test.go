@@ -1160,7 +1160,7 @@ func (m *mockDBService) ListOrgEntitlementAudits(
 	panic("not implemented")
 }
 
-func (m *mockDBService) CountSSOMembersForOrg(_ context.Context, _ string) (int, error) {
+func (m *mockDBService) CountMembersForOrg(_ context.Context, _ string) (int, error) {
 	return 0, nil
 }
 
