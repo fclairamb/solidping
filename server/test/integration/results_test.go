@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -727,9 +728,12 @@ func TestListOrgResults_InvalidOrg(t *testing.T) {
 		t.Fatalf("failed to list results: %v", err)
 	}
 
-	// Should return 404 Not Found
-	if resp.JSON404 == nil {
-		t.Errorf("expected 404 Not Found, got %d", resp.StatusCode())
+	// A non-super-admin's token is scoped to TestOrgSlug, so RequireOrgAccess
+	// denies the foreign org before it is ever loaded — 403, not 404. This is
+	// deliberate: returning 404 here would let any member probe which org slugs
+	// exist (spec 2026-07-15-01). Super-admins, who cross orgs, still get 404.
+	if resp.StatusCode() != http.StatusForbidden {
+		t.Errorf("expected 403 Forbidden, got %d", resp.StatusCode())
 	}
 }
 
