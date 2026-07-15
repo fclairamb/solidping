@@ -105,6 +105,13 @@ function CheckEditPage() {
         })
       }
       onSubmit={async (data) => {
+        // NOTE: this list must stay in sync with the fields CheckForm's
+        // onSubmit builder puts in `data` (check-form.tsx) that also belong
+        // in UpdateCheckRequest (hooks.ts) — a field added to the form but
+        // missed here is silently dropped before the request is ever sent.
+        // `connectionUids`/`dependsOnParentUids`/`initialDependsOnParentUids`
+        // are intentionally excluded: they're not part of UpdateCheckRequest
+        // and are applied separately below via setConnections/createDep/deleteDep.
         await updateCheck.mutateAsync({
           enabled: data.enabled,
           name: data.name,
@@ -117,6 +124,8 @@ function CheckEditPage() {
           flappingWindowSeconds: data.flappingWindowSeconds,
           flapBackoffFactor: data.flapBackoffFactor,
           maxRecoveryMultiplier: data.maxRecoveryMultiplier,
+          confirmationPeriodSeconds: data.confirmationPeriodSeconds,
+          recoveryPeriodSeconds: data.recoveryPeriodSeconds,
           ...(data.labels !== undefined ? { labels: data.labels } : {}),
         });
         if (data.connectionUids !== undefined) {
