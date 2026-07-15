@@ -704,6 +704,35 @@ Each ping's caller metadata (User-Agent header, source IP, and HTTP method)
 is recorded and shown on that ping's result detail page — useful for
 confirming which script or host is actually pinging the check.
 
+**Sending the token.** The dashboard generates a `?token=` URL that works
+everywhere, but the token can also travel as an `Authorization: Bearer`
+header instead — useful when you'd rather not put a secret in a URL (proxy
+and CDN access logs, shell history, `Referer` headers). Both forms are
+accepted forever; if a request supplies both, the header wins.
+
+```bash
+# Query string (works everywhere, including a bare browser tab)
+curl "https://your-solidping.example.com/api/v1/heartbeat/default/my-cron-job?token=<TOKEN>"
+
+# Authorization header (keeps the token out of logs and URLs)
+curl -H "Authorization: Bearer <TOKEN>" \
+  "https://your-solidping.example.com/api/v1/heartbeat/default/my-cron-job"
+```
+
+**Structured body.** A JSON body's `message` key still becomes the ping's
+message exactly as before. Any other keys in the body are stored alongside
+it and shown in a "Data" card on the result detail page — handy for a CI run
+URL, commit SHA, record count, or batch ID. The body is capped at 8 KiB;
+malformed JSON is tolerated (the ping is still recorded with an empty
+message), but an over-cap body is rejected with `400`.
+
+```bash
+curl -X POST -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"backup completed","recordCount":18234,"runUrl":"https://ci.example.com/runs/512"}' \
+  "https://your-solidping.example.com/api/v1/heartbeat/default/my-cron-job"
+```
+
 ### JavaScript
 
 Custom monitoring scripts with arbitrary logic. Write JavaScript code that runs on each check cycle.
