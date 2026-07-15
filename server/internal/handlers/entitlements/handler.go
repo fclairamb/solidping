@@ -14,7 +14,9 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
@@ -30,9 +32,15 @@ const (
 	ParamServiceToken       = "entitlements.service_token"
 	ParamAdminWritesEnabled = "entitlements.admin_writes_enabled"
 	ParamUpgradeURLTemplate = "entitlements.upgrade_url_template"
-	ParamStaleAfterDays     = "entitlements.stale_after_days"
-	defaultAuditPageSize    = 50
-	maxAuditPageSize        = 200
+	// ParamBillingInboundSecret is the shared HS256 secret used to sign the
+	// billing upgrade token appended to the upgrade URL. Set to the same
+	// value as the billing service's BILLING_INBOUND_SECRET.
+	ParamBillingInboundSecret = "entitlements.billing_inbound_secret"
+	ParamStaleAfterDays       = "entitlements.stale_after_days"
+	// billingTokenTTL is how long a minted billing upgrade token is valid.
+	billingTokenTTL      = time.Hour
+	defaultAuditPageSize = 50
+	maxAuditPageSize     = 200
 )
 
 // Handler exposes the entitlements API.
@@ -104,7 +112,8 @@ var (
 
 // Get handles GET /api/v1/orgs/:org/entitlements.
 func (h *Handler) Get(writer http.ResponseWriter, req bunrouter.Request) error {
-	if _, err := h.authorize(req, false); err != nil {
+	prin, err := h.authorize(req, false)
+	if err != nil {
 		return h.writeAuthError(writer, err)
 	}
 
@@ -118,7 +127,14 @@ func (h *Handler) Get(writer http.ResponseWriter, req bunrouter.Request) error {
 		return h.WriteInternalError(writer, err)
 	}
 
-	upgradeURL, _ := h.upgradeURL(req.Context(), org.Slug)
+	// The upgrade URL is only meaningful to an org admin: it carries a signed
+	// billing token that lets the billing service act on the admin's behalf.
+	// Non-admins (and the billing service principal itself) get no upgradeUrl —
+	// the dashboard only renders the Upgrade button when it is present.
+	var upgradeURL string
+	if prin.isAdmin {
+		upgradeURL, _ = h.adminUpgradeURL(req.Context(), org.Slug)
+	}
 
 	// Usage is opt-in via ?with=usage (comma-separated, consistent with the
 	// checks endpoint's ?with=last_result,last_status_change). Without it,
@@ -371,6 +387,85 @@ func (h *Handler) upgradeURL(ctx context.Context, orgSlug string) (string, error
 // general templating needed for one variable.
 func interpolateURL(template, org string) string {
 	return strings.ReplaceAll(template, "{org}", org)
+}
+
+// adminUpgradeURL builds the upgrade URL for an org admin and, when a billing
+// inbound secret is configured, appends a signed billing token as a URL
+// fragment (`#bt=<token>`). Fragments are never sent to servers, so the token
+// can't leak via Referer headers or access logs. Callers must have already
+// verified the principal is an org admin.
+func (h *Handler) adminUpgradeURL(ctx context.Context, orgSlug string) (string, error) {
+	upgradeURL, err := h.upgradeURL(ctx, orgSlug)
+	if err != nil || upgradeURL == "" {
+		return upgradeURL, err
+	}
+
+	secret, secretErr := h.billingInboundSecret(ctx)
+	if secretErr != nil || secret == "" {
+		// No billing secret configured (self-hosted without billing) — return
+		// the plain upgrade URL with no token fragment.
+		return upgradeURL, secretErr
+	}
+
+	user, ok := middleware.GetUserFromContext(ctx)
+	if !ok {
+		return upgradeURL, nil
+	}
+
+	token, tokenErr := mintBillingToken(secret, orgSlug, user.UID, user.Email)
+	if tokenErr != nil {
+		slog.WarnContext(ctx, "failed to mint billing upgrade token; returning URL without fragment",
+			"orgSlug", orgSlug, "error", tokenErr)
+
+		return upgradeURL, nil
+	}
+
+	return upgradeURL + "#bt=" + token, nil
+}
+
+// billingInboundSecret reads the shared HS256 secret used to sign billing
+// upgrade tokens. Empty when unset (self-hosted without billing).
+func (h *Handler) billingInboundSecret(ctx context.Context) (string, error) {
+	param, err := h.db.GetSystemParameter(ctx, ParamBillingInboundSecret)
+	if err != nil || param == nil {
+		return "", err
+	}
+
+	if value, ok := param.Value["value"].(string); ok {
+		return value, nil
+	}
+
+	return "", nil
+}
+
+// billingClaims is the payload of the signed billing upgrade token. The
+// billing service verifies it statelessly (signature, expiry, purpose, org).
+type billingClaims struct {
+	Purpose string `json:"purpose"`
+	Org     string `json:"org"`
+	Email   string `json:"email"`
+	jwt.RegisteredClaims
+}
+
+// mintBillingToken signs an HS256 JWT authorizing the given user to drive
+// billing changes for org. Claims: purpose=billing, org, sub=<user uid>,
+// email, iat, exp=iat+1h.
+func mintBillingToken(secret, orgSlug, userUID, email string) (string, error) {
+	now := time.Now()
+	claims := billingClaims{
+		Purpose: "billing",
+		Org:     orgSlug,
+		Email:   email,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   userUID,
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(billingTokenTTL)),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	return token.SignedString([]byte(secret))
 }
 
 func extractBearerToken(authHeader string) string {
