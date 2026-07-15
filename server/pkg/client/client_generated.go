@@ -1214,8 +1214,10 @@ type EntitlementLimits struct {
 	// MaxChecksPerMinute Aggregate check dispatch rate per minute (null = unlimited)
 	MaxChecksPerMinute *int `json:"maxChecksPerMinute"`
 
-	// MaxSsoUsers Maximum SSO users (null = unlimited)
-	MaxSsoUsers *int `json:"maxSsoUsers"`
+	// MaxUsers Maximum organization members (null = unlimited). The deprecated
+	// key `maxSsoUsers` is still accepted as a decode-only alias on write;
+	// responses always use `maxUsers`.
+	MaxUsers *int `json:"maxUsers"`
 }
 
 // EntitlementsAudit defines model for EntitlementsAudit.

@@ -152,13 +152,13 @@ func (idp *fakeOIDCIdP) signClaims(t *testing.T, key *rsa.PrivateKey, claims jwt
 	return signed
 }
 
-// stubEntitlementsChecker lets tests force CheckSSOMembership to succeed or
+// stubEntitlementsChecker lets tests force CheckMembership to succeed or
 // fail without pulling in the full entitlements service.
 type stubEntitlementsChecker struct {
 	err error
 }
 
-func (s *stubEntitlementsChecker) CheckSSOMembership(_ context.Context, _ string) error {
+func (s *stubEntitlementsChecker) CheckMembership(_ context.Context, _ string) error {
 	return s.err
 }
 
@@ -338,7 +338,7 @@ func TestOIDCHandleCallback_EnforcesMaxSSOUsers(t *testing.T) {
 	require.ErrorIs(t, err, errSSOQuotaTest)
 
 	// The membership must not have been created since the quota check
-	// (CheckSSOSlot -> entitlements.CheckSSOMembership) failed before
+	// (CheckMembershipSlot -> entitlements.CheckMembership) failed before
 	// CreateOrganizationMember ran.
 	members, err := svc.db.ListMembersByOrg(ctx, org.UID)
 	require.NoError(t, err)

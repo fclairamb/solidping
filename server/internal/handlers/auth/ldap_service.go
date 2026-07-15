@@ -449,10 +449,10 @@ func (s *Service) findOrCreateLDAPUser(ctx context.Context, info *LDAPUserInfo) 
 }
 
 // ensureLDAPMembership ensures user is a member of the organization,
-// enforcing maxSsoUsers (CheckSSOSlot) exactly like the OIDC/SAML
+// enforcing MaxUsers (CheckMembershipSlot) exactly like the OIDC/SAML
 // connectors' own ensureMembership. Kept as a separate copy (rather than a
 // shared helper) to match the existing per-provider pattern in
-// oidc_service.go/saml_service.go, and because Service.CheckSSOSlot is
+// oidc_service.go/saml_service.go, and because Service.CheckMembershipSlot is
 // already directly reachable here (Login's LDAP fallback runs on Service
 // itself, unlike OIDC/SAML which are separate types holding an authService
 // reference).
@@ -481,10 +481,10 @@ func (s *Service) ensureLDAPMembership(
 		role = models.MemberRoleAdmin
 	}
 
-	// Enforce MaxSSOUsers before creating the membership. The very first
+	// Enforce MaxUsers before creating the membership. The very first
 	// member of an org bypasses any cap (count=0 < cap) so bootstrapping
 	// always succeeds.
-	if err := s.CheckSSOSlot(ctx, orgUID); err != nil {
+	if err := s.CheckMembershipSlot(ctx, orgUID); err != nil {
 		return nil, err
 	}
 
