@@ -125,6 +125,35 @@ cloud regions (badged **Private**). A check may target:
   standard server-side envelope for cloud dispatch *plus* the sealed blob for
   your agents.
 
+:::caution Enroll the agent first
+Saving credentials on a check that targets **only** private locations requires
+at least one active agent there — the write is rejected with a validation error
+otherwise. There is no fallback: storing the secrets server-side "for now"
+would break the sealed-only guarantee, and the check could not run anyway
+without a blob its agents can open. Enroll the agent, then save the check.
+
+(A **mixed** private+cloud check has no such restriction: the cloud side legitimately
+needs the server-side envelope, so it saves normally and is flagged
+*needs re-seal* until an agent exists.)
+:::
+
+### Updating a sealed check's configuration
+
+Sealed-only credentials are invisible to the server, which shapes how `PATCH`
+behaves:
+
+- **Secrets absent from the request** — the existing sealed blob is kept
+  **exactly as-is**. The server cannot decrypt it, so it cannot merge a partial
+  change into it; leaving it untouched is the only safe option. Non-secret
+  fields (URL, headers, period…) update normally.
+- **Secrets present in the request** — the whole blob is replaced by a fresh
+  one sealed to the location's currently-active agents.
+
+So there is no way to change *one* secret field of a sealed-only check while
+leaving the others alone: re-send every secret the check needs, or none of
+them. (This is a property of the encryption, not a limitation of the API — the
+same is true of any zero-knowledge store.)
+
 ### Re-sealing
 
 The sealed blob names the exact agents it was encrypted to, so agent
@@ -132,10 +161,11 @@ membership changes matter:
 
 - **A new agent joins the location** — mixed-mode checks are re-sealed
   automatically. Sealed-only checks can't be (the server can't read them):
-  they are flagged **needs re-seal** in the API/dashboard, and the new agent
-  reports a clear job error (*"credentials not sealed for this agent —
-  re-save the check's credentials"*). Re-saving the check's credentials fixes
-  it.
+  they are flagged **needs re-seal** — as `needsReseal: true` on the check's
+  API detail response and as a warning banner on the check's page in the
+  dashboard — and the new agent reports a clear job error (*"credentials not
+  sealed for this agent — re-save the check's credentials"*). Re-saving the
+  check's credentials fixes it.
 - **An agent is revoked** — it loses access immediately (its live connection
   is closed and reconnects get 403), and mixed-mode checks are re-sealed
   without it. **Honest caveat:** a revoked agent already saw the credentials
@@ -152,3 +182,29 @@ membership changes matter:
 | Enrollment can't be replayed | Single-use token, atomic consume, hash-only at rest |
 | Server can't read sealed-only secrets | age X25519 multi-recipient encryption to agent keys |
 | Runaway agent can't flood | Per-org check-rate entitlement enforced at dispatch |
+
+### Known limitations
+
+Stated plainly, because a security feature's caveats matter more than its
+marketing:
+
+- **Reconnect replay protection is per-instance.** Each agent reconnect is
+  signed over `method|path|timestamp|nonce`, and the server remembers recent
+  nonces to reject replays. That memory is **local to the server instance that
+  handled the connection**. If you run SolidPing as multiple replicas behind a
+  load balancer, an attacker who captures a signed handshake could replay it
+  against a *different* replica within the ±5-minute skew window and open one
+  connection as that agent. The remaining guards still hold — the connection is
+  still scoped to that agent's org and region, still can only claim/submit
+  checks, and cannot decrypt any credential without the agent's X25519 private
+  key, which never leaves the agent. Single-instance deployments are unaffected.
+  A shared (e.g. Redis/Postgres-backed) nonce store would close the multi-replica
+  gap; until then, prefer terminating agent connections on a single replica if
+  this is in your threat model.
+- **`jobs-available` hints are per-instance too.** An agent connected to replica
+  A is only nudged by check-creation events observed on replica A. This is a
+  latency optimization, not a correctness mechanism: the agent's regular claim
+  poll picks the work up regardless.
+- **Revocation is not retroactive.** See the rotation caveat above — revoking an
+  agent stops it from receiving *new* work and *future* credentials, but
+  anything it already decrypted is already known to it.
