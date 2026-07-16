@@ -132,8 +132,18 @@ func TestNeedsReseal(t *testing.T) {
 	r.NoError(err)
 	r.False(need)
 
-	// A new agent B joined: needs re-seal.
+	// A new agent B joined: needs re-seal (B cannot decrypt the old blob).
 	need, err = credentials.NeedsReseal(env, []string{fpA, fpB})
+	r.NoError(err)
+	r.True(need)
+
+	// A was revoked (active set now {B} or empty): needs re-seal — the blob is
+	// still decryptable by the revoked agent and unreadable by the active one.
+	need, err = credentials.NeedsReseal(env, []string{fpB})
+	r.NoError(err)
+	r.True(need)
+
+	need, err = credentials.NeedsReseal(env, nil)
 	r.NoError(err)
 	r.True(need)
 }

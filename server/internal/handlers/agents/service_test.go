@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/agents"
@@ -34,7 +35,12 @@ func newSetup(t *testing.T) *setup {
 	org := models.NewOrganization("acme", "Acme")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
-	return &setup{svc: agents.NewService(dbSvc), dbSvc: dbSvc, org: org}
+	// Disabled credentials service (no master key): ResealRegion no-ops, which
+	// is fine — these tests cover the admin lifecycle, not the reseal path.
+	creds, err := credentials.NewService(nil, credentials.ParamStore{})
+	r.NoError(err)
+
+	return &setup{svc: agents.NewService(dbSvc, creds), dbSvc: dbSvc, org: org}
 }
 
 func TestCreateAndListPrivateRegion(t *testing.T) {

@@ -590,12 +590,18 @@ type CheckResponse struct {
 	// for this check. The dashboard uses it to render placeholder hints
 	// (●●●●●●●●) for fields it can't display. Non-secret by construction
 	// — these are key names, not values.
-	ConfigPrivateKeys []string          `json:"configPrivateKeys,omitempty"`
-	Regions           []string          `json:"regions,omitempty"`
-	Enabled           *bool             `json:"enabled,omitempty"`
-	Internal          *bool             `json:"internal,omitempty"`
-	Period            *string           `json:"period,omitempty"`
-	Labels            map[string]string `json:"labels,omitempty"`
+	ConfigPrivateKeys []string `json:"configPrivateKeys,omitempty"`
+	// NeedsReseal (detail responses only) flags a private-region check whose
+	// sealed credential blob no longer matches the region's active agent set
+	// (agent enrolled or revoked since the write), or that could not be sealed
+	// at write time. Fix: re-save the check's credentials. Nil when the check
+	// targets no private region.
+	NeedsReseal *bool             `json:"needsReseal,omitempty"`
+	Regions     []string          `json:"regions,omitempty"`
+	Enabled     *bool             `json:"enabled,omitempty"`
+	Internal    *bool             `json:"internal,omitempty"`
+	Period      *string           `json:"period,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
 	// Status is the synthesized check-level status: "up", "down",
 	// "validating" (failure observed but threshold not crossed), "created",
 	// or "degraded". Distinct from LastResult.Status, which echoes the raw
@@ -992,8 +998,18 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		check.Description = &req.Description
 	}
 
+	// Resolve regions BEFORE the config split: credential sealing (spec
+	// 2026-07-16-02) keys off the check's private regions, so the resolved
+	// region set must be on the model when applyEncryption runs.
+	resolvedRegions, err := s.regions.ResolveRegionsForCheck(ctx, req.Regions, org.UID)
+	if err != nil {
+		return CheckResponse{}, fmt.Errorf("failed to resolve regions: %w", err)
+	}
+	check.Regions = resolvedRegions
+
 	// Set config — split secrets out and encrypt them under the org DEK
-	// before persisting. Plaintext fallback when no master key.
+	// (and/or seal them to the private region's agents) before persisting.
+	// Plaintext fallback when no master key.
 	if req.Config != nil {
 		if encErr := s.applyEncryption(ctx, check, req.Config); encErr != nil {
 			return CheckResponse{}, encErr
@@ -1018,13 +1034,6 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		}
 		check.Period = duration
 	}
-
-	// Resolve regions for the check
-	resolvedRegions, err := s.regions.ResolveRegionsForCheck(ctx, req.Regions, org.UID)
-	if err != nil {
-		return CheckResponse{}, fmt.Errorf("failed to resolve regions: %w", err)
-	}
-	check.Regions = resolvedRegions
 
 	// Set adaptive resolution / flapping settings.
 	check.ReopenCooldownMultiplier = req.ReopenCooldownMultiplier
@@ -1136,6 +1145,10 @@ func (s *Service) GetCheck(
 	if schedErr := s.attachSchedulingInfo(ctx, check, &response); schedErr != nil {
 		return CheckResponse{}, schedErr
 	}
+
+	// Needs-re-seal flag for private-region checks (spec 2026-07-16-02).
+	// Detail-only: it costs an agent lookup per private region.
+	response.NeedsReseal = s.computeNeedsReseal(ctx, check)
 
 	// Fetch and attach labels
 	labels, err := s.db.GetLabelsForCheck(ctx, check.UID)
@@ -1288,11 +1301,23 @@ func (s *Service) UpdateCheck(
 			update.EscalationPolicyUID = req.EscalationPolicyUID
 		}
 	}
+	// Resolve a region patch BEFORE the config handling so credential sealing
+	// sees the regions the check will have after this PATCH.
+	if req.Regions != nil {
+		resolvedRegions, regErr := s.regions.ResolveRegionsForCheck(ctx, *req.Regions, org.UID)
+		if regErr != nil {
+			return CheckResponse{}, fmt.Errorf("failed to resolve regions: %w", regErr)
+		}
+		check.Regions = resolvedRegions
+		update.Regions = &resolvedRegions
+	}
 	if req.Config != nil {
 		// PATCH-merge rule: read the existing effective config (decrypting
 		// the private side) and apply the spec's preserve-absent-secrets
 		// behavior. A naive replace here would silently wipe encrypted
 		// secrets the user can't see in their dashboard.
+		oldSealed := check.ConfigSealed
+		oldPrivateKeys := check.ConfigPrivateKeys
 		merged, mergeErr := s.applyConfigPatch(ctx, check, *req.Config)
 		if mergeErr != nil {
 			return CheckResponse{}, mergeErr
@@ -1305,12 +1330,26 @@ func (s *Service) UpdateCheck(
 		if encErr := s.applyEncryption(ctx, check, merged); encErr != nil {
 			return CheckResponse{}, encErr
 		}
+		// Sealed-only PATCH semantics (spec 2026-07-16-02): when the request
+		// carries no secret values, the server cannot re-seal what it cannot
+		// read — the previous sealed blob is kept AS-IS (documented). Secrets
+		// provided → applyEncryption produced a fresh blob that replaces it.
+		if check.ConfigSealed == nil && oldSealed != nil {
+			check.ConfigSealed = oldSealed
+			if check.ConfigPrivateKeys == nil {
+				check.ConfigPrivateKeys = oldPrivateKeys
+			}
+		}
 		configMap := check.Config
 		update.Config = &configMap
 		update.ConfigPrivate = check.ConfigPrivate
 		update.ConfigPrivateKeys = check.ConfigPrivateKeys
 		if check.ConfigPrivate == nil {
 			update.ClearConfigPrivate = true
+		}
+		update.ConfigSealed = check.ConfigSealed
+		if check.ConfigSealed == nil {
+			update.ClearConfigSealed = true
 		}
 	}
 	if req.Enabled != nil {
@@ -1336,13 +1375,6 @@ func (s *Service) UpdateCheck(
 			return CheckResponse{}, periodErr
 		}
 		update.Period = &duration
-	}
-	if req.Regions != nil {
-		resolvedRegions, regErr := s.regions.ResolveRegionsForCheck(ctx, *req.Regions, org.UID)
-		if regErr != nil {
-			return CheckResponse{}, fmt.Errorf("failed to resolve regions: %w", regErr)
-		}
-		update.Regions = &resolvedRegions
 	}
 	if req.ReopenCooldownMultiplier != nil {
 		update.ReopenCooldownMultiplier = req.ReopenCooldownMultiplier
@@ -3131,16 +3163,63 @@ func (s *Service) applyEncryption(ctx context.Context, check *models.Check, effe
 	public, private := credentials.SplitConfig(effective, secrets)
 	check.Config = public
 
+	// Region-sealed credentials (spec 2026-07-16-02, phase 2). When the check
+	// targets private region(s) and carries secrets, seal them to the X25519
+	// keys of every ACTIVE agent of those regions. Private-only checks store
+	// secrets sealed-ONLY — no org-DEK copy, so the server cannot recover them
+	// after this write. Mixed private+cloud checks dual-store: the sealed blob
+	// for agents plus the v1 envelope (below) for cloud dispatch.
+	check.ConfigSealed = nil
+	privateRegions := filterPrivateRegions(check.Regions)
+	sealedOnly := len(privateRegions) > 0 && len(privateRegions) == len(check.Regions)
+
+	if len(private) > 0 && len(privateRegions) > 0 {
+		recipients, recErr := s.activeRecipientsForRegions(ctx, check.OrganizationUID, privateRegions)
+		if recErr != nil {
+			return recErr
+		}
+
+		if len(recipients) > 0 {
+			sealed, sealErr := credentials.SealForRecipients(recipients, private)
+			if sealErr != nil {
+				return fmt.Errorf("seal check config: %w", sealErr)
+			}
+
+			check.ConfigSealed = &sealed
+
+			if sealedOnly {
+				// Sealed-only: never store a server-decryptable copy. Placeholder
+				// key names stay visible to the dashboard.
+				check.ConfigPrivate = nil
+
+				return setConfigPrivateKeys(check, private)
+			}
+		} else if sealedOnly {
+			// No active agents to seal to yet (region just created). Falling
+			// through would drop the secrets entirely for a sealed-only check;
+			// keep them under the v1 envelope (or plaintext fallback) for now —
+			// the check is flagged needs-re-seal until the credentials are
+			// re-saved with an enrolled agent present.
+			slog.WarnContext(ctx,
+				"private-only check has no active agents to seal to; storing server-side until re-saved",
+				"checkUid", check.UID, "regions", privateRegions)
+		}
+	}
+
 	if !s.creds.Enabled() || len(private) == 0 {
 		check.ConfigPrivate = nil
-		check.ConfigPrivateKeys = nil
+		if len(private) == 0 {
+			check.ConfigPrivateKeys = nil
+		}
 		// Plaintext fallback: when no master key is configured the secrets
 		// must still be persisted so the check actually works. Put them
 		// back on Config and document the gap.
-		if !s.creds.Enabled() {
+		if !s.creds.Enabled() && len(private) > 0 {
 			for k, v := range private {
 				check.Config[k] = v
 			}
+
+			return setConfigPrivateKeys(check, nil)
 		}
 		return nil
 	}
@@ -3151,14 +3230,109 @@ func (s *Service) applyEncryption(ctx context.Context, check *models.Check, effe
 	}
 
 	check.ConfigPrivate = &envelope
+
+	return setConfigPrivateKeys(check, private)
+}
+
+// setConfigPrivateKeys records the secret key names (dashboard placeholders).
+// A nil map clears the column.
+func setConfigPrivateKeys(check *models.Check, private map[string]any) error {
+	if len(private) == 0 {
+		check.ConfigPrivateKeys = nil
+
+		return nil
+	}
+
 	keysJSON, err := json.Marshal(sortedKeys(private))
 	if err != nil {
 		return fmt.Errorf("marshal config private keys: %w", err)
 	}
+
 	keysStr := string(keysJSON)
 	check.ConfigPrivateKeys = &keysStr
 
 	return nil
+}
+
+// filterPrivateRegions returns the org-private (`@…`) regions of a region set.
+func filterPrivateRegions(regionSlugs []string) []string {
+	out := make([]string, 0, len(regionSlugs))
+	for _, region := range regionSlugs {
+		if regions.IsPrivateRegion(region) {
+			out = append(out, region)
+		}
+	}
+
+	return out
+}
+
+// computeNeedsReseal reports whether a private-region check's sealed blob is
+// out of step with the active agent set (nil when the check targets no private
+// region, or on lookup failure — the flag is advisory, never a hard error).
+func (s *Service) computeNeedsReseal(ctx context.Context, check *models.Check) *bool {
+	privateRegions := filterPrivateRegions(check.Regions)
+	if len(privateRegions) == 0 {
+		return nil
+	}
+
+	hasSecrets := check.ConfigPrivateKeys != nil && *check.ConfigPrivateKeys != "" && *check.ConfigPrivateKeys != "[]"
+
+	if check.ConfigSealed == nil || *check.ConfigSealed == "" {
+		if hasSecrets {
+			// Secrets exist but were never sealed (e.g. written before any
+			// agent enrolled) — agents cannot decrypt them.
+			need := true
+
+			return &need
+		}
+
+		return nil
+	}
+
+	recipients, err := s.activeRecipientsForRegions(ctx, check.OrganizationUID, privateRegions)
+	if err != nil {
+		return nil
+	}
+
+	fingerprints := make([]string, 0, len(recipients))
+	for _, recipient := range recipients {
+		fingerprints = append(fingerprints, credentials.RecipientFingerprint(recipient))
+	}
+
+	need, err := credentials.NeedsReseal(*check.ConfigSealed, fingerprints)
+	if err != nil {
+		return nil
+	}
+
+	return &need
+}
+
+// activeRecipientsForRegions collects the X25519 recipients (age public keys)
+// of every active agent across the given private regions — the recipient set a
+// credential blob is sealed to at write time.
+func (s *Service) activeRecipientsForRegions(
+	ctx context.Context, orgUID string, privateRegions []string,
+) ([]string, error) {
+	recipients := make([]string, 0, 4)
+	seen := make(map[string]struct{})
+
+	for _, region := range privateRegions {
+		agents, err := s.db.ListActiveAgentsByRegion(ctx, orgUID, region)
+		if err != nil {
+			return nil, fmt.Errorf("list active agents for %s: %w", region, err)
+		}
+
+		for _, agent := range agents {
+			if _, dup := seen[agent.X25519PublicKey]; dup {
+				continue
+			}
+
+			seen[agent.X25519PublicKey] = struct{}{}
+			recipients = append(recipients, agent.X25519PublicKey)
+		}
+	}
+
+	return recipients, nil
 }
 
 // loadDecryptedConfig returns the merged plaintext effective config of a

@@ -228,3 +228,18 @@ func (s *Service) RevokeAgent(ctx context.Context, orgUID, uid string) error {
 
 	return nil
 }
+
+// GetCheckJob returns one check job by UID.
+func (s *Service) GetCheckJob(ctx context.Context, uid string) (*models.CheckJob, error) {
+	var job models.CheckJob
+
+	err := s.db.NewSelect().
+		Model(&job).
+		Where("uid = ?", uid).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &job, nil
+}

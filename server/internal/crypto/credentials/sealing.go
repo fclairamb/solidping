@@ -184,15 +184,25 @@ func SealedRecipientFingerprints(envelope string) ([]string, error) {
 	return env.Fingerprints, nil
 }
 
-// NeedsReseal reports whether a sealed blob is missing any currently-active
-// recipient fingerprint — i.e. an active agent joined the region after the blob
-// was written and cannot decrypt it. A blob sealed to a superset of the active
-// set (e.g. a revoked agent still listed) does NOT by itself need a re-seal for
-// availability, but revocation handling re-seals separately.
+// NeedsReseal reports whether a sealed blob's recipient set differs from the
+// currently-active one, in either direction:
+//
+//   - an active agent is MISSING from the blob (it joined the region after the
+//     write and cannot decrypt it — availability problem), or
+//   - the blob lists a recipient that is NO LONGER active (a revoked agent
+//     could still decrypt this ciphertext — hygiene problem; the honest caveat
+//     stands: a revoked agent already saw past credentials, rotate them).
+//
+// Either way the fix is the same: re-save the check's credentials so a fresh
+// blob is sealed to exactly the active set.
 func NeedsReseal(envelope string, activeFingerprints []string) (bool, error) {
 	sealed, err := SealedRecipientFingerprints(envelope)
 	if err != nil {
 		return false, err
+	}
+
+	if len(sealed) != len(activeFingerprints) {
+		return true, nil
 	}
 
 	have := make(map[string]struct{}, len(sealed))

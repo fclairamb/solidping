@@ -41,6 +41,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/email"
 	entitlementsapi "github.com/fclairamb/solidping/server/internal/entitlements"
 	agentsadmin "github.com/fclairamb/solidping/server/internal/handlers/agents"
+	"github.com/fclairamb/solidping/server/internal/handlers/agentws"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/availability"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
@@ -85,6 +86,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/unsubscribe"
 	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
 	webpushhandler "github.com/fclairamb/solidping/server/internal/handlers/webpush"
+	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/jmap"
@@ -774,7 +776,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Org-admin only: minting an enrollment token grants the ability to run
 	// checks inside the customer's network, and revoking an agent is
 	// security-relevant.
-	agentsAdminSvc := agentsadmin.NewService(s.dbService)
+	agentsAdminSvc := agentsadmin.NewService(s.dbService, s.services.Credentials)
 	agentsAdminHandler := agentsadmin.NewHandler(agentsAdminSvc, s.config)
 	orgAgentsAdmin := api.NewGroup("/orgs/:org").
 		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
@@ -786,6 +788,29 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgAgentsAdmin.DELETE("/agent-enrollment-tokens/:uid", agentsAdminHandler.DeleteEnrollmentToken)
 	orgAgentsAdmin.GET("/agents", agentsAdminHandler.ListAgents)
 	orgAgentsAdmin.DELETE("/agents/:uid", agentsAdminHandler.RevokeAgent)
+
+	// Deported-agent WebSocket transport (spec 2026-07-16-02). Registered
+	// directly on `api` — it carries its own auth, performed BEFORE the
+	// upgrade: a one-shot spe_ enrollment bearer on first connect, Ed25519
+	// signed headers on every reconnect. The claim/submit service logic is the
+	// same code the historical HTTP worker API used; incidents always process
+	// server-side.
+	agentWorkersSvc := workers.NewService(
+		s.dbService,
+		s.services.CheckJobs,
+		incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime),
+		s.services.Credentials,
+	)
+	agentWSHandler := agentws.NewHandler(
+		s.config,
+		s.dbService,
+		s.services.CheckJobs,
+		agentWorkersSvc,
+		s.services.Entitlements,
+		s.services.EventNotifier,
+		agentsAdminSvc.ResealRegion,
+	)
+	api.GET("/agent/ws", agentWSHandler.Serve)
 
 	// Results routes (authentication required)
 	resultsService := results.NewService(s.dbService)

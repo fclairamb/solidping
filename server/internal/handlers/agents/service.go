@@ -8,9 +8,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/regions"
@@ -36,13 +38,18 @@ var (
 type Service struct {
 	db      db.Service
 	regions *regions.Service
+	// creds is the v1 symmetric credential service, used by ResealRegion to
+	// decrypt mixed-mode checks so they can be re-sealed to the region's
+	// current agent set. Always non-nil; Enabled() reports availability.
+	creds credentials.Service
 }
 
 // NewService creates a new agents admin service.
-func NewService(dbService db.Service) *Service {
+func NewService(dbService db.Service, creds credentials.Service) *Service {
 	return &Service{
 		db:      dbService,
 		regions: regions.NewService(dbService),
+		creds:   creds,
 	}
 }
 
@@ -395,8 +402,10 @@ func (s *Service) ListAgents(ctx context.Context, orgSlug string) (*ListAgentsRe
 
 // RevokeAgent revokes an agent. A revoked agent can no longer authenticate (any
 // live connection is closed on its next frame) and is excluded from future
-// credential seals. Honest caveat for the docs: a revoked agent already saw the
-// credentials sealed to it — rotate them.
+// credential seals. Mixed-mode checks of its region are re-sealed immediately
+// (excluding it); sealed-only checks surface as needs-re-seal. Honest caveat
+// for the docs: a revoked agent already saw the credentials sealed to it —
+// rotate them.
 func (s *Service) RevokeAgent(ctx context.Context, orgSlug, uid string) error {
 	org, err := s.resolveOrg(ctx, orgSlug)
 	if err != nil {
@@ -408,5 +417,127 @@ func (s *Service) RevokeAgent(ctx context.Context, orgSlug, uid string) error {
 		return fmt.Errorf("%w: %s", ErrAgentNotFound, uid)
 	}
 
-	return s.db.RevokeAgent(ctx, org.UID, uid)
+	if err := s.db.RevokeAgent(ctx, org.UID, uid); err != nil {
+		return err
+	}
+
+	s.ResealRegion(ctx, org.UID, agent.Region)
+
+	return nil
+}
+
+// ResealRegion re-seals the region's mixed-mode checks (those the server can
+// still decrypt via the org DEK) to the region's CURRENT active agent set.
+// Called after agent membership changes: a new enrollment (so the fresh agent
+// can decrypt existing credentials without re-entry) and a revocation (so the
+// revoked key is dropped from future blobs). Sealed-only checks cannot be
+// re-sealed server-side — they surface as needs-re-seal until the credentials
+// are re-saved. Best-effort by design: a partial failure is logged, never
+// blocks the membership change itself.
+func (s *Service) ResealRegion(ctx context.Context, orgUID, region string) {
+	if !s.creds.Enabled() {
+		return // no org DEK — nothing mixed-mode to decrypt
+	}
+
+	checks, _, err := s.db.ListChecks(ctx, orgUID, &models.ListChecksFilter{})
+	if err != nil {
+		slog.WarnContext(ctx, "reseal: failed to list checks", "error", err, "region", region)
+
+		return
+	}
+
+	for _, check := range checks {
+		if !regionTargeted(check.Regions, region) {
+			continue
+		}
+
+		// Only mixed-mode rows are re-sealable: the server needs the v1
+		// envelope to recover the plaintext.
+		if check.ConfigPrivate == nil || *check.ConfigPrivate == "" {
+			continue
+		}
+
+		s.resealCheck(ctx, check)
+	}
+}
+
+// resealCheck re-seals one mixed-mode check to the current active agents of
+// ALL its private regions, updating the check row and its job rows.
+func (s *Service) resealCheck(ctx context.Context, check *models.Check) {
+	private, err := s.creds.DecryptForOrg(ctx, check.OrganizationUID, *check.ConfigPrivate)
+	if err != nil {
+		slog.WarnContext(ctx, "reseal: cannot decrypt check", "checkUid", check.UID, "error", err)
+
+		return
+	}
+
+	recipients := make([]string, 0, 4)
+	seen := make(map[string]struct{})
+
+	for _, region := range check.Regions {
+		if !regions.IsPrivateRegion(region) {
+			continue
+		}
+
+		agents, listErr := s.db.ListActiveAgentsByRegion(ctx, check.OrganizationUID, region)
+		if listErr != nil {
+			slog.WarnContext(ctx, "reseal: cannot list agents", "region", region, "error", listErr)
+
+			return
+		}
+
+		for _, agent := range agents {
+			if _, dup := seen[agent.X25519PublicKey]; dup {
+				continue
+			}
+
+			seen[agent.X25519PublicKey] = struct{}{}
+			recipients = append(recipients, agent.X25519PublicKey)
+		}
+	}
+
+	update := &models.CheckUpdate{}
+
+	if len(recipients) == 0 {
+		// No active agents left — drop the sealed blob entirely (nothing can
+		// decrypt it, and keeping stale recipients around is pure liability).
+		update.ClearConfigSealed = true
+	} else {
+		sealed, sealErr := credentials.SealForRecipients(recipients, private)
+		if sealErr != nil {
+			slog.WarnContext(ctx, "reseal: sealing failed", "checkUid", check.UID, "error", sealErr)
+
+			return
+		}
+
+		update.ConfigSealed = &sealed
+	}
+
+	if err := s.db.UpdateCheck(ctx, check.UID, update); err != nil {
+		slog.WarnContext(ctx, "reseal: check update failed", "checkUid", check.UID, "error", err)
+
+		return
+	}
+
+	// Keep the dispatch rows in step immediately (reconcile would otherwise
+	// only sync them on the next check write).
+	if _, err := s.db.DB().NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("config_sealed = ?", update.ConfigSealed).
+		Set("updated_at = ?", time.Now()).
+		Where("check_uid = ?", check.UID).
+		Exec(ctx); err != nil {
+		slog.WarnContext(ctx, "reseal: job sync failed", "checkUid", check.UID, "error", err)
+	}
+}
+
+// regionTargeted reports whether a region set contains the given region.
+func regionTargeted(regionSlugs []string, region string) bool {
+	for _, r := range regionSlugs {
+		if r == region {
+			return true
+		}
+	}
+
+	return false
 }

@@ -1,0 +1,158 @@
+package agentws
+
+import (
+	"time"
+
+	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
+)
+
+// ProtocolVersion is announced in the `hello` frame so agents can detect
+// incompatible server upgrades and force a clean reconnect.
+const ProtocolVersion = 1
+
+// Client -> server frame types.
+const (
+	msgTypeEnroll = "enroll"
+	msgTypeClaim  = "claim"
+	msgTypeResult = "result"
+)
+
+// Server -> client frame types.
+const (
+	msgTypeHello         = "hello"
+	msgTypeEnrolled      = "enrolled"
+	msgTypeJobs          = "jobs"
+	msgTypeAck           = "ack"
+	msgTypeError         = "error"
+	msgTypeJobsAvailable = "jobs-available"
+)
+
+// clientFrame is the envelope every agent->server frame decodes into. Fields
+// irrelevant to the frame's type are left zero.
+type clientFrame struct {
+	Type string `json:"type"`
+	// ID is the correlation id echoed on the response frame.
+	ID string `json:"id,omitempty"`
+
+	// enroll
+	Name             string `json:"name,omitempty"`
+	Ed25519PublicKey string `json:"ed25519PublicKey,omitempty"`
+	X25519PublicKey  string `json:"x25519PublicKey,omitempty"`
+
+	// claim
+	MaxJobs  int    `json:"maxJobs,omitempty"`
+	CheckUID string `json:"checkUid,omitempty"`
+
+	// result
+	JobUID   string         `json:"jobUid,omitempty"`
+	Status   int            `json:"status,omitempty"`
+	Duration float32        `json:"duration,omitempty"`
+	Metrics  map[string]any `json:"metrics,omitempty"`
+	Output   map[string]any `json:"output,omitempty"`
+}
+
+// AgentJob is the wire shape of one dispatched job: the public config plus the
+// region-sealed credential blob shipped VERBATIM (the server never decrypts on
+// this path), and just enough scheduling metadata for the agent's worker loop
+// (phase-locked rescheduling, cost-aware ordering).
+type AgentJob struct {
+	UID          string         `json:"uid"`
+	CheckUID     string         `json:"checkUid"`
+	Type         string         `json:"type"`
+	Config       map[string]any `json:"config,omitempty"`
+	ConfigSealed *string        `json:"configSealed,omitempty"`
+	Region       *string        `json:"region,omitempty"`
+	Period       string         `json:"period"`
+	ScheduledAt  *time.Time     `json:"scheduledAt,omitempty"`
+	CostEWMAMs   float64        `json:"costEwmaMs,omitempty"`
+	Lane         uint8          `json:"lane,omitempty"`
+	// CheckPeriod / CheckRegions carry the attached check's schedule identity
+	// so the agent's phase-locked rescheduling matches the server's.
+	CheckPeriod  string   `json:"checkPeriod,omitempty"`
+	CheckRegions []string `json:"checkRegions,omitempty"`
+}
+
+// serverFrame is the envelope for every server->agent frame.
+type serverFrame struct {
+	Type string `json:"type"`
+	ID   string `json:"id,omitempty"`
+
+	// hello / enrolled
+	Protocol    int    `json:"protocol,omitempty"`
+	ServerTime  string `json:"serverTime,omitempty"`
+	AgentUID    string `json:"agentUid,omitempty"`
+	WorkerUID   string `json:"workerUid,omitempty"`
+	Region      string `json:"region,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"`
+
+	// jobs
+	Jobs []AgentJob `json:"jobs,omitempty"`
+
+	// ack
+	NextScheduledAt *time.Time `json:"nextScheduledAt,omitempty"`
+
+	// error
+	Code  string `json:"code,omitempty"`
+	Title string `json:"title,omitempty"`
+}
+
+// toAgentJob converts a claimed CheckJob row into its wire shape. ConfigPrivate
+// (the v1 symmetric envelope) is deliberately NOT mapped: the server-side
+// decrypt-and-merge that the cloud dispatch path performs must never happen on
+// the agent path, and the envelope itself must never leave the server.
+func toAgentJob(job *models.CheckJob) AgentJob {
+	out := AgentJob{
+		UID:          job.UID,
+		CheckUID:     job.CheckUID,
+		Type:         job.Type,
+		Config:       job.Config,
+		ConfigSealed: job.ConfigSealed,
+		Region:       job.Region,
+		Period:       time.Duration(job.Period).String(),
+		ScheduledAt:  job.ScheduledAt,
+		CostEWMAMs:   job.CostEWMAMs,
+		Lane:         job.Lane,
+	}
+
+	if job.Check != nil {
+		out.CheckPeriod = time.Duration(job.Check.Period).String()
+		out.CheckRegions = job.Check.Regions
+	}
+
+	return out
+}
+
+// ToCheckJob reconstructs the worker-loop model from the wire shape
+// (agent side). The attached Check carries only what phase-locked
+// rescheduling needs.
+func (j *AgentJob) ToCheckJob() *models.CheckJob {
+	period, _ := time.ParseDuration(j.Period)
+
+	job := &models.CheckJob{
+		UID:          j.UID,
+		CheckUID:     j.CheckUID,
+		Type:         j.Type,
+		Config:       models.JSONMap(j.Config),
+		ConfigSealed: j.ConfigSealed,
+		Region:       j.Region,
+		Period:       timeutils.Duration(period),
+		ScheduledAt:  j.ScheduledAt,
+		CostEWMAMs:   j.CostEWMAMs,
+		Lane:         j.Lane,
+	}
+
+	if j.CheckPeriod != "" {
+		checkPeriod, err := time.ParseDuration(j.CheckPeriod)
+		if err == nil {
+			job.Check = &models.Check{
+				UID:     j.CheckUID,
+				Type:    j.Type,
+				Period:  timeutils.Duration(checkPeriod),
+				Regions: j.CheckRegions,
+			}
+		}
+	}
+
+	return job
+}
