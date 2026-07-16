@@ -289,11 +289,17 @@ func deriveIncidentClocks(
 			out.ClearFirstFailureAt = true
 		}
 	case isSuccess && activeIncident != nil:
-		// First success during an active incident arms the recovery clock. A
-		// value predating the incident's onset is stale (it belongs to an
-		// earlier incident, e.g. a row written before the clock was cleared on
-		// open) and is re-armed rather than honored, so such rows self-heal on
-		// their next success instead of needing a backfill.
+		// First success during an active incident arms the recovery clock.
+		//
+		// Re-arming a *stale* clock (one predating the incident's onset) rather
+		// than only arming an unset one is load-bearing, and pairs with the
+		// read-side guard in recoveryElapsed. An incident already open when this
+		// code ships carries a clock the clear-on-open above never ran for; the
+		// read-side guard would reject that clock forever, and a nil-only check
+		// here would never replace it — wedging the incident open until a
+		// failure happened to land and clear it. Re-arming makes such rows
+		// self-heal on their next success, which is why no backfill migration is
+		// needed.
 		if staleOrUnarmedRecoveryClock(check, activeIncident) {
 			t := now
 			out.FirstSuccessSinceFailureAt = &t

@@ -234,12 +234,22 @@ Thread the incident through: `recoveryElapsed(check, incident, now)`. It returns
 Update `RecoveryElapsedForTest` in `export_test.go` to match.
 
 **Why both a write-side and a read-side guard, and why re-arm rather than only
-reject:** `incident.StartedAt` comes from `result.PeriodStart` (worker time)
-while the clock comes from `s.clock.Now()` (server time). Under worker→server
-clock skew a legitimate clock can land just before `StartedAt`. A read-side
-reject *alone* would then wedge the incident open forever, because the write
-side would never re-arm the clock it had already set. With the Step 3 re-arm,
-the worst case is bounded by the skew and self-heals.
+reject:** an incident that is *already open* when this code ships carries a
+non-nil clock that Step 2's clear-on-open never ran for. The read-side guard
+rejects that clock forever, and the old write side (`if ... == nil`) would never
+replace it — so a read-side reject *alone* would wedge those incidents open
+until a failure happened to land and clear the clock. Step 3's re-arm is what
+resolves that, and is precisely what makes the no-backfill decision in Step 6
+sound.
+
+Note that `incident.StartedAt` derives from `result.PeriodStart` while the clock
+comes from `s.clock.Now()`. This is **not** a clock-skew hazard: `PeriodStart` is
+never worker-supplied (`SubmitResultRequest` carries no timestamp), and every
+production path stamps it with `time.Now()` in the same process that then calls
+`ProcessCheckResult` (`workers/service.go`, `checkworker/worker.go`,
+`backend/direct.go`, `heartbeat/service.go`, `emailcheck/handler.go`). For
+reopens the floor is `LastReopenedAt = s.clock.Now()` — the same clock as the
+recovery clock. There is no clock boundary between the two values.
 
 ### Step 5 — tests (`server/internal/handlers/incidents/`)
 
