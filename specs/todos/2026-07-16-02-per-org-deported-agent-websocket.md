@@ -331,13 +331,24 @@ result (check went UP server-side). Known intentional deltas from the plan:
 - Mixed dual-store keeps both blobs on the `checks` row in two columns
   (`config_private` + new `config_sealed`) rather than one packed envelope; job
   rows carry both and the WS dispatch strips `config_private` structurally.
-- A private-only check created **before any agent enrolled** cannot be sealed
-  (zero recipients); its secrets stay under the v1 envelope with
-  `needsReseal: true` surfaced until re-saved — the spec leaves this case
-  undefined, and dropping the secrets outright would break the check.
+- **Decision 4 is enforced unconditionally.** A private-region-ONLY check whose
+  secrets cannot be sealed (no active agent in the region yet) is **rejected**
+  at write time with a `VALIDATION_ERROR` naming the region, rather than
+  falling back to a server-decryptable envelope. An earlier iteration of this
+  implementation did fall back "so the secrets aren't lost"; that was wrong —
+  with no sealed blob the agent receives public config only and the check
+  cannot run regardless, so the fallback bought a broken check *and* a
+  plaintext-recoverable secret on the server, i.e. exactly what Decision 4
+  forbids. Mixed private+cloud checks are unaffected (the cloud side
+  legitimately needs the org-DEK envelope) and are flagged needs-re-seal until
+  an agent exists.
 - Agent-path jobs do not update cost/delay EWMAs or lanes (the server's plain
   `ReleaseLease` re-anchors on ack); cost-aware ordering still applies via
   `effective_scheduled_at` at claim time.
-- Nonce replay protection is per-instance (in-memory cache), as is the hint
-  fan-out; multi-replica agent WS termination would need a shared cache —
-  noted for the ops docs, not needed for the single-binary deployment today.
+- Nonce replay protection is per-instance (in-memory cache), as is the
+  `jobs-available` hint fan-out. On a multi-replica deployment a captured
+  handshake could be replayed against a different replica inside the ±5-minute
+  skew window; every other guard (org/region scoping, claim-only surface, no
+  access to the agent's X25519 private key) still holds. Documented as a known
+  limitation in `web/docs/docs/features/private-locations.md`; closing it needs
+  a shared nonce store.

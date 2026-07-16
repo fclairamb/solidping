@@ -76,7 +76,7 @@ func TestRateLimit_ExcludedPaths(t *testing.T) {
 		"/api/mgmt/limits",
 		"/api/mgmt/version",
 		"/metrics",
-		"/api/v1/workers/heartbeat",
+		"/api/v1/agent/ws",
 		"/api/v1/heartbeat/org/identifier",
 		"/api/v1/orgs/default/events/ws",
 		"/dash0/",

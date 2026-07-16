@@ -29,11 +29,14 @@ import (
 const limitedPrefix = "/api/v1/"
 
 // excludedPrefixes lists /api/v1/ sub-paths exempt from both limits.
-// Workers and heartbeat have fundamentally different traffic patterns; /api/mgmt
+// Inbound heartbeats have a fundamentally different traffic pattern (one
+// request per monitored job, from the customer's own infrastructure); /api/mgmt
 // stays unlimited as a whole (outside limitedPrefix) so a rate-limited client
 // can still call /api/mgmt/limits to discover how long until its bucket refills.
+// The old /api/v1/workers/ exclusion went with those routes (spec
+// 2026-07-16-02); the agent WebSocket that replaced them is excluded by
+// agentStreamPath below.
 var excludedPrefixes = []string{ //nolint:gochecknoglobals // package-level constant list
-	"/api/v1/workers/",
 	"/api/v1/heartbeat/",
 }
 
