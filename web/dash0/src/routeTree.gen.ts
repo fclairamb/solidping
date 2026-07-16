@@ -76,6 +76,7 @@ import { Route as OrgsOrgServerActivationRouteImport } from './routes/orgs/$org/
 import { Route as OrgsOrgOrganizationUsageRouteImport } from './routes/orgs/$org/organization.usage'
 import { Route as OrgsOrgOrganizationSettingsRouteImport } from './routes/orgs/$org/organization.settings'
 import { Route as OrgsOrgOrganizationRequestsRouteImport } from './routes/orgs/$org/organization.requests'
+import { Route as OrgsOrgOrganizationPrivateLocationsRouteImport } from './routes/orgs/$org/organization.private-locations'
 import { Route as OrgsOrgOrganizationMembersRouteImport } from './routes/orgs/$org/organization.members'
 import { Route as OrgsOrgOrganizationInvitationsRouteImport } from './routes/orgs/$org/organization.invitations'
 import { Route as OrgsOrgOrganizationAiRouteImport } from './routes/orgs/$org/organization.ai'
@@ -467,6 +468,12 @@ const OrgsOrgOrganizationRequestsRoute =
     path: '/requests',
     getParentRoute: () => OrgsOrgOrganizationRoute,
   } as any)
+const OrgsOrgOrganizationPrivateLocationsRoute =
+  OrgsOrgOrganizationPrivateLocationsRouteImport.update({
+    id: '/private-locations',
+    path: '/private-locations',
+    getParentRoute: () => OrgsOrgOrganizationRoute,
+  } as any)
 const OrgsOrgOrganizationMembersRoute =
   OrgsOrgOrganizationMembersRouteImport.update({
     id: '/members',
@@ -743,6 +750,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/organization/ai': typeof OrgsOrgOrganizationAiRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
+  '/orgs/$org/organization/private-locations': typeof OrgsOrgOrganizationPrivateLocationsRoute
   '/orgs/$org/organization/requests': typeof OrgsOrgOrganizationRequestsRoute
   '/orgs/$org/organization/settings': typeof OrgsOrgOrganizationSettingsRoute
   '/orgs/$org/organization/usage': typeof OrgsOrgOrganizationUsageRoute
@@ -832,6 +840,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/organization/ai': typeof OrgsOrgOrganizationAiRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
+  '/orgs/$org/organization/private-locations': typeof OrgsOrgOrganizationPrivateLocationsRoute
   '/orgs/$org/organization/requests': typeof OrgsOrgOrganizationRequestsRoute
   '/orgs/$org/organization/settings': typeof OrgsOrgOrganizationSettingsRoute
   '/orgs/$org/organization/usage': typeof OrgsOrgOrganizationUsageRoute
@@ -940,6 +949,7 @@ export interface FileRoutesById {
   '/orgs/$org/organization/ai': typeof OrgsOrgOrganizationAiRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
+  '/orgs/$org/organization/private-locations': typeof OrgsOrgOrganizationPrivateLocationsRoute
   '/orgs/$org/organization/requests': typeof OrgsOrgOrganizationRequestsRoute
   '/orgs/$org/organization/settings': typeof OrgsOrgOrganizationSettingsRoute
   '/orgs/$org/organization/usage': typeof OrgsOrgOrganizationUsageRoute
@@ -1050,6 +1060,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/ai'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
+    | '/orgs/$org/organization/private-locations'
     | '/orgs/$org/organization/requests'
     | '/orgs/$org/organization/settings'
     | '/orgs/$org/organization/usage'
@@ -1139,6 +1150,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/ai'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
+    | '/orgs/$org/organization/private-locations'
     | '/orgs/$org/organization/requests'
     | '/orgs/$org/organization/settings'
     | '/orgs/$org/organization/usage'
@@ -1246,6 +1258,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/ai'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
+    | '/orgs/$org/organization/private-locations'
     | '/orgs/$org/organization/requests'
     | '/orgs/$org/organization/settings'
     | '/orgs/$org/organization/usage'
@@ -1780,6 +1793,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgOrganizationRequestsRouteImport
       parentRoute: typeof OrgsOrgOrganizationRoute
     }
+    '/orgs/$org/organization/private-locations': {
+      id: '/orgs/$org/organization/private-locations'
+      path: '/private-locations'
+      fullPath: '/orgs/$org/organization/private-locations'
+      preLoaderRoute: typeof OrgsOrgOrganizationPrivateLocationsRouteImport
+      parentRoute: typeof OrgsOrgOrganizationRoute
+    }
     '/orgs/$org/organization/members': {
       id: '/orgs/$org/organization/members'
       path: '/members'
@@ -2291,6 +2311,7 @@ interface OrgsOrgOrganizationRouteChildren {
   OrgsOrgOrganizationAiRoute: typeof OrgsOrgOrganizationAiRoute
   OrgsOrgOrganizationInvitationsRoute: typeof OrgsOrgOrganizationInvitationsRoute
   OrgsOrgOrganizationMembersRoute: typeof OrgsOrgOrganizationMembersRoute
+  OrgsOrgOrganizationPrivateLocationsRoute: typeof OrgsOrgOrganizationPrivateLocationsRoute
   OrgsOrgOrganizationRequestsRoute: typeof OrgsOrgOrganizationRequestsRoute
   OrgsOrgOrganizationSettingsRoute: typeof OrgsOrgOrganizationSettingsRoute
   OrgsOrgOrganizationUsageRoute: typeof OrgsOrgOrganizationUsageRoute
@@ -2301,6 +2322,8 @@ const OrgsOrgOrganizationRouteChildren: OrgsOrgOrganizationRouteChildren = {
   OrgsOrgOrganizationAiRoute: OrgsOrgOrganizationAiRoute,
   OrgsOrgOrganizationInvitationsRoute: OrgsOrgOrganizationInvitationsRoute,
   OrgsOrgOrganizationMembersRoute: OrgsOrgOrganizationMembersRoute,
+  OrgsOrgOrganizationPrivateLocationsRoute:
+    OrgsOrgOrganizationPrivateLocationsRoute,
   OrgsOrgOrganizationRequestsRoute: OrgsOrgOrganizationRequestsRoute,
   OrgsOrgOrganizationSettingsRoute: OrgsOrgOrganizationSettingsRoute,
   OrgsOrgOrganizationUsageRoute: OrgsOrgOrganizationUsageRoute,
