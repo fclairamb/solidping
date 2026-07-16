@@ -181,6 +181,12 @@ func (rl *RateLimiter) cleanupLoop(ctx context.Context) {
 // realtime.max_subscriptions_per_connection.
 const realtimeStreamSuffix = "/events/ws"
 
+// agentStreamPath matches the deported-agent WebSocket (spec 2026-07-16-02):
+// same long-lived-connection reasoning as the realtime hint WS. The endpoint
+// carries its own guards — signature auth before the upgrade, hard-scoped
+// claims, and the per-org check-rate entitlement at dispatch.
+const agentStreamPath = "/api/v1/agent/ws"
+
 func isExcluded(path string) bool {
 	if !strings.HasPrefix(path, limitedPrefix) {
 		return true
@@ -191,6 +197,9 @@ func isExcluded(path string) bool {
 		}
 	}
 	if strings.HasPrefix(path, "/api/v1/orgs/") && strings.HasSuffix(path, realtimeStreamSuffix) {
+		return true
+	}
+	if path == agentStreamPath {
 		return true
 	}
 	return false

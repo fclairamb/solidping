@@ -143,8 +143,12 @@ type AgentConfig struct {
 	// ./agent-keys.json when /data is not writable).
 	KeysFile string `koanf:"keys_file"`
 	// Keys is the base64 of the identity/keys JSON for env-only deployments
-	// (k8s secrets) — SP_AGENT_KEYS. Takes precedence over KeysFile.
-	Keys string `koanf:"keys"`
+	// (k8s secrets) — SP_AGENT_KEYS. Takes precedence over KeysFile. The koanf
+	// tag deliberately does NOT claim "keys": the env loader maps
+	// SP_AGENT_KEYS_FILE to agent.keys.file, which would collide with a string
+	// at agent.keys and fail the unmarshal; both variables are read manually in
+	// applyAgentEnv instead.
+	Keys string `koanf:"keys_b64"`
 	// Name is the agent display name sent at enrollment — SP_AGENT_NAME
 	// (default: hostname).
 	Name string `koanf:"name"`
@@ -1102,11 +1106,13 @@ func applyRealtimeEnv(cfg *RealtimeConfig) {
 	}
 }
 
-// applyAgentEnv reads the multi-word SP_AGENT_* knobs koanf's env loader
-// cannot bind (it collapses underscores to dots, so SP_AGENT_SERVER_URL would
-// map to agent.server.url and miss the snake_case koanf tag "server_url").
-// SP_AGENT_KEYS / SP_AGENT_NAME are single words and bind through koanf
-// directly. See project_koanf_env_quirk.
+// applyAgentEnv reads the SP_AGENT_* knobs manually. koanf's env loader
+// collapses underscores to dots, so SP_AGENT_SERVER_URL would map to
+// agent.server.url and miss the snake_case koanf tag "server_url" — and
+// SP_AGENT_KEYS_FILE maps to agent.keys.file, which would collide with a
+// string field bound at agent.keys and fail the whole config unmarshal.
+// SP_AGENT_KEYS is therefore read here too (its struct field binds koanf key
+// "keys_b64", which no env var reaches). See project_koanf_env_quirk.
 func applyAgentEnv(cfg *AgentConfig) {
 	if v := os.Getenv("SP_AGENT_SERVER_URL"); v != "" {
 		cfg.ServerURL = v
@@ -1118,6 +1124,14 @@ func applyAgentEnv(cfg *AgentConfig) {
 
 	if v := os.Getenv("SP_AGENT_KEYS_FILE"); v != "" {
 		cfg.KeysFile = v
+	}
+
+	if v := os.Getenv("SP_AGENT_KEYS"); v != "" {
+		cfg.Keys = v
+	}
+
+	if v := os.Getenv("SP_AGENT_NAME"); v != "" {
+		cfg.Name = v
 	}
 }
 
