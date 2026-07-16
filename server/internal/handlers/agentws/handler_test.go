@@ -77,13 +77,13 @@ func newEnv(t *testing.T) *env {
 
 // mintToken creates a live enrollment token bound to (org, region) and returns
 // the plaintext spe_ token.
-func (e *env) mintToken(region string) string {
+func (e *env) mintToken() string {
 	e.t.Helper()
 
 	token, hash, err := agentcrypto.GenerateEnrollmentToken()
 	require.NoError(e.t, err)
 
-	row := models.NewAgentEnrollmentToken(e.org.UID, region, hash, time.Now().Add(time.Hour), nil)
+	row := models.NewAgentEnrollmentToken(e.org.UID, testRegion, hash, time.Now().Add(time.Hour), nil)
 	require.NoError(e.t, e.dbSvc.CreateAgentEnrollmentToken(e.t.Context(), row))
 
 	return token
@@ -104,14 +104,26 @@ func (e *env) createCheck(slug string, regions []string) *models.Check {
 	return check
 }
 
-// dial opens a WS connection with the given headers.
-func (e *env) dial(headers http.Header) (*websocket.Conn, *http.Response, error) {
+// dial opens a WS connection with the given headers, returning the HTTP
+// status of the handshake response (0 when no response was received).
+func (e *env) dial(headers http.Header) (*websocket.Conn, int, error) {
 	ctx, cancel := context.WithTimeout(e.t.Context(), 10*time.Second)
 	e.t.Cleanup(cancel)
 
-	return websocket.Dial(ctx, e.server.URL+"/api/v1/agent/ws", &websocket.DialOptions{
+	conn, resp, err := websocket.Dial(ctx, e.server.URL+"/api/v1/agent/ws", &websocket.DialOptions{
 		HTTPHeader: headers,
 	})
+
+	status := 0
+	if resp != nil {
+		status = resp.StatusCode
+
+		if resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+	}
+
+	return conn, status, err
 }
 
 // enroll performs the full enrollment handshake and returns the connection
@@ -196,7 +208,7 @@ func TestEnrollClaimResultIncident(t *testing.T) {
 	e.createCheck("cloud", []string{"eu"})
 	e.createCheck("bare", nil)
 
-	token := e.mintToken(testRegion)
+	token := e.mintToken()
 	conn, _, enrolled := e.enroll(token, "dc1-agent")
 	r.Equal(testRegion, enrolled.Region)
 
@@ -244,7 +256,7 @@ func TestResultOutsideScopeRejected(t *testing.T) {
 	r.NoError(err)
 	r.Len(foreignJobs, 1)
 
-	conn, _, _ := e.enroll(e.mintToken(testRegion), "dc1-agent")
+	conn, _, _ := e.enroll(e.mintToken(), "dc1-agent")
 
 	resp := roundTrip(t, conn, agentcrypto.ClientFrame{
 		Type:   agentcrypto.MsgTypeResult,
@@ -262,16 +274,16 @@ func TestEnrollmentTokenSingleUse(t *testing.T) {
 	r := require.New(t)
 	e := newEnv(t)
 
-	token := e.mintToken(testRegion)
-	_, _, _ = e.enroll(token, "first")
+	token := e.mintToken()
+	firstConn, _, _ := e.enroll(token, "first")
+	_ = firstConn
 
 	// Second use fails at the pre-upgrade check with a real HTTP 401.
 	headers := http.Header{}
 	headers.Set("Authorization", "Bearer "+token)
-	_, resp, err := e.dial(headers)
+	_, status, err := e.dial(headers)
 	r.Error(err)
-	r.NotNil(resp)
-	r.Equal(http.StatusUnauthorized, resp.StatusCode)
+	r.Equal(http.StatusUnauthorized, status)
 }
 
 // TestReconnectWithSignedHeaders: a returning agent authenticates with Ed25519
@@ -284,7 +296,7 @@ func TestReconnectWithSignedHeaders(t *testing.T) {
 
 	e.createCheck("web", []string{testRegion})
 
-	conn, keys, enrolled := e.enroll(e.mintToken(testRegion), "dc1-agent")
+	conn, keys, enrolled := e.enroll(e.mintToken(), "dc1-agent")
 	_ = conn.Close(websocket.StatusNormalClosure, "bye")
 
 	signedHeaders := func(nonce string) http.Header {
@@ -293,10 +305,10 @@ func TestReconnectWithSignedHeaders(t *testing.T) {
 		r.NoError(signErr)
 
 		headers := http.Header{}
-		headers.Set("X-SP-Agent-Uid", enrolled.AgentUID)
-		headers.Set("X-SP-Timestamp", timestamp)
-		headers.Set("X-SP-Nonce", nonce)
-		headers.Set("X-SP-Signature", signature)
+		headers.Set("X-Sp-Agent-Uid", enrolled.AgentUID)
+		headers.Set("X-Sp-Timestamp", timestamp)
+		headers.Set("X-Sp-Nonce", nonce)
+		headers.Set("X-Sp-Signature", signature)
 
 		return headers
 	}
@@ -316,10 +328,9 @@ func TestReconnectWithSignedHeaders(t *testing.T) {
 	r.Len(jobsResp.Jobs, 1)
 
 	// Replayed nonce -> 401.
-	_, resp, err := e.dial(signedHeaders("nonce-1"))
-	r.Error(err)
-	r.NotNil(resp)
-	r.Equal(http.StatusUnauthorized, resp.StatusCode)
+	_, replayStatus, replayErr := e.dial(signedHeaders("nonce-1"))
+	r.Error(replayErr)
+	r.Equal(http.StatusUnauthorized, replayStatus)
 
 	// Wrong key -> 401.
 	otherKeys, err := agentcrypto.GenerateAgentKeys()
@@ -329,14 +340,13 @@ func TestReconnectWithSignedHeaders(t *testing.T) {
 	r.NoError(err)
 
 	badHeaders := http.Header{}
-	badHeaders.Set("X-SP-Agent-Uid", enrolled.AgentUID)
-	badHeaders.Set("X-SP-Timestamp", timestamp)
-	badHeaders.Set("X-SP-Nonce", "nonce-2")
-	badHeaders.Set("X-SP-Signature", badSig)
-	_, resp, err = e.dial(badHeaders)
-	r.Error(err)
-	r.NotNil(resp)
-	r.Equal(http.StatusUnauthorized, resp.StatusCode)
+	badHeaders.Set("X-Sp-Agent-Uid", enrolled.AgentUID)
+	badHeaders.Set("X-Sp-Timestamp", timestamp)
+	badHeaders.Set("X-Sp-Nonce", "nonce-2")
+	badHeaders.Set("X-Sp-Signature", badSig)
+	_, badStatus, badErr := e.dial(badHeaders)
+	r.Error(badErr)
+	r.Equal(http.StatusUnauthorized, badStatus)
 
 	// Stale timestamp -> 401.
 	stale := time.Now().Add(-30 * time.Minute).UTC().Format(time.RFC3339)
@@ -344,14 +354,13 @@ func TestReconnectWithSignedHeaders(t *testing.T) {
 	r.NoError(err)
 
 	staleHeaders := http.Header{}
-	staleHeaders.Set("X-SP-Agent-Uid", enrolled.AgentUID)
-	staleHeaders.Set("X-SP-Timestamp", stale)
-	staleHeaders.Set("X-SP-Nonce", "nonce-3")
-	staleHeaders.Set("X-SP-Signature", staleSig)
-	_, resp, err = e.dial(staleHeaders)
-	r.Error(err)
-	r.NotNil(resp)
-	r.Equal(http.StatusUnauthorized, resp.StatusCode)
+	staleHeaders.Set("X-Sp-Agent-Uid", enrolled.AgentUID)
+	staleHeaders.Set("X-Sp-Timestamp", stale)
+	staleHeaders.Set("X-Sp-Nonce", "nonce-3")
+	staleHeaders.Set("X-Sp-Signature", staleSig)
+	_, staleStatus, staleErr := e.dial(staleHeaders)
+	r.Error(staleErr)
+	r.Equal(http.StatusUnauthorized, staleStatus)
 }
 
 // TestRevokedAgentRejected: a revoked agent gets 403 on reconnect and its live
@@ -362,7 +371,7 @@ func TestRevokedAgentRejected(t *testing.T) {
 	e := newEnv(t)
 	ctx := t.Context()
 
-	conn, keys, enrolled := e.enroll(e.mintToken(testRegion), "dc1-agent")
+	conn, keys, enrolled := e.enroll(e.mintToken(), "dc1-agent")
 
 	r.NoError(e.dbSvc.RevokeAgent(ctx, e.org.UID, enrolled.AgentUID))
 
@@ -381,14 +390,13 @@ func TestRevokedAgentRejected(t *testing.T) {
 	r.NoError(err)
 
 	headers := http.Header{}
-	headers.Set("X-SP-Agent-Uid", enrolled.AgentUID)
-	headers.Set("X-SP-Timestamp", timestamp)
-	headers.Set("X-SP-Nonce", "nonce-r")
-	headers.Set("X-SP-Signature", signature)
-	_, httpResp, err := e.dial(headers)
-	r.Error(err)
-	r.NotNil(httpResp)
-	r.Equal(http.StatusForbidden, httpResp.StatusCode)
+	headers.Set("X-Sp-Agent-Uid", enrolled.AgentUID)
+	headers.Set("X-Sp-Timestamp", timestamp)
+	headers.Set("X-Sp-Nonce", "nonce-r")
+	headers.Set("X-Sp-Signature", signature)
+	_, forbiddenStatus, forbiddenErr := e.dial(headers)
+	r.Error(forbiddenErr)
+	r.Equal(http.StatusForbidden, forbiddenStatus)
 }
 
 // TestSecondAgentHA: two agents can enroll into the same region (HA) and each
@@ -402,8 +410,8 @@ func TestSecondAgentHA(t *testing.T) {
 	checkA := e.createCheck("web-a", []string{testRegion})
 	checkB := e.createCheck("web-b", []string{testRegion})
 
-	conn1, _, _ := e.enroll(e.mintToken(testRegion), "agent-1")
-	conn2, _, _ := e.enroll(e.mintToken(testRegion), "agent-2")
+	conn1, _, _ := e.enroll(e.mintToken(), "agent-1")
+	conn2, _, _ := e.enroll(e.mintToken(), "agent-2")
 
 	active, err := e.dbSvc.ListActiveAgentsByRegion(ctx, e.org.UID, testRegion)
 	r.NoError(err)
@@ -431,7 +439,7 @@ func TestSealedBlobShipsVerbatim(t *testing.T) {
 	ctx := t.Context()
 
 	// Enroll first so the check can be sealed to the agent's key.
-	conn, keys, _ := e.enroll(e.mintToken(testRegion), "dc1-agent")
+	conn, keys, _ := e.enroll(e.mintToken(), "dc1-agent")
 
 	sealed, err := credentials.SealForRecipients(
 		[]string{keys.X25519Recipient}, map[string]any{"password": "hunter2"},
@@ -468,8 +476,8 @@ func TestLeaseExpiryReclaim(t *testing.T) {
 
 	check := e.createCheck("web", []string{testRegion})
 
-	conn1, _, _ := e.enroll(e.mintToken(testRegion), "agent-1")
-	conn2, _, _ := e.enroll(e.mintToken(testRegion), "agent-2")
+	conn1, _, _ := e.enroll(e.mintToken(), "agent-1")
+	conn2, _, _ := e.enroll(e.mintToken(), "agent-2")
 
 	// Agent 1 claims the job and "dies" (never submits).
 	jobs1 := roundTrip(t, conn1, agentcrypto.ClientFrame{Type: agentcrypto.MsgTypeClaim, ID: "c1", MaxJobs: 5})
@@ -505,7 +513,7 @@ func TestWSBackendClientEndToEnd(t *testing.T) {
 	e := newEnv(t)
 	ctx := t.Context()
 
-	token := e.mintToken(testRegion)
+	token := e.mintToken()
 
 	keys, err := agentcrypto.GenerateAgentKeys()
 	r.NoError(err)
@@ -583,7 +591,7 @@ func TestWSBackendUnsealFailureReportsJobError(t *testing.T) {
 	keys, err := agentcrypto.GenerateAgentKeys()
 	r.NoError(err)
 	wsBackend := backend.NewWSBackend(
-		e.server.URL, e.mintToken(testRegion), "client-agent",
+		e.server.URL, e.mintToken(), "client-agent",
 		&backend.Identity{AgentKeys: *keys}, nil,
 	)
 

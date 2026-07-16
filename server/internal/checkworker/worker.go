@@ -185,13 +185,13 @@ func NewCheckWorker(
 // services registry — everything flows through the given (remote) backend.
 // Self-stats and the entitlements gate are in-process concerns and are
 // skipped; the server enforces per-org rate limits on the agent claim path.
-func NewAgentCheckWorker(cfg *config.Config, be backend.WorkerBackend) *CheckWorker {
-	return newCheckWorker(cfg, be)
+func NewAgentCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *CheckWorker {
+	return newCheckWorker(cfg, workerBackend)
 }
 
 // newCheckWorker is the shared constructor: everything except the in-process
 // conveniences (dbService/services), which the in-process wrapper fills in.
-func newCheckWorker(cfg *config.Config, be backend.WorkerBackend) *CheckWorker {
+func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *CheckWorker {
 	logger := slog.Default().With("component", "check_worker")
 
 	poolSize := cfg.Server.CheckWorker.Nb
@@ -224,7 +224,7 @@ func newCheckWorker(cfg *config.Config, be backend.WorkerBackend) *CheckWorker {
 	schedParams := schedulingParamsFromConfig(cfg.Server.Scheduling)
 
 	return &CheckWorker{
-		backend:     be,
+		backend:     workerBackend,
 		config:      cfg,
 		logger:      logger,
 		stats:       stats.NewProcessingStats(time.Minute, time.Minute, logger),

@@ -61,10 +61,10 @@ const (
 
 // signed reconnect headers.
 const (
-	headerAgentUID  = "X-SP-Agent-Uid"
-	headerTimestamp = "X-SP-Timestamp"
-	headerNonce     = "X-SP-Nonce"
-	headerSignature = "X-SP-Signature"
+	headerAgentUID  = "X-Sp-Agent-Uid"
+	headerTimestamp = "X-Sp-Timestamp"
+	headerNonce     = "X-Sp-Nonce"
+	headerSignature = "X-Sp-Signature"
 )
 
 // ResealFunc re-seals a region's mixed-mode checks after agent membership
@@ -143,17 +143,17 @@ func (h *Handler) serveEnrollment(
 		CompressionMode: websocket.CompressionDisabled,
 	})
 	if err != nil {
-		return nil // the client never got a socket
+		return nil //nolint:nilerr // the client never got a socket; nothing to answer
 	}
 	conn.SetReadLimit(maxFrameBytes)
 
 	// Identity is unknown until the enroll frame lands.
-	if err := wsjson.Write(ctx, conn, agentcrypto.ServerFrame{
+	if writeErr := wsjson.Write(ctx, conn, agentcrypto.ServerFrame{
 		Type:       agentcrypto.MsgTypeHello,
 		Protocol:   agentcrypto.ProtocolVersion,
 		ServerTime: time.Now().UTC().Format(time.RFC3339),
-	}); err != nil {
-		return nil
+	}); writeErr != nil {
+		return nil //nolint:nilerr // client already gone; the socket is the response channel
 	}
 
 	agent, err := h.awaitEnroll(ctx, conn, tokenHash)
@@ -257,26 +257,26 @@ func (h *Handler) serveReconnect(
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Agent has been revoked")
 	}
 
-	if err := agentcrypto.ValidateTimestamp(timestamp, time.Now(), agentcrypto.DefaultClockSkew); err != nil {
+	if tsErr := agentcrypto.ValidateTimestamp(timestamp, time.Now(), agentcrypto.DefaultClockSkew); tsErr != nil {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken,
 			"Request timestamp outside the accepted clock skew")
 	}
 
-	if err := h.nonces.CheckAndStore(agent.UID, nonce); err != nil {
+	if nonceErr := h.nonces.CheckAndStore(agent.UID, nonce); nonceErr != nil {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Nonce already used")
 	}
 
-	if err := agentcrypto.VerifySignature(
+	if sigErr := agentcrypto.VerifySignature(
 		agent.Ed25519PublicKey, req.Method, req.URL.Path, timestamp, nonce, signature,
-	); err != nil {
+	); sigErr != nil {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Invalid signature")
 	}
 
-	conn, err := websocket.Accept(writer, req.Request, &websocket.AcceptOptions{
+	conn, acceptErr := websocket.Accept(writer, req.Request, &websocket.AcceptOptions{
 		CompressionMode: websocket.CompressionDisabled,
 	})
-	if err != nil {
-		return nil
+	if acceptErr != nil {
+		return nil //nolint:nilerr // the client never got a socket; nothing to answer
 	}
 	conn.SetReadLimit(maxFrameBytes)
 
@@ -396,7 +396,7 @@ func (h *Handler) runAgentConnection(ctx context.Context, conn *websocket.Conn, 
 			// foreign check simply returns no jobs.
 			_ = wsjson.Write(loopCtx, conn, agentcrypto.ServerFrame{Type: agentcrypto.MsgTypeJobsAvailable})
 		case frame := <-frames:
-			if !h.handleFrame(loopCtx, conn, state, frame) {
+			if !h.handleFrame(loopCtx, conn, state, &frame) {
 				return
 			}
 		}
@@ -442,7 +442,7 @@ func (h *Handler) agentStillActive(ctx context.Context, conn *websocket.Conn, st
 
 // handleFrame dispatches one agent frame. Returns false to end the connection.
 func (h *Handler) handleFrame(
-	ctx context.Context, conn *websocket.Conn, state *connState, frame agentcrypto.ClientFrame,
+	ctx context.Context, conn *websocket.Conn, state *connState, frame *agentcrypto.ClientFrame,
 ) bool {
 	if !h.agentStillActive(ctx, conn, state) {
 		return false
@@ -467,7 +467,7 @@ func (h *Handler) handleFrame(
 // handleClaim claims jobs hard-scoped to the agent's org and exact region,
 // applies the per-org execution rate limit, and dispatches the wire jobs.
 func (h *Handler) handleClaim(
-	ctx context.Context, conn *websocket.Conn, state *connState, frame agentcrypto.ClientFrame,
+	ctx context.Context, conn *websocket.Conn, state *connState, frame *agentcrypto.ClientFrame,
 ) {
 	maxJobs := frame.MaxJobs
 	if maxJobs <= 0 {
@@ -520,9 +520,9 @@ func (h *Handler) handleClaim(
 // result row write, and incident processing — identical to the historical
 // SubmitResult path, all server-side.
 func (h *Handler) handleResult(
-	ctx context.Context, conn *websocket.Conn, state *connState, frame agentcrypto.ClientFrame,
+	ctx context.Context, conn *websocket.Conn, state *connState, frame *agentcrypto.ClientFrame,
 ) {
-	if reason := validateResultFrame(&frame); reason != "" {
+	if reason := validateResultFrame(frame); reason != "" {
 		_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{
 			Type: agentcrypto.MsgTypeError, ID: frame.ID,
 			Code: string(base.ErrorCodeValidationError), Title: reason,
@@ -533,7 +533,7 @@ func (h *Handler) handleResult(
 
 	// The job must belong to this agent's org and exact region — an agent can
 	// never write results into someone else's scope.
-	job, err := h.dbService.GetCheckJob(ctx, frame.JobUID)
+	job, err := h.dbService.GetCheckJobByUID(ctx, frame.JobUID)
 	if err != nil || job.OrganizationUID != state.agent.OrganizationUID ||
 		job.Region == nil || *job.Region != state.agent.Region {
 		_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{

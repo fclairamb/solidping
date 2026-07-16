@@ -166,16 +166,7 @@ func serve(ctx context.Context, _ *cli.Command) error {
 	// has no database and runs no migrations — branch BEFORE any DB init. It
 	// enrolls (or reconnects) over WebSocket and runs the check worker loop.
 	if cfg.Node.Role == config.NodeRoleAgent {
-		agentCtx, stopAgent := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
-		defer stopAgent()
-
-		if agentErr := agentmode.Run(agentCtx, cfg); agentErr != nil && !errors.Is(agentErr, context.Canceled) {
-			slog.ErrorContext(ctx, "Agent stopped with error", "error", agentErr)
-
-			return agentErr
-		}
-
-		return nil
+		return runAgentMode(ctx, cfg)
 	}
 
 	server, err := app.NewServer(ctx, cfg)
@@ -254,6 +245,21 @@ func serve(ctx context.Context, _ *cli.Command) error {
 	}
 
 	return err
+}
+
+// runAgentMode runs the deported-agent loop until interrupted (spec
+// 2026-07-16-02). No database, no migrations, no HTTP server.
+func runAgentMode(ctx context.Context, cfg *config.Config) error {
+	agentCtx, stopAgent := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
+	defer stopAgent()
+
+	if agentErr := agentmode.Run(agentCtx, cfg); agentErr != nil && !errors.Is(agentErr, context.Canceled) {
+		slog.ErrorContext(ctx, "Agent stopped with error", "error", agentErr)
+
+		return agentErr
+	}
+
+	return nil
 }
 
 // seedStartupData runs the env/deployment-driven seeds after migrations: the

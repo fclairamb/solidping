@@ -687,7 +687,7 @@ func (m *mockDBService) DeleteAgentEnrollmentToken(_ context.Context, _, _ strin
 	panic("not implemented")
 }
 
-func (m *mockDBService) GetCheckJob(_ context.Context, _ string) (*models.CheckJob, error) {
+func (m *mockDBService) GetCheckJobByUID(_ context.Context, _ string) (*models.CheckJob, error) {
 	panic("not implemented")
 }
 

@@ -63,7 +63,7 @@ func submitReq() *backend.SubmitResultRequest {
 }
 
 // registerWorker creates a workers row (results.worker_uid is a foreign key).
-func registerWorker(t *testing.T, ctx context.Context, dbSvc *sqlite.Service, slug string) string {
+func registerWorker(ctx context.Context, t *testing.T, dbSvc *sqlite.Service, slug string) string {
 	t.Helper()
 
 	registered, err := dbSvc.RegisterOrUpdateWorker(ctx, models.NewWorker(slug, slug))
@@ -93,7 +93,7 @@ func TestSubmitResultUsesAttachedCheck(t *testing.T) {
 		Check:           check, // attached at claim time
 	}
 
-	workerUID := registerWorker(t, ctx, dbSvc, "wk-attached")
+	workerUID := registerWorker(ctx, t, dbSvc, "wk-attached")
 
 	// The lease release may fail (no check_jobs row) — irrelevant here; the
 	// assertion is about the GetCheck round-trip on the incident path.
@@ -123,7 +123,7 @@ func TestSubmitResultFallsBackToGetCheck(t *testing.T) {
 		Check:           nil, // not attached -> fallback fetch
 	}
 
-	workerUID := registerWorker(t, ctx, dbSvc, "wk-fallback")
+	workerUID := registerWorker(ctx, t, dbSvc, "wk-fallback")
 
 	_ = be.SubmitResult(ctx, job, workerUID, submitReq())
 
@@ -155,7 +155,7 @@ func TestSubmitResultWritesResultRow(t *testing.T) {
 	req.Region = &region
 	req.Output = map[string]any{"message": "ok"}
 
-	workerUID := registerWorker(t, ctx, dbSvc, "wk-writes")
+	workerUID := registerWorker(ctx, t, dbSvc, "wk-writes")
 
 	_ = be.SubmitResult(ctx, job, workerUID, req)
 

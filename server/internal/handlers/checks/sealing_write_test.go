@@ -17,7 +17,7 @@ const sealTestRegion = "@encrypt-test/dc1"
 
 // enrollSealAgent enrolls a fresh agent into the given private region and
 // returns its keys (so tests can prove/unprove decryptability).
-func enrollSealAgent(t *testing.T, dbSvc db.Service, orgUID, region, name string) *agentcrypto.AgentKeys {
+func enrollSealAgent(t *testing.T, dbSvc db.Service, orgUID, name string) *agentcrypto.AgentKeys {
 	t.Helper()
 	r := require.New(t)
 	ctx := t.Context()
@@ -28,7 +28,7 @@ func enrollSealAgent(t *testing.T, dbSvc db.Service, orgUID, region, name string
 	_, hash, err := agentcrypto.GenerateEnrollmentToken()
 	r.NoError(err)
 	r.NoError(dbSvc.CreateAgentEnrollmentToken(
-		ctx, models.NewAgentEnrollmentToken(orgUID, region, hash, time.Now().Add(time.Hour), nil),
+		ctx, models.NewAgentEnrollmentToken(orgUID, sealTestRegion, hash, time.Now().Add(time.Hour), nil),
 	))
 
 	_, err = dbSvc.EnrollAgent(
@@ -50,7 +50,7 @@ func TestSealedOnlyCheckStoresNoServerDecryptableCopy(t *testing.T) {
 	svc, dbSvc, org := setupEncryptedChecksService(t)
 	ctx := t.Context()
 
-	keys := enrollSealAgent(t, dbSvc, org.UID, sealTestRegion, "dc1-agent")
+	keys := enrollSealAgent(t, dbSvc, org.UID, "dc1-agent")
 
 	created, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
 		Name:    "sealed-http",
@@ -92,7 +92,7 @@ func TestMixedRegionsDualStore(t *testing.T) {
 	svc, dbSvc, org := setupEncryptedChecksService(t)
 	ctx := t.Context()
 
-	keys := enrollSealAgent(t, dbSvc, org.UID, sealTestRegion, "dc1-agent")
+	keys := enrollSealAgent(t, dbSvc, org.UID, "dc1-agent")
 
 	created, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
 		Name:    "mixed-http",
@@ -126,7 +126,7 @@ func TestSealedOnlyPatchKeepsBlobWhenSecretsAbsent(t *testing.T) {
 	svc, dbSvc, org := setupEncryptedChecksService(t)
 	ctx := t.Context()
 
-	keys := enrollSealAgent(t, dbSvc, org.UID, sealTestRegion, "dc1-agent")
+	keys := enrollSealAgent(t, dbSvc, org.UID, "dc1-agent")
 
 	created, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
 		Name:    "sealed-patch",
@@ -180,7 +180,7 @@ func TestNeedsResealSurfacedOnMembershipChange(t *testing.T) {
 	svc, dbSvc, org := setupEncryptedChecksService(t)
 	ctx := t.Context()
 
-	enrollSealAgent(t, dbSvc, org.UID, sealTestRegion, "agent-1")
+	enrollSealAgent(t, dbSvc, org.UID, "agent-1")
 
 	created, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
 		Name:    "reseal-check",
@@ -201,7 +201,7 @@ func TestNeedsResealSurfacedOnMembershipChange(t *testing.T) {
 	r.False(*got.NeedsReseal)
 
 	// A second agent joins the region: the blob no longer covers the active set.
-	enrollSealAgent(t, dbSvc, org.UID, sealTestRegion, "agent-2")
+	enrollSealAgent(t, dbSvc, org.UID, "agent-2")
 
 	got, err = svc.GetCheck(ctx, org.Slug, created.UID, checks.GetCheckOptions{})
 	r.NoError(err)

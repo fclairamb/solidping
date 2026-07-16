@@ -105,7 +105,7 @@ func loadIdentity(cfg *config.Config) (*backend.Identity, bool, error) {
 	}
 
 	for _, path := range []string{cfg.Agent.KeysFile, fallbackKeysFile} {
-		raw, err := os.ReadFile(path) //nolint:gosec // operator-configured path
+		raw, err := os.ReadFile(path)
 		if err != nil {
 			continue
 		}

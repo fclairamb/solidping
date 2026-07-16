@@ -153,7 +153,7 @@ func (b *WSBackend) ClaimJobsForCheck(
 
 // claim sends one claim frame and converts/unseals the response.
 func (b *WSBackend) claim(ctx context.Context, maxJobs int, checkUID string) ([]*models.CheckJob, error) {
-	resp, err := b.request(ctx, agents.ClientFrame{
+	resp, err := b.request(ctx, &agents.ClientFrame{
 		Type:     agents.MsgTypeClaim,
 		MaxJobs:  maxJobs,
 		CheckUID: checkUID,
@@ -174,7 +174,7 @@ func (b *WSBackend) claim(ctx context.Context, maxJobs int, checkUID string) ([]
 				// The spec's decrypt-failure contract: a clear job error, not a
 				// silent skip — the operator sees WHY the check failed and the
 				// fix (re-save the credentials).
-				b.logger.Warn("sealed credentials not addressed to this agent",
+				b.logger.WarnContext(ctx, "sealed credentials not addressed to this agent",
 					"check_uid", job.CheckUID, "error", unsealErr)
 				b.submitSealError(ctx, job)
 
@@ -194,7 +194,7 @@ func (b *WSBackend) claim(ctx context.Context, maxJobs int, checkUID string) ([]
 // submitSealError reports a decrypt failure as an error result so the check's
 // history shows the actionable message instead of silently never running.
 func (b *WSBackend) submitSealError(ctx context.Context, job *models.CheckJob) {
-	_, _ = b.request(ctx, agents.ClientFrame{
+	_, _ = b.request(ctx, &agents.ClientFrame{
 		Type:     agents.MsgTypeResult,
 		JobUID:   job.UID,
 		Status:   int(models.ResultStatusError),
@@ -212,7 +212,7 @@ func (b *WSBackend) SubmitResult(
 	_ string,
 	req *SubmitResultRequest,
 ) error {
-	_, err := b.request(ctx, agents.ClientFrame{
+	_, err := b.request(ctx, &agents.ClientFrame{
 		Type:     agents.MsgTypeResult,
 		JobUID:   job.UID,
 		Status:   req.Status,
@@ -238,13 +238,13 @@ func (b *WSBackend) LastResults(_ context.Context, _ string, _ []string) (map[st
 
 // Hints returns a fresh subscription to jobs-available frames.
 func (b *WSBackend) Hints() <-chan string {
-	ch := make(chan string, 4)
+	hintCh := make(chan string, 4)
 
 	b.mu.Lock()
-	b.hints = append(b.hints, ch)
+	b.hints = append(b.hints, hintCh)
 	b.mu.Unlock()
 
-	return ch
+	return hintCh
 }
 
 // identityX25519 returns the agent's age identity string.
@@ -256,7 +256,7 @@ func (b *WSBackend) identityX25519() string {
 }
 
 // request sends one frame and waits for its correlated response.
-func (b *WSBackend) request(ctx context.Context, frame agents.ClientFrame) (*agents.ServerFrame, error) {
+func (b *WSBackend) request(ctx context.Context, frame *agents.ClientFrame) (*agents.ServerFrame, error) {
 	if err := b.ensureConn(ctx); err != nil {
 		return nil, err
 	}
@@ -403,12 +403,12 @@ func (b *WSBackend) dialEnroll(ctx context.Context) error {
 		b.onIdentityChange(&identityCopy)
 	}
 
-	b.logger.Info("agent enrolled",
+	b.logger.InfoContext(ctx, "agent enrolled",
 		"agent_uid", enrolled.AgentUID,
 		"region", enrolled.Region,
 		"fingerprint", enrolled.Fingerprint)
 
-	go b.readPump(conn)
+	go b.readPump(context.WithoutCancel(ctx), conn)
 
 	return nil
 }
@@ -432,10 +432,10 @@ func (b *WSBackend) dialReconnect(ctx context.Context) error {
 	}
 
 	headers := http.Header{}
-	headers.Set("X-SP-Agent-Uid", identity.AgentUID)
-	headers.Set("X-SP-Timestamp", timestamp)
-	headers.Set("X-SP-Nonce", nonce)
-	headers.Set("X-SP-Signature", signature)
+	headers.Set("X-Sp-Agent-Uid", identity.AgentUID)
+	headers.Set("X-Sp-Timestamp", timestamp)
+	headers.Set("X-Sp-Nonce", nonce)
+	headers.Set("X-Sp-Signature", signature)
 
 	conn, err := b.dial(ctx, headers)
 	if err != nil {
@@ -454,9 +454,9 @@ func (b *WSBackend) dialReconnect(ctx context.Context) error {
 	b.conn = conn
 	b.mu.Unlock()
 
-	b.logger.Info("agent reconnected", "agent_uid", identity.AgentUID, "region", hello.Region)
+	b.logger.InfoContext(ctx, "agent reconnected", "agent_uid", identity.AgentUID, "region", hello.Region)
 
-	go b.readPump(conn)
+	go b.readPump(context.WithoutCancel(ctx), conn)
 
 	return nil
 }
@@ -469,6 +469,10 @@ func (b *WSBackend) dial(ctx context.Context, headers http.Header) (*websocket.C
 	conn, resp, err := websocket.Dial(dialCtx, b.serverURL+wsPath, &websocket.DialOptions{
 		HTTPHeader: headers,
 	})
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+
 	if err != nil {
 		status := 0
 		if resp != nil {
@@ -492,9 +496,7 @@ const CloseProtocolError websocket.StatusCode = 4400
 // readPump dispatches inbound frames: correlated responses to their waiters,
 // jobs-available to every hint subscriber. Ends (and drops the connection) on
 // the first read error.
-func (b *WSBackend) readPump(conn *websocket.Conn) {
-	ctx := context.Background()
-
+func (b *WSBackend) readPump(ctx context.Context, conn *websocket.Conn) {
 	for {
 		var frame agents.ServerFrame
 		if err := wsjson.Read(ctx, conn, &frame); err != nil {
@@ -506,9 +508,9 @@ func (b *WSBackend) readPump(conn *websocket.Conn) {
 		switch {
 		case frame.Type == agents.MsgTypeJobsAvailable:
 			b.mu.Lock()
-			for _, ch := range b.hints {
+			for _, hintCh := range b.hints {
 				select {
-				case ch <- "{}":
+				case hintCh <- "{}":
 				default: // slow consumer: drop, the periodic poll catches up
 				}
 			}

@@ -185,8 +185,8 @@ type Service interface {
 	ListCheckJobsByCheckUID(ctx context.Context, checkUID string) ([]*models.CheckJob, error)
 	DeleteCheckJob(ctx context.Context, uid string) error
 	CreateCheckJob(ctx context.Context, job *models.CheckJob) error
-	// GetCheckJob returns one check job by UID.
-	GetCheckJob(ctx context.Context, uid string) (*models.CheckJob, error)
+	// GetCheckJobByUID returns one check job by UID.
+	GetCheckJobByUID(ctx context.Context, uid string) (*models.CheckJob, error)
 
 	// Label operations
 	GetOrCreateLabel(ctx context.Context, orgUID, key, value string) (*models.Label, error)

@@ -1312,44 +1312,8 @@ func (s *Service) UpdateCheck(
 		update.Regions = &resolvedRegions
 	}
 	if req.Config != nil {
-		// PATCH-merge rule: read the existing effective config (decrypting
-		// the private side) and apply the spec's preserve-absent-secrets
-		// behavior. A naive replace here would silently wipe encrypted
-		// secrets the user can't see in their dashboard.
-		oldSealed := check.ConfigSealed
-		oldPrivateKeys := check.ConfigPrivateKeys
-		merged, mergeErr := s.applyConfigPatch(ctx, check, *req.Config)
-		if mergeErr != nil {
-			return CheckResponse{}, mergeErr
-		}
-		// Uniform per-check timeout cap (spec 2026-07-11-05) — validated on
-		// the merged config so a PATCH cannot smuggle in an over-cap value.
-		if timeoutErr := validateConfigTimeout(merged); timeoutErr != nil {
-			return CheckResponse{}, timeoutErr
-		}
-		if encErr := s.applyEncryption(ctx, check, merged); encErr != nil {
-			return CheckResponse{}, encErr
-		}
-		// Sealed-only PATCH semantics (spec 2026-07-16-02): when the request
-		// carries no secret values, the server cannot re-seal what it cannot
-		// read — the previous sealed blob is kept AS-IS (documented). Secrets
-		// provided → applyEncryption produced a fresh blob that replaces it.
-		if check.ConfigSealed == nil && oldSealed != nil {
-			check.ConfigSealed = oldSealed
-			if check.ConfigPrivateKeys == nil {
-				check.ConfigPrivateKeys = oldPrivateKeys
-			}
-		}
-		configMap := check.Config
-		update.Config = &configMap
-		update.ConfigPrivate = check.ConfigPrivate
-		update.ConfigPrivateKeys = check.ConfigPrivateKeys
-		if check.ConfigPrivate == nil {
-			update.ClearConfigPrivate = true
-		}
-		update.ConfigSealed = check.ConfigSealed
-		if check.ConfigSealed == nil {
-			update.ClearConfigSealed = true
+		if cfgErr := s.applyConfigUpdate(ctx, check, *req.Config, &update); cfgErr != nil {
+			return CheckResponse{}, cfgErr
 		}
 	}
 	if req.Enabled != nil {
@@ -3163,47 +3127,17 @@ func (s *Service) applyEncryption(ctx context.Context, check *models.Check, effe
 	public, private := credentials.SplitConfig(effective, secrets)
 	check.Config = public
 
-	// Region-sealed credentials (spec 2026-07-16-02, phase 2). When the check
-	// targets private region(s) and carries secrets, seal them to the X25519
-	// keys of every ACTIVE agent of those regions. Private-only checks store
-	// secrets sealed-ONLY — no org-DEK copy, so the server cannot recover them
-	// after this write. Mixed private+cloud checks dual-store: the sealed blob
-	// for agents plus the v1 envelope (below) for cloud dispatch.
-	check.ConfigSealed = nil
-	privateRegions := filterPrivateRegions(check.Regions)
-	sealedOnly := len(privateRegions) > 0 && len(privateRegions) == len(check.Regions)
+	sealedOnly, sealErr := s.applyRegionSealing(ctx, check, private)
+	if sealErr != nil {
+		return sealErr
+	}
 
-	if len(private) > 0 && len(privateRegions) > 0 {
-		recipients, recErr := s.activeRecipientsForRegions(ctx, check.OrganizationUID, privateRegions)
-		if recErr != nil {
-			return recErr
-		}
+	if sealedOnly {
+		// Sealed-only: never store a server-decryptable copy. Placeholder
+		// key names stay visible to the dashboard.
+		check.ConfigPrivate = nil
 
-		if len(recipients) > 0 {
-			sealed, sealErr := credentials.SealForRecipients(recipients, private)
-			if sealErr != nil {
-				return fmt.Errorf("seal check config: %w", sealErr)
-			}
-
-			check.ConfigSealed = &sealed
-
-			if sealedOnly {
-				// Sealed-only: never store a server-decryptable copy. Placeholder
-				// key names stay visible to the dashboard.
-				check.ConfigPrivate = nil
-
-				return setConfigPrivateKeys(check, private)
-			}
-		} else if sealedOnly {
-			// No active agents to seal to yet (region just created). Falling
-			// through would drop the secrets entirely for a sealed-only check;
-			// keep them under the v1 envelope (or plaintext fallback) for now —
-			// the check is flagged needs-re-seal until the credentials are
-			// re-saved with an enrolled agent present.
-			slog.WarnContext(ctx,
-				"private-only check has no active agents to seal to; storing server-side until re-saved",
-				"checkUid", check.UID, "regions", privateRegions)
-		}
+		return setConfigPrivateKeys(check, private)
 	}
 
 	if !s.creds.Enabled() || len(private) == 0 {
@@ -3232,6 +3166,110 @@ func (s *Service) applyEncryption(ctx context.Context, check *models.Check, effe
 	check.ConfigPrivate = &envelope
 
 	return setConfigPrivateKeys(check, private)
+}
+
+// applyConfigUpdate handles a PATCHed config: the preserve-absent-secrets
+// merge, timeout validation, encryption/sealing, and the sealed-only PATCH
+// contract (spec 2026-07-16-02: when the request carries no secret values the
+// server cannot re-seal what it cannot read — the previous sealed blob is kept
+// AS-IS; secrets provided → a fresh blob replaces it). Fills the update
+// struct's config columns.
+func (s *Service) applyConfigUpdate(
+	ctx context.Context, check *models.Check, patch map[string]any, update *models.CheckUpdate,
+) error {
+	// PATCH-merge rule: read the existing effective config (decrypting
+	// the private side) and apply the spec's preserve-absent-secrets
+	// behavior. A naive replace here would silently wipe encrypted
+	// secrets the user can't see in their dashboard.
+	oldSealed := check.ConfigSealed
+	oldPrivateKeys := check.ConfigPrivateKeys
+
+	merged, mergeErr := s.applyConfigPatch(ctx, check, patch)
+	if mergeErr != nil {
+		return mergeErr
+	}
+
+	// Uniform per-check timeout cap (spec 2026-07-11-05) — validated on
+	// the merged config so a PATCH cannot smuggle in an over-cap value.
+	if timeoutErr := validateConfigTimeout(merged); timeoutErr != nil {
+		return timeoutErr
+	}
+
+	if encErr := s.applyEncryption(ctx, check, merged); encErr != nil {
+		return encErr
+	}
+
+	if check.ConfigSealed == nil && oldSealed != nil {
+		check.ConfigSealed = oldSealed
+
+		if check.ConfigPrivateKeys == nil {
+			check.ConfigPrivateKeys = oldPrivateKeys
+		}
+	}
+
+	configMap := check.Config
+	update.Config = &configMap
+	update.ConfigPrivate = check.ConfigPrivate
+	update.ConfigPrivateKeys = check.ConfigPrivateKeys
+
+	if check.ConfigPrivate == nil {
+		update.ClearConfigPrivate = true
+	}
+
+	update.ConfigSealed = check.ConfigSealed
+	if check.ConfigSealed == nil {
+		update.ClearConfigSealed = true
+	}
+
+	return nil
+}
+
+// applyRegionSealing implements phase 2 of spec 2026-07-16-02. When the check
+// targets private region(s) and carries secrets, it seals them to the X25519
+// keys of every ACTIVE agent of those regions and stores the blob on
+// check.ConfigSealed. Returns true when the check is sealed-ONLY (private
+// regions only, blob written): the caller must then skip the v1 envelope so
+// the server holds no decryptable copy. Mixed private+cloud checks dual-store
+// (sealed blob here + v1 envelope in the caller).
+func (s *Service) applyRegionSealing(
+	ctx context.Context, check *models.Check, private map[string]any,
+) (bool, error) {
+	check.ConfigSealed = nil
+	privateRegions := filterPrivateRegions(check.Regions)
+	sealedOnly := len(privateRegions) > 0 && len(privateRegions) == len(check.Regions)
+
+	if len(private) == 0 || len(privateRegions) == 0 {
+		return false, nil
+	}
+
+	recipients, recErr := s.activeRecipientsForRegions(ctx, check.OrganizationUID, privateRegions)
+	if recErr != nil {
+		return false, recErr
+	}
+
+	if len(recipients) == 0 {
+		if sealedOnly {
+			// No active agents to seal to yet (region just created). Dropping
+			// the secrets would break the check outright; keep them under the
+			// v1 envelope (or plaintext fallback) for now — the check is
+			// flagged needs-re-seal until the credentials are re-saved with an
+			// enrolled agent present.
+			slog.WarnContext(ctx,
+				"private-only check has no active agents to seal to; storing server-side until re-saved",
+				"checkUid", check.UID, "regions", privateRegions)
+		}
+
+		return false, nil
+	}
+
+	sealed, sealErr := credentials.SealForRecipients(recipients, private)
+	if sealErr != nil {
+		return false, fmt.Errorf("seal check config: %w", sealErr)
+	}
+
+	check.ConfigSealed = &sealed
+
+	return sealedOnly, nil
 }
 
 // setConfigPrivateKeys records the secret key names (dashboard placeholders).
