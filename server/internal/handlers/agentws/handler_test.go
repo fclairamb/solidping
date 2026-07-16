@@ -13,6 +13,7 @@ import (
 	"github.com/uptrace/bunrouter"
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
+	"github.com/fclairamb/solidping/server/internal/checkworker/backend"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
@@ -455,4 +456,149 @@ func TestSealedBlobShipsVerbatim(t *testing.T) {
 	secrets, err := credentials.UnsealWithIdentity(keys.X25519Identity, *jobsResp.Jobs[0].ConfigSealed)
 	r.NoError(err)
 	r.Equal("hunter2", secrets["password"])
+}
+
+// TestLeaseExpiryReclaim: an agent dies mid-job; once its lease expires the
+// job becomes claimable again (by a second agent — HA takeover).
+func TestLeaseExpiryReclaim(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newEnv(t)
+	ctx := t.Context()
+
+	check := e.createCheck("web", []string{testRegion})
+
+	conn1, _, _ := e.enroll(e.mintToken(testRegion), "agent-1")
+	conn2, _, _ := e.enroll(e.mintToken(testRegion), "agent-2")
+
+	// Agent 1 claims the job and "dies" (never submits).
+	jobs1 := roundTrip(t, conn1, agentcrypto.ClientFrame{Type: agentcrypto.MsgTypeClaim, ID: "c1", MaxJobs: 5})
+	r.Len(jobs1.Jobs, 1)
+	_ = conn1.Close(websocket.StatusGoingAway, "agent died")
+
+	// While the lease is live, agent 2 gets nothing.
+	empty := roundTrip(t, conn2, agentcrypto.ClientFrame{Type: agentcrypto.MsgTypeClaim, ID: "c2", MaxJobs: 5})
+	r.Empty(empty.Jobs, "a live lease must block a second claim")
+
+	// Simulate lease expiry (the real clock would take period+30s).
+	past := time.Now().Add(-time.Minute)
+	_, err := e.dbSvc.DB().NewUpdate().
+		Table("check_jobs").
+		Set("lease_expires_at = ?", past).
+		Set("scheduled_at = ?", past).
+		Where("check_uid = ?", check.UID).
+		Exec(ctx)
+	r.NoError(err)
+
+	// Agent 2 now re-claims the same job.
+	jobs2 := roundTrip(t, conn2, agentcrypto.ClientFrame{Type: agentcrypto.MsgTypeClaim, ID: "c3", MaxJobs: 5})
+	r.Len(jobs2.Jobs, 1, "an expired lease must be re-claimable")
+	r.Equal(jobs1.Jobs[0].UID, jobs2.Jobs[0].UID)
+}
+
+// TestWSBackendClientEndToEnd drives the agent-side client library (WSBackend)
+// against the real handler: enroll (identity persisted), claim with automatic
+// unseal-and-merge, and result submission through the WorkerBackend interface.
+func TestWSBackendClientEndToEnd(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newEnv(t)
+	ctx := t.Context()
+
+	token := e.mintToken(testRegion)
+
+	keys, err := agentcrypto.GenerateAgentKeys()
+	r.NoError(err)
+
+	var persisted *backend.Identity
+	wsBackend := backend.NewWSBackend(
+		e.server.URL, token, "client-agent",
+		&backend.Identity{AgentKeys: *keys},
+		func(id *backend.Identity) { persisted = id },
+	)
+
+	// Register triggers enrollment.
+	worker, err := wsBackend.Register(ctx, nil)
+	r.NoError(err)
+	r.NotEmpty(worker.UID)
+	r.NotNil(persisted, "the identity must be persisted after enrollment")
+	r.NotEmpty(persisted.AgentUID)
+	r.Equal(testRegion, persisted.Region)
+
+	// A sealed check created AFTER enrollment is sealed to this agent.
+	sealed, err := credentials.SealForRecipients(
+		[]string{keys.X25519Recipient}, map[string]any{"password": "hunter2"},
+	)
+	r.NoError(err)
+
+	check := models.NewCheck(e.org.UID, "client-check", "http")
+	check.Config = models.JSONMap{"url": "https://internal.example.com"}
+	check.Regions = []string{testRegion}
+	check.ConfigSealed = &sealed
+	r.NoError(e.dbSvc.CreateCheck(ctx, check))
+
+	// ClaimJobs unseals and merges the secrets in memory.
+	jobs, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
+	r.NoError(err)
+	r.Len(jobs, 1)
+	r.Equal("hunter2", jobs[0].Config["password"], "the client must unseal and merge the secrets")
+	r.Nil(jobs[0].ConfigSealed, "the blob must not linger on the in-memory job")
+
+	// SubmitResult persists the result server-side.
+	r.NoError(wsBackend.SubmitResult(ctx, jobs[0], worker.UID, &backend.SubmitResultRequest{
+		Status:          int(models.ResultStatusUp),
+		Duration:        12,
+		Output:          map[string]any{"message": "ok"},
+		NextScheduledAt: time.Now().Add(time.Minute),
+	}))
+
+	results, err := e.dbSvc.GetLastResultForChecks(ctx, e.org.UID, []string{check.UID})
+	r.NoError(err)
+	got, ok := results[check.UID]
+	r.True(ok)
+	r.Equal(int(models.ResultStatusUp), *got.Status)
+}
+
+// TestWSBackendUnsealFailureReportsJobError: a blob sealed to a DIFFERENT
+// agent yields the spec's clear job error instead of a silent skip.
+func TestWSBackendUnsealFailureReportsJobError(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newEnv(t)
+	ctx := t.Context()
+
+	otherKeys, err := agentcrypto.GenerateAgentKeys()
+	r.NoError(err)
+	sealed, err := credentials.SealForRecipients(
+		[]string{otherKeys.X25519Recipient}, map[string]any{"password": "hunter2"},
+	)
+	r.NoError(err)
+
+	check := models.NewCheck(e.org.UID, "foreign-sealed", "http")
+	check.Config = models.JSONMap{"url": "https://internal.example.com"}
+	check.Regions = []string{testRegion}
+	check.ConfigSealed = &sealed
+	r.NoError(e.dbSvc.CreateCheck(ctx, check))
+
+	keys, err := agentcrypto.GenerateAgentKeys()
+	r.NoError(err)
+	wsBackend := backend.NewWSBackend(
+		e.server.URL, e.mintToken(testRegion), "client-agent",
+		&backend.Identity{AgentKeys: *keys}, nil,
+	)
+
+	worker, err := wsBackend.Register(ctx, nil)
+	r.NoError(err)
+
+	jobs, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
+	r.NoError(err)
+	r.Empty(jobs, "an undecryptable job must be dropped from the batch")
+
+	// The clear job error landed as an error result server-side.
+	results, err := e.dbSvc.GetLastResultForChecks(ctx, e.org.UID, []string{check.UID})
+	r.NoError(err)
+	got, ok := results[check.UID]
+	r.True(ok, "a decrypt failure must produce a visible error result")
+	r.Equal(int(models.ResultStatusError), *got.Status)
+	r.Contains(got.Output["error"], "re-save the check's credentials")
 }
