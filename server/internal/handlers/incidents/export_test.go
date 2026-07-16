@@ -23,8 +23,16 @@ func EffectiveRecoveryPeriodForTest(check *models.Check) time.Duration {
 
 // RecoveryElapsedForTest exposes the unexported recoveryElapsed so external
 // tests can assert the flap-aware auto-resolve gate against the injected clock.
-func RecoveryElapsedForTest(check *models.Check, now time.Time) bool {
-	return recoveryElapsed(check, now)
+// A nil incident skips the incident-scoping guard, exercising the flap math
+// alone.
+func RecoveryElapsedForTest(check *models.Check, incident *models.Incident, now time.Time) bool {
+	return recoveryElapsed(check, incident, now)
+}
+
+// IncidentClockFloorForTest exposes the unexported incidentClockFloor so
+// external tests can assert which onset the recovery clock is scoped to.
+func IncidentClockFloorForTest(incident *models.Incident) time.Time {
+	return incidentClockFloor(incident)
 }
 
 // BumpFlapForTest exposes the unexported bumpFlap so external tests can verify

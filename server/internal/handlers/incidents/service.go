@@ -268,6 +268,15 @@ func deriveIncidentClocks(
 			t := now
 			out.FirstFailureAt = &t
 		}
+		// This failure may open (or reopen) an incident right after this write,
+		// so the recovery clock must not carry over from the *previous*
+		// incident: a stale value would let the new incident auto-resolve on
+		// its very first success, ignoring the recovery period entirely. The
+		// clock is symmetric with FirstFailureAt — each is cleared by the
+		// opposite signal.
+		if check.FirstSuccessSinceFailureAt != nil {
+			out.ClearFirstSuccessSinceFailureAt = true
+		}
 	case isFailure && activeIncident != nil:
 		// Failure during the recovery window resets the recovery clock.
 		if check.FirstSuccessSinceFailureAt != nil {
@@ -280,14 +289,46 @@ func deriveIncidentClocks(
 			out.ClearFirstFailureAt = true
 		}
 	case isSuccess && activeIncident != nil:
-		// First success during an active incident arms the recovery clock.
-		if check.FirstSuccessSinceFailureAt == nil {
+		// First success during an active incident arms the recovery clock. A
+		// value predating the incident's onset is stale (it belongs to an
+		// earlier incident, e.g. a row written before the clock was cleared on
+		// open) and is re-armed rather than honored, so such rows self-heal on
+		// their next success instead of needing a backfill.
+		if staleOrUnarmedRecoveryClock(check, activeIncident) {
 			t := now
 			out.FirstSuccessSinceFailureAt = &t
 		}
 	}
 
 	return out
+}
+
+// staleOrUnarmedRecoveryClock reports whether the check's recovery clock needs
+// to be (re-)armed for this incident: either it was never armed, or it carries
+// a value older than the incident's current onset and therefore belongs to a
+// previous incident.
+func staleOrUnarmedRecoveryClock(check *models.Check, incident *models.Incident) bool {
+	if check.FirstSuccessSinceFailureAt == nil {
+		return true
+	}
+
+	return check.FirstSuccessSinceFailureAt.Before(incidentClockFloor(incident))
+}
+
+// incidentClockFloor returns the earliest time a recovery clock may legitimately
+// carry for this incident — its current onset: LastReopenedAt when the incident
+// has been reopened, StartedAt otherwise. A nil incident yields the zero time,
+// so every comparison against the floor is vacuously satisfied and the
+// no-incident paths keep their previous behavior.
+func incidentClockFloor(incident *models.Incident) time.Time {
+	if incident == nil {
+		return time.Time{}
+	}
+	if incident.LastReopenedAt != nil && incident.LastReopenedAt.After(incident.StartedAt) {
+		return *incident.LastReopenedAt
+	}
+
+	return incident.StartedAt
 }
 
 // applyClocks mirrors deriveIncidentClocks's tri-state into the in-memory
@@ -484,7 +525,7 @@ func (s *Service) handleSuccess(
 		return nil
 	}
 
-	if recoveryElapsed(check, s.clock.Now()) {
+	if recoveryElapsed(check, incident, s.clock.Now()) {
 		return s.resolveIncident(ctx, check, result, incident)
 	}
 
@@ -509,8 +550,16 @@ func confirmationElapsed(check *models.Check, now time.Time) bool {
 // period is flap-aware (see effectiveRecoveryPeriod): a flapping check must
 // stay stable progressively longer before auto-resolving. A 0-second base
 // period means "resolve immediately on first success".
-func recoveryElapsed(check *models.Check, now time.Time) bool {
+//
+// The clock is scoped to `incident`: a FirstSuccessSinceFailureAt older than
+// the incident's onset (see incidentClockFloor) belongs to a previous incident
+// and can never resolve this one. That makes the invariant structural rather
+// than dependent on every transition remembering to clear the clock.
+func recoveryElapsed(check *models.Check, incident *models.Incident, now time.Time) bool {
 	if check.FirstSuccessSinceFailureAt == nil {
+		return false
+	}
+	if check.FirstSuccessSinceFailureAt.Before(incidentClockFloor(incident)) {
 		return false
 	}
 
@@ -1162,7 +1211,7 @@ func (s *Service) handleGroupSuccess(
 		return nil
 	}
 
-	if !recoveryElapsed(check, s.clock.Now()) {
+	if !recoveryElapsed(check, incident, s.clock.Now()) {
 		return nil
 	}
 
