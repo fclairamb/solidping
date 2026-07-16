@@ -84,7 +84,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/unsubscribe"
 	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
 	webpushhandler "github.com/fclairamb/solidping/server/internal/handlers/webpush"
-	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/jmap"
@@ -762,19 +761,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	api.POST("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
 	api.GET("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
 
-	// Edge worker API routes (worker token auth, no user auth)
-	workersService := workers.NewService(
-		s.dbService,
-		s.services.CheckJobs,
-		incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime),
-		s.services.Credentials,
-	)
-	workersHandler := workers.NewHandler(workersService, s.config)
-	workerAPI := api.NewGroup("/workers")
-	workerAPI.POST("/register", workersHandler.Register)
-	workerAPI.POST("/heartbeat", workersHandler.Heartbeat)
-	workerAPI.POST("/claim-jobs", workersHandler.ClaimJobs)
-	workerAPI.POST("/submit-result", workersHandler.SubmitResult)
+	// The HTTP edge-worker API (/workers/{register,heartbeat,claim-jobs,
+	// submit-result}) was removed with spec 2026-07-16-02: it had no production
+	// client and its auth was a plaintext spw_ bearer token stored verbatim.
+	// Deported agents now connect outbound over the WebSocket agent transport,
+	// which authenticates by Ed25519 signature and never persists a usable
+	// credential. The claim/submit service logic lives on and is reused by that
+	// handler; the in-process worker keeps talking to checkjobsvc directly.
 
 	// Results routes (authentication required)
 	resultsService := results.NewService(s.dbService)

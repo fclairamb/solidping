@@ -40,3 +40,8 @@ create table agent_enrollment_tokens (
 
 create unique index idx_agent_enrollment_tokens_hash on agent_enrollment_tokens (token_hash) where deleted_at is null;
 create index idx_agent_enrollment_tokens_org on agent_enrollment_tokens (organization_uid) where deleted_at is null;
+
+-- Drop the legacy edge-worker bearer token (see the Postgres mirror). SQLite
+-- refuses to drop an indexed column, so its index goes first.
+drop index if exists idx_workers_token;
+alter table workers drop column token;

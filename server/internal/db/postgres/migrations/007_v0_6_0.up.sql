@@ -52,3 +52,9 @@ create unique index idx_agent_enrollment_tokens_hash on agent_enrollment_tokens 
 create index idx_agent_enrollment_tokens_org on agent_enrollment_tokens (organization_uid) where deleted_at is null;
 
 comment on table agent_enrollment_tokens is 'One-shot agent enrollment tokens (spe_ prefix). Stores only the SHA-256 hash; consumed atomically at enrollment.';
+
+-- Drop the legacy edge-worker bearer token. The HTTP worker API that minted and
+-- matched these plaintext spw_ tokens is gone; agents authenticate by Ed25519
+-- signature, so the DB holds no usable worker/agent credential at all. The
+-- partial index on the column drops with it.
+alter table workers drop column token;

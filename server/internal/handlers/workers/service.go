@@ -1,10 +1,18 @@
-// Package workers provides HTTP handlers for the edge worker API.
+// Package workers provides the claim/submit business logic shared by every
+// remote check executor.
+//
+// The HTTP edge-worker API this package once served was removed with spec
+// 2026-07-16-02 (no production client; auth was a plaintext spw_ bearer token
+// matched verbatim). What remains is the transport-agnostic service logic —
+// ClaimJobs (with server-side secret handling) and SubmitResult (lease-ownership
+// guard, result write, server-side incident processing) — which the WebSocket
+// deported-agent handler reuses. Authentication is the transport's concern: the
+// agent WS handshake verifies an Ed25519 signature before the upgrade, so no
+// bearer credential exists in the database at all.
 package workers
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -22,20 +30,11 @@ import (
 
 // Service errors.
 var (
-	ErrInvalidToken   = errors.New("invalid worker token")
-	ErrMissingToken   = errors.New("missing worker token")
 	ErrWorkerNotFound = errors.New("worker not found")
 	ErrJobNotFound    = errors.New("check job not found")
 )
 
-const (
-	// tokenPrefix is prepended to generated worker tokens.
-	tokenPrefix = "spw_"
-	// tokenRandomBytes is the number of random bytes for a token.
-	tokenRandomBytes = 32
-)
-
-// Service provides business logic for the edge worker API.
+// Service provides the transport-agnostic claim/submit business logic.
 type Service struct {
 	db          db.Service
 	checkJobSvc checkjobsvc.Service
@@ -59,97 +58,6 @@ func NewService(
 		incidentSvc: incidentSvc,
 		creds:       creds,
 	}
-}
-
-// ValidateToken checks that the bearer token matches a worker in the
-// database.  Returns the worker UID on success.
-func (s *Service) ValidateToken(
-	ctx context.Context, token string,
-) (string, error) {
-	if token == "" {
-		return "", ErrMissingToken
-	}
-
-	// Look up worker by token.
-	var worker models.Worker
-
-	err := s.db.DB().NewSelect().
-		Model(&worker).
-		Where("token = ?", token).
-		Where("deleted_at IS NULL").
-		Scan(ctx)
-	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrInvalidToken, err)
-	}
-
-	return worker.UID, nil
-}
-
-// RegisterRequest is the input for Register.
-type RegisterRequest struct {
-	UID    string  `json:"uid"`
-	Slug   string  `json:"slug"`
-	Name   string  `json:"name"`
-	Region *string `json:"region,omitempty"`
-}
-
-// RegisterResponse is the output for Register.
-type RegisterResponse struct {
-	UID    string  `json:"uid"`
-	Slug   string  `json:"slug"`
-	Name   string  `json:"name"`
-	Region *string `json:"region,omitempty"`
-	Token  *string `json:"token,omitempty"`
-}
-
-// Register registers or updates a worker.  On first registration a
-// token is generated and returned.
-func (s *Service) Register(
-	ctx context.Context, req *RegisterRequest,
-) (*RegisterResponse, error) {
-	worker := &models.Worker{
-		UID:    req.UID,
-		Slug:   req.Slug,
-		Name:   req.Name,
-		Region: req.Region,
-	}
-
-	registered, err := s.db.RegisterOrUpdateWorker(ctx, worker)
-	if err != nil {
-		return nil, fmt.Errorf("failed to register worker: %w", err)
-	}
-
-	// Generate token if the worker doesn't have one yet.
-	if registered.Token == nil {
-		token, err := generateWorkerToken()
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to generate token: %w", err,
-			)
-		}
-
-		_, err = s.db.DB().NewUpdate().
-			Model((*models.Worker)(nil)).
-			Set("token = ?", token).
-			Set("updated_at = ?", time.Now()).
-			Where("uid = ?", registered.UID).
-			Exec(ctx)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to save token: %w", err,
-			)
-		}
-
-		registered.Token = &token
-	}
-
-	return &RegisterResponse{
-		UID:    registered.UID,
-		Slug:   registered.Slug,
-		Name:   registered.Name,
-		Region: registered.Region,
-		Token:  registered.Token,
-	}, nil
 }
 
 // Heartbeat updates the worker's last_active_at.
@@ -344,14 +252,4 @@ func calculateNextScheduledAt(job *models.CheckJob) time.Time {
 	}
 
 	return now.Add(interval)
-}
-
-// generateWorkerToken creates a token with the spw_ prefix.
-func generateWorkerToken() (string, error) {
-	b := make([]byte, tokenRandomBytes)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-
-	return tokenPrefix + hex.EncodeToString(b), nil
 }
