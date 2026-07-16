@@ -1,6 +1,8 @@
 package sqlite
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -61,6 +63,81 @@ func TestEnrollAgentSingleUse(t *testing.T) {
 	// Second enrollment with the same token is rejected (single-use).
 	_, err = svc.EnrollAgent(ctx, hash, "agent-1b", "ed-pub-2", "age1recipient2", "fp2")
 	r.ErrorIs(err, db.ErrEnrollmentTokenInvalid)
+}
+
+// TestEnrollAgentSingleUseUnderConcurrency is the spec's "single-use race":
+// N agents redeem the SAME token simultaneously. Exactly one must win; every
+// loser must get ErrEnrollmentTokenInvalid, and exactly one agent row must
+// exist afterwards (the conditional `used_at IS NULL` UPDATE is the guard).
+func TestEnrollAgentSingleUseUnderConcurrency(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, orgUID := newAgentTestService(t)
+	ctx := t.Context()
+
+	region := "@agt-org/dc1"
+	hash := mintToken(t, svc, orgUID, region, time.Now().Add(time.Hour))
+
+	const racers = 8
+
+	var (
+		start    sync.WaitGroup
+		done     sync.WaitGroup
+		mu       sync.Mutex
+		winners  []*models.Agent
+		failures []error
+	)
+
+	start.Add(1)
+
+	for i := range racers {
+		done.Add(1)
+
+		go func(idx int) {
+			defer done.Done()
+
+			start.Wait() // release all goroutines at once
+
+			agent, err := svc.EnrollAgent(
+				ctx, hash,
+				fmt.Sprintf("racer-%d", idx),
+				fmt.Sprintf("ed-pub-%d", idx),
+				fmt.Sprintf("age1recipient%d", idx),
+				fmt.Sprintf("fp%d", idx),
+			)
+
+			// Collect only — every assertion happens on the test goroutine
+			// after the wait (testify is not goroutine-safe).
+			mu.Lock()
+			defer mu.Unlock()
+
+			if err != nil {
+				failures = append(failures, err)
+
+				return
+			}
+
+			winners = append(winners, agent)
+		}(i)
+	}
+
+	start.Done()
+	done.Wait()
+
+	r.Len(winners, 1, "exactly one racer may consume the token")
+	r.Len(failures, racers-1, "every other racer must lose")
+
+	for _, err := range failures {
+		r.ErrorIs(err, db.ErrEnrollmentTokenInvalid,
+			"a losing racer must fail with the single-use error, not something else")
+	}
+
+	// The DB agrees: exactly one agent row, and it is the winner.
+	all, err := svc.ListAgents(ctx, orgUID)
+	r.NoError(err)
+	r.Len(all, 1, "a raced token must never create two agents")
+	r.Equal(winners[0].UID, all[0].UID)
 }
 
 func TestEnrollAgentRejectsExpiredToken(t *testing.T) {

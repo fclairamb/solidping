@@ -560,6 +560,9 @@ func (h *Handler) handleCreateError(writer http.ResponseWriter, err error) error
 	case errors.Is(err, ErrInvalidCheckType):
 		return h.WriteErrorErr(
 			writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid check type", err)
+	case errors.Is(err, ErrNoAgentsToSealTo):
+		return h.WriteErrorErr(
+			writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 	case isCheckFieldValidationError(err):
 		return h.WriteErrorErr(
 			writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
@@ -617,6 +620,9 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, err error) error
 	case errors.Is(err, ErrCheckNotFound):
 		return h.WriteErrorErr(
 			writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+	case errors.Is(err, ErrNoAgentsToSealTo):
+		return h.WriteErrorErr(
+			writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 	case isCheckFieldValidationError(err):
 		return h.WriteErrorErr(
 			writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)

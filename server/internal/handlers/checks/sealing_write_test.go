@@ -219,16 +219,19 @@ func TestNeedsResealSurfacedOnMembershipChange(t *testing.T) {
 	r.False(*got.NeedsReseal, "re-saving credentials must clear the flag")
 }
 
-// TestPrivateOnlyCheckWithoutAgentsFallsBack: with no agents enrolled yet, a
-// private-only check keeps its secrets server-side (v1 envelope) and reports
-// needsReseal so the operator knows to re-save after enrolling.
-func TestPrivateOnlyCheckWithoutAgentsFallsBack(t *testing.T) {
+// TestPrivateOnlyCheckWithoutAgentsIsRejected pins Decision 4's unconditional
+// invariant: a check targeting ONLY private regions stores its secrets
+// sealed-only. With no agent to seal to there is no lawful way to store them,
+// so the WRITE IS REFUSED — the server must never fall back to a
+// server-decryptable copy (and a check with no sealed blob could not run on an
+// agent anyway).
+func TestPrivateOnlyCheckWithoutAgentsIsRejected(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	svc, dbSvc, org := setupEncryptedChecksService(t)
 	ctx := t.Context()
 
-	created, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+	_, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
 		Name:    "early-check",
 		Slug:    "early-check",
 		Type:    "http",
@@ -238,15 +241,93 @@ func TestPrivateOnlyCheckWithoutAgentsFallsBack(t *testing.T) {
 			"password": "hunter2",
 		},
 	})
+	r.ErrorIs(err, checks.ErrNoAgentsToSealTo)
+	// The message names the region the operator must enroll an agent into.
+	r.Contains(err.Error(), sealTestRegion)
+
+	// Nothing was persisted — in particular no server-decryptable envelope.
+	_, err = dbSvc.GetCheckByUidOrSlug(ctx, org.UID, "early-check")
+	r.Error(err, "the rejected check must not exist")
+}
+
+// TestPrivateOnlyPatchWithoutAgentsIsRejected: the same invariant on the PATCH
+// path — re-saving credentials for a private-only check with no active agent
+// (e.g. after the only agent was revoked) is refused rather than silently
+// writing a v1 envelope.
+func TestPrivateOnlyPatchWithoutAgentsIsRejected(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	svc, dbSvc, org := setupEncryptedChecksService(t)
+	ctx := t.Context()
+
+	keys := enrollSealAgent(t, dbSvc, org.UID, "dc1-agent")
+
+	created, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Name:    "sealed-check",
+		Slug:    "sealed-check",
+		Type:    "http",
+		Regions: []string{sealTestRegion},
+		Config: map[string]any{
+			"url":      "https://internal.example.com",
+			"password": "hunter2",
+		},
+	})
+	r.NoError(err)
+
+	before, err := dbSvc.GetCheck(ctx, org.UID, created.UID)
+	r.NoError(err)
+	r.NotNil(before.ConfigSealed)
+	r.Nil(before.ConfigPrivate)
+	_ = keys
+
+	// The region's only agent is revoked -> no recipients left.
+	agents, err := dbSvc.ListActiveAgentsByRegion(ctx, org.UID, sealTestRegion)
+	r.NoError(err)
+	r.Len(agents, 1)
+	r.NoError(dbSvc.RevokeAgent(ctx, org.UID, agents[0].UID))
+
+	// Re-saving the credentials is refused...
+	patch := map[string]any{"url": "https://internal.example.com", "password": "new-secret"}
+	_, err = svc.UpdateCheck(ctx, org.Slug, created.UID, &checks.UpdateCheckRequest{Config: &patch})
+	r.ErrorIs(err, checks.ErrNoAgentsToSealTo)
+
+	// ...and the stored row is untouched: still sealed-only, no v1 envelope.
+	after, err := dbSvc.GetCheck(ctx, org.UID, created.UID)
+	r.NoError(err)
+	r.Nil(after.ConfigPrivate, "a refused write must never leave a server-decryptable copy")
+	r.NotNil(after.ConfigSealed)
+	r.Equal(*before.ConfigSealed, *after.ConfigSealed)
+}
+
+// TestMixedRegionsWithoutAgentsStillWrites: the invariant is specific to
+// private-ONLY checks. A mixed private+cloud check has a legitimate
+// server-side consumer (the cloud workers), so it still writes its v1
+// envelope and is simply flagged needs-re-seal until an agent enrolls.
+func TestMixedRegionsWithoutAgentsStillWrites(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	svc, dbSvc, org := setupEncryptedChecksService(t)
+	ctx := t.Context()
+
+	created, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Name:    "mixed-early",
+		Slug:    "mixed-early",
+		Type:    "http",
+		Regions: []string{sealTestRegion, "default"},
+		Config: map[string]any{
+			"url":      "https://example.com",
+			"password": "hunter2",
+		},
+	})
 	r.NoError(err)
 
 	row, err := dbSvc.GetCheck(ctx, org.UID, created.UID)
 	r.NoError(err)
+	r.NotNil(row.ConfigPrivate, "the cloud side still needs the org-DEK envelope")
 	r.Nil(row.ConfigSealed, "nothing to seal to yet")
-	r.NotNil(row.ConfigPrivate, "secrets must not be lost — kept under the v1 envelope until re-saved")
 
 	got, err := svc.GetCheck(ctx, org.Slug, created.UID, checks.GetCheckOptions{})
 	r.NoError(err)
 	r.NotNil(got.NeedsReseal)
-	r.True(*got.NeedsReseal, "unsealed secrets on a private-only check must be flagged")
+	r.True(*got.NeedsReseal, "agents cannot run it until re-sealed — flag it")
 }

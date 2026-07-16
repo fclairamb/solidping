@@ -77,6 +77,14 @@ var (
 	ErrCheckNotFound = errors.New("check not found")
 	// ErrInvalidCheckType is returned when an unsupported check type is provided.
 	ErrInvalidCheckType = errors.New("invalid check type")
+	// ErrNoAgentsToSealTo is returned when a check targeting ONLY private
+	// region(s) carries secrets but no active agent exists to seal them to
+	// (spec 2026-07-16-02, Decision 4). The write is refused rather than
+	// falling back to a server-decryptable copy: "targeting private region(s)
+	// only → seal-only, no org-DEK copy" is an unconditional invariant, and a
+	// check whose secrets cannot be sealed cannot run on an agent anyway (the
+	// agent would receive public config only and merge nothing).
+	ErrNoAgentsToSealTo = errors.New("no active agent to seal credentials to")
 	// ErrSlugConflict is returned when a slug already exists.
 	ErrSlugConflict = errors.New("slug already exists")
 	// ErrSlugGenerationFailed is returned when a unique slug cannot be generated.
@@ -3228,9 +3236,17 @@ func (s *Service) applyConfigUpdate(
 // targets private region(s) and carries secrets, it seals them to the X25519
 // keys of every ACTIVE agent of those regions and stores the blob on
 // check.ConfigSealed. Returns true when the check is sealed-ONLY (private
-// regions only, blob written): the caller must then skip the v1 envelope so
-// the server holds no decryptable copy. Mixed private+cloud checks dual-store
-// (sealed blob here + v1 envelope in the caller).
+// regions only): the caller must then skip the v1 envelope so the server holds
+// no decryptable copy. Mixed private+cloud checks dual-store (sealed blob here
+// + v1 envelope in the caller).
+//
+// Decision 4 is unconditional — a private-only check's secrets are sealed-only
+// or the write does not happen. When no active agent exists to seal to, the
+// write is REFUSED with ErrNoAgentsToSealTo rather than silently degraded to a
+// server-decryptable envelope. There is nothing to lose by refusing: without a
+// sealed blob the agent receives public config only and the check could not
+// work regardless, so the fallback would buy a broken check AND a
+// plaintext-recoverable secret on the server.
 func (s *Service) applyRegionSealing(
 	ctx context.Context, check *models.Check, private map[string]any,
 ) (bool, error) {
@@ -3249,15 +3265,18 @@ func (s *Service) applyRegionSealing(
 
 	if len(recipients) == 0 {
 		if sealedOnly {
-			// No active agents to seal to yet (region just created). Dropping
-			// the secrets would break the check outright; keep them under the
-			// v1 envelope (or plaintext fallback) for now — the check is
-			// flagged needs-re-seal until the credentials are re-saved with an
-			// enrolled agent present.
-			slog.WarnContext(ctx,
-				"private-only check has no active agents to seal to; storing server-side until re-saved",
-				"checkUid", check.UID, "regions", privateRegions)
+			return false, fmt.Errorf(
+				"%w: enroll an agent in %s before saving credentials for a check that runs only there",
+				ErrNoAgentsToSealTo, strings.Join(privateRegions, ", "))
 		}
+
+		// Mixed private+cloud: the cloud side still works off the org-DEK
+		// envelope, so the write proceeds without a sealed blob. The check is
+		// flagged needs-re-seal until an agent enrolls and the credentials are
+		// re-saved (or auto re-sealed — the server can decrypt this one).
+		slog.WarnContext(ctx,
+			"mixed-region check has no active agents to seal to; agents cannot run it until re-sealed",
+			"checkUid", check.UID, "regions", privateRegions)
 
 		return false, nil
 	}

@@ -242,6 +242,49 @@ func TestEnrollClaimResultIncident(t *testing.T) {
 	r.NotEmpty(incidents, "a DOWN result with 0s confirmation must open an incident server-side")
 }
 
+// TestClaimIsOrgScoped asserts the organization_uid half of the claim's hard
+// scope, independently of the region half: a check in a DIFFERENT org carrying
+// the byte-identical region string must never be claimable. Region namespacing
+// (`@<org>/<slug>`) normally keeps these apart, but the org filter is the
+// actual tenant boundary and must hold on its own — if it were ever the only
+// thing missing, a colliding region string would leak another tenant's work.
+func TestClaimIsOrgScoped(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newEnv(t)
+	ctx := t.Context()
+
+	// A second org with a check tagged the SAME region string as our agent's.
+	otherOrg := models.NewOrganization("evil", "Evil Corp")
+	r.NoError(e.dbSvc.CreateOrganization(ctx, otherOrg))
+
+	otherCheck := models.NewCheck(otherOrg.UID, "other-org-check", "http")
+	otherCheck.Config = models.JSONMap{"url": "https://example.com"}
+	otherCheck.Regions = []string{testRegion} // identical region string, different org
+	r.NoError(e.dbSvc.CreateCheck(ctx, otherCheck))
+
+	otherJobs, err := e.dbSvc.ListCheckJobsByCheckUID(ctx, otherCheck.UID)
+	r.NoError(err)
+	r.Len(otherJobs, 1, "the other org's job exists and is due")
+
+	// Our agent (org "acme") claims: it must see nothing at all.
+	conn, _, _ := e.enroll(e.mintToken(), "dc1-agent")
+
+	jobsResp := roundTrip(t, conn, agentcrypto.ClientFrame{Type: agentcrypto.MsgTypeClaim, ID: "c1", MaxJobs: 10})
+	r.Equal(agentcrypto.MsgTypeJobs, jobsResp.Type)
+	r.Empty(jobsResp.Jobs, "an agent must never claim another organization's job, same region string or not")
+
+	// And it cannot write a result into that job either.
+	resp := roundTrip(t, conn, agentcrypto.ClientFrame{
+		Type:   agentcrypto.MsgTypeResult,
+		ID:     "r-cross-org",
+		JobUID: otherJobs[0].UID,
+		Status: int(models.ResultStatusUp),
+	})
+	r.Equal(agentcrypto.MsgTypeError, resp.Type)
+	r.Equal("FORBIDDEN", resp.Code)
+}
+
 // TestResultOutsideScopeRejected: an agent cannot write results into another
 // org/region's job.
 func TestResultOutsideScopeRejected(t *testing.T) {

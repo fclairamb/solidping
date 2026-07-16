@@ -448,11 +448,11 @@ func buildReport(opts runOpts, elapsed time.Duration, baseline, final *metricsSn
 
 	w("## HTTP request timings (selected routes)\n\n")
 	w("| Route | Count | p50 | p95 | p99 |\n|---|---:|---:|---:|---:|\n")
+	// The /api/v1/workers/* HTTP routes were removed with spec 2026-07-16-02
+	// (the in-process worker never used them; deported agents use the
+	// WebSocket transport, whose long-lived connection has no per-request
+	// histogram to report here).
 	for _, route := range []string{
-		"/api/v1/workers/claim-jobs",
-		"/api/v1/workers/submit-result",
-		"/api/v1/workers/register",
-		"/api/v1/workers/heartbeat",
 		"/api/v1/orgs/:org/checks",
 	} {
 		count := routeHistogramCount(baseline, final, route)
