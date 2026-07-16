@@ -3,6 +3,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"io"
 	"time"
 
@@ -10,6 +11,12 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
+
+// ErrEnrollmentTokenInvalid is returned by EnrollAgent when the presented
+// enrollment token hash does not match a live (unused, unexpired, not deleted)
+// token — including the single-use race where a concurrent enrollment consumed
+// it first.
+var ErrEnrollmentTokenInvalid = errors.New("enrollment token is invalid, expired, or already used")
 
 // PublicStatusUpdate holds a status update row for public status page display.
 // This type is used by ListPublicStatusUpdates and is independent of the admin
@@ -135,6 +142,28 @@ type Service interface {
 	RegisterOrUpdateWorker(ctx context.Context, worker *models.Worker) (*models.Worker, error)
 	// UpdateWorkerHeartbeat updates the worker's last_active_at and updated_at timestamps.
 	UpdateWorkerHeartbeat(ctx context.Context, workerUID string) error
+
+	// Deported-agent operations (spec 2026-07-16-02).
+	// CreateAgentEnrollmentToken persists a one-shot enrollment token.
+	CreateAgentEnrollmentToken(ctx context.Context, token *models.AgentEnrollmentToken) error
+	// ListAgentEnrollmentTokens lists an org's live (unused, unexpired) enrollment tokens.
+	ListAgentEnrollmentTokens(ctx context.Context, orgUID string) ([]*models.AgentEnrollmentToken, error)
+	// DeleteAgentEnrollmentToken soft-deletes an enrollment token (admin cancel).
+	DeleteAgentEnrollmentToken(ctx context.Context, orgUID, uid string) error
+	// EnrollAgent atomically consumes a valid enrollment token (single-use under
+	// concurrency) and creates the bound agent row, returning the new agent.
+	EnrollAgent(ctx context.Context, tokenHash, name, ed25519Pub, x25519Pub, fingerprint string) (*models.Agent, error)
+	// GetAgent returns an agent by UID (any status).
+	GetAgent(ctx context.Context, uid string) (*models.Agent, error)
+	// ListAgents lists an org's agents (active and revoked, not deleted).
+	ListAgents(ctx context.Context, orgUID string) ([]*models.Agent, error)
+	// ListActiveAgentsByRegion returns the active agents bound to a fully-qualified
+	// private region — the recipients credentials are sealed to.
+	ListActiveAgentsByRegion(ctx context.Context, orgUID, region string) ([]*models.Agent, error)
+	// UpdateAgentLastSeen sets an agent's last_seen_at.
+	UpdateAgentLastSeen(ctx context.Context, uid string, at time.Time) error
+	// RevokeAgent marks an agent revoked (it can no longer authenticate).
+	RevokeAgent(ctx context.Context, orgUID, uid string) error
 
 	// Check operations
 	CreateCheck(ctx context.Context, check *models.Check) error
