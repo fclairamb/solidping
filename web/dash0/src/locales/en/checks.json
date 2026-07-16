@@ -381,6 +381,11 @@
       "title": "This check occupies a monitoring slot {{duty}}% of the time",
       "description": "Each run takes about {{cost}} with a period of {{period}}, so this check keeps a runner busy {{duty}}% of the time. Increase its period to free monitoring capacity."
     },
+    "needsReseal": {
+      "title": "Credentials need re-sealing for this private location",
+      "description": "This check runs in a private location and its stored credentials are sealed to a different set of agents than the ones currently active — an agent was enrolled or revoked since they were saved, so agents can't decrypt them and the check will fail. SolidPing can't re-seal them itself (it can't read them either): re-enter and save the credentials to fix this.",
+      "action": "Re-save credentials"
+    },
     "configuration": "Configuration",
     "configurationDescription": "Check settings and parameters",
     "results": {

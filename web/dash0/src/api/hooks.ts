@@ -46,6 +46,14 @@ export interface Check {
   type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "rdp" | "sleep";
   config?: Record<string, unknown>;
   configPrivateKeys?: string[];
+  /**
+   * Detail responses only. True when this check targets a private location and
+   * its sealed credentials no longer match that location's active agent set
+   * (an agent enrolled or was revoked since the credentials were saved), so
+   * agents cannot decrypt them. Fix: re-save the check's credentials.
+   * Undefined when the check targets no private location.
+   */
+  needsReseal?: boolean;
   regions?: string[];
   labels?: Record<string, string>;
   enabled?: boolean;
