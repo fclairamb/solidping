@@ -37,7 +37,7 @@ own host if you self-host.
 | `host` | `host=db.example.com` | Host |
 | `port` | `port=5432` | Port |
 | `domain` | `domain=example.com` | Domain |
-| `username` | `username=probe` | Username |
+| `username` | `username=probe` | Username (HTTP: prefills the Basic Auth username) |
 | `database` | `database=app` | Database |
 | `expectedStatus` | `expectedStatus=204` | Expected HTTP status |
 | `timeout` | `timeout=10` | Per-probe timeout, in **seconds** (1–30) |

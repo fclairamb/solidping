@@ -28,12 +28,21 @@ https://api.example.com/health
 | Headers | Custom request headers | `Authorization: Bearer token` |
 | Body | Request body (for POST/PUT) | `{"key": "value"}` |
 | Body Match | Pattern to match in response | `"status": "ok"` |
-| Basic Auth | Username and password | `user:password` |
+| Basic Auth | Username and password — stored encrypted at rest | `user:password` |
 | Custom User-Agent | Override the default user-agent | `SolidPing/1.0` |
 
 **Status Code Matching:**
 - Exact match: `200`, `201`, `404`
 - Wildcard: `2XX` (any 2xx status), `5XX` (any 5xx status)
+
+**Basic Auth storage:** you still enter a username and a password in the form,
+but the pair is stored as a single encrypted credential (a reserved `basicAuth`
+config key) — both halves are protected, not just the password. The dashboard
+never gets the credential back: an existing one renders as
+`•••• (encrypted — enter new values to replace)`, and editing anything else on
+the check leaves it (and any secret headers) untouched. To change it, retype
+**both** fields; to remove it, clear both and save. Checks written before this
+change keep working and fold into the new shape the next time they are saved.
 
 **Examples:**
 
