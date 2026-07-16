@@ -227,9 +227,11 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Add basic auth if configured (before headers, so explicit Authorization overrides)
-	if cfg.Username != "" {
-		req.SetBasicAuth(cfg.Username, cfg.Password)
+	// Add basic auth if configured (before headers, so explicit Authorization
+	// overrides). Prefers the folded `basicAuth` credential, falling back to the
+	// legacy `username`/`password` pair.
+	if username, password, ok := cfg.BasicAuthCredentials(); ok {
+		req.SetBasicAuth(username, password)
 	}
 
 	// Add default User-Agent header
