@@ -40,6 +40,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/email"
 	entitlementsapi "github.com/fclairamb/solidping/server/internal/entitlements"
+	agentsadmin "github.com/fclairamb/solidping/server/internal/handlers/agents"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/availability"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
@@ -768,6 +769,23 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// which authenticates by Ed25519 signature and never persists a usable
 	// credential. The claim/submit service logic lives on and is reused by that
 	// handler; the in-process worker keeps talking to checkjobsvc directly.
+
+	// Private locations (org-private regions) + deported agents admin API.
+	// Org-admin only: minting an enrollment token grants the ability to run
+	// checks inside the customer's network, and revoking an agent is
+	// security-relevant.
+	agentsAdminSvc := agentsadmin.NewService(s.dbService)
+	agentsAdminHandler := agentsadmin.NewHandler(agentsAdminSvc, s.config)
+	orgAgentsAdmin := api.NewGroup("/orgs/:org").
+		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+	orgAgentsAdmin.GET("/private-regions", agentsAdminHandler.ListPrivateRegions)
+	orgAgentsAdmin.POST("/private-regions", agentsAdminHandler.CreatePrivateRegion)
+	orgAgentsAdmin.DELETE("/private-regions/:slug", agentsAdminHandler.DeletePrivateRegion)
+	orgAgentsAdmin.GET("/agent-enrollment-tokens", agentsAdminHandler.ListEnrollmentTokens)
+	orgAgentsAdmin.POST("/agent-enrollment-tokens", agentsAdminHandler.MintEnrollmentToken)
+	orgAgentsAdmin.DELETE("/agent-enrollment-tokens/:uid", agentsAdminHandler.DeleteEnrollmentToken)
+	orgAgentsAdmin.GET("/agents", agentsAdminHandler.ListAgents)
+	orgAgentsAdmin.DELETE("/agents/:uid", agentsAdminHandler.RevokeAgent)
 
 	// Results routes (authentication required)
 	resultsService := results.NewService(s.dbService)
