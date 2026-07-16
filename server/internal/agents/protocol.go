@@ -1,4 +1,4 @@
-package agentws
+package agents
 
 import (
 	"time"
@@ -13,24 +13,24 @@ const ProtocolVersion = 1
 
 // Client -> server frame types.
 const (
-	msgTypeEnroll = "enroll"
-	msgTypeClaim  = "claim"
-	msgTypeResult = "result"
+	MsgTypeEnroll = "enroll"
+	MsgTypeClaim  = "claim"
+	MsgTypeResult = "result"
 )
 
 // Server -> client frame types.
 const (
-	msgTypeHello         = "hello"
-	msgTypeEnrolled      = "enrolled"
-	msgTypeJobs          = "jobs"
-	msgTypeAck           = "ack"
-	msgTypeError         = "error"
-	msgTypeJobsAvailable = "jobs-available"
+	MsgTypeHello         = "hello"
+	MsgTypeEnrolled      = "enrolled"
+	MsgTypeJobs          = "jobs"
+	MsgTypeAck           = "ack"
+	MsgTypeError         = "error"
+	MsgTypeJobsAvailable = "jobs-available"
 )
 
-// clientFrame is the envelope every agent->server frame decodes into. Fields
+// ClientFrame is the envelope every agent->server frame decodes into. Fields
 // irrelevant to the frame's type are left zero.
-type clientFrame struct {
+type ClientFrame struct {
 	Type string `json:"type"`
 	// ID is the correlation id echoed on the response frame.
 	ID string `json:"id,omitempty"`
@@ -73,8 +73,8 @@ type AgentJob struct {
 	CheckRegions []string `json:"checkRegions,omitempty"`
 }
 
-// serverFrame is the envelope for every server->agent frame.
-type serverFrame struct {
+// ServerFrame is the envelope for every server->agent frame.
+type ServerFrame struct {
 	Type string `json:"type"`
 	ID   string `json:"id,omitempty"`
 
@@ -97,11 +97,11 @@ type serverFrame struct {
 	Title string `json:"title,omitempty"`
 }
 
-// toAgentJob converts a claimed CheckJob row into its wire shape. ConfigPrivate
+// ToAgentJob converts a claimed CheckJob row into its wire shape. ConfigPrivate
 // (the v1 symmetric envelope) is deliberately NOT mapped: the server-side
 // decrypt-and-merge that the cloud dispatch path performs must never happen on
 // the agent path, and the envelope itself must never leave the server.
-func toAgentJob(job *models.CheckJob) AgentJob {
+func ToAgentJob(job *models.CheckJob) AgentJob {
 	out := AgentJob{
 		UID:          job.UID,
 		CheckUID:     job.CheckUID,

@@ -13,6 +13,7 @@ import (
 	"github.com/urfave/cli/v3"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 
+	"github.com/fclairamb/solidping/server/internal/agentmode"
 	"github.com/fclairamb/solidping/server/internal/app"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/credmigrate"
@@ -160,6 +161,22 @@ func serve(ctx context.Context, _ *cli.Command) error {
 		"runMode", cfg.RunMode,
 		"dbType", cfg.Database.Type,
 		"logSQL", cfg.Database.LogSQL)
+
+	// Deported-agent mode (SP_NODE_ROLE=agent, spec 2026-07-16-02): the agent
+	// has no database and runs no migrations — branch BEFORE any DB init. It
+	// enrolls (or reconnects) over WebSocket and runs the check worker loop.
+	if cfg.Node.Role == config.NodeRoleAgent {
+		agentCtx, stopAgent := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
+		defer stopAgent()
+
+		if agentErr := agentmode.Run(agentCtx, cfg); agentErr != nil && !errors.Is(agentErr, context.Canceled) {
+			slog.ErrorContext(ctx, "Agent stopped with error", "error", agentErr)
+
+			return agentErr
+		}
+
+		return nil
+	}
 
 	server, err := app.NewServer(ctx, cfg)
 	if err != nil {
