@@ -111,12 +111,18 @@ export const checkTypeRegistry: Record<CheckType, CheckTypeModule> = (() => {
 // that interface stays exactly as the spec defines it; only HTTP has one today.
 export interface AuthSection {
   Fields: FC<CheckTypeFieldsProps>;
-  summary(state: unknown): { text: string; customized: boolean };
+  // `configPrivateKeys` lets a summary account for secrets that are stored
+  // encrypted and therefore absent from the form state.
+  summary(
+    state: unknown,
+    configPrivateKeys?: string[],
+  ): { text: string; customized: boolean };
 }
 
 export const authFieldsRegistry: Partial<Record<CheckType, AuthSection>> = {
   http: {
     Fields: HttpAuthFields as unknown as FC<CheckTypeFieldsProps>,
-    summary: (state) => httpAuthSummary(state as HttpState),
+    summary: (state, configPrivateKeys) =>
+      httpAuthSummary(state as HttpState, configPrivateKeys),
   },
 };

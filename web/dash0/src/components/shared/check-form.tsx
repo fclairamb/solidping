@@ -486,12 +486,11 @@ export function CheckForm({
 
     // Reuse `currentConfig` (the same object the live preview and validation use)
     // as the submitted payload, so preview and payload can never drift apart.
+    // Secret sections decide for themselves whether to serialize their keys
+    // (see the dirty flags in the http module): an omitted key preserves the
+    // stored value, an explicit empty one clears it. Forcing `secretHeaders:{}`
+    // here used to wipe them on every edit, since GET never returns them.
     const config: Record<string, unknown> = { ...currentConfig };
-    // HTTP clears previously-stored secret headers on edit by sending an
-    // explicit empty object; `currentConfig` omits the key when empty.
-    if (type === "http" && config.secretHeaders === undefined) {
-      config.secretHeaders = {};
-    }
 
     // Required-field validation is the module's `toConfig` output. A field whose
     // value is stored server-side (listed in configPrivateKeys) is already
@@ -587,7 +586,7 @@ export function CheckForm({
 
   // ── Progressive-disclosure section summaries + open-on-content ──
   const authSummary = authSection
-    ? authSection.summary(configState)
+    ? authSection.summary(configState, initialData?.configPrivateKeys)
     : { text: "", customized: false };
 
   const labelCount = Object.keys(labels).length;
