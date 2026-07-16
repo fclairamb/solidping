@@ -1015,11 +1015,17 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	}
 	check.Regions = resolvedRegions
 
-	// Set config — split secrets out and encrypt them under the org DEK
-	// (and/or seal them to the private region's agents) before persisting.
-	// Plaintext fallback when no master key.
+	// Set config — normalize it into its canonical stored shape (e.g. HTTP's
+	// username/password → basicAuth fold), then split secrets out and encrypt
+	// them under the org DEK (and/or seal them to the private region's agents)
+	// before persisting. Plaintext fallback when no master key.
 	if req.Config != nil {
-		if encErr := s.applyEncryption(ctx, check, req.Config); encErr != nil {
+		effective, normErr := normalizeCheckConfig(req.Type, req.Config)
+		if normErr != nil {
+			return CheckResponse{}, normErr
+		}
+
+		if encErr := s.applyEncryption(ctx, check, effective); encErr != nil {
 			return CheckResponse{}, encErr
 		}
 	}
@@ -3112,6 +3118,23 @@ func (s *Service) cloneCopyConnections(ctx context.Context, sourceUID, cloneUID,
 	return nil
 }
 
+// normalizeCheckConfig rewrites an effective config map into the canonical
+// shape its checker wants stored, via the optional
+// checkerdef.ConfigNormalizer interface. Unknown checker types and configs
+// that don't implement it pass through untouched.
+//
+// It MUST be called on the effective (post-merge) config, never on a raw PATCH
+// body: normalizing a patch would fold half a credential and then replace the
+// stored map with it.
+func normalizeCheckConfig(checkType string, effective map[string]any) (map[string]any, error) {
+	cfg, ok := registry.ParseConfig(checkerdef.CheckType(checkType))
+	if !ok {
+		return effective, nil
+	}
+
+	return checkerdef.NormalizeConfigFor(cfg, effective)
+}
+
 // applyEncryption splits the effective config into public/private using the
 // checker's declared SecretFields, encrypts the private side under the org
 // DEK, and writes the resulting columns onto the check.
@@ -3195,6 +3218,16 @@ func (s *Service) applyConfigUpdate(
 	merged, mergeErr := s.applyConfigPatch(ctx, check, patch)
 	if mergeErr != nil {
 		return mergeErr
+	}
+
+	// Normalize the EFFECTIVE config, after the merge and before encryption —
+	// never the raw patch, whose folded output would replace the stored map
+	// wholesale and wipe unrelated keys. This is also the only validation the
+	// config gets on the PATCH path (UpdateCheck never calls checker.Validate),
+	// so its *ConfigError surfaces as a 400.
+	merged, normErr := normalizeCheckConfig(check.Type, merged)
+	if normErr != nil {
+		return normErr
 	}
 
 	// Uniform per-check timeout cap (spec 2026-07-11-05) — validated on
