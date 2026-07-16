@@ -150,6 +150,11 @@ type Service interface {
 	ListAgentEnrollmentTokens(ctx context.Context, orgUID string) ([]*models.AgentEnrollmentToken, error)
 	// DeleteAgentEnrollmentToken soft-deletes an enrollment token (admin cancel).
 	DeleteAgentEnrollmentToken(ctx context.Context, orgUID, uid string) error
+	// GetAgentEnrollmentTokenByHash returns the live (unused, unexpired) token
+	// with the given hash, or ErrEnrollmentTokenInvalid. Non-consuming — used
+	// for the pre-upgrade WS handshake check; EnrollAgent does the atomic
+	// consume.
+	GetAgentEnrollmentTokenByHash(ctx context.Context, tokenHash string) (*models.AgentEnrollmentToken, error)
 	// EnrollAgent atomically consumes a valid enrollment token (single-use under
 	// concurrency) and creates the bound agent row, returning the new agent.
 	EnrollAgent(ctx context.Context, tokenHash, name, ed25519Pub, x25519Pub, fingerprint string) (*models.Agent, error)

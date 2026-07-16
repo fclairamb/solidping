@@ -73,11 +73,19 @@ type Check struct {
 	// ConfigPrivateKeys is a JSON array of the key names (e.g. `["password"]`)
 	// whose values live in ConfigPrivate. Non-secret by construction; surfaced
 	// to the dashboard so it can render placeholder hints without decrypting.
-	ConfigPrivateKeys *string            `bun:"config_private_keys,type:text,nullzero"`
-	Regions           []string           `bun:"regions,type:text[],array"`
-	Enabled           bool               `bun:"enabled,notnull"`
-	Internal          bool               `bun:"internal,notnull,default:false"`
-	Period            timeutils.Duration `bun:"period,notnull"`
+	ConfigPrivateKeys *string `bun:"config_private_keys,type:text,nullzero"`
+	// ConfigSealed holds the region-sealed (age X25519, v2) envelope of the same
+	// secret keys when the check targets one or more org-private regions (spec
+	// 2026-07-16-02): sealed to the X25519 keys of the region's active agents.
+	// A check targeting ONLY private regions stores secrets sealed-only
+	// (ConfigPrivate stays NULL — the server cannot decrypt them after write);
+	// a mixed private+cloud check dual-stores (v1 envelope for cloud dispatch +
+	// this sealed blob for agents).
+	ConfigSealed *string            `bun:"config_sealed,type:text,nullzero"`
+	Regions      []string           `bun:"regions,type:text[],array"`
+	Enabled      bool               `bun:"enabled,notnull"`
+	Internal     bool               `bun:"internal,notnull,default:false"`
+	Period       timeutils.Duration `bun:"period,notnull"`
 
 	// Incident tracking — wall-clock periods (seconds). Replaces the old
 	// count-based thresholds per spec
@@ -187,6 +195,8 @@ type CheckUpdate struct {
 	ConfigPrivate      *string
 	ConfigPrivateKeys  *string
 	ClearConfigPrivate bool
+	ConfigSealed       *string
+	ClearConfigSealed  bool
 	Regions            *[]string
 	Enabled            *bool
 	Internal           *bool

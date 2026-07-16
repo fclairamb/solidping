@@ -45,3 +45,10 @@ create index idx_agent_enrollment_tokens_org on agent_enrollment_tokens (organiz
 -- refuses to drop an indexed column, so its index goes first.
 drop index if exists idx_workers_token;
 alter table workers drop column token;
+
+-- Region-sealed credentials (phase 2): the age-X25519 (v2) envelope of a
+-- check's secret fields, sealed to the X25519 keys of the private region's
+-- active agents. Sealed-only checks (private regions only) leave
+-- config_private NULL — the server cannot decrypt their secrets after write.
+alter table checks add column config_sealed text;
+alter table check_jobs add column config_sealed text;

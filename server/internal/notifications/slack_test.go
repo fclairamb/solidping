@@ -687,6 +687,12 @@ func (m *mockDBService) DeleteAgentEnrollmentToken(_ context.Context, _, _ strin
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetAgentEnrollmentTokenByHash(
+	_ context.Context, _ string,
+) (*models.AgentEnrollmentToken, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) EnrollAgent(
 	_ context.Context, _, _, _, _, _ string,
 ) (*models.Agent, error) {

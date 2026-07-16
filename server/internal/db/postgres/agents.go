@@ -57,6 +57,26 @@ func (s *Service) DeleteAgentEnrollmentToken(ctx context.Context, orgUID, uid st
 	return nil
 }
 
+// GetAgentEnrollmentTokenByHash returns the live token with the given hash.
+func (s *Service) GetAgentEnrollmentTokenByHash(
+	ctx context.Context, tokenHash string,
+) (*models.AgentEnrollmentToken, error) {
+	var token models.AgentEnrollmentToken
+
+	err := s.db.NewSelect().
+		Model(&token).
+		Where("token_hash = ?", tokenHash).
+		Where("deleted_at IS NULL").
+		Where("used_at IS NULL").
+		Where("expires_at > ?", time.Now()).
+		Scan(ctx)
+	if err != nil {
+		return nil, db.ErrEnrollmentTokenInvalid
+	}
+
+	return &token, nil
+}
+
 // EnrollAgent atomically consumes a valid enrollment token and creates the bound
 // agent row. The single-use guard is the conditional UPDATE (`used_at IS NULL`):
 // under a concurrent double-enroll only one UPDATE affects a row, the loser gets

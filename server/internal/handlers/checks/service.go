@@ -1932,6 +1932,10 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 		job := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
 		job.Type = check.Type
 		job.Config = check.Config
+		job.ConfigPrivate = check.ConfigPrivate
+		job.ConfigPrivateKeys = check.ConfigPrivateKeys
+		job.ConfigSealed = check.ConfigSealed
+		job.Encrypted = check.ConfigPrivate != nil
 		job.ScheduledAt = &scheduledAt
 		job.EffectiveScheduledAt = &scheduledAt
 		job.PlanWeight = planWeight
@@ -1990,6 +1994,8 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 				existing.Type != check.Type ||
 				existing.PlanWeight != planWeight ||
 				!configEqual(existing.Config, check.Config) ||
+				!optStrEqual(existing.ConfigPrivate, check.ConfigPrivate) ||
+				!optStrEqual(existing.ConfigSealed, check.ConfigSealed) ||
 				regionSetChanged
 
 			if needsUpdate {
@@ -2003,6 +2009,14 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 					Set("period = ?", splitPeriod).
 					Set("type = ?", check.Type).
 					Set("config = ?", check.Config).
+					// Keep the job's secret columns in step with the check so an
+					// updated credential (v1 envelope or region-sealed blob)
+					// reaches the dispatch row without waiting for a region-set
+					// change (spec 2026-07-16-02).
+					Set("config_private = ?", check.ConfigPrivate).
+					Set("config_private_keys = ?", check.ConfigPrivateKeys).
+					Set("config_sealed = ?", check.ConfigSealed).
+					Set("encrypted = ?", check.ConfigPrivate != nil).
 					Set("plan_weight = ?", planWeight).
 					Set("scheduled_at = ?", scheduledAt).
 					Set("effective_scheduled_at = ?", scheduledAt).
@@ -2024,6 +2038,10 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 			job := models.NewCheckJob(check.OrganizationUID, check.UID, splitPeriod)
 			job.Type = check.Type
 			job.Config = check.Config
+			job.ConfigPrivate = check.ConfigPrivate
+			job.ConfigPrivateKeys = check.ConfigPrivateKeys
+			job.ConfigSealed = check.ConfigSealed
+			job.Encrypted = check.ConfigPrivate != nil
 			job.Region = &regionCopy
 			job.ScheduledAt = &scheduledAt
 			job.EffectiveScheduledAt = &scheduledAt
@@ -2036,6 +2054,15 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 	}
 
 	return nil
+}
+
+// optStrEqual compares two optional strings by value.
+func optStrEqual(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+
+	return *a == *b
 }
 
 // configEqual compares two JSONMap configs for equality.

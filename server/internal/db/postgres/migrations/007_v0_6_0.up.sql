@@ -58,3 +58,13 @@ comment on table agent_enrollment_tokens is 'One-shot agent enrollment tokens (s
 -- signature, so the DB holds no usable worker/agent credential at all. The
 -- partial index on the column drops with it.
 alter table workers drop column token;
+
+-- Region-sealed credentials (phase 2): the age-X25519 (v2) envelope of a
+-- check's secret fields, sealed to the X25519 keys of the private region's
+-- active agents. Sealed-only checks (private regions only) leave
+-- config_private NULL — the server cannot decrypt their secrets after write.
+alter table checks     add column config_sealed text;
+alter table check_jobs add column config_sealed text;
+
+comment on column checks.config_sealed is 'Region-sealed (age X25519) envelope of secret config fields for private-region agents. NULL when the check targets no private region.';
+comment on column check_jobs.config_sealed is 'Copy of checks.config_sealed shipped verbatim to deported agents; never decrypted server-side.';

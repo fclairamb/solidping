@@ -56,6 +56,25 @@ type Service interface {
 		checkUID string,
 	) ([]*models.CheckJob, error)
 
+	// ClaimJobsForAgent atomically claims due jobs for a deported agent
+	// (spec 2026-07-16-02). Unlike ClaimJobs, the scope is HARD: only jobs of
+	// exactly the given organization AND exactly the given (private) region
+	// string are eligible — no prefix matching, no NULL-region fallback — so a
+	// compromised or misconfigured agent can never claim another org's or
+	// another region's work. checkUID, when non-empty, further pins the claim
+	// to one check (the agent express path). No lane split applies (a private
+	// location has one agent pool, not the server's fast/slow reservation);
+	// ordering stays cost-aware via effective_scheduled_at.
+	ClaimJobsForAgent(
+		ctx context.Context,
+		workerUID string,
+		orgUID string,
+		region string,
+		checkUID string,
+		limit int,
+		maxAhead time.Duration,
+	) ([]*models.CheckJob, error)
+
 	// ReleaseLease releases the lease and reschedules the job for next execution.
 	// It folds in no fresh cost/delay sample (the probe was skipped, or ran on a
 	// backend that does not measure cost), so it re-anchors effective_scheduled_at
@@ -210,6 +229,96 @@ func (s *serviceImpl) ClaimJobsForCheck(
 		); err != nil {
 			return err
 		}
+
+		if len(jobs) == 0 {
+			return nil
+		}
+
+		if err := s.updateJobsWithLease(ctx, tx, jobs, workerUID, now, isPostgres); err != nil {
+			return err
+		}
+
+		return attachChecks(ctx, tx, jobs)
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return jobs, nil
+}
+
+// ClaimJobsForAgent claims due jobs hard-scoped to (orgUID, exact region).
+// See the interface doc — this is the deported-agent claim path and its scope
+// is a security boundary, not a routing convenience.
+func (s *serviceImpl) ClaimJobsForAgent(
+	ctx context.Context,
+	workerUID string,
+	orgUID string,
+	region string,
+	checkUID string,
+	limit int,
+	maxAhead time.Duration,
+) ([]*models.CheckJob, error) {
+	var jobs []*models.CheckJob
+
+	now := time.Now()
+
+	_, isPostgres := s.db.Dialect().(*pgdialect.Dialect)
+
+	coarseAhead := maxAhead
+	if coarseAhead > maxClaimAheadFloor {
+		coarseAhead = maxClaimAheadFloor
+	}
+
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		jobs = nil
+
+		query := tx.NewSelect().
+			Model(&jobs).
+			// HARD scope: exact org + exact region. Never NULL-region, never a
+			// prefix match — structurally the inverse of the cloud-worker path.
+			Where("organization_uid = ?", orgUID).
+			Where("region = ?", region).
+			Where("scheduled_at <= ?", now.Add(coarseAhead)).
+			WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+				return q.
+					WhereOr("lease_expires_at IS NULL").
+					WhereOr("lease_expires_at < ?", now)
+			}).
+			OrderExpr("effective_scheduled_at ASC").
+			Limit(limit)
+
+		if checkUID != "" {
+			query = query.Where("check_uid = ?", checkUID)
+		}
+
+		if isPostgres {
+			query = query.For("UPDATE SKIP LOCKED")
+		}
+
+		if err := query.Scan(ctx); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil
+			}
+
+			return err
+		}
+
+		// Same per-job claim-ahead clamp as the in-process path (spec
+		// 2026-07-05-08 D3).
+		filtered := jobs[:0]
+		for _, job := range jobs {
+			window := clampAhead(maxAhead, job.Period)
+			if job.ScheduledAt == nil || !job.ScheduledAt.After(now.Add(window)) {
+				filtered = append(filtered, job)
+			}
+		}
+
+		jobs = filtered
 
 		if len(jobs) == 0 {
 			return nil
