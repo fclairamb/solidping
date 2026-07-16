@@ -8,7 +8,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 )
 
-func newAgentKeypair(t *testing.T) (identity, recipient string) {
+// newAgentKeypair returns a fresh (identity, recipient) age keypair for one
+// simulated agent.
+func newAgentKeypair(t *testing.T) (string, string) {
 	t.Helper()
 
 	id, rec, err := credentials.GenerateX25519Keypair()

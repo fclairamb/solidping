@@ -54,11 +54,11 @@ func RecipientFingerprint(recipient string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
-// GenerateX25519Keypair generates a fresh age X25519 identity, returning the
+// GenerateX25519Keypair generates a fresh age X25519 identity. It returns the
 // secret identity string ("AGE-SECRET-KEY-1…", kept by the agent) and the public
 // recipient string ("age1…", stored on the server so credentials can be sealed
-// to it). The server never holds the identity.
-func GenerateX25519Keypair() (identity, recipient string, err error) {
+// to it), in that order. The server never holds the identity.
+func GenerateX25519Keypair() (string, string, error) {
 	id, err := age.GenerateX25519Identity()
 	if err != nil {
 		return "", "", fmt.Errorf("generate x25519 identity: %w", err)
@@ -79,14 +79,14 @@ func SealForRecipients(recipients []string, secrets map[string]any) (string, err
 	parsed := make([]age.Recipient, 0, len(recipients))
 	fingerprints := make([]string, 0, len(recipients))
 
-	for _, r := range recipients {
-		rec, err := age.ParseX25519Recipient(r)
-		if err != nil {
-			return "", fmt.Errorf("%w: %w", ErrInvalidRecipient, err)
+	for _, recipient := range recipients {
+		rec, parseErr := age.ParseX25519Recipient(recipient)
+		if parseErr != nil {
+			return "", fmt.Errorf("%w: %w", ErrInvalidRecipient, parseErr)
 		}
 
 		parsed = append(parsed, rec)
-		fingerprints = append(fingerprints, RecipientFingerprint(r))
+		fingerprints = append(fingerprints, RecipientFingerprint(recipient))
 	}
 
 	sort.Strings(fingerprints)
@@ -98,17 +98,17 @@ func SealForRecipients(recipients []string, secrets map[string]any) (string, err
 
 	var buf bytes.Buffer
 
-	w, err := age.Encrypt(&buf, parsed...)
+	writer, err := age.Encrypt(&buf, parsed...)
 	if err != nil {
 		return "", fmt.Errorf("age encrypt: %w", err)
 	}
 
-	if _, err := w.Write(body); err != nil {
-		return "", fmt.Errorf("age write: %w", err)
+	if _, writeErr := writer.Write(body); writeErr != nil {
+		return "", fmt.Errorf("age write: %w", writeErr)
 	}
 
-	if err := w.Close(); err != nil {
-		return "", fmt.Errorf("age close: %w", err)
+	if closeErr := writer.Close(); closeErr != nil {
+		return "", fmt.Errorf("age close: %w", closeErr)
 	}
 
 	envelope := sealedEnvelopeJSON{

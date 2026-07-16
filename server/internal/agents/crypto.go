@@ -49,15 +49,15 @@ var (
 )
 
 // GenerateEnrollmentToken returns a fresh one-shot enrollment token (with the
-// spe_ prefix) and its SHA-256 hash. Only the hash is persisted; the token is
-// displayed once and never stored.
-func GenerateEnrollmentToken() (token, hash string, err error) {
+// spe_ prefix) and its SHA-256 hash, in that order. Only the hash is persisted;
+// the token is displayed once and never stored.
+func GenerateEnrollmentToken() (string, string, error) {
 	buf := make([]byte, enrollmentTokenBytes)
 	if _, err := rand.Read(buf); err != nil {
 		return "", "", fmt.Errorf("generate enrollment token: %w", err)
 	}
 
-	token = EnrollmentTokenPrefix + hex.EncodeToString(buf)
+	token := EnrollmentTokenPrefix + hex.EncodeToString(buf)
 
 	return token, HashEnrollmentToken(token), nil
 }

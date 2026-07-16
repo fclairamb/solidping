@@ -84,7 +84,9 @@ type AgentEnrollmentToken struct {
 
 // NewAgentEnrollmentToken builds an enrollment token row bound to (org, region)
 // with the given hash and expiry.
-func NewAgentEnrollmentToken(orgUID, region, tokenHash string, expiresAt time.Time, createdByUserUID *string) *AgentEnrollmentToken {
+func NewAgentEnrollmentToken(
+	orgUID, region, tokenHash string, expiresAt time.Time, createdByUserUID *string,
+) *AgentEnrollmentToken {
 	return &AgentEnrollmentToken{
 		UID:              uuid.New().String(),
 		OrganizationUID:  orgUID,

@@ -48,7 +48,9 @@ var (
 	ErrPrivateRegionReserved = errors.New("worker region may not use the reserved private-region prefix '@'")
 	// ErrInvalidPrivateRegionSlug is returned when a private region slug is empty
 	// or malformed.
-	ErrInvalidPrivateRegionSlug = errors.New("private region slug must be 2-30 chars: lowercase letters, digits, and hyphens")
+	ErrInvalidPrivateRegionSlug = errors.New(
+		"private region slug must be 2-30 chars: lowercase letters, digits, and hyphens",
+	)
 )
 
 // privateRegionSlugRe validates a raw private-region slug (the part after the
@@ -69,9 +71,9 @@ func PrivateRegionSlug(orgSlug, regionSlug string) string {
 }
 
 // ParsePrivateRegion splits a fully-qualified private region string back into
-// its org slug and region slug. Returns ok=false when the string is not a
-// well-formed private region.
-func ParsePrivateRegion(region string) (orgSlug, regionSlug string, ok bool) {
+// its org slug and region slug, in that order. The final return reports whether
+// the string was a well-formed private region.
+func ParsePrivateRegion(region string) (string, string, bool) {
 	if !IsPrivateRegion(region) {
 		return "", "", false
 	}
