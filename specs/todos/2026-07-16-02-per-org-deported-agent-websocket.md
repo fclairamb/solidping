@@ -321,3 +321,23 @@ commit. Steps are grouped; each group is a commit (or a few).
 **Honesty note:** given the scope, groups are landed in green order; any group not
 reached is reported as not-yet-implemented in the final report rather than left
 half-built.
+
+**Status: all 10 groups implemented.** Verified end-to-end with the real binary:
+a server in test mode + `SP_NODE_ROLE=agent` process enrolled with a one-shot
+token, persisted its keys, reconnected with signed headers, claimed a
+private-region check hard-scoped to `@test/dc1`, executed it, and submitted the
+result (check went UP server-side). Known intentional deltas from the plan:
+
+- Mixed dual-store keeps both blobs on the `checks` row in two columns
+  (`config_private` + new `config_sealed`) rather than one packed envelope; job
+  rows carry both and the WS dispatch strips `config_private` structurally.
+- A private-only check created **before any agent enrolled** cannot be sealed
+  (zero recipients); its secrets stay under the v1 envelope with
+  `needsReseal: true` surfaced until re-saved — the spec leaves this case
+  undefined, and dropping the secrets outright would break the check.
+- Agent-path jobs do not update cost/delay EWMAs or lanes (the server's plain
+  `ReleaseLease` re-anchors on ack); cost-aware ordering still applies via
+  `effective_scheduled_at` at claim time.
+- Nonce replay protection is per-instance (in-memory cache), as is the hint
+  fan-out; multi-replica agent WS termination would need a shared cache —
+  noted for the ops docs, not needed for the single-binary deployment today.
