@@ -91,6 +91,8 @@ export interface RegionDefinition {
   slug: string;
   emoji: string;
   name: string;
+  /** Org-private region served by the customer's own deported agents. */
+  private?: boolean;
 }
 
 export interface CreateCheckRequest {
@@ -4267,6 +4269,158 @@ export function useSetMaintenanceWindowChecks(org: string, uid: string) {
       queryClient.invalidateQueries({
         queryKey: ["maintenanceWindowChecks", org, uid],
       });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Private locations (org-private regions) & deported agents (spec 2026-07-16-02)
+// ---------------------------------------------------------------------------
+
+export interface PrivateRegion {
+  slug: string;
+  name: string;
+  emoji: string;
+  /** Fully-qualified stored region string, e.g. `@acme/dc1`. */
+  region: string;
+  agentCount: number;
+}
+
+export interface AgentInfo {
+  uid: string;
+  name: string;
+  region: string;
+  fingerprint: string;
+  status: "active" | "revoked";
+  lastSeenAt?: string;
+  enrolledAt: string;
+  revokedAt?: string;
+}
+
+export interface EnrollmentToken {
+  uid: string;
+  region: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface MintedEnrollmentToken {
+  uid: string;
+  /** The one-shot spe_ secret — shown exactly once, never retrievable again. */
+  token: string;
+  region: string;
+  expiresAt: string;
+}
+
+export function usePrivateRegions(org: string) {
+  return useQuery({
+    queryKey: ["private-regions", org],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: PrivateRegion[] }>(
+        `/api/v1/orgs/${org}/private-regions`,
+      );
+      return response.data || [];
+    },
+    enabled: !!org,
+  });
+}
+
+export function useCreatePrivateRegion(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: { slug: string; name?: string; emoji?: string }) =>
+      apiFetch<PrivateRegion>(`/api/v1/orgs/${org}/private-regions`, {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["private-regions", org] });
+      queryClient.invalidateQueries({ queryKey: ["regions", org] });
+    },
+  });
+}
+
+export function useDeletePrivateRegion(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (slug: string) =>
+      apiFetch<{ status: string }>(`/api/v1/orgs/${org}/private-regions/${slug}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["private-regions", org] });
+      queryClient.invalidateQueries({ queryKey: ["regions", org] });
+    },
+  });
+}
+
+export function useAgents(org: string) {
+  return useQuery({
+    queryKey: ["agents", org],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: AgentInfo[] }>(`/api/v1/orgs/${org}/agents`);
+      return response.data || [];
+    },
+    enabled: !!org,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useRevokeAgent(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<{ status: string }>(`/api/v1/orgs/${org}/agents/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agents", org] });
+      queryClient.invalidateQueries({ queryKey: ["private-regions", org] });
+    },
+  });
+}
+
+export function useEnrollmentTokens(org: string) {
+  return useQuery({
+    queryKey: ["agent-enrollment-tokens", org],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: EnrollmentToken[] }>(
+        `/api/v1/orgs/${org}/agent-enrollment-tokens`,
+      );
+      return response.data || [];
+    },
+    enabled: !!org,
+  });
+}
+
+export function useMintEnrollmentToken(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: { regionSlug: string; expiresIn?: string }) =>
+      apiFetch<MintedEnrollmentToken>(`/api/v1/orgs/${org}/agent-enrollment-tokens`, {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agent-enrollment-tokens", org] });
+    },
+  });
+}
+
+export function useDeleteEnrollmentToken(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<{ status: string }>(`/api/v1/orgs/${org}/agent-enrollment-tokens/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agent-enrollment-tokens", org] });
     },
   });
 }

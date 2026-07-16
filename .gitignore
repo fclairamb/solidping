@@ -5,6 +5,8 @@ bin/
 # Private stuff
 *.local*
 *.priv*
+# ...but the Private-locations dashboard page is source code, not a key.
+!*.private-locations.tsx
 
 # Frontend builds
 server/internal/app/dash0res/

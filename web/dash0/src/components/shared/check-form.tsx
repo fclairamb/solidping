@@ -876,9 +876,14 @@ export function CheckForm({
                   <Label>Regions</Label>
                   <div className="grid grid-cols-2 gap-2">
                     {availableRegions?.map((region) => (
-                      <label key={region.slug} className="flex items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50">
+                      <label key={region.slug} className="flex items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50" data-testid={`region-option-${region.slug}`}>
                         <Checkbox checked={selectedRegions.includes(region.slug)} onCheckedChange={() => toggleRegion(region.slug)} />
                         <span className="text-sm">{region.emoji} {region.name}</span>
+                        {region.private && (
+                          <Badge variant="secondary" className="ml-auto text-[10px]" title="Runs on your own deported agents">
+                            Private
+                          </Badge>
+                        )}
                       </label>
                     ))}
                   </div>
