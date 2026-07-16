@@ -284,7 +284,25 @@ jobs:
 
       - name: Start PostgreSQL
         working-directory: .
-        run: docker compose up -d postgres
+        # Retries like the Playwright install above: hosted runners occasionally
+        # fail this with "address already in use" on the fixed 55432 host port
+        # (docker-proxy/network state left over from the runner image), which
+        # otherwise cascades into a full E2E failure that looks like a server
+        # crash. `down --remove-orphans` clears any stale container/network
+        # holding the port before each retry.
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose up -d postgres; then
+              exit 0
+            fi
+            echo "docker compose up postgres failed (attempt $attempt); diagnosing port 55432..."
+            ss -ltnp 2>/dev/null | grep 55432 || true
+            docker ps -a
+            docker compose down --remove-orphans || true
+            sleep 5
+          done
+          echo "PostgreSQL container failed to start after 3 attempts"
+          exit 1
 
       - name: Wait for PostgreSQL
         working-directory: .
