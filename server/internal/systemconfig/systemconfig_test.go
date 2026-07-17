@@ -575,7 +575,7 @@ func TestKnownEnvVars(t *testing.T) {
 	r := require.New(t)
 
 	names := KnownEnvVars()
-	r.Equal(len(getKnownParameters()), len(names), "every parameter contributes one EnvVar")
+	r.Len(names, len(getKnownParameters()), "every parameter contributes one EnvVar")
 
 	set := make(map[string]struct{}, len(names))
 	for _, name := range names {

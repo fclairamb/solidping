@@ -73,8 +73,6 @@ func TestRecognizedEnvVars(t *testing.T) {
 // manual-reader names actually bind through config.Load — guarding against a
 // name drifting in the list without a corresponding reader (which would produce
 // false negatives: a typo of a "recognized" name that nothing reads).
-//
-//nolint:paralleltest // t.Setenv is incompatible with t.Parallel.
 func TestManualReaderEnvVarsBind(t *testing.T) {
 	t.Setenv("SP_SERVER_RATE_LIMITING_TRUSTED_PROXIES", "7")
 	t.Setenv("SP_DOCS_HOST", "docs.example.test")

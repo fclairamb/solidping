@@ -87,13 +87,13 @@ func TestCheckEnvironCleanEnvironmentNoWarnings(t *testing.T) {
 	r := require.New(t)
 	warnings := checkEnviron([]string{
 		"PATH=/usr/bin",
-		"SP_OTEL_ENDPOINT=http://collector:4317", // source 1
+		"SP_OTEL_ENDPOINT=http://collector:4317",    // source 1
 		"SP_SERVER_RATE_LIMITING_TRUSTED_PROXIES=3", // source 2
-		"SP_AUTH_JWT_SECRET=shh",                     // source 3
-		"SP_PERFORMANCE_JOBS_SOFT_DELETE_HOURS=48",   // source 4
-		"SP_BASE_URL=https://a.test",                 // systemconfig base url
-		"SP_SERVER_BASE_URL=https://a.test",          // startup-job base url
-		"SP_TOKEN=cli",                               // allowlist
+		"SP_AUTH_JWT_SECRET=shh",                    // source 3
+		"SP_PERFORMANCE_JOBS_SOFT_DELETE_HOURS=48",  // source 4
+		"SP_BASE_URL=https://a.test",                // systemconfig base url
+		"SP_SERVER_BASE_URL=https://a.test",         // startup-job base url
+		"SP_TOKEN=cli",                              // allowlist
 	})
 	r.Empty(warnings)
 }

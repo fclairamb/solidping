@@ -39,15 +39,17 @@ type Warning struct {
 // unrecognized SP_* variable through the package-level slog default (already
 // configured by the caller). It never returns an error and never fails startup.
 func WarnUnrecognizedEnv(ctx context.Context) {
-	for _, w := range Check() {
-		if w.Suggestion != "" {
+	warnings := Check()
+	for i := range warnings {
+		warning := &warnings[i]
+		if warning.Suggestion != "" {
 			slog.WarnContext(ctx,
 				"Unrecognized SP_* environment variable is ignored; did you mean another name?",
-				"name", w.Name, "didYouMean", w.Suggestion)
+				"name", warning.Name, "didYouMean", warning.Suggestion)
 		} else {
 			slog.WarnContext(ctx,
 				"Unrecognized SP_* environment variable is ignored",
-				"name", w.Name)
+				"name", warning.Name)
 		}
 	}
 }

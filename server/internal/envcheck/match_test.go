@@ -16,8 +16,12 @@ func TestIsSubsequence(t *testing.T) {
 		want bool
 	}{
 		{"empty is subsequence", nil, []string{"A", "B"}, true},
-		{"missing segment", []string{"RATE", "LIMITING", "TRUSTED", "PROXIES"},
-			[]string{"SERVER", "RATE", "LIMITING", "TRUSTED", "PROXIES"}, true},
+		{
+			"missing segment",
+			[]string{"RATE", "LIMITING", "TRUSTED", "PROXIES"},
+			[]string{"SERVER", "RATE", "LIMITING", "TRUSTED", "PROXIES"},
+			true,
+		},
 		{"exact", []string{"A", "B"}, []string{"A", "B"}, true},
 		{"out of order", []string{"B", "A"}, []string{"A", "B"}, false},
 		{"not present", []string{"A", "X"}, []string{"A", "B", "C"}, false},

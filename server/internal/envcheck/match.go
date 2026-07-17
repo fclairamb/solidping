@@ -80,64 +80,53 @@ func bestLevenshteinMatch(unknown string, known []string) (string, bool) {
 	return best, best != ""
 }
 
-// isSubsequence reports whether a is an ordered subsequence of b: every element
-// of a appears in b in the same order (segments compared for exact equality).
-// The empty slice is a subsequence of anything.
-func isSubsequence(a, b []string) bool {
-	i := 0
-	for j := 0; i < len(a) && j < len(b); j++ {
-		if a[i] == b[j] {
-			i++
+// isSubsequence reports whether sub is an ordered subsequence of seq: every
+// element of sub appears in seq in the same order (segments compared for exact
+// equality). The empty slice is a subsequence of anything.
+func isSubsequence(sub, seq []string) bool {
+	next := 0
+	for j := 0; next < len(sub) && j < len(seq); j++ {
+		if sub[next] == seq[j] {
+			next++
 		}
 	}
 
-	return i == len(a)
+	return next == len(sub)
 }
 
-// levenshtein returns the byte-level edit distance between a and b (SP_* names
-// are ASCII) using the standard two-row dynamic-programming algorithm.
-func levenshtein(a, b string) int {
-	if a == b {
+// levenshtein returns the byte-level edit distance between source and target
+// (SP_* names are ASCII) using the standard two-row dynamic-programming
+// algorithm.
+func levenshtein(source, target string) int {
+	if source == target {
 		return 0
 	}
-	if len(a) == 0 {
-		return len(b)
+	if len(source) == 0 {
+		return len(target)
 	}
-	if len(b) == 0 {
-		return len(a)
+	if len(target) == 0 {
+		return len(source)
 	}
 
-	prev := make([]int, len(b)+1)
-	curr := make([]int, len(b)+1)
-	for j := 0; j <= len(b); j++ {
+	prev := make([]int, len(target)+1)
+	curr := make([]int, len(target)+1)
+	for j := 0; j <= len(target); j++ {
 		prev[j] = j
 	}
 
-	for i := 1; i <= len(a); i++ {
+	for i := 1; i <= len(source); i++ {
 		curr[0] = i
-		for j := 1; j <= len(b); j++ {
+		for j := 1; j <= len(target); j++ {
 			cost := 1
-			if a[i-1] == b[j-1] {
+			if source[i-1] == target[j-1] {
 				cost = 0
 			}
 
-			curr[j] = min3(curr[j-1]+1, prev[j]+1, prev[j-1]+cost)
+			curr[j] = min(curr[j-1]+1, prev[j]+1, prev[j-1]+cost)
 		}
 
 		prev, curr = curr, prev
 	}
 
-	return prev[len(b)]
-}
-
-func min3(a, b, c int) int {
-	m := a
-	if b < m {
-		m = b
-	}
-	if c < m {
-		m = c
-	}
-
-	return m
+	return prev[len(target)]
 }

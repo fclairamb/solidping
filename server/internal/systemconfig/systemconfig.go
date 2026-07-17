@@ -175,9 +175,9 @@ type ParameterDefinition struct {
 func KnownEnvVars() []string {
 	params := getKnownParameters()
 	out := make([]string, 0, len(params))
-	for _, def := range params {
-		if def.EnvVar != "" {
-			out = append(out, def.EnvVar)
+	for i := range params {
+		if params[i].EnvVar != "" {
+			out = append(out, params[i].EnvVar)
 		}
 	}
 
