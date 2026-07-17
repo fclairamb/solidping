@@ -900,3 +900,75 @@ func TestConcurrencyLimit_HonorsContextCancel(t *testing.T) {
 	close(release)
 	holder.Wait()
 }
+
+// The two tests below pin config.DefaultRateLimitConfig against the measured
+// dash0 traffic profile (rate-limit HAR, 2026-07-17): the checks page holds
+// one query per check-group panel, fires them all in parallel on a cold load,
+// and refetches all of them on every 3s realtime-hint tick. The old defaults
+// (300/min, burst 60, 20 concurrent + 10 queued) made a single busy tab
+// consume ~65% of the whole budget, so a reload or a second tab produced a
+// steady trickle of 429s in completely normal use. Both tests fail under
+// those old values.
+
+func TestRateLimit_DefaultsAbsorbDashboardPageLoads(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := config.DefaultRateLimitConfig()
+	// Sustained: three busy tabs on a 25-group org — (25+1) panels refetched
+	// every 3s tick = 26 × 20/min per tab — must fit inside the refill rate.
+	r.GreaterOrEqual(cfg.RequestsPerMinute, 3*26*20,
+		"sustained budget must cover three busy dashboard tabs")
+
+	cfg.MaxConcurrent = 0 // isolate the rate limiter
+	rl := middleware.NewRateLimiter(cfg, context.Background())
+	handler := rl.RateLimit(okHandler())
+
+	// Burst: eight back-to-back cold loads of a 35-panel checks page (a
+	// reload-happy user, or several tabs restored at once) = 280 requests
+	// with no time for the bucket to refill. All must pass immediately —
+	// no 429 and no slow-lane delay.
+	for i := range 8 * 35 {
+		w := httptest.NewRecorder()
+		_ = handler(w, newBunRequest("9.9.9.9", "/api/v1/orgs/default/checks"))
+		r.Equal(http.StatusOK, w.Code, "cold-load request %d should pass", i)
+		r.Empty(w.Header().Get(middleware.HeaderRateLimitDelayedMs),
+			"cold-load request %d should not be queued", i)
+	}
+}
+
+func TestConcurrencyLimit_DefaultsAbsorbParallelPanelFetches(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := config.DefaultRateLimitConfig()
+	cfg.RequestsPerMinute = 0 // isolate the concurrency limiter
+	rl := middleware.NewRateLimiter(cfg, context.Background())
+
+	// A cold load fires every panel query at once and browsers multiplex
+	// ~100 streams over one HTTP/2 connection, so 40 requests can genuinely
+	// be in flight together. Hold each handler open briefly to force the
+	// overlap; every request must be admitted (active or queued), none 429d.
+	slowHandler := func(w http.ResponseWriter, _ bunrouter.Request) error {
+		time.Sleep(150 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+		return nil
+	}
+	handler := rl.ConcurrencyLimit(slowHandler)
+
+	var wg sync.WaitGroup
+	var rejected atomic.Int32
+	for range 40 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			w := httptest.NewRecorder()
+			_ = handler(w, newBunRequest("9.9.9.10", "/api/v1/orgs/default/checks"))
+			if w.Code == http.StatusTooManyRequests {
+				rejected.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	r.Zero(rejected.Load(), "a single page load must never trip the concurrency limit")
+}

@@ -549,6 +549,39 @@ type RateLimitConfig struct {
 	MaxQueueWait time.Duration `koanf:"max_queue_wait"`
 }
 
+// DefaultRateLimitConfig returns the built-in per-client HTTP limit defaults.
+//
+// Sizing is anchored to real dash0 traffic, not abuse math: on an org with
+// live checks, the checks page holds one query per check-group panel and
+// refetches all of them on every realtime-hint tick (min 3s apart, see
+// dash0's LIVE_INVALIDATE_MIN_INTERVAL_MS), so one tab sustains ~20
+// requests/min per panel — ~500 req/min for a 25-group org — and a cold
+// page load fires every panel query in parallel. The previous defaults
+// (300/min, burst 60, 10-deep queues) put a single busy tab at ~65% of the
+// whole budget, so a reload or second tab produced a steady trickle of
+// 429s. These limits are a guard against runaway clients and cheap floods,
+// not a fairness quota; they must sit well above any traffic the dashboard
+// itself can generate.
+func DefaultRateLimitConfig() RateLimitConfig {
+	return RateLimitConfig{
+		// ~3 busy tabs on a 25-group org (3 × 26 panels × 20/min ≈ 1560).
+		RequestsPerMinute: 1800,
+		// Several heavy cold loads back-to-back (RequestsPerMinute / 5).
+		Burst:             360,
+		MaxConcurrent:     20,
+		TrustedProxies:    0,
+		TokenBucketsPerIP: 50,
+		// At the 30/s refill rate a full rate queue drains in 2s, so brief
+		// overshoot degrades into a short delay instead of a 429.
+		RateQueue: 60,
+		// One cold load fires every panel query at once (browsers multiplex
+		// ~100 streams over a single HTTP/2 connection), so the waiting room
+		// must hold a full page load's overflow beyond MaxConcurrent.
+		ConcurrencyQueue: 40,
+		MaxQueueWait:     30 * time.Second,
+	}
+}
+
 // ServerConfig contains HTTP server configuration.
 type ServerConfig struct {
 	Listen          string            `koanf:"listen"`
@@ -714,16 +747,7 @@ func Load() (*Config, error) {
 				LaneFastThresholdMs: 1000,
 				FastLaneReserved:    5,
 			},
-			RateLimiting: RateLimitConfig{
-				RequestsPerMinute: 300,
-				Burst:             60,
-				MaxConcurrent:     20,
-				TrustedProxies:    0,
-				TokenBucketsPerIP: 50,
-				RateQueue:         10,
-				ConcurrencyQueue:  10,
-				MaxQueueWait:      30 * time.Second,
-			},
+			RateLimiting: DefaultRateLimitConfig(),
 		},
 		Database: DatabaseConfig{
 			Type:            DatabaseTypeSQLite,
