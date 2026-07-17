@@ -19,6 +19,12 @@ type Handler struct {
 	svc *Service
 }
 
+// statusBody builds the `{"status": "..."}` acknowledgement body returned by
+// this API's delete and revoke endpoints.
+func statusBody(status string) map[string]string {
+	return map[string]string{"status": status}
+}
+
 // NewHandler creates a new agents admin handler.
 func NewHandler(service *Service, cfg *config.Config) *Handler {
 	return &Handler{
@@ -58,7 +64,7 @@ func (h *Handler) DeletePrivateRegion(writer http.ResponseWriter, req bunrouter.
 		return h.writeServiceError(writer, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, map[string]string{"status": "deleted"})
+	return h.WriteJSON(writer, http.StatusOK, statusBody("deleted"))
 }
 
 // MintEnrollmentToken handles POST /api/v1/orgs/:org/agent-enrollment-tokens.
@@ -98,7 +104,7 @@ func (h *Handler) DeleteEnrollmentToken(writer http.ResponseWriter, req bunroute
 		return h.writeServiceError(writer, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, map[string]string{"status": "deleted"})
+	return h.WriteJSON(writer, http.StatusOK, statusBody("deleted"))
 }
 
 // ListAgents handles GET /api/v1/orgs/:org/agents.
@@ -117,7 +123,7 @@ func (h *Handler) RevokeAgent(writer http.ResponseWriter, req bunrouter.Request)
 		return h.writeServiceError(writer, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, map[string]string{"status": "revoked"})
+	return h.WriteJSON(writer, http.StatusOK, statusBody("revoked"))
 }
 
 // writeServiceError maps domain errors to HTTP responses.
