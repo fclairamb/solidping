@@ -1286,6 +1286,18 @@ func (s *Service) ListChecksByTunnelCheckUID(
 	return checks, nil
 }
 
+// applyCheckTypeFilter narrows a checks query to the requested types. It is
+// extracted from ListChecks so the row query and the count query share one
+// definition of the filter, and so ListChecks stays inside its complexity
+// budget.
+func applyCheckTypeFilter(query *bun.SelectQuery, types []string) *bun.SelectQuery {
+	if len(types) == 0 {
+		return query
+	}
+
+	return query.Where("type IN (?)", bun.List(types))
+}
+
 //nolint:funlen // List query builder handles many optional filters inline
 func (s *Service) ListChecks(
 	ctx context.Context, orgUID string, filter *models.ListChecksFilter,
@@ -1333,10 +1345,8 @@ func (s *Service) ListChecks(
 			countQuery = countQuery.Where("(LOWER(name) LIKE ? OR LOWER(slug) LIKE ?)", pattern, pattern)
 		}
 
-		if len(filter.Types) > 0 {
-			query = query.Where("type IN (?)", bun.In(filter.Types))
-			countQuery = countQuery.Where("type IN (?)", bun.In(filter.Types))
-		}
+		query = applyCheckTypeFilter(query, filter.Types)
+		countQuery = applyCheckTypeFilter(countQuery, filter.Types)
 
 		// Apply internal filter (default: show only non-internal checks)
 		internalVal := "false"

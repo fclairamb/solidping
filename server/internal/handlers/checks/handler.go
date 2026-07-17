@@ -101,6 +101,26 @@ func (h *Handler) ValidateCheck(
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
 
+// parseTypeFilter splits the `type` query parameter — singular name,
+// comma-separated multi-value, per the API convention (`?type=ssh` /
+// `?type=http,tcp`) — into the list of check types to filter on. Blank entries
+// are dropped, so `?type=` and `?type=http,,tcp` both behave sensibly.
+func parseTypeFilter(typeParam string) []string {
+	if typeParam == "" {
+		return nil
+	}
+
+	var types []string
+
+	for _, checkType := range strings.Split(typeParam, ",") {
+		if trimmed := strings.TrimSpace(checkType); trimmed != "" {
+			types = append(types, trimmed)
+		}
+	}
+
+	return types
+}
+
 // ListChecks handles listing all checks for an organization.
 //
 //nolint:funlen,cyclop // List handler has many query parameter extractions
@@ -167,15 +187,7 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req bunrouter.Request) 
 	// Parse search query
 	opts.Query = query.Get("q")
 
-	// Parse type filter — singular name, comma-separated multi-value, per the
-	// API convention (`?type=ssh` / `?type=http,tcp`).
-	if typeParam := query.Get(fieldType); typeParam != "" {
-		for _, checkType := range strings.Split(typeParam, ",") {
-			if trimmed := strings.TrimSpace(checkType); trimmed != "" {
-				opts.Types = append(opts.Types, trimmed)
-			}
-		}
-	}
+	opts.Types = parseTypeFilter(query.Get(fieldType))
 
 	// Parse internal filter
 	if internalParam := query.Get("internal"); internalParam != "" {
