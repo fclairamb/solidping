@@ -291,20 +291,22 @@ func (h *Handler) resolveIncidentThread(
 }
 
 // ingestSlackComment dedupes on the message ts, resolves the author's display
-// name best-effort, and appends the comment. The dedupe marker is claimed
-// atomically before the write and released if the write fails, so Slack's
-// retry can re-attempt without leaving a stuck marker.
+// name best-effort, and appends the comment. Ordering is check → create →
+// mark: the dedupe marker is written only after a successful comment, so a
+// failed write leaves no marker and Slack's retry re-attempts rather than being
+// swallowed as a duplicate. A tracked incident thread's replies are low volume,
+// so the tiny check-then-write window (a genuinely concurrent double-delivery —
+// which Slack does not do; retries are seconds apart) is an acceptable trade
+// for never losing a comment.
 func (h *Handler) ingestSlackComment(ctx context.Context, event *Event, incidentUID, orgUID string) error {
 	ep := &event.Event
 	dedupeKey := commentDedupeStateKey(event.TeamID, ep.Channel, ep.Ts)
 
-	created, err := h.svc.db.SetStateEntryIfNotExists(
-		ctx, &orgUID, dedupeKey, &models.JSONMap{ThreadIncidentUIDKey: incidentUID}, nil,
-	)
+	existing, err := h.svc.db.GetStateEntry(ctx, &orgUID, dedupeKey)
 	if err != nil {
-		return fmt.Errorf("deduping slack comment: %w", err)
+		return fmt.Errorf("checking slack comment dedupe: %w", err)
 	}
-	if !created {
+	if existing != nil {
 		return nil // already ingested on an earlier delivery
 	}
 
@@ -313,11 +315,18 @@ func (h *Handler) ingestSlackComment(ctx context.Context, event *Event, incident
 	if _, err := h.svc.incidentsService.AddCommentFromSlack(
 		ctx, orgUID, incidentUID, ep.Text, ep.User, displayName, event.TeamID, ep.Ts,
 	); err != nil {
-		// Release the marker so a redelivery can retry rather than being
-		// silently swallowed as a duplicate.
-		_, _ = h.svc.db.DeleteStateEntry(ctx, &orgUID, dedupeKey)
-
+		// No marker written yet, so a redelivery retries rather than being
+		// silently dropped.
 		return fmt.Errorf("adding slack comment: %w", err)
+	}
+
+	// Record the marker so redelivery is a no-op. Best-effort: a marker write
+	// failure at worst allows a duplicate on redelivery, never a lost comment.
+	if _, err := h.svc.db.SetStateEntryIfNotExists(
+		ctx, &orgUID, dedupeKey, &models.JSONMap{ThreadIncidentUIDKey: incidentUID}, nil,
+	); err != nil {
+		slog.WarnContext(ctx, "Failed to record Slack comment dedupe marker",
+			"incident_uid", incidentUID, "error", err)
 	}
 
 	slog.InfoContext(ctx, "Ingested Slack thread reply as incident comment",
