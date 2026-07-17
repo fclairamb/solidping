@@ -259,6 +259,17 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		},
 	}
 
+	// Tunneled check: route every connection through the dialer the worker put
+	// on the context (an SSH port-forward today). Only the transport's dial step
+	// changes — http.Transport still performs its own TLS handshake over the
+	// tunneled conn, with ServerName taken from the URL host, so https targets
+	// keep verifying exactly as they do untunneled. Redirects, auth, headers:
+	// all unchanged. With no dialer on the context, client.Transport stays nil
+	// and net/http uses DefaultTransport as before.
+	if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
+		client.Transport = &http.Transport{DialContext: dialer.DialContext}
+	}
+
 	resp, err := client.Do(req)
 	duration := time.Since(start)
 
