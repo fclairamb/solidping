@@ -241,23 +241,23 @@ func commentDedupeStateKey(teamID, channelID, ts string) string {
 // threads — is silently ignored. Reached from both the HTTP Events API and
 // Socket Mode, since both funnel through DispatchEvent.
 func (h *Handler) handleMessage(ctx context.Context, event *Event) error {
-	ep := &event.Event
+	msg := &event.Event
 
 	// Ignore message subtypes (message_changed, message_deleted, bot_message,
 	// channel_join, …) and any bot-authored post — including our own
 	// resolve/reopen thread replies, which carry a bot_id.
-	if ep.Subtype != "" || ep.BotID != "" {
+	if msg.Subtype != "" || msg.BotID != "" {
 		return nil
 	}
 
 	// Only thread replies become comments. A top-level message has no
 	// thread_ts, or a thread_ts equal to its own ts (Slack sets thread_ts on
 	// the parent once a thread exists).
-	if ep.ThreadTs == "" || ep.ThreadTs == ep.Ts {
+	if msg.ThreadTs == "" || msg.ThreadTs == msg.Ts {
 		return nil
 	}
 
-	incidentUID, orgUID, ok, err := h.resolveIncidentThread(ctx, event.TeamID, ep.Channel, ep.ThreadTs)
+	incidentUID, orgUID, ok, err := h.resolveIncidentThread(ctx, event.TeamID, msg.Channel, msg.ThreadTs)
 	if err != nil {
 		return err
 	}
@@ -269,10 +269,11 @@ func (h *Handler) handleMessage(ctx context.Context, event *Event) error {
 }
 
 // resolveIncidentThread looks up the incident a Slack thread belongs to via the
-// reverse mapping. ok is false (with a nil error) when the thread is untracked.
+// reverse mapping. The bool is false (with a nil error) when the thread is
+// untracked. Returns (incidentUID, orgUID, found, error).
 func (h *Handler) resolveIncidentThread(
 	ctx context.Context, teamID, channelID, threadTS string,
-) (incidentUID, orgUID string, ok bool, err error) {
+) (string, string, bool, error) {
 	entry, err := h.svc.db.GetStateEntry(ctx, nil, ReverseThreadStateKey(teamID, channelID, threadTS))
 	if err != nil {
 		return "", "", false, fmt.Errorf("looking up incident thread: %w", err)
@@ -281,8 +282,8 @@ func (h *Handler) resolveIncidentThread(
 		return "", "", false, nil
 	}
 
-	incidentUID, _ = (*entry.Value)[ThreadIncidentUIDKey].(string)
-	orgUID, _ = (*entry.Value)[ThreadOrgUIDKey].(string)
+	incidentUID, _ := (*entry.Value)[ThreadIncidentUIDKey].(string)
+	orgUID, _ := (*entry.Value)[ThreadOrgUIDKey].(string)
 	if incidentUID == "" || orgUID == "" {
 		return "", "", false, nil
 	}
@@ -299,8 +300,8 @@ func (h *Handler) resolveIncidentThread(
 // which Slack does not do; retries are seconds apart) is an acceptable trade
 // for never losing a comment.
 func (h *Handler) ingestSlackComment(ctx context.Context, event *Event, incidentUID, orgUID string) error {
-	ep := &event.Event
-	dedupeKey := commentDedupeStateKey(event.TeamID, ep.Channel, ep.Ts)
+	msg := &event.Event
+	dedupeKey := commentDedupeStateKey(event.TeamID, msg.Channel, msg.Ts)
 
 	existing, err := h.svc.db.GetStateEntry(ctx, &orgUID, dedupeKey)
 	if err != nil {
@@ -310,10 +311,10 @@ func (h *Handler) ingestSlackComment(ctx context.Context, event *Event, incident
 		return nil // already ingested on an earlier delivery
 	}
 
-	displayName := h.resolveSlackUserName(ctx, event.TeamID, ep.User)
+	displayName := h.resolveSlackUserName(ctx, event.TeamID, msg.User)
 
 	if _, err := h.svc.incidentsService.AddCommentFromSlack(
-		ctx, orgUID, incidentUID, ep.Text, ep.User, displayName, event.TeamID, ep.Ts,
+		ctx, orgUID, incidentUID, msg.Text, msg.User, displayName, event.TeamID, msg.Ts,
 	); err != nil {
 		// No marker written yet, so a redelivery retries rather than being
 		// silently dropped.
@@ -332,7 +333,7 @@ func (h *Handler) ingestSlackComment(ctx context.Context, event *Event, incident
 	slog.InfoContext(ctx, "Ingested Slack thread reply as incident comment",
 		"incident_uid", incidentUID,
 		"team_id", event.TeamID,
-		"channel_id", ep.Channel,
+		"channel_id", msg.Channel,
 	)
 
 	return nil

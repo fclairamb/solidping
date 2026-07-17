@@ -14,6 +14,9 @@ import (
 // tests never exercise, so the stubs don't trip the nilnil linter.
 var errFakeUnused = errors.New("fake incident service: method not used in this test")
 
+// errTransient is a static stand-in for a transient comment-write failure.
+var errTransient = errors.New("transient failure")
+
 type recordedComment struct {
 	orgUID, incidentUID, text, slackUserID, slackUserName, slackTeamID, slackTs string
 }
@@ -59,8 +62,8 @@ const (
 )
 
 // seedIncidentThread creates an org and the reverse thread→incident mapping the
-// inbound handler resolves, returning the org UID and incident UID.
-func seedIncidentThread(t *testing.T, svc *Service) (orgUID, incidentUID string) {
+// inbound handler resolves, returning (orgUID, incidentUID).
+func seedIncidentThread(t *testing.T, svc *Service) (string, string) {
 	t.Helper()
 	ctx := t.Context()
 	r := require.New(t)
@@ -68,7 +71,7 @@ func seedIncidentThread(t *testing.T, svc *Service) (orgUID, incidentUID string)
 	org := models.NewOrganization("slack-msg-test", "")
 	r.NoError(svc.db.CreateOrganization(ctx, org))
 
-	incidentUID = "incident-uid-1"
+	const incidentUID = "incident-uid-1"
 	_, err := svc.db.SetStateEntryIfNotExists(ctx, nil,
 		ReverseThreadStateKey(msgTeamID, msgChannel, msgThreadTS),
 		&models.JSONMap{ThreadIncidentUIDKey: incidentUID, ThreadOrgUIDKey: org.UID}, nil)
@@ -114,7 +117,7 @@ func TestHandleMessage_ThreadReplyBecomesComment(t *testing.T) {
 	r.Equal(msgTeamID, c.slackTeamID)
 	r.Equal("1700000000.000100", c.slackTs)
 	// No connection is configured, so the best-effort name lookup yields "".
-	r.Equal("", c.slackUserName)
+	r.Empty(c.slackUserName)
 
 	// A dedupe marker is left behind so redelivery is a no-op.
 	marker, err := svc.db.GetStateEntry(ctx, &orgUID, commentDedupeStateKey(msgTeamID, msgChannel, "1700000000.000100"))
@@ -205,7 +208,7 @@ func TestHandleMessage_ReleasesDedupeMarkerOnFailure(t *testing.T) {
 	ctx, svc := setupSlackService(t)
 
 	orgUID, _ := seedIncidentThread(t, svc)
-	fake := &fakeIncidentService{err: errors.New("transient failure")}
+	fake := &fakeIncidentService{err: errTransient}
 	svc.incidentsService = fake
 
 	reply := threadReply("1700000000.000600", "U-EVE", "will fail once")

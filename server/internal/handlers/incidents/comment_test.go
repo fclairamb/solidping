@@ -90,7 +90,11 @@ func TestAddComment_Validation(t *testing.T) {
 	}{
 		{name: "empty", text: "", wantErr: incidents.ErrCommentEmpty},
 		{name: "whitespace only", text: "   \n\t ", wantErr: incidents.ErrCommentEmpty},
-		{name: "over max length", text: strings.Repeat("a", incidents.MaxCommentLength+1), wantErr: incidents.ErrCommentTooLong},
+		{
+			name:    "over max length",
+			text:    strings.Repeat("a", incidents.MaxCommentLength+1),
+			wantErr: incidents.ErrCommentTooLong,
+		},
 	}
 
 	for _, tc := range cases {
