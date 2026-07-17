@@ -693,6 +693,9 @@ func (h *Handler) handleUpsertError(writer http.ResponseWriter, err error) error
 // handleDeleteError handles errors from DeleteCheck.
 func (h *Handler) handleDeleteError(writer http.ResponseWriter, err error) error {
 	switch {
+	case errors.Is(err, ErrTunnelInUse):
+		return h.WriteErrorErr(
+			writer, http.StatusConflict, base.ErrorCodeConflict, err.Error(), err)
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
 			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)

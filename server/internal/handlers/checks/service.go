@@ -1025,6 +1025,13 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 			return CheckResponse{}, normErr
 		}
 
+		// A `tunnelCheckUid` reference is validated against the referenced SSH
+		// check (existence, type, fingerprint, no chaining) — the checker's own
+		// Validate cannot do this: it never touches the database.
+		if tunnelErr := s.validateTunnelConfig(ctx, org.UID, req.Type, effective); tunnelErr != nil {
+			return CheckResponse{}, tunnelErr
+		}
+
 		if encErr := s.applyEncryption(ctx, check, effective); encErr != nil {
 			return CheckResponse{}, encErr
 		}
@@ -1745,6 +1752,12 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 	check, err := s.db.GetCheckByUidOrSlug(ctx, org.UID, identifier)
 	if err != nil || check == nil {
 		return ErrCheckNotFound
+	}
+
+	// Refuse to delete a bastion other checks tunnel through — they would all
+	// start failing on their next execution with no explanation.
+	if tunnelErr := s.assertNotUsedAsTunnel(ctx, check); tunnelErr != nil {
+		return tunnelErr
 	}
 
 	// Count active incidents for the event payload
@@ -3234,6 +3247,12 @@ func (s *Service) applyConfigUpdate(
 	// the merged config so a PATCH cannot smuggle in an over-cap value.
 	if timeoutErr := validateConfigTimeout(merged); timeoutErr != nil {
 		return timeoutErr
+	}
+
+	// Same reasoning for the tunnel reference: validated on the merged config so
+	// a PATCH cannot smuggle in a dangling / unverified / chained tunnel.
+	if tunnelErr := s.validateTunnelConfig(ctx, check.OrganizationUID, check.Type, merged); tunnelErr != nil {
+		return tunnelErr
 	}
 
 	if encErr := s.applyEncryption(ctx, check, merged); encErr != nil {

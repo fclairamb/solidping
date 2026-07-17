@@ -1226,6 +1226,27 @@ func (s *Service) GetCheckByEmailToken(ctx context.Context, token string) (*mode
 	return check, nil
 }
 
+// ListChecksByTunnelCheckUID returns the org's non-deleted checks whose config
+// references the given SSH check as their tunnel. Mirrors the Postgres JSONB
+// query with SQLite's json_extract.
+func (s *Service) ListChecksByTunnelCheckUID(
+	ctx context.Context, orgUID, tunnelCheckUID string,
+) ([]*models.Check, error) {
+	var checks []*models.Check
+
+	if err := s.db.NewSelect().
+		Model(&checks).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Where("json_extract(config, ?) = ?", "$."+checkerdef.TunnelCheckUIDConfigKey, tunnelCheckUID).
+		Order("slug ASC").
+		Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	return checks, nil
+}
+
 //nolint:funlen // List query builder handles many optional filters inline
 func (s *Service) ListChecks(
 	ctx context.Context, orgUID string, filter *models.ListChecksFilter,

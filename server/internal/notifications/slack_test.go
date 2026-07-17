@@ -235,6 +235,12 @@ func (m *mockDBService) ListChecks(
 	panic("not implemented")
 }
 
+func (m *mockDBService) ListChecksByTunnelCheckUID(
+	_ context.Context, _, _ string,
+) ([]*models.Check, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) UpdateCheck(_ context.Context, _ string, _ *models.CheckUpdate) error {
 	panic("not implemented")
 }

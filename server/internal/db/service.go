@@ -178,6 +178,11 @@ type Service interface {
 	// organizations. The token alone is unique because it's 24 random bytes.
 	GetCheckByEmailToken(ctx context.Context, token string) (*models.Check, error)
 	ListChecks(ctx context.Context, orgUID string, filter *models.ListChecksFilter) ([]*models.Check, int64, error)
+	// ListChecksByTunnelCheckUID returns the org's non-deleted checks that dial
+	// through the given SSH check (`config.tunnelCheckUid`). Backs the delete
+	// guard: removing a bastion that other checks tunnel through would silently
+	// break them, so the API answers 409 with the dependents instead.
+	ListChecksByTunnelCheckUID(ctx context.Context, orgUID, tunnelCheckUID string) ([]*models.Check, error)
 	UpdateCheck(ctx context.Context, uid string, update *models.CheckUpdate) error
 	DeleteCheck(ctx context.Context, uid string) error
 
