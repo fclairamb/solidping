@@ -167,6 +167,23 @@ type ParameterDefinition struct {
 	ApplyFunc func(cfg *config.Config, value any)
 }
 
+// KnownEnvVars returns the SP_* environment variable name of every system
+// parameter in the parameter table (its EnvVar field). It is a pure data
+// accessor over getKnownParameters with no database dependency, so the startup
+// unrecognized-env check can call it before the systemconfig service is
+// initialized. Definitions with an empty EnvVar (none today) are skipped.
+func KnownEnvVars() []string {
+	params := getKnownParameters()
+	out := make([]string, 0, len(params))
+	for _, def := range params {
+		if def.EnvVar != "" {
+			out = append(out, def.EnvVar)
+		}
+	}
+
+	return out
+}
+
 // knownParameters defines all known system parameters.
 //
 //nolint:cyclop,funlen,gocognit // This is a data definition function, not complex logic

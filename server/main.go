@@ -20,6 +20,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/envcheck"
 	"github.com/fclairamb/solidping/server/internal/memlimit"
 	"github.com/fclairamb/solidping/server/internal/otelsetup"
 	slogutil "github.com/fclairamb/solidping/server/internal/utils/slog"
@@ -99,6 +100,12 @@ func serve(ctx context.Context, _ *cli.Command) error {
 
 	// Re-configure logger with the log level from config
 	setupLogger(cfg.LogLevel)
+
+	// Warn about unrecognized SP_* environment variables before validating: a
+	// typo'd var is often *why* validation fails, so the hint must print before
+	// a possible fatal exit. WARN-only — never fails startup, since unknown SP_*
+	// names are legitimate in mixed fleets and check config-as-code.
+	envcheck.WarnUnrecognizedEnv(ctx)
 
 	if validationErr := cfg.Validate(); validationErr != nil {
 		slog.ErrorContext(ctx, "Invalid configuration", "error", validationErr)
