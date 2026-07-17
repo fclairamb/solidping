@@ -173,7 +173,9 @@ func NewCheckWorker(
 	checkJobSvc checkjobsvc.Service,
 ) *CheckWorker {
 	incidentSvc := incidents.NewService(dbService, svc.Jobs, clock.Real{}, svc.Realtime)
-	directBackend := backend.NewDirectBackend(dbService, checkJobSvc, incidentSvc, svc.EventNotifier)
+	directBackend := backend.NewDirectBackend(
+		dbService, checkJobSvc, incidentSvc, svc.EventNotifier, svc.Credentials,
+	)
 
 	worker := newCheckWorker(cfg, directBackend)
 	worker.dbService = dbService

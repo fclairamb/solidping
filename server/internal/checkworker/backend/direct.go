@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
@@ -26,20 +27,30 @@ type DirectBackend struct {
 	checkJobSvc checkjobsvc.Service
 	incidentSvc *incidents.Service
 	events      notifier.EventNotifier
+	// creds opens the per-job config_private envelope at claim time so the
+	// worker loop only ever sees one merged plaintext config. nil (or a
+	// service with no master key) is the documented encryption-disabled
+	// deployment, where secrets are plaintext in the public config and no
+	// envelope exists to open.
+	creds credentials.Service
 }
 
-// NewDirectBackend creates a DirectBackend.
+// NewDirectBackend creates a DirectBackend. creds may be nil (tests, or a
+// deployment with no master key); jobs carrying an encrypted envelope then
+// fail loudly rather than running without their secrets.
 func NewDirectBackend(
 	dbService db.Service,
 	checkJobSvc checkjobsvc.Service,
 	incidentSvc *incidents.Service,
 	events notifier.EventNotifier,
+	creds credentials.Service,
 ) *DirectBackend {
 	return &DirectBackend{
 		dbService:   dbService,
 		checkJobSvc: checkJobSvc,
 		incidentSvc: incidentSvc,
 		events:      events,
+		creds:       creds,
 	}
 }
 
@@ -58,7 +69,8 @@ func (b *DirectBackend) Heartbeat(
 }
 
 // ClaimJobs claims up to fastLimit jobs for the given worker with the slow
-// lane bounded by slowLimit (spec 2026-07-01-03 D3).
+// lane bounded by slowLimit (spec 2026-07-01-03 D3). Claimed jobs come back
+// with their secrets already merged — see mergeClaimedSecrets.
 func (b *DirectBackend) ClaimJobs(
 	ctx context.Context,
 	workerUID string,
@@ -67,9 +79,14 @@ func (b *DirectBackend) ClaimJobs(
 	slowLimit int,
 	maxAhead time.Duration,
 ) ([]*models.CheckJob, error) {
-	return b.checkJobSvc.ClaimJobs(
+	jobs, err := b.checkJobSvc.ClaimJobs(
 		ctx, workerUID, region, fastLimit, slowLimit, maxAhead,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	return b.mergeClaimedSecrets(ctx, workerUID, jobs), nil
 }
 
 // ClaimJobsForCheck claims any due job rows for one check (express path).
@@ -79,7 +96,96 @@ func (b *DirectBackend) ClaimJobsForCheck(
 	region *string,
 	checkUID string,
 ) ([]*models.CheckJob, error) {
-	return b.checkJobSvc.ClaimJobsForCheck(ctx, workerUID, region, checkUID)
+	jobs, err := b.checkJobSvc.ClaimJobsForCheck(ctx, workerUID, region, checkUID)
+	if err != nil {
+		return nil, err
+	}
+
+	return b.mergeClaimedSecrets(ctx, workerUID, jobs), nil
+}
+
+// mergeClaimedSecrets is the in-process half of the "decrypt once at the
+// claim/dispatch boundary" invariant: every job leaving a claim carries one
+// merged plaintext config and no envelope, so CheckWorker — and every checker
+// under it — stays oblivious to encryption entirely. WSBackend does the same
+// for the deported path (unsealing its region-sealed envelope), which is why
+// the worker loop itself needs no encryption awareness.
+//
+// A job whose envelope cannot be opened is dropped from the batch and reported
+// as an explicit error result, matching WSBackend.submitSealError: running the
+// check without its credentials is the failure this guards against (it would
+// silently "pass" against endpoints that don't enforce the credential), and a
+// silent skip would wedge the job until lease expiry and retry forever with
+// nothing in the check's history to explain it. The error result also releases
+// the lease and drives incident processing, so the check goes visibly red.
+func (b *DirectBackend) mergeClaimedSecrets(
+	ctx context.Context, workerUID string, jobs []*models.CheckJob,
+) []*models.CheckJob {
+	if len(jobs) == 0 {
+		return jobs
+	}
+
+	out := make([]*models.CheckJob, 0, len(jobs))
+
+	for _, job := range jobs {
+		outcome, err := checkjobsvc.MergeJobSecrets(ctx, b.creds, job)
+		if outcome == checkjobsvc.SecretMergeNoop || outcome == checkjobsvc.SecretMergeMerged {
+			out = append(out, job)
+
+			continue
+		}
+
+		// Log the cause (which may carry crypto detail) but report only the
+		// static, actionable reason in the result — never a config value.
+		slog.ErrorContext(ctx, "Cannot decrypt claimed job credentials",
+			"error", err, "check_uid", job.CheckUID, "job_uid", job.UID,
+			"organization_uid", job.OrganizationUID)
+
+		reason := checkjobsvc.ErrSecretsUndecryptable
+		if outcome == checkjobsvc.SecretMergeUnavailable {
+			reason = checkjobsvc.ErrSecretsUnavailable
+		}
+
+		b.submitSecretsError(ctx, job, workerUID, reason)
+	}
+
+	return out
+}
+
+// submitSecretsError reports an unopenable envelope as an error result so the
+// check's history shows the actionable message instead of the check silently
+// never running.
+func (b *DirectBackend) submitSecretsError(
+	ctx context.Context, job *models.CheckJob, workerUID string, reason error,
+) {
+	if err := b.SubmitResult(ctx, job, workerUID, &SubmitResultRequest{
+		Status:          int(models.ResultStatusError),
+		Duration:        0,
+		Metrics:         map[string]any{},
+		Output:          map[string]any{"error": reason.Error()},
+		Region:          job.Region,
+		NextScheduledAt: nextScheduledAt(job),
+	}); err != nil {
+		slog.ErrorContext(ctx, "Failed to submit credentials error result",
+			"error", err, "check_uid", job.CheckUID, "job_uid", job.UID)
+	}
+}
+
+// nextScheduledAt mirrors CheckWorker's rescheduling for jobs the backend
+// terminates before they ever reach a runner.
+func nextScheduledAt(job *models.CheckJob) time.Time {
+	interval := time.Duration(job.Period)
+	now := time.Now()
+
+	if job.ScheduledAt == nil {
+		return now.Add(interval)
+	}
+
+	if next := job.ScheduledAt.Add(interval); next.After(now) {
+		return next
+	}
+
+	return now.Add(interval)
 }
 
 // SubmitResult saves the result row (with status tracking), processes

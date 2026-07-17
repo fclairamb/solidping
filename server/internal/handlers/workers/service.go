@@ -104,39 +104,21 @@ func (s *Service) ClaimJobs(
 	out := make([]*models.CheckJob, 0, len(jobs))
 
 	for _, job := range jobs {
-		if job.ConfigPrivate == nil || *job.ConfigPrivate == "" {
+		// The decrypt/merge/strip rule itself lives in checkjobsvc.MergeJobSecrets,
+		// shared with the in-process claim path; only the failure policy differs.
+		switch outcome, mergeErr := checkjobsvc.MergeJobSecrets(ctx, s.creds, job); outcome {
+		case checkjobsvc.SecretMergeNoop, checkjobsvc.SecretMergeMerged:
 			out = append(out, job)
-			continue
-		}
-
-		if !s.creds.Enabled() {
+		case checkjobsvc.SecretMergeUnavailable:
 			slog.WarnContext(ctx,
 				"skipping encrypted job — SP_ENCRYPTION_MASTER_KEY not set",
 				"orgUid", job.OrganizationUID, "checkUid", job.CheckUID, "jobUid", job.UID)
-
-			continue
-		}
-
-		private, decErr := s.creds.DecryptForOrg(ctx, job.OrganizationUID, *job.ConfigPrivate)
-		if decErr != nil {
+		case checkjobsvc.SecretMergeFailed:
 			slog.ErrorContext(ctx,
 				"failed to decrypt job config",
 				"orgUid", job.OrganizationUID, "checkUid", job.CheckUID, "jobUid", job.UID,
-				"error", decErr)
-
-			continue
+				"error", mergeErr)
 		}
-
-		merged := credentials.MergeConfig(job.Config, private)
-		job.Config = models.JSONMap(merged)
-		// Strip the envelope before responding — never ship it to a worker
-		// even though the worker is trusted; defense-in-depth keeps the
-		// "decrypt happens server-side" invariant easy to verify.
-		job.ConfigPrivate = nil
-		job.ConfigPrivateKeys = nil
-		job.Encrypted = false
-
-		out = append(out, job)
 	}
 
 	return &ClaimJobsResponse{Jobs: out}, nil
