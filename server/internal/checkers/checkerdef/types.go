@@ -247,14 +247,23 @@ type CheckTypeMeta struct {
 	MinPeriod     time.Duration `json:"-"` // Minimum allowed check period (0 = use global default)
 	MaxPeriod     time.Duration `json:"-"` // Maximum allowed check period (0 = no limit)
 	DefaultPeriod time.Duration `json:"-"` // Default check period (0 = use global default)
+
+	// SupportsTunnel reports whether the type honors a tunnel dialer
+	// (TunnelDialerFrom) and can therefore carry a `tunnelCheckUid` in its
+	// config. Declarative metadata rather than a hand-maintained list
+	// elsewhere: the API serves it and the dashboard gates its selector on it.
+	// v1 enables http + tcp only — the seam is proven on two checkers first;
+	// the remaining TCP-dialing types (DB checkers, sftp, mail…) roll out in
+	// follow-ups by flipping this flag and consuming the dialer.
+	SupportsTunnel bool `json:"supportsTunnel"`
 }
 
 // checkTypesRegistry is the authoritative registry of all check types with metadata.
 //
 //nolint:gochecknoglobals,lll // Registry is intentionally global; it's read-only after init.
 var checkTypesRegistry = []CheckTypeMeta{
-	{Type: CheckTypeHTTP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor HTTP/HTTPS endpoints"},
-	{Type: CheckTypeTCP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check TCP port connectivity"},
+	{Type: CheckTypeHTTP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor HTTP/HTTPS endpoints", SupportsTunnel: true},
+	{Type: CheckTypeTCP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check TCP port connectivity", SupportsTunnel: true},
 	{Type: CheckTypeICMP, Labels: []string{labelUnsafe, labelReqRawSocket, labelCatNetwork}, Description: "Ping hosts via ICMP"},
 	{Type: CheckTypeDNS, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor DNS resolution", DefaultPeriod: 5 * time.Minute},
 	{Type: CheckTypeSSL, Labels: []string{labelSafe, labelStandalone, labelCatSecurity}, Description: "Check SSL certificate validity", MinPeriod: time.Hour, DefaultPeriod: 6 * time.Hour},
