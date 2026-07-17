@@ -92,8 +92,11 @@ type Error struct {
 	Err error
 }
 
+// Error renders as "<op>: <cause>" — the worker prefixes the whole thing with
+// "tunnel failed: " when it writes the result output, so the op reads as the
+// stage that broke ("tunnel failed: handshake: ssh: unable to authenticate…").
 func (e *Error) Error() string {
-	return fmt.Sprintf("tunnel %s failed: %v", e.Op, e.Err)
+	return fmt.Sprintf("%s: %v", e.Op, e.Err)
 }
 
 func (e *Error) Unwrap() error { return e.Err }

@@ -826,6 +826,28 @@ func (r *CheckWorker) executeJob(
 	execCtx, cancel := context.WithTimeout(context.Background(), checkTimeout+time.Second)
 	defer cancel()
 
+	// Tunnel-capable checks (`tunnelCheckUid` in config) dial their probe
+	// through an SSH check's connection. A fresh session is established per
+	// execution — the dependency is config-level, not runtime-level — and torn
+	// down when this job finishes. Establishing it here (rather than inside the
+	// checker) is what keeps DB/credential concerns out of the checkers: they
+	// only see a dialer on their context.
+	tunnel, tunnelErr := r.setupTunnel(execCtx, checkJob)
+	if tunnelErr != nil {
+		// The tunnel is the prerequisite: the target probe never runs, and the
+		// result says "tunnel failed" rather than blaming the target.
+		logger.WarnContext(ctx, "Tunnel setup failed; skipping probe",
+			"check_uid", checkJob.CheckUID, "error", tunnelErr)
+
+		return r.saveTunnelFailureResult(ctx, checkJob, tunnelErr, tunnel)
+	}
+
+	if tunnel != nil {
+		defer tunnel.close()
+
+		execCtx = checkerdef.WithTunnelDialer(execCtx, tunnel.dialer)
+	}
+
 	execStart := time.Now()
 	result, err := r.runCheckerGuarded(execCtx, logger, checker, checkConfig, checkJob, checkTimeout, startTime)
 	prommetrics.RecordCheckStage("execute", time.Since(execStart).Seconds())
@@ -853,6 +875,12 @@ func (r *CheckWorker) executeJob(
 			}
 		}
 	}
+
+	// Tunnel bookkeeping: record setup time as its own metric (never folded into
+	// the check's Duration — the checker times only its own probe, so latency
+	// graphs stay about the target rather than about SSH handshakes), and
+	// re-classify a failure the bastion itself caused.
+	tunnel.annotate(result)
 
 	// 5. Save result
 	// Use a fallback context for cleanup operations if the main context is canceled
