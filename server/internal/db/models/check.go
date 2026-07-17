@@ -289,6 +289,7 @@ type ListChecksFilter struct {
 	Labels          map[string]string // key:value pairs for AND filtering
 	CheckGroupUID   *string           // filter by check group UID; "none" = ungrouped checks only
 	Query           string            // search term for name/slug (case-insensitive substring)
+	Types           []string          // optional filter by check type (e.g. ["ssh"]); empty = every type
 	Internal        *string           // "true", "false", or "all" — filter by internal status
 	Statuses        []CheckStatus     // optional filter by current status (up/down/etc.)
 	Limit           int               // max results to return (0 = no limit)

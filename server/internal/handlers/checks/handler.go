@@ -167,6 +167,16 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req bunrouter.Request) 
 	// Parse search query
 	opts.Query = query.Get("q")
 
+	// Parse type filter — singular name, comma-separated multi-value, per the
+	// API convention (`?type=ssh` / `?type=http,tcp`).
+	if typeParam := query.Get(fieldType); typeParam != "" {
+		for _, checkType := range strings.Split(typeParam, ",") {
+			if trimmed := strings.TrimSpace(checkType); trimmed != "" {
+				opts.Types = append(opts.Types, trimmed)
+			}
+		}
+	}
+
 	// Parse internal filter
 	if internalParam := query.Get("internal"); internalParam != "" {
 		opts.Internal = &internalParam

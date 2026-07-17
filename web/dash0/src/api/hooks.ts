@@ -234,6 +234,7 @@ function buildChecksUrl(
     labels?: string;
     with?: string;
     q?: string;
+    type?: string;
     checkGroupUid?: string;
     internal?: string;
     status?: string;
@@ -245,6 +246,7 @@ function buildChecksUrl(
   if (options?.labels) params.set("labels", options.labels);
   if (options?.with) params.set("with", options.with);
   if (options?.q) params.set("q", options.q);
+  if (options?.type) params.set("type", options.type);
   if (options?.checkGroupUid) params.set("checkGroupUid", options.checkGroupUid);
   if (options?.internal) params.set("internal", options.internal);
   if (options?.status) params.set("status", options.status);
@@ -257,7 +259,15 @@ function buildChecksUrl(
 // Checks hooks
 export function useChecks(
   org: string,
-  options?: { labels?: string; with?: string; q?: string; checkGroupUid?: string; limit?: number }
+  options?: {
+    labels?: string;
+    with?: string;
+    q?: string;
+    /** Comma-separated check types, e.g. "ssh" or "http,tcp". */
+    type?: string;
+    checkGroupUid?: string;
+    limit?: number;
+  }
 ) {
   return useQuery({
     queryKey: ["checks", org, options],
@@ -2500,6 +2510,13 @@ export interface CheckTypeInfo {
   minPeriodSeconds?: number;
   maxPeriodSeconds?: number;
   defaultPeriodSeconds?: number;
+  /**
+   * True when the type can be run through an SSH check's tunnel — i.e. its
+   * config may carry `tunnelCheckUid`. Server-declared capability metadata, so
+   * the form gates its tunnel selector on this rather than on a hard-coded
+   * type list that would drift as more checkers gain tunnel support.
+   */
+  supportsTunnel?: boolean;
 }
 
 export function useCheckTypes(org: string) {

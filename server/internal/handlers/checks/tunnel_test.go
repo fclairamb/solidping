@@ -417,3 +417,35 @@ func createBastionInOtherOrg(
 
 	return created.UID
 }
+
+// The tunnel selector needs "the org's ssh checks", which the list endpoint's
+// `?type=` filter provides. Nothing else in the API could express it.
+func TestListChecksFiltersByType(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, _, org := setupTunnelChecksService(t)
+	ctx := t.Context()
+
+	bastion := createBastion(t, svc, ctx, org, "bastion")
+
+	_, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Name: "api", Slug: "api", Type: "http",
+		Config: map[string]any{"url": "https://example.com"},
+	})
+	r.NoError(err)
+
+	listed, err := svc.ListChecks(ctx, org.Slug, checks.ListChecksOptions{Types: []string{"ssh"}})
+	r.NoError(err)
+	r.Len(listed.Data, 1)
+	r.Equal(bastion.UID, listed.Data[0].UID)
+
+	// Multi-value, and no filter means every type.
+	listed, err = svc.ListChecks(ctx, org.Slug, checks.ListChecksOptions{Types: []string{"ssh", "http"}})
+	r.NoError(err)
+	r.Len(listed.Data, 2)
+
+	listed, err = svc.ListChecks(ctx, org.Slug, checks.ListChecksOptions{})
+	r.NoError(err)
+	r.Len(listed.Data, 2)
+}

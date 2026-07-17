@@ -687,10 +687,15 @@ type ListChecksOptions struct {
 	Labels                  map[string]string
 	CheckGroupUID           *string
 	Query                   string
-	Internal                *string
-	Statuses                []models.CheckStatus
-	Cursor                  string
-	Limit                   int
+	// Types optionally restricts the listing to given check types (`?type=ssh`).
+	// The dashboard's tunnel selector needs "the org's ssh checks" and there is
+	// no other primitive for it; comma-separated multi-value, per the API's
+	// singular-name convention.
+	Types    []string
+	Internal *string
+	Statuses []models.CheckStatus
+	Cursor   string
+	Limit    int
 }
 
 // PaginationResponse contains pagination metadata.
@@ -727,6 +732,7 @@ func (s *Service) ListChecks(ctx context.Context, orgSlug string, opts ListCheck
 		Labels:        opts.Labels,
 		CheckGroupUID: opts.CheckGroupUID,
 		Query:         opts.Query,
+		Types:         opts.Types,
 		Internal:      opts.Internal,
 		Statuses:      opts.Statuses,
 		Limit:         opts.Limit,

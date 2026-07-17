@@ -1294,6 +1294,11 @@ func (s *Service) ListChecks(
 			countQuery = countQuery.Where("(LOWER(name) LIKE ? OR LOWER(slug) LIKE ?)", pattern, pattern)
 		}
 
+		if len(filter.Types) > 0 {
+			query = query.Where("type IN (?)", bun.In(filter.Types))
+			countQuery = countQuery.Where("type IN (?)", bun.In(filter.Types))
+		}
+
 		// Apply internal filter (default: show only non-internal checks)
 		internalVal := "false"
 		if filter.Internal != nil {
