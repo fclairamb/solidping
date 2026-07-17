@@ -53,11 +53,38 @@ export function TunnelSelect({
       {sshChecks.length === 0 ? (
         <Alert>
           <AlertDescription>
-            No SSH checks yet — create one for your bastion first, then select
-            it here.{" "}
-            <Link to="/orgs/$org/checks" params={{ org }} className="underline">
-              Checks
-            </Link>
+            No SSH checks yet.{" "}
+            <Link
+              to="/orgs/$org/checks/new"
+              params={{ org }}
+              search={{
+                checkType: "ssh",
+                checkPeriod: undefined,
+                checkName: undefined,
+                checkSlug: undefined,
+                httpUrl: undefined,
+                httpMethod: undefined,
+                host: undefined,
+                port: undefined,
+                url: undefined,
+                domain: undefined,
+                username: undefined,
+                database: undefined,
+                expectedStatus: undefined,
+                timeout: undefined,
+                label: undefined,
+                region: undefined,
+                group: undefined,
+                confirmationPeriod: undefined,
+                recoveryPeriod: undefined,
+                section: undefined,
+              }}
+              className="underline"
+              data-testid="tunnel-empty-create-link"
+            >
+              Create an SSH check for your bastion
+            </Link>{" "}
+            — this opens a new form, so any unsaved changes here are lost.
           </AlertDescription>
         </Alert>
       ) : (
@@ -83,7 +110,7 @@ export function TunnelSelect({
                   disabled={!verified}
                 >
                   {checkLabel(check)}
-                  {!verified && " — set expected_fingerprint first"}
+                  {!verified && " — needs a host key fingerprint"}
                 </SelectItem>
               );
             })}
