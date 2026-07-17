@@ -34,6 +34,7 @@ async function createHeartbeatCheck(
   page: Page,
   token: string,
   name: string,
+  checkGroupUid?: string,
 ): Promise<HeartbeatCheck> {
   const hbToken = `e2e-live-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
   const resp = await page.request.post(`${API_BASE}/api/v1/orgs/test/checks`, {
@@ -46,11 +47,36 @@ async function createHeartbeatCheck(
       // live-update latency is the only delay under test.
       confirmationPeriodSeconds: 0,
       recoveryPeriodSeconds: 0,
+      ...(checkGroupUid ? { checkGroupUid } : {}),
     },
   });
   expect(resp.status()).toBe(201);
   const body = await resp.json();
   return { uid: body.uid, name, slug: body.slug, hbToken };
+}
+
+async function createCheckGroup(
+  page: Page,
+  token: string,
+  name: string,
+): Promise<{ uid: string }> {
+  const resp = await page.request.post(
+    `${API_BASE}/api/v1/orgs/test/check-groups`,
+    { headers: { Authorization: `Bearer ${token}` }, data: { name } },
+  );
+  expect(resp.status()).toBe(201);
+  return resp.json();
+}
+
+async function deleteCheckGroup(
+  page: Page,
+  token: string,
+  uid: string,
+): Promise<void> {
+  await page.request.delete(
+    `${API_BASE}/api/v1/orgs/test/check-groups/${uid}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
 }
 
 async function sendHeartbeat(
@@ -405,6 +431,71 @@ test.describe("Live dashboard updates", () => {
       });
     } finally {
       await deleteCheck(page, token, check.uid);
+    }
+  });
+
+  test("a single live hint refreshes rows across every group section (batched query)", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    // Two groups, one heartbeat check each. The checks page now backs every
+    // group section from ONE batched query bucketed by checkGroupUid, so a
+    // single live invalidation must refresh the row in *both* sections — the
+    // regression guard that batching didn't leave later sections stale.
+    const ts = Date.now();
+    const groupA = await createCheckGroup(page, token, `E2E LiveGrpA ${ts}`);
+    const groupB = await createCheckGroup(page, token, `E2E LiveGrpB ${ts}`);
+    // A shared, unique search token narrows the single query to just these two
+    // checks regardless of how many others the shared org holds, while still
+    // bucketing each into its own group section.
+    const checkA = await createHeartbeatCheck(
+      page,
+      token,
+      `E2E LiveBucket ${ts} A`,
+      groupA.uid,
+    );
+    const checkB = await createHeartbeatCheck(
+      page,
+      token,
+      `E2E LiveBucket ${ts} B`,
+      groupB.uid,
+    );
+
+    try {
+      await sendHeartbeat(page, checkA, "up");
+      await sendHeartbeat(page, checkB, "up");
+
+      const subscribed = waitForScopeSubscribed(page, "checks");
+      await page.goto("orgs/test/checks");
+      await subscribed;
+
+      await page.getByPlaceholder("Search checks...").fill(`E2E LiveBucket ${ts}`);
+
+      const rowA = page.getByRole("row").filter({ hasText: checkA.name });
+      const rowB = page.getByRole("row").filter({ hasText: checkB.name });
+      await expect(rowA).toBeVisible();
+      await expect(rowB).toBeVisible();
+      await expect(rowA.getByText("Up", { exact: true })).toBeVisible();
+      await expect(rowB.getByText("Up", { exact: true })).toBeVisible();
+
+      // Fail both checks: the status-transition hints must flip both rows to
+      // Down without a reload — proving every group section (not just the
+      // first) still refreshes off the shared batched query.
+      await sendHeartbeat(page, checkA, "down");
+      await sendHeartbeat(page, checkB, "down");
+      await expect(rowA.getByText("Down", { exact: true })).toBeVisible({
+        timeout: 8000,
+      });
+      await expect(rowB.getByText("Down", { exact: true })).toBeVisible({
+        timeout: 8000,
+      });
+    } finally {
+      await deleteCheck(page, token, checkA.uid);
+      await deleteCheck(page, token, checkB.uid);
+      await deleteCheckGroup(page, token, groupA.uid);
+      await deleteCheckGroup(page, token, groupB.uid);
     }
   });
 
