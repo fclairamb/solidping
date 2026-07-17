@@ -845,6 +845,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgIncidents.POST("/:uid/snooze", incidentsHandler.SnoozeIncident)
 	orgIncidents.POST("/:uid/unsnooze", incidentsHandler.UnsnoozeIncident)
 	orgIncidents.POST("/:uid/resolve", incidentsHandler.ResolveIncident)
+	orgIncidents.POST("/:uid/comments", incidentsHandler.AddComment)
 
 	// Magic-link ack — public route (the signed token authenticates).
 	// Returns text/html so it renders in a browser opened from a mail client.
