@@ -10,6 +10,8 @@
 package sshtunneltest
 
 import (
+	"bytes"
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/pem"
@@ -87,7 +89,7 @@ func Start(t *testing.T) *Server {
 		},
 		PublicKeyCallback: func(meta ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 			if meta.User() != srv.Username ||
-				string(key.Marshal()) != string(clientSigner.PublicKey().Marshal()) {
+				!bytes.Equal(key.Marshal(), clientSigner.PublicKey().Marshal()) {
 				return nil, errAuthFailed
 			}
 
@@ -96,13 +98,19 @@ func Start(t *testing.T) *Server {
 	}
 	config.AddHostKey(hostSigner)
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
 
 	srv.listener = listener
-	srv.Port = listener.Addr().(*net.TCPAddr).Port
+
+	tcpAddr, ok := listener.Addr().(*net.TCPAddr)
+	if !ok {
+		t.Fatalf("unexpected listener address type %T", listener.Addr())
+	}
+
+	srv.Port = tcpAddr.Port
 
 	go srv.acceptLoop(config)
 
@@ -218,7 +226,7 @@ func (s *Server) serveDirectTCPIP(newChannel ssh.NewChannel) {
 		return
 	}
 
-	upstream, err := net.Dial("tcp", actual)
+	upstream, err := (&net.Dialer{}).DialContext(context.Background(), "tcp", actual)
 	if err != nil {
 		_ = newChannel.Reject(ssh.ConnectionFailed, "connect failed")
 

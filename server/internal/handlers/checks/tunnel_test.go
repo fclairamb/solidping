@@ -236,7 +236,7 @@ func TestUpdateCheckValidatesTunnel(t *testing.T) {
 
 // Editing an unrelated field must not drop the tunnel reference.
 //
-// Note the two shapes deliberately: a PATCH that does not touch `config` at all
+// The two shapes below are deliberate: a PATCH that does not touch `config` at all
 // leaves the stored config (tunnel reference included) untouched, and a PATCH
 // that does send `config` replaces the public side wholesale — the long-standing
 // contract every other public key (`timeout`, `method`, `headers`…) already

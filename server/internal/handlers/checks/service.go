@@ -1768,25 +1768,8 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 
 	// Resolve any active incidents before deleting
 	if activeIncidentCount > 0 {
-		incidents, listErr := s.db.ListIncidents(ctx, &models.ListIncidentsFilter{
-			OrganizationUID: org.UID,
-			CheckUIDs:       []string{check.UID},
-			States:          []models.IncidentState{models.IncidentStateActive},
-		})
-		if listErr != nil {
-			return fmt.Errorf("failed to list active incidents: %w", listErr)
-		}
-
-		now := time.Now()
-		resolvedState := models.IncidentStateResolved
-
-		for _, incident := range incidents {
-			if updateErr := s.db.UpdateIncident(ctx, incident.UID, &models.IncidentUpdate{
-				State:      &resolvedState,
-				ResolvedAt: &now,
-			}); updateErr != nil {
-				return fmt.Errorf("failed to resolve incident %s: %w", incident.UID, updateErr)
-			}
+		if resolveErr := s.resolveActiveIncidentsForDelete(ctx, org.UID, check.UID); resolveErr != nil {
+			return resolveErr
 		}
 	}
 
@@ -1825,6 +1808,33 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 
 	if err := s.db.CreateEvent(ctx, event); err != nil {
 		slog.WarnContext(ctx, "failed to emit check.deleted event", "error", err)
+	}
+
+	return nil
+}
+
+// resolveActiveIncidentsForDelete resolves every active incident on a check
+// about to be deleted, so no incident outlives the check it points at.
+func (s *Service) resolveActiveIncidentsForDelete(ctx context.Context, orgUID, checkUID string) error {
+	incidents, err := s.db.ListIncidents(ctx, &models.ListIncidentsFilter{
+		OrganizationUID: orgUID,
+		CheckUIDs:       []string{checkUID},
+		States:          []models.IncidentState{models.IncidentStateActive},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list active incidents: %w", err)
+	}
+
+	now := time.Now()
+	resolvedState := models.IncidentStateResolved
+
+	for _, incident := range incidents {
+		if updateErr := s.db.UpdateIncident(ctx, incident.UID, &models.IncidentUpdate{
+			State:      &resolvedState,
+			ResolvedAt: &now,
+		}); updateErr != nil {
+			return fmt.Errorf("failed to resolve incident %s: %w", incident.UID, updateErr)
+		}
 	}
 
 	return nil

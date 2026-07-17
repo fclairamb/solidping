@@ -57,7 +57,7 @@ func (c *dialerObservingChecker) Execute(
 func setupTunnelJob(
 	t *testing.T, runner *CheckWorker, dbSvc *sqlite.Service, ctx context.Context, //nolint:revive
 	checkType checkerdef.CheckType, config models.JSONMap,
-) (*models.CheckJob, *models.Organization) {
+) *models.CheckJob {
 	t.Helper()
 
 	org := models.NewOrganization("test-org", "")
@@ -76,7 +76,7 @@ func setupTunnelJob(
 	require.NoError(t, dbSvc.DB().NewSelect().Model(checkJob).Where("check_uid = ?", check.UID).Scan(ctx))
 	claimJobForTest(t, dbSvc, ctx, checkJob, worker.UID)
 
-	return checkJob, org
+	return checkJob
 }
 
 func lastResultForJob(t *testing.T, dbSvc *sqlite.Service, ctx context.Context, //nolint:revive
@@ -111,7 +111,7 @@ func TestExecuteJob_TunnelSetupIsMeasuredSeparately(t *testing.T) {
 		&tunnelCheckLoader{config: srv.CheckConfig()}, nil,
 	))
 
-	checkJob, _ := setupTunnelJob(t, runner, dbSvc, ctx, ttype, models.JSONMap{
+	checkJob := setupTunnelJob(t, runner, dbSvc, ctx, ttype, models.JSONMap{
 		checkerdef.TunnelCheckUIDConfigKey: tunnelSSHCheckUID,
 	})
 
@@ -136,7 +136,7 @@ func TestExecuteJob_UntunneledCheckIsUnaffected(t *testing.T) {
 	checker := &dialerObservingChecker{checkType: ttype, status: checkerdef.StatusUp}
 	runner.getChecker, runner.parseConfig = stubResolvers(ttype, checker)
 
-	checkJob, _ := setupTunnelJob(t, runner, dbSvc, ctx, ttype, models.JSONMap{})
+	checkJob := setupTunnelJob(t, runner, dbSvc, ctx, ttype, models.JSONMap{})
 
 	require.NoError(t, runner.executeJob(ctx, runner.logger, checkJob))
 
@@ -168,7 +168,7 @@ func TestExecuteJob_TunnelFailureProducesDistinctResult(t *testing.T) {
 
 	ctx = sshtunnel.WithResolver(ctx, sshtunnel.NewResolver(&tunnelCheckLoader{config: config}, nil))
 
-	checkJob, _ := setupTunnelJob(t, runner, dbSvc, ctx, ttype, models.JSONMap{
+	checkJob := setupTunnelJob(t, runner, dbSvc, ctx, ttype, models.JSONMap{
 		checkerdef.TunnelCheckUIDConfigKey: tunnelSSHCheckUID,
 	})
 
@@ -208,7 +208,7 @@ func TestExecuteJob_ForwardRejectionIsClassifiedAsTunnelFailure(t *testing.T) {
 		&tunnelCheckLoader{config: srv.CheckConfig()}, nil,
 	))
 
-	checkJob, _ := setupTunnelJob(t, runner, dbSvc, ctx, ttype, models.JSONMap{
+	checkJob := setupTunnelJob(t, runner, dbSvc, ctx, ttype, models.JSONMap{
 		checkerdef.TunnelCheckUIDConfigKey: tunnelSSHCheckUID,
 	})
 
@@ -232,7 +232,7 @@ func TestExecuteJob_TunnelWithoutResolverFails(t *testing.T) {
 	checker := &dialerObservingChecker{checkType: ttype, status: checkerdef.StatusUp}
 	runner.getChecker, runner.parseConfig = stubResolvers(ttype, checker)
 
-	checkJob, _ := setupTunnelJob(t, runner, dbSvc, ctx, ttype, models.JSONMap{
+	checkJob := setupTunnelJob(t, runner, dbSvc, ctx, ttype, models.JSONMap{
 		checkerdef.TunnelCheckUIDConfigKey: tunnelSSHCheckUID,
 	})
 

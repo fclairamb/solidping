@@ -93,6 +93,18 @@ func (c *TCPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 		return c.executeTunneled(ctx, dialer, cfg, timeout, tlsVerify, start), nil
 	}
 
+	return c.executeDirect(ctx, cfg, timeout, tlsVerify, start), nil
+}
+
+// executeDirect is the untunneled path: resolve the hostname locally, pick an
+// address, dial it. Byte-for-byte the behavior that predates tunnel support.
+func (c *TCPChecker) executeDirect(
+	ctx context.Context,
+	cfg *TCPConfig,
+	timeout time.Duration,
+	tlsVerify bool,
+	start time.Time,
+) *checkerdef.Result {
 	// Resolve hostname
 	resolver := &net.Resolver{}
 
@@ -104,7 +116,7 @@ func (c *TCPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 			Output: map[string]any{
 				checkerdef.OutputKeyError: fmt.Sprintf("failed to resolve hostname: %v", err),
 			},
-		}, nil
+		}
 	}
 
 	if len(addrs) == 0 {
@@ -114,7 +126,7 @@ func (c *TCPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 			Output: map[string]any{
 				checkerdef.OutputKeyError: "no IP addresses found for host",
 			},
-		}, nil
+		}
 	}
 
 	// Use any of the resolved addresses (prefer IPv4 if available)
@@ -157,11 +169,9 @@ func (c *TCPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 	result.Output["ip_version"] = ipVersion
 	result.Output["tls_enabled"] = cfg.TLS
 
-	return &result, nil
+	return &result
 }
 
-// connect performs the actual TCP connection operation.
-//
 // The dialer is the seam that makes tunneling work: a plain *net.Dialer for a
 // direct check, the SSH port-forward dialer for a tunneled one. `target` is
 // already-resolved `ip:port` in the former case and the raw configured
