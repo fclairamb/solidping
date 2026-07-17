@@ -59,23 +59,26 @@ func TestSealedOnlyCheckStoresNoServerDecryptableCopy(t *testing.T) {
 		Regions: []string{sealTestRegion},
 		Config: map[string]any{
 			"url":      "https://internal.example.com",
+			"username": "alice",
 			"password": "hunter2",
 		},
 	})
 	r.NoError(err)
 	r.NotContains(created.Config, "password")
-	r.Contains(created.ConfigPrivateKeys, "password")
+	r.NotContains(created.Config, "username")
+	r.Contains(created.ConfigPrivateKeys, "basicAuth")
 
 	row, err := dbSvc.GetCheck(ctx, org.UID, created.UID)
 	r.NoError(err)
 	r.Nil(row.ConfigPrivate, "sealed-only: the server must hold NO org-DEK copy")
 	r.NotNil(row.ConfigSealed, "the sealed blob must be stored")
 	r.NotContains(row.Config, "password", "no plaintext secret in the public column")
+	r.NotContains(row.Config, "username", "the username half is inside the sealed credential")
 
 	// Only the agent's X25519 identity opens it.
 	secrets, err := credentials.UnsealWithIdentity(keys.X25519Identity, *row.ConfigSealed)
 	r.NoError(err)
-	r.Equal("hunter2", secrets["password"])
+	r.Equal("alice:hunter2", secrets["basicAuth"])
 
 	// The private-region job row carries the sealed blob for dispatch.
 	jobs, err := dbSvc.ListCheckJobsByCheckUID(ctx, created.UID)
@@ -101,6 +104,7 @@ func TestMixedRegionsDualStore(t *testing.T) {
 		Regions: []string{sealTestRegion, "default"},
 		Config: map[string]any{
 			"url":      "https://example.com",
+			"username": "alice",
 			"password": "hunter2",
 		},
 	})
@@ -114,7 +118,7 @@ func TestMixedRegionsDualStore(t *testing.T) {
 
 	secrets, err := credentials.UnsealWithIdentity(keys.X25519Identity, *row.ConfigSealed)
 	r.NoError(err)
-	r.Equal("hunter2", secrets["password"])
+	r.Equal("alice:hunter2", secrets["basicAuth"])
 }
 
 // TestSealedOnlyPatchKeepsBlobWhenSecretsAbsent pins the PATCH contract: the
@@ -135,6 +139,7 @@ func TestSealedOnlyPatchKeepsBlobWhenSecretsAbsent(t *testing.T) {
 		Regions: []string{sealTestRegion},
 		Config: map[string]any{
 			"url":      "https://internal.example.com",
+			"username": "alice",
 			"password": "hunter2",
 		},
 	})
@@ -158,7 +163,7 @@ func TestSealedOnlyPatchKeepsBlobWhenSecretsAbsent(t *testing.T) {
 
 	// PATCH WITH a new secret — the blob must be replaced by a fresh one the
 	// agent can still open.
-	patched2 := map[string]any{"url": "https://internal2.example.com", "password": "new-secret"}
+	patched2 := map[string]any{"url": "https://internal2.example.com", "username": "alice", "password": "new-secret"}
 	_, err = svc.UpdateCheck(ctx, org.Slug, created.UID, &checks.UpdateCheckRequest{Config: &patched2})
 	r.NoError(err)
 
@@ -169,7 +174,7 @@ func TestSealedOnlyPatchKeepsBlobWhenSecretsAbsent(t *testing.T) {
 
 	secrets, err := credentials.UnsealWithIdentity(keys.X25519Identity, *final.ConfigSealed)
 	r.NoError(err)
-	r.Equal("new-secret", secrets["password"])
+	r.Equal("alice:new-secret", secrets["basicAuth"])
 }
 
 // TestNeedsResealSurfacedOnMembershipChange: after a second agent enrolls, the
@@ -189,6 +194,7 @@ func TestNeedsResealSurfacedOnMembershipChange(t *testing.T) {
 		Regions: []string{sealTestRegion},
 		Config: map[string]any{
 			"url":      "https://internal.example.com",
+			"username": "alice",
 			"password": "hunter2",
 		},
 	})
@@ -209,7 +215,7 @@ func TestNeedsResealSurfacedOnMembershipChange(t *testing.T) {
 	r.True(*got.NeedsReseal, "a new agent in the region must flag needs-re-seal")
 
 	// Re-saving the credentials re-seals to both agents and clears the flag.
-	patched := map[string]any{"url": "https://internal.example.com", "password": "hunter2"}
+	patched := map[string]any{"url": "https://internal.example.com", "username": "alice", "password": "hunter2"}
 	_, err = svc.UpdateCheck(ctx, org.Slug, created.UID, &checks.UpdateCheckRequest{Config: &patched})
 	r.NoError(err)
 
@@ -238,6 +244,7 @@ func TestPrivateOnlyCheckWithoutAgentsIsRejected(t *testing.T) {
 		Regions: []string{sealTestRegion},
 		Config: map[string]any{
 			"url":      "https://internal.example.com",
+			"username": "alice",
 			"password": "hunter2",
 		},
 	})
@@ -269,6 +276,7 @@ func TestPrivateOnlyPatchWithoutAgentsIsRejected(t *testing.T) {
 		Regions: []string{sealTestRegion},
 		Config: map[string]any{
 			"url":      "https://internal.example.com",
+			"username": "alice",
 			"password": "hunter2",
 		},
 	})
@@ -287,7 +295,7 @@ func TestPrivateOnlyPatchWithoutAgentsIsRejected(t *testing.T) {
 	r.NoError(dbSvc.RevokeAgent(ctx, org.UID, agents[0].UID))
 
 	// Re-saving the credentials is refused...
-	patch := map[string]any{"url": "https://internal.example.com", "password": "new-secret"}
+	patch := map[string]any{"url": "https://internal.example.com", "username": "alice", "password": "new-secret"}
 	_, err = svc.UpdateCheck(ctx, org.Slug, created.UID, &checks.UpdateCheckRequest{Config: &patch})
 	r.ErrorIs(err, checks.ErrNoAgentsToSealTo)
 
@@ -316,6 +324,7 @@ func TestMixedRegionsWithoutAgentsStillWrites(t *testing.T) {
 		Regions: []string{sealTestRegion, "default"},
 		Config: map[string]any{
 			"url":      "https://example.com",
+			"username": "alice",
 			"password": "hunter2",
 		},
 	})

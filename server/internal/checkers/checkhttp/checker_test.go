@@ -1428,6 +1428,107 @@ func TestHTTPChecker_Execute_SecretHeaderSent(t *testing.T) {
 	r.Equal("sk-secret", receivedAPIKey)
 }
 
+// TestHTTPChecker_Execute_BasicAuth covers what actually reaches the wire: the
+// folded `basicAuth` credential, the permanent legacy `username`/`password`
+// fallback that lazy migration depends on, and the precedence between them and
+// an explicit Authorization secret header.
+func TestHTTPChecker_Execute_BasicAuth(t *testing.T) {
+	t.Parallel()
+
+	// Ensure UserAgent is set
+	if version.UserAgent == "" {
+		version.UserAgent = version.DefaultUserAgent()
+	}
+
+	tests := []struct {
+		name         string
+		cfg          HTTPConfig
+		wantUser     string
+		wantPass     string
+		wantBasicSet bool
+		wantAuthHdr  string
+	}{
+		{
+			name:     "folded basicAuth is sent",
+			cfg:      HTTPConfig{BasicAuth: "alice:hunter2"},
+			wantUser: "alice", wantPass: "hunter2", wantBasicSet: true,
+		},
+		{
+			name:     "legacy username/password is still sent",
+			cfg:      HTTPConfig{Username: "bob", Password: "pw"},
+			wantUser: "bob", wantPass: "pw", wantBasicSet: true,
+		},
+		{
+			name:     "folded basicAuth wins over the legacy pair",
+			cfg:      HTTPConfig{BasicAuth: "alice:hunter2", Username: "bob", Password: "pw"},
+			wantUser: "alice", wantPass: "hunter2", wantBasicSet: true,
+		},
+		{
+			name: "no credential sends no auth",
+			cfg:  HTTPConfig{},
+		},
+		{
+			name: "a password without a username sends no auth",
+			cfg:  HTTPConfig{Password: "pw"},
+		},
+		{
+			name: "an Authorization secret header wins over the folded credential",
+			cfg: HTTPConfig{
+				BasicAuth:     "alice:hunter2",
+				SecretHeaders: map[string]string{"Authorization": "Bearer secret"},
+			},
+			wantAuthHdr: "Bearer secret",
+		},
+		{
+			name: "an Authorization secret header wins over the legacy pair",
+			cfg: HTTPConfig{
+				Username:      "bob",
+				Password:      "pw",
+				SecretHeaders: map[string]string{"Authorization": "Bearer secret"},
+			},
+			wantAuthHdr: "Bearer secret",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			var (
+				gotUser, gotPass string
+				gotBasicSet      bool
+				gotAuthHdr       string
+			)
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				gotUser, gotPass, gotBasicSet = req.BasicAuth()
+				gotAuthHdr = req.Header.Get("Authorization")
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+
+			cfg := tc.cfg
+			cfg.URL = server.URL
+
+			result, err := (&HTTPChecker{}).Execute(context.Background(), &cfg)
+			r.NoError(err)
+			r.Equal(checkerdef.StatusUp, result.Status)
+
+			if tc.wantAuthHdr != "" {
+				r.Equal(tc.wantAuthHdr, gotAuthHdr)
+
+				return
+			}
+
+			r.Equal(tc.wantBasicSet, gotBasicSet)
+			r.Equal(tc.wantUser, gotUser)
+			r.Equal(tc.wantPass, gotPass)
+		})
+	}
+}
+
 func TestHTTPChecker_Execute_SecretHeaderWinsOnConflict(t *testing.T) {
 	t.Parallel()
 
