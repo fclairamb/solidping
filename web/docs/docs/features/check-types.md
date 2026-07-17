@@ -28,6 +28,7 @@ https://api.example.com/health
 | Headers | Custom request headers | `Authorization: Bearer token` |
 | Body | Request body (for POST/PUT) | `{"key": "value"}` |
 | Body Match | Pattern to match in response | `"status": "ok"` |
+| SSH tunnel | Dial through an [SSH check's bastion](./ssh-tunnels.md) | An `ssh` check with `expected_fingerprint` set |
 | Basic Auth | Username and password — stored encrypted at rest | `user:password` |
 | Custom User-Agent | Override the default user-agent | `SolidPing/1.0` |
 
@@ -87,6 +88,7 @@ tcps://hostname:port  # With TLS
 | Port | Target port | `5432` |
 | TLS | Enable TLS/SSL | `true` / `false` |
 | Timeout | Connection timeout | `10s` |
+| SSH tunnel | Dial through an [SSH check's bastion](./ssh-tunnels.md) — the hostname is resolved by the bastion | An `ssh` check with `expected_fingerprint` set |
 
 ### UDP
 
