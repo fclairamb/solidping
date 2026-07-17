@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -125,7 +126,11 @@ func (s *SlackSender) postNewMessage(
 	return nil
 }
 
-// storeThreadInfo stores the thread information for future replies.
+// storeThreadInfo stores the thread information for future replies. It writes
+// the forward incident→thread entry (used to reply into the thread on
+// resolve/reopen) and, alongside it, the reverse thread→incident entry that
+// lets an inbound Slack thread reply resolve back to this incident in one
+// lookup (see slack.handleMessage).
 func (s *SlackSender) storeThreadInfo(
 	ctx context.Context, jctx *jobdef.JobContext, payload *Payload, stateKey string, result *slack.PostMessageResult,
 ) error {
@@ -139,7 +144,37 @@ func (s *SlackSender) storeThreadInfo(
 		return fmt.Errorf("storing thread state entry: %w", err)
 	}
 
+	s.storeReverseThreadInfo(ctx, jctx, payload, result)
+
 	return nil
+}
+
+// storeReverseThreadInfo writes the reverse thread→incident mapping as a global
+// (org-nil) state entry so an inbound reply routes to its incident regardless
+// of which org is the workspace's inbound home org. Best-effort: the outbound
+// message is already posted, so a failure here is logged, not surfaced — it
+// only means inbound replies to this thread won't be captured.
+func (s *SlackSender) storeReverseThreadInfo(
+	ctx context.Context, jctx *jobdef.JobContext, payload *Payload, result *slack.PostMessageResult,
+) {
+	settings, err := models.SlackSettingsFromJSONMap(payload.Integration.Settings)
+	if err != nil || settings.TeamID == "" {
+		slog.WarnContext(ctx, "Skipping reverse Slack thread mapping: no team_id",
+			"incident_uid", payload.Incident.UID, "error", err)
+
+		return
+	}
+
+	reverseKey := slack.ReverseThreadStateKey(settings.TeamID, result.Channel, result.TS)
+	reverseValue := &models.JSONMap{
+		slack.ThreadIncidentUIDKey: payload.Incident.UID,
+		slack.ThreadOrgUIDKey:      payload.Incident.OrganizationUID,
+	}
+
+	if err := jctx.DBService.SetStateEntry(ctx, nil, reverseKey, reverseValue, nil); err != nil {
+		slog.WarnContext(ctx, "Failed to store reverse Slack thread mapping",
+			"incident_uid", payload.Incident.UID, "error", err)
+	}
 }
 
 func (s *SlackSender) buildMessage(payload *Payload) *slack.MessageResponse {

@@ -546,6 +546,26 @@ Query parameters:
 - `cursor` - pagination cursor
 - `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
 
+### POST /api/v1/orgs/:org/incidents/:uid/comments
+Add a free-text comment to an incident's timeline. Auth: required.
+
+Creates an append-only `incident.comment` event authored by the calling user
+(`source: "web"`) and returns it. Comments also arrive from Slack thread
+replies (`source: "slack"`, with Slack author attribution in the payload) and
+are read back through `GET …/incidents/:uid/events`. Append-only — no edit or
+delete.
+
+Request body:
+```json
+{ "text": "restarting the pod" }
+```
+- `text` - comment body, plain text, non-empty after trimming, max 4096 bytes.
+
+Returns `201 Created` with the created event (events-list shape: `uid`,
+`incidentUid`, `checkUid`, `eventType`, `actorType`, `actorUid`, `payload`,
+`createdAt`). The `payload` carries `text` and `source`. Errors: `400` empty /
+over-length text, `404` unknown org or incident.
+
 ---
 
 ## Events
