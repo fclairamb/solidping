@@ -72,3 +72,44 @@ export function getEventChannelUid(event: {
   const uid = event.payload?.channel_uid;
   return typeof uid === "string" && uid.length > 0 ? uid : undefined;
 }
+
+// COMMENT_EVENT_TYPE is the event type for user-authored incident comments.
+export const COMMENT_EVENT_TYPE = "incident.comment";
+
+// isCommentEvent reports whether an event is a user-authored incident comment
+// (as opposed to a system lifecycle event).
+export function isCommentEvent(event: { eventType?: string }): boolean {
+  return event.eventType === COMMENT_EVENT_TYPE;
+}
+
+// getCommentText returns the comment body from the event payload, or "".
+export function getCommentText(event: {
+  payload?: Record<string, unknown>;
+}): string {
+  const text = event.payload?.text;
+  return typeof text === "string" ? text : "";
+}
+
+// getCommentSource returns where a comment originated ("web" | "slack"), or
+// undefined for non-comment events / payloads that predate the field.
+export function getCommentSource(event: {
+  payload?: Record<string, unknown>;
+}): "web" | "slack" | undefined {
+  const source = event.payload?.source;
+  if (source === "slack") return "slack";
+  if (source === "web") return "web";
+  return undefined;
+}
+
+// getCommentSlackAuthor returns the Slack author display name captured in the
+// payload (falling back to the Slack user ID), or undefined when neither is
+// present. Only meaningful for Slack-sourced comments.
+export function getCommentSlackAuthor(event: {
+  payload?: Record<string, unknown>;
+}): string | undefined {
+  const name = event.payload?.slackUserName;
+  if (typeof name === "string" && name.length > 0) return name;
+
+  const id = event.payload?.slackUserId;
+  return typeof id === "string" && id.length > 0 ? id : undefined;
+}

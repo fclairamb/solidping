@@ -104,6 +104,17 @@
     "eventType": "Ereignistyp",
     "actor": "Akteur"
   },
+  "comments": {
+    "title": "Kommentare",
+    "description": "Notizen von Beteiligten und Antworten aus Slack-Threads.",
+    "empty": "Noch keine Kommentare. Füge unten die erste Notiz hinzu.",
+    "placeholder": "Kommentar hinzufügen…",
+    "submit": "Kommentieren",
+    "viaSlack": "über Slack",
+    "slackUser": "Slack-Benutzer",
+    "teamMember": "Teammitglied",
+    "addFailed": "Kommentar konnte nicht hinzugefügt werden"
+  },
   "time": {
     "daysAgo": "vor {{count}} T",
     "hoursAgo": "vor {{count}} Std",

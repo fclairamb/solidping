@@ -30,6 +30,7 @@
     "incident.reopened": "Vorfall wiedereröffnet",
     "incident.snoozed": "Vorfall stummgeschaltet",
     "incident.unsnoozed": "Stummschaltung aufgehoben",
+    "incident.comment": "Kommentar",
     "status_update.created": "Statusupdate veröffentlicht",
     "status_update.updated": "Statusupdate bearbeitet",
     "status_update.deleted": "Statusupdate entfernt",

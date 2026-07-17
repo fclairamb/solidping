@@ -36,11 +36,19 @@ import {
   useCreateStatusUpdate,
   useUpdateStatusUpdate,
   useDeleteStatusUpdate,
+  useMembers,
+  useAddComment,
   type Event,
   type IncidentDetail,
   type StatusUpdate,
   type CreateStatusUpdateRequest,
 } from "@/api/hooks";
+import {
+  getCommentSource,
+  getCommentText,
+  getCommentSlackAuthor,
+} from "@/components/dashboard/event-display";
+import { useLiveSubscription } from "@/contexts/LiveEventsContext";
 import { SnoozeDialog } from "@/components/incidents/snooze-dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -486,6 +494,127 @@ function StatusUpdatesPanel({ org, incidentUid }: { org: string; incidentUid: st
   );
 }
 
+// --- Comments (discussion) panel ---
+
+function CommentsCard({ org, incidentUid }: { org: string; incidentUid: string }) {
+  const { t } = useTranslation("incidents");
+  const { data: members } = useMembers(org);
+  const { data: comments, isLoading } = useEvents(org, {
+    incidentUid,
+    eventType: "incident.comment",
+    size: 100,
+  });
+  const addComment = useAddComment(org);
+  const [text, setText] = useState("");
+
+  const authorName = (event: Event): string => {
+    if (getCommentSource(event) === "slack") {
+      return getCommentSlackAuthor(event) ?? t("comments.slackUser");
+    }
+    const member = members?.data?.find((m) => m.userUid === event.actorUid);
+    return member?.name || member?.email || t("comments.teamMember");
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    try {
+      await addComment.mutateAsync({ uid: incidentUid, text: trimmed });
+      setText("");
+    } catch {
+      toast.error(t("comments.addFailed"));
+    }
+  };
+
+  // Oldest-first so the discussion reads top-to-bottom like a chat thread.
+  const items = (comments?.data ?? [])
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime(),
+    );
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <MessageSquare className="h-4 w-4 text-muted-foreground" />
+          <CardTitle>{t("comments.title")}</CardTitle>
+        </div>
+        <CardDescription>{t("comments.description")}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
+          </div>
+        ) : items.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            {t("comments.empty")}
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {items.map((c) => (
+              <li
+                key={c.uid}
+                className="flex flex-col gap-1 rounded-md border bg-muted/30 p-3"
+                data-testid="incident-comment"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium">{authorName(c)}</span>
+                  {getCommentSource(c) === "slack" && (
+                    <Badge variant="outline" className="text-xs">
+                      {t("comments.viaSlack")}
+                    </Badge>
+                  )}
+                  <span className="text-xs text-muted-foreground">
+                    {c.createdAt
+                      ? formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })
+                      : ""}
+                  </span>
+                </div>
+                <p className="whitespace-pre-wrap break-words text-sm">
+                  {getCommentText(c)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+        <form onSubmit={handleSubmit} className="space-y-2 border-t pt-4">
+          <Label htmlFor="incident-comment-input" className="sr-only">
+            {t("comments.placeholder")}
+          </Label>
+          <Textarea
+            id="incident-comment-input"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={t("comments.placeholder")}
+            rows={3}
+            maxLength={4096}
+            data-testid="comment-input"
+          />
+          <div className="flex justify-end">
+            <Button
+              type="submit"
+              disabled={!text.trim() || addComment.isPending}
+              data-testid="comment-submit"
+            >
+              {addComment.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+              ) : (
+                <MessageSquare className="h-4 w-4 sm:mr-2" />
+              )}
+              <span>{t("comments.submit")}</span>
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
 function IncidentDetailPage() {
   const { t } = useTranslation("incidents");
   const { org, incidentUid } = Route.useParams();
@@ -500,6 +629,12 @@ function IncidentDetailPage() {
   } = useIncident(org, incidentUid);
 
   const { data: events } = useEvents(org, { incidentUid, size: 20 });
+
+  // Stream new timeline events (comments included) live: the backend publishes
+  // an `events` hint on comment creation, which invalidates the events queries
+  // on this page — covering Slack- and remote-authored comments without a
+  // manual refresh. Falls back to plain polling when live updates are off.
+  useLiveSubscription({ entity: "events" });
 
   const acknowledgeIncident = useAcknowledgeIncident(org);
   const unacknowledgeIncident = useUnacknowledgeIncident(org);
@@ -850,6 +985,8 @@ function IncidentDetailPage() {
 
       <StatusUpdatesPanel org={org} incidentUid={incidentUid} />
 
+      <CommentsCard org={org} incidentUid={incidentUid} />
+
       <BlastRadiusCard org={org} incident={incident} />
 
       {events?.data && (
@@ -864,7 +1001,7 @@ function IncidentDetailPage() {
 
       <NotificationsCard org={org} incidentUid={incidentUid} />
 
-      {events?.data && events.data.length > 0 && (
+      {events?.data && events.data.some((e) => e.eventType !== "incident.comment") && (
         <Card>
           <CardHeader>
             <CardTitle>{t("eventLog.title")}</CardTitle>
@@ -880,7 +1017,10 @@ function IncidentDetailPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {events.data.map((event) => (
+                {/* Comments render in their own card, not the raw event log. */}
+                {events.data
+                  .filter((e) => e.eventType !== "incident.comment")
+                  .map((event) => (
                   <TableRow key={event.uid}>
                     <TableCell className="text-sm">
                       {event.createdAt

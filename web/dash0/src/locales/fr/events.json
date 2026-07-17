@@ -30,6 +30,7 @@
     "incident.reopened": "Incident rouvert",
     "incident.snoozed": "Incident mis en veille",
     "incident.unsnoozed": "Mise en veille annulée",
+    "incident.comment": "Commentaire",
     "status_update.created": "Mise à jour de statut publiée",
     "status_update.updated": "Mise à jour de statut modifiée",
     "status_update.deleted": "Mise à jour de statut supprimée",

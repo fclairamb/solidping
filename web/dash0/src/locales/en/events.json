@@ -30,6 +30,7 @@
     "incident.reopened": "Incident Reopened",
     "incident.snoozed": "Incident Snoozed",
     "incident.unsnoozed": "Incident Unsnoozed",
+    "incident.comment": "Comment",
     "status_update.created": "Status Update Posted",
     "status_update.updated": "Status Update Edited",
     "status_update.deleted": "Status Update Removed",

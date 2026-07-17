@@ -969,6 +969,25 @@ export function useResolveIncident(org: string) {
   );
 }
 
+// useAddComment appends a free-text comment to an incident's timeline. The new
+// comment surfaces through the events query, so we invalidate it on success;
+// the live events subscription covers Slack- and remote-authored comments too.
+export function useAddComment(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (vars: { uid: string; text: string }) =>
+      apiFetch<Event>(`/api/v1/orgs/${org}/incidents/${vars.uid}/comments`, {
+        method: "POST",
+        body: JSON.stringify({ text: vars.text }),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["events", org] });
+    },
+  });
+}
+
 // Events hooks
 export function useEvents(
   org: string,
