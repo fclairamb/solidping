@@ -27,6 +27,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
@@ -657,6 +658,61 @@ func (r *CheckWorker) runnerLoop(ctx context.Context, id int) {
 	}
 }
 
+// redactionPlaceholder replaces a secret value in the job log line.
+const redactionPlaceholder = "<redacted>"
+
+// redactedConfig returns a log-safe view of a job config: every value the
+// check type declares secret (checkerdef configs implementing
+// credentials.SecretFielder) is replaced by a placeholder, keys are kept so
+// the line stays useful for debugging.
+//
+// This matters twice over. Since spec 2026-07-16-05 the config reaching the
+// worker is the MERGED plaintext (the decrypt happens at the claim boundary),
+// so logging it verbatim would print the very credentials the encryption is
+// there to protect — a leak that did not exist while the bug was live, because
+// back then the config never carried the secrets at all. And on deployments
+// with no master key, where secrets are plaintext in the public config by
+// design, this redaction is what keeps them out of the log too.
+//
+// A check type we cannot resolve gets every value redacted: an unknown config
+// shape is exactly when we cannot tell which keys are sensitive, so the safe
+// default is to assume they all are.
+func (r *CheckWorker) redactedConfig(checkType string, cfg models.JSONMap) map[string]any {
+	if len(cfg) == 0 {
+		return map[string]any{}
+	}
+
+	out := make(map[string]any, len(cfg))
+
+	parsed, ok := r.parseConfig(checkerdef.CheckType(checkType))
+	if !ok {
+		for key := range cfg {
+			out[key] = redactionPlaceholder
+		}
+
+		return out
+	}
+
+	secrets := credentials.SecretFieldsFor(parsed)
+
+	secretSet := make(map[string]struct{}, len(secrets))
+	for _, key := range secrets {
+		secretSet[key] = struct{}{}
+	}
+
+	for key, value := range cfg {
+		if _, isSecret := secretSet[key]; isSecret {
+			out[key] = redactionPlaceholder
+
+			continue
+		}
+
+		out[key] = value
+	}
+
+	return out
+}
+
 // executeJob executes a single check job.
 //
 //nolint:funlen,cyclop // Slightly over limits due to OTel tracing
@@ -682,7 +738,7 @@ func (r *CheckWorker) executeJob(
 		ctx,
 		"Executing check job",
 		"check_type", checkJob.Type,
-		"check_config", checkJob.Config,
+		"check_config", r.redactedConfig(checkJob.Type, checkJob.Config),
 	)
 
 	startTime := time.Now()

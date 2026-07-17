@@ -147,3 +147,29 @@ the result `output.error` is the static reason; never any config value.
    - PG parity via the existing `checkjobsvc` PG test harness.
    - A leak assertion: the merged secret appears in neither the result
      `output`/`metrics` nor the log output.
+
+### Addendum — the fix introduced a secret-in-logs leak (found by the log test)
+
+Writing the log-leak assertion the spec's step 5 asks for immediately caught a
+real regression **introduced by this very fix**:
+
+```
+level=INFO msg="Executing check job" check_type=... check_config="map[password:hunter2 url:https://x.test]"
+```
+
+`worker.go`'s per-job log line printed `checkJob.Config` verbatim. That was
+harmless *while the bug was live* — the config never carried secrets, which is
+precisely what this spec fixes — so merging the plaintext into it turned a
+benign log line into an INFO-level credential dump.
+
+Fix: `CheckWorker.redactedConfig` replaces every value the check type declares
+secret (`credentials.SecretFieldsFor`, i.e. the same `SecretFielder` list that
+drives the split at rest) with `<redacted>`, keeping the keys so the line stays
+useful. An unresolvable check type redacts *all* values — if we cannot tell
+which keys are sensitive, assume they all are. This also closes the same leak
+on encryption-disabled deployments, where secrets are plaintext in the public
+config by design and were being logged already.
+
+The negative assertions are non-vacuous by construction: each first proves the
+capture is live (the known log line IS present), then asserts the secret is
+not. Both were verified to fail against a deliberately reintroduced leak.
