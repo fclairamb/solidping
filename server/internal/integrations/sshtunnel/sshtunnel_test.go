@@ -264,7 +264,7 @@ func TestResolveDialsWithPrivateKey(t *testing.T) {
 	r := require.New(t)
 
 	srv := sshtunneltest.Start(t)
-	newEchoTarget(t, srv, "private.invalid:9000")
+	target := newEchoTarget(t, srv, "private.invalid:9000")
 
 	config := baseConfig(srv)
 	delete(config, "password")
@@ -279,7 +279,15 @@ func TestResolveDialsWithPrivateKey(t *testing.T) {
 
 	conn, err := dialer.DialContext(t.Context(), "tcp", "private.invalid:9000")
 	r.NoError(err)
-	r.NoError(conn.Close())
+
+	defer func() { _ = conn.Close() }()
+
+	// Reading the greeting is what proves the private-key handshake produced a
+	// working tunnel rather than merely an accepted dial. Closing is not asserted
+	// on: the echo target hangs up as soon as it has written, so a close that
+	// loses the race to the peer's own close reports EOF — a property of the SSH
+	// channel, not a tunnel fault.
+	r.Equal(target, readLine(t, conn))
 }
 
 // The tunnel carries the probe's traffic, so an unverified bastion is a silent
