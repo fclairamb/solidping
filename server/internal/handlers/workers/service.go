@@ -4,11 +4,11 @@
 // The HTTP edge-worker API this package once served was removed with spec
 // 2026-07-16-02 (no production client; auth was a plaintext spw_ bearer token
 // matched verbatim). What remains is the transport-agnostic service logic —
-// ClaimJobs (with server-side secret handling) and SubmitResult (lease-ownership
-// guard, result write, server-side incident processing) — which the WebSocket
-// deported-agent handler reuses. Authentication is the transport's concern: the
-// agent WS handshake verifies an Ed25519 signature before the upgrade, so no
-// bearer credential exists in the database at all.
+// SubmitResult (lease-ownership guard, result write, server-side incident
+// processing) — which the WebSocket deported-agent handler reuses.
+// Authentication is the transport's concern: the agent WS handshake verifies
+// an Ed25519 signature before the upgrade, so no bearer credential exists in
+// the database at all.
 package workers
 
 import (
@@ -22,7 +22,6 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/activation"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
-	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
@@ -39,10 +38,6 @@ type Service struct {
 	db          db.Service
 	checkJobSvc checkjobsvc.Service
 	incidentSvc *incidents.Service
-	// creds is always non-nil — its .Enabled() reports whether a master
-	// key is configured. Used in ClaimJobs to merge encrypted secrets
-	// into the plaintext config dispatched to the worker over TLS.
-	creds credentials.Service
 }
 
 // NewService creates a new workers service.
@@ -50,13 +45,11 @@ func NewService(
 	dbService db.Service,
 	checkJobSvc checkjobsvc.Service,
 	incidentSvc *incidents.Service,
-	creds credentials.Service,
 ) *Service {
 	return &Service{
 		db:          dbService,
 		checkJobSvc: checkJobSvc,
 		incidentSvc: incidentSvc,
-		creds:       creds,
 	}
 }
 
@@ -65,63 +58,6 @@ func (s *Service) Heartbeat(
 	ctx context.Context, workerUID string,
 ) error {
 	return s.db.UpdateWorkerHeartbeat(ctx, workerUID)
-}
-
-// ClaimJobsRequest is the input for ClaimJobs.
-type ClaimJobsRequest struct {
-	WorkerUID string        `json:"workerUid"`
-	Region    *string       `json:"region,omitempty"`
-	Limit     int           `json:"limit"`
-	MaxAhead  time.Duration `json:"maxAhead"`
-}
-
-// ClaimJobsResponse is the output for ClaimJobs.
-type ClaimJobsResponse struct {
-	Jobs []*models.CheckJob `json:"jobs"`
-}
-
-// ClaimJobs claims available check jobs for the worker. For each job with
-// encrypted secrets, decrypt and merge them into Config before sending —
-// workers receive plaintext over TLS and never see the envelope. On
-// decrypt failure (missing key, tampered ciphertext, missing org DEK) the
-// job is skipped with a logged warning rather than dispatched with
-// half-credentials.
-func (s *Service) ClaimJobs(
-	ctx context.Context, req *ClaimJobsRequest,
-) (*ClaimJobsResponse, error) {
-	// The remote-claim API carries a single limit, so no slow-lane
-	// reservation applies on this path (slowLimit = limit): fast-lane jobs
-	// are still selected first, but slow jobs may fill the whole limit.
-	// Per-worker floor enforcement (spec 2026-07-01-03 D3) belongs to the
-	// in-process pool fetcher, which knows its pool size and busySlow count.
-	jobs, err := s.checkJobSvc.ClaimJobs(
-		ctx, req.WorkerUID, req.Region, req.Limit, req.Limit, req.MaxAhead,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to claim jobs: %w", err)
-	}
-
-	out := make([]*models.CheckJob, 0, len(jobs))
-
-	for _, job := range jobs {
-		// The decrypt/merge/strip rule itself lives in checkjobsvc.MergeJobSecrets,
-		// shared with the in-process claim path; only the failure policy differs.
-		switch outcome, mergeErr := checkjobsvc.MergeJobSecrets(ctx, s.creds, job); outcome {
-		case checkjobsvc.SecretMergeNoop, checkjobsvc.SecretMergeMerged:
-			out = append(out, job)
-		case checkjobsvc.SecretMergeUnavailable:
-			slog.WarnContext(ctx,
-				"skipping encrypted job — SP_ENCRYPTION_MASTER_KEY not set",
-				"orgUid", job.OrganizationUID, "checkUid", job.CheckUID, "jobUid", job.UID)
-		case checkjobsvc.SecretMergeFailed:
-			slog.ErrorContext(ctx,
-				"failed to decrypt job config",
-				"orgUid", job.OrganizationUID, "checkUid", job.CheckUID, "jobUid", job.UID,
-				"error", mergeErr)
-		}
-	}
-
-	return &ClaimJobsResponse{Jobs: out}, nil
 }
 
 // SubmitResultRequest is the input for SubmitResult.
