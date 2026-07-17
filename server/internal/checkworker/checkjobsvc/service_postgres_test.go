@@ -111,3 +111,82 @@ func TestClaimJobsBoundedClaimAheadWindow_Postgres(t *testing.T) {
 	r.True(containsUID(jobs, dueNowJob.UID),
 		"a due-now job must always be claimed regardless of period on Postgres")
 }
+
+// TestMergeJobSecretsClaimedFromPostgres is the PostgreSQL half of the spec
+// 2026-07-16-05 regression coverage (the SQLite half lives in
+// backend/direct_test.go). The merge itself is dialect-agnostic Go, so what
+// this pins is the part that is not: that a real Postgres claim round-trips
+// `config` (jsonb) and `config_private` (text) intact, so the envelope reaches
+// MergeJobSecrets openable and the checker ends up with its secret.
+//
+// Self-skips under `-short` like its sibling above. Uses port 15438 —
+// distinct from 15434/15436/15437.
+func TestMergeJobSecretsClaimedFromPostgres(t *testing.T) {
+	t.Parallel()
+
+	if testing.Short() {
+		t.Skip("skipping embedded-postgres test in -short mode")
+	}
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	dbSvc, err := postgres.New(ctx, &postgres.Config{
+		Embedded: true,
+		Port:     15438,
+		RunMode:  "test",
+	})
+	if err != nil {
+		t.Skipf("embedded postgres unavailable: %v", err)
+	}
+
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	if initErr := dbSvc.Initialize(ctx); initErr != nil {
+		t.Skipf("embedded postgres init failed: %v", initErr)
+	}
+
+	org := models.NewOrganization("secpgorg", "Secrets PG Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	worker := models.NewWorker("secpg-worker", "Secrets PG Worker")
+	_, err = dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
+	r.NoError(err)
+
+	creds := newEnabledCreds(t)
+
+	envelope, err := creds.EncryptForOrg(ctx, org.UID, map[string]any{"password": "pg-s3cr3t"})
+	r.NoError(err)
+
+	check := models.NewCheck(org.UID, "secpg-check", "http")
+	check.Enabled = false // avoid the auto-created check_job interfering
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	due := time.Now().Add(-5 * time.Second)
+	keys := `["password"]`
+	job := models.NewCheckJob(org.UID, check.UID, timeutils.Duration(time.Minute))
+	job.Type = "http"
+	job.Config = models.JSONMap{"url": "https://x.test"}
+	job.ConfigPrivate = &envelope
+	job.ConfigPrivateKeys = &keys
+	job.Encrypted = true
+	job.ScheduledAt = &due
+	job.EffectiveScheduledAt = &due
+	r.NoError(dbSvc.CreateCheckJob(ctx, job))
+
+	svc := checkjobsvc.NewService(dbSvc.DB())
+
+	claimed, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+	r.NoError(err)
+	r.Len(claimed, 1)
+	r.NotNil(claimed[0].ConfigPrivate, "the envelope must survive the Postgres round-trip")
+
+	outcome, err := checkjobsvc.MergeJobSecrets(ctx, creds, claimed[0])
+	r.NoError(err)
+	r.Equal(checkjobsvc.SecretMergeMerged, outcome)
+	r.Equal("pg-s3cr3t", claimed[0].Config["password"])
+	r.Equal("https://x.test", claimed[0].Config["url"])
+	r.Nil(claimed[0].ConfigPrivate)
+	r.Nil(claimed[0].ConfigPrivateKeys)
+	r.False(claimed[0].Encrypted)
+}
