@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -270,15 +271,18 @@ func TestInProcessWorkerPlaintextConfigUnchanged(t *testing.T) {
 
 // mapString renders a JSONMap for leak assertions.
 func mapString(m models.JSONMap) string {
-	out := ""
+	var out strings.Builder
+
 	for k, v := range m {
-		out += k + "="
+		out.WriteString(k)
+		out.WriteString("=")
+
 		if s, ok := v.(string); ok {
-			out += s
+			out.WriteString(s)
 		}
 
-		out += ";"
+		out.WriteString(";")
 	}
 
-	return out
+	return out.String()
 }
