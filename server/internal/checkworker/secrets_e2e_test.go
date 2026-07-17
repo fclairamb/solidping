@@ -1,10 +1,12 @@
 package checkworker
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"fmt"
 	"io"
-	"strings"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -95,6 +97,11 @@ func (c recordingConfig) FromMap(m map[string]any) error {
 }
 
 func (c recordingConfig) GetConfig() map[string]any { return map[string]any{} }
+
+// SecretFields mirrors what a real secret-bearing checker config declares
+// (credentials.SecretFielder) — it is what drives both the split at rest and
+// the redaction in the job log line.
+func (c recordingConfig) SecretFields() []string { return []string{"password"} }
 
 const secretCheckType = checkerdef.CheckType("test-secret")
 
@@ -228,8 +235,8 @@ func TestInProcessWorkerCheckerReceivesEncryptedSecret(t *testing.T) {
 	r.NoError(err)
 	got, ok := results[check.UID]
 	r.True(ok)
-	r.NotContains(mapString(got.Output), "hunter2")
-	r.NotContains(mapString(got.Metrics), "hunter2")
+	r.NotContains(fmt.Sprint(got.Output), "hunter2")
+	r.NotContains(fmt.Sprint(got.Metrics), "hunter2")
 }
 
 // TestInProcessWorkerPlaintextConfigUnchanged pins the encryption-disabled
@@ -269,20 +276,95 @@ func TestInProcessWorkerPlaintextConfigUnchanged(t *testing.T) {
 		"the documented plaintext fallback must keep working when no master key is set")
 }
 
-// mapString renders a JSONMap for leak assertions.
-func mapString(m models.JSONMap) string {
-	var out strings.Builder
+// e2eLogCapture is a concurrency-safe io.Writer backing a slog handler.
+type e2eLogCapture struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
 
-	for k, v := range m {
-		out.WriteString(k)
-		out.WriteString("=")
+func (c *e2eLogCapture) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-		if s, ok := v.(string); ok {
-			out.WriteString(s)
-		}
+	return c.buf.Write(p)
+}
 
-		out.WriteString(";")
-	}
+func (c *e2eLogCapture) String() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	return out.String()
+	return c.buf.String()
+}
+
+// captureE2ELogs swaps slog's default logger for one capturing everything down
+// to Debug. It must be called BEFORE NewCheckWorker: the worker snapshots
+// slog.Default() into runner.logger at construction, so a later swap would miss
+// everything the runner itself logs.
+//
+// Callers must NOT be parallel — slog's default logger is process-global.
+func captureE2ELogs(t *testing.T) *e2eLogCapture {
+	t.Helper()
+
+	capture := &e2eLogCapture{}
+	previous := slog.Default()
+
+	slog.SetDefault(slog.New(slog.NewTextHandler(capture, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	return capture
+}
+
+// TestInProcessWorkerNeverLogsDecryptedSecrets is the spec's no-leak
+// requirement on the logging side, asserted over the whole in-process path the
+// merged plaintext travels: claim (where the decrypt happens) through
+// executeJob (which logs per-job progress and the completion line) and on into
+// the result write. None of it may print the secret.
+//
+// Non-vacuous by construction: the capture is proven live against the runner's
+// own per-job logging before the absence of the secret is asserted.
+//
+//nolint:paralleltest // Swaps the process-global slog default logger.
+func TestInProcessWorkerNeverLogsDecryptedSecrets(t *testing.T) {
+	r := require.New(t)
+
+	const secret = "e2e-logs-must-never-see-me"
+
+	// Swap the logger FIRST — runner.logger is bound at construction.
+	capture := captureE2ELogs(t)
+
+	rec := &configRecorder{}
+	creds := newE2ECreds(t)
+	runner, dbSvc, ctx := setupSecretRunner(t, creds, rec)
+
+	org := models.NewOrganization("secret-logs", "")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	envelope, err := creds.EncryptForOrg(ctx, org.UID, map[string]any{"password": secret})
+	r.NoError(err)
+
+	seedSecretCheck(t, ctx, dbSvc, org.UID, "secret-logs", envelope)
+
+	jobs, err := runner.backend.ClaimJobs(ctx, runner.getWorker().UID, nil, 10, 10, time.Minute)
+	r.NoError(err)
+	r.Len(jobs, 1)
+	r.NoError(runner.executeJob(ctx, runner.logger, jobs[0]))
+
+	// The merge really did happen — otherwise "no secret in the logs" would be
+	// trivially true for the wrong reason (the bug this spec fixes).
+	r.Equal(secret, rec.get("password"))
+
+	logs := capture.String()
+	// Non-vacuous: the capture is demonstrably wired to the runner's own
+	// per-job log line — the very line that used to print the whole config.
+	r.Contains(logs, "Executing check job",
+		"the capture must be wired to the runner's own per-job logging")
+	r.Contains(logs, string(secretCheckType))
+
+	r.NotContains(logs, secret,
+		"the merged plaintext must never reach the logs on the claim+execute path")
+	r.NotContains(logs, envelope, "the raw envelope must not be logged either")
+
+	// The key survives, only the value is redacted — the log line stays useful.
+	r.Contains(logs, "password:"+redactionPlaceholder)
+	r.Contains(logs, "url:https://x.test", "non-secret config values must not be redacted")
 }

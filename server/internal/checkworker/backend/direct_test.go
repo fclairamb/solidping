@@ -1,10 +1,12 @@
 package backend_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -18,6 +20,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/notifier"
@@ -81,7 +84,7 @@ func submitReq() *backend.SubmitResultRequest {
 }
 
 // registerWorker creates a workers row (results.worker_uid is a foreign key).
-func registerWorker(ctx context.Context, t *testing.T, dbSvc *sqlite.Service, slug string) string {
+func registerWorker(ctx context.Context, t *testing.T, dbSvc db.Service, slug string) string {
 	t.Helper()
 
 	registered, err := dbSvc.RegisterOrUpdateWorker(ctx, models.NewWorker(slug, slug))
@@ -226,7 +229,7 @@ func newTestCreds(t *testing.T) credentials.Service {
 // newOrg creates and persists an organization.
 //
 //nolint:revive // Test helper, context parameter order matches the file's convention.
-func newOrg(t *testing.T, ctx context.Context, dbSvc *sqlite.Service, slug string) *models.Organization {
+func newOrg(t *testing.T, ctx context.Context, dbSvc db.Service, slug string) *models.Organization {
 	t.Helper()
 
 	org := models.NewOrganization(slug, "")
@@ -245,7 +248,7 @@ func newOrg(t *testing.T, ctx context.Context, dbSvc *sqlite.Service, slug strin
 func seedJob(
 	t *testing.T,
 	ctx context.Context,
-	dbSvc *sqlite.Service,
+	dbSvc db.Service,
 	org *models.Organization,
 	slug string,
 	public models.JSONMap,
@@ -441,4 +444,201 @@ func TestClaimJobsDropsEncryptedJobWithoutMasterKey(t *testing.T) {
 	r.True(ok)
 	r.Equal(int(models.ResultStatusError), *got.Status)
 	r.Equal(checkjobsvc.ErrSecretsUnavailable.Error(), got.Output["error"])
+}
+
+// logCapture is a concurrency-safe io.Writer backing a slog handler, so a test
+// can assert on what the code under test actually logged.
+type logCapture struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (c *logCapture) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.buf.Write(p)
+}
+
+func (c *logCapture) String() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.buf.String()
+}
+
+// captureDefaultLogs swaps slog's default logger for one writing everything
+// (down to Debug) into the returned capture, restoring the original on
+// cleanup. DirectBackend logs through the package-level slog functions, so
+// this is the only seam that sees what it emits.
+//
+// Callers must NOT be parallel: slog's default logger is process-global. Go
+// runs non-parallel tests to completion before resuming parallel ones, so a
+// sequential test gets the swap to itself.
+func captureDefaultLogs(t *testing.T) *logCapture {
+	t.Helper()
+
+	capture := &logCapture{}
+	previous := slog.Default()
+
+	slog.SetDefault(slog.New(slog.NewTextHandler(capture, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	return capture
+}
+
+// TestClaimJobsNeverLogsDecryptedSecrets pins the spec's no-leak requirement on
+// the logging side. The decrypt-FAILURE branch is the one that logs (it hands
+// slog the wrapped decrypt error), so it is where a careless error wrap would
+// leak the plaintext; the success branch is asserted alongside it so neither
+// path can start logging config.
+//
+// The assertion is deliberately non-vacuous: it first proves the capture is
+// live (the known failure message IS present), so "secret absent" cannot pass
+// merely because nothing was captured at all.
+//
+//nolint:paralleltest // Swaps the process-global slog default logger.
+func TestClaimJobsNeverLogsDecryptedSecrets(t *testing.T) {
+	r := require.New(t)
+	capture := captureDefaultLogs(t)
+
+	const secret = "logs-must-never-see-me"
+
+	foreign := newTestCreds(t)
+	creds := newTestCreds(t)
+	be, _, dbSvc, ctx := newDirectBackendWithCreds(t, creds)
+
+	// 1. A job this backend CAN decrypt: the success path must stay silent
+	//    about the plaintext it just merged.
+	okOrg := newOrg(t, ctx, dbSvc, "log-ok")
+	okEnvelope, err := creds.EncryptForOrg(ctx, okOrg.UID, map[string]any{"password": secret})
+	r.NoError(err)
+	okCheck := seedJob(t, ctx, dbSvc, okOrg, "log-ok", publicOnly(), okEnvelope)
+
+	// 2. A job it CANNOT decrypt (encrypted under a foreign key): the failure
+	//    path logs, and must log the reason without the ciphertext's contents.
+	badOrg := newOrg(t, ctx, dbSvc, "log-bad")
+	badEnvelope, err := foreign.EncryptForOrg(ctx, badOrg.UID, map[string]any{"password": secret})
+	r.NoError(err)
+	badCheck := seedJob(t, ctx, dbSvc, badOrg, "log-bad", publicOnly(), badEnvelope)
+
+	workerUID := registerWorker(ctx, t, dbSvc, "wk-logs")
+
+	jobs, err := be.ClaimJobs(ctx, workerUID, nil, 10, 10, time.Minute)
+	r.NoError(err)
+
+	var okJob *models.CheckJob
+
+	for _, job := range jobs {
+		r.NotEqual(badCheck.UID, job.CheckUID, "the undecryptable job must be dropped")
+
+		if job.CheckUID == okCheck.UID {
+			okJob = job
+		}
+	}
+
+	r.NotNil(okJob)
+	r.Equal(secret, okJob.Config["password"], "the decryptable job must still be merged")
+
+	logs := capture.String()
+	// Non-vacuous: the capture is demonstrably live and holds the failure log.
+	r.Contains(logs, "Cannot decrypt claimed job credentials",
+		"the capture must be wired to what DirectBackend logs")
+	r.NotContains(logs, secret,
+		"a decrypted secret must never reach the logs, on either the success or the failure path")
+	r.NotContains(logs, badEnvelope, "the raw envelope must not be logged either")
+	r.NotContains(logs, okEnvelope)
+}
+
+// newPostgresDirectBackend builds a DirectBackend over a real embedded
+// PostgreSQL, so the decrypt-failure policy can be asserted on the driver that
+// actually runs in production. Skips (rather than fails) when embedded
+// Postgres is unavailable, mirroring checkjobsvc/service_postgres_test.go.
+// Uses port 15439 — distinct from 15434/15436/15437/15438.
+func newPostgresDirectBackend(
+	t *testing.T, creds credentials.Service,
+) (*backend.DirectBackend, *postgres.Service, context.Context) {
+	t.Helper()
+
+	ctx := t.Context()
+
+	dbSvc, err := postgres.New(ctx, &postgres.Config{
+		Embedded: true,
+		Port:     15439,
+		RunMode:  "test",
+	})
+	if err != nil {
+		t.Skipf("embedded postgres unavailable: %v", err)
+	}
+
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	if initErr := dbSvc.Initialize(ctx); initErr != nil {
+		t.Skipf("embedded postgres init failed: %v", initErr)
+	}
+
+	eventNotifier := notifier.NewLocalEventNotifier()
+	t.Cleanup(func() { _ = eventNotifier.Close() })
+
+	checkJobSvc := checkjobsvc.NewService(dbSvc.DB())
+	incidentSvc := incidents.NewService(dbSvc, nil, clock.Real{}, nil)
+
+	return backend.NewDirectBackend(
+		dbSvc, checkJobSvc, incidentSvc, eventNotifier, creds,
+	), dbSvc, ctx
+}
+
+// TestClaimJobsDropsUndecryptableJobOnPostgres is the PostgreSQL half of the
+// decrypt-failure semantics (spec item 4; the SQLite half is
+// TestClaimJobsDropsUndecryptableJobWithErrorResult).
+//
+// The branch CONDITION is dialect-agnostic Go, but its EFFECT is not: dropping
+// the job means SubmitResult → SaveResultWithStatusTracking + ReleaseLease,
+// which is driver code. This pins that the error result really lands and the
+// lease really releases on Postgres, not just on SQLite.
+//
+// Self-skips under `-short` like its embedded-Postgres siblings.
+func TestClaimJobsDropsUndecryptableJobOnPostgres(t *testing.T) {
+	t.Parallel()
+
+	if testing.Short() {
+		t.Skip("skipping embedded-postgres test in -short mode")
+	}
+
+	r := require.New(t)
+
+	// Encrypt under one key, claim with a backend holding a different one.
+	foreign := newTestCreds(t)
+	be, dbSvc, ctx := newPostgresDirectBackend(t, newTestCreds(t))
+
+	org := newOrg(t, ctx, dbSvc, "pgbaddec")
+
+	envelope, err := foreign.EncryptForOrg(ctx, org.UID, map[string]any{"password": "pg-s3cr3t"})
+	r.NoError(err)
+
+	check := seedJob(t, ctx, dbSvc, org, "pgbaddec", publicOnly(), envelope)
+	workerUID := registerWorker(ctx, t, dbSvc, "wk-pgbaddec")
+
+	jobs, err := be.ClaimJobs(ctx, workerUID, nil, 10, 10, time.Minute)
+	r.NoError(err)
+
+	for _, job := range jobs {
+		r.NotEqual(check.UID, job.CheckUID,
+			"a job whose secrets cannot be decrypted must never be dispatched on Postgres either")
+	}
+
+	// The failure is visible as a result row, not a silent skip.
+	results, err := dbSvc.GetLastResultForChecks(ctx, org.UID, []string{check.UID})
+	r.NoError(err)
+	got, ok := results[check.UID]
+	r.True(ok, "the error result must land on Postgres")
+	r.NotNil(got.Status)
+	r.Equal(int(models.ResultStatusError), *got.Status)
+	r.Equal(checkjobsvc.ErrSecretsUndecryptable.Error(), got.Output["error"])
+	r.NotContains(fmt.Sprint(got.Output), "pg-s3cr3t")
+
+	// The lease was released, so the job is reschedulable rather than wedged.
+	var job models.CheckJob
+	r.NoError(dbSvc.DB().NewSelect().Model(&job).Where("check_uid = ?", check.UID).Scan(ctx))
+	r.Nil(job.LeaseWorkerUID, "the lease must be released on Postgres too")
 }
