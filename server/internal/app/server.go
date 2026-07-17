@@ -89,6 +89,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
+	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/jmap"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
@@ -312,6 +313,12 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	checkkubernetes.ClientsetResolverFunc = func(ctx context.Context, clusterUID string) (k8sclient.Interface, error) {
 		return integrationk8s.ResolveClientsetByUID(ctx, dbService, credSvc, clusterUID)
 	}
+
+	// Wire the SSH-tunnel resolver used by tunnel-capable checks
+	// (`tunnelCheckUid` in their config). Same indirection again: it owns the
+	// check lookup + credential decrypt so the checkers only ever consume a
+	// dialer from their context.
+	sshtunnel.ResolverFunc = sshtunnel.NewResolver(dbService, credSvc)
 
 	// Initialize Sentry error tracking
 	if err := initSentry(cfg.Sentry); err != nil {

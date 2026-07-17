@@ -28,6 +28,18 @@ const (
 	msPerMicro     = 1000.0
 )
 
+// Fingerprint renders an SSH host key in the `SHA256:<base64>` form used by
+// `ssh-keygen -l` (and therefore by the `expected_fingerprint` config field
+// users copy into a check). It is exported so every host-key comparison in the
+// codebase — the SSH check itself and the tunnel resolver that reuses an SSH
+// check as a bastion — derives the string identically; a second, subtly
+// different implementation would silently reject valid fingerprints.
+func Fingerprint(key ssh.PublicKey) string {
+	hash := sha256.Sum256(key.Marshal())
+
+	return "SHA256:" + base64.StdEncoding.EncodeToString(hash[:])
+}
+
 // SSHChecker implements the Checker interface for SSH checks.
 type SSHChecker struct{}
 
@@ -206,8 +218,7 @@ func (c *SSHChecker) verifyFingerprint(
 	clientConfig := &ssh.ClientConfig{
 		User: "probe",
 		HostKeyCallback: func(_ string, _ net.Addr, key ssh.PublicKey) error {
-			hash := sha256.Sum256(key.Marshal())
-			capturedFingerprint = "SHA256:" + base64.StdEncoding.EncodeToString(hash[:])
+			capturedFingerprint = Fingerprint(key)
 
 			return nil
 		},
@@ -279,8 +290,7 @@ func (c *SSHChecker) executeWithAuth(
 
 	if cfg.ExpectedFingerprint != "" {
 		hostKeyCallback = func(_ string, _ net.Addr, key ssh.PublicKey) error {
-			hash := sha256.Sum256(key.Marshal())
-			fingerprint := "SHA256:" + base64.StdEncoding.EncodeToString(hash[:])
+			fingerprint := Fingerprint(key)
 			output["fingerprint"] = fingerprint
 
 			if fingerprint != cfg.ExpectedFingerprint {
