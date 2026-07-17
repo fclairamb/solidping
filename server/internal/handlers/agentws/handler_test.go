@@ -57,11 +57,9 @@ func newEnv(t *testing.T) *env {
 
 	checkJobSvc := checkjobsvc.NewService(dbSvc.DB())
 	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, events, nil)
-	creds, err := credentials.NewService(nil, credentials.ParamStore{})
-	r.NoError(err)
 
 	workersSvc := workers.NewService(
-		dbSvc, checkJobSvc, incidents.NewService(dbSvc, jobs, clock.Real{}, nil), creds,
+		dbSvc, checkJobSvc, incidents.NewService(dbSvc, jobs, clock.Real{}, nil),
 	)
 
 	handler := agentws.NewHandler(&config.Config{}, dbSvc, checkJobSvc, workersSvc, nil, events, nil)

@@ -806,7 +806,6 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.dbService,
 		s.services.CheckJobs,
 		incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime),
-		s.services.Credentials,
 	)
 	agentWSHandler := agentws.NewHandler(
 		s.config,
