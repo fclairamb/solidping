@@ -167,6 +167,23 @@ func ResolverFrom(ctx context.Context) Resolver {
 	return ResolverFunc
 }
 
+// CarryResolver copies a per-context resolver override from src onto dst.
+//
+// The worker deliberately detaches its execution context from the job context
+// (a claimed check must finish even while the server shuts down), and detaching
+// drops every context value with it. Without carrying it across that boundary,
+// a resolver injected per-execution — the seam a deported agent uses to resolve
+// tunnels from sealed job config instead of the DB, and the seam tests use to
+// avoid racing over the global — would silently never be consulted, and the
+// global would answer instead. Returns dst unchanged when src has no override.
+func CarryResolver(src, dst context.Context) context.Context {
+	if resolver, ok := src.Value(resolverCtxKey).(Resolver); ok && resolver != nil {
+		return WithResolver(dst, resolver)
+	}
+
+	return dst
+}
+
 // Resolve establishes a tunnel through the given SSH check using whichever
 // resolver is active for ctx. It is the single entry point callers use.
 func Resolve(ctx context.Context, orgUID, tunnelCheckUID string) (*Dialer, io.Closer, error) {

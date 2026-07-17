@@ -31,6 +31,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
+	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/stats"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
@@ -825,6 +826,10 @@ func (r *CheckWorker) executeJob(
 	// first.
 	execCtx, cancel := context.WithTimeout(context.Background(), checkTimeout+time.Second)
 	defer cancel()
+
+	// Detaching from ctx above drops its values; carry the tunnel-resolver
+	// override across so a per-execution resolver is still honored.
+	execCtx = sshtunnel.CarryResolver(ctx, execCtx)
 
 	// Tunnel-capable checks (`tunnelCheckUid` in config) dial their probe
 	// through an SSH check's connection. A fresh session is established per
