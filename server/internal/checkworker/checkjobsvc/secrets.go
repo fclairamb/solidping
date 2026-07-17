@@ -50,15 +50,15 @@ const (
 // dispatch-time semantics every executor depends on: a checker must receive
 // one merged config map and must never see the envelope.
 //
-// It is the single implementation shared by the in-process claim path
-// (checkworker/backend.DirectBackend) and the transport-agnostic remote claim
-// service (handlers/workers.Service) — the merge rule, the strip-the-envelope
-// invariant and the failure taxonomy live here once.
+// It is the merge rule shared by every claim path that dispatches a job to a
+// checker — currently the in-process claim path
+// (checkworker/backend.DirectBackend) — so the strip-the-envelope invariant
+// and the failure taxonomy live here once.
 //
 // It deliberately does NOT decide what happens on failure: the caller does
-// (the in-process backend writes an explicit error result; the remote claim
-// service skips the job). It never logs, and never returns a config value in
-// an error — the decrypted map is a secret and only ever reaches job.Config.
+// (the in-process backend writes an explicit error result). It never logs,
+// and never returns a config value in an error — the decrypted map is a
+// secret and only ever reaches job.Config.
 //
 // creds may be nil (a worker built without a credentials service): that is
 // treated exactly like a disabled service.
