@@ -379,7 +379,9 @@ func (d *Dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 		return nil, err
 	}
 
-	return conn, nil
+	// SSH channels reject SetDeadline; wrap so probes that bound their reads
+	// (checktcp does) behave as they would on a direct socket.
+	return newDeadlineConn(conn), nil
 }
 
 // record classifies a forward failure. A rejection whose reason is
