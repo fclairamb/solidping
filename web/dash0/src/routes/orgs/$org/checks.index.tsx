@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebounce } from "@/lib/use-debounce";
 import { useTranslation } from "react-i18next";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
@@ -283,13 +283,16 @@ function ChecksTable({
   );
 }
 
+// Presentational: the checks it shows come from the page-level batched query
+// (bucketed by checkGroupUid), not from its own request. Collapsing no longer
+// affects request cost — there is a single query for the whole page.
 function CheckGroupSection({
   group,
   org,
+  checks,
+  isLoading,
+  error,
   search,
-  internalFilter,
-  labelsFilter,
-  statusFilter,
   isFirst,
   isLast,
   onDelete,
@@ -302,10 +305,10 @@ function CheckGroupSection({
 }: {
   group: CheckGroup;
   org: string;
+  checks: Check[];
+  isLoading: boolean;
+  error: unknown;
   search: string;
-  internalFilter?: string;
-  labelsFilter?: string;
-  statusFilter?: string;
   isFirst: boolean;
   isLast: boolean;
   onDelete: () => void;
@@ -318,51 +321,11 @@ function CheckGroupSection({
 }) {
   const { t } = useTranslation("checks");
   const [collapsed, setCollapsed] = useState(false);
-  const sentinelRef = useRef<HTMLDivElement>(null);
-
-  const {
-    data,
-    isLoading,
-    error,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-  } = useInfiniteChecks(org, {
-    with: "last_result",
-    checkGroupUid: group.uid,
-    q: search || undefined,
-    internal: internalFilter,
-    labels: labelsFilter,
-    status: statusFilter,
-    limit: 20,
-  });
-
-  const checks = data?.pages.flatMap((page) => page.data || []) ?? [];
 
   // Expand when searching
   useEffect(() => {
     if (search) setCollapsed(false);
   }, [search]);
-
-  const handleObserver = useCallback(
-    (entries: IntersectionObserverEntry[]) => {
-      const [entry] = entries;
-      if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
-        fetchNextPage();
-      }
-    },
-    [fetchNextPage, hasNextPage, isFetchingNextPage]
-  );
-
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el || collapsed) return;
-    const observer = new IntersectionObserver(handleObserver, {
-      threshold: 0.1,
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [handleObserver, collapsed]);
 
   return (
     <div className="border rounded-lg" data-testid="group-section">
@@ -432,20 +395,13 @@ function CheckGroupSection({
               ))}
             </div>
           ) : checks.length > 0 ? (
-            <>
-              <ChecksTable
-                checks={checks}
-                org={org}
-                onDelete={onDeleteCheck}
-                onChangeGroup={onChangeGroup}
-                groups={groups}
-              />
-              <div ref={sentinelRef} className="flex justify-center py-2">
-                {isFetchingNextPage && (
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                )}
-              </div>
-            </>
+            <ChecksTable
+              checks={checks}
+              org={org}
+              onDelete={onDeleteCheck}
+              onChangeGroup={onChangeGroup}
+              groups={groups}
+            />
           ) : (
             <div className="p-4 text-center text-sm text-muted-foreground">
               {t("noChecks")}
@@ -457,69 +413,31 @@ function CheckGroupSection({
   );
 }
 
+// Presentational: renders the ungrouped bucket from the page-level batched
+// query. Hidden entirely when there is nothing ungrouped to show and no active
+// search (an empty "Ungrouped Checks" heading would just be noise).
 function UngroupedChecksSection({
   org,
+  checks,
+  isLoading,
+  error,
   search,
-  internalFilter,
-  labelsFilter,
-  statusFilter,
   onDeleteCheck,
   onChangeGroup,
   groups,
 }: {
   org: string;
+  checks: Check[];
+  isLoading: boolean;
+  error: unknown;
   search: string;
-  internalFilter?: string;
-  labelsFilter?: string;
-  statusFilter?: string;
   onDeleteCheck: (uid: string) => void;
   onChangeGroup: (check: Check) => void;
   groups: CheckGroup[];
 }) {
   const { t } = useTranslation("checks");
-  const sentinelRef = useRef<HTMLDivElement>(null);
 
-  const {
-    data,
-    isLoading,
-    error,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-  } = useInfiniteChecks(org, {
-    with: "last_result",
-    checkGroupUid: "none",
-    q: search || undefined,
-    internal: internalFilter,
-    labels: labelsFilter,
-    status: statusFilter,
-    limit: 20,
-  });
-
-  const checks = data?.pages.flatMap((page) => page.data || []) ?? [];
-  const total = data?.pages[0]?.pagination?.total ?? 0;
-
-  const handleObserver = useCallback(
-    (entries: IntersectionObserverEntry[]) => {
-      const [entry] = entries;
-      if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
-        fetchNextPage();
-      }
-    },
-    [fetchNextPage, hasNextPage, isFetchingNextPage]
-  );
-
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(handleObserver, {
-      threshold: 0.1,
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [handleObserver]);
-
-  if (!isLoading && !error && total === 0 && !search) {
+  if (!isLoading && !error && checks.length === 0 && !search) {
     return null;
   }
 
@@ -539,14 +457,7 @@ function UngroupedChecksSection({
           ))}
         </div>
       ) : checks.length > 0 ? (
-        <>
-          <ChecksTable checks={checks} org={org} onDelete={onDeleteCheck} onChangeGroup={onChangeGroup} groups={groups} />
-          <div ref={sentinelRef} className="flex justify-center py-4">
-            {isFetchingNextPage && (
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            )}
-          </div>
-        </>
+        <ChecksTable checks={checks} org={org} onDelete={onDeleteCheck} onChangeGroup={onChangeGroup} groups={groups} />
       ) : search ? (
         <div className="text-center py-6 text-muted-foreground text-sm">
           {t("noUngroupedChecks")}
@@ -589,6 +500,75 @@ function ChecksIndexPage() {
     refetch: refetchGroups,
     isRefetching,
   } = useCheckGroups(org);
+
+  // Single page-level infinite query — replaces the former per-group N+1
+  // fan-out (one useInfiniteChecks per CheckGroupSection plus one for the
+  // ungrouped section). Every row comes from this one query and is bucketed by
+  // checkGroupUid client-side, so a live-hint invalidation refreshes exactly
+  // one query per tick instead of (groups + 1). Its key
+  // ["checks", "infinite", org, options] still matches handleRefresh, the
+  // change-group flow, and the infiniteOrgRoot("checks") live predicate.
+  // See spec 2026-07-17-02.
+  const {
+    data: checksData,
+    isLoading: checksLoading,
+    error: checksError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteChecks(org, {
+    with: "last_result",
+    q: debouncedSearch || undefined,
+    internal: internalFilter,
+    labels: labelsParam,
+    status: statusParam,
+    limit: 100,
+  });
+
+  // Bucket loaded checks by group. Ungrouped = falsy checkGroupUid (matches the
+  // server's checkGroupUid=none semantics). Order within a bucket follows the
+  // server's page order; group *section* order stays driven by the groups list
+  // (sortOrder), so bucketing is order-independent. Group count badges keep
+  // coming from group.checkCount (independent of the loaded page), so a
+  // partially-loaded group still shows its true total.
+  const { checksByGroup, ungroupedChecks } = useMemo(() => {
+    const byGroup = new Map<string, Check[]>();
+    const ungrouped: Check[] = [];
+    for (const page of checksData?.pages ?? []) {
+      for (const check of page.data ?? []) {
+        if (check.checkGroupUid) {
+          const bucket = byGroup.get(check.checkGroupUid);
+          if (bucket) bucket.push(check);
+          else byGroup.set(check.checkGroupUid, [check]);
+        } else {
+          ungrouped.push(check);
+        }
+      }
+    }
+    return { checksByGroup: byGroup, ungroupedChecks: ungrouped };
+  }, [checksData]);
+
+  // One page-level infinite-scroll sentinel (below the last section) instead of
+  // one IntersectionObserver per group section.
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const handleObserver = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      const [entry] = entries;
+      if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
+        fetchNextPage();
+      }
+    },
+    [fetchNextPage, hasNextPage, isFetchingNextPage]
+  );
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(handleObserver, {
+      threshold: 0.1,
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [handleObserver]);
 
   const [importPreview, setImportPreview] = useState<{
     doc: ExportDocument;
@@ -871,10 +851,10 @@ function ChecksIndexPage() {
               key={group.uid}
               group={group}
               org={org}
+              checks={checksByGroup.get(group.uid) ?? []}
+              isLoading={checksLoading}
+              error={checksError}
               search={debouncedSearch}
-              internalFilter={internalFilter}
-              labelsFilter={labelsParam}
-              statusFilter={statusParam}
               isFirst={idx === 0}
               isLast={idx === (groups?.length ?? 0) - 1}
               onDelete={() => setDeleteGroupUid(group.uid)}
@@ -892,14 +872,21 @@ function ChecksIndexPage() {
 
           <UngroupedChecksSection
             org={org}
+            checks={ungroupedChecks}
+            isLoading={checksLoading}
+            error={checksError}
             search={debouncedSearch}
-            internalFilter={internalFilter}
-            labelsFilter={labelsParam}
-            statusFilter={statusParam}
             onDeleteCheck={setDeleteCheckUid}
             onChangeGroup={setChangeGroupCheck}
             groups={groups || []}
           />
+
+          {/* One page-level infinite-scroll sentinel for the whole list. */}
+          <div ref={sentinelRef} className="flex justify-center py-4">
+            {isFetchingNextPage && (
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            )}
+          </div>
 
           {(!groups || groups.length === 0) && (
             <NoChecksPlaceholder search={debouncedSearch} />
