@@ -1,26 +1,19 @@
 import { test, expect, API_BASE, type Page } from "./fixtures";
 import { expandSection } from "./section-helpers";
 
-// Coverage for spec 2026-07-16-03: an HTTP check's basic-auth credential is
-// stored as ONE reserved, encrypted `basicAuth` key (both halves protected),
-// and editing anything else on the check must not silently destroy it — nor
-// the check's secret headers, which the form used to wipe on every save by
-// force-sending `secretHeaders: {}` (they never come back on GET, so the form
-// always thought they were empty).
+// Coverage for spec 2026-07-16-03 and 2026-07-18-06: an HTTP check's basic-auth
+// credential is stored as ONE reserved `basicAuth` key (both halves protected),
+// split out of the public config column, and editing anything else on the check
+// must not silently destroy it — nor the check's secret headers, which the form
+// used to wipe on every save by force-sending `secretHeaders: {}` (they never
+// come back on GET, so the form always thought they were empty).
 //
-// The two halves fold into `basicAuth` on every deployment; whether that key is
-// then encrypted depends on SP_ENCRYPTION_MASTER_KEY, which the E2E server (like
-// CI's) does NOT set — it runs the documented plaintext fallback. So the
-// assertions are mode-aware:
-//
-//   - encrypted (master key set): the credential never comes back, so "it
-//     survived" is asserted through `configPrivateKeys` + the form's encrypted
-//     placeholder;
-//   - plaintext fallback (CI): `config.basicAuth` is readable, so the exact
-//     credential is asserted verbatim across the edit.
-//
-// Either way the invariant is the same: the credential has ONE home, and an
-// unrelated edit must not destroy it or the check's secret headers.
+// Spec 2026-07-18-06 made the redaction UNCONDITIONAL: the credential never
+// appears in a GET response in ANY storage-encryption mode. The E2E server (like
+// CI's) does NOT set SP_ENCRYPTION_MASTER_KEY — it runs the plaintext fallback —
+// and this test proves the secret is redacted there too (it used to leak
+// `config.basicAuth` verbatim). "It survived" is asserted through
+// `configPrivateKeys` + the form's placeholder in every mode.
 
 async function getAuthToken(page: Page): Promise<string> {
   const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
@@ -69,23 +62,18 @@ test.describe("HTTP check basic auth", () => {
     const uid = page.url().match(/\/checks\/([0-9a-f-]{36})/)![1];
 
     // Both halves fold into one reserved key — the split `username`/`password`
-    // pair is gone from storage on every deployment.
+    // pair is gone from storage — and the credential is redacted out of the
+    // public config in EVERY mode (including the plaintext fallback CI runs).
     const created = await getCheck(page, token, uid);
     expect(created.config).not.toHaveProperty("username");
     expect(created.config).not.toHaveProperty("password");
-
-    const encrypted: boolean =
-      created.configPrivateKeys?.includes("basicAuth") ?? false;
-    if (encrypted) {
-      // Master key set: nothing leaks into the public, queryable config.
-      expect(created.configPrivateKeys).toContain("secretHeaders");
-      expect(created.config).not.toHaveProperty("basicAuth");
-      expect(created.config).not.toHaveProperty("secretHeaders");
-    } else {
-      // Plaintext fallback: the credential is readable, but it still has a
-      // single home.
-      expect(created.config.basicAuth).toBe("probe:hunter2");
-    }
+    expect(
+      created.config,
+      "the basic-auth credential must never be in the public config, even without a master key",
+    ).not.toHaveProperty("basicAuth");
+    expect(created.config).not.toHaveProperty("secretHeaders");
+    expect(created.configPrivateKeys).toContain("basicAuth");
+    expect(created.configPrivateKeys).toContain("secretHeaders");
 
     // ── Edit only the URL ──
     await page.goto(`orgs/test/checks/${uid}/edit`);
@@ -93,14 +81,12 @@ test.describe("HTTP check basic auth", () => {
     await expect(page.getByTestId("check-url-input")).toBeVisible();
 
     // The stored credential is advertised, not echoed: the inputs stay empty
-    // (the folded `basicAuth` is not split back into them) and, when it is
-    // encrypted, an explicit placeholder says so.
+    // (the folded `basicAuth` is not split back into them) and an explicit
+    // placeholder says the credential is stored.
     await expandSection(page, "section-authentication-trigger");
     await expect(page.getByTestId("check-username-input")).toHaveValue("");
     await expect(page.getByTestId("check-password-input")).toHaveValue("");
-    if (encrypted) {
-      await expect(page.getByTestId("basic-auth-encrypted")).toBeVisible();
-    }
+    await expect(page.getByTestId("basic-auth-encrypted")).toBeVisible();
 
     await page
       .getByTestId("check-url-input")
@@ -114,26 +100,16 @@ test.describe("HTTP check basic auth", () => {
     expect(edited.config.url).toBe("https://example.com/basic-auth-after");
     expect(edited.config).not.toHaveProperty("username");
     expect(edited.config).not.toHaveProperty("password");
+    expect(edited.config).not.toHaveProperty("basicAuth");
 
-    if (encrypted) {
-      expect(
-        edited.configPrivateKeys,
-        "editing the URL destroyed the basic-auth credential",
-      ).toContain("basicAuth");
-      expect(
-        edited.configPrivateKeys,
-        "editing the URL wiped the secret headers",
-      ).toContain("secretHeaders");
-    } else {
-      expect(
-        edited.config.basicAuth,
-        "editing the URL destroyed the basic-auth credential",
-      ).toBe("probe:hunter2");
-      expect(
-        edited.config.secretHeaders,
-        "editing the URL wiped the secret headers",
-      ).toEqual({ "X-Api-Key": "sk-e2e-secret" });
-    }
+    expect(
+      edited.configPrivateKeys,
+      "editing the URL destroyed the basic-auth credential",
+    ).toContain("basicAuth");
+    expect(
+      edited.configPrivateKeys,
+      "editing the URL wiped the secret headers",
+    ).toContain("secretHeaders");
 
     await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
       headers: { Authorization: `Bearer ${token}` },
