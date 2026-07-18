@@ -115,13 +115,13 @@ func migrateChecksPlaintext(
 		}
 
 		// The denormalized dispatch rows can carry the same leaked secret.
-		js, jErr := migrateCheckJobsPlaintext(ctx, dbSvc, org, check, opts, logger)
+		jobRows, jErr := migrateCheckJobsPlaintext(ctx, dbSvc, org, check, opts, logger)
 		if jErr != nil {
 			return checkStats, jobStats, jErr
 		}
 
-		jobStats.scanned += js.scanned
-		jobStats.migrated += js.migrated
+		jobStats.scanned += jobRows.scanned
+		jobStats.migrated += jobRows.migrated
 	}
 
 	return checkStats, jobStats, nil

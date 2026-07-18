@@ -172,14 +172,14 @@ func redactJobConfig(job *models.CheckJob) (map[string]any, []string) {
 	}
 
 	public := make(map[string]any, len(job.Config))
-	for k, v := range job.Config {
-		if _, isSecret := secretSet[k]; isSecret {
-			advertised[k] = struct{}{}
+	for key, value := range job.Config {
+		if _, isSecret := secretSet[key]; isSecret {
+			advertised[key] = struct{}{}
 
 			continue
 		}
 
-		public[k] = v
+		public[key] = value
 	}
 
 	keys := make([]string, 0, len(advertised))

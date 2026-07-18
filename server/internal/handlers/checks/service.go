@@ -2622,17 +2622,17 @@ func redactSecretConfig(check *models.Check, privateKeys []string) (map[string]a
 	}
 
 	public := make(map[string]any, len(check.Config))
-	for k, v := range check.Config {
-		if _, isSecret := secretSet[k]; isSecret {
+	for key, value := range check.Config {
+		if _, isSecret := secretSet[key]; isSecret {
 			// Present-but-secret: strip it from the public config and make sure
 			// it is advertised as a private key (placeholder dot), since the
 			// value has to live somewhere the operator can re-enter it.
-			advertised[k] = struct{}{}
+			advertised[key] = struct{}{}
 
 			continue
 		}
 
-		public[k] = v
+		public[key] = value
 	}
 
 	if len(advertised) == 0 {

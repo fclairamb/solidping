@@ -205,13 +205,13 @@ func toResponse(conn *models.Integration, includeSettings bool) *IntegrationResp
 
 	if includeSettings && conn.Settings != nil {
 		settings := make(map[string]any, len(conn.Settings))
-		for k, v := range conn.Settings {
-			if _, isSecret := secretSet[k]; isSecret {
-				advertised[k] = struct{}{}
+		for key, value := range conn.Settings {
+			if _, isSecret := secretSet[key]; isSecret {
+				advertised[key] = struct{}{}
 
 				continue
 			}
-			settings[k] = v
+			settings[key] = value
 		}
 		resp.Settings = settings
 	}
