@@ -46,6 +46,31 @@ func looksLikeSecret(jsonName string) bool {
 	return false
 }
 
+// publicByDesignFields are credential-named fields that are DELIBERATELY not
+// declared secret because the feature requires them in the public, queryable
+// `config` column. The heartbeat/email `token` is a server-generated shared
+// secret embedded in a public ping URL / inbound address: the ping handler and
+// GetCheckByEmailToken both read it from `config` (public), and the dashboard
+// renders the URL/address from it — splitting it out would break the feature.
+// See each checker's SecretFields() for the rationale.
+//
+//nolint:gochecknoglobals // test allowlist
+var publicByDesignFields = map[checkerdef.CheckType]map[string]struct{}{
+	checkerdef.CheckTypeHeartbeat: {"token": {}},
+	checkerdef.CheckTypeEmail:     {"token": {}},
+}
+
+func isPublicByDesign(checkType checkerdef.CheckType, jsonName string) bool {
+	fields, ok := publicByDesignFields[checkType]
+	if !ok {
+		return false
+	}
+
+	_, ok = fields[jsonName]
+
+	return ok
+}
+
 // TestNoUndeclaredCheckerSecrets is the item-5 tripwire: it reflects over every
 // registered checker's config struct and asserts that any top-level field whose
 // json name looks like a credential is declared in that config's SecretFields().
@@ -78,6 +103,18 @@ func TestNoUndeclaredCheckerSecrets(t *testing.T) {
 				continue
 			}
 
+			if isPublicByDesign(checkType, jsonName) {
+				// Deliberately public (see publicByDesignFields) — must NOT be
+				// declared secret, or it would be split out of the queryable
+				// public config the feature depends on.
+				_, wronglyDeclared := declared[jsonName]
+				r.Falsef(wronglyDeclared,
+					"checker %q field %q is public-by-design and must NOT be in SecretFields()",
+					checkType, jsonName)
+
+				continue
+			}
+
 			_, isDeclared := declared[jsonName]
 			r.Truef(isDeclared,
 				"checker %q config field %q looks like a secret but is NOT declared in SecretFields(); "+
@@ -93,7 +130,7 @@ func TestNoUndeclaredCheckerSecrets(t *testing.T) {
 type fakeLeakyConfig struct {
 	Host       string `json:"host"`
 	Token      string `json:"token"`
-	APIKey     string `json:"api_key"`
+	APIKey     string `json:"api_key"` //nolint:tagliatelle // snake_case exercises the api_key pattern
 	Passphrase string // no json tag → falls back to field name
 	Keyword    string `json:"keyword"`
 	ignored    string //nolint:unused // exercises the unexported-skip path
@@ -139,7 +176,7 @@ func TestTripwireMechanicsCatchUndeclaredSecret(t *testing.T) {
 // undeclared `Password string` with no tag is still caught.
 func topLevelJSONFields(cfg any) []string {
 	v := reflect.ValueOf(cfg)
-	for v.Kind() == reflect.Ptr {
+	for v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			v = reflect.New(v.Type().Elem())
 		}

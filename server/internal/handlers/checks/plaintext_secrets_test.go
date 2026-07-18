@@ -179,6 +179,41 @@ func TestPlaintextModeHTTPBasicAuthNeverLeaks(t *testing.T) {
 	r.Equal("probe:hunter2", private["basicAuth"], "the round-trip must not lose the credential")
 }
 
+// TestHeartbeatTokenStaysPublic guards the reclassification decision: the
+// heartbeat token is public-by-design (the ping handler validates it from the
+// public config column and the dashboard renders the ping URL from it), so it
+// must remain in the API response and NOT be split out or advertised as a
+// private key — the opposite of the ssh/http credentials above.
+func TestHeartbeatTokenStaysPublic(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, dbSvc, _, org := setupPlaintextChecksService(t)
+	ctx := t.Context()
+
+	created, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Name:   "hb-check",
+		Slug:   "hb-check",
+		Type:   "heartbeat",
+		Config: map[string]any{},
+	})
+	r.NoError(err)
+
+	// The server generated a token; it MUST be visible in the response so the
+	// operator can build the ping URL.
+	token, ok := created.Config["token"].(string)
+	r.True(ok, "the generated heartbeat token must be in the public config response")
+	r.NotEmpty(token)
+	r.NotContains(created.ConfigPrivateKeys, "token", "the heartbeat token must not be advertised as private")
+
+	// It must be stored in the PUBLIC column (queried by the ping handler), not
+	// split into a private envelope.
+	row, err := dbSvc.GetCheck(ctx, org.UID, created.UID)
+	r.NoError(err)
+	r.Equal(token, row.Config["token"], "the token must live in the queryable public config column")
+	r.Nil(row.ConfigPrivate, "a heartbeat check must not gain a secret envelope")
+}
+
 // TestConvertResponseRedactsUnsplitRow is the defense-in-depth test: even a row
 // whose secret was (wrongly) left in the public column — a not-yet-migrated row
 // or a future write-path bug — is redacted at read time and the key is
