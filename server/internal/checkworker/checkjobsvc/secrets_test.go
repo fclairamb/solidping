@@ -136,6 +136,60 @@ func TestMergeJobSecretsMergesAndStrips(t *testing.T) {
 	r.False(job.Encrypted)
 }
 
+// TestMergeJobSecretsOpensPlaintextEnvelopeWithoutKey is the positive control
+// for the no-master-key path: a plaintext envelope (the structural-separation
+// fallback that keeps secrets out of the public config) is opened and merged
+// into Config by a DISABLED credentials service, so a self-hosted worker with
+// no master key keeps executing checks that carry a credential.
+func TestMergeJobSecretsOpensPlaintextEnvelopeWithoutKey(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	envelope, err := credentials.SealPlaintext(map[string]any{"private_key": "SSH-KEY"})
+	r.NoError(err)
+
+	keys := `["private_key"]`
+	job := &models.CheckJob{
+		OrganizationUID:   secretsTestOrg,
+		Config:            models.JSONMap{"host": "lan.test"},
+		ConfigPrivate:     &envelope,
+		ConfigPrivateKeys: &keys,
+		Encrypted:         false,
+	}
+
+	outcome, err := checkjobsvc.MergeJobSecrets(t.Context(), newDisabledCreds(t), job)
+	r.NoError(err)
+	r.Equal(checkjobsvc.SecretMergeMerged, outcome)
+	r.Equal("SSH-KEY", job.Config["private_key"], "the check must execute with its credential")
+	r.Equal("lan.test", job.Config["host"])
+	r.Nil(job.ConfigPrivate, "the envelope must be stripped after merge")
+	r.Nil(job.ConfigPrivateKeys)
+}
+
+// TestMergeJobSecretsOpensPlaintextEnvelopeWithNilService covers the same path
+// for a worker built with no credentials service at all — no panic, still
+// merges.
+func TestMergeJobSecretsOpensPlaintextEnvelopeWithNilService(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	envelope, err := credentials.SealPlaintext(map[string]any{"password": "pw"})
+	r.NoError(err)
+
+	job := &models.CheckJob{
+		OrganizationUID: secretsTestOrg,
+		Config:          models.JSONMap{"host": "db.test"},
+		ConfigPrivate:   &envelope,
+	}
+
+	outcome, err := checkjobsvc.MergeJobSecrets(t.Context(), nil, job)
+	r.NoError(err)
+	r.Equal(checkjobsvc.SecretMergeMerged, outcome)
+	r.Equal("pw", job.Config["password"])
+}
+
 // TestMergeJobSecretsPrivateWinsOnConflict pins MergeConfig's precedence: the
 // encrypted side is the source of truth (the public side may hold a stale
 // placeholder).

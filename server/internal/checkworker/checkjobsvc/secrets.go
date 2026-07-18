@@ -29,10 +29,10 @@ var ErrSecretsUndecryptable = errors.New(
 type SecretMerge int
 
 const (
-	// SecretMergeNoop means the job carries no encrypted envelope: either
-	// encryption is disabled fleet-wide and secrets are plaintext in the
-	// public config (the documented V1 self-hosted fallback), or the check
-	// simply has no secret fields. The job is dispatchable as-is.
+	// SecretMergeNoop means the job carries no config_private envelope at all:
+	// the check simply has no secret fields (secrets, when present, are always
+	// split into config_private now — as an AES-GCM envelope with a master key,
+	// or a plaintext envelope without one). The job is dispatchable as-is.
 	SecretMergeNoop SecretMerge = iota
 	// SecretMergeMerged means the envelope was decrypted and merged into
 	// job.Config, and the envelope was stripped off the job.
@@ -71,13 +71,28 @@ func MergeJobSecrets(
 		return SecretMergeNoop, nil
 	}
 
-	if creds == nil || !creds.Enabled() {
-		return SecretMergeUnavailable, ErrSecretsUnavailable
-	}
+	var private map[string]any
 
-	private, err := creds.DecryptForOrg(ctx, job.OrganizationUID, *job.ConfigPrivate)
-	if err != nil {
-		return SecretMergeFailed, fmt.Errorf("%w: %w", ErrSecretsUndecryptable, err)
+	switch {
+	case credentials.IsPlaintextEnvelope(*job.ConfigPrivate):
+		// The no-master-key structural-separation envelope: openable with no
+		// key, so a worker with encryption disabled keeps executing checks whose
+		// secrets were split out of the public config.
+		p, err := credentials.OpenPlaintext(*job.ConfigPrivate)
+		if err != nil {
+			return SecretMergeFailed, fmt.Errorf("%w: %w", ErrSecretsUndecryptable, err)
+		}
+
+		private = p
+	case creds == nil || !creds.Enabled():
+		return SecretMergeUnavailable, ErrSecretsUnavailable
+	default:
+		p, err := creds.DecryptForOrg(ctx, job.OrganizationUID, *job.ConfigPrivate)
+		if err != nil {
+			return SecretMergeFailed, fmt.Errorf("%w: %w", ErrSecretsUndecryptable, err)
+		}
+
+		private = p
 	}
 
 	job.Config = models.JSONMap(credentials.MergeConfig(job.Config, private))

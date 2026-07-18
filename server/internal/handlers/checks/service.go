@@ -2138,6 +2138,15 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		_ = json.Unmarshal([]byte(*check.ConfigPrivateKeys), &privateKeys)
 	}
 
+	// Defense-in-depth: strip any declared-secret key from the outgoing public
+	// config and union it into configPrivateKeys, regardless of storage mode.
+	// The storage split (applyEncryption) already keeps secrets out of the
+	// public column, but this protects not-yet-migrated rows and any future
+	// write path that forgets to split — the invariant "a secret value never
+	// leaves the API" holds even if the row is malformed. Mirrors
+	// stripSecretKeysForExport.
+	publicConfig, privateKeys := redactSecretConfig(check, privateKeys)
+
 	return CheckResponse{
 		UID:                       check.UID,
 		Name:                      check.Name,
@@ -2145,7 +2154,7 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		Description:               check.Description,
 		CheckGroupUID:             check.CheckGroupUID,
 		Type:                      &check.Type,
-		Config:                    check.Config,
+		Config:                    publicConfig,
 		ConfigPrivateKeys:         privateKeys,
 		Regions:                   check.Regions,
 		Enabled:                   &check.Enabled,
@@ -2584,6 +2593,60 @@ func stripSecretKeysForExport(check *models.Check) map[string]any {
 	}
 
 	return out
+}
+
+// redactSecretConfig computes the (publicConfig, configPrivateKeys) pair for a
+// read response: the check's Config with every declared-secret key (and every
+// key already advertised in ConfigPrivateKeys) stripped out, plus the union of
+// the already-advertised private keys with any secret key that was actually
+// present in the public config.
+//
+// This is the read-time defense-in-depth for convertCheckToResponse: the
+// storage split (applyEncryption) already keeps secrets out of the public
+// column in every mode, but this guarantees the "no secret value leaves the
+// API" invariant even for a row whose split was never applied — a
+// not-yet-migrated plaintext row, or a future write path that forgets to
+// split. A copy is returned so the cached model is never mutated.
+func redactSecretConfig(check *models.Check, privateKeys []string) (map[string]any, []string) {
+	secretSet := map[string]struct{}{}
+	if cfg, ok := registry.ParseConfig(checkerdef.CheckType(check.Type)); ok {
+		for _, k := range credentials.SecretFieldsFor(cfg) {
+			secretSet[k] = struct{}{}
+		}
+	}
+
+	advertised := make(map[string]struct{}, len(privateKeys))
+	for _, k := range privateKeys {
+		secretSet[k] = struct{}{}
+		advertised[k] = struct{}{}
+	}
+
+	public := make(map[string]any, len(check.Config))
+	for k, v := range check.Config {
+		if _, isSecret := secretSet[k]; isSecret {
+			// Present-but-secret: strip it from the public config and make sure
+			// it is advertised as a private key (placeholder dot), since the
+			// value has to live somewhere the operator can re-enter it.
+			advertised[k] = struct{}{}
+
+			continue
+		}
+
+		public[k] = v
+	}
+
+	if len(advertised) == 0 {
+		return public, nil
+	}
+
+	keys := make([]string, 0, len(advertised))
+	for k := range advertised {
+		keys = append(keys, k)
+	}
+
+	sort.Strings(keys)
+
+	return public, keys
 }
 
 // ImportChecks imports checks from an export document.
@@ -3200,27 +3263,34 @@ func (s *Service) applyEncryption(ctx context.Context, check *models.Check, effe
 		return setConfigPrivateKeys(check, private)
 	}
 
-	if !s.creds.Enabled() || len(private) == 0 {
+	if len(private) == 0 {
 		check.ConfigPrivate = nil
-		if len(private) == 0 {
-			check.ConfigPrivateKeys = nil
-		}
-		// Plaintext fallback: when no master key is configured the secrets
-		// must still be persisted so the check actually works. Put them
-		// back on Config and document the gap.
-		if !s.creds.Enabled() && len(private) > 0 {
-			for k, v := range private {
-				check.Config[k] = v
-			}
+		check.ConfigPrivateKeys = nil
 
-			return setConfigPrivateKeys(check, nil)
-		}
 		return nil
 	}
 
-	envelope, err := s.creds.EncryptForOrg(ctx, check.OrganizationUID, private)
-	if err != nil {
-		return fmt.Errorf("encrypt check config: %w", err)
+	// Secrets are ALWAYS split out of the public `Config` column and stored in
+	// `config_private`, in every mode — the public column must never carry a
+	// secret value (the leak this fixes). When a master key is configured we
+	// store an AES-GCM envelope; when it is not, we store a clearly-marked
+	// plaintext envelope (the documented V1 self-hosted fallback). Either way
+	// `config_private_keys` is set so the dashboard renders placeholder dots.
+	var (
+		envelope string
+		err      error
+	)
+
+	if s.creds.Enabled() {
+		envelope, err = s.creds.EncryptForOrg(ctx, check.OrganizationUID, private)
+		if err != nil {
+			return fmt.Errorf("encrypt check config: %w", err)
+		}
+	} else {
+		envelope, err = credentials.SealPlaintext(private)
+		if err != nil {
+			return fmt.Errorf("seal plaintext check config: %w", err)
+		}
 	}
 
 	check.ConfigPrivate = &envelope
@@ -3474,7 +3544,10 @@ func (s *Service) loadDecryptedConfig(ctx context.Context, check *models.Check) 
 		return out, nil
 	}
 
-	if !s.creds.Enabled() {
+	// A plaintext envelope opens without a master key; only AES-GCM / sealed
+	// envelopes require one. Gate the disabled error on that so a no-key
+	// self-hosted PATCH can still read (and thus preserve) its own secrets.
+	if credentials.RequiresKey(*check.ConfigPrivate) && !s.creds.Enabled() {
 		return nil, fmt.Errorf("decrypt check %s: %w", check.UID, credentials.ErrDisabled)
 	}
 
