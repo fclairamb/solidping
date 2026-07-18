@@ -141,7 +141,7 @@ func (s *Service) IssueAuthCode(ctx context.Context, grant *AuthCodeGrant) (stri
 	code := grant.OrgUID + authCodeSep + random
 
 	value := models.JSONMap{
-		"client_id":             grant.ClientID,
+		paramClientID:           grant.ClientID,
 		"user_uid":              grant.UserUID,
 		"redirect_uri":          grant.RedirectURI,
 		"scope":                 grant.Scope,
@@ -227,7 +227,7 @@ func (s *Service) ExchangeAuthCode(
 		return nil, errInvalidGrant
 	}
 
-	if stringFromValue(value, "client_id") != clientID || stringFromValue(value, "redirect_uri") != redirectURI {
+	if stringFromValue(value, paramClientID) != clientID || stringFromValue(value, "redirect_uri") != redirectURI {
 		return nil, errInvalidGrant
 	}
 
@@ -287,7 +287,7 @@ func (s *Service) ExchangeRefreshToken(
 		return nil, errInvalidGrant
 	}
 
-	grantClientID := stringFromValue(row.Properties, "client_id")
+	grantClientID := stringFromValue(row.Properties, paramClientID)
 	if clientID != "" && grantClientID != clientID {
 		return nil, errInvalidGrant
 	}
@@ -348,6 +348,8 @@ func (s *Service) RevokeGrant(ctx context.Context, refreshToken, clientID string
 	// miss covers "never existed" and "already revoked" alike — both no-ops.
 	row, err := s.db.GetUserTokenByToken(ctx, refreshToken)
 	if err != nil {
+		//nolint:nilerr // RFC 7009: an unknown/already-revoked token is a silent
+		// no-op, never surfaced as an error (that would make an oracle).
 		return false, nil
 	}
 
@@ -361,7 +363,7 @@ func (s *Service) RevokeGrant(ctx context.Context, refreshToken, clientID string
 	// Client binding: revoke only when the grant was issued to the presenting
 	// client. A mismatch (or an unbound grant) is a silent no-op so one client
 	// can't probe or drop another's tokens.
-	grantClientID := stringFromValue(row.Properties, "client_id")
+	grantClientID := stringFromValue(row.Properties, paramClientID)
 	if grantClientID == "" || grantClientID != clientID {
 		return false, nil
 	}
@@ -409,12 +411,12 @@ func (s *Service) mintTokens(ctx context.Context, input *mintInput) (*TokenResul
 	expiresAt := s.clock.Now().Add(refreshTokenTTL)
 	refreshRow.ExpiresAt = &expiresAt
 	refreshRow.Properties = models.JSONMap{
-		"client_id": input.clientID,
-		"scope":     input.scope,
-		"resource":  input.resource,
+		paramClientID: input.clientID,
+		"scope":       input.scope,
+		"resource":    input.resource,
 	}
 
-	if err := s.db.CreateUserToken(ctx, refreshRow); err != nil {
+	if err = s.db.CreateUserToken(ctx, refreshRow); err != nil {
 		return nil, fmt.Errorf("persist refresh token: %w", err)
 	}
 

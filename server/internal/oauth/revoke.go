@@ -26,7 +26,7 @@ func (h *Handler) Revoke(writer http.ResponseWriter, req bunrouter.Request) erro
 	}
 
 	token := req.Form.Get("token")
-	clientID := req.Form.Get("client_id")
+	clientID := req.Form.Get(paramClientID)
 
 	// Best-effort revocation. Any "nothing to do" outcome is indistinguishable
 	// from a successful revoke by design. A genuine backend error is logged but

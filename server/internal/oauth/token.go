@@ -43,7 +43,7 @@ func (h *Handler) Token(writer http.ResponseWriter, req bunrouter.Request) error
 // tokenAuthorizationCode handles grant_type=authorization_code.
 func (h *Handler) tokenAuthorizationCode(writer http.ResponseWriter, req bunrouter.Request) error {
 	code := req.Form.Get("code")
-	clientID := req.Form.Get("client_id")
+	clientID := req.Form.Get(paramClientID)
 	redirectURI := req.Form.Get("redirect_uri")
 	codeVerifier := req.Form.Get("code_verifier")
 
@@ -68,7 +68,7 @@ func (h *Handler) tokenAuthorizationCode(writer http.ResponseWriter, req bunrout
 // tokenRefresh handles grant_type=refresh_token (rotating refresh).
 func (h *Handler) tokenRefresh(writer http.ResponseWriter, req bunrouter.Request) error {
 	refreshToken := req.Form.Get("refresh_token")
-	clientID := req.Form.Get("client_id")
+	clientID := req.Form.Get(paramClientID)
 
 	if refreshToken == "" {
 		return h.writeTokenError(writer, http.StatusBadRequest, ErrInvalidRequest,

@@ -170,4 +170,8 @@ const (
 	// AuthMethodSecretPost marks a confidential client authenticating with a
 	// secret in the token-request body.
 	AuthMethodSecretPost = "client_secret_post"
+
+	// paramClientID is the OAuth `client_id` wire parameter name — used both as
+	// a form field and as the property key that binds a grant row to its client.
+	paramClientID = "client_id"
 )
