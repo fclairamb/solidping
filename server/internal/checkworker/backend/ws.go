@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -26,6 +27,9 @@ var (
 	ErrRequestTimeout     = errors.New("agent request timed out")
 	ErrServerError        = errors.New("server rejected the request")
 	ErrPassiveUnsupported = errors.New("passive checks are not supported on deported agents")
+	// ErrConnLost fails an in-flight request the moment its connection is
+	// retired, instead of waiting out the full requestTimeout.
+	ErrConnLost = errors.New("agent connection lost")
 	// ErrSealedForOthers is surfaced as the job error when a sealed blob cannot
 	// be decrypted by this agent — the fix is a credentials re-save.
 	ErrSealedForOthers = errors.New(
@@ -37,8 +41,16 @@ const (
 	wsPath = "/api/v1/agent/ws"
 	// requestTimeout bounds one claim/result round-trip.
 	requestTimeout = 30 * time.Second
-	// reconnectBackoff paces reconnection attempts.
+	// reconnectBackoff is the base reconnect delay and the lazy-dial min-spacing.
 	reconnectBackoff = 5 * time.Second
+	// maxReconnectBackoff caps the exponential reconnect backoff.
+	maxReconnectBackoff = 60 * time.Second
+	// defaultPingInterval is the agent-side keepalive cadence (mirrors the
+	// server's pingInterval); a failed ping means a half-open link.
+	defaultPingInterval = 25 * time.Second
+	// codeConnLost is the synthetic error-frame code retire delivers to in-flight
+	// waiters so request() can fail fast on a dropped connection.
+	codeConnLost = "AGENT_CONN_LOST"
 )
 
 // Identity is the persisted agent identity: its two keypairs plus the
@@ -58,18 +70,44 @@ type WSBackend struct {
 	enrollmentToken string
 	name            string
 
-	mu        sync.Mutex
-	identity  *Identity
-	conn      *websocket.Conn
-	workerUID string
-	pending   map[string]chan agents.ServerFrame
-	hints     []chan string
-	lastDial  time.Time
+	// dialMu serializes dialing so only one connect runs at a time regardless
+	// of which path triggers it (lazy request() vs. the reconnect supervisor).
+	dialMu sync.Mutex
+
+	mu                sync.Mutex
+	identity          *Identity
+	conn              *websocket.Conn
+	connectedAt       time.Time
+	workerUID         string
+	pending           map[string]chan agents.ServerFrame
+	hints             []chan string
+	lastDial          time.Time
+	supervisorStarted bool
+	// reconnectSignal wakes the reconnect supervisor after a drop (buffered so a
+	// drop that races an in-progress reconnect is coalesced, never lost).
+	reconnectSignal chan struct{}
+
+	// pingInterval is the keepalive cadence (overridable in tests).
+	pingInterval time.Duration
 
 	// onIdentityChange persists the identity after enrollment.
 	onIdentityChange func(*Identity)
 
 	logger *slog.Logger
+}
+
+// Option customizes a WSBackend at construction.
+type Option func(*WSBackend)
+
+// WithLogger overrides the default logger (used in tests to capture output).
+func WithLogger(logger *slog.Logger) Option {
+	return func(b *WSBackend) { b.logger = logger }
+}
+
+// WithPingInterval overrides the keepalive ping cadence (used in tests to force
+// fast half-open detection).
+func WithPingInterval(interval time.Duration) Option {
+	return func(b *WSBackend) { b.pingInterval = interval }
 }
 
 // NewWSBackend creates a WSBackend. identity must carry the agent's keypairs;
@@ -79,16 +117,25 @@ func NewWSBackend(
 	serverURL, enrollmentToken, name string,
 	identity *Identity,
 	onIdentityChange func(*Identity),
+	opts ...Option,
 ) *WSBackend {
-	return &WSBackend{
+	backend := &WSBackend{
 		serverURL:        serverURL,
 		enrollmentToken:  enrollmentToken,
 		name:             name,
 		identity:         identity,
 		pending:          map[string]chan agents.ServerFrame{},
+		reconnectSignal:  make(chan struct{}, 1),
+		pingInterval:     defaultPingInterval,
 		onIdentityChange: onIdentityChange,
 		logger:           slog.Default().With("component", "agent_ws_backend"),
 	}
+
+	for _, opt := range opts {
+		opt(backend)
+	}
+
+	return backend
 }
 
 // Identity returns a copy of the current identity (for persistence/logging).
@@ -271,6 +318,11 @@ func (b *WSBackend) request(ctx context.Context, frame *agents.ClientFrame) (*ag
 
 	b.mu.Lock()
 	conn := b.conn
+	if conn == nil {
+		b.mu.Unlock()
+
+		return nil, ErrConnLost
+	}
 	b.pending[id] = respCh
 	b.mu.Unlock()
 
@@ -284,7 +336,7 @@ func (b *WSBackend) request(ctx context.Context, frame *agents.ClientFrame) (*ag
 	defer cancel()
 
 	if err := wsjson.Write(writeCtx, conn, frame); err != nil {
-		b.dropConn(conn)
+		b.retire(ctx, conn, "write error", err)
 
 		return nil, fmt.Errorf("agent ws write: %w", err)
 	}
@@ -296,6 +348,10 @@ func (b *WSBackend) request(ctx context.Context, frame *agents.ClientFrame) (*ag
 		return nil, ErrRequestTimeout
 	case resp := <-respCh:
 		if resp.Type == agents.MsgTypeError {
+			if resp.Code == codeConnLost {
+				return nil, ErrConnLost
+			}
+
 			return nil, fmt.Errorf("%w: %s (%s)", ErrServerError, resp.Title, resp.Code)
 		}
 
@@ -303,9 +359,36 @@ func (b *WSBackend) request(ctx context.Context, frame *agents.ClientFrame) (*ag
 	}
 }
 
-// ensureConn dials (enrolling if needed) when no live connection exists.
-// Reconnection attempts are paced by reconnectBackoff.
+// ensureConn dials (enrolling if needed) when no live connection exists. The
+// first call also starts the reconnect supervisor, capturing the long-lived
+// worker ctx (Register is always the first caller) as a goroutine parameter so
+// nothing needs to store a context on the struct.
 func (b *WSBackend) ensureConn(ctx context.Context) error {
+	b.mu.Lock()
+	if !b.supervisorStarted {
+		b.supervisorStarted = true
+
+		go b.reconnectSupervisor(ctx)
+	}
+
+	conn := b.conn
+	b.mu.Unlock()
+
+	if conn != nil {
+		return nil
+	}
+
+	return b.dialOnce(ctx, true)
+}
+
+// dialOnce establishes one connection under dialMu so only a single dial ever
+// runs at a time, whichever path triggered it. When paced, it enforces the
+// lastDial min-spacing (the lazy request() path); the reconnect supervisor
+// passes paced=false because it owns its own backoff schedule.
+func (b *WSBackend) dialOnce(ctx context.Context, paced bool) error {
+	b.dialMu.Lock()
+	defer b.dialMu.Unlock()
+
 	b.mu.Lock()
 	if b.conn != nil {
 		b.mu.Unlock()
@@ -313,25 +396,30 @@ func (b *WSBackend) ensureConn(ctx context.Context) error {
 		return nil
 	}
 
-	if since := time.Since(b.lastDial); since < reconnectBackoff {
-		b.mu.Unlock()
+	lastDial := b.lastDial
+	enrolled := b.identity.AgentUID != ""
+	b.mu.Unlock()
 
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(reconnectBackoff - since):
-		}
+	if paced {
+		if since := time.Since(lastDial); since < reconnectBackoff {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(reconnectBackoff - since):
+			}
 
-		b.mu.Lock()
-		if b.conn != nil {
+			b.mu.Lock()
+			connected := b.conn != nil
 			b.mu.Unlock()
 
-			return nil
+			if connected {
+				return nil
+			}
 		}
 	}
 
+	b.mu.Lock()
 	b.lastDial = time.Now()
-	enrolled := b.identity.AgentUID != ""
 	b.mu.Unlock()
 
 	if enrolled {
@@ -339,6 +427,87 @@ func (b *WSBackend) ensureConn(ctx context.Context) error {
 	}
 
 	return b.dialEnroll(ctx)
+}
+
+// reconnectSupervisor is the single owner of proactive reconnection. It idles
+// until a drop wakes it, then reconnects with backoff, and stops on ctx
+// cancellation. A buffered reconnectSignal coalesces drops so one that races an
+// in-progress reconnect is re-checked rather than lost.
+func (b *WSBackend) reconnectSupervisor(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-b.reconnectSignal:
+		}
+
+		b.reconnectUntilConnected(ctx)
+	}
+}
+
+// reconnectUntilConnected dials with exponential backoff (first attempt
+// immediate) until the link is restored or ctx is cancelled.
+func (b *WSBackend) reconnectUntilConnected(ctx context.Context) {
+	var delay time.Duration
+
+	for {
+		b.mu.Lock()
+		connected := b.conn != nil
+		b.mu.Unlock()
+
+		if connected || ctx.Err() != nil {
+			return
+		}
+
+		if delay > 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(delay):
+			}
+		}
+
+		err := b.dialOnce(ctx, false)
+		if err == nil {
+			return
+		}
+
+		delay = nextReconnectDelay(delay)
+		b.logger.WarnContext(ctx, "agent reconnect attempt failed", "error", err, "retry_in", delay)
+	}
+}
+
+// nextReconnectDelay doubles the previous delay with a reconnectBackoff floor, a
+// maxReconnectBackoff cap, and ±20% jitter.
+func nextReconnectDelay(prev time.Duration) time.Duration {
+	next := prev * 2
+	if next < reconnectBackoff {
+		next = reconnectBackoff
+	}
+
+	if next > maxReconnectBackoff {
+		next = maxReconnectBackoff
+	}
+
+	return jitterDuration(next)
+}
+
+// jitterDuration applies ±20% jitter using the crypto/rand source already
+// imported for correlation ids.
+func jitterDuration(base time.Duration) time.Duration {
+	span := int64(base) / 5
+	if span <= 0 {
+		return base
+	}
+
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return base
+	}
+
+	delta := int64(binary.BigEndian.Uint64(buf[:])%uint64(2*span)) - span
+
+	return base + time.Duration(delta)
 }
 
 // dialEnroll performs the first connection: enrollment bearer, keypair public
@@ -394,10 +563,10 @@ func (b *WSBackend) dialEnroll(ctx context.Context) error {
 	b.mu.Lock()
 	b.identity.AgentUID = enrolled.AgentUID
 	b.identity.Region = enrolled.Region
-	b.workerUID = enrolled.WorkerUID
-	b.conn = conn
 	identityCopy := *b.identity
 	b.mu.Unlock()
+
+	b.activateConn(ctx, conn, enrolled.WorkerUID)
 
 	if b.onIdentityChange != nil {
 		b.onIdentityChange(&identityCopy)
@@ -408,9 +577,24 @@ func (b *WSBackend) dialEnroll(ctx context.Context) error {
 		"region", enrolled.Region,
 		"fingerprint", enrolled.Fingerprint)
 
-	go b.readPump(context.WithoutCancel(ctx), conn)
-
 	return nil
+}
+
+// activateConn publishes a freshly dialed connection and starts its read pump
+// and keepalive ping loop. Both loops run on WithoutCancel so a per-request ctx
+// cancellation cannot tear down the shared connection; they end when the conn
+// is retired (read error, ping failure, or an explicit drop).
+func (b *WSBackend) activateConn(ctx context.Context, conn *websocket.Conn, workerUID string) {
+	pumpCtx := context.WithoutCancel(ctx)
+
+	b.mu.Lock()
+	b.workerUID = workerUID
+	b.conn = conn
+	b.connectedAt = time.Now()
+	b.mu.Unlock()
+
+	go b.readPump(pumpCtx, conn)
+	go b.pingLoop(pumpCtx, conn)
 }
 
 // dialReconnect performs a signed-header reconnect.
@@ -449,14 +633,9 @@ func (b *WSBackend) dialReconnect(ctx context.Context) error {
 		return fmt.Errorf("read hello: %w", err)
 	}
 
-	b.mu.Lock()
-	b.workerUID = hello.WorkerUID
-	b.conn = conn
-	b.mu.Unlock()
+	b.activateConn(ctx, conn, hello.WorkerUID)
 
 	b.logger.InfoContext(ctx, "agent reconnected", "agent_uid", identity.AgentUID, "region", hello.Region)
-
-	go b.readPump(context.WithoutCancel(ctx), conn)
 
 	return nil
 }
@@ -494,13 +673,13 @@ const maxFrameBytes = 256 * 1024
 const CloseProtocolError websocket.StatusCode = 4400
 
 // readPump dispatches inbound frames: correlated responses to their waiters,
-// jobs-available to every hint subscriber. Ends (and drops the connection) on
+// jobs-available to every hint subscriber. Ends (and retires the connection) on
 // the first read error.
 func (b *WSBackend) readPump(ctx context.Context, conn *websocket.Conn) {
 	for {
 		var frame agents.ServerFrame
 		if err := wsjson.Read(ctx, conn, &frame); err != nil {
-			b.dropConn(conn)
+			b.retire(ctx, conn, "read error", err)
 
 			return
 		}
@@ -532,15 +711,86 @@ func (b *WSBackend) readPump(ctx context.Context, conn *websocket.Conn) {
 	}
 }
 
-// dropConn clears the active connection if it is still the given one.
-func (b *WSBackend) dropConn(conn *websocket.Conn) {
+// pingLoop keepalives one connection: a ping every pingInterval with a short
+// timeout. A failed ping means a half-open link — retire the conn and let the
+// supervisor reconnect. Bounds detection latency to seconds instead of the OS
+// TCP timeout. Ends when the conn is no longer the active one.
+func (b *WSBackend) pingLoop(ctx context.Context, conn *websocket.Conn) {
+	ticker := time.NewTicker(b.pingInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		pingCtx, cancel := context.WithTimeout(ctx, b.pingInterval/2)
+		err := conn.Ping(pingCtx)
+
+		cancel()
+
+		if err != nil {
+			b.retire(ctx, conn, "ping failed", err)
+
+			return
+		}
+
+		b.mu.Lock()
+		current := b.conn == conn
+		b.mu.Unlock()
+
+		if !current {
+			return
+		}
+	}
+}
+
+// retire tears down conn: it is idempotent per connection (it acts only while
+// conn is still the active one). It logs the loss at Warn with the uptime, wakes
+// every in-flight waiter with a CONN_LOST error so requests fail fast instead of
+// waiting out requestTimeout, and signals the reconnect supervisor.
+func (b *WSBackend) retire(ctx context.Context, conn *websocket.Conn, reason string, cause error) {
 	_ = conn.Close(websocket.StatusNormalClosure, "")
 
 	b.mu.Lock()
-	if b.conn == conn {
-		b.conn = nil
+	if b.conn != conn {
+		b.mu.Unlock()
+
+		return
 	}
+
+	b.conn = nil
+	uptime := time.Since(b.connectedAt)
+
+	waiters := make([]chan agents.ServerFrame, 0, len(b.pending))
+	for _, waiter := range b.pending {
+		waiters = append(waiters, waiter)
+	}
+
+	b.pending = map[string]chan agents.ServerFrame{}
+	signal := b.reconnectSignal
 	b.mu.Unlock()
+
+	b.logger.WarnContext(ctx, "agent connection lost",
+		"reason", reason,
+		"error", cause,
+		"uptime", uptime.Round(time.Millisecond).String())
+
+	for _, waiter := range waiters {
+		select {
+		case waiter <- agents.ServerFrame{Type: agents.MsgTypeError, Code: codeConnLost}:
+		default:
+		}
+	}
+
+	if signal != nil {
+		select {
+		case signal <- struct{}{}:
+		default:
+		}
+	}
 }
 
 // randomID returns a 16-hex-char correlation id / nonce.
