@@ -625,6 +625,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	oauthGroup.POST("/authorize", oauthHandler.ApproveAuthorize)
 	oauthGroup.POST("/token", oauthHandler.Token)
 	oauthGroup.POST("/register", oauthHandler.Register)
+	oauthGroup.POST("/revoke", oauthHandler.Revoke)
 
 	// Job routes (auth required for org-scoped routes)
 	jobHandler := jobs.NewHandler(s.jobSvc)

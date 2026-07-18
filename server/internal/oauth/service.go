@@ -323,6 +323,60 @@ func (s *Service) ExchangeRefreshToken(
 	})
 }
 
+// RevokeGrant implements RFC 7009 token revocation for an OAuth refresh grant.
+// It soft-deletes the oauth_refresh user_tokens row backing refreshToken, but
+// ONLY when that row's client_id binding equals the presented (non-empty)
+// clientID — a client may revoke only grants issued to itself.
+//
+// Every "nothing to do" outcome is a silent no-op by design, so the endpoint
+// can never be used as an oracle to probe token validity (RFC 7009 mandates a
+// 200 either way): an unknown or already-revoked token, an expired grant, a PAT
+// or session refresh token (wrong type — each is torn down through its own
+// surface), and a grant bound to a different client_id (hence a different
+// client/user) all leave the store untouched.
+//
+// The returned bool reports whether a live row was actually deleted; it exists
+// for tests and callers that want the fact — the HTTP handler ignores it and
+// always answers 200. A non-nil error is a genuine backend failure, never a
+// "token not found" signal.
+func (s *Service) RevokeGrant(ctx context.Context, refreshToken, clientID string) (bool, error) {
+	if refreshToken == "" || clientID == "" {
+		return false, nil
+	}
+
+	// A soft-deleted grant is filtered out by GetUserTokenByToken, so a lookup
+	// miss covers "never existed" and "already revoked" alike — both no-ops.
+	row, err := s.db.GetUserTokenByToken(ctx, refreshToken)
+	if err != nil {
+		return false, nil
+	}
+
+	// Only OAuth refresh grants are revocable through this endpoint. A PAT or
+	// session refresh token presented here is NOT deleted (RFC 7009 says never
+	// signal what happened, so this is a silent no-op rather than an error).
+	if row.Type != models.TokenTypeOAuthRefresh {
+		return false, nil
+	}
+
+	// Client binding: revoke only when the grant was issued to the presenting
+	// client. A mismatch (or an unbound grant) is a silent no-op so one client
+	// can't probe or drop another's tokens.
+	grantClientID := stringFromValue(row.Properties, "client_id")
+	if grantClientID == "" || grantClientID != clientID {
+		return false, nil
+	}
+
+	// Soft-delete is idempotent (compare-and-set on deleted_at): a concurrent
+	// rotation/revoke may have won the race, reported as deleted=false — still
+	// a 200 to the caller.
+	deleted, err := s.db.DeleteUserToken(ctx, row.UID)
+	if err != nil {
+		return false, fmt.Errorf("revoke grant: %w", err)
+	}
+
+	return deleted, nil
+}
+
 // mintInput carries the parameters needed to mint a token pair.
 type mintInput struct {
 	clientID string
