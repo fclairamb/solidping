@@ -93,7 +93,7 @@ func (h *Handler) ValidateCheck(
 			})
 	}
 
-	resp, err := h.svc.ValidateCheck(req.Context(), orgSlug, validateReq)
+	resp, err := h.svc.ValidateCheck(req.Context(), orgSlug, &validateReq)
 	if err != nil {
 		return h.WriteInternalError(writer, err)
 	}

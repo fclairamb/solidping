@@ -53,7 +53,7 @@ func (b *WSBackend) submitTunnelError(ctx context.Context, job *models.CheckJob,
 		Status:   int(models.ResultStatusError),
 		Duration: 0,
 		Output: map[string]any{
-			"error":                          "tunnel failed: " + cause.Error(),
+			checkerdef.OutputKeyError:        "tunnel failed: " + cause.Error(),
 			checkerdef.OutputKeyTunnelFailed: true,
 		},
 	})

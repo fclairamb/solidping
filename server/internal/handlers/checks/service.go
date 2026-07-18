@@ -343,7 +343,7 @@ func NewService(
 // is required when req.DependsOn is non-empty so parent slugs can be resolved
 // against the org's checks; for plain config validation it can be empty.
 func (s *Service) ValidateCheck(
-	ctx context.Context, orgSlug string, req ValidateCheckRequest,
+	ctx context.Context, orgSlug string, req *ValidateCheckRequest,
 ) (ValidateCheckResponse, error) {
 	checkType := checkerdef.CheckType(req.Type)
 

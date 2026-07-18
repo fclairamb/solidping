@@ -598,7 +598,7 @@ func (h *Handler) dropTunnelJob(ctx context.Context, state *connState, job *mode
 		WorkerUID: state.workerUID,
 		Status:    int(models.ResultStatusError),
 		Output: map[string]any{
-			"error":                          "tunnel failed: " + cause.Error(),
+			checkerdef.OutputKeyError:        "tunnel failed: " + cause.Error(),
 			checkerdef.OutputKeyTunnelFailed: true,
 			checkerdef.TunnelCheckUIDConfigKey: func() string {
 				if uid, ok := checkerdef.TunnelCheckUIDFrom(job.Config); ok {

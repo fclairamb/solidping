@@ -70,7 +70,7 @@ func (h *Handler) toolValidateCheck(ctx context.Context, orgSlug string, args ma
 	if config == nil {
 		return errorResult("config is required")
 	}
-	result, err := h.checksSvc.ValidateCheck(ctx, orgSlug, checks.ValidateCheckRequest{
+	result, err := h.checksSvc.ValidateCheck(ctx, orgSlug, &checks.ValidateCheckRequest{
 		Type:   typeStr,
 		Config: config,
 	})
