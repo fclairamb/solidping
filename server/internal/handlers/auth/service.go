@@ -333,10 +333,11 @@ type TokenInfo struct {
 	LastUsedAt   *time.Time `json:"lastUsedAt,omitempty"`
 	LastActiveAt *time.Time `json:"lastActiveAt,omitempty"`
 	ExpiresAt    *time.Time `json:"expiresAt,omitempty"`
-	// IsCurrent is set only on `refresh`-type rows (sessions): true when this
-	// row is the one that issued the caller's own access token (its uid
-	// matches the caller's Claims.RefreshUID). Always false for pat/
-	// oauth_refresh rows.
+	// IsCurrent is set on the row that issued the caller's own access token —
+	// its uid matches the caller's Claims.RefreshUID. That covers both a
+	// session `refresh` row (the dashboard's "this device") and an
+	// `oauth_refresh` grant (an MCP client / CLI identifying the grant it
+	// rides on). Always false for `pat` rows, which never back a RefreshUID.
 	IsCurrent bool `json:"isCurrent,omitempty"`
 	// CreatedWith surfaces the login-method forensics recorded at token
 	// creation (properties.created_with) as camelCase fields. Nil when the
@@ -1511,9 +1512,10 @@ func (s *Service) getOrganizationsForUser(ctx context.Context, userUID string) (
 
 // tokenToInfo projects a models.UserToken into the API's TokenInfo shape.
 // callerRefreshUID is the requesting user's own Claims.RefreshUID (empty for
-// PAT-authenticated callers) — used to flag isCurrent on session (refresh)
-// rows; orgSlug is filled in by the caller when known (org-scoped listing
-// already has it in hand; the all-orgs listing resolves it per-token).
+// PAT-authenticated callers) — used to flag isCurrent on the caller's own
+// session (refresh) row or OAuth grant (oauth_refresh) row; orgSlug is filled
+// in by the caller when known (org-scoped listing already has it in hand; the
+// all-orgs listing resolves it per-token).
 func tokenToInfo(tok *models.UserToken, orgSlug, callerRefreshUID string) TokenInfo {
 	name := ""
 	if tok.Properties != nil {
@@ -1531,7 +1533,11 @@ func tokenToInfo(tok *models.UserToken, orgSlug, callerRefreshUID string) TokenI
 		LastUsedAt:   tok.LastActiveAt,
 		LastActiveAt: tok.LastActiveAt,
 		ExpiresAt:    tok.ExpiresAt,
-		IsCurrent:    tok.Type == models.TokenTypeRefresh && callerRefreshUID != "" && tok.UID == callerRefreshUID,
+		// A refresh (session) or oauth_refresh (grant) row whose uid matches the
+		// caller's RefreshUID is the credential the caller is riding on. PATs
+		// never back a RefreshUID, so they can never be flagged current.
+		IsCurrent: callerRefreshUID != "" && tok.UID == callerRefreshUID &&
+			(tok.Type == models.TokenTypeRefresh || tok.Type == models.TokenTypeOAuthRefresh),
 	}
 
 	info.CreatedWith = extractCreatedWith(tok.Properties)
@@ -1911,16 +1917,20 @@ func (s *Service) generateAccessToken(userUID, orgSlug, role, refreshUID string)
 //     replayed at other SolidPing surfaces, and
 //   - the consented scopes (mcp / mcp:read), which the MCP handler enforces.
 //
-// ttl is supplied by the caller so the OAuth service controls the access-token
-// lifetime independently of the dashboard's session expiry.
+// refreshUID is the user_tokens.uid of the oauth_refresh grant backing this
+// access token — embedded in Claims.RefreshUID so a client authenticated with
+// only the access token can identify (isCurrent) and self-revoke the grant it
+// rides on. ttl is supplied by the caller so the OAuth service controls the
+// access-token lifetime independently of the dashboard's session expiry.
 func (s *Service) GenerateMCPAccessToken(
-	userUID, orgSlug string, scopes []string, audience string, ttl time.Duration,
+	userUID, orgSlug string, scopes []string, audience string, ttl time.Duration, refreshUID string,
 ) (string, error) {
 	now := time.Now()
 	claims := &Claims{
-		UserUID: userUID,
-		OrgSlug: orgSlug,
-		Scopes:  scopes,
+		UserUID:    userUID,
+		OrgSlug:    orgSlug,
+		Scopes:     scopes,
+		RefreshUID: refreshUID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 			IssuedAt:  jwt.NewNumericDate(now),

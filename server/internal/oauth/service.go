@@ -336,15 +336,13 @@ type mintInput struct {
 // mintTokens issues an audience-bound JWT access token (via the auth service's
 // signing key) and a persisted rotating refresh grant (a user_tokens row of
 // type oauth_refresh; the client/scope/resource bindings ride in properties).
+//
+// The refresh grant is persisted FIRST so its UID can be embedded in the access
+// token's Claims.RefreshUID: that back-link is what lets a client holding only
+// the access token identify (isCurrent) and self-revoke the grant it rides on.
+// Rotation re-links for free because ExchangeRefreshToken funnels through here.
 func (s *Service) mintTokens(ctx context.Context, input *mintInput) (*TokenResult, error) {
 	scopes := ParseScopes(input.scope)
-
-	accessToken, err := s.authSvc.GenerateMCPAccessToken(
-		input.userUID, input.orgSlug, scopes, input.resource, accessTokenTTL,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("mint access token: %w", err)
-	}
 
 	refreshValue, err := randomToken()
 	if err != nil {
@@ -364,6 +362,13 @@ func (s *Service) mintTokens(ctx context.Context, input *mintInput) (*TokenResul
 
 	if err := s.db.CreateUserToken(ctx, refreshRow); err != nil {
 		return nil, fmt.Errorf("persist refresh token: %w", err)
+	}
+
+	accessToken, err := s.authSvc.GenerateMCPAccessToken(
+		input.userUID, input.orgSlug, scopes, input.resource, accessTokenTTL, refreshRow.UID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("mint access token: %w", err)
 	}
 
 	return &TokenResult{
