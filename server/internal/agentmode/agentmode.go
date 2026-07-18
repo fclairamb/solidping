@@ -25,6 +25,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker"
 	"github.com/fclairamb/solidping/server/internal/checkworker/backend"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 )
 
 // ErrNoIdentityNoToken is returned when the agent has no persisted identity
@@ -76,6 +77,13 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	wsBackend := backend.NewWSBackend(
 		cfg.Agent.ServerURL, cfg.Agent.EnrollmentToken, name, identity, persist,
 	)
+
+	// Wire the SSH-tunnel resolver to this agent's in-memory unsealed snapshots.
+	// The cloud dispatch path wires a DB-backed resolver in app/server.go; an
+	// agent has no DB, so it resolves from the sealed tunnel blocks it unseals on
+	// claim (spec 2026-07-18-07). Without this, tunneled jobs fail every
+	// execution with "resolver is not configured".
+	sshtunnel.ResolverFunc = wsBackend.ResolveTunnel
 
 	logger.InfoContext(ctx, "Starting deported agent",
 		"server", cfg.Agent.ServerURL,

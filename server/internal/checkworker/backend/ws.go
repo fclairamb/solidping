@@ -16,6 +16,8 @@ import (
 	"github.com/coder/websocket/wsjson"
 
 	"github.com/fclairamb/solidping/server/internal/agents"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkssh"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
@@ -34,6 +36,16 @@ var (
 	// be decrypted by this agent — the fix is a credentials re-save.
 	ErrSealedForOthers = errors.New(
 		"credentials not sealed for this agent — re-save the check's credentials")
+	// ErrTunnelSealedForOthers is surfaced as the job error when a tunnel block's
+	// sealed envelope cannot be decrypted by this agent (spec 2026-07-18-07). The
+	// SSH check is not, in fact, sealed to this agent's region.
+	ErrTunnelSealedForOthers = errors.New(
+		"ssh tunnel credentials not sealed for this agent — " +
+			"allocate the SSH check to this agent's region and re-save its credentials")
+	// ErrTunnelNoCredentials is surfaced when an unsealed tunnel block has no
+	// usable auth material (no username, or no password/private_key).
+	ErrTunnelNoCredentials = errors.New(
+		"ssh tunnel check needs a username and a password or private_key")
 )
 
 const (
@@ -93,7 +105,21 @@ type WSBackend struct {
 	// onIdentityChange persists the identity after enrollment.
 	onIdentityChange func(*Identity)
 
+	// tunnelMu guards the in-memory unsealed SSH-tunnel snapshots. They exist
+	// ONLY in memory, keyed by tunnel check UID, lifecycle-bound to the claimed
+	// jobs that carry them (registered on claim, released on result submission).
+	tunnelMu sync.Mutex
+	tunnels  map[string]*tunnelSnapshot
+
 	logger *slog.Logger
+}
+
+// tunnelSnapshot is one in-memory, unsealed SSH-tunnel endpoint. refs counts how
+// many currently-claimed jobs reference this tunnel check so the plaintext is
+// dropped as soon as the last one finishes.
+type tunnelSnapshot struct {
+	cfg  *checkssh.SSHConfig
+	refs int
 }
 
 // Option customizes a WSBackend at construction.
@@ -128,6 +154,7 @@ func NewWSBackend(
 		reconnectSignal:  make(chan struct{}, 1),
 		pingInterval:     defaultPingInterval,
 		onIdentityChange: onIdentityChange,
+		tunnels:          map[string]*tunnelSnapshot{},
 		logger:           slog.Default().With("component", "agent_ws_backend"),
 	}
 
@@ -232,6 +259,24 @@ func (b *WSBackend) claim(ctx context.Context, maxJobs int, checkUID string) ([]
 			job.ConfigSealed = nil // plaintext stays in memory only
 		}
 
+		// A tunneled job carries its SSH check's sealed endpoint: unseal it with
+		// the agent identity next to the job's own envelope, keep the plaintext
+		// snapshot in memory only, and register it so the worker loop's resolver
+		// can find it. Unseal failure is reported like a job-envelope failure —
+		// a clear error result, dropped from the batch, never run half-armed.
+		if wireJob.Tunnel != nil {
+			cfg, tunErr := buildTunnelConfig(b.identityX25519(), wireJob.Tunnel)
+			if tunErr != nil {
+				b.logger.WarnContext(ctx, "ssh tunnel not available on this agent",
+					"check_uid", job.CheckUID, "tunnel_check_uid", wireJob.Tunnel.CheckUID, "error", tunErr)
+				b.submitTunnelError(ctx, job, tunErr)
+
+				continue
+			}
+
+			b.registerTunnel(wireJob.Tunnel.CheckUID, cfg)
+		}
+
 		jobs = append(jobs, job)
 	}
 
@@ -259,6 +304,13 @@ func (b *WSBackend) SubmitResult(
 	_ string,
 	req *SubmitResultRequest,
 ) error {
+	// Release the in-memory tunnel snapshot when a tunneled job finishes — its
+	// lifecycle is bound to the job. Safe on non-tunneled jobs (no-op) and on a
+	// tunnel that was never registered (a missing-block drop unregisters nothing).
+	if tunnelUID, ok := checkerdef.TunnelCheckUIDFrom(job.Config); ok {
+		defer b.unregisterTunnel(tunnelUID)
+	}
+
 	_, err := b.request(ctx, &agents.ClientFrame{
 		Type:     agents.MsgTypeResult,
 		JobUID:   job.UID,

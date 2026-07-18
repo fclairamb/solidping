@@ -46,6 +46,13 @@ const (
 var (
 	// ErrNotConfigured means no resolver was wired — a startup/test wiring bug.
 	ErrNotConfigured = errors.New("ssh tunnel: resolver is not configured")
+	// ErrNotAvailableOnAgent means a deported agent received a tunneled job with
+	// no unsealed tunnel snapshot for it (version skew, or a race with the
+	// dispatch-time drop). Distinct from ErrNotConfigured's wiring-bug flavor:
+	// the fix is allocating the SSH check to this agent's region (spec
+	// 2026-07-18-07, decision 7).
+	ErrNotAvailableOnAgent = errors.New(
+		"ssh tunnel: not available on this agent (the SSH check must be allocated to this agent's region)")
 	// ErrCheckNotFound means the referenced check does not exist in the org
 	// (or was deleted). Cross-org references land here too: the lookup is
 	// org-scoped, so another org's check is simply invisible.
