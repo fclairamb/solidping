@@ -4,16 +4,46 @@ package checkmysql
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql" // MySQL driver registration
+	"github.com/go-sql-driver/mysql" // MySQL driver registration + dial registry
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
 const microsecondsPerMilli = 1000.0
+
+// tunnelNetwork is the single well-known go-sql-driver network name whose dial
+// func routes through the SSH tunnel. go-sql-driver's dial registry is a
+// process-global map that never shrinks, so we register ONE entry once (in
+// init) and select it per-check via the DSN — never one entry per check.
+const tunnelNetwork = "solidping-tunnel"
+
+var errNoTunnelDialer = errors.New("mysql tunnel dial: no tunnel dialer on connection context")
+
+//nolint:gochecknoinits // one-time process-global registration; the dial func pulls the per-check tunnel dialer from the connection context, so a single registration serves every tunneled check.
+func init() {
+	mysql.RegisterDialContext(tunnelNetwork, func(ctx context.Context, addr string) (net.Conn, error) {
+		dialer := checkerdef.TunnelDialerFrom(ctx)
+		if dialer == nil {
+			return nil, errNoTunnelDialer
+		}
+
+		return dialer.DialContext(ctx, "tcp", addr)
+	})
+}
+
+// tunneledDSN rewrites the DSN's `tcp` protocol to the registered tunnel network
+// so go-sql-driver dials through the bastion via the globally-registered dial
+// func (which reads the tunnel dialer off the connection context). buildDSN
+// always emits `@tcp(`, so this single replacement is exact.
+func tunneledDSN(dsn string) string {
+	return strings.Replace(dsn, "@tcp(", "@"+tunnelNetwork+"(", 1)
+}
 
 // MySQLChecker implements the Checker interface for MySQL/MariaDB database checks.
 type MySQLChecker struct{}
@@ -107,7 +137,16 @@ func (c *MySQLChecker) Execute(
 		checkerdef.OutputKeyPort: params.port,
 	}
 
-	conn, err := sql.Open("mysql", params.dsn)
+	// Tunneled: select the registered tunnel network in the DSN so go-sql-driver
+	// dials through the bastion (the raw host:port is handed to the dial func, so
+	// the bastion resolves the hostname). Untunneled, the DSN is unchanged.
+	dsn := params.dsn
+	if checkerdef.TunnelDialerFrom(ctx) != nil {
+		dsn = tunneledDSN(params.dsn)
+		output["tunneled"] = true
+	}
+
+	conn, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,

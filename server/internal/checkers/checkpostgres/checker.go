@@ -5,15 +5,58 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq" // PostgreSQL driver registration
+	"github.com/lib/pq" // PostgreSQL driver registration + connector API
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
 const microsecondsPerMilli = 1000.0
+
+// pqTunnelDialer adapts a checkerdef.ContextDialer to lib/pq's Dialer +
+// DialerContext interfaces, binding the execution context so every connection is
+// dialed through the SSH tunnel. pq hands it the raw host:port from the DSN (no
+// local resolution), so the bastion resolves the hostname.
+type pqTunnelDialer struct {
+	ctx    context.Context
+	dialer checkerdef.ContextDialer
+}
+
+func (d pqTunnelDialer) Dial(network, address string) (net.Conn, error) {
+	return d.dialer.DialContext(d.ctx, network, address)
+}
+
+func (d pqTunnelDialer) DialTimeout(network, address string, timeout time.Duration) (net.Conn, error) {
+	ctx, cancel := context.WithTimeout(d.ctx, timeout)
+	defer cancel()
+
+	return d.dialer.DialContext(ctx, network, address)
+}
+
+func (d pqTunnelDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	return d.dialer.DialContext(ctx, network, address)
+}
+
+// openDB opens the PostgreSQL handle. Tunneled, it builds a pq connector wired to
+// dial through the bastion; untunneled, it is the byte-for-byte `sql.Open`.
+func openDB(ctx context.Context, connStr string) (*sql.DB, error) {
+	dialer := checkerdef.TunnelDialerFrom(ctx)
+	if dialer == nil {
+		return sql.Open("postgres", connStr)
+	}
+
+	connector, err := pq.NewConnector(connStr)
+	if err != nil {
+		return nil, err
+	}
+
+	connector.Dialer(pqTunnelDialer{ctx: ctx, dialer: dialer})
+
+	return sql.OpenDB(connector), nil
+}
 
 // PostgreSQLChecker implements the Checker interface for PostgreSQL database checks.
 type PostgreSQLChecker struct{}
@@ -109,7 +152,11 @@ func (c *PostgreSQLChecker) Execute(
 		checkerdef.OutputKeyPort: params.port,
 	}
 
-	conn, err := sql.Open("postgres", params.connStr)
+	if checkerdef.TunnelDialerFrom(ctx) != nil {
+		output["tunneled"] = true
+	}
+
+	conn, err := openDB(ctx, params.connStr)
 	if err != nil {
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
