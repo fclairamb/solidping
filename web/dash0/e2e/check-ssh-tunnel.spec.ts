@@ -34,7 +34,8 @@ async function createBastion(
       type: "ssh",
       config: {
         host: "bastion.example.com",
-        expected_fingerprint: "SHA256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
+        expected_fingerprint:
+          "SHA256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
         username: "probe",
         password: "s3cret",
       },
@@ -131,5 +132,87 @@ test.describe("SSH tunnel selector", () => {
     await expect(page.getByTestId("check-tunnel-select")).toContainText(
       "E2E Bastion",
     );
+  });
+});
+
+// Coverage for spec 2026-07-18-01: UX gaps in the declare-and-use loop above.
+test.describe("SSH tunnel UX gaps", () => {
+  test("empty-state link deep-links to a preselected SSH check form", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Force TunnelSelect's empty state regardless of how many SSH checks
+    // already exist in the shared "test" org (other tests in this file, or a
+    // long-lived dev DB, may have created bastions): stub the exact query the
+    // selector's candidate list depends on (`useChecks(org, { type: "ssh" })`)
+    // to return zero results, deterministically.
+    await page.route(/\/api\/v1\/orgs\/test\/checks\?[^#]*type=ssh/, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [] }),
+      }),
+    );
+
+    await page.goto("orgs/test/checks/new?checkType=http");
+    await page.waitForLoadState("networkidle");
+    await expandSection(page, "section-advanced-trigger");
+
+    const emptyStateLink = page.getByTestId("tunnel-empty-create-link");
+    await expect(emptyStateLink).toBeVisible();
+    await expect(emptyStateLink).toHaveText(
+      "Create an SSH check for your bastion",
+    );
+
+    await emptyStateLink.click();
+    await page.waitForURL(/checkType=ssh/);
+    await page.waitForLoadState("networkidle");
+
+    // The new-check form landed with SSH preselected — no picking a type by
+    // hand, and no half-filled http/tcp form left behind.
+    await expect(page.getByTestId("check-type-select")).toContainText("SSH");
+  });
+
+  test("checks list shows a tunnel indicator naming the bastion", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    const bastionName = `E2E List Bastion ${Date.now()}`;
+    const bastion = await createBastion(page, token, bastionName);
+
+    const checkName = `E2E List Tunneled ${Date.now()}`;
+    const createResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/checks`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          name: checkName,
+          slug: checkName.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+          type: "http",
+          config: {
+            url: "http://internal-list.private/health",
+            tunnelCheckUid: bastion.uid,
+          },
+        },
+      },
+    );
+    expect(createResp.status()).toBe(201);
+
+    await page.goto("orgs/test/checks");
+    await page.waitForLoadState("networkidle");
+
+    // Narrow the paginated list to just this check.
+    await page.getByPlaceholder("Search checks...").fill(checkName);
+    const row = page.getByRole("row").filter({ hasText: checkName });
+    await expect(row).toBeVisible();
+
+    const indicator = row.getByTestId("check-tunnel-indicator");
+    await expect(indicator).toBeVisible();
+
+    await indicator.hover();
+    await expect(page.getByText(`via ${bastionName}`)).toBeVisible();
   });
 });
