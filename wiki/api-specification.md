@@ -587,12 +587,13 @@ handshake, message table, close codes — documented in prose at
 `web/docs/docs/features/live-updates.md`. Summary:
 
 - Registered **outside** the standard auth middleware (browsers can't send
-  headers at WS-upgrade time): the route always accepts the upgrade, then
-  authenticates in-handler via a pre-auth `Authorization` header/cookie, or a
-  first `{"type":"auth","token":"..."}` message within
-  `SP_REALTIME_AUTH_GRACE` (5s default). Non-members close `4403`; a
-  disabled/invalid auth closes `4401`; `SP_REALTIME_ENABLED=false` closes
-  `4404`.
+  headers at WS-upgrade time): authenticates in-handler **before** the
+  upgrade, via `Authorization: Bearer` header, a `bearer.<jwt>`
+  `Sec-WebSocket-Protocol` entry (the SPA's transport — offered alongside
+  `solidping.v2`, which the server negotiates back), or the `access_token`
+  cookie, in that order. A bad/missing token is an HTTP `401` (no upgrade,
+  no in-band auth message). Non-members close `4403`; mid-connection token
+  expiry closes `4401`; `SP_REALTIME_ENABLED=false` closes `4404`.
 - **Default-silent**: a connection receives nothing until it sends
   `{"type":"subscribe","entity":...}` — `check` (+ `uid`) for one check, or
   `checks`/`incidents`/`events`/`jobs` for the matching org-wide collection.

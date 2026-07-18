@@ -425,6 +425,94 @@ func TestServe_HeaderTokenWinsOverCookie(t *testing.T) {
 	r.Equal("hello", hello.Type)
 }
 
+// TestServe_SubprotocolBearerAuthenticates covers the SPA browser path: the
+// access token rides in a bearer.* Sec-WebSocket-Protocol entry (browsers
+// cannot set an Authorization header on a WebSocket) and the server negotiates
+// the plain solidping.v2 entry back — without that echo a browser aborts the
+// connection.
+func TestServe_SubprotocolBearerAuthenticates(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	fx := newWSFixture(t, wsFixtureOpts{})
+	fx.seedOrgAndUser(t)
+	token := fx.token(t)
+
+	conn, resp, err := websocket.Dial(t.Context(), fx.wsURL, &websocket.DialOptions{
+		Subprotocols: []string{"bearer." + token, "solidping.v2"},
+	})
+	r.NoError(err)
+	if resp != nil && resp.Body != nil {
+		t.Cleanup(func() { _ = resp.Body.Close() })
+	}
+	t.Cleanup(func() { _ = conn.CloseNow() })
+
+	r.Equal("solidping.v2", conn.Subprotocol(),
+		"the server must negotiate the plain subprotocol back or a browser aborts the connection")
+
+	hello := readJSON[helloFrame](t, conn)
+	r.Equal("hello", hello.Type)
+}
+
+// TestServe_SubprotocolBearerWinsOverForeignCookie is the regression test for
+// the localhost foreign-cookie collision: cookies ignore ports, so another
+// app on the same host can plant its own access_token cookie (observed with
+// iss=realassets) that permanently 401s a cookie-authenticated handshake while
+// REST — authenticated by header — keeps working. The bearer.* subprotocol
+// entry must win over the (foreign, invalid) cookie.
+func TestServe_SubprotocolBearerWinsOverForeignCookie(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	fx := newWSFixture(t, wsFixtureOpts{})
+	fx.seedOrgAndUser(t)
+	token := fx.token(t)
+
+	conn, resp, err := websocket.Dial(t.Context(), fx.wsURL, &websocket.DialOptions{
+		Subprotocols: []string{"bearer." + token, "solidping.v2"},
+		HTTPHeader:   http.Header{"Cookie": []string{"access_token=foreign-apps-invalid-token"}},
+	})
+	r.NoError(err)
+	if resp != nil && resp.Body != nil {
+		t.Cleanup(func() { _ = resp.Body.Close() })
+	}
+	t.Cleanup(func() { _ = conn.CloseNow() })
+
+	hello := readJSON[helloFrame](t, conn)
+	r.Equal("hello", hello.Type)
+}
+
+// TestServe_InvalidSubprotocolTokenRejectedWith401 covers an invalid token in
+// the bearer.* subprotocol entry: rejected at the HTTP level with 401 (no
+// silent fall-through to the cookie).
+func TestServe_InvalidSubprotocolTokenRejectedWith401(t *testing.T) {
+	t.Parallel()
+
+	fx := newWSFixture(t, wsFixtureOpts{})
+	fx.seedOrgAndUser(t)
+
+	fx.dialExpect401(t, &websocket.DialOptions{
+		Subprotocols: []string{"bearer." + "not-a-valid-token", "solidping.v2"},
+	})
+}
+
+// TestServe_HeaderWinsOverSubprotocol pins precedence: a present-but-invalid
+// Authorization header is rejected even when a valid bearer.* subprotocol
+// entry is offered (mirrors middleware.extractToken — a malformed header never
+// falls back).
+func TestServe_HeaderWinsOverSubprotocol(t *testing.T) {
+	t.Parallel()
+
+	fx := newWSFixture(t, wsFixtureOpts{})
+	fx.seedOrgAndUser(t)
+	token := fx.token(t)
+
+	fx.dialExpect401(t, &websocket.DialOptions{
+		Subprotocols: []string{"bearer." + token, "solidping.v2"},
+		HTTPHeader:   http.Header{"Authorization": []string{"Bearer not-a-valid-token"}},
+	})
+}
+
 // TestServe_FirstMessageAuthFrameIsNotAuthentication pins the removal of the
 // in-band auth path: the socket is already authenticated at the HTTP level, so
 // a first-message {"type":"auth"} frame is treated as any other frame — it hits

@@ -73,22 +73,30 @@ compat); an unknown client→server type gets an `error` reply.
 
 Authentication happens at the **HTTP level, before the WebSocket upgrade** —
 the same way as any other authenticated endpoint. The upgrade request is
-authenticated from either transport (both are supported and coexist):
+authenticated from any of these transports (all supported, first match wins):
 
-- **`Authorization: Bearer <jwt>` header** (CLI, tests, `curl`/`websocat`).
-- **`access_token` cookie** (browsers, which cannot set an `Authorization`
-  header on a WebSocket upgrade — the browser attaches this same-origin cookie
-  automatically). The dashboard keeps the cookie fresh on every login/refresh.
+1. **`Authorization: Bearer <jwt>` header** (CLI, tests, `curl`/`websocat`).
+2. **`Sec-WebSocket-Protocol: bearer.<jwt>, solidping.v2`** — the dashboard's
+   transport. Browsers cannot set an `Authorization` header on a WebSocket
+   upgrade, so the token rides in a `bearer.`-prefixed subprotocol entry
+   (offered alongside the plain `solidping.v2` entry, which the server
+   negotiates back). This uses the same token as the REST calls, so the two
+   can never disagree.
+3. **`access_token` cookie** (fallback for cookie-based clients). Note that
+   cookies are shared across ports on a host, so another app on the same
+   domain can shadow this cookie — which is why the dashboard uses the
+   subprotocol instead.
 
-If both are present, the header wins. Tokens never go in the URL, and there is
-**no in-band `auth` message** — a token supplied any other way is ignored.
+Tokens never go in the URL, and there is **no in-band `auth` message** — a
+token supplied any other way is ignored. A present-but-malformed
+`Authorization` header is rejected without falling back to the other
+transports.
 
 If the token is **missing, invalid, or expired**, the server responds with a
 normal **HTTP `401`** and does not upgrade. An explicit-auth client (header)
 reads that status directly. A browser cannot read the status of a failed
 upgrade — it sees only a generic `1006` — so the dashboard treats any
-pre-`hello` failure as a retryable drop, refreshes its token, and reconnects
-(the refresh re-mints a live `access_token` cookie for the next attempt).
+pre-`hello` failure as a retryable drop, refreshes its token, and reconnects.
 
 Once authenticated, the server replies `hello`. Organization-scope and
 feature-disabled checks still run *after* the upgrade and are reported as
@@ -144,9 +152,9 @@ Then subscribe to whatever you're interested in:
 {"type":"update","entity":"checks","kinds":["results"]}
 ```
 
-From a browser, no header is needed — the `access_token` cookie set at login
-is attached to the same-origin upgrade automatically. Other clients that
-prefer a cookie can send `Cookie: access_token=<jwt>` instead of the
+From browser JavaScript, pass the token via the subprotocol list instead of a
+header: `new WebSocket(url, ["bearer." + token, "solidping.v2"])`. Clients
+that prefer a cookie can send `Cookie: access_token=<jwt>` instead of the
 `Authorization` header. A missing or invalid token is rejected with an HTTP
 `401` before the upgrade; there is no in-band `auth` message.
 

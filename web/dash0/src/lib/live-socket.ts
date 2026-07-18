@@ -131,7 +131,7 @@ async function waitForApiQuiet(signal: AbortSignal): Promise<void> {
  * server/internal/handlers/realtimews). Any other close code (including the
  * generic 1006 a browser reports for network drops) reconnects with backoff. */
 /** Org access denied. NOT terminal: a cross-org navigation can leave the
- * handshake cookie scoped to the previous org, so the client refreshes the
+ * handshake token scoped to the previous org, so the client refreshes the
  * session once and redials before giving up (see run()). */
 const CLOSE_FORBIDDEN = 4403;
 const CLOSE_DISABLED = 4404;
@@ -146,7 +146,14 @@ const CLOSE_TOKEN_EXPIRED = 4401;
 
 /** Minimal shape of the WebSocket constructor this client depends on —
  * lets tests inject a fake implementation without a browser/jsdom runtime. */
-export type WebSocketFactory = (url: string) => WebSocketLike;
+export type WebSocketFactory = (url: string, protocols?: string[]) => WebSocketLike;
+
+/** Subprotocol the server negotiates back when the client authenticates via
+ * the bearer.* subprotocol entry. Mirrors wsSubprotocol in
+ * server/internal/handlers/realtimews/handshake.go. */
+export const WS_SUBPROTOCOL = "solidping.v2";
+/** Prefix of the subprotocol entry that carries the access token. */
+const BEARER_SUBPROTOCOL_PREFIX = "bearer.";
 
 export interface WebSocketLike {
   onopen: (() => void) | null;
@@ -157,8 +164,8 @@ export interface WebSocketLike {
   close(): void;
 }
 
-function defaultFactory(url: string): WebSocketLike {
-  return new WebSocket(url) as unknown as WebSocketLike;
+function defaultFactory(url: string, protocols?: string[]): WebSocketLike {
+  return new WebSocket(url, protocols) as unknown as WebSocketLike;
 }
 
 /** A live connection's public send surface: subscribe/unsubscribe. Frames
@@ -175,12 +182,16 @@ export interface LiveSocketHandle {
 /**
  * Opens the live hint WebSocket for an org and keeps it open: reconnects
  * with jittered capped backoff on drops. Authentication happens at the HTTP
- * level — the browser attaches the `access_token` cookie to the same-origin
- * handshake automatically, so there is no in-band `auth` frame. The run() loop
- * still re-reads the stored token on every attempt to skip dialing while
- * logged out and to refresh a known-dead token before dialing (which re-mints
- * the cookie the handshake relies on). The server closes the socket at
- * access-token expiry (4401); the caller replays its subscriptions via onOpen.
+ * level on the handshake: the stored access token rides in a `bearer.<jwt>`
+ * Sec-WebSocket-Protocol entry (browsers cannot set an Authorization header
+ * on a WebSocket), so the socket authenticates with the exact same token the
+ * REST client uses. The same-origin `access_token` cookie is NOT relied on —
+ * cookies ignore ports, so another app on the same host can shadow ours and
+ * permanently 401 the handshake while REST keeps working (seen with a foreign
+ * `iss` on localhost). The run() loop re-reads the stored token on every
+ * attempt to skip dialing while logged out and to refresh a known-dead token
+ * before dialing. The server closes the socket at access-token expiry (4401);
+ * the caller replays its subscriptions via onOpen.
  */
 export function connectLiveSocket(
   org: string,
@@ -209,7 +220,7 @@ export function connectLiveSocket(
     // Whether we've already spent the one-shot refresh-and-redial on a 4403.
     let forbiddenRetried = false;
     while (!signal.aborted) {
-      const token = getToken();
+      let token = getToken();
       if (!token) {
         // Not authenticated (yet) — wait and re-check without hammering.
         await sleep(backoffDelay(attempt), signal);
@@ -219,11 +230,10 @@ export function connectLiveSocket(
       const expiresAt = getExpiresAt();
       if (expiresAt !== null && expiresAt <= Date.now()) {
         // Known-dead token (exp already past — e.g. this tab was suspended
-        // through one or more access-token lifetimes). Refresh before dialing:
-        // the refresh endpoint re-sets the access_token cookie, so the browser
-        // attaches a live cookie to the handshake instead of burning a socket
-        // attempt on a token the server will just 401 (see spec Evidence: 139
-        // dead-token attempts in one 70-minute HAR capture).
+        // through one or more access-token lifetimes). Refresh before dialing
+        // instead of burning a socket attempt on a token the server will just
+        // 401 (see spec Evidence: 139 dead-token attempts in one 70-minute
+        // HAR capture).
         const refreshed = await refreshWithOutcome();
         if (!refreshed.accessToken) {
           if (refreshed.failureReason === "network-error") {
@@ -237,15 +247,14 @@ export function connectLiveSocket(
           callbacks.onDisabled();
           return;
         }
-        // refreshed.accessToken is intentionally not read here: the refresh's
-        // side effect (re-setting the access_token cookie) is what the
-        // cookie-authenticated handshake relies on.
+        // Dial with the freshly minted token, not the dead one read above.
+        token = refreshed.accessToken;
       }
 
       await waitForApiQuiet(signal);
       if (signal.aborted) break;
 
-      const outcome = await connectOnce(org, factory, callbacks, signal, (sock) => {
+      const outcome = await connectOnce(org, token, factory, callbacks, signal, (sock) => {
         activeSocket = sock;
         // A successful handshake re-arms the one-shot 4403 retry, so a later
         // org switch during the same page lifetime gets its own retry.
@@ -261,15 +270,15 @@ export function connectLiveSocket(
       if (outcome === "forbidden") {
         if (forbiddenRetried) {
           // A second consecutive 4403 after a session refresh: the denial is
-          // real (not a stale cross-org cookie), so stop. The dashboard keeps
+          // real (not a stale cross-org token), so stop. The dashboard keeps
           // polling over REST as before.
           callbacks.onDisabled();
           return;
         }
         forbiddenRetried = true;
-        // A 4403 can be a transient cross-org mismatch — the handshake cookie
-        // is still scoped to the previous org (e.g. a switch-org that landed
-        // after this socket dialed). Re-mint the session cookie once and redial
+        // A 4403 can be a transient cross-org mismatch — the handshake token
+        // was still scoped to the previous org (e.g. a switch-org that landed
+        // after this socket dialed). Re-mint the session once and redial
         // immediately; only a second 4403 is treated as a genuine denial.
         await refreshWithOutcome();
         continue;
@@ -302,8 +311,9 @@ type ConnectOutcome = "disconnected" | "disabled" | "forbidden";
  * "disconnected" for everything else (network drop, 4401 expiry, server
  * restart 1012), which reconnects with backoff.
  *
- * Authentication is at the HTTP level: the browser attaches the access_token
- * cookie to the same-origin handshake automatically, so there is no in-band
+ * Authentication is at the HTTP level: the access token rides in a
+ * `bearer.<jwt>` Sec-WebSocket-Protocol entry on the handshake (the server
+ * negotiates the plain WS_SUBPROTOCOL entry back), so there is no in-band
  * auth frame — the client just waits for the server's `hello`.
  *
  * `onAuthenticated` fires when the server acks the connection (`hello`), just
@@ -311,6 +321,7 @@ type ConnectOutcome = "disconnected" | "disabled" | "forbidden";
  * frames. */
 function connectOnce(
   org: string,
+  token: string,
   factory: WebSocketFactory,
   callbacks: LiveEventsCallbacks,
   signal: AbortSignal,
@@ -327,16 +338,16 @@ function connectOnce(
     };
 
     const url = wsURL(org);
-    const sock = factory(url);
+    const sock = factory(url, [BEARER_SUBPROTOCOL_PREFIX + token, WS_SUBPROTOCOL]);
 
     function onAbort() {
       sock.close();
     }
     signal.addEventListener("abort", onAbort, { once: true });
 
-    // No sock.onopen handler: authentication is at the HTTP level (the browser
-    // sent the access_token cookie with the handshake), so nothing is sent on
-    // open — the client waits for the server's `hello`.
+    // No sock.onopen handler: authentication is at the HTTP level (the token
+    // rode the handshake's Sec-WebSocket-Protocol header), so nothing is sent
+    // on open — the client waits for the server's `hello`.
 
     sock.onerror = () => {
       // onclose always follows onerror for browser WebSockets; nothing to do here.
@@ -360,8 +371,8 @@ function connectOnce(
 
       if (ev.code === CLOSE_FORBIDDEN) {
         // Org access denied. Non-terminal: the run() loop refreshes the
-        // session cookie and redials once (a cross-org navigation may have left
-        // this socket dialing with a cookie scoped to the previous org) before
+        // session and redials once (a cross-org navigation may have left
+        // this socket dialing with a token scoped to the previous org) before
         // treating a repeat 4403 as a genuine denial.
         finish("forbidden");
         return;

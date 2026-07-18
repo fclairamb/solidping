@@ -20,25 +20,64 @@ const cookieAuthToken = "access_token"
 
 const bearerTokenParts = 2
 
-// extractToken returns the request's bearer token from the Authorization
-// header, falling back to the access_token cookie only when no Authorization
-// header is present (the header wins). This mirrors middleware.extractToken
-// exactly: a present-but-malformed Authorization header yields "" and does NOT
-// fall back to the cookie. Browsers attach the cookie to the same-origin
-// upgrade automatically; explicit-auth clients (CLI/curl/websocat/tests) set
-// the header deliberately.
+// Subprotocol carrying the SPA's bearer token on the handshake. Browsers
+// cannot set an Authorization header on a WebSocket, and the access_token
+// cookie is unreliable: cookies ignore ports, so on localhost (and on any
+// shared-domain deployment) another app's access_token cookie can shadow ours
+// and permanently 401 the handshake while REST — which uses the header —
+// keeps working. The SPA therefore offers ["bearer.<jwt>", "solidping.v2"]
+// as subprotocols (the Kubernetes-style bearer-in-subprotocol pattern); the
+// server reads the token from the bearer.* entry and negotiates the plain
+// wsSubprotocol back so the browser accepts the upgrade.
+const (
+	// wsSubprotocol is the protocol the server echoes back when the client
+	// offers it (required — a browser aborts the connection when it offered
+	// subprotocols and the server acknowledged none).
+	wsSubprotocol = "solidping.v2"
+	// bearerSubprotocolPrefix prefixes the token-carrying subprotocol entry.
+	bearerSubprotocolPrefix = "bearer."
+)
+
+// extractToken returns the request's bearer token: Authorization header first,
+// then a bearer.* Sec-WebSocket-Protocol entry, then the access_token cookie.
+// This mirrors middleware.extractToken for the header: a present-but-malformed
+// Authorization header yields "" and does NOT fall back. Browsers use the
+// subprotocol (set by the SPA) or the same-origin cookie; explicit-auth
+// clients (CLI/curl/websocat/tests) set the header deliberately.
 func extractToken(req *http.Request) string {
 	authHeader := req.Header.Get("Authorization")
-	if authHeader == "" {
-		return extractCookieToken(req)
+	if authHeader != "" {
+		parts := strings.SplitN(authHeader, " ", bearerTokenParts)
+		if len(parts) != bearerTokenParts || !strings.EqualFold(parts[0], "bearer") {
+			return ""
+		}
+
+		return parts[1]
 	}
 
-	parts := strings.SplitN(authHeader, " ", bearerTokenParts)
-	if len(parts) != bearerTokenParts || !strings.EqualFold(parts[0], "bearer") {
-		return ""
+	if token := extractSubprotocolToken(req); token != "" {
+		return token
 	}
 
-	return parts[1]
+	return extractCookieToken(req)
+}
+
+// extractSubprotocolToken returns the token carried in a bearer.* entry of the
+// Sec-WebSocket-Protocol header, or "" when none is offered. The header is a
+// comma-separated list; entries are matched case-sensitively (subprotocol
+// names are case-sensitive per RFC 6455, and the JWT payload must not be
+// case-folded).
+func extractSubprotocolToken(req *http.Request) string {
+	for _, header := range req.Header.Values("Sec-WebSocket-Protocol") {
+		for _, entry := range strings.Split(header, ",") {
+			entry = strings.TrimSpace(entry)
+			if token, found := strings.CutPrefix(entry, bearerSubprotocolPrefix); found && token != "" {
+				return token
+			}
+		}
+	}
+
+	return ""
 }
 
 // extractCookieToken mirrors middleware.extractToken's access_token cookie
