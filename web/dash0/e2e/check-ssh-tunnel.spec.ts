@@ -174,6 +174,44 @@ test.describe("SSH tunnel UX gaps", () => {
     await expect(page.getByTestId("check-type-select")).toContainText("SSH");
   });
 
+  test("unverified bastion shows a plain-language disabled reason", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    // An SSH check with no expected_fingerprint: legal to create, but the
+    // server refuses to tunnel through it (unverified host key = silent
+    // MITM risk), so the selector must list it disabled with a reason that
+    // names the field a human fills in — not the raw config key.
+    const unverifiedName = `E2E Unverified Bastion ${Date.now()}`;
+    const resp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/checks`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          name: unverifiedName,
+          slug: unverifiedName.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+          type: "ssh",
+          config: { host: "unverified.example.com" },
+        },
+      },
+    );
+    expect(resp.status()).toBe(201);
+
+    await page.goto("orgs/test/checks/new?checkType=http");
+    await page.waitForLoadState("networkidle");
+    await expandSection(page, "section-advanced-trigger");
+    await page.getByTestId("check-tunnel-select").click();
+
+    const option = page.getByRole("option", {
+      name: new RegExp(`${unverifiedName}.*needs a host key fingerprint`),
+    });
+    await expect(option).toBeVisible();
+    await expect(option).toHaveAttribute("aria-disabled", "true");
+    await expect(option).not.toContainText("expected_fingerprint");
+  });
+
   test("checks list shows a tunnel indicator naming the bastion", async ({
     authenticatedPage,
   }) => {
