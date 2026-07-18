@@ -281,14 +281,18 @@ func TestWSBackendReconnectsOnHalfOpenPingFailure(t *testing.T) {
 		fake.serveReads(conn)
 	})
 
+	const pingInterval = 200 * time.Millisecond
+
 	wsBackend := newWSBackend(t, fake,
 		backend.WithLogger(slog.New(logs)),
-		backend.WithPingInterval(200*time.Millisecond),
+		backend.WithPingInterval(pingInterval),
 	)
 
 	worker, err := wsBackend.Register(ctx, nil)
 	r.NoError(err)
 	r.NotEmpty(worker.UID)
+
+	start := time.Now()
 
 	select {
 	case <-reconnected:
@@ -296,7 +300,16 @@ func TestWSBackendReconnectsOnHalfOpenPingFailure(t *testing.T) {
 		t.Fatal("agent never detected the half-open link via ping and reconnected")
 	}
 
+	elapsed := time.Since(start)
+
 	r.True(logs.has(slog.LevelWarn, "agent connection lost"), "a ping-detected loss must be logged at Warn")
+	// Detection fires within roughly one ping interval + its half-interval
+	// timeout; reconnection must follow immediately after. This bound is tight
+	// enough to catch a regression where retire() blocks on the close
+	// handshake (~5s on a silent half-open peer) before waking the reconnect
+	// supervisor — a generous bound (e.g. 10s) would mask exactly that defect.
+	r.Less(elapsed, 2*time.Second,
+		"reconnect must follow a ping-detected loss immediately, not be gated behind the close handshake")
 }
 
 // TestWSBackendRequestFailsFastOnDrop: a request in flight when the connection

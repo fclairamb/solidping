@@ -752,7 +752,12 @@ func (b *WSBackend) pingLoop(ctx context.Context, conn *websocket.Conn) {
 // every in-flight waiter with a CONN_LOST error so requests fail fast instead of
 // waiting out requestTimeout, and signals the reconnect supervisor.
 func (b *WSBackend) retire(ctx context.Context, conn *websocket.Conn, reason string, cause error) {
-	_ = conn.Close(websocket.StatusNormalClosure, "")
+	// Close asynchronously: on a half-open link (exactly the case the liveness
+	// ping exists to catch) the peer never answers the close handshake, and the
+	// library blocks for several seconds waiting for it. Backgrounding the
+	// close keeps marking the conn dead, waking waiters, and kicking the
+	// reconnect supervisor immediate regardless of whether the peer replies.
+	go func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
 
 	b.mu.Lock()
 	if b.conn != conn {
