@@ -511,10 +511,11 @@ func (s *Service) UpdateIntegration(
 }
 
 // applySettingsEncryption splits Settings into public/private using the
-// connection-type's declared secret keys, encrypts the private side, and
-// writes Settings + SettingsPrivate + SettingsPrivateKeys onto the
-// connection. When encryption is disabled at the server, secrets stay
-// plaintext on Settings (logged-once startup warning covers the gap).
+// connection-type's declared secret keys and writes Settings + SettingsPrivate
+// + SettingsPrivateKeys onto the connection. Secrets are ALWAYS split out of
+// the public Settings column (spec 2026-07-18-06): an AES-GCM envelope when a
+// master key is configured, a plaintext envelope (no-key self-hosted fallback)
+// otherwise. The public Settings column never carries a secret value.
 func (s *Service) applySettingsEncryption(
 	ctx context.Context, conn *models.Integration, effective map[string]any,
 ) error {

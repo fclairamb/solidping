@@ -3228,12 +3228,16 @@ func normalizeCheckConfig(checkType string, effective map[string]any) (map[strin
 }
 
 // applyEncryption splits the effective config into public/private using the
-// checker's declared SecretFields, encrypts the private side under the org
-// DEK, and writes the resulting columns onto the check.
+// checker's declared SecretFields and writes the resulting columns onto the
+// check. Secrets are ALWAYS split out of the public `Config` column — the
+// public column must never carry a secret value, in any mode (spec
+// 2026-07-18-06).
 //
-// When encryption is disabled at the server (no master key) the full config
-// stays plaintext on `Config` and `ConfigPrivate*` are NULL. That fallback
-// is intentional — the spec calls it out — and is logged once at startup.
+// The private side is stored as: a region-sealed (age) envelope for private
+// regions, an AES-GCM envelope when a master key is configured, or a plaintext
+// envelope (the documented self-hosted no-key fallback) otherwise. The
+// plaintext envelope keeps secrets out of the public column and out of API
+// responses even though it does not encrypt them at rest.
 func (s *Service) applyEncryption(ctx context.Context, check *models.Check, effective map[string]any) error {
 	cfg, ok := registry.ParseConfig(checkerdef.CheckType(check.Type))
 	if !ok {
