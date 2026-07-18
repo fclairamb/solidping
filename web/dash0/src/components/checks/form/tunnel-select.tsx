@@ -79,6 +79,13 @@ export function TunnelSelect({
                 recoveryPeriod: undefined,
                 section: undefined,
               }}
+              // A full document reload, not a client-side transition: the
+              // new-check form only reads its `?checkType=` search param on
+              // mount (so a same-tab type change made via its own type
+              // picker doesn't wipe other in-progress fields), so a
+              // client-side nav to the same route would leave the type
+              // picker showing whatever was already selected instead of SSH.
+              reloadDocument
               className="underline"
               data-testid="tunnel-empty-create-link"
             >
