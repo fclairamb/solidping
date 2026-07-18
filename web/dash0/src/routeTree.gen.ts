@@ -104,6 +104,7 @@ import { Route as OrgsOrgAccountProfileRouteImport } from './routes/orgs/$org/ac
 import { Route as OrgsOrgAccountNotificationsRouteImport } from './routes/orgs/$org/account.notifications'
 import { Route as OrgsOrgAccountMcpRouteImport } from './routes/orgs/$org/account.mcp'
 import { Route as OrgsOrgStatusPagesStatusPageUidIndexRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.index'
+import { Route as OrgsOrgOrganizationPrivateLocationsIndexRouteImport } from './routes/orgs/$org/organization.private-locations.index'
 import { Route as OrgsOrgOnCallUidIndexRouteImport } from './routes/orgs/$org/on-call.$uid.index'
 import { Route as OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRouteImport } from './routes/orgs/$org/maintenance-windows.$maintenanceWindowUid.index'
 import { Route as OrgsOrgDiscoveryJobUidIndexRouteImport } from './routes/orgs/$org/discovery.$jobUid.index'
@@ -621,6 +622,12 @@ const OrgsOrgStatusPagesStatusPageUidIndexRoute =
     path: '/',
     getParentRoute: () => OrgsOrgStatusPagesStatusPageUidRoute,
   } as any)
+const OrgsOrgOrganizationPrivateLocationsIndexRoute =
+  OrgsOrgOrganizationPrivateLocationsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => OrgsOrgOrganizationPrivateLocationsRoute,
+  } as any)
 const OrgsOrgOnCallUidIndexRoute = OrgsOrgOnCallUidIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -804,6 +811,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/discovery/$jobUid/': typeof OrgsOrgDiscoveryJobUidIndexRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute
   '/orgs/$org/on-call/$uid/': typeof OrgsOrgOnCallUidIndexRoute
+  '/orgs/$org/organization/private-locations/': typeof OrgsOrgOrganizationPrivateLocationsIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
@@ -848,7 +856,6 @@ export interface FileRoutesByTo {
   '/orgs/$org/organization/ai': typeof OrgsOrgOrganizationAiRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
-  '/orgs/$org/organization/private-locations': typeof OrgsOrgOrganizationPrivateLocationsRouteWithChildren
   '/orgs/$org/organization/requests': typeof OrgsOrgOrganizationRequestsRoute
   '/orgs/$org/organization/settings': typeof OrgsOrgOrganizationSettingsRoute
   '/orgs/$org/organization/usage': typeof OrgsOrgOrganizationUsageRoute
@@ -894,6 +901,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/discovery/$jobUid': typeof OrgsOrgDiscoveryJobUidIndexRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute
   '/orgs/$org/on-call/$uid': typeof OrgsOrgOnCallUidIndexRoute
+  '/orgs/$org/organization/private-locations': typeof OrgsOrgOrganizationPrivateLocationsIndexRoute
   '/orgs/$org/status-pages/$statusPageUid': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
@@ -1005,6 +1013,7 @@ export interface FileRoutesById {
   '/orgs/$org/discovery/$jobUid/': typeof OrgsOrgDiscoveryJobUidIndexRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute
   '/orgs/$org/on-call/$uid/': typeof OrgsOrgOnCallUidIndexRoute
+  '/orgs/$org/organization/private-locations/': typeof OrgsOrgOrganizationPrivateLocationsIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
@@ -1117,6 +1126,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/discovery/$jobUid/'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/'
     | '/orgs/$org/on-call/$uid/'
+    | '/orgs/$org/organization/private-locations/'
     | '/orgs/$org/status-pages/$statusPageUid/'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
@@ -1161,7 +1171,6 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/ai'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
-    | '/orgs/$org/organization/private-locations'
     | '/orgs/$org/organization/requests'
     | '/orgs/$org/organization/settings'
     | '/orgs/$org/organization/usage'
@@ -1207,6 +1216,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/discovery/$jobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid'
     | '/orgs/$org/on-call/$uid'
+    | '/orgs/$org/organization/private-locations'
     | '/orgs/$org/status-pages/$statusPageUid'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
@@ -1317,6 +1327,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/discovery/$jobUid/'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/'
     | '/orgs/$org/on-call/$uid/'
+    | '/orgs/$org/organization/private-locations/'
     | '/orgs/$org/status-pages/$statusPageUid/'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid'
@@ -2002,6 +2013,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgStatusPagesStatusPageUidIndexRouteImport
       parentRoute: typeof OrgsOrgStatusPagesStatusPageUidRoute
     }
+    '/orgs/$org/organization/private-locations/': {
+      id: '/orgs/$org/organization/private-locations/'
+      path: '/'
+      fullPath: '/orgs/$org/organization/private-locations/'
+      preLoaderRoute: typeof OrgsOrgOrganizationPrivateLocationsIndexRouteImport
+      parentRoute: typeof OrgsOrgOrganizationPrivateLocationsRoute
+    }
     '/orgs/$org/on-call/$uid/': {
       id: '/orgs/$org/on-call/$uid/'
       path: '/'
@@ -2329,12 +2347,15 @@ const OrgsOrgOnCallRouteWithChildren = OrgsOrgOnCallRoute._addFileChildren(
 
 interface OrgsOrgOrganizationPrivateLocationsRouteChildren {
   OrgsOrgOrganizationPrivateLocationsRegisterRoute: typeof OrgsOrgOrganizationPrivateLocationsRegisterRoute
+  OrgsOrgOrganizationPrivateLocationsIndexRoute: typeof OrgsOrgOrganizationPrivateLocationsIndexRoute
 }
 
 const OrgsOrgOrganizationPrivateLocationsRouteChildren: OrgsOrgOrganizationPrivateLocationsRouteChildren =
   {
     OrgsOrgOrganizationPrivateLocationsRegisterRoute:
       OrgsOrgOrganizationPrivateLocationsRegisterRoute,
+    OrgsOrgOrganizationPrivateLocationsIndexRoute:
+      OrgsOrgOrganizationPrivateLocationsIndexRoute,
   }
 
 const OrgsOrgOrganizationPrivateLocationsRouteWithChildren =
