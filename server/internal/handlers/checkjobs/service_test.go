@@ -135,6 +135,35 @@ func TestSecretsRedaction(t *testing.T) {
 	r.Equal("https://example.com", detail.Config["url"])
 }
 
+// TestSecretsRedactionOfUnsplitRow is the read-time defense-in-depth for the
+// check-jobs surface: a not-yet-migrated dispatch row whose secret still sits in
+// the PUBLIC config column (no envelope, no private-keys index) must still be
+// redacted — the declared-secret key is stripped from the view and advertised in
+// EncryptedKeys instead, so no secret value leaks through this admin view.
+func TestSecretsRedactionOfUnsplitRow(t *testing.T) {
+	t.Parallel()
+
+	ctx, r, dbSvc, svc := newTestService(t)
+
+	org := models.NewOrganization("leakjoborg", "Leaky Job Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	check := newCheck(ctx, r, dbSvc, org.UID, "leaky-check", "Leaky Check")
+
+	cj := models.NewCheckJob(org.UID, check.UID, timeutils.Duration(time.Minute))
+	cj.Type = "http"
+	// Leaked: the folded credential sits in the public column with no envelope.
+	cj.Config = models.JSONMap{"url": "https://example.com", "basicAuth": "user:pass"}
+	r.NoError(dbSvc.CreateCheckJob(ctx, cj))
+
+	views, err := svc.ListCheckJobs(ctx, org.UID, checkjobs.ListOptions{Limit: 100})
+	r.NoError(err)
+	r.Len(views, 1)
+	r.NotContains(views[0].Config, "basicAuth", "an un-split secret must be stripped at read time")
+	r.Equal("https://example.com", views[0].Config["url"])
+	r.Contains(views[0].EncryptedKeys, "basicAuth", "the stripped secret must be advertised instead")
+}
+
 func TestListPaginationAndOrgScoping(t *testing.T) {
 	t.Parallel()
 

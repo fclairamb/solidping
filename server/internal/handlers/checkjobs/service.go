@@ -9,10 +9,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/uptrace/bun"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -149,9 +153,50 @@ func parseEncryptedKeys(raw *string) []string {
 	return keys
 }
 
+// redactJobConfig is the check-jobs surface's read-time defense-in-depth,
+// mirroring the checks handler's redactSecretConfig: it strips any
+// declared-secret key from the outgoing config and advertises it in
+// EncryptedKeys instead, so a not-yet-migrated dispatch row (secret still in the
+// public config column) never leaks its value through this admin view.
+func redactJobConfig(job *models.CheckJob) (map[string]any, []string) {
+	advertised := map[string]struct{}{}
+	for _, k := range parseEncryptedKeys(job.ConfigPrivateKeys) {
+		advertised[k] = struct{}{}
+	}
+
+	secretSet := map[string]struct{}{}
+	if cfg, ok := registry.ParseConfig(checkerdef.CheckType(job.Type)); ok {
+		for _, k := range credentials.SecretFieldsFor(cfg) {
+			secretSet[k] = struct{}{}
+		}
+	}
+
+	public := make(map[string]any, len(job.Config))
+	for k, v := range job.Config {
+		if _, isSecret := secretSet[k]; isSecret {
+			advertised[k] = struct{}{}
+
+			continue
+		}
+
+		public[k] = v
+	}
+
+	keys := make([]string, 0, len(advertised))
+	for k := range advertised {
+		keys = append(keys, k)
+	}
+
+	sort.Strings(keys)
+
+	return public, keys
+}
+
 // toView converts a check_jobs row into the redacted API view. checkName, when
 // non-nil, is the resolved name of the associated check.
 func toView(checkJob *models.CheckJob, checkName *string, now time.Time) *CheckJobView {
+	publicConfig, encryptedKeys := redactJobConfig(checkJob)
+
 	return &CheckJobView{
 		UID:             checkJob.UID,
 		OrganizationUID: checkJob.OrganizationUID,
@@ -159,8 +204,8 @@ func toView(checkJob *models.CheckJob, checkName *string, now time.Time) *CheckJ
 		CheckName:       checkName,
 		Region:          checkJob.Region,
 		Type:            checkJob.Type,
-		Config:          checkJob.Config,
-		EncryptedKeys:   parseEncryptedKeys(checkJob.ConfigPrivateKeys),
+		Config:          publicConfig,
+		EncryptedKeys:   encryptedKeys,
 		Encrypted:       checkJob.Encrypted,
 		PeriodSeconds:   int64(time.Duration(checkJob.Period).Seconds()),
 		ScheduledAt:     checkJob.ScheduledAt,

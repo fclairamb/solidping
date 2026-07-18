@@ -2285,7 +2285,7 @@ func (s *Server) MaybeAutoMigrateEncryption(ctx context.Context) error {
 	if s.services == nil || s.services.Credentials == nil || !s.services.Credentials.Enabled() {
 		s.warnIfEncryptedRowsExist(ctx)
 
-		return nil
+		return s.maybeSplitPlaintextSecrets(ctx)
 	}
 
 	if !s.config.Encryption.AutoMigrate {
@@ -2320,6 +2320,39 @@ func (s *Server) MaybeAutoMigrateEncryption(ctx context.Context) error {
 	if recStats.ConnectionsReconciled > 0 {
 		slog.InfoContext(ctx, "reconciled connection URL fields to public settings at startup",
 			"connectionsReconciled", recStats.ConnectionsReconciled)
+	}
+
+	return nil
+}
+
+// maybeSplitPlaintextSecrets is the no-master-key counterpart to the encryption
+// auto-migrate: with encryption disabled, it moves any secret still sitting in a
+// PUBLIC column (checks.config, check_jobs.config, connection settings) into a
+// plaintext envelope in the matching private column, closing the API leak for
+// databases written before that fix. Read-time redaction already protects the
+// API surface; this cleans the storage so the leak has no source at all.
+//
+// Gated on the same AutoMigrate flag as the encrypted sweep so an operator who
+// opts out of automatic startup row rewrites gets none. Idempotent.
+func (s *Server) maybeSplitPlaintextSecrets(ctx context.Context) error {
+	if s.dbService == nil {
+		return nil
+	}
+
+	if !s.config.Encryption.AutoMigrate {
+		return nil
+	}
+
+	stats, err := credmigrate.RunPlaintext(ctx, s.dbService, credmigrate.Options{Logger: slog.Default()})
+	if err != nil {
+		return fmt.Errorf("split plaintext credentials: %w", err)
+	}
+
+	if stats.Migrated() > 0 {
+		slog.InfoContext(ctx, "split public-column plaintext secrets into private column at startup",
+			"checksMigrated", stats.ChecksMigrated,
+			"checkJobsMigrated", stats.CheckJobsMigrated,
+			"connectionsMigrated", stats.ConnectionsMigrated)
 	}
 
 	return nil
