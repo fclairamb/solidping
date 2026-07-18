@@ -71,12 +71,23 @@ func (c *MongoDBChecker) Execute(
 
 	start := time.Now()
 
-	client, err := mongo.Connect(
-		options.Client().
-			ApplyURI(cfg.buildURI()).
-			SetConnectTimeout(timeout).
-			SetTimeout(timeout),
-	)
+	clientOpts := options.Client().
+		ApplyURI(cfg.buildURI()).
+		SetConnectTimeout(timeout).
+		SetTimeout(timeout)
+
+	// Tunneled: dial through the bastion. mongo-driver's ContextDialer matches
+	// checkerdef.ContextDialer, and the driver hands it the raw host:port (no
+	// local resolution), so the bastion resolves the hostname. Untunneled, no
+	// dialer is set and the driver uses its default net.Dialer byte-for-byte.
+	tunneled := false
+	if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
+		clientOpts.SetDialer(dialer)
+
+		tunneled = true
+	}
+
+	client, err := mongo.Connect(clientOpts)
 	if err != nil {
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
@@ -87,13 +98,14 @@ func (c *MongoDBChecker) Execute(
 
 	defer func() { _ = client.Disconnect(ctx) }()
 
-	return c.ping(ctx, client, cfg, start)
+	return c.ping(ctx, client, cfg, tunneled, start)
 }
 
 func (c *MongoDBChecker) ping(
 	ctx context.Context,
 	client *mongo.Client,
 	cfg *MongoDBConfig,
+	tunneled bool,
 	start time.Time,
 ) (*checkerdef.Result, error) { //nolint:unparam // error kept for interface consistency
 	port := cfg.Port
@@ -123,6 +135,16 @@ func (c *MongoDBChecker) ping(
 		}, nil
 	}
 
+	output := map[string]any{
+		"host":   cfg.Host,
+		"port":   port,
+		"result": "ok",
+	}
+
+	if tunneled {
+		output["tunneled"] = true
+	}
+
 	return &checkerdef.Result{
 		Status:   checkerdef.StatusUp,
 		Duration: time.Since(start),
@@ -130,11 +152,7 @@ func (c *MongoDBChecker) ping(
 			"ping_time_ms":  durationMs(time.Since(pingStart)),
 			"total_time_ms": durationMs(time.Since(start)),
 		},
-		Output: map[string]any{
-			"host":   cfg.Host,
-			"port":   port,
-			"result": "ok",
-		},
+		Output: output,
 	}, nil
 }
 

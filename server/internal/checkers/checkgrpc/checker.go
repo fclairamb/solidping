@@ -4,6 +4,7 @@ package checkgrpc
 import (
 	"context"
 	"crypto/tls"
+	"net"
 	"strings"
 	"time"
 
@@ -81,7 +82,18 @@ func (c *GRPCChecker) Execute(
 		output["serviceName"] = cfg.ServiceName
 	}
 
-	conn, result := c.connect(cfg, target, start)
+	// Tunneled: dial through the bastion. gRPC's default `dns` resolver would
+	// resolve the hostname locally before dialing — which defeats remote-side
+	// resolution — so switch to the `passthrough` resolver (no local lookup) and
+	// hand the raw host:port to the tunnel dialer via WithContextDialer.
+	// Untunneled, target and dial options are byte-for-byte unchanged.
+	tunnelDialer := checkerdef.TunnelDialerFrom(ctx)
+	if tunnelDialer != nil {
+		target = "passthrough:///" + target
+		output["tunneled"] = true
+	}
+
+	conn, result := c.connect(cfg, target, tunnelDialer, start)
 	if result != nil {
 		return result, nil
 	}
@@ -96,6 +108,7 @@ func (c *GRPCChecker) Execute(
 func (c *GRPCChecker) connect(
 	cfg *GRPCConfig,
 	target string,
+	tunnelDialer checkerdef.ContextDialer,
 	start time.Time,
 ) (*grpc.ClientConn, *checkerdef.Result) {
 	var dialOpts []grpc.DialOption
@@ -108,6 +121,14 @@ func (c *GRPCChecker) connect(
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)))
 	} else {
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+
+	if tunnelDialer != nil {
+		dialOpts = append(dialOpts, grpc.WithContextDialer(
+			func(dialCtx context.Context, addr string) (net.Conn, error) {
+				return tunnelDialer.DialContext(dialCtx, "tcp", addr)
+			},
+		))
 	}
 
 	conn, err := grpc.NewClient(target, dialOpts...)

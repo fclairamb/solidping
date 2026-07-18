@@ -106,6 +106,10 @@ func (c *WebSocketChecker) Execute(
 		configKeyURL: cfg.URL,
 	}
 
+	if checkerdef.TunnelDialerFrom(ctx) != nil {
+		output["tunneled"] = true
+	}
+
 	if resp != nil {
 		output["status_code"] = resp.StatusCode
 	}
@@ -154,15 +158,28 @@ func (c *WebSocketChecker) dial(
 		opts.HTTPHeader = header
 	}
 
+	transport := &http.Transport{}
+	needClient := false
+
 	if cfg.TLSSkipVerify {
-		opts.HTTPClient = &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					MinVersion:         tls.VersionTLS12,
-					InsecureSkipVerify: true,
-				},
-			},
+		transport.TLSClientConfig = &tls.Config{
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: true,
 		}
+		needClient = true
+	}
+
+	// Tunneled: route the WebSocket handshake's underlying dial through the
+	// bastion. http.Transport hands the raw host:port to DialContext (no local
+	// resolution), so the bastion resolves private names. Untunneled, no custom
+	// client is set and coder/websocket uses its default byte-for-byte.
+	if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
+		transport.DialContext = dialer.DialContext
+		needClient = true
+	}
+
+	if needClient {
+		opts.HTTPClient = &http.Client{Transport: transport}
 	}
 
 	conn, resp, err := websocket.Dial(ctx, cfg.URL, opts)
