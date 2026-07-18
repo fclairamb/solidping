@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { createFileRoute } from "@tanstack/react-router";
-import { Copy, Check as CheckIcon, KeyRound, Plus, Trash2 } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { Bot, Copy, Check as CheckIcon, KeyRound, Plus, Trash2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -120,21 +120,32 @@ function RegionsCard({ org }: { org: string }) {
 
   return (
     <Card data-testid="private-regions-card">
-      <CardHeader>
-        <CardTitle>{t("privateLocations.regions.title", "Private locations")}</CardTitle>
-        <CardDescription>
-          {t(
-            "privateLocations.regions.description",
-            "Org-private regions served by deported agents you run inside your own network. Agents connect outbound only — no inbound ports.",
-          )}
-        </CardDescription>
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <CardTitle>{t("privateLocations.regions.title", "Private locations")}</CardTitle>
+          <CardDescription>
+            {t(
+              "privateLocations.regions.description",
+              "Org-private regions served by deported agents you run inside your own network. Agents connect outbound only — no inbound ports.",
+            )}
+          </CardDescription>
+        </div>
+        <Button asChild size="sm" data-testid="register-agent-button">
+          <Link to="/orgs/$org/organization/private-locations/register" params={{ org }}>
+            <Bot className="mr-2 h-4 w-4" />
+            {t("privateLocations.regions.registerAgent", "Register an agent")}
+          </Link>
+        </Button>
       </CardHeader>
       <CardContent className="space-y-4">
         {isLoading ? (
           <Skeleton className="h-16 w-full" />
         ) : (regions?.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground" data-testid="no-private-regions">
-            {t("privateLocations.regions.empty", "No private locations yet. Create one below.")}
+            {t(
+              "privateLocations.regions.empty",
+              "No private locations yet. Use Register an agent above for a guided setup, or create one manually below.",
+            )}
           </p>
         ) : (
           <div className="overflow-x-auto">

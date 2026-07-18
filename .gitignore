@@ -5,8 +5,10 @@ bin/
 # Private stuff
 *.local*
 *.priv*
-# ...but the Private-locations dashboard page is source code, not a key.
+# ...but the Private-locations dashboard page (and its register-agent wizard
+# sub-route) is source code, not a key.
 !*.private-locations.tsx
+!*.private-locations.register.tsx
 
 # Frontend builds
 server/internal/app/dash0res/

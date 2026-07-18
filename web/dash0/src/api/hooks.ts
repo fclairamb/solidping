@@ -4430,7 +4430,10 @@ export function useRevokeAgent(org: string) {
   });
 }
 
-export function useEnrollmentTokens(org: string) {
+export function useEnrollmentTokens(
+  org: string,
+  options?: { refetchInterval?: number; enabled?: boolean },
+) {
   return useQuery({
     queryKey: ["agent-enrollment-tokens", org],
     queryFn: async () => {
@@ -4439,7 +4442,8 @@ export function useEnrollmentTokens(org: string) {
       );
       return response.data || [];
     },
-    enabled: !!org,
+    enabled: (options?.enabled ?? true) && !!org,
+    refetchInterval: options?.refetchInterval,
   });
 }
 
