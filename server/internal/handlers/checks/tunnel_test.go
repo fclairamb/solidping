@@ -393,6 +393,228 @@ func TestDeletedDependentDoesNotBlockBastion(t *testing.T) {
 	r.NoError(svc.DeleteCheck(ctx, org.Slug, *bastion.Slug))
 }
 
+// parisRegion / londonRegion / cloudRegion are the region strings the region
+// tests below allocate checks to. Private regions are stored fully-qualified
+// (`@<org>/<slug>`); the tests never enroll agents, so the SSH bastions they
+// build stay mixed-region (a cloud region alongside the private ones) which
+// keeps them server-resolvable and out of the "no agents to seal to" path.
+const (
+	parisRegion  = "@tunnel-test/paris"
+	londonRegion = "@tunnel-test/london"
+	cloudRegion  = "eu"
+)
+
+// createRegionBastion creates an SSH tunnel bastion allocated to the given
+// regions. With a cloud region in the set it stores a server-decryptable
+// envelope (not sealed-only) and needs no enrolled agent.
+func createRegionBastion(t *testing.T, svc *checks.Service, ctx context.Context, //nolint:revive
+	org *models.Organization, slug string, regionSlugs []string,
+) checks.CheckResponse {
+	t.Helper()
+
+	created, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Name: slug, Slug: slug, Type: "ssh", Regions: regionSlugs,
+		Config: map[string]any{
+			"host":                 "bastion.example.com",
+			"expected_fingerprint": testFingerprint,
+			"username":             "probe",
+			"password":             "s3cret",
+		},
+	})
+	require.NoError(t, err)
+
+	return created
+}
+
+// TestTunnelRegionRulesOnCreate is the accept/reject matrix for the region
+// rules (spec 2026-07-18-07, decisions 1–2): the dependent's private regions
+// must be covered by the SSH check, and a cloud dependent needs a
+// server-resolvable (non-sealed-only) SSH check.
+func TestTunnelRegionRulesOnCreate(t *testing.T) {
+	t.Parallel()
+
+	svc, dbSvc, org := setupTunnelChecksService(t)
+	ctx := t.Context()
+
+	// A mixed-region bastion covering paris + london + a cloud region: not
+	// sealed-only, so it can serve both private and cloud dependents.
+	mixed := createRegionBastion(t, svc, ctx, org, "mixed", []string{parisRegion, londonRegion, cloudRegion})
+
+	// A sealed-only bastion (config_sealed set, config_private NULL) planted
+	// directly — that state is only reachable with an enrolled agent otherwise,
+	// and the validation logic reads exactly these two columns.
+	sealedOnly := createRegionBastion(t, svc, ctx, org, "sealedonly", []string{parisRegion, cloudRegion})
+	plantSealedOnly(t, dbSvc, ctx, org, sealedOnly.UID, []string{parisRegion})
+
+	tests := []struct {
+		name       string
+		slug       string
+		regions    []string
+		tunnelUID  string
+		wantErr    string // "" = accept
+		wantRegion string // substring the message must name
+	}{
+		{
+			name: "private dependent covered", slug: "dep-a", regions: []string{parisRegion}, tunnelUID: mixed.UID,
+		},
+		{
+			name: "cloud dependent, resolvable bastion", slug: "dep-b",
+			regions: []string{cloudRegion}, tunnelUID: mixed.UID,
+		},
+		{
+			name: "mixed dependent fully covered", slug: "dep-c",
+			regions: []string{parisRegion, cloudRegion}, tunnelUID: mixed.UID,
+		},
+		{
+			name: "private region not covered", slug: "dep-d", regions: []string{londonRegion}, tunnelUID: sealedOnly.UID,
+			wantErr: "must be allocated to region", wantRegion: "@london",
+		},
+		{
+			name: "cloud dependent, sealed-only bastion", slug: "dep-e",
+			regions: []string{cloudRegion}, tunnelUID: sealedOnly.UID,
+			wantErr: "sealed to private-region agents only",
+		},
+		{
+			name: "private covered but cloud unresolvable", slug: "dep-f",
+			regions: []string{parisRegion, cloudRegion}, tunnelUID: sealedOnly.UID,
+			wantErr: "sealed to private-region agents only",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			_, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+				Name: tt.name, Slug: tt.slug, Type: "http", Regions: tt.regions,
+				Config: map[string]any{
+					"url":                              "http://internal.private/health",
+					checkerdef.TunnelCheckUIDConfigKey: tt.tunnelUID,
+				},
+			})
+
+			if tt.wantErr == "" {
+				r.NoError(err)
+
+				return
+			}
+
+			r.Error(err)
+			r.Contains(err.Error(), tt.wantErr)
+
+			if tt.wantRegion != "" {
+				r.Contains(err.Error(), tt.wantRegion)
+			}
+
+			// Region rejections are field-level ConfigErrors on the tunnel key,
+			// so the dashboard attaches them to the selector.
+			configErr := checkerdef.IsConfigError(err)
+			r.NotNil(configErr)
+			r.Equal(checkerdef.TunnelCheckUIDConfigKey, configErr.Parameter)
+		})
+	}
+}
+
+// TestTunnelRegionRuleFiresOnRegionOnlyUpdate proves the region rule is
+// enforced when the dependent's REGIONS change (config untouched) — the trigger
+// that a config-less PATCH would otherwise slip past.
+func TestTunnelRegionRuleFiresOnRegionOnlyUpdate(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, _, org := setupTunnelChecksService(t)
+	ctx := t.Context()
+
+	bastion := createRegionBastion(t, svc, ctx, org, "bastion", []string{parisRegion, cloudRegion})
+
+	dependent, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Name: "api", Slug: "api", Type: "http", Regions: []string{parisRegion},
+		Config: map[string]any{
+			"url":                              "http://internal.private/health",
+			checkerdef.TunnelCheckUIDConfigKey: bastion.UID,
+		},
+	})
+	r.NoError(err)
+
+	// Moving the dependent to a region the bastion does not cover is rejected,
+	// even though config is not part of the PATCH.
+	_, err = svc.UpdateCheck(ctx, org.Slug, *dependent.Slug, &checks.UpdateCheckRequest{
+		Regions: &[]string{londonRegion},
+	})
+	r.Error(err)
+	r.Contains(err.Error(), "must be allocated to region")
+	r.Contains(err.Error(), "@london")
+
+	// Moving it to a region the bastion DOES cover is accepted.
+	_, err = svc.UpdateCheck(ctx, org.Slug, *dependent.Slug, &checks.UpdateCheckRequest{
+		Regions: &[]string{cloudRegion},
+	})
+	r.NoError(err)
+}
+
+// TestTunnelRegionNarrowingOnBastionRejected proves the SSH-check side guard:
+// removing a private region an in-use bastion covers must not strand the
+// dependent that runs there.
+func TestTunnelRegionNarrowingOnBastionRejected(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, _, org := setupTunnelChecksService(t)
+	ctx := t.Context()
+
+	bastion := createRegionBastion(t, svc, ctx, org, "bastion",
+		[]string{parisRegion, londonRegion, cloudRegion})
+
+	_, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Name: "london-api", Slug: "london-api", Type: "http", Regions: []string{londonRegion},
+		Config: map[string]any{
+			"url":                              "http://internal.private/health",
+			checkerdef.TunnelCheckUIDConfigKey: bastion.UID,
+		},
+	})
+	r.NoError(err)
+
+	// Dropping london from the bastion strands london-api → 409 naming it.
+	_, err = svc.UpdateCheck(ctx, org.Slug, *bastion.Slug, &checks.UpdateCheckRequest{
+		Regions: &[]string{parisRegion, cloudRegion},
+	})
+	r.Error(err)
+	r.ErrorIs(err, checks.ErrTunnelRegionNarrowed)
+	r.Contains(err.Error(), "london-api")
+
+	// Keeping london covered (only reordering / dropping an unused region) is
+	// allowed.
+	_, err = svc.UpdateCheck(ctx, org.Slug, *bastion.Slug, &checks.UpdateCheckRequest{
+		Regions: &[]string{parisRegion, londonRegion},
+	})
+	r.NoError(err)
+}
+
+// plantSealedOnly rewrites an SSH check row into the sealed-only shape
+// (config_sealed present, config_private cleared, private-only regions) — the
+// state an SSH check reaches when it targets private regions exclusively.
+func plantSealedOnly(t *testing.T, dbSvc db.Service, ctx context.Context, //nolint:revive
+	org *models.Organization, checkUID string, privateRegions []string,
+) {
+	t.Helper()
+
+	sealed := `{"v":2,"alg":"age-x25519","fingerprints":["deadbeef"],"ct":"AAAA"}`
+	regionsCopy := append([]string(nil), privateRegions...)
+
+	require.NoError(t, dbSvc.UpdateCheck(ctx, checkUID, &models.CheckUpdate{
+		ConfigSealed:       &sealed,
+		ClearConfigPrivate: true,
+		Regions:            &regionsCopy,
+	}))
+
+	// Sanity: the row is now genuinely sealed-only.
+	row, err := dbSvc.GetCheck(ctx, org.UID, checkUID)
+	require.NoError(t, err)
+	require.NotNil(t, row.ConfigSealed)
+	require.Nil(t, row.ConfigPrivate)
+}
+
 // createBastionInOtherOrg creates a REAL, fully valid SSH check (fingerprint and
 // all) inside a different organization and returns its UID. Only the org
 // boundary makes it unusable — which is exactly what the test needs to prove.

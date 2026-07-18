@@ -1034,7 +1034,7 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		// A `tunnelCheckUid` reference is validated against the referenced SSH
 		// check (existence, type, fingerprint, no chaining) — the checker's own
 		// Validate cannot do this: it never touches the database.
-		if tunnelErr := s.validateTunnelConfig(ctx, org.UID, req.Type, effective); tunnelErr != nil {
+		if tunnelErr := s.validateTunnelConfig(ctx, org.UID, req.Type, effective, check.Regions); tunnelErr != nil {
 			return CheckResponse{}, tunnelErr
 		}
 
@@ -1341,6 +1341,26 @@ func (s *Service) UpdateCheck(
 	if req.Config != nil {
 		if cfgErr := s.applyConfigUpdate(ctx, check, *req.Config, &update); cfgErr != nil {
 			return CheckResponse{}, cfgErr
+		}
+	} else if req.Regions != nil {
+		// A regions-only PATCH still has to re-validate a tunnel reference: the
+		// dependent's private regions must stay covered by the SSH check (spec
+		// 2026-07-18-07, decisions 1–2). When req.Config is set, applyConfigUpdate
+		// already ran this against the new regions; here we run it against the
+		// unchanged stored config (its tunnelCheckUid is on the public side).
+		if tunnelErr := s.validateTunnelConfig(
+			ctx, check.OrganizationUID, check.Type, check.Config, check.Regions,
+		); tunnelErr != nil {
+			return CheckResponse{}, tunnelErr
+		}
+	}
+	// Guard the SSH check's own side: narrowing its regions (or making it
+	// sealed-only) while other checks tunnel through it must not silently strand
+	// them. Runs against the post-update state (regions resolved above; sealing
+	// applied by applyConfigUpdate when config changed).
+	if req.Regions != nil || req.Config != nil {
+		if coverErr := s.assertTunnelRegionsStillCover(ctx, check); coverErr != nil {
+			return CheckResponse{}, coverErr
 		}
 	}
 	if req.Enabled != nil {
@@ -3341,7 +3361,9 @@ func (s *Service) applyConfigUpdate(
 
 	// Same reasoning for the tunnel reference: validated on the merged config so
 	// a PATCH cannot smuggle in a dangling / unverified / chained tunnel.
-	if tunnelErr := s.validateTunnelConfig(ctx, check.OrganizationUID, check.Type, merged); tunnelErr != nil {
+	if tunnelErr := s.validateTunnelConfig(
+		ctx, check.OrganizationUID, check.Type, merged, check.Regions,
+	); tunnelErr != nil {
 		return tunnelErr
 	}
 

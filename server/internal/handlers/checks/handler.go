@@ -642,6 +642,9 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, err error) error
 	case errors.Is(err, ErrCheckNotFound):
 		return h.WriteErrorErr(
 			writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+	case errors.Is(err, ErrTunnelRegionNarrowed):
+		return h.WriteErrorErr(
+			writer, http.StatusConflict, base.ErrorCodeConflict, err.Error(), err)
 	case errors.Is(err, ErrNoAgentsToSealTo):
 		return h.WriteErrorErr(
 			writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
