@@ -1172,6 +1172,7 @@ func createCheckJobs(ctx context.Context, tx bun.Tx, check *models.Check) error 
 		checkJob.Config = check.Config
 		checkJob.ConfigPrivate = check.ConfigPrivate
 		checkJob.ConfigPrivateKeys = check.ConfigPrivateKeys
+		checkJob.ConfigSealed = check.ConfigSealed
 		checkJob.Encrypted = check.ConfigPrivate != nil
 		checkJob.ScheduledAt = &now
 		if _, err := tx.NewInsert().Model(checkJob).Exec(ctx); err != nil {
@@ -1194,6 +1195,7 @@ func createCheckJobs(ctx context.Context, tx bun.Tx, check *models.Check) error 
 		checkJob.Config = check.Config
 		checkJob.ConfigPrivate = check.ConfigPrivate
 		checkJob.ConfigPrivateKeys = check.ConfigPrivateKeys
+		checkJob.ConfigSealed = check.ConfigSealed
 		checkJob.Encrypted = check.ConfigPrivate != nil
 		checkJob.Region = &regionCopy
 		checkJob.ScheduledAt = &scheduledAt
@@ -1261,6 +1263,41 @@ func (s *Service) GetCheckByEmailToken(ctx context.Context, token string) (*mode
 	return check, nil
 }
 
+// ListChecksByTunnelCheckUID returns the org's non-deleted checks whose config
+// references the given SSH check as their tunnel. The JSONB key is queried
+// directly (`config->>'tunnelCheckUid'`) — the reference lives on the public
+// side of the config split, never in the encrypted private side, precisely so
+// it stays queryable.
+func (s *Service) ListChecksByTunnelCheckUID(
+	ctx context.Context, orgUID, tunnelCheckUID string,
+) ([]*models.Check, error) {
+	var checks []*models.Check
+
+	if err := s.db.NewSelect().
+		Model(&checks).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Where("config->>? = ?", checkerdef.TunnelCheckUIDConfigKey, tunnelCheckUID).
+		Order("slug ASC").
+		Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	return checks, nil
+}
+
+// applyCheckTypeFilter narrows a checks query to the requested types. It is
+// extracted from ListChecks so the row query and the count query share one
+// definition of the filter, and so ListChecks stays inside its complexity
+// budget.
+func applyCheckTypeFilter(query *bun.SelectQuery, types []string) *bun.SelectQuery {
+	if len(types) == 0 {
+		return query
+	}
+
+	return query.Where("type IN (?)", bun.List(types))
+}
+
 //nolint:funlen // List query builder handles many optional filters inline
 func (s *Service) ListChecks(
 	ctx context.Context, orgUID string, filter *models.ListChecksFilter,
@@ -1307,6 +1344,9 @@ func (s *Service) ListChecks(
 			query = query.Where("(LOWER(name) LIKE ? OR LOWER(slug) LIKE ?)", pattern, pattern)
 			countQuery = countQuery.Where("(LOWER(name) LIKE ? OR LOWER(slug) LIKE ?)", pattern, pattern)
 		}
+
+		query = applyCheckTypeFilter(query, filter.Types)
+		countQuery = applyCheckTypeFilter(countQuery, filter.Types)
 
 		// Apply internal filter (default: show only non-internal checks)
 		internalVal := "false"
@@ -1402,6 +1442,12 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 		query = query.Set("config_private_keys = ?", *update.ConfigPrivateKeys)
 	} else if update.ClearConfigPrivate {
 		query = query.Set("config_private_keys = NULL")
+	}
+
+	if update.ConfigSealed != nil {
+		query = query.Set("config_sealed = ?", *update.ConfigSealed)
+	} else if update.ClearConfigSealed {
+		query = query.Set("config_sealed = NULL")
 	}
 
 	if update.Enabled != nil {

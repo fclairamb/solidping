@@ -31,6 +31,7 @@ import { LabelInput } from "@/components/shared/label-input";
 import { ApiError } from "@/api/client";
 import type { Check as CheckModel, CheckGroup, RegionDefinition, SampleConfig } from "@/api/hooks";
 import {
+  useChecks,
   useCheckTypes,
   useSampleConfigs,
   useIntegrations,
@@ -43,6 +44,7 @@ import { NotifyViaSection } from "@/components/checks/form/sections/notification
 import { DependsOnFormSection } from "@/components/checks/form/sections/dependencies";
 import { checkTypeRegistry, authFieldsRegistry } from "@/components/checks/form/types";
 import { CheckFormFieldsProvider } from "@/components/checks/form/types/context";
+import { TunnelSelect } from "@/components/checks/form/tunnel-select";
 import {
   getConfigField,
   durationStringToSeconds,
@@ -241,6 +243,7 @@ export function CheckForm({
   const initialType = (initialData?.type as CheckType) || "http";
   const showRegions = (availableRegions?.length ?? 0) > 1;
 
+
   // Get period constraints for a given type
   function getPeriodConstraints(t: string) {
     const info = checkTypeInfoMap.get(t);
@@ -271,6 +274,15 @@ export function CheckForm({
   }
 
   const [type, setType] = useState<CheckType>(initialType);
+
+  // Whether the selected type can tunnel is server-declared capability metadata
+  // — never a hard-coded list here, so a checker gaining tunnel support needs
+  // no frontend change.
+  const supportsTunnel = checkTypeInfoMap.get(type)?.supportsTunnel === true;
+
+  // The org's SSH checks are the tunnel candidates, filtered server-side.
+  const { data: sshChecks } = useChecks(org, { type: "ssh", limit: 100 });
+  const tunnelCandidates = sshChecks ?? [];
   const [enabled, setEnabled] = useState(initialData?.enabled ?? true);
   const [name, setName] = useState(initialData?.name || "");
   const [slug, setSlug] = useState(initialData?.slug || "");
@@ -358,6 +370,13 @@ export function CheckForm({
   // ("10s"); the input edits whole seconds. Empty = unset (checker default).
   const [timeoutSeconds, setTimeoutSeconds] = useState(
     durationStringToSeconds(getConfigField(initialData?.config, "timeout")),
+  );
+
+  // Optional SSH tunnel — the well-known `tunnelCheckUid` config key. Shared and
+  // protocol-agnostic like `timeout` above, so it lives here rather than in a
+  // type module; empty = direct connection.
+  const [tunnelCheckUid, setTunnelCheckUid] = useState(
+    getConfigField(initialData?.config, "tunnelCheckUid"),
   );
 
   // The active check type's config state — one object seeded via the type
@@ -458,10 +477,21 @@ export function CheckForm({
       const tv = parseInt(timeoutSeconds, 10);
       if (!isNaN(tv)) cfg.timeout = `${tv}s`;
     }
+    // Only tunnel-capable types carry the key; switching to a type that cannot
+    // tunnel drops it rather than submitting a config the server would reject.
+    if (supportsTunnel && tunnelCheckUid !== "") {
+      cfg.tunnelCheckUid = tunnelCheckUid;
+    }
     return cfg;
-  }, [serialized, type, timeoutSeconds]);
+  }, [serialized, type, timeoutSeconds, supportsTunnel, tunnelCheckUid]);
 
-  const fieldErrors = useCheckValidation(org, type, currentConfig, 300);
+  const fieldErrors = useCheckValidation(
+    org,
+    type,
+    currentConfig,
+    selectedRegions,
+    300,
+  );
 
   const toggleRegion = (slug: string) => {
     setSelectedRegions((prev) =>
@@ -477,6 +507,7 @@ export function CheckForm({
     setPeriod(secondsToHMS(sample.periodSeconds));
     setConfigState(checkTypeRegistry[type].fromConfig(sample.config));
     setTimeoutSeconds(durationStringToSeconds(getConfigField(sample.config, "timeout")));
+    setTunnelCheckUid(getConfigField(sample.config, "tunnelCheckUid"));
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -486,12 +517,11 @@ export function CheckForm({
 
     // Reuse `currentConfig` (the same object the live preview and validation use)
     // as the submitted payload, so preview and payload can never drift apart.
+    // Secret sections decide for themselves whether to serialize their keys
+    // (see the dirty flags in the http module): an omitted key preserves the
+    // stored value, an explicit empty one clears it. Forcing `secretHeaders:{}`
+    // here used to wipe them on every edit, since GET never returns them.
     const config: Record<string, unknown> = { ...currentConfig };
-    // HTTP clears previously-stored secret headers on edit by sending an
-    // explicit empty object; `currentConfig` omits the key when empty.
-    if (type === "http" && config.secretHeaders === undefined) {
-      config.secretHeaders = {};
-    }
 
     // Required-field validation is the module's `toConfig` output. A field whose
     // value is stored server-side (listed in configPrivateKeys) is already
@@ -587,7 +617,7 @@ export function CheckForm({
 
   // ── Progressive-disclosure section summaries + open-on-content ──
   const authSummary = authSection
-    ? authSection.summary(configState)
+    ? authSection.summary(configState, initialData?.configPrivateKeys)
     : { text: "", customized: false };
 
   const labelCount = Object.keys(labels).length;
@@ -631,7 +661,8 @@ export function CheckForm({
   }${flappingCustomized ? "" : " (defaults)"}`;
 
   const timeoutError = getFieldError(fieldErrors, "timeout");
-  const advancedCustomized = timeoutSeconds.trim() !== "";
+  const advancedCustomized =
+    timeoutSeconds.trim() !== "" || (supportsTunnel && tunnelCheckUid !== "");
   const advancedSummary = advancedCustomized
     ? `timeout ${timeoutSeconds}s`
     : "timeout 15s (default)";
@@ -876,13 +907,33 @@ export function CheckForm({
                   <Label>Regions</Label>
                   <div className="grid grid-cols-2 gap-2">
                     {availableRegions?.map((region) => (
-                      <label key={region.slug} className="flex items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50">
+                      <label key={region.slug} className="flex items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50" data-testid={`region-option-${region.slug}`}>
                         <Checkbox checked={selectedRegions.includes(region.slug)} onCheckedChange={() => toggleRegion(region.slug)} />
                         <span className="text-sm">{region.emoji} {region.name}</span>
+                        {region.private && (
+                          <Badge variant="secondary" className="ml-auto text-[10px]" title="Runs on your own deported agents">
+                            Private
+                          </Badge>
+                        )}
                       </label>
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground">Select the regions where this check should run</p>
+                  {/* A region change can be rejected because of an SSH tunnel
+                      dependency (the tunnel's SSH check must cover every private
+                      region this check runs in). The server reports it on the
+                      tunnel field; surface it here too so a region edit that
+                      triggered it shows the reason next to the regions. */}
+                  {supportsTunnel &&
+                    tunnelCheckUid !== "" &&
+                    getFieldError(fieldErrors, "tunnelCheckUid") && (
+                      <p
+                        className="text-xs text-destructive"
+                        data-testid="region-tunnel-error"
+                      >
+                        {getFieldError(fieldErrors, "tunnelCheckUid")}
+                      </p>
+                    )}
                 </div>
               )}
             </CardContent>
@@ -1098,6 +1149,22 @@ export function CheckForm({
                   </p>
                 )}
               </div>
+              {supportsTunnel && (
+                <div className="mt-4" data-testid="check-tunnel-section">
+                  <TunnelSelect
+                    org={org}
+                    sshChecks={tunnelCandidates}
+                    selectedRegions={selectedRegions}
+                    value={tunnelCheckUid}
+                    onChange={setTunnelCheckUid}
+                  />
+                  {getFieldError(fieldErrors, "tunnelCheckUid") && (
+                    <p className="text-xs text-destructive">
+                      {getFieldError(fieldErrors, "tunnelCheckUid")}
+                    </p>
+                  )}
+                </div>
+              )}
             </CollapsibleSection>
           )}
 

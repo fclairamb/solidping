@@ -19,6 +19,11 @@ type CheckTypeResponse struct {
 	MinPeriodSeconds     int      `json:"minPeriodSeconds,omitempty"`
 	MaxPeriodSeconds     int      `json:"maxPeriodSeconds,omitempty"`
 	DefaultPeriodSeconds int      `json:"defaultPeriodSeconds,omitempty"`
+	// SupportsTunnel mirrors CheckTypeMeta.SupportsTunnel: the type can be run
+	// through an SSH check's tunnel (`tunnelCheckUid` in its config). The
+	// dashboard gates its tunnel selector on this flag rather than on a
+	// hard-coded type list.
+	SupportsTunnel bool `json:"supportsTunnel"`
 }
 
 // ListCheckTypesResponse wraps the list of check types.
@@ -137,6 +142,7 @@ func toResponse(statuses []checkerdef.CheckTypeStatus) ListCheckTypesResponse {
 			MinPeriodSeconds:     durationToSeconds(statuses[idx].MinPeriod),
 			MaxPeriodSeconds:     durationToSeconds(statuses[idx].MaxPeriod),
 			DefaultPeriodSeconds: durationToSeconds(statuses[idx].DefaultPeriod),
+			SupportsTunnel:       statuses[idx].SupportsTunnel,
 		})
 	}
 

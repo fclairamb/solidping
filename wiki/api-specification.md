@@ -546,6 +546,26 @@ Query parameters:
 - `cursor` - pagination cursor
 - `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
 
+### POST /api/v1/orgs/:org/incidents/:uid/comments
+Add a free-text comment to an incident's timeline. Auth: required.
+
+Creates an append-only `incident.comment` event authored by the calling user
+(`source: "web"`) and returns it. Comments also arrive from Slack thread
+replies (`source: "slack"`, with Slack author attribution in the payload) and
+are read back through `GET …/incidents/:uid/events`. Append-only — no edit or
+delete.
+
+Request body:
+```json
+{ "text": "restarting the pod" }
+```
+- `text` - comment body, plain text, non-empty after trimming, max 4096 bytes.
+
+Returns `201 Created` with the created event (events-list shape: `uid`,
+`incidentUid`, `checkUid`, `eventType`, `actorType`, `actorUid`, `payload`,
+`createdAt`). The `payload` carries `text` and `source`. Errors: `400` empty /
+over-length text, `404` unknown org or incident.
+
 ---
 
 ## Events
@@ -567,12 +587,13 @@ handshake, message table, close codes — documented in prose at
 `web/docs/docs/features/live-updates.md`. Summary:
 
 - Registered **outside** the standard auth middleware (browsers can't send
-  headers at WS-upgrade time): the route always accepts the upgrade, then
-  authenticates in-handler via a pre-auth `Authorization` header/cookie, or a
-  first `{"type":"auth","token":"..."}` message within
-  `SP_REALTIME_AUTH_GRACE` (5s default). Non-members close `4403`; a
-  disabled/invalid auth closes `4401`; `SP_REALTIME_ENABLED=false` closes
-  `4404`.
+  headers at WS-upgrade time): authenticates in-handler **before** the
+  upgrade, via `Authorization: Bearer` header, a `bearer.<jwt>`
+  `Sec-WebSocket-Protocol` entry (the SPA's transport — offered alongside
+  `solidping.v2`, which the server negotiates back), or the `access_token`
+  cookie, in that order. A bad/missing token is an HTTP `401` (no upgrade,
+  no in-band auth message). Non-members close `4403`; mid-connection token
+  expiry closes `4401`; `SP_REALTIME_ENABLED=false` closes `4404`.
 - **Default-silent**: a connection receives nothing until it sends
   `{"type":"subscribe","entity":...}` — `check` (+ `uid`) for one check, or
   `checks`/`incidents`/`events`/`jobs` for the matching org-wide collection.

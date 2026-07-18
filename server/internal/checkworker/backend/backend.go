@@ -1,5 +1,9 @@
-// Package backend provides the WorkerBackend interface for check worker
-// operations, abstracting direct DB access from HTTP-based remote access.
+// Package backend provides the WorkerBackend interface that abstracts how the
+// check worker loop (internal/checkworker) talks to the master: DirectBackend
+// calls the database and services in-process (the production server path),
+// WSBackend (agent mode) speaks the WebSocket agent protocol to a remote
+// server. The lease/lane loop, budgets, and express path in CheckWorker run
+// identically on top of either.
 package backend
 
 import (
@@ -9,47 +13,93 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-// SubmitResultRequest contains the data sent when a worker submits a
-// check result.
+// SchedulingState carries the post-exec cost/lane write folded into the lease
+// release (specs 2026-06-30-09 / 2026-07-01-03). Nil on paths without a fresh
+// cost sample (rate-limit deferral, passive checks, error results), which use a
+// plain release instead.
+type SchedulingState struct {
+	CostEWMAMs           float64   `json:"costEwmaMs"`
+	DelayEWMAMs          float64   `json:"delayEwmaMs"`
+	EffectiveScheduledAt time.Time `json:"effectiveScheduledAt"`
+	Lane                 uint8     `json:"lane"`
+}
+
+// SubmitResultRequest is the terminal write for one executed job: the result
+// row plus the lease release/reschedule, submitted as a single backend call so
+// a remote transport can carry it in one frame.
 type SubmitResultRequest struct {
 	Status   int            `json:"status"`
-	Duration float32        `json:"duration"`
+	Duration float32        `json:"duration"` // milliseconds
 	Metrics  map[string]any `json:"metrics,omitempty"`
 	Output   map[string]any `json:"output,omitempty"`
-}
-
-// SubmitResultResponse is returned after a result is submitted.
-type SubmitResultResponse struct {
+	// Region is the resolved region for the result row (job region, falling
+	// back to the worker's own region).
+	Region *string `json:"region,omitempty"`
+	// NextScheduledAt is the worker-computed next tick (phase-locked).
 	NextScheduledAt time.Time `json:"nextScheduledAt"`
+	// Sched, when non-nil, releases the lease with the updated scheduling
+	// state; nil uses the plain release.
+	Sched *SchedulingState `json:"sched,omitempty"`
 }
 
-// WorkerBackend abstracts how a check worker communicates with the
-// master server.  The DirectBackend calls the database directly, while
-// HTTPBackend calls the master API over HTTP.
+// WorkerBackend abstracts how a check worker communicates with the master.
+// CheckWorker consumes exactly this interface, so the same loop runs in-process
+// (DirectBackend) and inside a deported agent (WSBackend).
 type WorkerBackend interface {
-	// Register registers or updates a worker and returns the persisted
-	// record (possibly with a generated token on first registration).
-	Register(
-		ctx context.Context, worker *models.Worker,
-	) (*models.Worker, error)
+	// Register registers or updates the worker identity and returns the
+	// persisted record.
+	Register(ctx context.Context, worker *models.Worker) (*models.Worker, error)
 
 	// Heartbeat updates the worker's last_active_at timestamp.
 	Heartbeat(ctx context.Context, workerUID string) error
 
-	// ClaimJobs claims up to limit jobs for the given worker.
+	// ClaimJobs claims due jobs with per-lane reservation (fastLimit is the
+	// total capacity, slowLimit the slow-lane budget — see
+	// checkjobsvc.Service.ClaimJobs).
 	ClaimJobs(
 		ctx context.Context,
 		workerUID string,
 		region *string,
-		limit int,
+		fastLimit int,
+		slowLimit int,
 		maxAhead time.Duration,
 	) ([]*models.CheckJob, error)
 
-	// SubmitResult saves a check result and processes incidents.
-	// Returns the next scheduled time for the job.
+	// ClaimJobsForCheck claims any due job rows for one check (the express
+	// path for freshly created checks).
+	ClaimJobsForCheck(
+		ctx context.Context,
+		workerUID string,
+		region *string,
+		checkUID string,
+	) ([]*models.CheckJob, error)
+
+	// SubmitResult persists a finished execution: saves the result row,
+	// processes incidents (always server-side), and releases the lease with
+	// the given schedule (and scheduling state when provided).
 	SubmitResult(
 		ctx context.Context,
-		jobUID, workerUID string,
+		job *models.CheckJob,
+		workerUID string,
 		req *SubmitResultRequest,
-	) (*SubmitResultResponse, error)
+	) error
+
+	// ReleaseLease releases a job's lease and reschedules it without writing a
+	// result (rate-limit deferral path).
+	ReleaseLease(
+		ctx context.Context,
+		job *models.CheckJob,
+		workerUID string,
+		nextScheduledAt time.Time,
+	) error
+
+	// LastResults returns the latest result per check, used by passive checks
+	// (heartbeat/email) to inspect inbound signal recency. Remote backends may
+	// not support it — passive checks are a server-side concern.
+	LastResults(ctx context.Context, orgUID string, checkUIDs []string) (map[string]*models.Result, error)
+
+	// Hints returns a fresh channel signaled when new jobs may be available
+	// (check.created events in-process; jobs-available frames over WS). Each
+	// call returns an independent subscription.
+	Hints() <-chan string
 }

@@ -104,6 +104,17 @@
     "eventType": "Tipo de evento",
     "actor": "Actor"
   },
+  "comments": {
+    "title": "Comentarios",
+    "description": "Notas de los intervinientes y respuestas de los hilos de Slack.",
+    "empty": "Aún no hay comentarios. Añade la primera nota abajo.",
+    "placeholder": "Añadir un comentario…",
+    "submit": "Comentar",
+    "viaSlack": "vía Slack",
+    "slackUser": "Usuario de Slack",
+    "teamMember": "Miembro del equipo",
+    "addFailed": "No se pudo añadir el comentario"
+  },
   "time": {
     "daysAgo": "hace {{count}} d",
     "hoursAgo": "hace {{count}} h",

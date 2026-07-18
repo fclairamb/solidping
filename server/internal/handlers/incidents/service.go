@@ -29,6 +29,33 @@ var (
 	ErrSnoozeTooLong        = errors.New("snooze cannot exceed 7 days")
 	ErrSnoozeMissingDur     = errors.New("snooze requires either 'until' or 'duration'")
 	ErrSnoozeInvalidDur     = errors.New("snooze duration is not a valid Go duration")
+	ErrCommentEmpty         = errors.New("comment text must not be empty")
+	ErrCommentTooLong       = errors.New("comment text exceeds the maximum length")
+)
+
+// MaxCommentLength caps the size of a single incident comment body. Comments
+// are free-text operator notes, not documents — 4 KB is generous while
+// bounding the row size of the append-only events table.
+const MaxCommentLength = 4096
+
+// Comment source values recorded in the event payload.
+const (
+	// CommentSourceWeb marks a comment authored from the dashboard.
+	CommentSourceWeb = "web"
+	// CommentSourceSlack marks a comment ingested from a Slack thread reply.
+	CommentSourceSlack = "slack"
+)
+
+// Comment event payload keys. camelCase to match the wire shape the dashboard
+// reads straight off the event payload (unlike the snake_case lifecycle keys
+// above, which predate this convention and are not surfaced verbatim).
+const (
+	payloadKeyCommentText   = "text"
+	payloadKeyCommentSource = "source"
+	payloadKeySlackUserID   = "slackUserId"
+	payloadKeySlackUserName = "slackUserName"
+	payloadKeySlackTeamID   = "slackTeamId"
+	payloadKeySlackTs       = "slackTs"
 )
 
 // MaxSnoozeDuration caps how long an operator can silence an incident in a
@@ -268,6 +295,15 @@ func deriveIncidentClocks(
 			t := now
 			out.FirstFailureAt = &t
 		}
+		// This failure may open (or reopen) an incident right after this write,
+		// so the recovery clock must not carry over from the *previous*
+		// incident: a stale value would let the new incident auto-resolve on
+		// its very first success, ignoring the recovery period entirely. The
+		// clock is symmetric with FirstFailureAt — each is cleared by the
+		// opposite signal.
+		if check.FirstSuccessSinceFailureAt != nil {
+			out.ClearFirstSuccessSinceFailureAt = true
+		}
 	case isFailure && activeIncident != nil:
 		// Failure during the recovery window resets the recovery clock.
 		if check.FirstSuccessSinceFailureAt != nil {
@@ -281,13 +317,51 @@ func deriveIncidentClocks(
 		}
 	case isSuccess && activeIncident != nil:
 		// First success during an active incident arms the recovery clock.
-		if check.FirstSuccessSinceFailureAt == nil {
+		//
+		// Re-arming a *stale* clock (one predating the incident's onset) rather
+		// than only arming an unset one is load-bearing, and pairs with the
+		// read-side guard in recoveryElapsed. An incident already open when this
+		// code ships carries a clock the clear-on-open above never ran for; the
+		// read-side guard would reject that clock forever, and a nil-only check
+		// here would never replace it — wedging the incident open until a
+		// failure happened to land and clear it. Re-arming makes such rows
+		// self-heal on their next success, which is why no backfill migration is
+		// needed.
+		if staleOrUnarmedRecoveryClock(check, activeIncident) {
 			t := now
 			out.FirstSuccessSinceFailureAt = &t
 		}
 	}
 
 	return out
+}
+
+// staleOrUnarmedRecoveryClock reports whether the check's recovery clock needs
+// to be (re-)armed for this incident: either it was never armed, or it carries
+// a value older than the incident's current onset and therefore belongs to a
+// previous incident.
+func staleOrUnarmedRecoveryClock(check *models.Check, incident *models.Incident) bool {
+	if check.FirstSuccessSinceFailureAt == nil {
+		return true
+	}
+
+	return check.FirstSuccessSinceFailureAt.Before(incidentClockFloor(incident))
+}
+
+// incidentClockFloor returns the earliest time a recovery clock may legitimately
+// carry for this incident — its current onset: LastReopenedAt when the incident
+// has been reopened, StartedAt otherwise. A nil incident yields the zero time,
+// so every comparison against the floor is vacuously satisfied and the
+// no-incident paths keep their previous behavior.
+func incidentClockFloor(incident *models.Incident) time.Time {
+	if incident == nil {
+		return time.Time{}
+	}
+	if incident.LastReopenedAt != nil && incident.LastReopenedAt.After(incident.StartedAt) {
+		return *incident.LastReopenedAt
+	}
+
+	return incident.StartedAt
 }
 
 // applyClocks mirrors deriveIncidentClocks's tri-state into the in-memory
@@ -484,7 +558,7 @@ func (s *Service) handleSuccess(
 		return nil
 	}
 
-	if recoveryElapsed(check, s.clock.Now()) {
+	if recoveryElapsed(check, incident, s.clock.Now()) {
 		return s.resolveIncident(ctx, check, result, incident)
 	}
 
@@ -509,8 +583,16 @@ func confirmationElapsed(check *models.Check, now time.Time) bool {
 // period is flap-aware (see effectiveRecoveryPeriod): a flapping check must
 // stay stable progressively longer before auto-resolving. A 0-second base
 // period means "resolve immediately on first success".
-func recoveryElapsed(check *models.Check, now time.Time) bool {
+//
+// The clock is scoped to `incident`: a FirstSuccessSinceFailureAt older than
+// the incident's onset (see incidentClockFloor) belongs to a previous incident
+// and can never resolve this one. That makes the invariant structural rather
+// than dependent on every transition remembering to clear the clock.
+func recoveryElapsed(check *models.Check, incident *models.Incident, now time.Time) bool {
 	if check.FirstSuccessSinceFailureAt == nil {
+		return false
+	}
+	if check.FirstSuccessSinceFailureAt.Before(incidentClockFloor(incident)) {
 		return false
 	}
 
@@ -1162,7 +1244,7 @@ func (s *Service) handleGroupSuccess(
 		return nil
 	}
 
-	if !recoveryElapsed(check, s.clock.Now()) {
+	if !recoveryElapsed(check, incident, s.clock.Now()) {
 		return nil
 	}
 
@@ -1317,6 +1399,7 @@ func (s *Service) emitEvent(
 		models.EventTypeIncidentAcknowledged, models.EventTypeIncidentUnacknowledged,
 		models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed,
 		models.EventTypeIncidentEscalationFailed,
+		models.EventTypeIncidentComment,
 		models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
 		models.EventTypeStatusUpdateDeleted,
 		models.EventTypeOrgActivationSignupCompleted,
@@ -1324,8 +1407,8 @@ func (s *Service) emitEvent(
 		models.EventTypeOrgActivationFirstResultReceived,
 		models.EventTypeOrgActivationFirstNotificationConfigured,
 		models.EventTypeOrgActivationFirstIncidentPaged:
-		// No notifications for these event types — operator actions, soft
-		// escalation failures, status updates, or activation milestones.
+		// No notifications for these event types — operator actions, comments,
+		// soft escalation failures, status updates, or activation milestones.
 	}
 
 	return nil
@@ -2108,6 +2191,120 @@ func (s *Service) AcknowledgeIncidentFromSlack(
 		SlackUsername: slackUsername,
 		Via:           "slack",
 	})
+}
+
+// AddCommentRequest carries the data needed to append a comment to an
+// incident's timeline. Source-specific fields are only read for that source
+// (ActorUID for web, the Slack* fields for slack).
+type AddCommentRequest struct {
+	IncidentUID string
+	Text        string
+	Source      string // CommentSourceWeb | CommentSourceSlack
+	// ActorUID is the authenticated dashboard user's UID (web source).
+	ActorUID string
+	// Slack attribution (slack source) — the author usually has no SolidPing
+	// user, so these go into the payload and ActorUID stays empty.
+	SlackUserID   string
+	SlackUserName string
+	SlackTeamID   string
+	SlackTs       string
+}
+
+// AddComment appends a user-authored comment to an incident's timeline as an
+// append-only `incident.comment` event. Accepts the org slug (as the HTTP
+// layer always has) and resolves it to a UID internally.
+func (s *Service) AddComment(
+	ctx context.Context, orgSlug string, req *AddCommentRequest,
+) (*models.Event, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, ErrOrganizationNotFound
+	}
+
+	return s.addCommentByOrgUID(ctx, org.UID, req)
+}
+
+// AddCommentFromSlack appends a comment ingested from a Slack thread reply.
+// Internal callers already hold the org UID (resolved via the reverse thread
+// lookup), so this skips the slug lookup AddComment performs. Satisfies the
+// slack package's IncidentService interface.
+func (s *Service) AddCommentFromSlack(
+	ctx context.Context, orgUID, incidentUID, text, slackUserID, slackUserName, slackTeamID, slackTs string,
+) (*models.Event, error) {
+	return s.addCommentByOrgUID(ctx, orgUID, &AddCommentRequest{
+		IncidentUID:   incidentUID,
+		Text:          text,
+		Source:        CommentSourceSlack,
+		SlackUserID:   slackUserID,
+		SlackUserName: slackUserName,
+		SlackTeamID:   slackTeamID,
+		SlackTs:       slackTs,
+	})
+}
+
+// addCommentByOrgUID is the shared core for both comment sources. It validates
+// the body, confirms the incident exists in the org, writes the append-only
+// event, and publishes a live `events` hint so watching dashboards refresh.
+func (s *Service) addCommentByOrgUID(
+	ctx context.Context, orgUID string, req *AddCommentRequest,
+) (*models.Event, error) {
+	text := strings.TrimSpace(req.Text)
+	if text == "" {
+		return nil, ErrCommentEmpty
+	}
+	if len(text) > MaxCommentLength {
+		return nil, ErrCommentTooLong
+	}
+
+	incident, err := s.db.GetIncident(ctx, orgUID, req.IncidentUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrIncidentNotFound
+		}
+
+		return nil, fmt.Errorf("failed to get incident: %w", err)
+	}
+
+	event := models.NewEvent(orgUID, models.EventTypeIncidentComment, models.ActorTypeUser)
+	event.IncidentUID = &incident.UID
+	event.CheckUID = &incident.CheckUID
+
+	payload := models.JSONMap{
+		payloadKeyCommentText:   text,
+		payloadKeyCommentSource: req.Source,
+		keyCheckUID:             incident.CheckUID,
+	}
+
+	switch req.Source {
+	case CommentSourceWeb:
+		if req.ActorUID != "" {
+			event.ActorUID = &req.ActorUID
+		}
+	case CommentSourceSlack:
+		payload[payloadKeySlackUserID] = req.SlackUserID
+		payload[payloadKeySlackUserName] = req.SlackUserName
+		payload[payloadKeySlackTeamID] = req.SlackTeamID
+		payload[payloadKeySlackTs] = req.SlackTs
+	}
+
+	// Best-effort check identity for rendering, mirroring the ack path — the
+	// check may have been deleted since the incident opened.
+	if check, chkErr := s.db.GetCheck(ctx, orgUID, incident.CheckUID); chkErr == nil && check != nil {
+		payload[keyCheckSlug] = check.Slug
+		payload[keyCheckName] = check.Name
+	}
+
+	event.Payload = payload
+
+	if err := s.db.CreateEvent(ctx, event); err != nil {
+		return nil, fmt.Errorf("failed to create comment event: %w", err)
+	}
+
+	// Live hint: a new timeline event is visible state — immediate so the
+	// comment reaches watching dashboards without a manual refresh.
+	s.rt.PublishImmediate(ctx, orgUID, incident.CheckUID, realtime.KindEvents)
+
+	return event, nil
 }
 
 // UnacknowledgeIncident clears the acknowledgment on an incident. Use case:

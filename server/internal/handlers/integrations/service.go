@@ -198,13 +198,20 @@ func toResponse(conn *models.Integration, includeSettings bool) *IntegrationResp
 		secretSet[k] = struct{}{}
 	}
 
+	// Defense-in-depth: track any declared-secret key that was (wrongly) found
+	// in the public settings so it is redacted AND advertised, even for a
+	// not-yet-migrated row whose storage split never ran.
+	advertised := map[string]struct{}{}
+
 	if includeSettings && conn.Settings != nil {
 		settings := make(map[string]any, len(conn.Settings))
-		for k, v := range conn.Settings {
-			if _, isSecret := secretSet[k]; isSecret {
+		for key, value := range conn.Settings {
+			if _, isSecret := secretSet[key]; isSecret {
+				advertised[key] = struct{}{}
+
 				continue
 			}
-			settings[k] = v
+			settings[key] = value
 		}
 		resp.Settings = settings
 	}
@@ -212,11 +219,28 @@ func toResponse(conn *models.Integration, includeSettings bool) *IntegrationResp
 	if conn.SettingsPrivateKeys != nil && *conn.SettingsPrivateKeys != "" {
 		var keys []string
 		if err := json.Unmarshal([]byte(*conn.SettingsPrivateKeys), &keys); err == nil {
-			resp.SettingsPrivateKeys = keys
+			for _, k := range keys {
+				advertised[k] = struct{}{}
+			}
 		}
 	}
 
+	if len(advertised) > 0 {
+		resp.SettingsPrivateKeys = credentials.SortedKeys(mapKeysToAny(advertised))
+	}
+
 	return resp
+}
+
+// mapKeysToAny adapts a set to the map[string]any that credentials.SortedKeys
+// expects — a tiny bridge so the private-key list stays sorted/stable.
+func mapKeysToAny(set map[string]struct{}) map[string]any {
+	out := make(map[string]any, len(set))
+	for k := range set {
+		out[k] = struct{}{}
+	}
+
+	return out
 }
 
 // ListIntegrations returns all connections for an organization.
@@ -487,10 +511,11 @@ func (s *Service) UpdateIntegration(
 }
 
 // applySettingsEncryption splits Settings into public/private using the
-// connection-type's declared secret keys, encrypts the private side, and
-// writes Settings + SettingsPrivate + SettingsPrivateKeys onto the
-// connection. When encryption is disabled at the server, secrets stay
-// plaintext on Settings (logged-once startup warning covers the gap).
+// connection-type's declared secret keys and writes Settings + SettingsPrivate
+// + SettingsPrivateKeys onto the connection. Secrets are ALWAYS split out of
+// the public Settings column (spec 2026-07-18-06): an AES-GCM envelope when a
+// master key is configured, a plaintext envelope (no-key self-hosted fallback)
+// otherwise. The public Settings column never carries a secret value.
 func (s *Service) applySettingsEncryption(
 	ctx context.Context, conn *models.Integration, effective map[string]any,
 ) error {
@@ -502,23 +527,34 @@ func (s *Service) applySettingsEncryption(
 	public, private := credentials.SplitConfig(effective, secrets)
 	conn.Settings = models.JSONMap(public)
 
-	if !s.creds.Enabled() || len(private) == 0 {
+	if len(private) == 0 {
 		conn.SettingsPrivate = nil
 		conn.SettingsPrivateKeys = nil
-		// Plaintext fallback: secrets must still be persisted so the
-		// integration actually works.
-		if !s.creds.Enabled() {
-			for k, v := range private {
-				conn.Settings[k] = v
-			}
-		}
 
 		return nil
 	}
 
-	envelope, err := s.creds.EncryptForOrg(ctx, conn.OrganizationUID, private)
-	if err != nil {
-		return fmt.Errorf("encrypt connection settings: %w", err)
+	// Secrets are ALWAYS split out of the public `settings` column and stored in
+	// `settings_private`, in every mode — the public column must never carry a
+	// secret value (the leak this fixes). With a master key we store an AES-GCM
+	// envelope; without one, a clearly-marked plaintext envelope (the documented
+	// V1 self-hosted fallback). `settings_private_keys` is set in both modes so
+	// the dashboard renders placeholder pills.
+	var (
+		envelope string
+		err      error
+	)
+
+	if s.creds.Enabled() {
+		envelope, err = s.creds.EncryptForOrg(ctx, conn.OrganizationUID, private)
+		if err != nil {
+			return fmt.Errorf("encrypt connection settings: %w", err)
+		}
+	} else {
+		envelope, err = credentials.SealPlaintext(private)
+		if err != nil {
+			return fmt.Errorf("seal plaintext connection settings: %w", err)
+		}
 	}
 
 	conn.SettingsPrivate = &envelope
@@ -549,7 +585,10 @@ func (s *Service) loadDecryptedSettings(
 		return out, nil
 	}
 
-	if !s.creds.Enabled() {
+	// A plaintext envelope opens with no master key; only AES-GCM / sealed
+	// envelopes require one. Gate the disabled error on that so a no-key
+	// self-hosted PATCH can still read (and preserve) its own secrets.
+	if credentials.RequiresKey(*conn.SettingsPrivate) && !s.creds.Enabled() {
 		return nil, fmt.Errorf("decrypt connection %s: %w", conn.UID, credentials.ErrDisabled)
 	}
 

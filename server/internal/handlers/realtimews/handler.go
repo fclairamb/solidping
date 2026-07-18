@@ -10,10 +10,12 @@ package realtimews
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/coder/websocket"
@@ -103,13 +105,30 @@ func (h *Handler) Serve(writer http.ResponseWriter, req bunrouter.Request) error
 	// Authenticate the token at the HTTP level, before upgrading, so a bad
 	// token gets a real 401 instead of a dangling socket closed with an
 	// app-defined code the caller may not read.
-	claims, user, errCode, errMsg := h.authenticateToken(ctx, extractToken(req.Request))
+	token := extractToken(req.Request)
+	claims, user, errCode, errMsg := h.authenticateToken(ctx, token)
 	if claims == nil {
+		_, cookieErr := req.Cookie(cookieAuthToken)
+		h.logger.Warn("WebSocket handshake rejected",
+			"org", orgSlug,
+			"error_code", errCode,
+			"has_auth_header", req.Header.Get("Authorization") != "",
+			"has_subprotocol_token", extractSubprotocolToken(req.Request) != "",
+			"has_cookie", cookieErr == nil,
+			"token_iss", unverifiedIssuer(token),
+		)
+
 		return h.WriteError(writer, http.StatusUnauthorized, errCode, errMsg)
 	}
 
 	conn, err := websocket.Accept(writer, req.Request, &websocket.AcceptOptions{
 		CompressionMode: websocket.CompressionDisabled,
+		// Negotiated back when the client offered it alongside its bearer.*
+		// token entry (see extractToken) — a browser that offered subprotocols
+		// aborts the connection unless the server acknowledges one. Clients
+		// that offer no subprotocols (cookie- or header-authenticated) are
+		// accepted without one, as before.
+		Subprotocols: []string{wsSubprotocol},
 	})
 	if err != nil {
 		return nil // the client never got a socket; nothing more to do
@@ -144,6 +163,35 @@ func (h *Handler) Serve(writer http.ResponseWriter, req bunrouter.Request) error
 	h.serveLoop(ctx, conn, sub, org, claims)
 
 	return nil
+}
+
+// jwtParts is the number of dot-separated segments in a JWT.
+const jwtParts = 3
+
+// unverifiedIssuer decodes a JWT payload WITHOUT verifying its signature and
+// returns its `iss` claim, for debug-logging rejected handshakes only — an
+// unexpected issuer immediately identifies a foreign access_token cookie
+// shadowing ours (cookies ignore ports, so any other app on the same host can
+// plant one). Never use its output for auth.
+func unverifiedIssuer(token string) string {
+	parts := strings.Split(token, ".")
+	if len(parts) != jwtParts {
+		return "not-a-jwt"
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "undecodable"
+	}
+
+	var claims struct {
+		Issuer string `json:"iss"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return "unparsable"
+	}
+
+	return claims.Issuer
 }
 
 // serveLoop runs the write-loop in the background and blocks in the

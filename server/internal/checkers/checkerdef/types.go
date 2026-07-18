@@ -247,41 +247,52 @@ type CheckTypeMeta struct {
 	MinPeriod     time.Duration `json:"-"` // Minimum allowed check period (0 = use global default)
 	MaxPeriod     time.Duration `json:"-"` // Maximum allowed check period (0 = no limit)
 	DefaultPeriod time.Duration `json:"-"` // Default check period (0 = use global default)
+
+	// SupportsTunnel reports whether the type honors a tunnel dialer
+	// (TunnelDialerFrom) and can therefore carry a `tunnelCheckUid` in its
+	// config. Declarative metadata rather than a hand-maintained list
+	// elsewhere: the API serves it and the dashboard gates its selector on it.
+	// Enabled for every TCP-dialing type that routes its probe through the
+	// context dialer: http, tcp, the mail protocols (smtp/imap/pop3), ssl, the
+	// database drivers (postgres/mysql/mssql/oracle), and the client-library
+	// types (redis/mongodb/rabbitmq/kafka/grpc/websocket/ftp/mqtt). UDP/ICMP
+	// types cannot — SSH direct-tcpip forwards TCP only.
+	SupportsTunnel bool `json:"supportsTunnel"`
 }
 
 // checkTypesRegistry is the authoritative registry of all check types with metadata.
 //
 //nolint:gochecknoglobals,lll // Registry is intentionally global; it's read-only after init.
 var checkTypesRegistry = []CheckTypeMeta{
-	{Type: CheckTypeHTTP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor HTTP/HTTPS endpoints"},
-	{Type: CheckTypeTCP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check TCP port connectivity"},
+	{Type: CheckTypeHTTP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor HTTP/HTTPS endpoints", SupportsTunnel: true},
+	{Type: CheckTypeTCP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check TCP port connectivity", SupportsTunnel: true},
 	{Type: CheckTypeICMP, Labels: []string{labelUnsafe, labelReqRawSocket, labelCatNetwork}, Description: "Ping hosts via ICMP"},
 	{Type: CheckTypeDNS, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor DNS resolution", DefaultPeriod: 5 * time.Minute},
-	{Type: CheckTypeSSL, Labels: []string{labelSafe, labelStandalone, labelCatSecurity}, Description: "Check SSL certificate validity", MinPeriod: time.Hour, DefaultPeriod: 6 * time.Hour},
+	{Type: CheckTypeSSL, Labels: []string{labelSafe, labelStandalone, labelCatSecurity}, Description: "Check SSL certificate validity", MinPeriod: time.Hour, DefaultPeriod: 6 * time.Hour, SupportsTunnel: true},
 	{Type: CheckTypeDomain, Labels: []string{labelSafe, labelStandalone, labelCatSecurity}, Description: "Monitor domain expiration", MinPeriod: 6 * time.Hour, DefaultPeriod: 24 * time.Hour},
 	{Type: CheckTypeHeartbeat, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Passive HTTP check"},
 	{Type: CheckTypeEmail, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Email reception (passive)"},
-	{Type: CheckTypeSMTP, Labels: []string{labelSafe, labelReqMailProtocol, labelCatMail}, Description: "Check SMTP server connectivity"},
+	{Type: CheckTypeSMTP, Labels: []string{labelSafe, labelReqMailProtocol, labelCatMail}, Description: "Check SMTP server connectivity", SupportsTunnel: true},
 	{Type: CheckTypeUDP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check UDP port reachability"},
 	{Type: CheckTypeSSH, Labels: []string{labelSafe, labelStandalone, labelCatRemoteAccess}, Description: "Check SSH server availability"},
-	{Type: CheckTypePOP3, Labels: []string{labelSafe, labelReqMailProtocol, labelCatMail}, Description: "Check POP3 server availability"},
-	{Type: CheckTypeIMAP, Labels: []string{labelSafe, labelReqMailProtocol, labelCatMail}, Description: "Check IMAP server availability"},
-	{Type: CheckTypeWebSocket, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check WebSocket connectivity"},
-	{Type: CheckTypePostgreSQL, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check PostgreSQL database health"},
-	{Type: CheckTypeMySQL, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check MySQL/MariaDB database health"},
-	{Type: CheckTypeRedis, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check Redis server health"},
-	{Type: CheckTypeMongoDB, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check MongoDB database health"},
-	{Type: CheckTypeFTP, Labels: []string{labelSafe, labelReqFileProtocol, labelCatRemoteAccess}, Description: "Check FTP server availability"},
+	{Type: CheckTypePOP3, Labels: []string{labelSafe, labelReqMailProtocol, labelCatMail}, Description: "Check POP3 server availability", SupportsTunnel: true},
+	{Type: CheckTypeIMAP, Labels: []string{labelSafe, labelReqMailProtocol, labelCatMail}, Description: "Check IMAP server availability", SupportsTunnel: true},
+	{Type: CheckTypeWebSocket, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check WebSocket connectivity", SupportsTunnel: true},
+	{Type: CheckTypePostgreSQL, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check PostgreSQL database health", SupportsTunnel: true},
+	{Type: CheckTypeMySQL, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check MySQL/MariaDB database health", SupportsTunnel: true},
+	{Type: CheckTypeRedis, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check Redis server health", SupportsTunnel: true},
+	{Type: CheckTypeMongoDB, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check MongoDB database health", SupportsTunnel: true},
+	{Type: CheckTypeFTP, Labels: []string{labelSafe, labelReqFileProtocol, labelCatRemoteAccess}, Description: "Check FTP server availability", SupportsTunnel: true},
 	{Type: CheckTypeSFTP, Labels: []string{labelSafe, labelReqFileProtocol, labelCatRemoteAccess}, Description: "Check SFTP server availability"},
 	{Type: CheckTypeJS, Labels: []string{labelUnsafe, labelReqScripting, labelCatOther}, Description: "Run custom JavaScript scripts", MinPeriod: 30 * time.Second, DefaultPeriod: time.Minute},
-	{Type: CheckTypeMSSQL, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check Microsoft SQL Server health"},
-	{Type: CheckTypeOracle, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check Oracle Database health"},
-	{Type: CheckTypeGRPC, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check gRPC service health"},
-	{Type: CheckTypeKafka, Labels: []string{labelSafe, labelReqMessagingClient, labelCatMessaging}, Description: "Check Kafka cluster health"},
-	{Type: CheckTypeMQTT, Labels: []string{labelSafe, labelReqMessagingClient, labelCatMessaging}, Description: "Check MQTT broker connectivity"},
+	{Type: CheckTypeMSSQL, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check Microsoft SQL Server health", SupportsTunnel: true},
+	{Type: CheckTypeOracle, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check Oracle Database health", SupportsTunnel: true},
+	{Type: CheckTypeGRPC, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check gRPC service health", SupportsTunnel: true},
+	{Type: CheckTypeKafka, Labels: []string{labelSafe, labelReqMessagingClient, labelCatMessaging}, Description: "Check Kafka cluster health", SupportsTunnel: true},
+	{Type: CheckTypeMQTT, Labels: []string{labelSafe, labelReqMessagingClient, labelCatMessaging}, Description: "Check MQTT broker connectivity", SupportsTunnel: true},
 	{Type: CheckTypeA2S, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Monitor Source engine game servers via the A2S query protocol"},
 	{Type: CheckTypeMinecraft, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Monitor Minecraft servers (Java + Bedrock)"},
-	{Type: CheckTypeRabbitMQ, Labels: []string{labelSafe, labelReqMessagingClient, labelCatMessaging}, Description: "Check RabbitMQ server health"},
+	{Type: CheckTypeRabbitMQ, Labels: []string{labelSafe, labelReqMessagingClient, labelCatMessaging}, Description: "Check RabbitMQ server health", SupportsTunnel: true},
 	{Type: CheckTypeSNMP, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Monitor devices via SNMP"},
 	{Type: CheckTypeDocker, Labels: []string{labelUnsafe, labelReqDockerSocket, labelCatInfrastructure}, Description: "Monitor Docker container health"},
 	{Type: CheckTypeBrowser, Labels: []string{labelUnsafe, labelReqChrome, labelCatOther}, Description: "Monitor pages with headless Chrome", MinPeriod: time.Minute, DefaultPeriod: 5 * time.Minute},

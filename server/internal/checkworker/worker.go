@@ -23,13 +23,16 @@ import (
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/checkworker/backend"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
+	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/stats"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
@@ -95,15 +98,21 @@ type CheckWorker struct {
 	// (runners, fetcher, heartbeat, the Prometheus channel collector, and tests),
 	// so access goes through atomic.Pointer to avoid a data race. Use
 	// setWorker/getWorker rather than touching the field directly.
-	worker      atomic.Pointer[models.Worker]
-	dbService   db.Service
-	checkJobSvc checkjobsvc.Service
-	incidentSvc *incidents.Service
-	config      *config.Config
-	services    *services.Registry
-	logger      *slog.Logger
-	wg          sync.WaitGroup
-	stats       stats.ProcessingStats
+	worker atomic.Pointer[models.Worker]
+	// backend is the transport the loop runs on: DirectBackend in-process (the
+	// production server), WSBackend inside a deported agent. Every claim,
+	// result submission, and lease release goes through it, so the lease/lane
+	// loop, budgets, and express path run identically everywhere (spec
+	// 2026-07-16-02).
+	backend backend.WorkerBackend
+	// dbService and services are the in-process conveniences (self-stats,
+	// entitlements). Both are nil in agent mode; every use is nil-guarded.
+	dbService db.Service
+	services  *services.Registry
+	config    *config.Config
+	logger    *slog.Logger
+	wg        sync.WaitGroup
+	stats     stats.ProcessingStats
 
 	// getChecker/parseConfig default to registry.GetChecker/registry.ParseConfig
 	// (set by NewCheckWorker) and are only ever overridden in tests, to drive
@@ -156,13 +165,37 @@ type CheckWorker struct {
 	defaultOrgUID    string // UID of the default organization
 }
 
-// NewCheckWorker creates a new check runner.
+// NewCheckWorker creates a new check runner wired to the in-process
+// DirectBackend (the production server path).
 func NewCheckWorker(
 	dbService db.Service,
 	cfg *config.Config,
 	svc *services.Registry,
 	checkJobSvc checkjobsvc.Service,
 ) *CheckWorker {
+	incidentSvc := incidents.NewService(dbService, svc.Jobs, clock.Real{}, svc.Realtime)
+	directBackend := backend.NewDirectBackend(
+		dbService, checkJobSvc, incidentSvc, svc.EventNotifier, svc.Credentials,
+	)
+
+	worker := newCheckWorker(cfg, directBackend)
+	worker.dbService = dbService
+	worker.services = svc
+
+	return worker
+}
+
+// NewAgentCheckWorker creates a check runner for agent mode: no database, no
+// services registry — everything flows through the given (remote) backend.
+// Self-stats and the entitlements gate are in-process concerns and are
+// skipped; the server enforces per-org rate limits on the agent claim path.
+func NewAgentCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *CheckWorker {
+	return newCheckWorker(cfg, workerBackend)
+}
+
+// newCheckWorker is the shared constructor: everything except the in-process
+// conveniences (dbService/services), which the in-process wrapper fills in.
+func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *CheckWorker {
 	logger := slog.Default().With("component", "check_worker")
 
 	poolSize := cfg.Server.CheckWorker.Nb
@@ -195,11 +228,8 @@ func NewCheckWorker(
 	schedParams := schedulingParamsFromConfig(cfg.Server.Scheduling)
 
 	return &CheckWorker{
-		dbService:   dbService,
+		backend:     workerBackend,
 		config:      cfg,
-		services:    svc,
-		checkJobSvc: checkJobSvc,
-		incidentSvc: incidents.NewService(dbService, svc.Jobs, clock.Real{}, svc.Realtime),
 		logger:      logger,
 		stats:       stats.NewProcessingStats(time.Minute, time.Minute, logger),
 		getChecker:  registry.GetChecker,
@@ -338,7 +368,7 @@ func (r *CheckWorker) registerWorker(ctx context.Context) error {
 		Region: &region,
 	}
 
-	registeredWorker, err := r.dbService.RegisterOrUpdateWorker(ctx, worker)
+	registeredWorker, err := r.backend.Register(ctx, worker)
 	if err != nil {
 		return err
 	}
@@ -377,7 +407,7 @@ func (r *CheckWorker) heartbeatLoop(ctx context.Context) {
 
 // updateHeartbeat updates the worker's last_active_at timestamp.
 func (r *CheckWorker) updateHeartbeat(ctx context.Context) {
-	if err := r.dbService.UpdateWorkerHeartbeat(ctx, r.getWorker().UID); err != nil {
+	if err := r.backend.Heartbeat(ctx, r.getWorker().UID); err != nil {
 		r.logger.ErrorContext(ctx, "Failed to update heartbeat", "error", err)
 	}
 }
@@ -391,7 +421,7 @@ func (r *CheckWorker) fetcherLoop(ctx context.Context) {
 	logger.InfoContext(ctx, "Fetcher started")
 	defer logger.InfoContext(ctx, "Fetcher stopped")
 
-	checkCreatedChan := r.services.EventNotifier.Listen("check.created")
+	checkCreatedChan := r.backend.Hints()
 
 	for {
 		// Check for shutdown
@@ -448,7 +478,7 @@ func (r *CheckWorker) fetchAndDistributeJobs(ctx context.Context, logger *slog.L
 	cfg := r.config.Server.CheckWorker
 	fetchStart := time.Now()
 	worker := r.getWorker()
-	jobs, err := r.checkJobSvc.ClaimJobs(
+	jobs, err := r.backend.ClaimJobs(
 		ctx,
 		worker.UID,
 		worker.Region,
@@ -521,7 +551,7 @@ func (r *CheckWorker) expressLoop(ctx context.Context) {
 	logger.InfoContext(ctx, "Express runner started")
 	defer logger.InfoContext(ctx, "Express runner stopped")
 
-	events := r.services.EventNotifier.Listen("check.created")
+	events := r.backend.Hints()
 
 	for {
 		select {
@@ -554,7 +584,7 @@ func (r *CheckWorker) handleExpressEvent(ctx context.Context, logger *slog.Logge
 	}
 
 	worker := r.getWorker()
-	jobs, err := r.checkJobSvc.ClaimJobsForCheck(ctx, worker.UID, worker.Region, msg.CheckUID)
+	jobs, err := r.backend.ClaimJobsForCheck(ctx, worker.UID, worker.Region, msg.CheckUID)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
 			logger.WarnContext(ctx, "express claim failed",
@@ -628,6 +658,61 @@ func (r *CheckWorker) runnerLoop(ctx context.Context, id int) {
 	}
 }
 
+// redactionPlaceholder replaces a secret value in the job log line.
+const redactionPlaceholder = "<redacted>"
+
+// redactedConfig returns a log-safe view of a job config: every value the
+// check type declares secret (checkerdef configs implementing
+// credentials.SecretFielder) is replaced by a placeholder, keys are kept so
+// the line stays useful for debugging.
+//
+// This matters twice over. Since spec 2026-07-16-05 the config reaching the
+// worker is the MERGED plaintext (the decrypt happens at the claim boundary),
+// so logging it verbatim would print the very credentials the encryption is
+// there to protect — a leak that did not exist while the bug was live, because
+// back then the config never carried the secrets at all. And on deployments
+// with no master key, where secrets are plaintext in the public config by
+// design, this redaction is what keeps them out of the log too.
+//
+// A check type we cannot resolve gets every value redacted: an unknown config
+// shape is exactly when we cannot tell which keys are sensitive, so the safe
+// default is to assume they all are.
+func (r *CheckWorker) redactedConfig(checkType string, cfg models.JSONMap) map[string]any {
+	if len(cfg) == 0 {
+		return map[string]any{}
+	}
+
+	out := make(map[string]any, len(cfg))
+
+	parsed, ok := r.parseConfig(checkerdef.CheckType(checkType))
+	if !ok {
+		for key := range cfg {
+			out[key] = redactionPlaceholder
+		}
+
+		return out
+	}
+
+	secrets := credentials.SecretFieldsFor(parsed)
+
+	secretSet := make(map[string]struct{}, len(secrets))
+	for _, key := range secrets {
+		secretSet[key] = struct{}{}
+	}
+
+	for key, value := range cfg {
+		if _, isSecret := secretSet[key]; isSecret {
+			out[key] = redactionPlaceholder
+
+			continue
+		}
+
+		out[key] = value
+	}
+
+	return out
+}
+
 // executeJob executes a single check job.
 //
 //nolint:funlen,cyclop // Slightly over limits due to OTel tracing
@@ -653,7 +738,7 @@ func (r *CheckWorker) executeJob(
 		ctx,
 		"Executing check job",
 		"check_type", checkJob.Type,
-		"check_config", checkJob.Config,
+		"check_config", r.redactedConfig(checkJob.Type, checkJob.Config),
 	)
 
 	startTime := time.Now()
@@ -754,8 +839,10 @@ func (r *CheckWorker) executeJob(
 	// Per-org MaxChecksPerMinute gate. Drained buckets reschedule the
 	// job for next period without writing a result, so the user sees
 	// missed executions in their history rather than a hard error. The
-	// entitlements service treats nil caps as unlimited (no-op).
-	if entSvc := r.services.Entitlements; entSvc != nil {
+	// entitlements service treats nil caps as unlimited (no-op). In agent
+	// mode there is no in-process entitlements service — the server enforces
+	// the same per-org cap on the agent claim path instead.
+	if entSvc := r.entitlementsService(); entSvc != nil {
 		if rateErr := entSvc.ReserveCheckExecution(ctx, checkJob.OrganizationUID); rateErr != nil {
 			var quotaErr *entitlements.QuotaError
 			if errors.As(rateErr, &quotaErr) {
@@ -798,6 +885,32 @@ func (r *CheckWorker) executeJob(
 	execCtx, cancel := context.WithTimeout(context.Background(), checkTimeout+time.Second)
 	defer cancel()
 
+	// Detaching from ctx above drops its values; carry the tunnel-resolver
+	// override across so a per-execution resolver is still honored.
+	execCtx = sshtunnel.CarryResolver(ctx, execCtx)
+
+	// Tunnel-capable checks (`tunnelCheckUid` in config) dial their probe
+	// through an SSH check's connection. A fresh session is established per
+	// execution — the dependency is config-level, not runtime-level — and torn
+	// down when this job finishes. Establishing it here (rather than inside the
+	// checker) is what keeps DB/credential concerns out of the checkers: they
+	// only see a dialer on their context.
+	tunnel, tunnelErr := r.setupTunnel(execCtx, checkJob)
+	if tunnelErr != nil {
+		// The tunnel is the prerequisite: the target probe never runs, and the
+		// result says "tunnel failed" rather than blaming the target.
+		logger.WarnContext(ctx, "Tunnel setup failed; skipping probe",
+			"check_uid", checkJob.CheckUID, "error", tunnelErr)
+
+		return r.saveTunnelFailureResult(ctx, checkJob, tunnelErr, tunnel)
+	}
+
+	if tunnel != nil {
+		defer tunnel.close()
+
+		execCtx = checkerdef.WithTunnelDialer(execCtx, tunnel.dialer)
+	}
+
 	execStart := time.Now()
 	result, err := r.runCheckerGuarded(execCtx, logger, checker, checkConfig, checkJob, checkTimeout, startTime)
 	prommetrics.RecordCheckStage("execute", time.Since(execStart).Seconds())
@@ -825,6 +938,12 @@ func (r *CheckWorker) executeJob(
 			}
 		}
 	}
+
+	// Tunnel bookkeeping: record setup time as its own metric (never folded into
+	// the check's Duration — the checker times only its own probe, so latency
+	// graphs stay about the target rather than about SSH handshakes), and
+	// re-classify a failure the bastion itself caused.
+	tunnel.annotate(result)
 
 	// 5. Save result
 	// Use a fallback context for cleanup operations if the main context is canceled
@@ -856,33 +975,15 @@ func (r *CheckWorker) executeJob(
 	)
 	prommetrics.RecordSchedulingDelay(region, delay.Seconds())
 
-	saveStart := time.Now()
-	if err := r.saveResult(saveCtx, checkJob, *result); err != nil {
-		logger.ErrorContext(ctx, "Failed to save result", "error", err)
-		// Continue to release lease even if save failed
-	}
-	prommetrics.RecordCheckStage("save_result", time.Since(saveStart).Seconds())
-	r.logger.InfoContext(ctx, "Check result saved")
-
-	// 6. Release lease and reschedule
-	// Use a fallback context for cleanup operations if the main context is canceled
-	releaseCtx := ctx //nolint:contextcheck // Conditional context assignment is intentional
-	if ctx.Err() != nil {
-		// Context is canceled, use background context with timeout for cleanup
-		var cancel context.CancelFunc
-		releaseCtx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-	}
-
-	releaseStart := time.Now()
-	// Fold the just-measured cost into the same post-exec write (no extra
-	// query on the hot path): update the EWMA and recompute the effective
-	// deadline used for cost-aware claim ordering. Timeouts are pinned to the
-	// ceiling so a chronic offender's cost reflects its worst-case occupancy.
-	releaseErr := r.releaseLeaseWithCost(releaseCtx, checkJob, *result, execStart)
-	prommetrics.RecordCheckStage("release_lease", time.Since(releaseStart).Seconds())
-	if releaseErr != nil {
-		return fmt.Errorf("failed to release lease: %w", releaseErr)
+	// Submit through the backend: one call carries the result row, incident
+	// processing (always server-side), and the lease release folding the
+	// just-measured cost into the same post-exec write (no extra query on the
+	// hot path). Timeouts are pinned to the ceiling so a chronic offender's
+	// cost reflects its worst-case occupancy.
+	if submitErr := r.backend.SubmitResult(
+		saveCtx, checkJob, r.getWorker().UID, r.buildSubmitRequest(checkJob, *result, execStart),
+	); submitErr != nil {
+		return fmt.Errorf("failed to submit result: %w", submitErr)
 	}
 
 	// duration_ms is the actual exec duration (D4) — previously this logged
@@ -1069,29 +1170,50 @@ func (r *CheckWorker) costSampleMs(result checkerdef.Result) float64 {
 	return float64(result.Duration.Milliseconds())
 }
 
-// releaseLeaseWithCost releases the lease for an actively-probed check, folding
-// the new cost and delay EWMAs, the recomputed effective_scheduled_at, and the
-// hysteresis-classified lane into the same write. The effective deadline and
-// the lane are computed from the cost EWMA only (specs 2026-07-01-02 /
-// 2026-07-01-03): the delay EWMA is persisted as telemetry but never steers
-// the claim order nor the lane — delay is a victim signal, and classifying on
-// it would send starved fast checks into the slow lane. execStart is when the
-// outbound probe actually began.
-func (r *CheckWorker) releaseLeaseWithCost(
-	ctx context.Context,
+// buildSubmitRequest assembles the terminal backend write for an
+// actively-probed check: the result row fields plus the scheduling-state
+// release folding the new cost and delay EWMAs, the recomputed
+// effective_scheduled_at, and the hysteresis-classified lane into the same
+// write. The effective deadline and the lane are computed from the cost EWMA
+// only (specs 2026-07-01-02 / 2026-07-01-03): the delay EWMA is persisted as
+// telemetry but never steers the claim order nor the lane — delay is a victim
+// signal, and classifying on it would send starved fast checks into the slow
+// lane. execStart is when the outbound probe actually began.
+func (r *CheckWorker) buildSubmitRequest(
 	checkJob *models.CheckJob,
 	result checkerdef.Result,
 	execStart time.Time,
-) error {
+) *backend.SubmitResultRequest {
 	nextScheduledAt := r.calculateNextScheduledAt(checkJob)
 	newCost := scheduling.UpdateEWMA(checkJob.CostEWMAMs, r.costSampleMs(result))
 	newDelay := scheduling.UpdateEWMA(checkJob.DelayEWMAMs, r.delaySampleMs(checkJob, execStart))
 	effective := r.schedParams.EffectiveScheduledAt(nextScheduledAt, newCost, checkJob.PlanWeight)
 	newLane := scheduling.ClassifyLane(checkJob.Lane, newCost, r.schedParams)
 
-	return r.checkJobSvc.ReleaseLeaseWithSchedulingState(
-		ctx, checkJob.UID, r.getWorker().UID, nextScheduledAt, newCost, newDelay, effective, newLane,
-	)
+	return &backend.SubmitResultRequest{
+		Status:          int(result.Status),
+		Duration:        float32(result.Duration.Seconds() * 1000),
+		Metrics:         result.Metrics,
+		Output:          result.Output,
+		Region:          r.resolveResultRegion(checkJob),
+		NextScheduledAt: nextScheduledAt,
+		Sched: &backend.SchedulingState{
+			CostEWMAMs:           newCost,
+			DelayEWMAMs:          newDelay,
+			EffectiveScheduledAt: effective,
+			Lane:                 newLane,
+		},
+	}
+}
+
+// resolveResultRegion is the region recorded on a result row: the job's region,
+// falling back to the worker's own region for region-less jobs.
+func (r *CheckWorker) resolveResultRegion(checkJob *models.CheckJob) *string {
+	if checkJob.Region != nil {
+		return checkJob.Region
+	}
+
+	return r.getWorker().Region
 }
 
 // delaySampleMs is the scheduling-delay sample (ms) folded into the delay EWMA:
@@ -1120,106 +1242,9 @@ func (r *CheckWorker) delaySampleMs(checkJob *models.CheckJob, execStart time.Ti
 	return float64(lateness.Milliseconds())
 }
 
-// saveResult saves a check result to the database and processes incidents.
-func (r *CheckWorker) saveResult(ctx context.Context, checkJob *models.CheckJob, checkResult checkerdef.Result) error {
-	resultUID, err := uuid.NewV7()
-	if err != nil {
-		return fmt.Errorf("failed to generate result UID: %w", err)
-	}
-
-	status := int(checkResult.Status)
-	durationMs := float32(checkResult.Duration.Seconds() * 1000)
-	lastForStatus := true
-	worker := r.getWorker()
-
-	region := checkJob.Region
-	if region == nil {
-		region = worker.Region
-	}
-
-	result := &models.Result{
-		UID:             resultUID.String(),
-		OrganizationUID: checkJob.OrganizationUID,
-		CheckUID:        checkJob.CheckUID,
-		PeriodType:      periodTypeRaw,
-		PeriodStart:     time.Now(),
-		WorkerUID:       &worker.UID,
-		Region:          region,
-		Status:          &status,
-		Duration:        &durationMs,
-		Metrics:         models.JSONMap(checkResult.Metrics),
-		Output:          models.JSONMap(checkResult.Output),
-		CreatedAt:       time.Now(),
-		LastForStatus:   &lastForStatus,
-	}
-
-	if err := r.dbService.SaveResultWithStatusTracking(ctx, result); err != nil {
-		return err
-	}
-
-	// Process incidents
-	incStart := time.Now()
-	r.processIncidents(ctx, checkJob, result)
-	prommetrics.RecordCheckStage("process_incident", time.Since(incStart).Seconds())
-
-	return nil
-}
-
-// processIncidents handles incident creation/resolution based on check results.
-func (r *CheckWorker) processIncidents(ctx context.Context, checkJob *models.CheckJob, result *models.Result) {
-	// The check is normally attached at claim time (see checkjobsvc.attachChecks)
-	// so the incident hot path avoids a per-result GetCheck round-trip. Fall back
-	// to a fetch only when it is missing (e.g. claimed before this change, or a
-	// batch-fetch scan failure left it nil).
-	check := checkJob.Check
-	if check == nil {
-		var err error
-		check, err = r.dbService.GetCheck(ctx, checkJob.OrganizationUID, checkJob.CheckUID)
-		if err != nil {
-			r.logger.WarnContext(ctx, "Failed to fetch check for incident processing", "error", err)
-
-			return
-		}
-	}
-
-	if err := r.incidentSvc.ProcessCheckResult(ctx, check, result); err != nil {
-		r.logger.WarnContext(ctx, "Failed to process check result for incidents", "error", err)
-	}
-}
-
-// saveErrorResult saves an error result when check execution fails.
+// saveErrorResult submits an error result (with a plain lease release) when
+// check execution fails before/without a probe result.
 func (r *CheckWorker) saveErrorResult(ctx context.Context, checkJob *models.CheckJob, err error) error {
-	resultUID, uidErr := uuid.NewV7()
-	if uidErr != nil {
-		return fmt.Errorf("failed to generate result UID: %w", uidErr)
-	}
-
-	status := int(checkerdef.StatusError)
-	durationMs := float32(0)
-	lastForStatus := true
-	worker := r.getWorker()
-
-	region := checkJob.Region
-	if region == nil {
-		region = worker.Region
-	}
-
-	result := &models.Result{
-		UID:             resultUID.String(),
-		OrganizationUID: checkJob.OrganizationUID,
-		CheckUID:        checkJob.CheckUID,
-		PeriodType:      periodTypeRaw,
-		PeriodStart:     time.Now(),
-		WorkerUID:       &worker.UID,
-		Region:          region,
-		Status:          &status,
-		Duration:        &durationMs,
-		Metrics:         make(models.JSONMap),
-		Output:          models.JSONMap{checkerdef.OutputKeyError: err.Error()},
-		CreatedAt:       time.Now(),
-		LastForStatus:   &lastForStatus,
-	}
-
 	// Use a fallback context for cleanup operations if the main context is canceled
 	saveCtx := ctx //nolint:contextcheck // Conditional context assignment is intentional
 	if ctx.Err() != nil {
@@ -1229,22 +1254,16 @@ func (r *CheckWorker) saveErrorResult(ctx context.Context, checkJob *models.Chec
 		defer cancel()
 	}
 
-	insertErr := r.dbService.SaveResultWithStatusTracking(saveCtx, result)
-
-	// Process incidents for error results
-	r.processIncidents(saveCtx, checkJob, result)
-
-	// Also release the lease using fallback context
-	releaseCtx := ctx //nolint:contextcheck // Conditional context assignment is intentional
-	if ctx.Err() != nil {
-		// Context is canceled, use background context with timeout for cleanup
-		var cancel context.CancelFunc
-		releaseCtx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+	req := &backend.SubmitResultRequest{
+		Status:          int(checkerdef.StatusError),
+		Duration:        0,
+		Metrics:         map[string]any{},
+		Output:          map[string]any{checkerdef.OutputKeyError: err.Error()},
+		Region:          r.resolveResultRegion(checkJob),
+		NextScheduledAt: r.calculateNextScheduledAt(checkJob),
 	}
-	_ = r.releaseLease(releaseCtx, checkJob)
 
-	return insertErr
+	return r.backend.SubmitResult(saveCtx, checkJob, r.getWorker().UID, req)
 }
 
 // releaseLease releases the job lease and reschedules for next execution.
@@ -1252,7 +1271,7 @@ func (r *CheckWorker) releaseLease(ctx context.Context, checkJob *models.CheckJo
 	// Parse period and calculate next scheduled time
 	nextScheduledAt := r.calculateNextScheduledAt(checkJob)
 
-	return r.checkJobSvc.ReleaseLease(ctx, checkJob.UID, r.getWorker().UID, nextScheduledAt)
+	return r.backend.ReleaseLease(ctx, checkJob, r.getWorker().UID, nextScheduledAt)
 }
 
 // isPassiveCheckType reports whether a check type is passive — driven by
@@ -1280,7 +1299,7 @@ func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger
 	noun := passiveSignalNoun(checkerdef.CheckType(checkJob.Type))
 
 	// Get the latest result for this check
-	lastResults, err := r.dbService.GetLastResultForChecks(ctx, checkJob.OrganizationUID, []string{checkJob.CheckUID})
+	lastResults, err := r.backend.LastResults(ctx, checkJob.OrganizationUID, []string{checkJob.CheckUID})
 	if err != nil {
 		return r.saveErrorResult(ctx, checkJob, fmt.Errorf("failed to get last result: %w", err))
 	}
@@ -1337,12 +1356,17 @@ func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger
 
 	r.stats.AddMetric(result.Status == checkerdef.StatusUp, result.Duration, 0)
 
-	if err := r.saveResult(ctx, checkJob, result); err != nil {
-		logger.ErrorContext(ctx, "Failed to save passive check result", "error", err)
+	req := &backend.SubmitResultRequest{
+		Status:          int(result.Status),
+		Duration:        0,
+		Metrics:         result.Metrics,
+		Output:          result.Output,
+		Region:          r.resolveResultRegion(checkJob),
+		NextScheduledAt: r.calculateNextScheduledAt(checkJob),
 	}
 
-	if err := r.releaseLease(ctx, checkJob); err != nil {
-		return fmt.Errorf("failed to release lease: %w", err)
+	if err := r.backend.SubmitResult(ctx, checkJob, r.getWorker().UID, req); err != nil {
+		return fmt.Errorf("failed to submit passive check result: %w", err)
 	}
 
 	logger.InfoContext(ctx, "Passive check completed",
@@ -1414,8 +1438,26 @@ func (r *CheckWorker) calculateNextScheduledAt(checkJob *models.CheckJob) time.T
 	return now.Add(jobPeriod)
 }
 
+// entitlementsService returns the in-process entitlements service, or nil in
+// agent mode (no services registry).
+func (r *CheckWorker) entitlementsService() *entitlements.Service {
+	if r.services == nil {
+		return nil
+	}
+
+	return r.services.Entitlements
+}
+
 // setupSelfStats configures self-stats reporting for the worker.
 func (r *CheckWorker) setupSelfStats(ctx context.Context) error {
+	// Self-stats need direct DB access (internal check + result rows in the
+	// default org); agent mode has no database, so it simply skips them.
+	if r.dbService == nil {
+		r.logger.InfoContext(ctx, "Self-stats disabled (no direct database access)")
+
+		return nil
+	}
+
 	// Get the default organization
 	org, err := r.dbService.GetOrganizationBySlug(ctx, "default")
 	if err != nil {

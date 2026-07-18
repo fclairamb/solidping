@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -12,6 +13,18 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
+
+// tunnelProxyDialer adapts a checkerdef.ContextDialer to the context-less
+// proxy.Dialer sarama expects (Config.Net.Proxy.Dialer), binding the execution
+// context so every broker connection is dialed through the SSH tunnel.
+type tunnelProxyDialer struct {
+	ctx    context.Context //nolint:containedctx // proxy.Dialer is context-less; exec ctx bound here
+	dialer checkerdef.ContextDialer
+}
+
+func (d tunnelProxyDialer) Dial(network, addr string) (net.Conn, error) {
+	return d.dialer.DialContext(d.ctx, network, addr)
+}
 
 const microsecondsPerMilli = 1000.0
 
@@ -75,6 +88,17 @@ func (c *KafkaChecker) Execute(
 	}
 
 	saramaCfg := c.buildSaramaConfig(cfg, timeout)
+
+	// Tunneled: dial every broker through the bastion. sarama's Net.Proxy.Dialer
+	// is a context-less proxy.Dialer, so we bind the execution context in an
+	// adapter and hand it the raw broker host:port (no local resolution) — the
+	// bastion resolves the hostname. Untunneled, Proxy stays disabled and sarama
+	// uses its default net.Dialer byte-for-byte.
+	if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
+		saramaCfg.Net.Proxy.Enable = true
+		saramaCfg.Net.Proxy.Dialer = tunnelProxyDialer{ctx: ctx, dialer: dialer}
+		output["tunneled"] = true
+	}
 
 	client, err := sarama.NewClient(cfg.Brokers, saramaCfg)
 	if err != nil {

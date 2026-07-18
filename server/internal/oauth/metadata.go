@@ -39,6 +39,8 @@ const (
 	PathToken = "/api/v1/oauth/token"
 	// PathRegister is the RFC 7591 dynamic client registration endpoint.
 	PathRegister = "/api/v1/oauth/register"
+	// PathRevoke is the RFC 7009 token revocation endpoint.
+	PathRevoke = "/api/v1/oauth/revoke"
 
 	// PathMCP is the protected MCP resource.
 	PathMCP = "/api/v1/mcp"
@@ -77,6 +79,11 @@ func (m Metadata) TokenEndpoint() string {
 // RegistrationEndpoint returns the absolute /register URL.
 func (m Metadata) RegistrationEndpoint() string {
 	return m.Issuer + PathRegister
+}
+
+// RevocationEndpoint returns the absolute RFC 7009 /revoke URL.
+func (m Metadata) RevocationEndpoint() string {
+	return m.Issuer + PathRevoke
 }
 
 // JWKSURI returns the absolute jwks_uri.
@@ -122,6 +129,7 @@ type AuthorizationServerMetadata struct {
 	AuthorizationEndpoint             string   `json:"authorization_endpoint"`
 	TokenEndpoint                     string   `json:"token_endpoint"`
 	RegistrationEndpoint              string   `json:"registration_endpoint"`
+	RevocationEndpoint                string   `json:"revocation_endpoint"`
 	JWKSURI                           string   `json:"jwks_uri"`
 	ScopesSupported                   []string `json:"scopes_supported"`
 	ResponseTypesSupported            []string `json:"response_types_supported"`
@@ -138,6 +146,7 @@ func (m Metadata) BuildAuthorizationServerMetadata() AuthorizationServerMetadata
 		AuthorizationEndpoint:             m.AuthorizationEndpoint(),
 		TokenEndpoint:                     m.TokenEndpoint(),
 		RegistrationEndpoint:              m.RegistrationEndpoint(),
+		RevocationEndpoint:                m.RevocationEndpoint(),
 		JWKSURI:                           m.JWKSURI(),
 		ScopesSupported:                   []string{ScopeMCP, ScopeMCPRead},
 		ResponseTypesSupported:            []string{ResponseTypeCode},
@@ -161,4 +170,8 @@ const (
 	// AuthMethodSecretPost marks a confidential client authenticating with a
 	// secret in the token-request body.
 	AuthMethodSecretPost = "client_secret_post"
+
+	// paramClientID is the OAuth `client_id` wire parameter name — used both as
+	// a form field and as the property key that binds a grant row to its client.
+	paramClientID = "client_id"
 )

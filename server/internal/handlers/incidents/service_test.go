@@ -154,9 +154,9 @@ func TestRecoveryElapsedFlapAware(t *testing.T) {
 	check := flapCheck(120, 21600, 2, 8, 1) // one flap → required 4 min
 	check.FirstSuccessSinceFailureAt = &firstSuccess
 
-	r.False(incidents.RecoveryElapsedForTest(check, base.Add(3*time.Minute)),
+	r.False(incidents.RecoveryElapsedForTest(check, nil, base.Add(3*time.Minute)),
 		"3 min of stability must not satisfy a 4-min flap requirement")
-	r.True(incidents.RecoveryElapsedForTest(check, base.Add(4*time.Minute)),
+	r.True(incidents.RecoveryElapsedForTest(check, nil, base.Add(4*time.Minute)),
 		"4 min of stability satisfies the flap requirement")
 }
 

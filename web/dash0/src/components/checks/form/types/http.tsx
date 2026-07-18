@@ -24,23 +24,40 @@ export interface HttpState {
   username: string;
   password: string;
   secretHeaders: { key: string; value: string }[];
+  // Per-section dirty flags. Secrets are never returned by GET, so an untouched
+  // section's inputs are empty and MUST NOT be serialized — omitting the keys is
+  // what makes the server's preserve-absent-secrets merge keep the stored
+  // values. Sending them anyway is what used to wipe secret headers on every
+  // edit. Each flag is seeded by `fromConfig` from whether the config actually
+  // carried those values, and set by the inputs' own onChange.
+  authDirty: boolean;
+  headersDirty: boolean;
 }
 
 function fromConfig(config: CheckConfig): HttpState {
   const rawHeaders = config.secretHeaders;
-  const secretHeaders =
-    rawHeaders && typeof rawHeaders === "object" && !Array.isArray(rawHeaders)
-      ? Object.entries(rawHeaders as Record<string, string>).map(
-          ([key, value]) => ({ key, value }),
-        )
-      : [];
+  const hasHeaders =
+    !!rawHeaders && typeof rawHeaders === "object" && !Array.isArray(rawHeaders);
+  const secretHeaders = hasHeaders
+    ? Object.entries(rawHeaders as Record<string, string>).map(
+        ([key, value]) => ({ key, value }),
+      )
+    : [];
+  const username = getConfigField(config, "username");
+  const password = getConfigField(config, "password");
   return {
     url: getConfigField(config, "url"),
     method: getConfigField(config, "method") || "GET",
     expectedStatus: getConfigField(config, "expectedStatus") || "200",
-    username: getConfigField(config, "username"),
-    password: getConfigField(config, "password"),
+    username,
+    password,
     secretHeaders,
+    // Seeding matters three ways: a legacy row's username is public and comes
+    // back, so it round-trips and folds into `basicAuth` on save; a prefill link
+    // (`?username=probe`) must submit what it prefilled; and on a deployment
+    // running the plaintext fallback the values do come back.
+    authDirty: !!username || !!password,
+    headersDirty: secretHeaders.length > 0,
   };
 }
 
@@ -50,13 +67,25 @@ function toConfig(state: HttpState): { config: CheckConfig; errors: FieldErrors 
   if (state.method && state.method !== "GET") cfg.method = state.method;
   const statusCode = parseInt(state.expectedStatus, 10);
   if (!isNaN(statusCode) && statusCode !== 200) cfg.expectedStatus = statusCode;
-  if (state.username) cfg.username = state.username;
-  if (state.password) cfg.password = state.password;
-  const shMap: Record<string, string> = {};
-  for (const { key, value } of state.secretHeaders) {
-    if (key) shMap[key] = value;
+  if (state.authDirty) {
+    if (state.username || state.password) {
+      // The server folds this pair into the encrypted `basicAuth` key.
+      if (state.username) cfg.username = state.username;
+      if (state.password) cfg.password = state.password;
+    } else {
+      // Touched and emptied → explicitly clear the stored credential.
+      cfg.basicAuth = null;
+    }
   }
-  if (Object.keys(shMap).length > 0) cfg.secretHeaders = shMap;
+  if (state.headersDirty) {
+    const shMap: Record<string, string> = {};
+    for (const { key, value } of state.secretHeaders) {
+      if (key) shMap[key] = value;
+    }
+    // An explicit {} clears; when the section is untouched the key is absent
+    // entirely and the stored headers are preserved.
+    cfg.secretHeaders = shMap;
+  }
   const errors: FieldErrors = state.url
     ? []
     : [{ name: "url", message: "URL is required" }];
@@ -131,28 +160,42 @@ export function HttpAuthFields({
   const { secretHeaders } = state;
   return (
     <>
-      <div className="flex gap-4">
-        <div className="space-y-2 flex-1">
-          <Label htmlFor="username">Username (optional, Basic Auth)</Label>
-          <Input
-            id="username"
-            type="text"
-            placeholder="user"
-            value={state.username}
-            onChange={(e) => onChange({ ...state, username: e.target.value })}
-            data-testid="check-username-input"
-          />
+      <div className="space-y-2">
+        <div className="flex gap-4">
+          <div className="space-y-2 flex-1">
+            <Label htmlFor="username">Username (optional, Basic Auth)</Label>
+            <Input
+              id="username"
+              type="text"
+              placeholder="user"
+              value={state.username}
+              onChange={(e) =>
+                onChange({ ...state, username: e.target.value, authDirty: true })
+              }
+              data-testid="check-username-input"
+            />
+          </div>
+          <div className="space-y-2 flex-1">
+            <Label htmlFor="password">Password (optional)</Label>
+            <Input
+              id="password"
+              type="password"
+              value={state.password}
+              onChange={(e) =>
+                onChange({ ...state, password: e.target.value, authDirty: true })
+              }
+              data-testid="check-password-input"
+            />
+          </div>
         </div>
-        <div className="space-y-2 flex-1">
-          <Label htmlFor="password">Password (optional)</Label>
-          <Input
-            id="password"
-            type="password"
-            value={state.password}
-            onChange={(e) => onChange({ ...state, password: e.target.value })}
-            data-testid="check-password-input"
-          />
-        </div>
+        {configPrivateKeys?.includes("basicAuth") && !state.authDirty && (
+          <p className="text-xs text-muted-foreground" data-testid="basic-auth-encrypted">
+            <span className="font-mono tracking-widest">••••</span>{" "}
+            <span className="italic">
+              (encrypted — enter new values to replace)
+            </span>
+          </p>
+        )}
       </div>
       <div className="space-y-2">
         <div>
@@ -162,7 +205,7 @@ export function HttpAuthFields({
           </p>
         </div>
         {configPrivateKeys?.includes("secretHeaders") &&
-          secretHeaders.length === 0 && (
+          !state.headersDirty && (
             <p className="text-xs text-muted-foreground">
               <span className="font-mono tracking-widest">••••</span>{" "}
               <span className="italic">
@@ -179,7 +222,7 @@ export function HttpAuthFields({
               onChange={(e) => {
                 const updated = [...secretHeaders];
                 updated[idx] = { ...updated[idx], key: e.target.value };
-                onChange({ ...state, secretHeaders: updated });
+                onChange({ ...state, secretHeaders: updated, headersDirty: true });
               }}
               className="flex-1"
               data-testid={`secret-header-key-${idx}`}
@@ -191,7 +234,7 @@ export function HttpAuthFields({
               onChange={(e) => {
                 const updated = [...secretHeaders];
                 updated[idx] = { ...updated[idx], value: e.target.value };
-                onChange({ ...state, secretHeaders: updated });
+                onChange({ ...state, secretHeaders: updated, headersDirty: true });
               }}
               className="flex-1"
               data-testid={`secret-header-value-${idx}`}
@@ -205,6 +248,7 @@ export function HttpAuthFields({
                 onChange({
                   ...state,
                   secretHeaders: secretHeaders.filter((_, i) => i !== idx),
+                  headersDirty: true,
                 })
               }
               data-testid={`secret-header-remove-${idx}`}
@@ -218,6 +262,9 @@ export function HttpAuthFields({
           variant="outline"
           size="sm"
           onClick={() =>
+            // Adding a blank row is deliberately NOT dirtying: typing into it
+            // is. Otherwise a stray click on "add" followed by a save would
+            // clear the stored headers.
             onChange({
               ...state,
               secretHeaders: [...secretHeaders, { key: "", value: "" }],
@@ -241,16 +288,28 @@ export const httpModule: CheckTypeModule<HttpState> = {
 };
 
 // "Authentication & secrets" summary for the collapsed section header.
-export function httpAuthSummary(state: HttpState): {
+//
+// `configPrivateKeys` is load-bearing: a folded check's credential and secret
+// headers are encrypted server-side and never come back on GET, so the state
+// alone would render "none" for a check that very much has credentials.
+export function httpAuthSummary(
+  state: HttpState,
+  configPrivateKeys?: string[],
+): {
   text: string;
   customized: boolean;
 } {
+  const storedAuth = !!configPrivateKeys?.includes("basicAuth");
+  const storedHeaders = !!configPrivateKeys?.includes("secretHeaders");
   const parts: string[] = [];
-  if (state.username) parts.push("basic auth");
+  const hasAuth = state.authDirty
+    ? !!state.username || !!state.password
+    : !!state.username || storedAuth;
+  if (hasAuth) parts.push("basic auth");
   const headerCount = state.secretHeaders.filter((h) => h.key).length;
   if (headerCount > 0)
     parts.push(`${headerCount} secret header${headerCount === 1 ? "" : "s"}`);
-  const customized =
-    !!state.username || !!state.password || headerCount > 0;
+  else if (!state.headersDirty && storedHeaders) parts.push("secret headers");
+  const customized = parts.length > 0;
   return { text: parts.join(" · ") || "none", customized };
 }

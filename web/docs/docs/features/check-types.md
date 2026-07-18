@@ -28,12 +28,22 @@ https://api.example.com/health
 | Headers | Custom request headers | `Authorization: Bearer token` |
 | Body | Request body (for POST/PUT) | `{"key": "value"}` |
 | Body Match | Pattern to match in response | `"status": "ok"` |
-| Basic Auth | Username and password | `user:password` |
+| SSH tunnel | Dial through an [SSH check's bastion](./ssh-tunnels.md) | An `ssh` check with `expected_fingerprint` set |
+| Basic Auth | Username and password — stored encrypted at rest | `user:password` |
 | Custom User-Agent | Override the default user-agent | `SolidPing/1.0` |
 
 **Status Code Matching:**
 - Exact match: `200`, `201`, `404`
 - Wildcard: `2XX` (any 2xx status), `5XX` (any 5xx status)
+
+**Basic Auth storage:** you still enter a username and a password in the form,
+but the pair is stored as a single encrypted credential (a reserved `basicAuth`
+config key) — both halves are protected, not just the password. The dashboard
+never gets the credential back: an existing one renders as
+`•••• (encrypted — enter new values to replace)`, and editing anything else on
+the check leaves it (and any secret headers) untouched. To change it, retype
+**both** fields; to remove it, clear both and save. Checks written before this
+change keep working and fold into the new shape the next time they are saved.
 
 **Examples:**
 
@@ -78,6 +88,7 @@ tcps://hostname:port  # With TLS
 | Port | Target port | `5432` |
 | TLS | Enable TLS/SSL | `true` / `false` |
 | Timeout | Connection timeout | `10s` |
+| SSH tunnel | Dial through an [SSH check's bastion](./ssh-tunnels.md) — the hostname is resolved by the bastion | An `ssh` check with `expected_fingerprint` set |
 
 ### UDP
 
@@ -818,6 +829,21 @@ All check types support these common options:
 | `incident_threshold` | Failures before incident | `1` |
 | `escalation_threshold` | Failures before escalation | `3` |
 | `recovery_threshold` | Successes before recovery | `1` |
+
+### SSH tunnel
+
+Every **TCP-based** check type can dial its target through an
+[SSH check's bastion](./ssh-tunnels.md) — set `tunnelCheckUid` to a reference to
+an `ssh` check that has `expected_fingerprint` set, or pick it under **Advanced →
+Run through SSH tunnel** in the dashboard. This covers the classic bastion use
+cases (a database or broker on a private network): `http`, `tcp`, `ssl`,
+`websocket`, `grpc`, `postgresql`, `mysql`, `mssql`, `oracle`, `redis`,
+`mongodb`, `rabbitmq`, `kafka`, `mqtt`, `smtp`, `imap`, `pop3`, and `ftp`.
+
+UDP- and ICMP-based types (`icmp`, `udp`, `ntp`, `snmp`, `dns`, `dnsbl`, `sip`,
+`a2s`) cannot tunnel — an SSH `direct-tcpip` forward is TCP only. The dashboard
+only shows the option on types that support it, driven by `supportsTunnel` on
+`/api/v1/orgs/{org}/check-types`.
 
 ## Check Intervals
 

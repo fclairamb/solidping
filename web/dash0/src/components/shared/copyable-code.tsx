@@ -21,7 +21,13 @@ async function copyToClipboard(value: string, onCopied: () => void) {
  * (raw JSON, request bodies) that should default to collapsed, use
  * `CollapsibleCode` instead.
  */
-export function CopyableCode({ code }: { code: string }) {
+export function CopyableCode({
+  code,
+  "data-testid": testId,
+}: {
+  code: string;
+  "data-testid"?: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   const onCopy = () =>
@@ -31,7 +37,7 @@ export function CopyableCode({ code }: { code: string }) {
     });
 
   return (
-    <div className="relative">
+    <div className="relative" data-testid={testId}>
       <pre className="overflow-x-auto rounded-md border bg-muted/40 px-3 py-2 pr-12 text-xs leading-relaxed">
         <code>{code}</code>
       </pre>

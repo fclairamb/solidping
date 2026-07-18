@@ -1,14 +1,18 @@
 package apihelper
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/oauth"
 	"github.com/fclairamb/solidping/server/pkg/cli/config"
 )
 
@@ -229,6 +233,64 @@ func TestSavePATAndResolve(t *testing.T) {
 	r.NoError(err)
 	r.Equal(pat, resolved)
 	r.Equal("pat", helper.AuthMethod(t.Context()))
+}
+
+// TestLogoutRevokesStoredGrant verifies `sp auth logout` posts the stored
+// refresh token to the RFC 7009 revocation endpoint (with the CLI client_id)
+// before the local credentials are deleted — so a finished session drops its
+// server-side grant rather than leaving it live until TTL.
+func TestLogoutRevokesStoredGrant(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	var (
+		mu           sync.Mutex
+		revokeHits   int
+		gotToken     string
+		gotClientID  string
+		gotFormPost  bool
+		gotPathRight bool
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path == oauth.PathRevoke {
+			_ = req.ParseForm()
+			mu.Lock()
+			revokeHits++
+			gotToken = req.Form.Get("token")
+			gotClientID = req.Form.Get("client_id")
+			gotFormPost = req.Method == http.MethodPost
+			gotPathRight = true
+			mu.Unlock()
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	tokenPath := filepath.Join(t.TempDir(), "token.json")
+	helper := NewHelper(&config.Config{URL: srv.URL, Org: "test"}, tokenPath, false)
+
+	r.NoError(helper.saveTokenFile(&TokenData{
+		AccessToken:           testJWTToken,
+		AccessTokenExpiresAt:  time.Now().Add(time.Hour),
+		RefreshToken:          "the-stored-refresh-token",
+		RefreshTokenExpiresAt: time.Now().Add(24 * time.Hour),
+	}))
+
+	r.NoError(helper.Logout(t.Context(), true))
+
+	mu.Lock()
+	defer mu.Unlock()
+	r.Equal(1, revokeHits, "logout must call the revocation endpoint exactly once")
+	r.True(gotPathRight)
+	r.True(gotFormPost, "revoke must be a POST")
+	r.Equal("the-stored-refresh-token", gotToken)
+	r.Equal(oauth.CLIClientID, gotClientID)
+
+	// Local credentials are gone afterwards.
+	saved, err := helper.readTokenFile()
+	r.NoError(err)
+	r.Nil(saved)
 }
 
 // TestAuthMethodJWT: a stored JWT session reports "jwt".

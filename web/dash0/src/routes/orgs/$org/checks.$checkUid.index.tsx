@@ -68,8 +68,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { TunnelDependents, TunnelVia } from "@/components/checks/tunnel-detail";
 import { StatusDot } from "@/components/shared/status-dot";
 import { QueryErrorView } from "@/components/shared/error-views";
+import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { SslChainCard } from "@/components/checks/ssl-chain-card";
 import { DockerRestartLoopCard } from "@/components/checks/docker-restart-loop-card";
@@ -965,6 +967,12 @@ function CheckDetailPage() {
         </div>
       </div>
 
+      {/* Needs-re-seal warning (spec 2026-07-16-02): this check runs in a
+          private location and its sealed credentials no longer match that
+          location's active agents. Re-saving the credentials (Edit, above) is
+          the only fix — the server cannot re-seal what it cannot read. */}
+      <NeedsResealAlert needsReseal={check.needsReseal} />
+
       {/* Duty-cycle warning (spec 2026-07-01-04 D3): the check's execution
           cost eats >= 50% of a runner slot — nudge toward a longer period. */}
       {check.scheduling && check.scheduling.dutyCyclePct >= 50 && (
@@ -1102,6 +1110,8 @@ function CheckDetailPage() {
                 </div>
               </div>
             )}
+            <TunnelVia org={org} check={check} />
+            <TunnelDependents org={org} check={check} />
             <div>
               <div className="text-sm font-medium text-muted-foreground">
                 {t("checks:detail.statusLabel")}

@@ -104,6 +104,17 @@
     "eventType": "Event Type",
     "actor": "Actor"
   },
+  "comments": {
+    "title": "Comments",
+    "description": "Notes from responders and Slack thread replies.",
+    "empty": "No comments yet. Add the first note below.",
+    "placeholder": "Add a comment…",
+    "submit": "Comment",
+    "viaSlack": "via Slack",
+    "slackUser": "Slack user",
+    "teamMember": "Team member",
+    "addFailed": "Failed to add comment"
+  },
   "time": {
     "daysAgo": "{{count}}d ago",
     "hoursAgo": "{{count}}h ago",

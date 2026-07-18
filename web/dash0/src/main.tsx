@@ -55,7 +55,14 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 1000 * 60, // 1 minute
       retry: (failureCount, error) => {
-        // Never retry 4xx errors (client errors)
+        // 429 (rate limited) is retryable despite being a 4xx: the server is
+        // asking us to back off and try again, not rejecting the request
+        // outright. Honoring it turns overload into backpressure instead of a
+        // hard failure that the next live-invalidation tick re-fires blindly.
+        if (error instanceof ApiError && error.status === 429) {
+          return failureCount < 3;
+        }
+        // Never retry other 4xx errors (client errors)
         if (error instanceof ApiError && error.status && error.status < 500) {
           return false;
         }
@@ -65,8 +72,21 @@ const queryClient = new QueryClient({
         }
         return false;
       },
-      retryDelay: (attemptIndex) =>
-        Math.min(1000 * Math.pow(2, attemptIndex), 10000),
+      retryDelay: (attemptIndex, error) => {
+        // Honor a server-provided Retry-After (seconds, parsed into
+        // ApiError.retryAfter by client.ts) on 429, capped at 60s so a hostile
+        // or absurd header can't wedge a query for minutes. Everything else
+        // falls back to the existing exponential backoff.
+        if (
+          error instanceof ApiError &&
+          error.status === 429 &&
+          typeof error.retryAfter === "number" &&
+          error.retryAfter > 0
+        ) {
+          return Math.min(error.retryAfter * 1000, 60_000);
+        }
+        return Math.min(1000 * Math.pow(2, attemptIndex), 10000);
+      },
     },
   },
 });

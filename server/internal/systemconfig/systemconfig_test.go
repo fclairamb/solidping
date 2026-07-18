@@ -565,3 +565,26 @@ func TestInitializeAppliesSlackParams(t *testing.T) {
 		})
 	}
 }
+
+// TestKnownEnvVars verifies the pure KnownEnvVars accessor exposes every
+// parameter's EnvVar (all non-empty, no duplicates in the underlying table) and
+// includes representative names the unrecognized-env startup check relies on.
+func TestKnownEnvVars(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	names := KnownEnvVars()
+	r.Len(names, len(getKnownParameters()), "every parameter contributes one EnvVar")
+
+	set := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		r.NotEmpty(name)
+		r.Truef(len(name) > 3 && name[:3] == "SP_", "%q must be SP_-prefixed", name)
+		set[name] = struct{}{}
+	}
+
+	r.Contains(set, "SP_AUTH_JWT_SECRET")
+	r.Contains(set, "SP_BASE_URL")
+	r.Contains(set, "SP_SLACK_APP_TOKEN")
+}

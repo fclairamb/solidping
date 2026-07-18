@@ -29,11 +29,14 @@ import (
 const limitedPrefix = "/api/v1/"
 
 // excludedPrefixes lists /api/v1/ sub-paths exempt from both limits.
-// Workers and heartbeat have fundamentally different traffic patterns; /api/mgmt
+// Inbound heartbeats have a fundamentally different traffic pattern (one
+// request per monitored job, from the customer's own infrastructure); /api/mgmt
 // stays unlimited as a whole (outside limitedPrefix) so a rate-limited client
 // can still call /api/mgmt/limits to discover how long until its bucket refills.
+// The old /api/v1/workers/ exclusion went with those routes (spec
+// 2026-07-16-02); the agent WebSocket that replaced them is excluded by
+// agentStreamPath below.
 var excludedPrefixes = []string{ //nolint:gochecknoglobals // package-level constant list
-	"/api/v1/workers/",
 	"/api/v1/heartbeat/",
 }
 
@@ -181,6 +184,12 @@ func (rl *RateLimiter) cleanupLoop(ctx context.Context) {
 // realtime.max_subscriptions_per_connection.
 const realtimeStreamSuffix = "/events/ws"
 
+// agentStreamPath matches the deported-agent WebSocket (spec 2026-07-16-02):
+// same long-lived-connection reasoning as the realtime hint WS. The endpoint
+// carries its own guards — signature auth before the upgrade, hard-scoped
+// claims, and the per-org check-rate entitlement at dispatch.
+const agentStreamPath = "/api/v1/agent/ws"
+
 func isExcluded(path string) bool {
 	if !strings.HasPrefix(path, limitedPrefix) {
 		return true
@@ -191,6 +200,9 @@ func isExcluded(path string) bool {
 		}
 	}
 	if strings.HasPrefix(path, "/api/v1/orgs/") && strings.HasSuffix(path, realtimeStreamSuffix) {
+		return true
+	}
+	if path == agentStreamPath {
 		return true
 	}
 	return false

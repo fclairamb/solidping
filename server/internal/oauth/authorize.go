@@ -36,7 +36,7 @@ func parseAuthRequest(req *http.Request) *authRequest {
 	}
 
 	return &authRequest{
-		ClientID:            get("client_id"),
+		ClientID:            get(paramClientID),
 		RedirectURI:         get("redirect_uri"),
 		ResponseType:        get("response_type"),
 		Scope:               get("scope"),
@@ -245,7 +245,7 @@ func (h *Handler) redirectToLogin(writer http.ResponseWriter, req bunrouter.Requ
 // the validated authorization parameters so the user can approve or deny.
 func (h *Handler) redirectToConsent(writer http.ResponseWriter, orgSlug string, authReq *authRequest) {
 	query := url.Values{}
-	query.Set("client_id", authReq.ClientID)
+	query.Set(paramClientID, authReq.ClientID)
 	query.Set("redirect_uri", authReq.RedirectURI)
 	query.Set("response_type", authReq.ResponseType)
 	query.Set("scope", authReq.Scope)

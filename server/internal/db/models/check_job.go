@@ -19,15 +19,19 @@ type CheckJob struct {
 	// ConfigPrivate / ConfigPrivateKeys mirror the columns on Check — the
 	// scheduler copies them when materializing a job so workers never see
 	// plaintext secrets in the row at rest.
-	ConfigPrivate     *string            `bun:"config_private,type:text,nullzero"`
-	ConfigPrivateKeys *string            `bun:"config_private_keys,type:text,nullzero"`
-	Encrypted         bool               `bun:"encrypted,notnull,default:false"`
-	Period            timeutils.Duration `bun:"period,notnull"`
-	ScheduledAt       *time.Time         `bun:"scheduled_at"`
-	LeaseWorkerUID    *string            `bun:"lease_worker_uid"`
-	LeaseExpiresAt    *time.Time         `bun:"lease_expires_at"`
-	LeaseStarts       int                `bun:"lease_starts,notnull,default:0"`
-	UpdatedAt         time.Time          `bun:"updated_at,notnull,default:current_timestamp"`
+	ConfigPrivate     *string `bun:"config_private,type:text,nullzero"`
+	ConfigPrivateKeys *string `bun:"config_private_keys,type:text,nullzero"`
+	// ConfigSealed mirrors Check.ConfigSealed: the region-sealed (age X25519)
+	// envelope shipped VERBATIM to deported agents — the server never decrypts
+	// it on the agent dispatch path (spec 2026-07-16-02).
+	ConfigSealed   *string            `bun:"config_sealed,type:text,nullzero"`
+	Encrypted      bool               `bun:"encrypted,notnull,default:false"`
+	Period         timeutils.Duration `bun:"period,notnull"`
+	ScheduledAt    *time.Time         `bun:"scheduled_at"`
+	LeaseWorkerUID *string            `bun:"lease_worker_uid"`
+	LeaseExpiresAt *time.Time         `bun:"lease_expires_at"`
+	LeaseStarts    int                `bun:"lease_starts,notnull,default:0"`
+	UpdatedAt      time.Time          `bun:"updated_at,notnull,default:current_timestamp"`
 
 	// Cost-aware, plan-weighted scheduling (spec 2026-06-30-09).
 	//

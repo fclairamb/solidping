@@ -3,6 +3,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"io"
 	"time"
 
@@ -10,6 +11,19 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
+
+// ErrEnrollmentTokenInvalid is returned by EnrollAgent when the presented
+// enrollment token hash does not match a live (unused, unexpired, not deleted)
+// token — including the single-use race where a concurrent enrollment consumed
+// it first.
+var ErrEnrollmentTokenInvalid = errors.New("enrollment token is invalid, expired, or already used")
+
+// UsedEnrollmentTokenListWindow is how long a consumed enrollment token stays
+// visible in ListAgentEnrollmentTokens after use. The register-an-agent wizard
+// polls that list to learn its token's fate: without this window a token used
+// the moment the agent starts would simply vanish, indistinguishable from an
+// admin canceling it. View-only — a used token can never enroll again.
+const UsedEnrollmentTokenListWindow = time.Hour
 
 // PublicStatusUpdate holds a status update row for public status page display.
 // This type is used by ListPublicStatusUpdates and is independent of the admin
@@ -136,6 +150,36 @@ type Service interface {
 	// UpdateWorkerHeartbeat updates the worker's last_active_at and updated_at timestamps.
 	UpdateWorkerHeartbeat(ctx context.Context, workerUID string) error
 
+	// Deported-agent operations (spec 2026-07-16-02).
+	// CreateAgentEnrollmentToken persists a one-shot enrollment token.
+	CreateAgentEnrollmentToken(ctx context.Context, token *models.AgentEnrollmentToken) error
+	// ListAgentEnrollmentTokens lists an org's live (unused, unexpired) enrollment
+	// tokens, plus tokens used within UsedEnrollmentTokenListWindow so the UI can
+	// report a consumed token's outcome instead of it just vanishing. Used tokens
+	// are view-only: the enrollment-side lookups below still require unused.
+	ListAgentEnrollmentTokens(ctx context.Context, orgUID string) ([]*models.AgentEnrollmentToken, error)
+	// DeleteAgentEnrollmentToken soft-deletes an enrollment token (admin cancel).
+	DeleteAgentEnrollmentToken(ctx context.Context, orgUID, uid string) error
+	// GetAgentEnrollmentTokenByHash returns the live (unused, unexpired) token
+	// with the given hash, or ErrEnrollmentTokenInvalid. Non-consuming — used
+	// for the pre-upgrade WS handshake check; EnrollAgent does the atomic
+	// consume.
+	GetAgentEnrollmentTokenByHash(ctx context.Context, tokenHash string) (*models.AgentEnrollmentToken, error)
+	// EnrollAgent atomically consumes a valid enrollment token (single-use under
+	// concurrency) and creates the bound agent row, returning the new agent.
+	EnrollAgent(ctx context.Context, tokenHash, name, ed25519Pub, x25519Pub, fingerprint string) (*models.Agent, error)
+	// GetAgent returns an agent by UID (any status).
+	GetAgent(ctx context.Context, uid string) (*models.Agent, error)
+	// ListAgents lists an org's agents (active and revoked, not deleted).
+	ListAgents(ctx context.Context, orgUID string) ([]*models.Agent, error)
+	// ListActiveAgentsByRegion returns the active agents bound to a fully-qualified
+	// private region — the recipients credentials are sealed to.
+	ListActiveAgentsByRegion(ctx context.Context, orgUID, region string) ([]*models.Agent, error)
+	// UpdateAgentLastSeen sets an agent's last_seen_at.
+	UpdateAgentLastSeen(ctx context.Context, uid string, at time.Time) error
+	// RevokeAgent marks an agent revoked (it can no longer authenticate).
+	RevokeAgent(ctx context.Context, orgUID, uid string) error
+
 	// Check operations
 	CreateCheck(ctx context.Context, check *models.Check) error
 	GetCheck(ctx context.Context, orgUID, checkUID string) (*models.Check, error)
@@ -144,6 +188,11 @@ type Service interface {
 	// organizations. The token alone is unique because it's 24 random bytes.
 	GetCheckByEmailToken(ctx context.Context, token string) (*models.Check, error)
 	ListChecks(ctx context.Context, orgUID string, filter *models.ListChecksFilter) ([]*models.Check, int64, error)
+	// ListChecksByTunnelCheckUID returns the org's non-deleted checks that dial
+	// through the given SSH check (`config.tunnelCheckUid`). Backs the delete
+	// guard: removing a bastion that other checks tunnel through would silently
+	// break them, so the API answers 409 with the dependents instead.
+	ListChecksByTunnelCheckUID(ctx context.Context, orgUID, tunnelCheckUID string) ([]*models.Check, error)
 	UpdateCheck(ctx context.Context, uid string, update *models.CheckUpdate) error
 	DeleteCheck(ctx context.Context, uid string) error
 
@@ -151,6 +200,8 @@ type Service interface {
 	ListCheckJobsByCheckUID(ctx context.Context, checkUID string) ([]*models.CheckJob, error)
 	DeleteCheckJob(ctx context.Context, uid string) error
 	CreateCheckJob(ctx context.Context, job *models.CheckJob) error
+	// GetCheckJobByUID returns one check job by UID.
+	GetCheckJobByUID(ctx context.Context, uid string) (*models.CheckJob, error)
 
 	// Label operations
 	GetOrCreateLabel(ctx context.Context, orgUID, key, value string) (*models.Label, error)

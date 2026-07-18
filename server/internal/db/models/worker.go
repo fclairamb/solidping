@@ -12,7 +12,6 @@ type Worker struct {
 	Slug         string     `bun:"slug,notnull"`
 	Name         string     `bun:"name,notnull"`
 	Region       *string    `bun:"region"`
-	Token        *string    `bun:"token"`
 	LastActiveAt *time.Time `bun:"last_active_at"`
 	CreatedAt    time.Time  `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt    time.Time  `bun:"updated_at,notnull,default:current_timestamp"`

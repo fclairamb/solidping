@@ -235,6 +235,12 @@ func (m *mockDBService) ListChecks(
 	panic("not implemented")
 }
 
+func (m *mockDBService) ListChecksByTunnelCheckUID(
+	_ context.Context, _, _ string,
+) ([]*models.Check, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) UpdateCheck(_ context.Context, _ string, _ *models.CheckUpdate) error {
 	panic("not implemented")
 }
@@ -670,6 +676,58 @@ func (m *mockDBService) RegisterOrUpdateWorker(_ context.Context, _ *models.Work
 }
 
 func (m *mockDBService) UpdateWorkerHeartbeat(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CreateAgentEnrollmentToken(_ context.Context, _ *models.AgentEnrollmentToken) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListAgentEnrollmentTokens(
+	_ context.Context, _ string,
+) ([]*models.AgentEnrollmentToken, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteAgentEnrollmentToken(_ context.Context, _, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetCheckJobByUID(_ context.Context, _ string) (*models.CheckJob, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetAgentEnrollmentTokenByHash(
+	_ context.Context, _ string,
+) (*models.AgentEnrollmentToken, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) EnrollAgent(
+	_ context.Context, _, _, _, _, _ string,
+) (*models.Agent, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetAgent(_ context.Context, _ string) (*models.Agent, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListAgents(_ context.Context, _ string) ([]*models.Agent, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListActiveAgentsByRegion(
+	_ context.Context, _, _ string,
+) ([]*models.Agent, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) UpdateAgentLastSeen(_ context.Context, _ string, _ time.Time) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) RevokeAgent(_ context.Context, _, _ string) error {
 	panic("not implemented")
 }
 

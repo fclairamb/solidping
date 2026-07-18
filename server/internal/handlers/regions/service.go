@@ -23,11 +23,16 @@ func NewService(dbService db.Service) *Service {
 	}
 }
 
-// RegionResponse represents a region in API responses.
+// RegionResponse represents a region in API responses. For a private (org-scoped)
+// region the Slug is the fully-qualified `@<org>/<slug>` string actually stored on
+// checks — the picker can therefore treat every entry uniformly — and Private is
+// true so the UI can badge it as a customer-run location.
 type RegionResponse struct {
 	Slug  string `json:"slug"`
 	Emoji string `json:"emoji"`
 	Name  string `json:"name"`
+	// Private marks an org-private region served by deported agents.
+	Private bool `json:"private,omitempty"`
 }
 
 // ListGlobalRegionsResponse is the response for listing global regions.
@@ -74,13 +79,31 @@ func (s *Service) ListOrgRegions(ctx context.Context, orgSlug string) (*ListOrgR
 		return nil, fmt.Errorf("failed to get global regions: %w", err)
 	}
 
-	data := make([]RegionResponse, len(defs))
+	data := make([]RegionResponse, 0, len(defs))
 	for i := range defs {
-		data[i] = RegionResponse{
+		data = append(data, RegionResponse{
 			Slug:  defs[i].Slug,
 			Emoji: defs[i].Emoji,
 			Name:  defs[i].Name,
-		}
+		})
+	}
+
+	// Append the org's private locations (spec 2026-07-16-02) so the check-form
+	// region picker offers them alongside cloud regions. They are exposed under
+	// their fully-qualified `@<org>/<slug>` identity — the exact string stored on
+	// the check and matched by the agent — so a caller never has to namespace it.
+	privateDefs, err := s.regions.GetOrgCustomRegions(ctx, org.UID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get org private regions: %w", err)
+	}
+
+	for i := range privateDefs {
+		data = append(data, RegionResponse{
+			Slug:    regions.PrivateRegionSlug(orgSlug, privateDefs[i].Slug),
+			Emoji:   privateDefs[i].Emoji,
+			Name:    privateDefs[i].Name,
+			Private: true,
+		})
 	}
 
 	// Get default regions (resolves cascade: org > system > all)

@@ -8,12 +8,30 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/sijms/go-ora/v2" // Oracle driver registration
+	go_ora "github.com/sijms/go-ora/v2" // Oracle driver registration + connector API
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
 const microsecondsPerMilli = 1000.0
+
+// openOracle opens the Oracle handle. Tunneled, it builds a go-ora connector
+// wired to dial through the bastion (go-ora hands the raw host:port to the
+// dialer, so the bastion resolves the hostname); untunneled, it is the
+// byte-for-byte `sql.Open`.
+func openOracle(ctx context.Context, connURL string) (*sql.DB, error) {
+	dialer := checkerdef.TunnelDialerFrom(ctx)
+	if dialer == nil {
+		return sql.Open("oracle", connURL)
+	}
+
+	connector := go_ora.NewConnector(connURL)
+	if oracleConnector, ok := connector.(*go_ora.OracleConnector); ok {
+		oracleConnector.Dialer(dialer)
+	}
+
+	return sql.OpenDB(connector), nil
+}
 
 // OracleChecker implements the Checker interface for Oracle Database checks.
 type OracleChecker struct{}
@@ -114,7 +132,11 @@ func (c *OracleChecker) Execute(
 		output["service_name"] = cfg.ServiceName
 	}
 
-	conn, err := sql.Open("oracle", params.connURL)
+	if checkerdef.TunnelDialerFrom(ctx) != nil {
+		output["tunneled"] = true
+	}
+
+	conn, err := openOracle(ctx, params.connURL)
 	if err != nil {
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,

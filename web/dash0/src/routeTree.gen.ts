@@ -76,6 +76,7 @@ import { Route as OrgsOrgServerActivationRouteImport } from './routes/orgs/$org/
 import { Route as OrgsOrgOrganizationUsageRouteImport } from './routes/orgs/$org/organization.usage'
 import { Route as OrgsOrgOrganizationSettingsRouteImport } from './routes/orgs/$org/organization.settings'
 import { Route as OrgsOrgOrganizationRequestsRouteImport } from './routes/orgs/$org/organization.requests'
+import { Route as OrgsOrgOrganizationPrivateLocationsRouteImport } from './routes/orgs/$org/organization.private-locations'
 import { Route as OrgsOrgOrganizationMembersRouteImport } from './routes/orgs/$org/organization.members'
 import { Route as OrgsOrgOrganizationInvitationsRouteImport } from './routes/orgs/$org/organization.invitations'
 import { Route as OrgsOrgOrganizationAiRouteImport } from './routes/orgs/$org/organization.ai'
@@ -103,12 +104,14 @@ import { Route as OrgsOrgAccountProfileRouteImport } from './routes/orgs/$org/ac
 import { Route as OrgsOrgAccountNotificationsRouteImport } from './routes/orgs/$org/account.notifications'
 import { Route as OrgsOrgAccountMcpRouteImport } from './routes/orgs/$org/account.mcp'
 import { Route as OrgsOrgStatusPagesStatusPageUidIndexRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.index'
+import { Route as OrgsOrgOrganizationPrivateLocationsIndexRouteImport } from './routes/orgs/$org/organization.private-locations.index'
 import { Route as OrgsOrgOnCallUidIndexRouteImport } from './routes/orgs/$org/on-call.$uid.index'
 import { Route as OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRouteImport } from './routes/orgs/$org/maintenance-windows.$maintenanceWindowUid.index'
 import { Route as OrgsOrgDiscoveryJobUidIndexRouteImport } from './routes/orgs/$org/discovery.$jobUid.index'
 import { Route as OrgsOrgChecksCheckUidIndexRouteImport } from './routes/orgs/$org/checks.$checkUid.index'
 import { Route as OrgsOrgStatusUpdatesUpdateUidEditRouteImport } from './routes/orgs/$org/status-updates.$updateUid.edit'
 import { Route as OrgsOrgStatusPagesStatusPageUidEditRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.edit'
+import { Route as OrgsOrgOrganizationPrivateLocationsRegisterRouteImport } from './routes/orgs/$org/organization.private-locations.register'
 import { Route as OrgsOrgOnCallUidEditRouteImport } from './routes/orgs/$org/on-call.$uid.edit'
 import { Route as OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRouteImport } from './routes/orgs/$org/maintenance-windows.$maintenanceWindowUid.edit'
 import { Route as OrgsOrgJobsCheckCheckJobUidRouteImport } from './routes/orgs/$org/jobs.check.$checkJobUid'
@@ -467,6 +470,12 @@ const OrgsOrgOrganizationRequestsRoute =
     path: '/requests',
     getParentRoute: () => OrgsOrgOrganizationRoute,
   } as any)
+const OrgsOrgOrganizationPrivateLocationsRoute =
+  OrgsOrgOrganizationPrivateLocationsRouteImport.update({
+    id: '/private-locations',
+    path: '/private-locations',
+    getParentRoute: () => OrgsOrgOrganizationRoute,
+  } as any)
 const OrgsOrgOrganizationMembersRoute =
   OrgsOrgOrganizationMembersRouteImport.update({
     id: '/members',
@@ -613,6 +622,12 @@ const OrgsOrgStatusPagesStatusPageUidIndexRoute =
     path: '/',
     getParentRoute: () => OrgsOrgStatusPagesStatusPageUidRoute,
   } as any)
+const OrgsOrgOrganizationPrivateLocationsIndexRoute =
+  OrgsOrgOrganizationPrivateLocationsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => OrgsOrgOrganizationPrivateLocationsRoute,
+  } as any)
 const OrgsOrgOnCallUidIndexRoute = OrgsOrgOnCallUidIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -647,6 +662,12 @@ const OrgsOrgStatusPagesStatusPageUidEditRoute =
     id: '/edit',
     path: '/edit',
     getParentRoute: () => OrgsOrgStatusPagesStatusPageUidRoute,
+  } as any)
+const OrgsOrgOrganizationPrivateLocationsRegisterRoute =
+  OrgsOrgOrganizationPrivateLocationsRegisterRouteImport.update({
+    id: '/register',
+    path: '/register',
+    getParentRoute: () => OrgsOrgOrganizationPrivateLocationsRoute,
   } as any)
 const OrgsOrgOnCallUidEditRoute = OrgsOrgOnCallUidEditRouteImport.update({
   id: '/edit',
@@ -743,6 +764,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/organization/ai': typeof OrgsOrgOrganizationAiRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
+  '/orgs/$org/organization/private-locations': typeof OrgsOrgOrganizationPrivateLocationsRouteWithChildren
   '/orgs/$org/organization/requests': typeof OrgsOrgOrganizationRequestsRoute
   '/orgs/$org/organization/settings': typeof OrgsOrgOrganizationSettingsRoute
   '/orgs/$org/organization/usage': typeof OrgsOrgOrganizationUsageRoute
@@ -782,12 +804,14 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
   '/orgs/$org/on-call/$uid/edit': typeof OrgsOrgOnCallUidEditRoute
+  '/orgs/$org/organization/private-locations/register': typeof OrgsOrgOrganizationPrivateLocationsRegisterRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/discovery/$jobUid/': typeof OrgsOrgDiscoveryJobUidIndexRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute
   '/orgs/$org/on-call/$uid/': typeof OrgsOrgOnCallUidIndexRoute
+  '/orgs/$org/organization/private-locations/': typeof OrgsOrgOrganizationPrivateLocationsIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
@@ -870,12 +894,14 @@ export interface FileRoutesByTo {
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
   '/orgs/$org/on-call/$uid/edit': typeof OrgsOrgOnCallUidEditRoute
+  '/orgs/$org/organization/private-locations/register': typeof OrgsOrgOrganizationPrivateLocationsRegisterRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/discovery/$jobUid': typeof OrgsOrgDiscoveryJobUidIndexRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute
   '/orgs/$org/on-call/$uid': typeof OrgsOrgOnCallUidIndexRoute
+  '/orgs/$org/organization/private-locations': typeof OrgsOrgOrganizationPrivateLocationsIndexRoute
   '/orgs/$org/status-pages/$statusPageUid': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
@@ -940,6 +966,7 @@ export interface FileRoutesById {
   '/orgs/$org/organization/ai': typeof OrgsOrgOrganizationAiRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
+  '/orgs/$org/organization/private-locations': typeof OrgsOrgOrganizationPrivateLocationsRouteWithChildren
   '/orgs/$org/organization/requests': typeof OrgsOrgOrganizationRequestsRoute
   '/orgs/$org/organization/settings': typeof OrgsOrgOrganizationSettingsRoute
   '/orgs/$org/organization/usage': typeof OrgsOrgOrganizationUsageRoute
@@ -979,12 +1006,14 @@ export interface FileRoutesById {
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
   '/orgs/$org/on-call/$uid/edit': typeof OrgsOrgOnCallUidEditRoute
+  '/orgs/$org/organization/private-locations/register': typeof OrgsOrgOrganizationPrivateLocationsRegisterRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/discovery/$jobUid/': typeof OrgsOrgDiscoveryJobUidIndexRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute
   '/orgs/$org/on-call/$uid/': typeof OrgsOrgOnCallUidIndexRoute
+  '/orgs/$org/organization/private-locations/': typeof OrgsOrgOrganizationPrivateLocationsIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
@@ -1050,6 +1079,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/ai'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
+    | '/orgs/$org/organization/private-locations'
     | '/orgs/$org/organization/requests'
     | '/orgs/$org/organization/settings'
     | '/orgs/$org/organization/usage'
@@ -1089,12 +1119,14 @@ export interface FileRouteTypes {
     | '/orgs/$org/jobs/check/$checkJobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
     | '/orgs/$org/on-call/$uid/edit'
+    | '/orgs/$org/organization/private-locations/register'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
     | '/orgs/$org/checks/$checkUid/'
     | '/orgs/$org/discovery/$jobUid/'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/'
     | '/orgs/$org/on-call/$uid/'
+    | '/orgs/$org/organization/private-locations/'
     | '/orgs/$org/status-pages/$statusPageUid/'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
@@ -1177,12 +1209,14 @@ export interface FileRouteTypes {
     | '/orgs/$org/jobs/check/$checkJobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
     | '/orgs/$org/on-call/$uid/edit'
+    | '/orgs/$org/organization/private-locations/register'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
     | '/orgs/$org/checks/$checkUid'
     | '/orgs/$org/discovery/$jobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid'
     | '/orgs/$org/on-call/$uid'
+    | '/orgs/$org/organization/private-locations'
     | '/orgs/$org/status-pages/$statusPageUid'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
@@ -1246,6 +1280,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/ai'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
+    | '/orgs/$org/organization/private-locations'
     | '/orgs/$org/organization/requests'
     | '/orgs/$org/organization/settings'
     | '/orgs/$org/organization/usage'
@@ -1285,12 +1320,14 @@ export interface FileRouteTypes {
     | '/orgs/$org/jobs/check/$checkJobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
     | '/orgs/$org/on-call/$uid/edit'
+    | '/orgs/$org/organization/private-locations/register'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
     | '/orgs/$org/checks/$checkUid/'
     | '/orgs/$org/discovery/$jobUid/'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/'
     | '/orgs/$org/on-call/$uid/'
+    | '/orgs/$org/organization/private-locations/'
     | '/orgs/$org/status-pages/$statusPageUid/'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid'
@@ -1780,6 +1817,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgOrganizationRequestsRouteImport
       parentRoute: typeof OrgsOrgOrganizationRoute
     }
+    '/orgs/$org/organization/private-locations': {
+      id: '/orgs/$org/organization/private-locations'
+      path: '/private-locations'
+      fullPath: '/orgs/$org/organization/private-locations'
+      preLoaderRoute: typeof OrgsOrgOrganizationPrivateLocationsRouteImport
+      parentRoute: typeof OrgsOrgOrganizationRoute
+    }
     '/orgs/$org/organization/members': {
       id: '/orgs/$org/organization/members'
       path: '/members'
@@ -1969,6 +2013,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgStatusPagesStatusPageUidIndexRouteImport
       parentRoute: typeof OrgsOrgStatusPagesStatusPageUidRoute
     }
+    '/orgs/$org/organization/private-locations/': {
+      id: '/orgs/$org/organization/private-locations/'
+      path: '/'
+      fullPath: '/orgs/$org/organization/private-locations/'
+      preLoaderRoute: typeof OrgsOrgOrganizationPrivateLocationsIndexRouteImport
+      parentRoute: typeof OrgsOrgOrganizationPrivateLocationsRoute
+    }
     '/orgs/$org/on-call/$uid/': {
       id: '/orgs/$org/on-call/$uid/'
       path: '/'
@@ -2010,6 +2061,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/orgs/$org/status-pages/$statusPageUid/edit'
       preLoaderRoute: typeof OrgsOrgStatusPagesStatusPageUidEditRouteImport
       parentRoute: typeof OrgsOrgStatusPagesStatusPageUidRoute
+    }
+    '/orgs/$org/organization/private-locations/register': {
+      id: '/orgs/$org/organization/private-locations/register'
+      path: '/register'
+      fullPath: '/orgs/$org/organization/private-locations/register'
+      preLoaderRoute: typeof OrgsOrgOrganizationPrivateLocationsRegisterRouteImport
+      parentRoute: typeof OrgsOrgOrganizationPrivateLocationsRoute
     }
     '/orgs/$org/on-call/$uid/edit': {
       id: '/orgs/$org/on-call/$uid/edit'
@@ -2287,10 +2345,29 @@ const OrgsOrgOnCallRouteWithChildren = OrgsOrgOnCallRoute._addFileChildren(
   OrgsOrgOnCallRouteChildren,
 )
 
+interface OrgsOrgOrganizationPrivateLocationsRouteChildren {
+  OrgsOrgOrganizationPrivateLocationsRegisterRoute: typeof OrgsOrgOrganizationPrivateLocationsRegisterRoute
+  OrgsOrgOrganizationPrivateLocationsIndexRoute: typeof OrgsOrgOrganizationPrivateLocationsIndexRoute
+}
+
+const OrgsOrgOrganizationPrivateLocationsRouteChildren: OrgsOrgOrganizationPrivateLocationsRouteChildren =
+  {
+    OrgsOrgOrganizationPrivateLocationsRegisterRoute:
+      OrgsOrgOrganizationPrivateLocationsRegisterRoute,
+    OrgsOrgOrganizationPrivateLocationsIndexRoute:
+      OrgsOrgOrganizationPrivateLocationsIndexRoute,
+  }
+
+const OrgsOrgOrganizationPrivateLocationsRouteWithChildren =
+  OrgsOrgOrganizationPrivateLocationsRoute._addFileChildren(
+    OrgsOrgOrganizationPrivateLocationsRouteChildren,
+  )
+
 interface OrgsOrgOrganizationRouteChildren {
   OrgsOrgOrganizationAiRoute: typeof OrgsOrgOrganizationAiRoute
   OrgsOrgOrganizationInvitationsRoute: typeof OrgsOrgOrganizationInvitationsRoute
   OrgsOrgOrganizationMembersRoute: typeof OrgsOrgOrganizationMembersRoute
+  OrgsOrgOrganizationPrivateLocationsRoute: typeof OrgsOrgOrganizationPrivateLocationsRouteWithChildren
   OrgsOrgOrganizationRequestsRoute: typeof OrgsOrgOrganizationRequestsRoute
   OrgsOrgOrganizationSettingsRoute: typeof OrgsOrgOrganizationSettingsRoute
   OrgsOrgOrganizationUsageRoute: typeof OrgsOrgOrganizationUsageRoute
@@ -2301,6 +2378,8 @@ const OrgsOrgOrganizationRouteChildren: OrgsOrgOrganizationRouteChildren = {
   OrgsOrgOrganizationAiRoute: OrgsOrgOrganizationAiRoute,
   OrgsOrgOrganizationInvitationsRoute: OrgsOrgOrganizationInvitationsRoute,
   OrgsOrgOrganizationMembersRoute: OrgsOrgOrganizationMembersRoute,
+  OrgsOrgOrganizationPrivateLocationsRoute:
+    OrgsOrgOrganizationPrivateLocationsRouteWithChildren,
   OrgsOrgOrganizationRequestsRoute: OrgsOrgOrganizationRequestsRoute,
   OrgsOrgOrganizationSettingsRoute: OrgsOrgOrganizationSettingsRoute,
   OrgsOrgOrganizationUsageRoute: OrgsOrgOrganizationUsageRoute,

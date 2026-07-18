@@ -10,8 +10,26 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
-// configKeySecretHeaders is the config map key for secret headers.
-const configKeySecretHeaders = "secretHeaders"
+const (
+	// configKeySecretHeaders is the config map key for secret headers.
+	configKeySecretHeaders = "secretHeaders"
+
+	// configKeyBasicAuth is the reserved config map key holding a basic-auth
+	// credential as a single "user:pass" string. It is a secret field, so both
+	// halves of the credential are encrypted at rest.
+	configKeyBasicAuth = "basicAuth"
+
+	// configKeyUsername / configKeyPassword are the legacy top-level basic-auth
+	// keys. They are still accepted on input (and honored at execution time
+	// forever, for rows that predate the fold), but NormalizeConfig folds them
+	// into configKeyBasicAuth on every write.
+	configKeyUsername = "username"
+	configKeyPassword = "password"
+
+	// basicAuthSeparator separates the username from the password in a
+	// configKeyBasicAuth value (RFC 7617).
+	basicAuthSeparator = ":"
+)
 
 // MatchStatusCode checks if the actual status code matches any of the given patterns.
 // Patterns can be exact codes like "200" or wildcards like "2XX" (matches 200-299).
@@ -59,7 +77,17 @@ type HTTPConfig struct {
 	// Header pattern matching (map of header name -> regex pattern)
 	HeadersPattern map[string]string `json:"headers_pattern,omitempty"` //nolint:tagliatelle // API uses snake_case
 
-	// Basic auth credentials
+	// BasicAuth holds a basic-auth credential as a single "user:pass" string.
+	// It is the canonical, encrypted-at-rest home for basic auth: both halves
+	// live behind one secret key. NormalizeConfig folds Username/Password into
+	// it on every write.
+	BasicAuth string `json:"basicAuth,omitempty"`
+
+	// Legacy basic auth credentials, kept for rows written before the
+	// BasicAuth fold and for manifests that spell the credential out (where
+	// ${env:}/${param:} secret refs resolve into `password`). Execution falls
+	// back to these when BasicAuth is empty — permanently, since migration is
+	// lazy (rows fold on their next write).
 	Username string `json:"username,omitempty"`
 	Password string `json:"password,omitempty"`
 
@@ -218,18 +246,25 @@ func (c *HTTPConfig) FromMap(configMap map[string]any) error {
 		}
 	}
 
-	// Extract Username (optional)
-	if username, ok := configMap["username"].(string); ok {
-		c.Username = username
-	} else if configMap["username"] != nil {
-		return checkerdef.NewConfigError("username", "must be a string")
+	// Extract BasicAuth (optional)
+	if basicAuth, ok := configMap[configKeyBasicAuth].(string); ok {
+		c.BasicAuth = basicAuth
+	} else if configMap[configKeyBasicAuth] != nil {
+		return checkerdef.NewConfigError(configKeyBasicAuth, "must be a string")
 	}
 
-	// Extract Password (optional)
-	if password, ok := configMap["password"].(string); ok {
+	// Extract Username (optional, legacy)
+	if username, ok := configMap[configKeyUsername].(string); ok {
+		c.Username = username
+	} else if configMap[configKeyUsername] != nil {
+		return checkerdef.NewConfigError(configKeyUsername, "must be a string")
+	}
+
+	// Extract Password (optional, legacy)
+	if password, ok := configMap[configKeyPassword].(string); ok {
 		c.Password = password
-	} else if configMap["password"] != nil {
-		return checkerdef.NewConfigError("password", "must be a string")
+	} else if configMap[configKeyPassword] != nil {
+		return checkerdef.NewConfigError(configKeyPassword, "must be a string")
 	}
 
 	// Extract SecretHeaders (optional)
@@ -354,12 +389,16 @@ func (c *HTTPConfig) GetConfig() map[string]any {
 		cfg["headersPattern"] = c.HeadersPattern
 	}
 
+	if c.BasicAuth != "" {
+		cfg[configKeyBasicAuth] = c.BasicAuth
+	}
+
 	if c.Username != "" {
-		cfg["username"] = c.Username
+		cfg[configKeyUsername] = c.Username
 	}
 
 	if c.Password != "" {
-		cfg["password"] = c.Password
+		cfg[configKeyPassword] = c.Password
 	}
 
 	if len(c.SecretHeaders) > 0 {
@@ -381,6 +420,97 @@ func (c *HTTPConfig) GetConfig() map[string]any {
 
 // SecretFields declares which top-level config keys carry secrets and must
 // be encrypted at rest. Implements credentials.SecretFielder.
+//
+// `password` stays listed even though NormalizeConfig folds it away: legacy
+// rows written before the fold still carry one, and it must keep being
+// encrypted and preserved across a PATCH that doesn't mention it.
+//
+// `username` is deliberately NOT listed: it would be stripped from exports and
+// swept into the encrypted blob by credmigrate. The fold is what protects it —
+// once folded, the username lives inside the encrypted `basicAuth` value.
 func (c *HTTPConfig) SecretFields() []string {
-	return []string{"password", configKeySecretHeaders}
+	return []string{configKeyBasicAuth, configKeyPassword, configKeySecretHeaders}
+}
+
+// stringConfigValue reads a string key from a config map, tolerating an absent
+// or nil value and rejecting a wrong type with a *checkerdef.ConfigError.
+func stringConfigValue(configMap map[string]any, key string) (string, error) {
+	raw, ok := configMap[key]
+	if !ok || raw == nil {
+		return "", nil
+	}
+
+	str, ok := raw.(string)
+	if !ok {
+		return "", checkerdef.NewConfigError(key, "must be a string")
+	}
+
+	return str, nil
+}
+
+// NormalizeConfig folds the legacy top-level `username`/`password` pair into the
+// single reserved, encrypted `basicAuth` key. Implements
+// checkerdef.ConfigNormalizer; it runs on the EFFECTIVE (post-merge) config,
+// never on a raw PATCH body.
+//
+// Rules:
+//   - `username`/`password` are always removed, so no stray plaintext half is
+//     left behind on the public config and clearing actually clears.
+//   - a non-empty `username` overwrites any preserved `basicAuth` — that is what
+//     keeps re-applying the same manifest idempotent.
+//   - the fold is gated on `username != ""` exactly, mirroring execution: a
+//     password-only config sends no auth header, so it stores no credential and
+//     its stray password is dropped.
+//   - an absent `username` leaves a preserved `basicAuth` untouched, so an
+//     unrelated PATCH keeps the credential.
+func (c *HTTPConfig) NormalizeConfig(configMap map[string]any) (map[string]any, error) {
+	normalized := make(map[string]any, len(configMap))
+	for key, value := range configMap {
+		normalized[key] = value
+	}
+
+	username, err := stringConfigValue(normalized, configKeyUsername)
+	if err != nil {
+		return nil, err
+	}
+
+	password, err := stringConfigValue(normalized, configKeyPassword)
+	if err != nil {
+		return nil, err
+	}
+
+	delete(normalized, configKeyUsername)
+	delete(normalized, configKeyPassword)
+
+	if username == "" {
+		return normalized, nil
+	}
+
+	// RFC 7617: the user-id must not contain a colon, or the credential
+	// decodes ambiguously.
+	if strings.Contains(username, basicAuthSeparator) {
+		return nil, checkerdef.NewConfigError(configKeyUsername, "must not contain a ':' character")
+	}
+
+	normalized[configKeyBasicAuth] = username + basicAuthSeparator + password
+
+	return normalized, nil
+}
+
+// BasicAuthCredentials returns the effective basic-auth credential, preferring
+// the folded `basicAuth` value and falling back to the legacy
+// `username`/`password` pair (which lazily-unmigrated rows still carry). The
+// boolean reports whether any credential is configured at all.
+func (c *HTTPConfig) BasicAuthCredentials() (string, string, bool) {
+	if c.BasicAuth != "" {
+		username, password, _ := strings.Cut(c.BasicAuth, basicAuthSeparator)
+
+		return username, password, true
+	}
+
+	if c.Username != "" {
+		return c.Username, c.Password, true
+	}
+
+	return "", "", false
 }

@@ -99,6 +99,25 @@ func (c *FTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 		ftp.DialWithTimeout(timeout),
 	}
 
+	// Tunneled: route the control connection AND passive-mode data connections
+	// through the bastion. jlaffaye/ftp uses this dial func for both (see
+	// openDataConn), so PASV transfers go through the tunnel too — they do not
+	// bypass it. The raw host:port is handed to the dialer, so the bastion
+	// resolves the hostname. Untunneled, this option is absent and the library
+	// dials directly, byte-for-byte as before.
+	//
+	// Caveat: DialWithDialFunc takes precedence over implicit-TLS wrapping in the
+	// library, so a tunneled implicit-FTPS check would connect in plaintext.
+	// Explicit TLS (AUTH TLS) still upgrades over the control connection.
+	if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
+		dialOpts = append(dialOpts, ftp.DialWithDialFunc(
+			func(network, address string) (net.Conn, error) {
+				return dialer.DialContext(ctx, network, address)
+			},
+		))
+		output["tunneled"] = true
+	}
+
 	switch cfg.TLSMode {
 	case TLSModeImplicit:
 		tlsConfig := &tls.Config{

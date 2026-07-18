@@ -257,7 +257,14 @@ func TestApplyResolvesEnvSecretRef(t *testing.T) {
 	t.Setenv("SP_TEST_APPLY_TOKEN", "s3cr3t-token")
 
 	c := manifestCheck("secured")
-	c.Config = map[string]any{"url": "https://example.com", "password": "${env:SP_TEST_APPLY_TOKEN}"}
+	// `username`/`password` stay top-level strings in manifests, so the
+	// resolver (which only walks top-level strings) keeps working; the service
+	// folds the resolved pair into the encrypted `basicAuth` key afterwards.
+	c.Config = map[string]any{
+		"url":      "https://example.com",
+		"username": "probe",
+		"password": "${env:SP_TEST_APPLY_TOKEN}",
+	}
 
 	res, err := svc.ApplyChecks(ctx, org.Slug, doc("team-a", c), checks.ApplyOptions{})
 	r.NoError(err)
@@ -267,8 +274,10 @@ func TestApplyResolvesEnvSecretRef(t *testing.T) {
 	row, err := dbSvc.GetCheckByUidOrSlug(ctx, org.UID, "secured")
 	r.NoError(err)
 	r.NotContains(row.Config, "password", "resolved secret must not land in public config")
+	r.NotContains(row.Config, "username")
 	r.NotNil(row.ConfigPrivate)
 	r.NotEmpty(*row.ConfigPrivate)
+	r.Equal([]string{"basicAuth"}, privateKeys(t, row))
 }
 
 // TestApplyResolvesParamSecretRef verifies ${param:KEY} resolution against the
@@ -283,18 +292,51 @@ func TestApplyResolvesParamSecretRef(t *testing.T) {
 	r.NoError(dbSvc.SetOrgParameter(ctx, org.UID, "shared_token", "org-value", true))
 
 	c := manifestCheck("param-check")
-	c.Config = map[string]any{"url": "https://example.com", "password": "${param:shared_token}"}
+	c.Config = map[string]any{
+		"url":      "https://example.com",
+		"username": "probe",
+		"password": "${param:shared_token}",
+	}
 
 	res, err := svc.ApplyChecks(ctx, org.Slug, doc("team-a", c), checks.ApplyOptions{})
 	r.NoError(err)
 	r.Equal(1, res.Created)
 
-	// The resolved value (org-scoped wins) is enveloped; we can't read plaintext
-	// from the public side, but we confirm it's not leaked there.
+	// The resolved value (org-scoped wins) is folded into `basicAuth` and
+	// enveloped; confirm neither half leaks onto the public side.
 	row, err := dbSvc.GetCheckByUidOrSlug(ctx, org.UID, "param-check")
 	r.NoError(err)
 	r.NotContains(row.Config, "password")
+	r.NotContains(row.Config, "username")
+	r.NotContains(row.Config, "basicAuth")
 	r.NotNil(row.ConfigPrivate)
+	r.Equal([]string{"basicAuth"}, privateKeys(t, row))
+}
+
+// TestApplyBasicAuthManifestIsIdempotent pins the reason NormalizeConfig
+// overwrites unconditionally: applying the same credential-bearing manifest
+// twice must not report a change on the second run.
+func TestApplyBasicAuthManifestIsIdempotent(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	svc, dbSvc, org := setupApplyService(t, true)
+	ctx := t.Context()
+
+	c := manifestCheck("idem-auth")
+	c.Config = map[string]any{"url": "https://example.com", "username": "probe", "password": "hunter2"}
+
+	res, err := svc.ApplyChecks(ctx, org.Slug, doc("team-a", c), checks.ApplyOptions{})
+	r.NoError(err)
+	r.Equal(1, res.Created)
+
+	res, err = svc.ApplyChecks(ctx, org.Slug, doc("team-a", c), checks.ApplyOptions{})
+	r.NoError(err)
+	r.Equal(0, res.Created)
+
+	row, err := dbSvc.GetCheckByUidOrSlug(ctx, org.UID, "idem-auth")
+	r.NoError(err)
+	r.Equal([]string{"basicAuth"}, privateKeys(t, row))
+	r.NotContains(row.Config, "username")
 }
 
 // TestApplyMissingSecretRefIsHardError verifies an unresolvable reference fails

@@ -25,6 +25,10 @@ const (
 	NodeRoleAPI    = "api"
 	NodeRoleJobs   = "jobs"
 	NodeRoleChecks = "checks"
+	// NodeRoleAgent runs the standard binary as a deported (org-scoped) check
+	// agent (spec 2026-07-16-02): no database, no migrations, no HTTP server —
+	// just the check worker loop over an outbound WebSocket to the master.
+	NodeRoleAgent = "agent"
 )
 
 // Database connection-pool defaults. api/all nodes serve HTTP traffic and need
@@ -72,7 +76,9 @@ var (
 	// ErrDatabaseDirRequired is returned when sqlite is selected but directory is missing.
 	ErrDatabaseDirRequired = errors.New("database directory is required for sqlite")
 	// ErrInvalidNodeRole is returned when the node role is invalid.
-	ErrInvalidNodeRole = errors.New("node role must be 'all', 'api', 'jobs', or 'checks'")
+	ErrInvalidNodeRole = errors.New("node role must be 'all', 'api', 'jobs', 'checks', or 'agent'")
+	// ErrAgentServerURLRequired is returned when role is "agent" but no server URL is set.
+	ErrAgentServerURLRequired = errors.New("SP_AGENT_SERVER_URL is required when SP_NODE_ROLE is set to 'agent'")
 	// ErrRegionRequiredForChecks is returned when role is "checks" but region is not set.
 	ErrRegionRequiredForChecks = errors.New("SP_NODE_REGION is required when SP_NODE_ROLE is set to 'checks'")
 	// ErrInvalidAggregationRetention is returned when an aggregation retention value is < 1.
@@ -119,7 +125,33 @@ const (
 
 // ValidNodeRoles returns all valid role values.
 func ValidNodeRoles() []string {
-	return []string{NodeRoleAll, NodeRoleAPI, NodeRoleJobs, NodeRoleChecks}
+	return []string{NodeRoleAll, NodeRoleAPI, NodeRoleJobs, NodeRoleChecks, NodeRoleAgent}
+}
+
+// AgentConfig configures deported-agent mode (SP_NODE_ROLE=agent).
+type AgentConfig struct {
+	// ServerURL is the master's base URL (http(s)://host[:port]) —
+	// SP_AGENT_SERVER_URL. The agent dials
+	// <ServerURL>/api/v1/agent/ws (ws(s) scheme derived automatically).
+	ServerURL string `koanf:"server_url"`
+	// EnrollmentToken is the one-shot spe_ token used on the very first
+	// connection — SP_AGENT_ENROLLMENT_TOKEN. Ignored once the agent has
+	// enrolled (its persisted identity takes over).
+	EnrollmentToken string `koanf:"enrollment_token"`
+	// KeysFile is where the agent persists its identity/keys JSON —
+	// SP_AGENT_KEYS_FILE (default /data/agent-keys.json; falls back to
+	// ./agent-keys.json when /data is not writable).
+	KeysFile string `koanf:"keys_file"`
+	// Keys is the base64 of the identity/keys JSON for env-only deployments
+	// (k8s secrets) — SP_AGENT_KEYS. Takes precedence over KeysFile. The koanf
+	// tag deliberately does NOT claim "keys": the env loader maps
+	// SP_AGENT_KEYS_FILE to agent.keys.file, which would collide with a string
+	// at agent.keys and fail the unmarshal; both variables are read manually in
+	// applyAgentEnv instead.
+	Keys string `koanf:"keys_b64"`
+	// Name is the agent display name sent at enrollment — SP_AGENT_NAME
+	// (default: hostname).
+	Name string `koanf:"name"`
 }
 
 // OTelConfig contains OpenTelemetry configuration.
@@ -222,6 +254,7 @@ type Config struct {
 	SAML        SAMLConfig           `koanf:"saml"`
 	LDAP        LDAPConfig           `koanf:"ldap"`
 	Node        NodeConfig           `koanf:"node"`
+	Agent       AgentConfig          `koanf:"agent"`
 	Profiler    ProfilerConfig       `koanf:"profiler"`
 	Runtime     RuntimeConfig        `koanf:"runtime"`
 	OTel        OTelConfig           `koanf:"otel"`
@@ -516,6 +549,39 @@ type RateLimitConfig struct {
 	MaxQueueWait time.Duration `koanf:"max_queue_wait"`
 }
 
+// DefaultRateLimitConfig returns the built-in per-client HTTP limit defaults.
+//
+// Sizing is anchored to real dash0 traffic, not abuse math: on an org with
+// live checks, the checks page holds one query per check-group panel and
+// refetches all of them on every realtime-hint tick (min 3s apart, see
+// dash0's LIVE_INVALIDATE_MIN_INTERVAL_MS), so one tab sustains ~20
+// requests/min per panel — ~500 req/min for a 25-group org — and a cold
+// page load fires every panel query in parallel. The previous defaults
+// (300/min, burst 60, 10-deep queues) put a single busy tab at ~65% of the
+// whole budget, so a reload or second tab produced a steady trickle of
+// 429s. These limits are a guard against runaway clients and cheap floods,
+// not a fairness quota; they must sit well above any traffic the dashboard
+// itself can generate.
+func DefaultRateLimitConfig() RateLimitConfig {
+	return RateLimitConfig{
+		// ~3 busy tabs on a 25-group org (3 × 26 panels × 20/min ≈ 1560).
+		RequestsPerMinute: 1800,
+		// Several heavy cold loads back-to-back (RequestsPerMinute / 5).
+		Burst:             360,
+		MaxConcurrent:     20,
+		TrustedProxies:    0,
+		TokenBucketsPerIP: 50,
+		// At the 30/s refill rate a full rate queue drains in 2s, so brief
+		// overshoot degrades into a short delay instead of a 429.
+		RateQueue: 60,
+		// One cold load fires every panel query at once (browsers multiplex
+		// ~100 streams over a single HTTP/2 connection), so the waiting room
+		// must hold a full page load's overflow beyond MaxConcurrent.
+		ConcurrencyQueue: 40,
+		MaxQueueWait:     30 * time.Second,
+	}
+}
+
 // ServerConfig contains HTTP server configuration.
 type ServerConfig struct {
 	Listen          string            `koanf:"listen"`
@@ -681,16 +747,7 @@ func Load() (*Config, error) {
 				LaneFastThresholdMs: 1000,
 				FastLaneReserved:    5,
 			},
-			RateLimiting: RateLimitConfig{
-				RequestsPerMinute: 300,
-				Burst:             60,
-				MaxConcurrent:     20,
-				TrustedProxies:    0,
-				TokenBucketsPerIP: 50,
-				RateQueue:         10,
-				ConcurrencyQueue:  10,
-				MaxQueueWait:      30 * time.Second,
-			},
+			RateLimiting: DefaultRateLimitConfig(),
 		},
 		Database: DatabaseConfig{
 			Type:            DatabaseTypeSQLite,
@@ -759,6 +816,9 @@ func Load() (*Config, error) {
 		Node: NodeConfig{
 			Role:   NodeRoleAll,
 			Region: "",
+		},
+		Agent: AgentConfig{
+			KeysFile: "/data/agent-keys.json",
 		},
 		Profiler: ProfilerConfig{
 			Enabled: false,
@@ -865,6 +925,7 @@ func Load() (*Config, error) {
 	}
 
 	applyRateLimitingEnv(&cfg.Server.RateLimiting)
+	applyAgentEnv(&cfg.Agent)
 	applyAuthEnv(&cfg.Auth)
 	applyPasswordHashingEnv(&cfg.Auth.Password)
 	applyFileStorageEnv(&cfg.FileStorage)
@@ -1066,6 +1127,35 @@ func applyRealtimeEnv(cfg *RealtimeConfig) {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.MaxSubscriptionsPerConnection = n
 		}
+	}
+}
+
+// applyAgentEnv reads the SP_AGENT_* knobs manually. koanf's env loader
+// collapses underscores to dots, so SP_AGENT_SERVER_URL would map to
+// agent.server.url and miss the snake_case koanf tag "server_url" — and
+// SP_AGENT_KEYS_FILE maps to agent.keys.file, which would collide with a
+// string field bound at agent.keys and fail the whole config unmarshal.
+// SP_AGENT_KEYS is therefore read here too (its struct field binds koanf key
+// "keys_b64", which no env var reaches). See project_koanf_env_quirk.
+func applyAgentEnv(cfg *AgentConfig) {
+	if v := os.Getenv("SP_AGENT_SERVER_URL"); v != "" {
+		cfg.ServerURL = v
+	}
+
+	if v := os.Getenv("SP_AGENT_ENROLLMENT_TOKEN"); v != "" {
+		cfg.EnrollmentToken = v
+	}
+
+	if v := os.Getenv("SP_AGENT_KEYS_FILE"); v != "" {
+		cfg.KeysFile = v
+	}
+
+	if v := os.Getenv("SP_AGENT_KEYS"); v != "" {
+		cfg.Keys = v
+	}
+
+	if v := os.Getenv("SP_AGENT_NAME"); v != "" {
+		cfg.Name = v
 	}
 }
 
@@ -1302,6 +1392,12 @@ func (c *Config) Validate() error {
 	// Validate checks role requires region
 	if c.Node.Role == NodeRoleChecks && c.Node.Region == "" {
 		return ErrRegionRequiredForChecks
+	}
+
+	// Validate agent role requires a server URL (the enrollment token is only
+	// needed on the very first run — a persisted identity replaces it).
+	if c.Node.Role == NodeRoleAgent && c.Agent.ServerURL == "" {
+		return ErrAgentServerURLRequired
 	}
 
 	// Validate aggregation retention values are positive

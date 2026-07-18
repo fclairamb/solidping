@@ -46,8 +46,10 @@
         "chat:write",
         "chat:write.public",
         "channels:read",
+        "channels:history",
         "groups:read",
         "groups:write",
+        "groups:history",
         "im:write",
         "im:read",
         "im:history",
@@ -70,6 +72,8 @@
         "app_mention",
         "app_uninstalled",
         "link_shared",
+        "message.channels",
+        "message.groups",
         "message.im",
         "profile_opened"
       ]

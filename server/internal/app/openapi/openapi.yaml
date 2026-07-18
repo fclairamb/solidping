@@ -1710,6 +1710,42 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/incidents/{uid}/comments:
+    post:
+      tags: [Incidents]
+      summary: Add a comment to an incident
+      description: >-
+        Appends a free-text comment to the incident's timeline as an
+        append-only `incident.comment` event authored by the calling user
+        (`source: "web"`). Comments are read back through the incident events
+        endpoint. Slack thread replies produce the same event type with
+        `source: "slack"`. Append-only — no edit or delete.
+      operationId: addIncidentComment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncidentCommentRequest"
+      responses:
+        "201":
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # Notification delivery audit (read) APIs
   /api/v1/orgs/{org}/notifications:
     get:
@@ -6855,6 +6891,16 @@ components:
         reason:
           type: string
 
+    IncidentCommentRequest:
+      type: object
+      required: [text]
+      description: A free-text comment to append to the incident timeline.
+      properties:
+        text:
+          type: string
+          maxLength: 4096
+          description: Comment body, plain text, non-empty after trimming.
+
     # Event schemas
     EventListResponse:
       type: object
@@ -6885,6 +6931,7 @@ components:
             - incident.escalated
             - incident.resolved
             - incident.acknowledged
+            - incident.comment
             - check.created
             - check.updated
             - check.deleted

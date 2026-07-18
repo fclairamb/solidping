@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +18,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/term"
 
+	"github.com/fclairamb/solidping/server/internal/oauth"
 	"github.com/fclairamb/solidping/server/pkg/cli/config"
 	"github.com/fclairamb/solidping/server/pkg/client"
 )
@@ -448,6 +451,11 @@ func (h *Helper) Login(ctx context.Context, org, email, password string) (string
 func (h *Helper) Logout(ctx context.Context, callAPI bool) error {
 	// Optionally call logout API
 	if callAPI {
+		// Drop the OAuth grant server-side (RFC 7009) before discarding the
+		// local credentials, so a finished CLI session doesn't leave a live,
+		// refreshable grant lingering until its TTL.
+		h.revokeStoredGrant(ctx)
+
 		if apiClient, err := h.GetClient(ctx); err == nil {
 			// Best effort - ignore errors
 			_, _ = apiClient.Logout(ctx, false)
@@ -456,6 +464,38 @@ func (h *Helper) Logout(ctx context.Context, callAPI bool) error {
 
 	// Remove token file
 	return h.deleteTokenFile()
+}
+
+// revokeStoredGrant best-effort revokes the stored OAuth refresh grant via the
+// RFC 7009 revocation endpoint. The endpoint only deletes oauth_refresh grants
+// bound to the CLI client, so it is a safe no-op for the other credential types
+// the CLI may hold (PATs, session refresh tokens). Errors are swallowed —
+// logout must still succeed locally when offline or already-revoked.
+func (h *Helper) revokeStoredGrant(ctx context.Context) {
+	tokenData, err := h.readTokenFile()
+	if err != nil || tokenData == nil || tokenData.RefreshToken == "" {
+		return
+	}
+
+	form := url.Values{}
+	form.Set("token", tokenData.RefreshToken)
+	form.Set("client_id", oauth.CLIClientID)
+
+	endpoint := strings.TrimRight(h.config.URL, "/") + oauth.PathRevoke
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return
+	}
+
+	_ = resp.Body.Close()
 }
 
 // SaveTokens saves new access and refresh tokens to the token file.

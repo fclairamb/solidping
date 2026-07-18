@@ -3,8 +3,11 @@ package checkmqtt
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"strings"
 	"time"
 
@@ -79,6 +82,10 @@ func (c *MQTTChecker) Execute(
 		"topic": cfg.topic(),
 	}
 
+	if checkerdef.TunnelDialerFrom(ctx) != nil {
+		output["tunneled"] = true
+	}
+
 	// Connect to broker
 	connectResult := c.connect(ctx, cfg, timeout)
 	if connectResult.Status != checkerdef.StatusUp {
@@ -123,7 +130,7 @@ func (c *MQTTChecker) Execute(
 
 // connect establishes a connection to the MQTT broker.
 func (c *MQTTChecker) connect(
-	_ context.Context,
+	ctx context.Context,
 	cfg *MQTTConfig,
 	timeout time.Duration,
 ) checkerdef.Result {
@@ -135,6 +142,18 @@ func (c *MQTTChecker) connect(
 		SetCleanSession(true).
 		SetAutoReconnect(false).
 		SetConnectTimeout(timeout)
+
+	// Tunneled: open the broker connection through the bastion. paho hands the
+	// broker URI's raw host:port to this func (no local resolution), so the
+	// bastion resolves the hostname. A `ssl` broker is TLS-wrapped here (paho
+	// wraps internally only on its default path). Untunneled, no custom func is
+	// set and paho dials directly, byte-for-byte as before.
+	if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
+		host := cfg.Host
+		opts.SetCustomOpenConnectionFn(func(uri *url.URL, _ mqtt.ClientOptions) (net.Conn, error) {
+			return dialTunnelledBroker(ctx, dialer, uri, host)
+		})
+	}
 
 	if cfg.Username != "" {
 		opts.SetUsername(cfg.Username)
@@ -241,6 +260,33 @@ func (c *MQTTChecker) roundtrip(
 			Metrics: map[string]any{},
 			Output:  map[string]any{checkerdef.OutputKeyError: "message roundtrip timeout"},
 		}
+	}
+}
+
+// dialTunnelledBroker dials the broker through the tunnel dialer, wrapping the
+// conn in TLS for `ssl`/`tls`/`mqtts` broker schemes (paho only wraps on its own
+// default dial path, which the custom func replaces). serverName verifies the
+// certificate against the configured host, matching the untunneled default.
+func dialTunnelledBroker(
+	ctx context.Context, dialer checkerdef.ContextDialer, uri *url.URL, serverName string,
+) (net.Conn, error) {
+	conn, err := dialer.DialContext(ctx, "tcp", uri.Host)
+	if err != nil {
+		return nil, err
+	}
+
+	switch uri.Scheme {
+	case "ssl", "tls", "mqtts", "wss":
+		tlsConn := tls.Client(conn, &tls.Config{ServerName: serverName, MinVersion: tls.VersionTLS12})
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			_ = conn.Close()
+
+			return nil, err
+		}
+
+		return tlsConn, nil
+	default:
+		return conn, nil
 	}
 }
 

@@ -3,6 +3,7 @@ module github.com/fclairamb/solidping/server
 go 1.26.0
 
 require (
+	filippo.io/age v1.3.1
 	github.com/IBM/sarama v1.60.0
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/arran4/golang-ical v0.3.5
@@ -101,6 +102,7 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
+	filippo.io/hpke v0.4.0 // indirect
 	github.com/Azure/go-ntlmssp v0.1.1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/PuerkitoBio/goquery v1.12.0 // indirect

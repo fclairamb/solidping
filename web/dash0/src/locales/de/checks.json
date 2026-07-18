@@ -336,6 +336,11 @@
       "title": "Diese Prüfung belegt {{duty}} % der Zeit einen Monitoring-Slot",
       "description": "Jede Ausführung dauert etwa {{cost}} bei einem Intervall von {{period}} — diese Prüfung hält also {{duty}} % der Zeit einen Runner belegt. Erhöhen Sie das Intervall, um Monitoring-Kapazität freizugeben."
     },
+    "needsReseal": {
+      "title": "Zugangsdaten müssen für diesen privaten Standort neu versiegelt werden",
+      "description": "Diese Prüfung läuft an einem privaten Standort und ihre gespeicherten Zugangsdaten sind für andere Agenten versiegelt als die derzeit aktiven — seit dem Speichern wurde ein Agent hinzugefügt oder widerrufen. Die Agenten können sie daher nicht entschlüsseln und die Prüfung schlägt fehl. SolidPing kann sie nicht selbst neu versiegeln (es kann sie ebenfalls nicht lesen): Geben Sie die Zugangsdaten erneut ein und speichern Sie sie.",
+      "action": "Zugangsdaten neu speichern"
+    },
     "configuration": "Konfiguration",
     "configurationDescription": "Einstellungen und Parameter der Prüfung",
     "results": {

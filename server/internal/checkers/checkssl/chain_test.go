@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"math/big"
-	"net"
 	"testing"
 	"time"
 
@@ -67,7 +66,7 @@ func buildResultFromChain(
 
 	checker := &SSLChecker{}
 
-	return checker.buildResult(conn, net.IPv4(127, 0, 0, 1), params, time.Now())
+	return checker.buildResult(conn, "127.0.0.1", params, false, time.Now())
 }
 
 func TestBuildResult_ChainExpiryTiers(t *testing.T) {

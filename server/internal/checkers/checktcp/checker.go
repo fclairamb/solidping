@@ -83,6 +83,28 @@ func (c *TCPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 
 	start := time.Now()
 
+	// Tunneled check: the probe is dialed through the SSH bastion on the
+	// context. Local name resolution is deliberately SKIPPED — the direct-tcpip
+	// request carries the hostname and the *bastion* resolves it. That is the
+	// whole point: a private hostname (an internal service, a VPC-only record)
+	// resolves on the far side, where it means something, and would only ever
+	// fail here. The untunneled path below is byte-for-byte unchanged.
+	if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
+		return c.executeTunneled(ctx, dialer, cfg, timeout, tlsVerify, start), nil
+	}
+
+	return c.executeDirect(ctx, cfg, timeout, tlsVerify, start), nil
+}
+
+// executeDirect is the untunneled path: resolve the hostname locally, pick an
+// address, dial it. Byte-for-byte the behavior that predates tunnel support.
+func (c *TCPChecker) executeDirect(
+	ctx context.Context,
+	cfg *TCPConfig,
+	timeout time.Duration,
+	tlsVerify bool,
+	start time.Time,
+) *checkerdef.Result {
 	// Resolve hostname
 	resolver := &net.Resolver{}
 
@@ -94,7 +116,7 @@ func (c *TCPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 			Output: map[string]any{
 				checkerdef.OutputKeyError: fmt.Sprintf("failed to resolve hostname: %v", err),
 			},
-		}, nil
+		}
 	}
 
 	if len(addrs) == 0 {
@@ -104,7 +126,7 @@ func (c *TCPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 			Output: map[string]any{
 				checkerdef.OutputKeyError: "no IP addresses found for host",
 			},
-		}, nil
+		}
 	}
 
 	// Use any of the resolved addresses (prefer IPv4 if available)
@@ -128,7 +150,8 @@ func (c *TCPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 	}
 
 	// Execute TCP connection
-	result := c.connect(ctx, targetIP, isIPv6, cfg, timeout, tlsVerify)
+	target := net.JoinHostPort(targetIP.String(), strconv.Itoa(cfg.Port))
+	result := c.connect(ctx, &net.Dialer{}, target, cfg, timeout, tlsVerify)
 	result.Duration = time.Since(start)
 
 	// Add host info to output
@@ -146,16 +169,19 @@ func (c *TCPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 	result.Output["ip_version"] = ipVersion
 	result.Output["tls_enabled"] = cfg.TLS
 
-	return &result, nil
+	return &result
 }
 
-// connect performs the actual TCP connection operation.
+// The dialer is the seam that makes tunneling work: a plain *net.Dialer for a
+// direct check, the SSH port-forward dialer for a tunneled one. `target` is
+// already-resolved `ip:port` in the former case and the raw configured
+// `host:port` in the latter (remote-side resolution).
 //
 //nolint:funlen,cyclop,gocognit // TCP connection requires comprehensive logic
 func (c *TCPChecker) connect(
 	ctx context.Context,
-	targetIP net.IP,
-	_ bool,
+	dialer checkerdef.ContextDialer,
+	target string,
 	cfg *TCPConfig,
 	timeout time.Duration,
 	tlsVerify bool,
@@ -164,14 +190,8 @@ func (c *TCPChecker) connect(
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	// Prepare target address
-	target := net.JoinHostPort(targetIP.String(), strconv.Itoa(cfg.Port))
-
 	// Track timing
 	connectStart := time.Now()
-
-	// Create TCP connection
-	dialer := &net.Dialer{}
 
 	conn, err := dialer.DialContext(ctxWithTimeout, "tcp", target)
 	if err != nil {
@@ -342,6 +362,35 @@ func (c *TCPChecker) connect(
 		Metrics: metrics,
 		Output:  output,
 	}
+}
+
+// executeTunneled runs the TCP probe through a tunnel dialer against the raw
+// configured host:port. No `ip_version` is reported: the worker never learns
+// which address the bastion picked, and inventing one would be a lie. The
+// `tunneled` flag says why it is absent.
+func (c *TCPChecker) executeTunneled(
+	ctx context.Context,
+	dialer checkerdef.ContextDialer,
+	cfg *TCPConfig,
+	timeout time.Duration,
+	tlsVerify bool,
+	start time.Time,
+) *checkerdef.Result {
+	target := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
+
+	result := c.connect(ctx, dialer, target, cfg, timeout, tlsVerify)
+	result.Duration = time.Since(start)
+
+	if result.Output == nil {
+		result.Output = make(map[string]any)
+	}
+
+	result.Output[checkerdef.OutputKeyHost] = cfg.Host
+	result.Output[checkerdef.OutputKeyPort] = cfg.Port
+	result.Output["tunneled"] = true
+	result.Output["tls_enabled"] = cfg.TLS
+
+	return &result
 }
 
 // tlsVersionString converts TLS version constant to string.

@@ -13,12 +13,14 @@ import (
 	"github.com/urfave/cli/v3"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 
+	"github.com/fclairamb/solidping/server/internal/agentmode"
 	"github.com/fclairamb/solidping/server/internal/app"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/credmigrate"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/envcheck"
 	"github.com/fclairamb/solidping/server/internal/memlimit"
 	"github.com/fclairamb/solidping/server/internal/otelsetup"
 	slogutil "github.com/fclairamb/solidping/server/internal/utils/slog"
@@ -99,6 +101,12 @@ func serve(ctx context.Context, _ *cli.Command) error {
 	// Re-configure logger with the log level from config
 	setupLogger(cfg.LogLevel)
 
+	// Warn about unrecognized SP_* environment variables before validating: a
+	// typo'd var is often *why* validation fails, so the hint must print before
+	// a possible fatal exit. WARN-only — never fails startup, since unknown SP_*
+	// names are legitimate in mixed fleets and check config-as-code.
+	envcheck.WarnUnrecognizedEnv(ctx)
+
 	if validationErr := cfg.Validate(); validationErr != nil {
 		slog.ErrorContext(ctx, "Invalid configuration", "error", validationErr)
 		return cli.Exit(validationErr.Error(), 1)
@@ -160,6 +168,13 @@ func serve(ctx context.Context, _ *cli.Command) error {
 		"runMode", cfg.RunMode,
 		"dbType", cfg.Database.Type,
 		"logSQL", cfg.Database.LogSQL)
+
+	// Deported-agent mode (SP_NODE_ROLE=agent, spec 2026-07-16-02): the agent
+	// has no database and runs no migrations — branch BEFORE any DB init. It
+	// enrolls (or reconnects) over WebSocket and runs the check worker loop.
+	if cfg.Node.Role == config.NodeRoleAgent {
+		return runAgentMode(ctx, cfg)
+	}
 
 	server, err := app.NewServer(ctx, cfg)
 	if err != nil {
@@ -237,6 +252,21 @@ func serve(ctx context.Context, _ *cli.Command) error {
 	}
 
 	return err
+}
+
+// runAgentMode runs the deported-agent loop until interrupted (spec
+// 2026-07-16-02). No database, no migrations, no HTTP server.
+func runAgentMode(ctx context.Context, cfg *config.Config) error {
+	agentCtx, stopAgent := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
+	defer stopAgent()
+
+	if agentErr := agentmode.Run(agentCtx, cfg); agentErr != nil && !errors.Is(agentErr, context.Canceled) {
+		slog.ErrorContext(ctx, "Agent stopped with error", "error", agentErr)
+
+		return agentErr
+	}
+
+	return nil
 }
 
 // seedStartupData runs the env/deployment-driven seeds after migrations: the

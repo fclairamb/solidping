@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -119,6 +120,31 @@ func (c *RabbitMQChecker) dialAndCheck(
 		amqpConfig.TLSClientConfig = &tls.Config{
 			ServerName: cfg.Host,
 		}
+	}
+
+	// Tunneled: dial through the bastion. amqp091-go hands the raw host:port from
+	// the URI to this Dial func (no local resolution), so the bastion resolves
+	// the hostname. We replicate amqp.DefaultDial's handshake deadline so a dead
+	// server cannot stall the AMQP handshake. Untunneled, Dial stays nil and the
+	// library uses its default dialer byte-for-byte.
+	if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
+		timeout := cfg.Timeout
+		if timeout == 0 {
+			timeout = defaultTimeout
+		}
+
+		amqpConfig.Dial = func(network, addr string) (net.Conn, error) {
+			conn, dialErr := dialer.DialContext(ctx, network, addr)
+			if dialErr != nil {
+				return nil, dialErr
+			}
+
+			_ = conn.SetDeadline(time.Now().Add(timeout))
+
+			return conn, nil
+		}
+
+		output["tunneled"] = true
 	}
 
 	conn, err := amqp.DialConfig(uri, amqpConfig)

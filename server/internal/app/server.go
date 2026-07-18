@@ -40,6 +40,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/email"
 	entitlementsapi "github.com/fclairamb/solidping/server/internal/entitlements"
+	agentsadmin "github.com/fclairamb/solidping/server/internal/handlers/agents"
+	"github.com/fclairamb/solidping/server/internal/handlers/agentws"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/availability"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
@@ -87,6 +89,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
+	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/jmap"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
@@ -311,6 +314,12 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		return integrationk8s.ResolveClientsetByUID(ctx, dbService, credSvc, clusterUID)
 	}
 
+	// Wire the SSH-tunnel resolver used by tunnel-capable checks
+	// (`tunnelCheckUid` in their config). Same indirection again: it owns the
+	// check lookup + credential decrypt so the checkers only ever consume a
+	// dialer from their context.
+	sshtunnel.ResolverFunc = sshtunnel.NewResolver(dbService, credSvc)
+
 	// Initialize Sentry error tracking
 	if err := initSentry(cfg.Sentry); err != nil {
 		return nil, fmt.Errorf("failed to initialize Sentry: %w", err)
@@ -447,6 +456,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	rootAuthProtected.POST("/2fa/setup", authHandler.Setup2FA)
 	rootAuthProtected.POST("/2fa/confirm", authHandler.Confirm2FA)
 	rootAuthProtected.DELETE("/2fa", authHandler.Disable2FA)
+	// Static /tokens/current is registered ahead of the /tokens/:tokenUid param
+	// route; bunrouter matches the static segment first (as with
+	// /passkeys/register/begin vs /passkeys/:uid). It revokes the caller's own
+	// grant (Claims.RefreshUID) — the bearer-only self-revocation for a client
+	// that no longer holds its refresh token.
+	rootAuthProtected.DELETE("/tokens/current", authHandler.RevokeCurrentToken)
 	rootAuthProtected.DELETE("/tokens/:tokenUid", authHandler.RevokeToken)
 	rootAuthProtected.POST("/passkeys/register/begin", passkeyHandler.RegisterBegin)
 	rootAuthProtected.POST("/passkeys/register/finish", passkeyHandler.RegisterFinish)
@@ -616,6 +631,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	oauthGroup.POST("/authorize", oauthHandler.ApproveAuthorize)
 	oauthGroup.POST("/token", oauthHandler.Token)
 	oauthGroup.POST("/register", oauthHandler.Register)
+	oauthGroup.POST("/revoke", oauthHandler.Revoke)
 
 	// Job routes (auth required for org-scoped routes)
 	jobHandler := jobs.NewHandler(s.jobSvc)
@@ -762,19 +778,52 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	api.POST("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
 	api.GET("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
 
-	// Edge worker API routes (worker token auth, no user auth)
-	workersService := workers.NewService(
+	// The HTTP edge-worker API (/workers/{register,heartbeat,claim-jobs,
+	// submit-result}) was removed with spec 2026-07-16-02: it had no production
+	// client and its auth was a plaintext spw_ bearer token stored verbatim.
+	// Deported agents now connect outbound over the WebSocket agent transport,
+	// which authenticates by Ed25519 signature and never persists a usable
+	// credential. The claim/submit service logic lives on and is reused by that
+	// handler; the in-process worker keeps talking to checkjobsvc directly.
+
+	// Private locations (org-private regions) + deported agents admin API.
+	// Org-admin only: minting an enrollment token grants the ability to run
+	// checks inside the customer's network, and revoking an agent is
+	// security-relevant.
+	agentsAdminSvc := agentsadmin.NewService(s.dbService, s.services.Credentials)
+	agentsAdminHandler := agentsadmin.NewHandler(agentsAdminSvc, s.config)
+	orgAgentsAdmin := api.NewGroup("/orgs/:org").
+		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+	orgAgentsAdmin.GET("/private-regions", agentsAdminHandler.ListPrivateRegions)
+	orgAgentsAdmin.POST("/private-regions", agentsAdminHandler.CreatePrivateRegion)
+	orgAgentsAdmin.DELETE("/private-regions/:slug", agentsAdminHandler.DeletePrivateRegion)
+	orgAgentsAdmin.GET("/agent-enrollment-tokens", agentsAdminHandler.ListEnrollmentTokens)
+	orgAgentsAdmin.POST("/agent-enrollment-tokens", agentsAdminHandler.MintEnrollmentToken)
+	orgAgentsAdmin.DELETE("/agent-enrollment-tokens/:uid", agentsAdminHandler.DeleteEnrollmentToken)
+	orgAgentsAdmin.GET("/agents", agentsAdminHandler.ListAgents)
+	orgAgentsAdmin.DELETE("/agents/:uid", agentsAdminHandler.RevokeAgent)
+
+	// Deported-agent WebSocket transport (spec 2026-07-16-02). Registered
+	// directly on `api` — it carries its own auth, performed BEFORE the
+	// upgrade: a one-shot spe_ enrollment bearer on first connect, Ed25519
+	// signed headers on every reconnect. The claim/submit service logic is the
+	// same code the historical HTTP worker API used; incidents always process
+	// server-side.
+	agentWorkersSvc := workers.NewService(
 		s.dbService,
 		s.services.CheckJobs,
 		incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime),
-		s.services.Credentials,
 	)
-	workersHandler := workers.NewHandler(workersService, s.config)
-	workerAPI := api.NewGroup("/workers")
-	workerAPI.POST("/register", workersHandler.Register)
-	workerAPI.POST("/heartbeat", workersHandler.Heartbeat)
-	workerAPI.POST("/claim-jobs", workersHandler.ClaimJobs)
-	workerAPI.POST("/submit-result", workersHandler.SubmitResult)
+	agentWSHandler := agentws.NewHandler(
+		s.config,
+		s.dbService,
+		s.services.CheckJobs,
+		agentWorkersSvc,
+		s.services.Entitlements,
+		s.services.EventNotifier,
+		agentsAdminSvc.ResealRegion,
+	)
+	api.GET("/agent/ws", agentWSHandler.Serve)
 
 	// Results routes (authentication required)
 	resultsService := results.NewService(s.dbService)
@@ -803,6 +852,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgIncidents.POST("/:uid/snooze", incidentsHandler.SnoozeIncident)
 	orgIncidents.POST("/:uid/unsnooze", incidentsHandler.UnsnoozeIncident)
 	orgIncidents.POST("/:uid/resolve", incidentsHandler.ResolveIncident)
+	orgIncidents.POST("/:uid/comments", incidentsHandler.AddComment)
 
 	// Magic-link ack — public route (the signed token authenticates).
 	// Returns text/html so it renders in a browser opened from a mail client.
@@ -2235,7 +2285,7 @@ func (s *Server) MaybeAutoMigrateEncryption(ctx context.Context) error {
 	if s.services == nil || s.services.Credentials == nil || !s.services.Credentials.Enabled() {
 		s.warnIfEncryptedRowsExist(ctx)
 
-		return nil
+		return s.maybeSplitPlaintextSecrets(ctx)
 	}
 
 	if !s.config.Encryption.AutoMigrate {
@@ -2270,6 +2320,39 @@ func (s *Server) MaybeAutoMigrateEncryption(ctx context.Context) error {
 	if recStats.ConnectionsReconciled > 0 {
 		slog.InfoContext(ctx, "reconciled connection URL fields to public settings at startup",
 			"connectionsReconciled", recStats.ConnectionsReconciled)
+	}
+
+	return nil
+}
+
+// maybeSplitPlaintextSecrets is the no-master-key counterpart to the encryption
+// auto-migrate: with encryption disabled, it moves any secret still sitting in a
+// PUBLIC column (checks.config, check_jobs.config, connection settings) into a
+// plaintext envelope in the matching private column, closing the API leak for
+// databases written before that fix. Read-time redaction already protects the
+// API surface; this cleans the storage so the leak has no source at all.
+//
+// Gated on the same AutoMigrate flag as the encrypted sweep so an operator who
+// opts out of automatic startup row rewrites gets none. Idempotent.
+func (s *Server) maybeSplitPlaintextSecrets(ctx context.Context) error {
+	if s.dbService == nil {
+		return nil
+	}
+
+	if !s.config.Encryption.AutoMigrate {
+		return nil
+	}
+
+	stats, err := credmigrate.RunPlaintext(ctx, s.dbService, credmigrate.Options{Logger: slog.Default()})
+	if err != nil {
+		return fmt.Errorf("split plaintext credentials: %w", err)
+	}
+
+	if stats.Migrated() > 0 {
+		slog.InfoContext(ctx, "split public-column plaintext secrets into private column at startup",
+			"checksMigrated", stats.ChecksMigrated,
+			"checkJobsMigrated", stats.CheckJobsMigrated,
+			"connectionsMigrated", stats.ConnectionsMigrated)
 	}
 
 	return nil

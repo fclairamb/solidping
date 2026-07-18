@@ -209,7 +209,7 @@ func TestRequestTimeout_ExcludedPaths(t *testing.T) {
 	for _, path := range []string{
 		"/api/mgmt/health",
 		"/metrics",
-		"/api/v1/workers/heartbeat",
+		"/api/v1/agent/ws",
 		"/api/v1/heartbeat/org/identifier",
 		"/api/v1/orgs/default/events/ws",
 	} {

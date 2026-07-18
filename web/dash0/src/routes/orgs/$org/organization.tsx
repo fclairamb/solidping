@@ -28,6 +28,10 @@ function OrganizationLayout() {
       badge: pendingCount,
     },
     { label: t("nav:usage", "Usage"), path: "/orgs/$org/organization/usage" },
+    {
+      label: t("nav:privateLocations", "Private locations"),
+      path: "/orgs/$org/organization/private-locations",
+    },
     { label: t("nav:settings"), path: "/orgs/$org/organization/settings" },
   ];
 

@@ -37,6 +37,12 @@ const (
 	EventTypeIncidentSnoozed EventType = "incident.snoozed"
 	// EventTypeIncidentUnsnoozed indicates an incident's snooze was cleared.
 	EventTypeIncidentUnsnoozed EventType = "incident.unsnoozed"
+	// EventTypeIncidentComment is a free-text, user-authored comment on an
+	// incident, ingested from the dashboard or a Slack thread reply. The
+	// payload carries `text`, `source` (web|slack) and, for Slack-authored
+	// comments, the Slack author attribution (slackUserId, slackUserName,
+	// slackTeamId, slackTs). Append-only, like every other event row.
+	EventTypeIncidentComment EventType = "incident.comment"
 
 	// EventTypeStatusUpdateCreated indicates a status update was created.
 	EventTypeStatusUpdateCreated EventType = "status_update.created"

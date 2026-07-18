@@ -94,11 +94,16 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 	// URLs, opsgenie keys, etc.) before passing them down to the sender.
 	// On decrypt failure we don't ship a half-credential — fail the job.
 	if connection.SettingsPrivate != nil && *connection.SettingsPrivate != "" {
-		if jctx.Services.Credentials == nil || !jctx.Services.Credentials.Enabled() {
+		creds := jctx.Services.Credentials
+		// A plaintext envelope (no-master-key fallback) opens with no key; only
+		// AES-GCM / sealed envelopes need one. Gate the disabled error on that so
+		// a self-hosted deployment can still send notifications with its token.
+		// A nil service can open nothing, so it always fails here.
+		if creds == nil || (credentials.RequiresKey(*connection.SettingsPrivate) && !creds.Enabled()) {
 			return fmt.Errorf("%w: %s", ErrEncryptionDisabled, connection.UID)
 		}
 
-		private, decErr := jctx.Services.Credentials.DecryptForOrg(
+		private, decErr := creds.DecryptForOrg(
 			ctx, connection.OrganizationUID, *connection.SettingsPrivate,
 		)
 		if decErr != nil {

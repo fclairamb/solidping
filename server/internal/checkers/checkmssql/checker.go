@@ -5,15 +5,50 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
-	_ "github.com/microsoft/go-mssqldb" // MSSQL driver registration
+	mssql "github.com/microsoft/go-mssqldb" // MSSQL driver registration + connector API
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
 const microsecondsPerMilli = 1000.0
+
+// mssqlTunnelDialer adapts a checkerdef.ContextDialer to go-mssqldb's HostDialer.
+// Implementing HostDialer (not just Dialer) is what makes the driver SKIP its own
+// local DNS resolution and dial the raw host:port through the tunnel — the
+// bastion resolves the hostname (see tcpDialer.DialSqlConnection). HostName is
+// required by the interface but not called on the dial path.
+type mssqlTunnelDialer struct {
+	host   string
+	dialer checkerdef.ContextDialer
+}
+
+func (d mssqlTunnelDialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	return d.dialer.DialContext(ctx, network, addr)
+}
+
+func (d mssqlTunnelDialer) HostName() string { return d.host }
+
+// openMSSQL opens the SQL Server handle. Tunneled, it builds a connector wired to
+// dial through the bastion; untunneled, it is the byte-for-byte `sql.Open`.
+func openMSSQL(ctx context.Context, connURL, host string) (*sql.DB, error) {
+	dialer := checkerdef.TunnelDialerFrom(ctx)
+	if dialer == nil {
+		return sql.Open("sqlserver", connURL)
+	}
+
+	connector, err := mssql.NewConnector(connURL)
+	if err != nil {
+		return nil, err
+	}
+
+	connector.Dialer = mssqlTunnelDialer{host: host, dialer: dialer}
+
+	return sql.OpenDB(connector), nil
+}
 
 // MSSQLChecker implements the Checker interface for Microsoft SQL Server checks.
 type MSSQLChecker struct{}
@@ -108,7 +143,11 @@ func (c *MSSQLChecker) Execute(
 		"port": params.port,
 	}
 
-	conn, err := sql.Open("sqlserver", params.connURL)
+	if checkerdef.TunnelDialerFrom(ctx) != nil {
+		output["tunneled"] = true
+	}
+
+	conn, err := openMSSQL(ctx, params.connURL, cfg.Host)
 	if err != nil {
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,

@@ -15,6 +15,7 @@ export function useCheckValidation(
   org: string,
   type: string | undefined,
   config: Record<string, unknown>,
+  regions: string[] = [],
   debounceMs = 1000
 ): FieldError[] {
   const [errors, setErrors] = useState<FieldError[]>([]);
@@ -48,7 +49,7 @@ export function useCheckValidation(
           `/api/v1/orgs/${org}/checks/validate`,
           {
             method: "POST",
-            body: JSON.stringify({ type, config }),
+            body: JSON.stringify({ type, config, regions }),
           }
         );
 
@@ -64,7 +65,7 @@ export function useCheckValidation(
         clearTimeout(timerRef.current);
       }
     };
-  }, [org, type, JSON.stringify(config), debounceMs]);
+  }, [org, type, JSON.stringify(config), JSON.stringify(regions), debounceMs]);
 
   return errors;
 }

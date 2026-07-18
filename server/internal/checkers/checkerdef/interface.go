@@ -51,6 +51,39 @@ type Checker interface {
 	Execute(ctx context.Context, config Config) (*Result, error)
 }
 
+// ConfigNormalizer is an *optional* interface a checker config can implement to
+// rewrite an effective (post-merge) config map into its canonical stored shape
+// — e.g. folding HTTP's legacy `username`/`password` pair into a single
+// reserved `basicAuth` key that `SecretFields` can then encrypt as a whole.
+//
+// It is probed exactly like credentials.SecretFielder: an optional interface
+// rather than a method on Config, so the 30+ checker types that need no
+// normalization stay untouched.
+//
+// Implementations MUST NOT mutate the input map (the caller may still hold it)
+// and MUST be idempotent — normalizing an already-normalized map must be a
+// no-op, since the same manifest can be applied repeatedly.
+//
+// An error returned here MUST be a *ConfigError so handlers map it to a 400:
+// on the PATCH path normalization is the only validation the config sees.
+type ConfigNormalizer interface {
+	NormalizeConfig(configMap map[string]any) (map[string]any, error)
+}
+
+// NormalizeConfigFor normalizes a config map through cfg's optional
+// ConfigNormalizer, returning the map untouched when cfg does not implement it.
+func NormalizeConfigFor(cfg any, configMap map[string]any) (map[string]any, error) {
+	if cfg == nil || configMap == nil {
+		return configMap, nil
+	}
+
+	if normalizer, ok := cfg.(ConfigNormalizer); ok {
+		return normalizer.NormalizeConfig(configMap)
+	}
+
+	return configMap, nil
+}
+
 // CheckerSamplesProvider is an optional interface that provides sample configurations.
 type CheckerSamplesProvider interface {
 	// GetSampleConfigs returns a slice of sample configurations with metadata.

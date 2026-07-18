@@ -33,6 +33,11 @@ type IncidentService interface {
 	GetIncidentByUID(ctx context.Context, orgUID, incidentUID string) (*models.Incident, error)
 	// GetCheckByUID gets a check by UID.
 	GetCheckByUID(ctx context.Context, orgUID, checkUID string) (*models.Check, error)
+	// AddCommentFromSlack appends a Slack-authored comment to an incident's
+	// timeline, returning the created event.
+	AddCommentFromSlack(
+		ctx context.Context, orgUID, incidentUID, text, slackUserID, slackUserName, slackTeamID, slackTs string,
+	) (*models.Event, error)
 }
 
 var (

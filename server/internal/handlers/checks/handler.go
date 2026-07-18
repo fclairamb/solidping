@@ -93,12 +93,32 @@ func (h *Handler) ValidateCheck(
 			})
 	}
 
-	resp, err := h.svc.ValidateCheck(req.Context(), orgSlug, validateReq)
+	resp, err := h.svc.ValidateCheck(req.Context(), orgSlug, &validateReq)
 	if err != nil {
 		return h.WriteInternalError(writer, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
+// parseTypeFilter splits the `type` query parameter — singular name,
+// comma-separated multi-value, per the API convention (`?type=ssh` /
+// `?type=http,tcp`) — into the list of check types to filter on. Blank entries
+// are dropped, so `?type=` and `?type=http,,tcp` both behave sensibly.
+func parseTypeFilter(typeParam string) []string {
+	if typeParam == "" {
+		return nil
+	}
+
+	var types []string
+
+	for _, checkType := range strings.Split(typeParam, ",") {
+		if trimmed := strings.TrimSpace(checkType); trimmed != "" {
+			types = append(types, trimmed)
+		}
+	}
+
+	return types
 }
 
 // ListChecks handles listing all checks for an organization.
@@ -166,6 +186,8 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req bunrouter.Request) 
 
 	// Parse search query
 	opts.Query = query.Get("q")
+
+	opts.Types = parseTypeFilter(query.Get(fieldType))
 
 	// Parse internal filter
 	if internalParam := query.Get("internal"); internalParam != "" {
@@ -560,6 +582,9 @@ func (h *Handler) handleCreateError(writer http.ResponseWriter, err error) error
 	case errors.Is(err, ErrInvalidCheckType):
 		return h.WriteErrorErr(
 			writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid check type", err)
+	case errors.Is(err, ErrNoAgentsToSealTo):
+		return h.WriteErrorErr(
+			writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 	case isCheckFieldValidationError(err):
 		return h.WriteErrorErr(
 			writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
@@ -617,6 +642,12 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, err error) error
 	case errors.Is(err, ErrCheckNotFound):
 		return h.WriteErrorErr(
 			writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+	case errors.Is(err, ErrTunnelRegionNarrowed):
+		return h.WriteErrorErr(
+			writer, http.StatusConflict, base.ErrorCodeConflict, err.Error(), err)
+	case errors.Is(err, ErrNoAgentsToSealTo):
+		return h.WriteErrorErr(
+			writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 	case isCheckFieldValidationError(err):
 		return h.WriteErrorErr(
 			writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
@@ -687,6 +718,9 @@ func (h *Handler) handleUpsertError(writer http.ResponseWriter, err error) error
 // handleDeleteError handles errors from DeleteCheck.
 func (h *Handler) handleDeleteError(writer http.ResponseWriter, err error) error {
 	switch {
+	case errors.Is(err, ErrTunnelInUse):
+		return h.WriteErrorErr(
+			writer, http.StatusConflict, base.ErrorCodeConflict, err.Error(), err)
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
 			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)

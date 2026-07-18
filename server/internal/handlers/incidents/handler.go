@@ -175,7 +175,9 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	case errors.Is(err, ErrSnoozeUntilInPast),
 		errors.Is(err, ErrSnoozeTooLong),
 		errors.Is(err, ErrSnoozeMissingDur),
-		errors.Is(err, ErrSnoozeInvalidDur):
+		errors.Is(err, ErrSnoozeInvalidDur),
+		errors.Is(err, ErrCommentEmpty),
+		errors.Is(err, ErrCommentTooLong):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	default:
 		return h.WriteInternalError(writer, err)
@@ -366,4 +368,56 @@ func (h *Handler) ResolveIncident(writer http.ResponseWriter, req bunrouter.Requ
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, incidentToResponse(incident))
+}
+
+// commentEventResponse mirrors the events-list DTO shape so the dashboard can
+// reuse its Event type for the row returned by the create-comment endpoint.
+type commentEventResponse struct {
+	UID         string         `json:"uid"`
+	IncidentUID *string        `json:"incidentUid,omitempty"`
+	CheckUID    *string        `json:"checkUid,omitempty"`
+	EventType   string         `json:"eventType"`
+	ActorType   string         `json:"actorType"`
+	ActorUID    *string        `json:"actorUid,omitempty"`
+	Payload     map[string]any `json:"payload,omitempty"`
+	CreatedAt   time.Time      `json:"createdAt"`
+}
+
+// AddComment handles POST /api/v1/orgs/:org/incidents/:uid/comments — an
+// authenticated dashboard user appends a free-text comment to the incident
+// timeline. Returns the created event so the client can render it optimistically.
+func (h *Handler) AddComment(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgSlug := req.Param("org")
+	incidentUID := req.Param("uid")
+
+	var body struct {
+		Text string `json:"text"`
+	}
+
+	if req.Body != nil {
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid JSON body")
+		}
+	}
+
+	event, err := h.svc.AddComment(req.Context(), orgSlug, &AddCommentRequest{
+		IncidentUID: incidentUID,
+		Text:        body.Text,
+		Source:      CommentSourceWeb,
+		ActorUID:    h.actorUID(req),
+	})
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusCreated, commentEventResponse{
+		UID:         event.UID,
+		IncidentUID: event.IncidentUID,
+		CheckUID:    event.CheckUID,
+		EventType:   string(event.EventType),
+		ActorType:   string(event.ActorType),
+		ActorUID:    event.ActorUID,
+		Payload:     event.Payload,
+		CreatedAt:   event.CreatedAt,
+	})
 }

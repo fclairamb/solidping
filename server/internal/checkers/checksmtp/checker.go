@@ -108,26 +108,46 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 
 	start := time.Now()
 
-	targetIP, err := resolveHost(ctx, params.host)
-	if err != nil {
-		return &checkerdef.Result{
-			Status:   checkerdef.StatusError,
-			Duration: time.Since(start),
-			Output:   map[string]any{checkerdef.OutputKeyError: err.Error()},
-		}, nil
+	// Tunneled: dial the raw host:port through the bastion and SKIP local name
+	// resolution — the bastion resolves the hostname (the whole point for
+	// private names). The untunneled path is byte-for-byte unchanged.
+	tunnelDialer := checkerdef.TunnelDialerFrom(ctx)
+	tunneled := tunnelDialer != nil
+
+	var dialer checkerdef.ContextDialer = &net.Dialer{}
+
+	hostLabel := params.host
+
+	if tunneled {
+		dialer = tunnelDialer
+	} else {
+		targetIP, resErr := resolveHost(ctx, params.host)
+		if resErr != nil {
+			return &checkerdef.Result{
+				Status:   checkerdef.StatusError,
+				Duration: time.Since(start),
+				Output:   map[string]any{checkerdef.OutputKeyError: resErr.Error()},
+			}, nil
+		}
+
+		hostLabel = targetIP.String()
 	}
 
-	target := net.JoinHostPort(targetIP.String(), strconv.Itoa(params.port))
+	target := net.JoinHostPort(hostLabel, strconv.Itoa(params.port))
 	useImplicitTLS := params.port == implicitTLSPort && !cfg.StartTLS
 
 	metrics := map[string]any{}
 	output := map[string]any{
-		checkerdef.OutputKeyHost: targetIP.String(),
+		checkerdef.OutputKeyHost: hostLabel,
 		checkerdef.OutputKeyPort: params.port,
 	}
 
+	if tunneled {
+		output["tunneled"] = true
+	}
+
 	// Establish connection
-	conn, connTime, err := c.dial(ctx, target, params.serverName, useImplicitTLS, cfg.TLSVerify)
+	conn, connTime, err := c.dial(ctx, dialer, target, params.serverName, useImplicitTLS, cfg.TLSVerify)
 	if err != nil {
 		return handleDialError(ctx, err, start), nil
 	}
@@ -161,7 +181,7 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			Duration: time.Since(start),
 			Metrics:  metrics,
 			Output: map[string]any{
-				checkerdef.OutputKeyHost:  targetIP.String(),
+				checkerdef.OutputKeyHost:  hostLabel,
 				checkerdef.OutputKeyPort:  params.port,
 				checkerdef.OutputKeyError: fmt.Sprintf("greeting rejected: %d %s", code, greeting),
 			},
@@ -178,7 +198,7 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			Duration: time.Since(start),
 			Metrics:  metrics,
 			Output: map[string]any{
-				checkerdef.OutputKeyHost:  targetIP.String(),
+				checkerdef.OutputKeyHost:  hostLabel,
 				checkerdef.OutputKeyPort:  params.port,
 				checkerdef.OutputKeyError: fmt.Sprintf("greeting does not contain expected substring %q", cfg.ExpectGreeting),
 				"greeting":                greeting,
@@ -200,7 +220,7 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			Duration: time.Since(start),
 			Metrics:  metrics,
 			Output: map[string]any{
-				checkerdef.OutputKeyHost:  targetIP.String(),
+				checkerdef.OutputKeyHost:  hostLabel,
 				checkerdef.OutputKeyPort:  params.port,
 				checkerdef.OutputKeyError: fmt.Sprintf("EHLO rejected: %v", err),
 			},
@@ -226,7 +246,7 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 				Duration: time.Since(start),
 				Metrics:  metrics,
 				Output: map[string]any{
-					checkerdef.OutputKeyHost:  targetIP.String(),
+					checkerdef.OutputKeyHost:  hostLabel,
 					checkerdef.OutputKeyPort:  params.port,
 					checkerdef.OutputKeyError: err.Error(),
 				},
@@ -265,7 +285,7 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 				Duration: time.Since(start),
 				Metrics:  metrics,
 				Output: map[string]any{
-					checkerdef.OutputKeyHost:  targetIP.String(),
+					checkerdef.OutputKeyHost:  hostLabel,
 					checkerdef.OutputKeyPort:  params.port,
 					checkerdef.OutputKeyError: fmt.Sprintf("AUTH failed: %v", authErr),
 				},
@@ -283,7 +303,7 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			Duration: time.Since(start),
 			Metrics:  metrics,
 			Output: map[string]any{
-				checkerdef.OutputKeyHost:  targetIP.String(),
+				checkerdef.OutputKeyHost:  hostLabel,
 				checkerdef.OutputKeyPort:  params.port,
 				checkerdef.OutputKeyError: "AUTH not advertised by server",
 			},
@@ -428,11 +448,11 @@ func (c *SMTPChecker) doSTARTTLS(
 // dial establishes a connection, optionally with implicit TLS.
 func (c *SMTPChecker) dial(
 	ctx context.Context,
+	dialer checkerdef.ContextDialer,
 	target, serverName string,
 	implicitTLS, tlsVerify bool,
 ) (net.Conn, time.Duration, error) {
 	connectStart := time.Now()
-	dialer := &net.Dialer{}
 
 	conn, err := dialer.DialContext(ctx, "tcp", target)
 	if err != nil {

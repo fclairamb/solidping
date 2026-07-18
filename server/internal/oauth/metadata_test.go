@@ -33,6 +33,7 @@ func TestAuthorizationServerMetadataWellFormed(t *testing.T) {
 	require.Equal(t, testIssuer+"/api/v1/oauth/authorize", doc.AuthorizationEndpoint)
 	require.Equal(t, testIssuer+"/api/v1/oauth/token", doc.TokenEndpoint)
 	require.Equal(t, testIssuer+"/api/v1/oauth/register", doc.RegistrationEndpoint)
+	require.Equal(t, testIssuer+"/api/v1/oauth/revoke", doc.RevocationEndpoint)
 	require.Equal(t, testIssuer+"/.well-known/jwks.json", doc.JWKSURI)
 
 	// OAuth 2.1 hard requirements: S256-only PKCE, code grant, no implicit.

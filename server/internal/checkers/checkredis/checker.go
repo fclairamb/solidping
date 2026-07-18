@@ -80,13 +80,24 @@ func (c *RedisChecker) Execute(
 		"port": port,
 	}
 
-	client := redis.NewClient(&redis.Options{
+	opts := &redis.Options{
 		Addr:        cfg.addr(),
 		Password:    cfg.Password,
 		DB:          cfg.Database,
 		DialTimeout: timeout,
 		ReadTimeout: timeout,
-	})
+	}
+
+	// Tunneled: dial through the bastion. go-redis hands the raw host:port to
+	// this dialer, so the bastion resolves the hostname — local name resolution
+	// is skipped, exactly as required for private names. Untunneled, opts.Dialer
+	// stays nil and go-redis uses its default net.Dialer byte-for-byte as before.
+	if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
+		opts.Dialer = dialer.DialContext
+		output["tunneled"] = true
+	}
+
+	client := redis.NewClient(opts)
 
 	defer func() { _ = client.Close() }()
 

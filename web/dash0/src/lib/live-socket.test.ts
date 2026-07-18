@@ -130,7 +130,7 @@ describe("connectLiveSocket", () => {
     globalThis.WebSocket = originalWebSocket;
   });
 
-  it("sends nothing on open (auth is at the HTTP level via the access_token cookie)", async () => {
+  it("sends nothing on open (auth is at the HTTP level on the handshake)", async () => {
     const sockets: FakeSocket[] = [];
     const factory = (url: string) => {
       const s = new FakeSocket(url);
@@ -143,9 +143,42 @@ describe("connectLiveSocket", () => {
 
     sockets[0].open();
 
-    // No in-band auth frame — the browser authenticated the handshake with the
-    // cookie, so the client only waits for the server's `hello`.
+    // No in-band auth frame — the token authenticated the handshake (bearer
+    // subprotocol), so the client only waits for the server's `hello`.
     expect(sockets[0].sent).toEqual([]);
+  });
+
+  it("dials with the token in a bearer.* subprotocol plus the plain protocol", async () => {
+    // Regression: the handshake must NOT rely on the access_token cookie —
+    // cookies ignore ports, so another localhost app's cookie can shadow ours
+    // and permanently 401 the handshake while REST (bearer header) works.
+    const dials: { url: string; protocols?: string[] }[] = [];
+    const factory = (url: string, protocols?: string[]) => {
+      dials.push({ url, protocols });
+      return new FakeSocket(url);
+    };
+
+    connectLiveSocket("acme", noopCallbacks(), factory);
+    await vi.waitFor(() => expect(dials).toHaveLength(1));
+
+    expect(dials[0].protocols).toEqual(["bearer.test-token", "solidping.v2"]);
+  });
+
+  it("dials with the refreshed token after a pre-dial expiry refresh", async () => {
+    currentExpiresAt = Date.now() - 1; // known-dead token → refresh before dialing
+    refreshWithOutcomeMock.mockResolvedValue({ accessToken: "fresh-token" });
+
+    const dials: { protocols?: string[] }[] = [];
+    const factory = (url: string, protocols?: string[]) => {
+      dials.push({ protocols });
+      return new FakeSocket(url);
+    };
+
+    connectLiveSocket("acme", noopCallbacks(), factory);
+    await vi.waitFor(() => expect(dials).toHaveLength(1));
+
+    // The dead token read before the refresh must not ride the handshake.
+    expect(dials[0].protocols).toEqual(["bearer.fresh-token", "solidping.v2"]);
   });
 
   it("calls onOpen only after hello, not after the raw socket open", async () => {
