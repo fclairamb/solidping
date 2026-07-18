@@ -73,8 +73,16 @@ test.describe("SSH tunnel selector", () => {
     await expandSection(page, "section-advanced-trigger");
     await expect(page.getByTestId("check-tunnel-section")).toBeVisible();
 
-    // dns does not — v1 proves the seam on http + tcp only, and the form reads
-    // that from the API rather than from a hard-coded list.
+    // postgres does too — the flagship bastion use case. Support now extends to
+    // every TCP-based type (databases, brokers, mail, …), and the form reads
+    // that from the API's `supportsTunnel` rather than from a hard-coded list.
+    await page.goto("orgs/test/checks/new?checkType=postgresql");
+    await page.waitForLoadState("networkidle");
+    await expandSection(page, "section-advanced-trigger");
+    await expect(page.getByTestId("check-tunnel-section")).toBeVisible();
+
+    // dns does not — it is DNS/UDP-based, and an SSH direct-tcpip forward is TCP
+    // only. The form reads that from the API, not from a hard-coded list.
     await page.goto("orgs/test/checks/new?checkType=dns");
     await page.waitForLoadState("networkidle");
     await expandSection(page, "section-advanced-trigger");

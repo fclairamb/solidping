@@ -830,6 +830,21 @@ All check types support these common options:
 | `escalation_threshold` | Failures before escalation | `3` |
 | `recovery_threshold` | Successes before recovery | `1` |
 
+### SSH tunnel
+
+Every **TCP-based** check type can dial its target through an
+[SSH check's bastion](./ssh-tunnels.md) — set `tunnelCheckUid` to a reference to
+an `ssh` check that has `expected_fingerprint` set, or pick it under **Advanced →
+Run through SSH tunnel** in the dashboard. This covers the classic bastion use
+cases (a database or broker on a private network): `http`, `tcp`, `ssl`,
+`websocket`, `grpc`, `postgresql`, `mysql`, `mssql`, `oracle`, `redis`,
+`mongodb`, `rabbitmq`, `kafka`, `mqtt`, `smtp`, `imap`, `pop3`, and `ftp`.
+
+UDP- and ICMP-based types (`icmp`, `udp`, `ntp`, `snmp`, `dns`, `dnsbl`, `sip`,
+`a2s`) cannot tunnel — an SSH `direct-tcpip` forward is TCP only. The dashboard
+only shows the option on types that support it, driven by `supportsTunnel` on
+`/api/v1/orgs/{org}/check-types`.
+
 ## Check Intervals
 
 Supported interval formats:

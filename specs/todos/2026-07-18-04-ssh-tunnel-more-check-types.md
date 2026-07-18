@@ -192,5 +192,34 @@ tunnel too. The check only opens the control connection anyway.
 
 ### Notes on dropped/partial types
 
-(Filled in as implementation proceeds — records any type left untunneled
-because the vendored library seam does not exist.)
+**No types were dropped** — every candidate in the plan was implemented,
+including `oracle` (the vendored go-ora v2.9.0 *does* expose a connector dialer:
+`go_ora.NewConnector` + `OracleConnector.Dialer(configurations.DialerContext)`,
+and its `ServerAddr.NetworkAddr()` hands the raw host:port to the dialer, so the
+bastion resolves the name).
+
+Partial / caveats recorded in code comments:
+
+- **`ftp` implicit-TLS:** jlaffaye/ftp's `DialWithDialFunc` takes precedence over
+  the library's implicit-TLS wrapping, so a *tunneled* implicit-FTPS check
+  connects in plaintext through the tunnel. Explicit TLS (`AUTH TLS`) still
+  upgrades over the control connection. Documented at the `SupportsTunnel` site
+  and in `ssh-tunnels.md`. FTP PASV data connections *do* route through the
+  tunnel (jlaffaye/ftp uses the same dial func in `openDataConn`).
+- **`mysql`:** go-sql-driver's dial registry is process-global and never shrinks,
+  so a single well-known network name `solidping-tunnel` is registered once (in
+  `init`) whose dial func pulls the tunnel dialer from the *connection* context;
+  the DSN selects that network only when tunneled. No per-check registration.
+- **`mssql`:** go-mssqldb resolves DNS locally unless the dialer implements
+  `HostDialer` — so the adapter implements `HostDialer` (DialContext + HostName)
+  to skip local resolution and let the bastion resolve.
+- **`grpc`:** gRPC's default `dns` resolver resolves locally before dialing, so
+  the tunneled path switches the target to the `passthrough:///` resolver and
+  routes the dial via `WithContextDialer`.
+
+Testing note: `websocket` reaches `StatusUp` end-to-end through a real
+coder/websocket backend; the mail types (`smtp`/`imap`/`pop3`) reach `StatusUp`
+via minimal protocol stubs; `ssl` and the client-library / DB-driver types use
+the `sshtunneltest` fake bastion to assert the verbatim `host:port` crossed the
+tunnel (proving routing + skipped local resolution) — end-to-end byte flow
+through the tunnel is already covered by `checktcp`/`checkhttp`.

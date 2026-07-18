@@ -25,7 +25,7 @@ Both reach things the cloud workers cannot:
 |---|---|---|
 | Setup | Point at an existing SSH check | Deploy and enroll an agent |
 | Needs inbound access | Yes — the bastion's SSH port | No — the agent dials out |
-| Protocols | TCP-based checks (`http`, `tcp`) | Every check type, incl. ICMP/UDP |
+| Protocols | Any TCP-based check (databases, brokers, `http`, `tcp`, …) | Every check type, incl. ICMP/UDP |
 
 Reach for the tunnel when a bastion already exists; reach for an agent when
 nothing is reachable from outside at all.
@@ -43,9 +43,29 @@ is no separate tunnel resource to keep in sync.
 
 ## Supported check types
 
-v1 supports **`http`** and **`tcp`**. The dashboard's selector appears only on
-types that support it (the API reports this as `supportsTunnel` on
-`/api/v1/orgs/{org}/check-types`), and more types will follow.
+Every TCP-based check type can run through a tunnel — the classic bastion use
+cases (a database or message broker on a private network) are all covered:
+
+- **Web & network:** `http`, `tcp`, `ssl`, `websocket`, `grpc`
+- **Databases:** `postgresql`, `mysql`, `mssql`, `oracle`, `redis`, `mongodb`
+- **Message brokers:** `rabbitmq`, `kafka`, `mqtt`
+- **Mail:** `smtp`, `imap`, `pop3`
+- **File transfer:** `ftp`
+
+The dashboard's selector appears only on types that support it (the API reports
+this as `supportsTunnel` on `/api/v1/orgs/{org}/check-types`), so the option
+shows up automatically wherever it applies.
+
+UDP- and ICMP-based types (`icmp`, `udp`, `ntp`, `snmp`, `dns`, `dnsbl`, `sip`,
+`a2s`) cannot tunnel: an SSH `direct-tcpip` forward carries **TCP only**. For
+those, use a [private location / agent](./private-locations.md) instead.
+
+:::note FTP passive mode
+For `ftp`, both the control connection and passive-mode (PASV) data connections
+are dialed through the bastion. One caveat: a tunneled **implicit-TLS** FTPS
+check connects in plaintext through the tunnel — use explicit TLS (`AUTH TLS`)
+if you need the control channel encrypted end to end.
+:::
 
 ## Host-key verification is required
 

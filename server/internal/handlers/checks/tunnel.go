@@ -26,7 +26,10 @@ const tunnelConfigField = checkerdef.TunnelCheckUIDConfigKey
 // calls checker.Validate, so this is the only gate there.
 //
 // Rules (each maps to a settled design decision):
-//   - the check's own type must declare SupportsTunnel — v1 is http + tcp only.
+//   - the check's own type must declare SupportsTunnel — every TCP-dialing type
+//     that routes its probe through the context dialer (http, tcp, the mail
+//     protocols, ssl, the database drivers, and the client-library types).
+//     UDP/ICMP types cannot: SSH direct-tcpip forwards TCP only.
 //   - the referenced check must exist in the SAME org and not be deleted. The
 //     lookup is org-scoped, so a cross-org uid simply reads as "not found".
 //   - it must be an `ssh` check — the SSH check is the single home for the
