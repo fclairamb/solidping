@@ -485,7 +485,13 @@ export function CheckForm({
     return cfg;
   }, [serialized, type, timeoutSeconds, supportsTunnel, tunnelCheckUid]);
 
-  const fieldErrors = useCheckValidation(org, type, currentConfig, 300);
+  const fieldErrors = useCheckValidation(
+    org,
+    type,
+    currentConfig,
+    selectedRegions,
+    300,
+  );
 
   const toggleRegion = (slug: string) => {
     setSelectedRegions((prev) =>
@@ -913,6 +919,21 @@ export function CheckForm({
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground">Select the regions where this check should run</p>
+                  {/* A region change can be rejected because of an SSH tunnel
+                      dependency (the tunnel's SSH check must cover every private
+                      region this check runs in). The server reports it on the
+                      tunnel field; surface it here too so a region edit that
+                      triggered it shows the reason next to the regions. */}
+                  {supportsTunnel &&
+                    tunnelCheckUid !== "" &&
+                    getFieldError(fieldErrors, "tunnelCheckUid") && (
+                      <p
+                        className="text-xs text-destructive"
+                        data-testid="region-tunnel-error"
+                      >
+                        {getFieldError(fieldErrors, "tunnelCheckUid")}
+                      </p>
+                    )}
                 </div>
               )}
             </CardContent>
@@ -1133,6 +1154,7 @@ export function CheckForm({
                   <TunnelSelect
                     org={org}
                     sshChecks={tunnelCandidates}
+                    selectedRegions={selectedRegions}
                     value={tunnelCheckUid}
                     onChange={setTunnelCheckUid}
                   />

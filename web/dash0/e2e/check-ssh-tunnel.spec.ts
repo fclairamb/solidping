@@ -220,6 +220,111 @@ test.describe("SSH tunnel UX gaps", () => {
     await expect(option).not.toContainText("expected_fingerprint");
   });
 
+  test("disables an SSH check that is out of the check's private region", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    // A private region the bastion is NOT allocated to. Unique per run so it
+    // never collides with residue in the shared "test" org.
+    const regionSlug = `tun-${Date.now().toString(36)}`.slice(0, 20);
+    const regionResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/private-regions`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { slug: regionSlug, name: `Tunnel Region ${regionSlug}` },
+      },
+    );
+    expect(regionResp.ok()).toBeTruthy();
+
+    // A cloud-region bastion (default regions) — verified, so the only reason it
+    // can be rejected is the region rule.
+    const bastionName = `E2E Region Bastion ${Date.now()}`;
+    await createBastion(page, token, bastionName);
+
+    await page.goto("orgs/test/checks/new?checkType=http");
+    await page.waitForLoadState("networkidle");
+
+    // Put the check in the private region the bastion doesn't cover.
+    await page.getByTestId(`region-option-@test/${regionSlug}`).click();
+
+    await expandSection(page, "section-advanced-trigger");
+    await page.getByTestId("check-tunnel-select").click();
+
+    // The bastion is offered disabled, with the region reason named in the
+    // friendly `@slug` form the server uses.
+    const option = page.getByRole("option", {
+      name: new RegExp(`${bastionName}.*not in region @${regionSlug}`),
+    });
+    await expect(option).toBeVisible();
+    await expect(option).toHaveAttribute("aria-disabled", "true");
+
+    // Cleanup: nothing is allocated to the region (the form was never saved).
+    await page.request.delete(
+      `${API_BASE}/api/v1/orgs/test/private-regions/${regionSlug}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+  });
+
+  test("region edit that leaves the tunnel's coverage is rejected inline", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    const regionSlug = `tune-${Date.now().toString(36)}`.slice(0, 20);
+    const regionResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/private-regions`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { slug: regionSlug, name: `Edit Region ${regionSlug}` },
+      },
+    );
+    expect(regionResp.ok()).toBeTruthy();
+
+    // A verified cloud bastion + a dependent tunneling through it (both in cloud
+    // regions, so the tunnel is legal to start with).
+    const bastionName = `E2E Edit Bastion ${Date.now()}`;
+    const bastion = await createBastion(page, token, bastionName);
+
+    const checkName = `E2E Edit Tunneled ${Date.now()}`;
+    const createResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/checks`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          name: checkName,
+          slug: checkName.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+          type: "http",
+          config: {
+            url: "http://internal-edit.private/health",
+            tunnelCheckUid: bastion.uid,
+          },
+        },
+      },
+    );
+    expect(createResp.status()).toBe(201);
+    const dependent = await createResp.json();
+
+    // Edit the dependent and add the private region the bastion doesn't cover.
+    await page.goto(`orgs/test/checks/${dependent.uid}/edit`);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId(`region-option-@test/${regionSlug}`).click();
+
+    // The live validation rejects it, inline on BOTH the regions field and the
+    // tunnel field (a region change can now be blocked by a tunnel dependency).
+    const regionError = page.getByTestId("region-tunnel-error");
+    await expect(regionError).toBeVisible();
+    await expect(regionError).toContainText(`@${regionSlug}`);
+
+    // Cleanup: the rejected edit was never saved, so nothing is in the region.
+    await page.request.delete(
+      `${API_BASE}/api/v1/orgs/test/private-regions/${regionSlug}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+  });
+
   test("checks list shows a tunnel indicator naming the bastion", async ({
     authenticatedPage,
   }) => {

@@ -28,6 +28,8 @@ export interface TunnelSelectProps {
   org: string;
   /** The org's SSH checks — candidates to tunnel through. */
   sshChecks: Check[];
+  /** The regions the check being edited runs in (its resolved region slugs). */
+  selectedRegions: string[];
   value: string;
   onChange: (tunnelCheckUid: string) => void;
 }
@@ -41,9 +43,37 @@ function hasFingerprint(check: Check): boolean {
   return typeof fingerprint === "string" && fingerprint.length > 0;
 }
 
+// privateRegionLabel renders a fully-qualified private region (`@org/paris`) as
+// the friendlier `@paris` used in the server's own validation messages.
+function privateRegionLabel(region: string): string {
+  const slash = region.lastIndexOf("/");
+  return slash >= 0 ? `@${region.slice(slash + 1)}` : region;
+}
+
+// regionIncompatibility mirrors the server's decision-1 rule: every PRIVATE
+// region the check runs in must be one the SSH check is itself allocated to
+// (that is what makes its credentials already sealed to that region's agents).
+// Returns the first uncovered private region's label, or null when compatible.
+// The sealed-only-for-cloud rule (decision 2) is left to the server — the UI
+// cannot see whether an SSH check's secrets are sealed-only — and surfaces as an
+// inline error on submit.
+function regionIncompatibility(
+  check: Check,
+  selectedRegions: string[],
+): string | null {
+  const sshRegions = new Set(check.regions ?? []);
+  for (const region of selectedRegions) {
+    if (region.startsWith("@") && !sshRegions.has(region)) {
+      return privateRegionLabel(region);
+    }
+  }
+  return null;
+}
+
 export function TunnelSelect({
   org,
   sshChecks,
+  selectedRegions,
   value,
   onChange,
 }: TunnelSelectProps) {
@@ -110,14 +140,25 @@ export function TunnelSelect({
             </SelectItem>
             {sshChecks.map((check) => {
               const verified = hasFingerprint(check);
+              const uncoveredRegion = regionIncompatibility(
+                check,
+                selectedRegions,
+              );
+              // A fingerprint gap and a region gap are both blocking; report the
+              // fingerprint first (it is the harder prerequisite).
+              const disabledReason = !verified
+                ? "needs a host key fingerprint"
+                : uncoveredRegion
+                  ? `not in region ${uncoveredRegion}`
+                  : null;
               return (
                 <SelectItem
                   key={check.uid}
                   value={check.uid}
-                  disabled={!verified}
+                  disabled={disabledReason !== null}
                 >
                   {checkLabel(check)}
-                  {!verified && " — needs a host key fingerprint"}
+                  {disabledReason && ` — ${disabledReason}`}
                 </SelectItem>
               );
             })}

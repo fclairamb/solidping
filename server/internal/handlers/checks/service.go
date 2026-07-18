@@ -38,9 +38,13 @@ import (
 // writing anything. The frontend uses this for inline cycle errors on the
 // create form before the user clicks save.
 type ValidateCheckRequest struct {
-	Type      string               `json:"type"`
-	Slug      string               `json:"slug,omitempty"`
-	Config    map[string]any       `json:"config"`
+	Type   string         `json:"type"`
+	Slug   string         `json:"slug,omitempty"`
+	Config map[string]any `json:"config"`
+	// Regions is the check's selected region set. Supplied so the tunnel region
+	// rules (spec 2026-07-18-07) can be validated live — a `tunnelCheckUid`
+	// reference is legal or not depending on which regions the check runs in.
+	Regions   []string             `json:"regions,omitempty"`
 	DependsOn []ExportedDependency `json:"dependsOn,omitempty"`
 }
 
@@ -366,6 +370,21 @@ func (s *Service) ValidateCheck(
 	// agrees with the create/update paths for every check type.
 	if timeoutErr := validateConfigTimeout(req.Config); timeoutErr != nil {
 		return s.formatValidateError(timeoutErr), nil
+	}
+
+	// Tunnel reference rules (existence, type, fingerprint, chaining, and the
+	// region rules of spec 2026-07-18-07) so the form's selector can show the
+	// error inline before the user hits save. Needs the org to resolve the
+	// referenced SSH check; skip silently when the org can't be resolved (the
+	// create/update path re-validates anyway).
+	if _, tunneled := checkerdef.TunnelCheckUIDFrom(req.Config); tunneled {
+		if org := s.lookupOrgForValidate(ctx, orgSlug); org != nil {
+			if tunnelErr := s.validateTunnelConfig(
+				ctx, org.UID, req.Type, req.Config, req.Regions,
+			); tunnelErr != nil {
+				return s.formatValidateError(tunnelErr), nil
+			}
+		}
 	}
 
 	if depFields, depErr := s.validateDependsOn(ctx, orgSlug, req.Slug, req.DependsOn); depErr != nil {
