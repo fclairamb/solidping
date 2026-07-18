@@ -507,6 +507,162 @@ func TestSealedBlobShipsVerbatim(t *testing.T) {
 	r.Equal("hunter2", secrets["password"])
 }
 
+// createSSHTunnelCheck creates an SSH bastion usable as a tunnel: a fingerprint
+// (host-key verification) plus its password sealed to `recipient` (so the agent
+// can unseal it). Region set is caller-controlled so a test can strand it.
+func (e *env) createSSHTunnelCheck(slug string, regionSlugs []string, recipient string) *models.Check {
+	e.t.Helper()
+
+	sealed, err := credentials.SealForRecipients(
+		[]string{recipient}, map[string]any{"password": "hunter2"},
+	)
+	require.NoError(e.t, err)
+
+	check := models.NewCheck(e.org.UID, slug, "ssh")
+	check.Config = models.JSONMap{
+		"host":                 "bastion.internal",
+		"expected_fingerprint": "SHA256:abc",
+		"username":             "probe",
+	}
+	check.Regions = regionSlugs
+	check.ConfigSealed = &sealed
+	require.NoError(e.t, e.dbSvc.CreateCheck(e.t.Context(), check))
+
+	return check
+}
+
+// createTunneledDependent creates an http check that dials its probe through
+// tunnelUID (its `tunnelCheckUid`), materializing one claimable job per region.
+func (e *env) createTunneledDependent(slug string, regionSlugs []string, tunnelUID string) *models.Check {
+	e.t.Helper()
+
+	check := models.NewCheck(e.org.UID, slug, "http")
+	check.Config = models.JSONMap{
+		"url":            "http://internal.private/health",
+		"tunnelCheckUid": tunnelUID,
+	}
+	check.Regions = regionSlugs
+	check.ConfirmationPeriodSeconds = 0
+	require.NoError(e.t, e.dbSvc.CreateCheck(e.t.Context(), check))
+
+	return check
+}
+
+// findJob returns the claimed wire job for checkUID.
+func findJob(jobs []agentcrypto.AgentJob, checkUID string) (agentcrypto.AgentJob, bool) {
+	for _, job := range jobs {
+		if job.CheckUID == checkUID {
+			return job, true
+		}
+	}
+
+	return agentcrypto.AgentJob{}, false
+}
+
+// TestTunnelBlockAttachedOnClaim is the healthy dispatch path: a tunneled job is
+// claimed with its SSH check's public config + region-sealed envelope attached
+// (verbatim), while the SSH check's OWN job carries no tunnel block. The agent
+// can unseal the block with its identity.
+func TestTunnelBlockAttachedOnClaim(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newEnv(t)
+
+	conn, keys, _ := e.enroll(e.mintToken(), "dc1-agent")
+
+	ssh := e.createSSHTunnelCheck("bastion", []string{testRegion}, keys.X25519Recipient)
+	dep := e.createTunneledDependent("private-api", []string{testRegion}, ssh.UID)
+
+	jobsResp := roundTrip(t, conn, agentcrypto.ClientFrame{Type: agentcrypto.MsgTypeClaim, ID: "c1", MaxJobs: 10})
+	r.Equal(agentcrypto.MsgTypeJobs, jobsResp.Type)
+
+	depJob, ok := findJob(jobsResp.Jobs, dep.UID)
+	r.True(ok, "the tunneled dependent must be dispatched")
+	r.NotNil(depJob.Tunnel, "the tunnel block must be attached")
+	r.Equal(ssh.UID, depJob.Tunnel.CheckUID)
+	r.Equal("bastion.internal", depJob.Tunnel.Config["host"])
+	r.Equal("SHA256:abc", depJob.Tunnel.Config["expected_fingerprint"])
+	r.NotNil(depJob.Tunnel.ConfigSealed, "the sealed envelope must ship for the agent to unseal")
+
+	// config_private never crosses: only the sealed blob does, and the agent —
+	// a recipient by construction — can unseal it.
+	secrets, err := credentials.UnsealWithIdentity(keys.X25519Identity, *depJob.Tunnel.ConfigSealed)
+	r.NoError(err)
+	r.Equal("hunter2", secrets["password"])
+
+	// The SSH check's own job is a plain check, not a tunneled one.
+	sshJob, ok := findJob(jobsResp.Jobs, ssh.UID)
+	r.True(ok)
+	r.Nil(sshJob.Tunnel, "the bastion check's own job carries no tunnel block")
+}
+
+// TestTunnelJobDroppedWhenBastionDeregioned proves CLAIM-TIME re-assertion (not
+// just validation-time trust): if the SSH check is moved out of the agent's
+// region AFTER the dependent was validated, the tunneled job is dropped from the
+// batch and an explicit StatusError result is written (decision 6). The direct
+// DB update bypasses the service guard on purpose — it simulates the state
+// having drifted since validation time, which is exactly what claim-time
+// re-assertion must catch.
+func TestTunnelJobDroppedWhenBastionDeregioned(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newEnv(t)
+	ctx := t.Context()
+
+	conn, keys, _ := e.enroll(e.mintToken(), "dc1-agent")
+
+	ssh := e.createSSHTunnelCheck("bastion", []string{testRegion}, keys.X25519Recipient)
+	dep := e.createTunneledDependent("private-api", []string{testRegion}, ssh.UID)
+
+	// Mid-flight: the bastion leaves the agent's region.
+	moved := []string{"@acme/dc2"}
+	r.NoError(e.dbSvc.UpdateCheck(ctx, ssh.UID, &models.CheckUpdate{Regions: &moved}))
+
+	jobsResp := roundTrip(t, conn, agentcrypto.ClientFrame{Type: agentcrypto.MsgTypeClaim, ID: "c1", MaxJobs: 10})
+
+	_, ok := findJob(jobsResp.Jobs, dep.UID)
+	r.False(ok, "a tunneled job whose bastion no longer covers its region must be dropped")
+
+	// The drop is visible: an explicit error result naming the tunnel failure.
+	results, err := e.dbSvc.GetLastResultForChecks(ctx, e.org.UID, []string{dep.UID})
+	r.NoError(err)
+	got, present := results[dep.UID]
+	r.True(present, "a dropped tunneled job must leave a visible error result, never a silent skip")
+	r.Equal(int(models.ResultStatusError), *got.Status)
+	r.Equal(true, got.Output["tunnel_failed"])
+	r.Contains(got.Output["error"], "not allocated to region")
+}
+
+// TestTunnelJobDroppedWhenBastionDeleted: the SSH check is deleted mid-flight;
+// the dependent is dropped with an explicit error result rather than dispatched
+// without a tunnel.
+func TestTunnelJobDroppedWhenBastionDeleted(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newEnv(t)
+	ctx := t.Context()
+
+	conn, keys, _ := e.enroll(e.mintToken(), "dc1-agent")
+
+	ssh := e.createSSHTunnelCheck("bastion", []string{testRegion}, keys.X25519Recipient)
+	dep := e.createTunneledDependent("private-api", []string{testRegion}, ssh.UID)
+
+	r.NoError(e.dbSvc.DeleteCheck(ctx, ssh.UID))
+
+	jobsResp := roundTrip(t, conn, agentcrypto.ClientFrame{Type: agentcrypto.MsgTypeClaim, ID: "c1", MaxJobs: 10})
+
+	_, ok := findJob(jobsResp.Jobs, dep.UID)
+	r.False(ok, "a tunneled job whose bastion was deleted must be dropped")
+
+	results, err := e.dbSvc.GetLastResultForChecks(ctx, e.org.UID, []string{dep.UID})
+	r.NoError(err)
+	got, present := results[dep.UID]
+	r.True(present)
+	r.Equal(int(models.ResultStatusError), *got.Status)
+	r.Equal(true, got.Output["tunnel_failed"])
+	r.Contains(got.Output["error"], "no longer exists")
+}
+
 // TestLeaseExpiryReclaim: an agent dies mid-job; once its lease expires the
 // job becomes claimable again (by a second agent — HA takeover).
 func TestLeaseExpiryReclaim(t *testing.T) {

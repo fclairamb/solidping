@@ -71,6 +71,34 @@ type AgentJob struct {
 	// so the agent's phase-locked rescheduling matches the server's.
 	CheckPeriod  string   `json:"checkPeriod,omitempty"`
 	CheckRegions []string `json:"checkRegions,omitempty"`
+	// Tunnel carries the sealed SSH-tunnel endpoint for a job whose check dials
+	// its probe through an SSH check (`tunnelCheckUid`). Assembled per claim from
+	// the live SSH check row (spec 2026-07-18-07) and nil for the common
+	// untunneled job. Like the job's own config, the SSH check's credentials
+	// cross ONLY as its region-sealed envelope, never as config_private.
+	Tunnel *AgentJobTunnel `json:"tunnel,omitempty"`
+}
+
+// AgentJobTunnel is the SSH-tunnel endpoint attached to a dispatched job. It
+// carries the referenced SSH check's PUBLIC config plus its region-sealed
+// credential envelope shipped VERBATIM — the same zero-new-exposure posture as
+// AgentJob.ConfigSealed. config_private is DELIBERATELY absent from this shape:
+// the server never decrypts on the agent path, and the symmetric envelope must
+// never leave the server. The agent unseals ConfigSealed with its own identity
+// (it is a recipient by construction — the SSH check is allocated to the
+// agent's region) and merges the secrets over Config to build the dialer.
+type AgentJobTunnel struct {
+	// CheckUID is the SSH check's uid, the resolver key the agent's worker loop
+	// looks the unsealed snapshot up by (`tunnelCheckUid` in the job's config).
+	CheckUID string `json:"checkUid"`
+	// Config is the SSH check's PUBLIC config only (host, port, timeout,
+	// expected_fingerprint, username) — never a secret value.
+	Config map[string]any `json:"config,omitempty"`
+	// ConfigSealed is the SSH check's region-sealed (age X25519 v2) envelope,
+	// shipped verbatim. nil when the SSH check has no sealed secrets (e.g.
+	// plaintext self-hosted fallback), in which case Config alone must carry the
+	// credentials.
+	ConfigSealed *string `json:"configSealed,omitempty"`
 }
 
 // ServerFrame is the envelope for every server->agent frame.

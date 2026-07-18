@@ -23,6 +23,7 @@ import (
 	"github.com/uptrace/bunrouter"
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -31,6 +32,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
 // Close codes (mirroring the realtimews conventions).
@@ -509,11 +511,117 @@ func (h *Handler) handleClaim(
 			}
 		}
 
-		dispatched = append(dispatched, agentcrypto.ToAgentJob(job))
+		wireJob := agentcrypto.ToAgentJob(job)
+
+		// A tunneled job (`tunnelCheckUid` in its config) needs its SSH check's
+		// sealed endpoint attached, snapshotted from the live row at claim time.
+		// If the block cannot be built the job is dropped from the batch and an
+		// explicit error result is recorded (decision 6) — never dispatched
+		// half-armed, never silently skipped.
+		if tunnelUID, tunneled := checkerdef.TunnelCheckUIDFrom(job.Config); tunneled {
+			tunnel, buildErr := h.buildTunnelBlock(ctx, job, tunnelUID)
+			if buildErr != nil {
+				h.dropTunnelJob(ctx, state, job, buildErr)
+
+				continue
+			}
+
+			wireJob.Tunnel = tunnel
+		}
+
+		dispatched = append(dispatched, wireJob)
 	}
 
 	_ = h.dbService.UpdateAgentLastSeen(ctx, state.agent.UID, time.Now())
 	_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{Type: agentcrypto.MsgTypeJobs, ID: frame.ID, Jobs: dispatched})
+}
+
+// buildTunnelBlock loads the referenced SSH check from the live row and RE-ASSERTS
+// every tunnel-eligibility rule at CLAIM time — not just at the dependent's
+// validation time, since the SSH check's region set, fingerprint, or type could
+// have changed since. It ships the SSH check's PUBLIC config plus its
+// region-sealed envelope VERBATIM; config_private is never read here (the server
+// never decrypts on the agent path). Returns an error naming the fix when the
+// block cannot be built, which the caller turns into a dropped job + error
+// result.
+func (h *Handler) buildTunnelBlock(
+	ctx context.Context, job *models.CheckJob, tunnelUID string,
+) (*agentcrypto.AgentJobTunnel, error) {
+	sshCheck, err := h.dbService.GetCheck(ctx, job.OrganizationUID, tunnelUID)
+	if err != nil || sshCheck == nil {
+		return nil, fmt.Errorf( //nolint:err113 // dispatch-time diagnostic surfaced to the check's history
+			"ssh tunnel check %s no longer exists in this organization", tunnelUID)
+	}
+
+	if sshCheck.Type != string(checkerdef.CheckTypeSSH) {
+		return nil, fmt.Errorf( //nolint:err113 // dispatch-time diagnostic
+			"tunnel check %s is a %q check, only ssh checks can be used as a tunnel", tunnelUID, sshCheck.Type)
+	}
+
+	if fingerprint, _ := sshCheck.Config["expected_fingerprint"].(string); fingerprint == "" {
+		return nil, fmt.Errorf( //nolint:err113 // dispatch-time diagnostic
+			"ssh tunnel check %s must set expected_fingerprint to be used as a tunnel", tunnelUID)
+	}
+
+	if _, chained := checkerdef.TunnelCheckUIDFrom(sshCheck.Config); chained {
+		return nil, fmt.Errorf( //nolint:err113 // dispatch-time diagnostic
+			"ssh tunnel check %s is itself tunneled; chained tunnels are not supported", tunnelUID)
+	}
+
+	// Region re-assertion (decision 5): an agent job runs in a private region,
+	// and that region MUST be one the SSH check is allocated to — that is what
+	// guarantees the SSH check's secrets are already sealed to this agent.
+	if job.Region != nil && regions.IsPrivateRegion(*job.Region) && !containsRegion(sshCheck.Regions, *job.Region) {
+		return nil, fmt.Errorf( //nolint:err113 // dispatch-time diagnostic
+			"ssh tunnel check %s is not allocated to region %s; allocate it there to use it as a tunnel",
+			tunnelUID, *job.Region)
+	}
+
+	return &agentcrypto.AgentJobTunnel{
+		CheckUID:     sshCheck.UID,
+		Config:       map[string]any(sshCheck.Config),
+		ConfigSealed: sshCheck.ConfigSealed,
+	}, nil
+}
+
+// dropTunnelJob records the decision-6 contract for a tunneled job whose tunnel
+// block could not be built: an explicit StatusError result naming the fix
+// (which also releases the lease via SubmitResult) instead of a half-armed
+// dispatch or a silent skip. Mirrors the sealed-envelope drop documented in
+// server/CLAUDE.md.
+func (h *Handler) dropTunnelJob(ctx context.Context, state *connState, job *models.CheckJob, cause error) {
+	h.logger.WarnContext(ctx, "dropping tunneled job: cannot build tunnel block",
+		"check_uid", job.CheckUID, "job_uid", job.UID, "error", cause)
+
+	if _, err := h.workersSvc.SubmitResult(ctx, &workers.SubmitResultRequest{
+		JobUID:    job.UID,
+		WorkerUID: state.workerUID,
+		Status:    int(models.ResultStatusError),
+		Output: map[string]any{
+			"error":                          "tunnel failed: " + cause.Error(),
+			checkerdef.OutputKeyTunnelFailed: true,
+			checkerdef.TunnelCheckUIDConfigKey: func() string {
+				if uid, ok := checkerdef.TunnelCheckUIDFrom(job.Config); ok {
+					return uid
+				}
+
+				return ""
+			}(),
+		},
+	}); err != nil {
+		h.logger.ErrorContext(ctx, "failed to record tunnel dispatch error", "error", err, "job_uid", job.UID)
+	}
+}
+
+// containsRegion reports whether want is in the region set.
+func containsRegion(regionSet []string, want string) bool {
+	for _, region := range regionSet {
+		if region == want {
+			return true
+		}
+	}
+
+	return false
 }
 
 // handleResult validates and persists one result: lease-ownership guard,
