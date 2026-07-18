@@ -446,7 +446,7 @@ func (b *WSBackend) reconnectSupervisor(ctx context.Context) {
 }
 
 // reconnectUntilConnected dials with exponential backoff (first attempt
-// immediate) until the link is restored or ctx is cancelled.
+// immediate) until the link is restored or ctx is canceled.
 func (b *WSBackend) reconnectUntilConnected(ctx context.Context) {
 	var delay time.Duration
 
