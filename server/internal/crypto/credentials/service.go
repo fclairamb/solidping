@@ -222,7 +222,18 @@ func (s *service) EncryptForOrg(ctx context.Context, orgUID string, plaintext ma
 }
 
 // DecryptForOrg unwraps a JSON envelope back to the original map.
+//
+// A v3 *plaintext* envelope (the no-master-key structural-separation fallback)
+// is opened up-front, before the enabled gate: it carries no ciphertext and
+// needs no key, so it must reconstitute even on a disabled service. This is the
+// single centralized seam, so every DecryptForOrg caller (notifications,
+// kubernetes, re-seal, PATCH loaders, credmigrate) transparently handles the
+// plaintext envelope with no per-site special-casing.
 func (s *service) DecryptForOrg(ctx context.Context, orgUID string, envelope string) (map[string]any, error) {
+	if IsPlaintextEnvelope(envelope) {
+		return OpenPlaintext(envelope)
+	}
+
 	if !s.Enabled() {
 		return nil, ErrDisabled
 	}
