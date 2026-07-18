@@ -4400,15 +4400,18 @@ export function useDeletePrivateRegion(org: string) {
   });
 }
 
-export function useAgents(org: string) {
+export function useAgents(
+  org: string,
+  options?: { refetchInterval?: number; enabled?: boolean },
+) {
   return useQuery({
     queryKey: ["agents", org],
     queryFn: async () => {
       const response = await apiFetch<{ data?: AgentInfo[] }>(`/api/v1/orgs/${org}/agents`);
       return response.data || [];
     },
-    enabled: !!org,
-    refetchInterval: 30_000,
+    enabled: (options?.enabled ?? true) && !!org,
+    refetchInterval: options?.refetchInterval ?? 30_000,
   });
 }
 
