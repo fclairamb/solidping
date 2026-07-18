@@ -143,9 +143,18 @@ function RegionsCard({ org }: { org: string }) {
         ) : (regions?.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground" data-testid="no-private-regions">
             {t(
-              "privateLocations.regions.empty",
-              "No private locations yet. Use Register an agent above for a guided setup, or create one manually below.",
+              "privateLocations.regions.emptyPrefix",
+              "No private locations yet. Follow the ",
             )}
+            <Link
+              to="/orgs/$org/organization/private-locations/register"
+              params={{ org }}
+              className="text-primary underline-offset-4 hover:underline"
+              data-testid="empty-state-register-agent"
+            >
+              {t("privateLocations.regions.emptyLinkText", "guided setup")}
+            </Link>
+            {t("privateLocations.regions.emptySuffix", ", or create one manually below.")}
           </p>
         ) : (
           <div className="overflow-x-auto">
