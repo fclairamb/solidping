@@ -13,6 +13,8 @@ import (
 	"github.com/uptrace/bunrouter"
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/checkworker/backend"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/config"
@@ -22,6 +24,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/agentws"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
+	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
+	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel/sshtunneltest"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
@@ -661,6 +665,142 @@ func TestTunnelJobDroppedWhenBastionDeleted(t *testing.T) {
 	r.Equal(int(models.ResultStatusError), *got.Status)
 	r.Equal(true, got.Output["tunnel_failed"])
 	r.Contains(got.Output["error"], "no longer exists")
+}
+
+// TestTunnelEndToEndThroughAgent is the full agent tunnel path: an enrolled
+// agent claims a private-region check whose probe dials through an SSH bastion,
+// unseals the bastion credentials with its own identity, and successfully probes
+// a target that is reachable ONLY through the bastion (a `.invalid` hostname
+// that can never resolve locally). Result UP, tunnel_setup_ms recorded, and the
+// probe's own duration measured separately from tunnel setup.
+func TestTunnelEndToEndThroughAgent(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newEnv(t)
+	ctx := t.Context()
+
+	// A real in-process bastion, and a real HTTP target the bastion forwards to.
+	// The check targets `private.invalid:9000`, a name that cannot resolve
+	// locally — so a success is only possible through the tunnel. The bastion is
+	// the sole resolver of that name (via Forward), making a false pass (probe
+	// reaching the target directly) structurally impossible.
+	bastion := sshtunneltest.Start(t)
+
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	t.Cleanup(target.Close)
+	bastion.Forward("private.invalid:9000", target.Listener.Addr().String())
+
+	// Enroll the agent through the real WSBackend client so its claim path
+	// unseals-and-registers the tunnel snapshot exactly as production does.
+	keys, err := agentcrypto.GenerateAgentKeys()
+	r.NoError(err)
+	wsBackend := backend.NewWSBackend(
+		e.server.URL, e.mintToken(), "dc1-agent",
+		&backend.Identity{AgentKeys: *keys}, nil,
+	)
+
+	worker, err := wsBackend.Register(ctx, nil)
+	r.NoError(err)
+
+	// The SSH bastion check: PUBLIC config only on the public side, the bastion
+	// password sealed to THIS agent's region (its X25519 recipient).
+	sealed, err := credentials.SealForRecipients(
+		[]string{keys.X25519Recipient}, map[string]any{"password": bastion.Password},
+	)
+	r.NoError(err)
+
+	ssh := models.NewCheck(e.org.UID, "bastion", "ssh")
+	ssh.Config = models.JSONMap{
+		"host":                 bastion.Host,
+		"port":                 float64(bastion.Port),
+		"expected_fingerprint": bastion.Fingerprint,
+		"username":             bastion.Username,
+	}
+	ssh.Regions = []string{testRegion}
+	ssh.ConfigSealed = &sealed
+	r.NoError(e.dbSvc.CreateCheck(ctx, ssh))
+
+	// The dependent targets the bastion-only hostname; its job row is
+	// materialized from this config at creation, so it must be set up front.
+	dep := models.NewCheck(e.org.UID, "private-api", "http")
+	dep.Config = models.JSONMap{
+		"url":            "http://private.invalid:9000/",
+		"tunnelCheckUid": ssh.UID,
+	}
+	dep.Regions = []string{testRegion}
+	dep.ConfirmationPeriodSeconds = 0
+	r.NoError(e.dbSvc.CreateCheck(ctx, dep))
+
+	// Claim: the WSBackend unseals the tunnel block and registers the snapshot.
+	jobs, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 10, 10, time.Minute)
+	r.NoError(err)
+
+	var depJob *models.CheckJob
+
+	for _, job := range jobs {
+		if job.CheckUID == dep.UID {
+			depJob = job
+		}
+	}
+
+	r.NotNil(depJob, "the tunneled dependent must be claimed")
+
+	// Resolve the tunnel through the AGENT's resolver (the seam agent mode wires
+	// into sshtunnel.ResolverFunc) and run the real HTTP checker through it —
+	// mirroring the worker's executeJob, which times tunnel setup separately from
+	// the probe's own duration.
+	tunnelUID, ok := checkerdef.TunnelCheckUIDFrom(depJob.Config)
+	r.True(ok)
+
+	resolveCtx := sshtunnel.WithResolver(ctx, wsBackend.ResolveTunnel)
+
+	setupStart := time.Now()
+	dialer, closer, err := sshtunnel.Resolve(resolveCtx, depJob.OrganizationUID, tunnelUID)
+	tunnelSetup := time.Since(setupStart)
+	r.NoError(err, "the agent must unseal and dial the bastion")
+
+	defer func() { _ = closer.Close() }()
+
+	checker, ok := registry.GetChecker(checkerdef.CheckTypeHTTP)
+	r.True(ok)
+	cfg, ok := registry.ParseConfig(checkerdef.CheckTypeHTTP)
+	r.True(ok)
+	r.NoError(cfg.FromMap(depJob.Config))
+
+	probeCtx := checkerdef.WithTunnelDialer(resolveCtx, dialer)
+	result, err := checker.Execute(probeCtx, cfg)
+	r.NoError(err)
+	r.Equal(checkerdef.StatusUp, result.Status, "the probe must succeed through the tunnel")
+
+	// The bastion — not the agent — resolved the private hostname: the probe
+	// genuinely crossed the tunnel.
+	r.Equal([]string{"private.invalid:9000"}, bastion.Requested())
+
+	// tunnel_setup_ms is a distinct measurement from the probe's own duration,
+	// so latency graphs stay about the target, not the SSH handshake.
+	r.Positive(tunnelSetup, "tunnel setup must be timed")
+
+	// Submit the result with the tunnel setup metric, exactly as the worker does.
+	r.NoError(wsBackend.SubmitResult(ctx, depJob, worker.UID, &backend.SubmitResultRequest{
+		Status:   int(models.ResultStatusUp),
+		Duration: float32(result.Duration.Milliseconds()),
+		Metrics: map[string]any{
+			checkerdef.MetricKeyTunnelSetupMs: float64(tunnelSetup.Microseconds()) / 1000.0,
+		},
+		Output:          map[string]any{"message": "ok"},
+		NextScheduledAt: time.Now().Add(time.Minute),
+	}))
+
+	// The result landed UP with tunnel_setup_ms present.
+	results, err := e.dbSvc.GetLastResultForChecks(ctx, e.org.UID, []string{dep.UID})
+	r.NoError(err)
+	got, present := results[dep.UID]
+	r.True(present)
+	r.Equal(int(models.ResultStatusUp), *got.Status)
+	r.Contains(got.Metrics, checkerdef.MetricKeyTunnelSetupMs)
 }
 
 // TestLeaseExpiryReclaim: an agent dies mid-job; once its lease expires the
