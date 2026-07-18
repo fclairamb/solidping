@@ -18,6 +18,13 @@ import (
 // it first.
 var ErrEnrollmentTokenInvalid = errors.New("enrollment token is invalid, expired, or already used")
 
+// UsedEnrollmentTokenListWindow is how long a consumed enrollment token stays
+// visible in ListAgentEnrollmentTokens after use. The register-an-agent wizard
+// polls that list to learn its token's fate: without this window a token used
+// the moment the agent starts would simply vanish, indistinguishable from an
+// admin canceling it. View-only — a used token can never enroll again.
+const UsedEnrollmentTokenListWindow = time.Hour
+
 // PublicStatusUpdate holds a status update row for public status page display.
 // This type is used by ListPublicStatusUpdates and is independent of the admin
 // models so the DB layer does not need to know about the full status_updates model.
@@ -146,7 +153,10 @@ type Service interface {
 	// Deported-agent operations (spec 2026-07-16-02).
 	// CreateAgentEnrollmentToken persists a one-shot enrollment token.
 	CreateAgentEnrollmentToken(ctx context.Context, token *models.AgentEnrollmentToken) error
-	// ListAgentEnrollmentTokens lists an org's live (unused, unexpired) enrollment tokens.
+	// ListAgentEnrollmentTokens lists an org's live (unused, unexpired) enrollment
+	// tokens, plus tokens used within UsedEnrollmentTokenListWindow so the UI can
+	// report a consumed token's outcome instead of it just vanishing. Used tokens
+	// are view-only: the enrollment-side lookups below still require unused.
 	ListAgentEnrollmentTokens(ctx context.Context, orgUID string) ([]*models.AgentEnrollmentToken, error)
 	// DeleteAgentEnrollmentToken soft-deletes an enrollment token (admin cancel).
 	DeleteAgentEnrollmentToken(ctx context.Context, orgUID, uid string) error

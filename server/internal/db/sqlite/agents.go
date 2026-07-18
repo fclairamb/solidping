@@ -20,18 +20,23 @@ func (s *Service) CreateAgentEnrollmentToken(ctx context.Context, token *models.
 	return nil
 }
 
-// ListAgentEnrollmentTokens lists an org's live (unused, unexpired) tokens.
+// ListAgentEnrollmentTokens lists an org's live (unused, unexpired) tokens,
+// plus recently-used ones (db.UsedEnrollmentTokenListWindow) so the UI can
+// report a consumed token's outcome. View-only: enrollment still requires an
+// unused token.
 func (s *Service) ListAgentEnrollmentTokens(
 	ctx context.Context, orgUID string,
 ) ([]*models.AgentEnrollmentToken, error) {
 	var tokens []*models.AgentEnrollmentToken
 
+	now := time.Now()
+
 	err := s.db.NewSelect().
 		Model(&tokens).
 		Where("organization_uid = ?", orgUID).
 		Where("deleted_at IS NULL").
-		Where("used_at IS NULL").
-		Where("expires_at > ?", time.Now()).
+		Where("(used_at IS NULL AND expires_at > ?) OR used_at > ?",
+			now, now.Add(-db.UsedEnrollmentTokenListWindow)).
 		Order("created_at DESC").
 		Scan(ctx)
 	if err != nil {

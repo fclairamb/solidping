@@ -9,6 +9,7 @@ import (
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/agents"
@@ -109,6 +110,8 @@ func TestMintEnrollmentTokenShownOnceAndHashedAtRest(t *testing.T) {
 	r.NoError(err)
 	r.Len(listed.Data, 1)
 	r.Equal(minted.UID, listed.Data[0].UID)
+	r.Equal(agents.EnrollmentTokenStatusPending, listed.Data[0].Status)
+	r.Nil(listed.Data[0].UsedAt)
 
 	rows, err := s.dbSvc.ListAgentEnrollmentTokens(ctx, s.org.UID)
 	r.NoError(err)
@@ -215,6 +218,80 @@ func TestListAgentsAndRevoke(t *testing.T) {
 	regionsList, err := s.svc.ListPrivateRegions(ctx, "acme")
 	r.NoError(err)
 	r.Equal(0, regionsList.Data[0].AgentCount)
+}
+
+// TestListEnrollmentTokensReportsRecentlyUsed asserts a consumed token stays
+// listed for a viewing window, reporting which agent enrolled with it — the
+// register wizard relies on this to tell "used by my agent" apart from
+// "canceled elsewhere" — then ages out of the list. View-only: the spent
+// token can never enroll a second agent.
+func TestListEnrollmentTokensReportsRecentlyUsed(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	s := newSetup(t)
+	ctx := t.Context()
+
+	_, err := s.svc.CreatePrivateRegion(ctx, "acme", &agents.CreatePrivateRegionRequest{Slug: "dc1"})
+	r.NoError(err)
+
+	minted, err := s.svc.MintEnrollmentToken(ctx, "acme", &agents.MintEnrollmentTokenRequest{RegionSlug: "dc1"}, nil)
+	r.NoError(err)
+
+	agent, err := s.dbSvc.EnrollAgent(
+		ctx, agentcrypto.HashEnrollmentToken(minted.Token), "a1", "ed1", "age1x", "fp1",
+	)
+	r.NoError(err)
+
+	// Still listed after use, now reporting its outcome.
+	listed, err := s.svc.ListEnrollmentTokens(ctx, "acme")
+	r.NoError(err)
+	r.Len(listed.Data, 1)
+	r.Equal(agents.EnrollmentTokenStatusUsed, listed.Data[0].Status)
+	r.NotNil(listed.Data[0].UsedAt)
+	r.NotNil(listed.Data[0].UsedByAgentUID)
+	r.Equal(agent.UID, *listed.Data[0].UsedByAgentUID)
+
+	// Viewing is not usability: a second enrollment with the same token fails.
+	_, err = s.dbSvc.EnrollAgent(
+		ctx, agentcrypto.HashEnrollmentToken(minted.Token), "a2", "ed2", "age1y", "fp2",
+	)
+	r.ErrorIs(err, db.ErrEnrollmentTokenInvalid)
+
+	// Past the viewing window the used token drops out of the list.
+	_, err = s.dbSvc.DB().NewUpdate().
+		Model((*models.AgentEnrollmentToken)(nil)).
+		Set("used_at = ?", time.Now().Add(-db.UsedEnrollmentTokenListWindow-time.Minute)).
+		Where("uid = ?", minted.UID).
+		Exec(ctx)
+	r.NoError(err)
+
+	listed, err = s.svc.ListEnrollmentTokens(ctx, "acme")
+	r.NoError(err)
+	r.Empty(listed.Data)
+}
+
+// TestListEnrollmentTokensExcludesCancelled asserts an admin-canceled token
+// disappears from the list immediately — the wizard reads that absence as
+// "canceled elsewhere".
+func TestListEnrollmentTokensExcludesCancelled(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	s := newSetup(t)
+	ctx := t.Context()
+
+	_, err := s.svc.CreatePrivateRegion(ctx, "acme", &agents.CreatePrivateRegionRequest{Slug: "dc1"})
+	r.NoError(err)
+
+	minted, err := s.svc.MintEnrollmentToken(ctx, "acme", &agents.MintEnrollmentTokenRequest{RegionSlug: "dc1"}, nil)
+	r.NoError(err)
+
+	r.NoError(s.svc.DeleteEnrollmentToken(ctx, "acme", minted.UID))
+
+	listed, err := s.svc.ListEnrollmentTokens(ctx, "acme")
+	r.NoError(err)
+	r.Empty(listed.Data)
 }
 
 // TestRevokeAgentIsOrgScoped asserts an agent cannot be revoked through another

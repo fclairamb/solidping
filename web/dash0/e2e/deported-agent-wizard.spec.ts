@@ -5,8 +5,9 @@ import { test, expect, API_BASE, type Page } from "./fixtures";
 // agent snippets substitute the minted token and the org-correct server URL,
 // and land on the "waiting for connection" step. Driving a real agent
 // enrollment over the WS protocol isn't practical from Playwright, so the
-// success step is exercised in a dedicated backend/integration test instead —
-// here we assert the waiting state, per the spec's explicit allowance.
+// waiting-step test asserts the waiting state per the spec's explicit
+// allowance, and the success path is exercised with stubbed list endpoints
+// (see the enrolled-before-step-4 race test below).
 
 const REGION_SLUG = "e2e-wizard-dc";
 
@@ -113,5 +114,85 @@ test.describe.serial("Register an agent wizard", () => {
     // Step 4: waiting for the agent to connect.
     await page.getByTestId("wizard-continue-to-wait").click();
     await expect(page.getByTestId("wizard-step-waiting")).toBeVisible();
+  });
+
+  // Regression for the "Token no longer available" bug: when the agent enrolls
+  // while the user is still reading step 3 (typical — the docker run connects
+  // within seconds), the agent is already inside step 4's new-agent baseline
+  // and the consumed token used to vanish from the list, so the wizard wrongly
+  // reported "already used or cancelled elsewhere". The fix keeps used tokens
+  // listed (view-only) with usedByAgentUid; the wizard must show success. The
+  // two list GETs are stubbed to simulate that exact timeline — enrollment
+  // itself only exists over the agent WS protocol.
+  test("shows success when the agent enrolled before reaching step 4", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    const resp = await page.request.post(`${API_BASE}/api/v1/orgs/test/private-regions`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { slug: REGION_SLUG, name: "E2E Wizard DC" },
+    });
+    expect(resp.ok()).toBeTruthy();
+
+    const fakeAgent = {
+      uid: "e2e-race-agent",
+      name: "race-agent",
+      region: `@test/${REGION_SLUG}`,
+      fingerprint: "fp-race",
+      status: "active",
+      enrolledAt: new Date().toISOString(),
+    };
+
+    // The agent is "already enrolled" from the very first agents fetch, so the
+    // step-3→4 baseline snapshot contains it and can never flag it as new.
+    await page.route("**/api/v1/orgs/test/agents", async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      await route.fulfill({ json: { data: [fakeAgent] } });
+    });
+
+    // Tokens list: before the mint there's nothing; after the mint the token
+    // is immediately "used" by the fake agent (mint POSTs pass through to the
+    // real server so the wizard gets a real spe_ secret + uid).
+    let mintedUid: string | null = null;
+    await page.route("**/api/v1/orgs/test/agent-enrollment-tokens", async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      const data = mintedUid
+        ? [
+            {
+              uid: mintedUid,
+              region: `@test/${REGION_SLUG}`,
+              status: "used",
+              expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+              createdAt: new Date().toISOString(),
+              usedAt: new Date().toISOString(),
+              usedByAgentUid: fakeAgent.uid,
+            },
+          ]
+        : [];
+      await route.fulfill({ json: { data } });
+    });
+
+    await page.goto("orgs/test/organization/private-locations/register");
+    await expect(page.getByTestId("wizard-step-pick-location")).toBeVisible();
+    await page.getByTestId(`wizard-region-${REGION_SLUG}`).click();
+
+    const mintResponse = page.waitForResponse(
+      (r) =>
+        r.url().includes("/agent-enrollment-tokens") && r.request().method() === "POST",
+    );
+    await page.getByTestId("wizard-mint-token").click();
+    mintedUid = (await (await mintResponse).json()).uid;
+    expect(mintedUid).toBeTruthy();
+
+    await page.getByTestId("wizard-continue-to-run").click();
+    await expect(page.getByTestId("wizard-step-run-agent")).toBeVisible();
+    await page.getByTestId("wizard-continue-to-wait").click();
+
+    // The old baseline-only detection dead-ended here in the destructive
+    // "Token no longer available" card. The used-token signal must win.
+    await expect(page.getByTestId("wizard-step-success")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("wizard-step-success")).toContainText("race-agent");
   });
 });

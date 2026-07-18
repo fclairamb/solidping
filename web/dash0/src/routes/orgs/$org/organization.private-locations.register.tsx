@@ -727,10 +727,24 @@ function StepWaitForAgent({
     return agents.find((a) => a.region === region.region && !baseline.has(a.uid)) ?? null;
   }, [agents, baseline, region.region]);
 
-  const tokenStillLive = tokens?.some((tk) => tk.uid === minted.uid) ?? false;
-  const consumedElsewhere = graceOver && tokens !== undefined && !tokenStillLive && !newAgent;
+  // Primary success signal: used tokens stay listed for a viewing window and
+  // name the agent that consumed them. This is race-free — it works even when
+  // the agent enrolled before the user left step 3 (so it's already inside
+  // the baseline and the "new agent" fallback below can't see it).
+  const myToken = tokens?.find((tk) => tk.uid === minted.uid) ?? null;
+  const usedByAgent: AgentInfo | null =
+    (myToken?.status === "used" &&
+      agents?.find((a) => a.uid === myToken.usedByAgentUid)) ||
+    null;
 
-  if (newAgent) {
+  const connectedAgent = usedByAgent ?? newAgent;
+
+  // The token vanishing from the list now genuinely means an admin cancelled
+  // it — a used token keeps reporting its outcome instead of disappearing.
+  const cancelledElsewhere =
+    graceOver && tokens !== undefined && !myToken && !connectedAgent;
+
+  if (connectedAgent) {
     return (
       <Card data-testid="wizard-step-success">
         <CardHeader>
@@ -740,7 +754,7 @@ function StepWaitForAgent({
           </CardTitle>
           <CardDescription>
             {t("privateLocations.wizard.step4.successDescription", "{{name}} is now enrolled in {{region}}.", {
-              name: newAgent.name,
+              name: connectedAgent.name,
               region: region.region,
             })}
           </CardDescription>
@@ -761,7 +775,7 @@ function StepWaitForAgent({
     );
   }
 
-  if (expired || consumedElsewhere) {
+  if (expired || cancelledElsewhere) {
     return (
       <Card data-testid="wizard-step-error">
         <CardHeader>

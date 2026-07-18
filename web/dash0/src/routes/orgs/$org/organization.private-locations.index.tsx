@@ -475,7 +475,11 @@ function TokensCard({ org }: { org: string }) {
   const { data: tokens, isLoading } = useEnrollmentTokens(org);
   const deleteToken = useDeleteEnrollmentToken(org);
 
-  if (isLoading || (tokens?.length ?? 0) === 0) {
+  // The API also returns recently-used tokens (for the register wizard's
+  // benefit); this card only shows the ones still waiting for an agent.
+  const pendingTokens = tokens?.filter((token) => token.status !== "used") ?? [];
+
+  if (isLoading || pendingTokens.length === 0) {
     return null; // nothing pending — keep the page quiet
   }
 
@@ -503,7 +507,7 @@ function TokensCard({ org }: { org: string }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {tokens?.map((token) => (
+              {pendingTokens.map((token) => (
                 <TableRow key={token.uid} data-testid={`token-row-${token.uid}`}>
                   <TableCell>
                     <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{token.region}</code>

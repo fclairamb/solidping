@@ -305,20 +305,36 @@ func resolveTTL(expiresIn string) (time.Duration, error) {
 	return ttl, nil
 }
 
-// EnrollmentTokenResponse is a live token as listed (never includes the secret).
+// Enrollment token statuses as reported by the list API.
+const (
+	// EnrollmentTokenStatusPending is a live token still waiting for an agent.
+	EnrollmentTokenStatusPending = "pending"
+	// EnrollmentTokenStatusUsed is a consumed token, kept listed for a viewing
+	// window (db.UsedEnrollmentTokenListWindow) so the register wizard can
+	// report which agent enrolled with it. It can never enroll another agent.
+	EnrollmentTokenStatusUsed = "used"
+)
+
+// EnrollmentTokenResponse is a token as listed (never includes the secret).
 type EnrollmentTokenResponse struct {
 	UID       string    `json:"uid"`
 	Region    string    `json:"region"`
+	Status    string    `json:"status"`
 	ExpiresAt time.Time `json:"expiresAt"`
 	CreatedAt time.Time `json:"createdAt"`
+	// UsedAt/UsedByAgentUID are set once an agent consumed the token.
+	UsedAt         *time.Time `json:"usedAt,omitempty"`
+	UsedByAgentUID *string    `json:"usedByAgentUid,omitempty"`
 }
 
-// ListEnrollmentTokensResponse wraps the live-token list.
+// ListEnrollmentTokensResponse wraps the token list.
 type ListEnrollmentTokensResponse struct {
 	Data []EnrollmentTokenResponse `json:"data"`
 }
 
-// ListEnrollmentTokens returns an org's live (unused, unexpired) tokens.
+// ListEnrollmentTokens returns an org's live (unused, unexpired) tokens plus
+// recently-used ones, so a wizard polling this list can tell "my token was
+// consumed by agent X" apart from "my token was canceled".
 func (s *Service) ListEnrollmentTokens(ctx context.Context, orgSlug string) (*ListEnrollmentTokensResponse, error) {
 	org, err := s.resolveOrg(ctx, orgSlug)
 	if err != nil {
@@ -331,12 +347,21 @@ func (s *Service) ListEnrollmentTokens(ctx context.Context, orgSlug string) (*Li
 	}
 
 	data := make([]EnrollmentTokenResponse, 0, len(rows))
+
 	for _, row := range rows {
+		status := EnrollmentTokenStatusPending
+		if row.UsedAt != nil {
+			status = EnrollmentTokenStatusUsed
+		}
+
 		data = append(data, EnrollmentTokenResponse{
-			UID:       row.UID,
-			Region:    row.Region,
-			ExpiresAt: row.ExpiresAt,
-			CreatedAt: row.CreatedAt,
+			UID:            row.UID,
+			Region:         row.Region,
+			Status:         status,
+			ExpiresAt:      row.ExpiresAt,
+			CreatedAt:      row.CreatedAt,
+			UsedAt:         row.UsedAt,
+			UsedByAgentUID: row.UsedByAgentUID,
 		})
 	}
 

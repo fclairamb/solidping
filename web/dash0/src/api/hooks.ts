@@ -4344,8 +4344,14 @@ export interface AgentInfo {
 export interface EnrollmentToken {
   uid: string;
   region: string;
+  /** "pending" while waiting for an agent; "used" once consumed — used tokens
+   * stay listed for a viewing window so the register wizard can report which
+   * agent enrolled with them (they can never enroll another agent). */
+  status: "pending" | "used";
   expiresAt: string;
   createdAt: string;
+  usedAt?: string;
+  usedByAgentUid?: string;
 }
 
 export interface MintedEnrollmentToken {
