@@ -114,25 +114,45 @@ func (c *IMAPChecker) Execute(
 
 	start := time.Now()
 
-	targetIP, err := resolveHost(ctx, params.host)
-	if err != nil {
-		return &checkerdef.Result{
-			Status:   checkerdef.StatusError,
-			Duration: time.Since(start),
-			Output:   map[string]any{checkerdef.OutputKeyError: err.Error()},
-		}, nil
+	// Tunneled: dial the raw host:port through the bastion and SKIP local name
+	// resolution — the bastion resolves the hostname (the whole point for
+	// private names). The untunneled path is byte-for-byte unchanged.
+	tunnelDialer := checkerdef.TunnelDialerFrom(ctx)
+	tunneled := tunnelDialer != nil
+
+	var dialer checkerdef.ContextDialer = &net.Dialer{}
+
+	hostLabel := params.host
+
+	if tunneled {
+		dialer = tunnelDialer
+	} else {
+		targetIP, resErr := resolveHost(ctx, params.host)
+		if resErr != nil {
+			return &checkerdef.Result{
+				Status:   checkerdef.StatusError,
+				Duration: time.Since(start),
+				Output:   map[string]any{checkerdef.OutputKeyError: resErr.Error()},
+			}, nil
+		}
+
+		hostLabel = targetIP.String()
 	}
 
-	target := net.JoinHostPort(targetIP.String(), strconv.Itoa(params.port))
+	target := net.JoinHostPort(hostLabel, strconv.Itoa(params.port))
 
 	metrics := map[string]any{}
 	output := map[string]any{
-		checkerdef.OutputKeyHost: targetIP.String(),
+		checkerdef.OutputKeyHost: hostLabel,
 		checkerdef.OutputKeyPort: params.port,
 	}
 
+	if tunneled {
+		output["tunneled"] = true
+	}
+
 	// Establish connection
-	conn, connTime, err := c.dial(ctx, target, params.serverName, params.useImplicitTLS, cfg.TLSVerify)
+	conn, connTime, err := c.dial(ctx, dialer, target, params.serverName, params.useImplicitTLS, cfg.TLSVerify)
 	if err != nil {
 		return handleDialError(ctx, err, start), nil
 	}
@@ -166,7 +186,7 @@ func (c *IMAPChecker) Execute(
 			Duration: time.Since(start),
 			Metrics:  metrics,
 			Output: map[string]any{
-				checkerdef.OutputKeyHost:  targetIP.String(),
+				checkerdef.OutputKeyHost:  hostLabel,
 				checkerdef.OutputKeyPort:  params.port,
 				checkerdef.OutputKeyError: fmt.Sprintf("failed to read greeting: %v", err),
 			},
@@ -182,7 +202,7 @@ func (c *IMAPChecker) Execute(
 			Duration: time.Since(start),
 			Metrics:  metrics,
 			Output: map[string]any{
-				checkerdef.OutputKeyHost:  targetIP.String(),
+				checkerdef.OutputKeyHost:  hostLabel,
 				checkerdef.OutputKeyPort:  params.port,
 				checkerdef.OutputKeyError: "greeting does not start with * OK",
 				"greeting":                greeting,
@@ -197,7 +217,7 @@ func (c *IMAPChecker) Execute(
 			Duration: time.Since(start),
 			Metrics:  metrics,
 			Output: map[string]any{
-				checkerdef.OutputKeyHost: targetIP.String(),
+				checkerdef.OutputKeyHost: hostLabel,
 				checkerdef.OutputKeyPort: params.port,
 				checkerdef.OutputKeyError: fmt.Sprintf(
 					"greeting does not contain expected substring %q",
@@ -223,7 +243,7 @@ func (c *IMAPChecker) Execute(
 				Duration: time.Since(start),
 				Metrics:  metrics,
 				Output: map[string]any{
-					checkerdef.OutputKeyHost:  targetIP.String(),
+					checkerdef.OutputKeyHost:  hostLabel,
 					checkerdef.OutputKeyPort:  params.port,
 					checkerdef.OutputKeyError: err.Error(),
 				},
@@ -252,7 +272,7 @@ func (c *IMAPChecker) Execute(
 				Duration: time.Since(start),
 				Metrics:  metrics,
 				Output: map[string]any{
-					checkerdef.OutputKeyHost:  targetIP.String(),
+					checkerdef.OutputKeyHost:  hostLabel,
 					checkerdef.OutputKeyPort:  params.port,
 					checkerdef.OutputKeyError: err.Error(),
 				},
@@ -334,11 +354,11 @@ func (c *IMAPChecker) doSTARTTLS(
 // dial establishes a connection, optionally with implicit TLS.
 func (c *IMAPChecker) dial(
 	ctx context.Context,
+	dialer checkerdef.ContextDialer,
 	target, serverName string,
 	implicitTLS, tlsVerify bool,
 ) (net.Conn, time.Duration, error) {
 	connectStart := time.Now()
-	dialer := &net.Dialer{}
 
 	conn, err := dialer.DialContext(ctx, "tcp", target)
 	if err != nil {
