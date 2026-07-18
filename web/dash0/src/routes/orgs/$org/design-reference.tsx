@@ -108,6 +108,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Stepper } from "@/components/ui/stepper";
 import { Switch } from "@/components/ui/switch";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import {
@@ -142,6 +143,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "copyable-inline", label: "Copyable inline" },
   { id: "collapsible-code", label: "Collapsible code" },
   { id: "collapsible-section", label: "Collapsible section" },
+  { id: "stepper", label: "Stepper" },
   { id: "feedback", label: "Feedback" },
   { id: "label-filter", label: "Label filter" },
   { id: "check-multi-picker", label: "Check multi-picker" },
@@ -177,6 +179,7 @@ function DesignReferencePage() {
       <CopyableInlineSection />
       <CollapsibleCodeSection />
       <CollapsibleSectionSection />
+      <StepperSection />
       <FeedbackSection />
       <LabelFilterSection />
       <CheckMultiPickerSection />
@@ -1638,6 +1641,31 @@ function CollapsibleSectionSection() {
           code={`import { CollapsibleSection } from "@/components/ui/collapsible-section";\n\n<CollapsibleSection\n  id="flapping"\n  title="Flapping"\n  summary="window 6h, cooldown ×5 (defaults)"\n  customized={isCustomized}\n  defaultOpen={hasNonDefaults}\n  expandSignal={hasError ? submitNonce : 0}\n>\n  {/* fields */}\n</CollapsibleSection>`}
         />
       </div>
+    </Section>
+  );
+}
+
+function StepperSection() {
+  return (
+    <Section
+      id="stepper"
+      title="Stepper"
+      description="Horizontal progress indicator for multi-step wizards (e.g. the guided agent-registration flow). Wraps via flex-wrap so labels stack under their circle instead of overflowing on a narrow phone. Step index and any sensitive step data (a one-shot secret, say) should live in component state, not the URL — a reload can't recover a secret that was shown exactly once anyway."
+    >
+      <div className="space-y-4 rounded-md border bg-card p-4">
+        <Stepper
+          steps={[
+            { label: "Pick location" },
+            { label: "Mint token" },
+            { label: "Run the agent" },
+            { label: "Wait for connection" },
+          ]}
+          current={2}
+        />
+      </div>
+      <CodeSnippet
+        code={`import { Stepper } from "@/components/ui/stepper";\n\n<Stepper\n  steps={[{ label: "Pick location" }, { label: "Mint token" }, { label: "Run the agent" }, { label: "Wait for connection" }]}\n  current={step}\n/>`}
+      />
     </Section>
   );
 }
