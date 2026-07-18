@@ -64,10 +64,12 @@ export function TabsTrigger({
   value,
   className,
   children,
+  "data-testid": testId,
 }: {
   value: string;
   className?: string;
   children: React.ReactNode;
+  "data-testid"?: string;
 }) {
   const { value: active, setValue } = useTabsContext();
   const selected = active === value;
@@ -77,6 +79,7 @@ export function TabsTrigger({
       role="tab"
       aria-selected={selected}
       data-state={selected ? "active" : "inactive"}
+      data-testid={testId}
       onClick={() => setValue(value)}
       className={cn(
         "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -95,15 +98,21 @@ export function TabsContent({
   value,
   className,
   children,
+  "data-testid": testId,
 }: {
   value: string;
   className?: string;
   children: React.ReactNode;
+  "data-testid"?: string;
 }) {
   const { value: active } = useTabsContext();
   if (active !== value) return null;
   return (
-    <div role="tabpanel" className={cn("focus-visible:outline-none", className)}>
+    <div
+      role="tabpanel"
+      data-testid={testId}
+      className={cn("focus-visible:outline-none", className)}
+    >
       {children}
     </div>
   );
