@@ -348,6 +348,37 @@ func (h *Handler) RevokeToken(writer http.ResponseWriter, req bunrouter.Request)
 	return nil
 }
 
+// RevokeCurrentToken revokes the grant backing the caller's own credential —
+// the "I'm done, drop my access" call. It targets the row named by
+// Claims.RefreshUID, so it works for a session principal and, crucially, for an
+// MCP/OAuth client authenticated with only its short-lived access token (which
+// no longer holds the refresh token itself). Scoped-down tokens (mcp:read) may
+// self-revoke too: dropping your own credential is never a privilege
+// escalation. A credential with no backing grant row (PAT, 2FA temp token) has
+// nothing to revoke here and gets a 400.
+func (h *Handler) RevokeCurrentToken(writer http.ResponseWriter, req bunrouter.Request) error {
+	claims, ok := getClaimsFromContext(req)
+	if !ok {
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
+	}
+
+	if claims.RefreshUID == "" {
+		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
+			{Name: "token", Message: "this credential is not backed by a revocable grant"},
+		})
+	}
+
+	// RevokeToken verifies the row belongs to the caller before deleting, so a
+	// forged RefreshUID pointing at someone else's row cannot revoke it.
+	if err := h.svc.RevokeToken(req.Context(), claims.UserUID, claims.RefreshUID); err != nil {
+		return h.handleRevokeError(writer, err)
+	}
+
+	writer.WriteHeader(http.StatusNoContent)
+
+	return nil
+}
+
 // SwitchOrg switches the user's current organization context.
 func (h *Handler) SwitchOrg(writer http.ResponseWriter, req bunrouter.Request) error {
 	claims, ok := getClaimsFromContext(req)

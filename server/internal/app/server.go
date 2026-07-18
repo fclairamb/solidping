@@ -456,6 +456,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	rootAuthProtected.POST("/2fa/setup", authHandler.Setup2FA)
 	rootAuthProtected.POST("/2fa/confirm", authHandler.Confirm2FA)
 	rootAuthProtected.DELETE("/2fa", authHandler.Disable2FA)
+	// Static /tokens/current is registered ahead of the /tokens/:tokenUid param
+	// route; bunrouter matches the static segment first (as with
+	// /passkeys/register/begin vs /passkeys/:uid). It revokes the caller's own
+	// grant (Claims.RefreshUID) — the bearer-only self-revocation for a client
+	// that no longer holds its refresh token.
+	rootAuthProtected.DELETE("/tokens/current", authHandler.RevokeCurrentToken)
 	rootAuthProtected.DELETE("/tokens/:tokenUid", authHandler.RevokeToken)
 	rootAuthProtected.POST("/passkeys/register/begin", passkeyHandler.RegisterBegin)
 	rootAuthProtected.POST("/passkeys/register/finish", passkeyHandler.RegisterFinish)
