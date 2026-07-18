@@ -80,6 +80,8 @@ func TestAuthorizationServerMetadataHTTP(t *testing.T) {
 	require.Equal(t, oauthTestIssuer, doc.Issuer)
 	require.Equal(t, []string{CodeChallengeMethodS256}, doc.CodeChallengeMethodsSupported)
 	require.NotEmpty(t, doc.RegistrationEndpoint)
+	require.Equal(t, oauthTestIssuer+"/api/v1/oauth/revoke", doc.RevocationEndpoint,
+		"AS metadata must advertise the RFC 7009 revocation_endpoint")
 }
 
 func TestRegisterEndpointLoopbackPublicClient(t *testing.T) {
