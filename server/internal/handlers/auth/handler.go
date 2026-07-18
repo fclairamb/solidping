@@ -355,7 +355,7 @@ func (h *Handler) RevokeToken(writer http.ResponseWriter, req bunrouter.Request)
 // no longer holds the refresh token itself). Scoped-down tokens (mcp:read) may
 // self-revoke too: dropping your own credential is never a privilege
 // escalation. A credential with no backing grant row (PAT, 2FA temp token) has
-// nothing to revoke here and gets a 400.
+// nothing to revoke here and gets a 422 validation error.
 func (h *Handler) RevokeCurrentToken(writer http.ResponseWriter, req bunrouter.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
