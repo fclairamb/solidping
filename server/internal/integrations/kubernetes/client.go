@@ -143,7 +143,10 @@ func resolvePrivateSettings(
 	ctx context.Context, creds credentials.Service, conn *models.Integration,
 ) (*models.KubernetesPrivateSettings, error) {
 	if conn.SettingsPrivate != nil && *conn.SettingsPrivate != "" {
-		if !creds.Enabled() {
+		// A plaintext envelope opens with no master key; only AES-GCM / sealed
+		// envelopes require one — so a no-key self-hosted deployment can still
+		// read a cluster's split-out token/kubeconfig.
+		if credentials.RequiresKey(*conn.SettingsPrivate) && !creds.Enabled() {
 			return nil, ErrEncryptionDisabled
 		}
 
