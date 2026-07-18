@@ -14,8 +14,12 @@ import (
 
 // credentialNamePatterns are lowercased substrings that unambiguously mark a
 // config field as carrying a secret. They are intentionally specific (no bare
-// "key"/"auth"/"user", which produce false positives like "keyword",
-// "authProtocol", "username") so the tripwire fires only on genuine credentials.
+// "auth"/"user", which produce false positives like "authProtocol",
+// "username") so the tripwire fires only on genuine credentials.
+//
+// dsn/connectionstring/connection_string cover the "connection strings" category
+// from the spec's item 5 (e.g. a future SQL-ish checker embedding
+// user:pass@host in a single DSN field).
 //
 //nolint:gochecknoglobals // test lookup table
 var credentialNamePatterns = []string{
@@ -33,12 +37,35 @@ var credentialNamePatterns = []string{
 	"access_key",
 	"basicauth",
 	"bearer",
+	"dsn",
+	"connectionstring",
+	"connection_string",
+}
+
+// credentialNameSuffixes are suffixes that mark a field as a secret when the
+// field NAME ends with them (underscore- and case-insensitive) — e.g.
+// clientKey, signingKey, ssh_key, private_key, api_key. A SUFFIX match (rather
+// than a bare "key" substring anywhere in the name) is deliberate: it catches
+// every "...Key" credential shape while leaving "keyword"/"Keyword" alone,
+// since "keyword" does not END in "key" — no separate exclusion list needed for
+// that false positive.
+//
+//nolint:gochecknoglobals // test lookup table
+var credentialNameSuffixes = []string{
+	"key",
 }
 
 func looksLikeSecret(jsonName string) bool {
 	lower := strings.ToLower(jsonName)
 	for _, p := range credentialNamePatterns {
 		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+
+	normalized := strings.ReplaceAll(lower, "_", "")
+	for _, suffix := range credentialNameSuffixes {
+		if strings.HasSuffix(normalized, suffix) {
 			return true
 		}
 	}
@@ -73,17 +100,24 @@ func isPublicByDesign(checkType checkerdef.CheckType, jsonName string) bool {
 
 // TestNoUndeclaredCheckerSecrets is the item-5 tripwire: it reflects over every
 // registered checker's config struct and asserts that any top-level field whose
-// json name looks like a credential is declared in that config's SecretFields().
-// A future checker that adds a `password`/`token`/`secretXxx` field without
+// json name looks like a credential — including the password/token/secret/
+// basicAuth/bearer family, the "...Key" suffix (clientKey, signingKey, ssh_key,
+// private_key, api_key, …), and dsn/connection-string shapes — is declared in
+// that config's SecretFields(). A future checker that adds such a field without
 // declaring it secret fails here instead of silently re-introducing the leak
 // this spec fixed.
 //
-// Audit finding at the time of writing: every genuine credential field across
-// all ~40 checkers is already declared (password, token, secretHeaders,
-// basicAuth, private_key, saslPassword, authPassword/privPassword). checkgrpc
-// exposes no TLS client key, checkdocker/checkbrowser carry no credentials, and
-// checkkubernetes declares none because its cluster credentials live on the
-// integration connection, not the check config.
+// Audit finding at the time of writing (re-confirmed after widening the
+// heuristic to the key-suffix and dsn/connection-string patterns): every
+// genuine credential field across all ~40 checkers is already declared
+// (password, token, secretHeaders, basicAuth, private_key, saslPassword,
+// authPassword/privPassword). checkgrpc exposes no TLS client key,
+// checkdocker/checkbrowser carry no credentials, and checkkubernetes declares
+// none because its cluster credentials live on the integration connection, not
+// the check config. The widened heuristic's only "key"-containing hit across
+// every checker's fields is `keyword` (checkgrpc/checkbrowser), which does not
+// END in "key" and so isn't flagged — no new publicByDesignFields entry was
+// needed.
 func TestNoUndeclaredCheckerSecrets(t *testing.T) {
 	t.Parallel()
 
@@ -125,12 +159,17 @@ func TestNoUndeclaredCheckerSecrets(t *testing.T) {
 }
 
 // fakeLeakyConfig is a synthetic config used only to prove the tripwire above
-// is not vacuously green: it declares a token field as secret but leaves an
-// api_key field undeclared.
+// is not vacuously green: it declares a token field as secret but leaves
+// api_key, ClientKey, and Dsn undeclared — the last two exercise the widened
+// "key"-suffix and dsn/connection-string patterns specifically, so a future
+// checker adding a clientKey/signingKey/sshKey/dsn field without declaring it
+// secret is caught, not just the original password/token/basicAuth shapes.
 type fakeLeakyConfig struct {
 	Host       string `json:"host"`
 	Token      string `json:"token"`
 	APIKey     string `json:"api_key"` //nolint:tagliatelle // snake_case exercises the api_key pattern
+	ClientKey  string `json:"clientKey"`
+	Dsn        string `json:"dsn"`
 	Passphrase string // no json tag → falls back to field name
 	Keyword    string `json:"keyword"`
 	ignored    string //nolint:unused // exercises the unexported-skip path
@@ -139,9 +178,10 @@ type fakeLeakyConfig struct {
 func (c *fakeLeakyConfig) SecretFields() []string { return []string{"token"} }
 
 // TestTripwireMechanicsCatchUndeclaredSecret is the positive control for the
-// tripwire itself: the detection would flag api_key and Passphrase (undeclared)
-// while accepting token (declared) and ignoring host/keyword — so a real
-// regression cannot slip past TestNoUndeclaredCheckerSecrets unnoticed.
+// tripwire itself: the detection would flag api_key, clientKey, dsn, and
+// Passphrase (undeclared) while accepting token (declared) and ignoring
+// host/keyword — so a real regression, including the widened key-suffix and
+// dsn patterns, cannot slip past TestNoUndeclaredCheckerSecrets unnoticed.
 func TestTripwireMechanicsCatchUndeclaredSecret(t *testing.T) {
 	t.Parallel()
 
@@ -163,11 +203,17 @@ func TestTripwireMechanicsCatchUndeclaredSecret(t *testing.T) {
 		}
 	}
 
-	r.ElementsMatch([]string{"api_key", "Passphrase"}, undeclared,
+	r.ElementsMatch([]string{"api_key", "clientKey", "dsn", "Passphrase"}, undeclared,
 		"the tripwire must flag undeclared credential fields and only those")
-	r.False(looksLikeSecret("keyword"), "keyword must not be a false positive")
+	r.False(looksLikeSecret("keyword"), "keyword must not be a false positive (does not END in key)")
 	r.False(looksLikeSecret("username"), "username must not be a false positive")
 	r.True(looksLikeSecret("basicAuth"))
+	r.True(looksLikeSecret("clientKey"), "widened key-suffix pattern must catch clientKey")
+	r.True(looksLikeSecret("signingKey"), "widened key-suffix pattern must catch signingKey")
+	r.True(looksLikeSecret("ssh_key"), "widened key-suffix pattern must catch ssh_key (underscore-insensitive)")
+	r.True(looksLikeSecret("connectionString"), "connection-string pattern must be caught")
+	r.True(looksLikeSecret("connection_string"), "connection_string pattern must be caught")
+	r.True(looksLikeSecret("dsn"))
 }
 
 // topLevelJSONFields returns the serialized (json) names of a config struct's

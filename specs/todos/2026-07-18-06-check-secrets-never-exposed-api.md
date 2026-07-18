@@ -178,8 +178,18 @@ server-side decrypt seam routes through it transparently.
   `checkkubernetes` correctly declares none (its creds live on the connection).
 - `registry/secret_audit_test.go`: reflect over every `ParseConfig` struct's
   top-level json tags; any name matching a credential pattern
-  (`password`/`secret`/`token`/`private_key`/`passphrase`/`apikey`/`basicauth`…)
-  must appear in that config's `SecretFields()`.
+  (`password`/`secret`/`token`/`private_key`/`passphrase`/`apikey`/`basicauth`/
+  `dsn`/`connection_string`, plus any name ENDING in `key` — `clientKey`,
+  `signingKey`, `ssh_key`, …) must appear in that config's `SecretFields()`.
+  Re-swept after widening: no new false positives, no new allowlist entry
+  needed (the only "key"-containing field left unflagged is `keyword`, which
+  doesn't end in `key`).
+- Coordinator escalated the heartbeat/email `token` reclassification
+  (public-by-design, not a split-out secret — see `checkheartbeat`/`checkemail`
+  `SecretFields()`) to the user as a product-security policy call, since it
+  technically widens what a `viewer`-role member can read. **User decision
+  (2026-07-18): keep the reclassification as implemented** — no further
+  plumbing needed.
 
 ### Tests / QA
 - `credentials`: plaintext round-trip, detection, disabled-service open.
