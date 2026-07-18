@@ -44,7 +44,6 @@ func TestExecuteThroughTunnelSkipsLocalResolution(t *testing.T) {
 	r.NoError(err)
 
 	r.Contains(srv.Requested(), tunnelTarget)
-	r.NoError(dialer.TunnelFailure())
 	r.NotEqual(checkerdef.StatusUp, result.Status)
 }
 

@@ -25,7 +25,7 @@ const tunnelNetwork = "solidping-tunnel"
 
 var errNoTunnelDialer = errors.New("mysql tunnel dial: no tunnel dialer on connection context")
 
-//nolint:gochecknoinits // one-time process-global registration; the dial func pulls the per-check tunnel dialer from the connection context, so a single registration serves every tunneled check.
+//nolint:gochecknoinits // one-time global tunnel-network registration (mysql's dial registry never shrinks)
 func init() {
 	mysql.RegisterDialContext(tunnelNetwork, func(ctx context.Context, addr string) (net.Conn, error) {
 		dialer := checkerdef.TunnelDialerFrom(ctx)

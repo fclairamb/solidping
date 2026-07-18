@@ -21,7 +21,7 @@ const microsecondsPerMilli = 1000.0
 // dialed through the SSH tunnel. pq hands it the raw host:port from the DSN (no
 // local resolution), so the bastion resolves the hostname.
 type pqTunnelDialer struct {
-	ctx    context.Context
+	ctx    context.Context //nolint:containedctx // pq's Dialer/DialTimeout are context-less; exec ctx bound here
 	dialer checkerdef.ContextDialer
 }
 

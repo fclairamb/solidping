@@ -18,7 +18,7 @@ import (
 // proxy.Dialer sarama expects (Config.Net.Proxy.Dialer), binding the execution
 // context so every broker connection is dialed through the SSH tunnel.
 type tunnelProxyDialer struct {
-	ctx    context.Context
+	ctx    context.Context //nolint:containedctx // proxy.Dialer is context-less; exec ctx bound here
 	dialer checkerdef.ContextDialer
 }
 
