@@ -117,6 +117,7 @@ function CheckEditPage() {
           name: data.name,
           slug: data.slug,
           checkGroupUid: data.checkGroupUid,
+          escalationPolicyUid: data.escalationPolicyUid,
           period: data.period,
           config: data.config,
           regions: data.regions,

@@ -27,6 +27,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -184,6 +185,21 @@ function EscalationPoliciesListPage() {
             <AlertDialogTitle>{t("common:confirmDelete")}</AlertDialogTitle>
             <AlertDialogDescription>
               {t("escalation:editor.deleteConfirm")}
+              {pendingDelete &&
+                ((pendingDelete.usageCheckCount ?? 0) > 0 ||
+                  (pendingDelete.usageGroupCount ?? 0) > 0) && (
+                  <span
+                    className="mt-2 block font-medium text-foreground"
+                    data-testid="policy-delete-usage"
+                  >
+                    {t("escalation:list.deleteUsage", {
+                      checks: pendingDelete.usageCheckCount ?? 0,
+                      groups: pendingDelete.usageGroupCount ?? 0,
+                      defaultValue:
+                        "Used by {{checks}} checks and {{groups}} groups — they will fall back to inherited escalation.",
+                    })}
+                  </span>
+                )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -210,13 +226,25 @@ function PolicyRow({ org, policy, onDelete }: PolicyRowProps) {
   return (
     <TableRow data-testid="policy-row">
       <TableCell>
-        <Link
-          to="/orgs/$org/escalation-policies/$uid"
-          params={{ org, uid: policy.uid }}
-          className="font-medium hover:underline"
-        >
-          {policy.name}
-        </Link>
+        <span className="inline-flex items-center gap-2">
+          <Link
+            to="/orgs/$org/escalation-policies/$uid"
+            params={{ org, uid: policy.uid }}
+            className="font-medium hover:underline"
+          >
+            {policy.name}
+          </Link>
+          {(policy.stepCount ?? policy.steps?.length ?? 0) === 0 && (
+            <Badge
+              variant="secondary"
+              className="text-[10px]"
+              data-testid="policy-silent-badge"
+              title="Zero-step policy — pages nobody"
+            >
+              {t("escalation:list.silentBadge", "0 steps — silent")}
+            </Badge>
+          )}
+        </span>
       </TableCell>
       <TableCell className="max-w-[420px] truncate text-sm text-muted-foreground">
         {policy.description || ""}

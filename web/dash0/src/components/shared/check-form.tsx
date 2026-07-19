@@ -41,6 +41,7 @@ import {
 } from "@/api/hooks";
 import { Badge } from "@/components/ui/badge";
 import { NotifyViaSection } from "@/components/checks/form/sections/notifications";
+import { EscalationSelect } from "@/components/checks/form/sections/escalation";
 import { DependsOnFormSection } from "@/components/checks/form/sections/dependencies";
 import { checkTypeRegistry, authFieldsRegistry } from "@/components/checks/form/types";
 import { CheckFormFieldsProvider } from "@/components/checks/form/types/context";
@@ -187,6 +188,8 @@ export interface CheckFormData {
   connectionUids?: string[];
   dependsOnParentUids?: string[];
   initialDependsOnParentUids?: string[];
+  /** "" = inherit (group → org default → none); a UID assigns that policy. */
+  escalationPolicyUid?: string;
 }
 
 interface CheckFormProps {
@@ -288,6 +291,11 @@ export function CheckForm({
   const [slug, setSlug] = useState(initialData?.slug || "");
   const slugError = validateSlug(slug);
   const [checkGroupUid, setCheckGroupUid] = useState(initialData?.checkGroupUid || "");
+  // Escalation policy assignment: "" = inherit (group → org default → none),
+  // a UID = that policy. PATCH semantics: send the UID to set, "" to clear.
+  const [escalationPolicyUid, setEscalationPolicyUid] = useState(
+    initialData?.escalationPolicyUid ?? "",
+  );
   const [labels, setLabels] = useState<Record<string, string>>(initialData?.labels ?? {});
   const [labelsDirty, setLabelsDirty] = useState(false);
 
@@ -573,6 +581,10 @@ export function CheckForm({
         name: mode === "edit" ? name : (name || undefined),
         slug: mode === "edit" ? slug : (slug || undefined),
         checkGroupUid: checkGroupUid || (mode === "edit" ? "" : undefined),
+        // Inherit ("" state) sends "" on edit (clears any prior assignment) and
+        // nothing on create (the check inherits by default).
+        escalationPolicyUid:
+          escalationPolicyUid || (mode === "edit" ? "" : undefined),
         period: isPassiveType(type) ? formatPeriod(periodValue, periodUnit) : period,
         // Don't send config for passive edits — the token is managed by the backend
         ...(isPassiveType(type) && mode === "edit" ? {} : { config }),
@@ -951,6 +963,13 @@ export function CheckForm({
                 connections={connections}
                 selected={connectionUids ?? []}
                 onToggle={toggleConnection}
+              />
+              <EscalationSelect
+                org={org}
+                value={escalationPolicyUid}
+                onChange={setEscalationPolicyUid}
+                checkGroupUid={checkGroupUid}
+                checkGroups={checkGroups}
               />
             </CardContent>
           </Card>

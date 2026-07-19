@@ -20,7 +20,10 @@
     "sessionDurationFullDescription": "Set a hard limit on how long a login session can last, regardless of activity. Leave empty to use the platform default (no limit unless one is set system-wide).",
     "sessionDurationHoursLabel": "Maximum session length (hours)",
     "sessionDurationPlaceholder": "Unlimited",
-    "sessionDurationHelp": "Once set, a session is force-expired this many hours after login even if the user stays active — separate from the 7-day inactivity timeout."
+    "sessionDurationHelp": "Once set, a session is force-expired this many hours after login even if the user stays active — separate from the 7-day inactivity timeout.",
+    "defaultEscalation": "Default escalation policy",
+    "defaultEscalationDescription": "Applied to checks that resolve to no policy of their own (check → group → org default → none). Leave unset for no org-wide fallback.",
+    "defaultEscalationNone": "None (no fallback)"
   },
   "usage": {
     "title": "Usage",

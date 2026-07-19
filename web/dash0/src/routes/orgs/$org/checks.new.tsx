@@ -167,6 +167,9 @@ function CheckNewPage() {
           period: data.period,
           config: data.config ?? {},
           regions: data.regions,
+          ...(data.escalationPolicyUid
+            ? { escalationPolicyUid: data.escalationPolicyUid }
+            : {}),
           ...(data.labels !== undefined ? { labels: data.labels } : {}),
         });
         if (data.connectionUids && data.connectionUids.length > 0) {
