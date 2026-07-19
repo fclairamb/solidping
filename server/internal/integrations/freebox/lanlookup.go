@@ -93,18 +93,30 @@ func resolveGrantedFreeboxChannel(
 	return settings, appToken, nil
 }
 
-// resolveAppToken decrypts the app_token stored on a Freebox channel. Honors
-// both the encrypted-private path and the plaintext fallback (credentials
-// disabled), matching the channels service's resolveFreeboxAppToken.
+// resolveAppToken decrypts the app_token stored on a Freebox channel. A v3
+// plaintext envelope (the no-master-key structural-separation fallback, see
+// credentials.IsPlaintextEnvelope) opens without any key and needs no creds at
+// all; only an envelope that actually requires a key (AES-GCM v1,
+// region-sealed v2) is gated on creds.Enabled(), matching the channels
+// service's resolveFreeboxAppToken. Mirrors checkjobsvc.MergeJobSecrets.
 func resolveAppToken(
 	ctx context.Context, creds credentials.Service, conn *models.Integration,
 ) (string, error) {
 	if conn.SettingsPrivate != nil && *conn.SettingsPrivate != "" {
-		if !creds.Enabled() {
+		var (
+			priv map[string]any
+			err  error
+		)
+
+		switch {
+		case credentials.IsPlaintextEnvelope(*conn.SettingsPrivate):
+			priv, err = credentials.OpenPlaintext(*conn.SettingsPrivate)
+		case creds == nil || !creds.Enabled():
 			return "", fmt.Errorf("decrypt freebox app_token: %w (credentials disabled)", ErrFreeboxNotGranted)
+		default:
+			priv, err = creds.DecryptForOrg(ctx, conn.OrganizationUID, *conn.SettingsPrivate)
 		}
 
-		priv, err := creds.DecryptForOrg(ctx, conn.OrganizationUID, *conn.SettingsPrivate)
 		if err != nil {
 			return "", fmt.Errorf("decrypt freebox app_token: %w", err)
 		}
@@ -114,8 +126,8 @@ func resolveAppToken(
 		}
 	}
 
-	// Plaintext fallback (credentials disabled): the same key lives on the
-	// public Settings map.
+	// Fallback for genuinely legacy rows with no private envelope at all: the
+	// same key lives on the public Settings map.
 	if v, ok := conn.Settings["appToken"].(string); ok {
 		return v, nil
 	}
