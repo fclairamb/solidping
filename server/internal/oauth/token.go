@@ -3,8 +3,6 @@ package oauth
 import (
 	"errors"
 	"net/http"
-
-	"github.com/uptrace/bunrouter"
 )
 
 // tokenResponse is the RFC 6749 §5.1 successful token response. The MCP access
@@ -23,7 +21,7 @@ type tokenResponse struct {
 // Token is the OAuth token endpoint. It supports the authorization_code grant
 // (with PKCE verification) and the refresh_token grant (with rotation). Errors
 // are returned as RFC 6749 §5.2 JSON bodies with the appropriate status.
-func (h *Handler) Token(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Token(writer http.ResponseWriter, req *http.Request) error {
 	if err := req.ParseForm(); err != nil {
 		return h.writeTokenError(writer, http.StatusBadRequest, ErrInvalidRequest, "malformed form body")
 	}
@@ -41,7 +39,7 @@ func (h *Handler) Token(writer http.ResponseWriter, req bunrouter.Request) error
 }
 
 // tokenAuthorizationCode handles grant_type=authorization_code.
-func (h *Handler) tokenAuthorizationCode(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) tokenAuthorizationCode(writer http.ResponseWriter, req *http.Request) error {
 	code := req.Form.Get("code")
 	clientID := req.Form.Get(paramClientID)
 	redirectURI := req.Form.Get("redirect_uri")
@@ -66,7 +64,7 @@ func (h *Handler) tokenAuthorizationCode(writer http.ResponseWriter, req bunrout
 }
 
 // tokenRefresh handles grant_type=refresh_token (rotating refresh).
-func (h *Handler) tokenRefresh(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) tokenRefresh(writer http.ResponseWriter, req *http.Request) error {
 	refreshToken := req.Form.Get("refresh_token")
 	clientID := req.Form.Get(paramClientID)
 

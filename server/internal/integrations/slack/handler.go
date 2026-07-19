@@ -8,10 +8,9 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	mw "github.com/fclairamb/solidping/server/internal/middleware"
 )
 
@@ -19,9 +18,9 @@ import (
 // for the given integration connection (identified by :uid within :org).
 //
 // Route: GET /api/v1/orgs/:org/channels/:uid/slack/destinations.
-func (h *Handler) GetDestinations(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	channelUID := req.Param("uid")
+func (h *Handler) GetDestinations(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	channelUID := httpx.Param(req, "uid")
 
 	resp, err := h.svc.GetDestinations(req.Context(), orgSlug, channelUID)
 	if err != nil {
@@ -73,7 +72,7 @@ func (h *Handler) SetSocketSupervisor(s *SlackSocketSupervisor) {
 // GetSocketStatus returns the current Slack Socket Mode supervisor status.
 //
 // Route: GET /api/v1/integrations/slack/socket/status.
-func (h *Handler) GetSocketStatus(writer http.ResponseWriter, _ bunrouter.Request) error {
+func (h *Handler) GetSocketStatus(writer http.ResponseWriter, _ *http.Request) error {
 	if h.supervisor == nil {
 		return h.WriteJSON(writer, http.StatusOK, SocketStatus{Enabled: false})
 	}
@@ -100,7 +99,7 @@ const installErrorPage = "https://www.solidping.io/saas/install-error"
 // (BuildInstallURLForOrg below), which takes the org from the session.
 //
 // GET /api/v1/integrations/slack/install[?source=marketplace].
-func (h *Handler) Install(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Install(writer http.ResponseWriter, req *http.Request) error {
 	source := req.URL.Query().Get("source")
 
 	authorizeURL, err := h.svc.BuildInstallURL(req.Context(), source, "", "")
@@ -111,7 +110,7 @@ func (h *Handler) Install(writer http.ResponseWriter, req bunrouter.Request) err
 		return nil
 	}
 
-	http.Redirect(writer, req.Request, authorizeURL, http.StatusFound)
+	http.Redirect(writer, req, authorizeURL, http.StatusFound)
 
 	return nil
 }
@@ -134,7 +133,7 @@ type installURLResponse struct {
 //
 // POST /api/v1/orgs/:org/integrations/slack/install-url
 // Body (optional): { "channelUid": "<uid>" }.
-func (h *Handler) BuildInstallURLForOrg(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) BuildInstallURLForOrg(writer http.ResponseWriter, req *http.Request) error {
 	org, ok := mw.GetOrganizationFromContext(req.Context())
 	if !ok || org == nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound,
@@ -164,7 +163,7 @@ func (h *Handler) BuildInstallURLForOrg(writer http.ResponseWriter, req bunroute
 }
 
 // OAuthCallback handles the OAuth callback from Slack.
-func (h *Handler) OAuthCallback(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) OAuthCallback(writer http.ResponseWriter, req *http.Request) error {
 	code := req.URL.Query().Get("code")
 	state := req.URL.Query().Get("state")
 	errorParam := req.URL.Query().Get("error")
@@ -211,7 +210,7 @@ func (h *Handler) OAuthCallback(writer http.ResponseWriter, req bunrouter.Reques
 	}
 
 	completeURL := h.cfg.Server.BaseURL + "/dash0/auth/slack/complete?code=" + url.QueryEscape(exchangeCode)
-	http.Redirect(writer, req.Request, completeURL, http.StatusFound)
+	http.Redirect(writer, req, completeURL, http.StatusFound)
 
 	return nil
 }
@@ -220,14 +219,14 @@ func (h *Handler) OAuthCallback(writer http.ResponseWriter, req bunrouter.Reques
 // install-error page with a machine-readable reason code so the page can
 // surface the right message and Try-Again link.
 func (h *Handler) redirectInstallError(
-	writer http.ResponseWriter, req bunrouter.Request, reason string,
+	writer http.ResponseWriter, req *http.Request, reason string,
 ) {
 	target := installErrorPage + "?reason=" + url.QueryEscape(reason)
-	http.Redirect(writer, req.Request, target, http.StatusFound)
+	http.Redirect(writer, req, target, http.StatusFound)
 }
 
 // HandleEvents handles incoming Slack events.
-func (h *Handler) HandleEvents(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) HandleEvents(writer http.ResponseWriter, req *http.Request) error {
 	var event Event
 	if err := json.NewDecoder(req.Body).Decode(&event); err != nil {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
@@ -259,7 +258,7 @@ func (h *Handler) HandleEvents(writer http.ResponseWriter, req bunrouter.Request
 }
 
 // HandleCommand handles incoming slash commands.
-func (h *Handler) HandleCommand(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) HandleCommand(writer http.ResponseWriter, req *http.Request) error {
 	if err := req.ParseForm(); err != nil {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
 			"Invalid form data")
@@ -306,7 +305,7 @@ func (h *Handler) HandleCommand(writer http.ResponseWriter, req bunrouter.Reques
 }
 
 // HandleInteraction handles incoming interactions (buttons, modals, shortcuts).
-func (h *Handler) HandleInteraction(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) HandleInteraction(writer http.ResponseWriter, req *http.Request) error {
 	if err := req.ParseForm(); err != nil {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
 			"Invalid form data")

@@ -5,8 +5,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
@@ -52,7 +50,7 @@ func parseAuthRequest(req *http.Request) *authRequest {
 // render errors (shown to the user) so we never redirect to an unvalidated URI;
 // once client + redirect_uri are trusted, later errors redirect back to the
 // client per RFC 6749 §4.1.2.1.
-func (h *Handler) validateAuthRequest(req bunrouter.Request, authReq *authRequest) (*authRequest, *authError) {
+func (h *Handler) validateAuthRequest(req *http.Request, authReq *authRequest) (*authRequest, *authError) {
 	meta := h.metadata()
 
 	if authReq.ClientID == "" {
@@ -121,8 +119,8 @@ func (h *Handler) validateAuthRequest(req bunrouter.Request, authReq *authReques
 // session extracts and validates the logged-in user from the request's
 // access_token cookie (set by the dashboard login) or bearer header. Returns the
 // claims when a valid session exists.
-func (h *Handler) session(req bunrouter.Request) (*auth.Claims, bool) {
-	token := extractSessionToken(req.Request)
+func (h *Handler) session(req *http.Request) (*auth.Claims, bool) {
+	token := extractSessionToken(req)
 	if token == "" {
 		return nil, false
 	}
@@ -139,8 +137,8 @@ func (h *Handler) session(req bunrouter.Request) (*auth.Claims, bool) {
 // either redirects to the dashboard login (no session) or to the dashboard
 // consent screen (valid session). The actual code is minted by ApproveAuthorize
 // once the user consents.
-func (h *Handler) Authorize(writer http.ResponseWriter, req bunrouter.Request) error {
-	authReq, authErr := h.validateAuthRequest(req, parseAuthRequest(req.Request))
+func (h *Handler) Authorize(writer http.ResponseWriter, req *http.Request) error {
+	authReq, authErr := h.validateAuthRequest(req, parseAuthRequest(req))
 	if authErr != nil {
 		return h.handleAuthError(writer, req, authErr)
 	}
@@ -164,8 +162,8 @@ func (h *Handler) Authorize(writer http.ResponseWriter, req bunrouter.Request) e
 // the consent screen. It re-validates the request, requires a session, mints a
 // single-use code bound to the grant, and redirects to the client's redirect_uri
 // with code + state.
-func (h *Handler) ApproveAuthorize(writer http.ResponseWriter, req bunrouter.Request) error {
-	authReq, authErr := h.validateAuthRequest(req, parseAuthRequest(req.Request))
+func (h *Handler) ApproveAuthorize(writer http.ResponseWriter, req *http.Request) error {
+	authReq, authErr := h.validateAuthRequest(req, parseAuthRequest(req))
 	if authErr != nil {
 		return h.handleAuthError(writer, req, authErr)
 	}
@@ -204,21 +202,21 @@ func (h *Handler) ApproveAuthorize(writer http.ResponseWriter, req bunrouter.Req
 	}
 
 	dest := appendQuery(authReq.RedirectURI, map[string]string{"code": code, "state": authReq.State})
-	http.Redirect(writer, req.Request, dest, http.StatusFound)
+	http.Redirect(writer, req, dest, http.StatusFound)
 
 	return nil
 }
 
 // handleAuthError reports a validation error either by redirecting back to the
 // client (safe target established) or by rendering an error to the user.
-func (h *Handler) handleAuthError(writer http.ResponseWriter, req bunrouter.Request, authErr *authError) error {
+func (h *Handler) handleAuthError(writer http.ResponseWriter, req *http.Request, authErr *authError) error {
 	if authErr.Redirect && authErr.RedirectURI != "" {
 		dest := appendQuery(authErr.RedirectURI, map[string]string{
 			"error":             authErr.Code,
 			"error_description": authErr.Description,
 			"state":             authErr.State,
 		})
-		http.Redirect(writer, req.Request, dest, http.StatusFound)
+		http.Redirect(writer, req, dest, http.StatusFound)
 
 		return nil
 	}
@@ -235,10 +233,10 @@ func (h *Handler) handleAuthError(writer http.ResponseWriter, req bunrouter.Requ
 // any returnTo carrying a scheme, and a path-anchored value is same-origin by
 // construction. The previous Issuer-prefixed absolute value was rejected by
 // that guard, silently dead-ending the MCP connect flow on the login page.
-func (h *Handler) redirectToLogin(writer http.ResponseWriter, req bunrouter.Request) {
+func (h *Handler) redirectToLogin(writer http.ResponseWriter, req *http.Request) {
 	returnTo := req.URL.RequestURI()
 	loginURL := "/dash0/login?returnTo=" + url.QueryEscape(returnTo)
-	http.Redirect(writer, req.Request, loginURL, http.StatusFound)
+	http.Redirect(writer, req, loginURL, http.StatusFound)
 }
 
 // redirectToConsent sends the browser to the dashboard consent SPA route with

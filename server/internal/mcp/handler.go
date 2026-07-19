@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -178,7 +177,7 @@ func acceptsEventStream(accept string) bool {
 // human in a browser gets a redirect to the dashboard page that explains how
 // to actually connect a client. Unauthenticated by design: a browser hitting
 // the URL has no token, and the redirect leaks nothing.
-func (h *Handler) HandleGet(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) HandleGet(writer http.ResponseWriter, req *http.Request) error {
 	if acceptsEventStream(req.Header.Get("Accept")) {
 		writer.Header().Set("Allow", allowedMCPMethods)
 
@@ -189,7 +188,7 @@ func (h *Handler) HandleGet(writer http.ResponseWriter, req bunrouter.Request) e
 		})
 	}
 
-	http.Redirect(writer, req.Request, dashboardMCPPath, http.StatusFound)
+	http.Redirect(writer, req, dashboardMCPPath, http.StatusFound)
 
 	return nil
 }
@@ -197,7 +196,7 @@ func (h *Handler) HandleGet(writer http.ResponseWriter, req bunrouter.Request) e
 // HandleDelete terminates the MCP session named by the Mcp-Session-Id header
 // (Streamable HTTP explicit session termination). Auth is enforced by
 // RequireMCPAuth at the route; the session must belong to the caller's org.
-func (h *Handler) HandleDelete(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) HandleDelete(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := middleware.GetClaimsFromContext(req.Context())
 	if !ok {
 		return writeJSON(writer, http.StatusUnauthorized, base.ErrorResponse{
@@ -236,7 +235,7 @@ func (h *Handler) HandleDelete(writer http.ResponseWriter, req bunrouter.Request
 }
 
 // Handle handles an MCP HTTP request.
-func (h *Handler) Handle(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Handle(writer http.ResponseWriter, req *http.Request) error {
 	if req.Method != http.MethodPost {
 		writer.WriteHeader(http.StatusMethodNotAllowed)
 		return nil
