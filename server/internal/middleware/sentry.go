@@ -5,24 +5,24 @@ import (
 	"net/http"
 
 	"github.com/getsentry/sentry-go"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
-// SentryMiddleware returns a bunrouter middleware that integrates Sentry error tracking.
+// SentryMiddleware returns a middleware that integrates Sentry error tracking.
 // It clones the Sentry hub per request, sets request context and user info,
 // and recovers panics to report them to Sentry before re-panicking.
-func SentryMiddleware() bunrouter.MiddlewareFunc {
-	return func(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
-		return func(writer http.ResponseWriter, req bunrouter.Request) error {
+func SentryMiddleware() httpx.Middleware {
+	return func(next httpx.HandlerFunc) httpx.HandlerFunc {
+		return func(writer http.ResponseWriter, req *http.Request) error {
 			hub := sentry.GetHubFromContext(req.Context())
 			if hub == nil {
 				hub = sentry.CurrentHub().Clone()
 			}
 
-			hub.Scope().SetRequest(req.Request)
+			hub.Scope().SetRequest(req)
 
 			// Add user context if authenticated
 			if claims, ok := req.Context().Value(base.ContextKeyClaims).(*auth.Claims); ok && claims != nil {

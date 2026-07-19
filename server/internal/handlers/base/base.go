@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/getsentry/sentry-go"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 )
@@ -219,7 +218,7 @@ func (h *HandlerBase) WriteInternalErrorR(w http.ResponseWriter, r *http.Request
 // since any client can spoof these headers unless a trusted proxy strips or
 // overwrites them first. See middleware/ratelimit.go's extractIP for the
 // proxy-trust-gated variant used there.
-func ExtractRemoteAddr(req bunrouter.Request) string {
+func ExtractRemoteAddr(req *http.Request) string {
 	// Try X-Forwarded-For header first (common in reverse proxy setups)
 	if xff := req.Header.Get("X-Forwarded-For"); xff != "" {
 		if ips := strings.Split(xff, ","); len(ips) > 0 {

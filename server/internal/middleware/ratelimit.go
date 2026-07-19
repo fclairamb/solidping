@@ -13,11 +13,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/uptrace/bunrouter"
 	"golang.org/x/time/rate"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 )
 
@@ -367,24 +367,24 @@ func rejectConcurrency(writer http.ResponseWriter) {
 
 // queueWaitContext derives a context that fires after MaxQueueWait, or returns
 // the request's own context unchanged when the ceiling is disabled.
-func (rl *RateLimiter) queueWaitContext(req bunrouter.Request) (context.Context, context.CancelFunc) {
+func (rl *RateLimiter) queueWaitContext(req *http.Request) (context.Context, context.CancelFunc) {
 	if rl.cfg.MaxQueueWait <= 0 {
 		return req.Context(), func() {}
 	}
 	return context.WithTimeout(req.Context(), rl.cfg.MaxQueueWait)
 }
 
-// RateLimit is a bunrouter middleware that enforces the per-IP token-bucket
+// RateLimit is a middleware that enforces the per-IP token-bucket
 // rate limit with a bounded slow-lane queue: a request that loses the
 // fast-path token race may wait for the next refill, up to RateQueue
 // requests deep and MaxQueueWait long, before being rejected with 429.
-func (rl *RateLimiter) RateLimit(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
-	return func(writer http.ResponseWriter, req bunrouter.Request) error {
+func (rl *RateLimiter) RateLimit(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(writer http.ResponseWriter, req *http.Request) error {
 		if rl.cfg.RequestsPerMinute == 0 || isExcluded(req.URL.Path) {
 			return next(writer, req)
 		}
 
-		key, _, _ := rl.bucketFor(req.Request)
+		key, _, _ := rl.bucketFor(req)
 		entry := rl.getEntry(key)
 
 		if entry.limiter.Allow() {
@@ -512,18 +512,18 @@ func (rl *RateLimiter) StateFor(key string) IPState {
 	return state
 }
 
-// ConcurrencyLimit is a bunrouter middleware that enforces the per-IP
+// ConcurrencyLimit is a middleware that enforces the per-IP
 // concurrency limit with a bounded waiting room: a request that finds the
 // semaphore full may wait for an active slot to free, up to
 // ConcurrencyQueue requests deep and MaxQueueWait long, before being
 // rejected with 429.
-func (rl *RateLimiter) ConcurrencyLimit(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
-	return func(writer http.ResponseWriter, req bunrouter.Request) error {
+func (rl *RateLimiter) ConcurrencyLimit(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(writer http.ResponseWriter, req *http.Request) error {
 		if rl.cfg.MaxConcurrent == 0 || isExcluded(req.URL.Path) {
 			return next(writer, req)
 		}
 
-		key, _, _ := rl.bucketFor(req.Request)
+		key, _, _ := rl.bucketFor(req)
 		entry := rl.getEntry(key)
 
 		select {

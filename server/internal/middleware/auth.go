@@ -8,13 +8,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/oauth"
 )
 
@@ -45,8 +44,8 @@ func NewAuthMiddleware(authService *auth.Service, dbService db.Service, cfg *con
 }
 
 // RequireAuth is a middleware that requires a valid authentication token.
-func (m *AuthMiddleware) RequireAuth(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
-	return func(writer http.ResponseWriter, req bunrouter.Request) error {
+func (m *AuthMiddleware) RequireAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(writer http.ResponseWriter, req *http.Request) error {
 		slog.Debug("RequireAuth middleware called", "path", req.URL.Path)
 
 		// A request already authorized by ServiceTokenBypass carries no user
@@ -55,7 +54,7 @@ func (m *AuthMiddleware) RequireAuth(next bunrouter.HandlerFunc) bunrouter.Handl
 			return next(writer, req)
 		}
 
-		token := extractToken(req.Request)
+		token := extractToken(req)
 		if token == "" {
 			return m.WriteError(
 				writer, http.StatusUnauthorized, base.ErrorCodeNoToken, "Authorization token is required")
@@ -94,11 +93,11 @@ func (m *AuthMiddleware) RequireAuth(next bunrouter.HandlerFunc) bunrouter.Handl
 // claim is accepted only if that audience includes the MCP resource. Tokens with
 // no audience (PATs, legacy session JWTs) pass the audience gate for
 // back-compat — the MCP handler's scope check still governs them.
-func (m *AuthMiddleware) RequireMCPAuth(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
-	return func(writer http.ResponseWriter, req bunrouter.Request) error {
+func (m *AuthMiddleware) RequireMCPAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(writer http.ResponseWriter, req *http.Request) error {
 		meta := oauth.NewMetadata(m.cfg.Server.BaseURL)
 
-		token := extractToken(req.Request)
+		token := extractToken(req)
 		if token == "" {
 			return m.writeMCPChallenge(writer, meta, base.ErrorCodeNoToken, "Authorization token is required")
 		}
@@ -140,8 +139,8 @@ func (m *AuthMiddleware) writeMCPChallenge(
 
 // RequireOrgAccess is a middleware that verifies the user has access to the organization.
 // Must be used after RequireAuth.
-func (m *AuthMiddleware) RequireOrgAccess(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
-	return func(writer http.ResponseWriter, req bunrouter.Request) error {
+func (m *AuthMiddleware) RequireOrgAccess(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(writer http.ResponseWriter, req *http.Request) error {
 		slog.Debug("RequireOrgAccess middleware called", "path", req.URL.Path)
 
 		// Trusted service requests are cross-org by design; skip membership.
@@ -149,7 +148,7 @@ func (m *AuthMiddleware) RequireOrgAccess(next bunrouter.HandlerFunc) bunrouter.
 			return next(writer, req)
 		}
 
-		orgSlug := req.Param("org")
+		orgSlug := httpx.Param(req, "org")
 		if orgSlug == "" {
 			return m.WriteError(
 				writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Organization is required")
@@ -211,10 +210,10 @@ type serviceAuthContextKey struct{}
 // cycle with the handler package that owns it.
 func (m *AuthMiddleware) ServiceTokenBypass(
 	paramKey string,
-) func(bunrouter.HandlerFunc) bunrouter.HandlerFunc {
-	return func(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
-		return func(writer http.ResponseWriter, req bunrouter.Request) error {
-			if token := extractToken(req.Request); token != "" {
+) func(httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(next httpx.HandlerFunc) httpx.HandlerFunc {
+		return func(writer http.ResponseWriter, req *http.Request) error {
+			if token := extractToken(req); token != "" {
 				expected := m.systemParamString(req.Context(), paramKey)
 				if expected != "" && subtle.ConstantTimeCompare([]byte(token), []byte(expected)) == 1 {
 					ctx := context.WithValue(req.Context(), serviceAuthContextKey{}, true)
@@ -296,8 +295,8 @@ func GetClaimsFromContext(ctx context.Context) (*auth.Claims, bool) {
 // admin of the organization (member with role "admin") or a super admin.
 // Must be used after RequireAuth and RequireOrgAccess (it relies on the
 // organization being resolved into the context).
-func (m *AuthMiddleware) RequireOrgAdmin(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
-	return func(writer http.ResponseWriter, req bunrouter.Request) error {
+func (m *AuthMiddleware) RequireOrgAdmin(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(writer http.ResponseWriter, req *http.Request) error {
 		user, userOK := GetUserFromContext(req.Context())
 		if !userOK {
 			return m.WriteError(
@@ -332,8 +331,8 @@ func (m *AuthMiddleware) RequireOrgAdmin(next bunrouter.HandlerFunc) bunrouter.H
 
 // RequireSuperAdmin is a middleware that requires the user to be a super admin.
 // Must be used after RequireAuth.
-func (m *AuthMiddleware) RequireSuperAdmin(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
-	return func(writer http.ResponseWriter, req bunrouter.Request) error {
+func (m *AuthMiddleware) RequireSuperAdmin(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(writer http.ResponseWriter, req *http.Request) error {
 		user, ok := GetUserFromContext(req.Context())
 		if !ok {
 			return m.WriteError(

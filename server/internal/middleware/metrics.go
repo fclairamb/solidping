@@ -5,8 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/uptrace/bunrouter"
-
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 )
 
@@ -52,12 +51,12 @@ func (sr *statusRecorder) Unwrap() http.ResponseWriter {
 	return sr.ResponseWriter
 }
 
-// HTTPMetrics is a bunrouter middleware that records per-route HTTP
+// HTTPMetrics is a middleware that records per-route HTTP
 // duration and request-count metrics. Routes are taken from the matched
-// pattern via bunrouter.Request.Route() so cardinality stays bounded
+// pattern via httpx.RoutePattern(req) so cardinality stays bounded
 // (one series per registered route, not per raw URL path).
-func HTTPMetrics(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
-	return func(writer http.ResponseWriter, req bunrouter.Request) error {
+func HTTPMetrics(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(writer http.ResponseWriter, req *http.Request) error {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: writer, status: http.StatusOK}
 
@@ -73,7 +72,7 @@ func HTTPMetrics(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
 
 		prommetrics.RecordHTTPRequest(
 			req.Method,
-			req.Route(),
+			httpx.RoutePattern(req),
 			strconv.Itoa(status),
 			time.Since(start).Seconds(),
 		)
