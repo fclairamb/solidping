@@ -256,14 +256,26 @@ func LoadConfig(
 }
 
 // effectiveConfig merges the check's public config with its decrypted private
-// side. When the server runs without a master key the secrets were stored in
-// plaintext on the public map (the documented V1 fallback) and there is nothing
-// to decrypt — both paths must work.
+// side. A v3 plaintext envelope (credentials.IsPlaintextEnvelope) — the
+// no-master-key structural-separation fallback that keeps secrets out of the
+// public config column — opens without any key and is merged in up front, with
+// no dependency on creds at all: creds can legitimately be nil here. Only an
+// envelope that actually requires a key (AES-GCM v1, region-sealed v2) is
+// gated on creds.Enabled(). Mirrors checkjobsvc.MergeJobSecrets.
 func effectiveConfig(ctx context.Context, creds Decryptor, check *models.Check) (map[string]any, error) {
 	public := map[string]any(check.Config)
 
 	if check.ConfigPrivate == nil || *check.ConfigPrivate == "" {
 		return public, nil
+	}
+
+	if credentials.IsPlaintextEnvelope(*check.ConfigPrivate) {
+		private, err := credentials.OpenPlaintext(*check.ConfigPrivate)
+		if err != nil {
+			return nil, wrapErr("credentials", fmt.Errorf("%w: %w", ErrSecretsUnavailable, err))
+		}
+
+		return credentials.MergeConfig(public, private), nil
 	}
 
 	if creds == nil || !creds.Enabled() {
