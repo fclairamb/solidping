@@ -9,7 +9,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/buildinfo"
 	"github.com/fclairamb/solidping/server/internal/notifier"
@@ -162,7 +161,7 @@ func (s *Server) buildMemorySnapshot(gatherer prometheus.Gatherer) MemorySnapsho
 // subsystem cardinality are operationally sensitive). Returns a JSON snapshot
 // for humans and scripts; the raw pprof surface stays on the localhost-bound
 // profiler server.
-func (s *Server) getMemory(writer http.ResponseWriter, _ bunrouter.Request) error {
+func (s *Server) getMemory(writer http.ResponseWriter, _ *http.Request) error {
 	snap := s.buildMemorySnapshot(prometheus.DefaultGatherer)
 
 	writer.Header().Set("Content-Type", "application/json")

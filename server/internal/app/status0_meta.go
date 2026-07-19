@@ -6,8 +6,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
 )
 
@@ -168,7 +166,7 @@ func injectStatus0Meta(htmlDoc string, meta ogMetadata) string {
 // ViewDefaultStatusPage) already return ErrStatusPageNotFound for disabled and
 // private pages, so a missing page and a private page produce byte-for-byte
 // identical responses and metadata cannot be used to probe page existence.
-func (s *Server) status0MetaForPath(req bunrouter.Request, reqPath string) (ogMetadata, bool) {
+func (s *Server) status0MetaForPath(req *http.Request, reqPath string) (ogMetadata, bool) {
 	if s.statusPagesService == nil {
 		return ogMetadata{}, false
 	}
@@ -188,7 +186,7 @@ func (s *Server) status0MetaForPath(req bunrouter.Request, reqPath string) (ogMe
 		description = *page.Description
 	}
 
-	origin := requestOrigin(req.Request)
+	origin := requestOrigin(req)
 
 	return ogMetadata{
 		Title:       page.Name + ogTitleSuffix,
@@ -203,7 +201,7 @@ func (s *Server) status0MetaForPath(req bunrouter.Request, reqPath string) (ogMe
 // page. Both paths enforce enabled + public visibility and return
 // ErrStatusPageNotFound otherwise.
 func (s *Server) lookupPublicStatusPage(
-	req bunrouter.Request, org, slug string,
+	req *http.Request, org, slug string,
 ) (statuspages.StatusPageResponse, error) {
 	if slug == "" {
 		return s.statusPagesService.ViewDefaultStatusPage(req.Context(), org)

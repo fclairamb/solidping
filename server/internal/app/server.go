@@ -22,7 +22,6 @@ import (
 	"github.com/getsentry/sentry-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/uptrace/bunrouter"
 	k8sclient "k8s.io/client-go/kubernetes"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
@@ -87,6 +86,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
 	webpushhandler "github.com/fclairamb/solidping/server/internal/handlers/webpush"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
@@ -147,7 +147,7 @@ type Server struct {
 	dbService             db.Service
 	jobSvc                jobsvc.Service
 	services              *services.Registry
-	router                *bunrouter.Router
+	router                *httpx.Router
 	config                *config.Config
 	authService           *auth.Service
 	mcpHandler            *mcp.Handler
@@ -405,10 +405,10 @@ func (s *Server) registerSubsystemMetrics(reg prometheus.Registerer) {
 //
 //nolint:funlen,cyclop // Route registration function naturally grows with new routes
 func (s *Server) SetupRoutes(ctx context.Context) {
-	router := bunrouter.New()
+	router := httpx.New()
 	rateLimiter := middleware.NewRateLimiter(s.config.Server.RateLimiting, ctx)
 	s.rateLimiter = rateLimiter
-	// ctx for RequestTimeout is taken from each bunrouter.Request inside the
+	// ctx for RequestTimeout is taken from each request's context inside the
 	// middleware closure, not threaded through here; the contextcheck linter
 	// can't see that.
 	timeoutMW := middleware.RequestTimeout(s.config.Server.MaxRequestDuration) //nolint:contextcheck
@@ -420,7 +420,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// API routes
 	api := mainGroup.NewGroup("/api/v1")
-	api.OPTIONS("/*path", func(_ http.ResponseWriter, req bunrouter.Request) error {
+	api.OPTIONS("/*path", func(_ http.ResponseWriter, req *http.Request) error {
 		slog.InfoContext(req.Context(), "OPTIONS request", "path", req.URL.Path)
 		return nil
 	})
@@ -457,7 +457,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	rootAuthProtected.POST("/2fa/confirm", authHandler.Confirm2FA)
 	rootAuthProtected.DELETE("/2fa", authHandler.Disable2FA)
 	// Static /tokens/current is registered ahead of the /tokens/:tokenUid param
-	// route; bunrouter matches the static segment first (as with
+	// route; chi matches the static segment first (as with
 	// /passkeys/register/begin vs /passkeys/:uid). It revokes the caller's own
 	// grant (Claims.RefreshUID) — the bearer-only self-revocation for a client
 	// that no longer holds its refresh token.
@@ -485,7 +485,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// subscribe) are registered directly on `api` and deliberately do NOT go
 	// through here; the service-token entitlements group keeps its own
 	// ServiceTokenBypass -> RequireAuth -> RequireOrgAccess chain.
-	orgGroup := func(path string) *bunrouter.Group {
+	orgGroup := func(path string) *httpx.Group {
 		return api.NewGroup(path).Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
 	}
 
@@ -1037,7 +1037,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// no-ops (cross-org writes); every other caller authenticates normally.
 	entitlementsHandler := entitlements.NewHandler(s.services.Entitlements, s.dbService, s.config)
 	orgEntitlements := api.NewGroup("/orgs/:org/entitlements").
-		//nolint:contextcheck // factory marks the request context; bunrouter threads it via req.WithContext down the chain
+		//nolint:contextcheck // factory marks the request context; the chain threads it via req.WithContext down the middleware chain
 		Use(authMiddleware.ServiceTokenBypass(entitlements.ParamServiceToken)).
 		Use(authMiddleware.RequireAuth).
 		Use(authMiddleware.RequireOrgAccess)
@@ -1248,7 +1248,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 			metricsPath = "/metrics"
 		}
 
-		mainGroup.GET(metricsPath, bunrouter.HTTPHandler(promhttp.Handler()))
+		mainGroup.GET(metricsPath, httpx.HTTPHandler(promhttp.Handler()))
 
 		slog.InfoContext(ctx, "Prometheus metrics endpoint enabled", "path", metricsPath)
 	}
@@ -1335,8 +1335,8 @@ func initSentry(cfg config.SentryConfig) error {
 	return nil
 }
 
-func (s *Server) corsMiddleware(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
-	return func(writer http.ResponseWriter, req bunrouter.Request) error {
+func (s *Server) corsMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(writer http.ResponseWriter, req *http.Request) error {
 		writer.Header().Set("Access-Control-Allow-Origin", "*")
 		writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
 		writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin")
@@ -1352,8 +1352,8 @@ func (s *Server) corsMiddleware(next bunrouter.HandlerFunc) bunrouter.HandlerFun
 	}
 }
 
-func (s *Server) loggingMiddleware(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
-	return func(w http.ResponseWriter, req bunrouter.Request) error {
+func (s *Server) loggingMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) error {
 		start := time.Now()
 		err := next(w, req)
 		duration := time.Since(start)
@@ -1381,7 +1381,7 @@ type HealthNodeInfo struct {
 	Region string `json:"region,omitempty"`
 }
 
-func (s *Server) healthCheck(writer http.ResponseWriter, _ bunrouter.Request) error {
+func (s *Server) healthCheck(writer http.ResponseWriter, _ *http.Request) error {
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusOK)
 
@@ -1434,9 +1434,9 @@ type LimitsResponse struct {
 	CallerBucket string            `json:"callerBucket"`
 }
 
-func (s *Server) getLimits(writer http.ResponseWriter, req bunrouter.Request) error {
+func (s *Server) getLimits(writer http.ResponseWriter, req *http.Request) error {
 	cfg := s.rateLimiter.Config()
-	key, kind, ip := s.rateLimiter.CallerBucket(req.Request)
+	key, kind, ip := s.rateLimiter.CallerBucket(req)
 	state := s.rateLimiter.StateFor(key)
 
 	resp := LimitsResponse{
@@ -1467,7 +1467,7 @@ func (s *Server) getLimits(writer http.ResponseWriter, req bunrouter.Request) er
 	return err
 }
 
-func (s *Server) getVersion(writer http.ResponseWriter, _ bunrouter.Request) error {
+func (s *Server) getVersion(writer http.ResponseWriter, _ *http.Request) error {
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusOK)
 
@@ -1484,8 +1484,8 @@ func (s *Server) getVersion(writer http.ResponseWriter, _ bunrouter.Request) err
 	return err
 }
 
-func (s *Server) serveFile(fs embed.FS, fileName string) func(writer http.ResponseWriter, _ bunrouter.Request) error {
-	return func(writer http.ResponseWriter, _ bunrouter.Request) error {
+func (s *Server) serveFile(fs embed.FS, fileName string) func(writer http.ResponseWriter, _ *http.Request) error {
+	return func(writer http.ResponseWriter, _ *http.Request) error {
 		fileData, err := fs.ReadFile(fileName)
 		if err != nil {
 			http.Error(writer, "File not found", http.StatusNotFound)
@@ -1542,9 +1542,9 @@ func docsHostMatches(reqHost, docsHost string) bool {
 	return strings.EqualFold(host, docsHost)
 }
 
-// serveDocsRoute is the bunrouter handler for /docs and /docs/*path. It strips
+// serveDocsRoute is the handler for /docs and /docs/*path. It strips
 // the /docs prefix and serves the matching file from the embedded docs build.
-func (s *Server) serveDocsRoute(writer http.ResponseWriter, req bunrouter.Request) error {
+func (s *Server) serveDocsRoute(writer http.ResponseWriter, req *http.Request) error {
 	s.serveDocsFile(writer, strings.TrimPrefix(req.URL.Path, "/docs"))
 
 	return nil
@@ -1607,7 +1607,7 @@ func writeDocsFile(writer http.ResponseWriter, name string, data []byte, status 
 }
 
 // serveAppRoot determines whether to proxy to dev server or serve static files.
-func (s *Server) serveAppRoot(writer http.ResponseWriter, req bunrouter.Request) error {
+func (s *Server) serveAppRoot(writer http.ResponseWriter, req *http.Request) error {
 	// Nothing under /api/ ever serves the SPA: an unmatched path in the API
 	// namespace answers with the standard JSON error shape so non-browser
 	// clients (MCP probes included) never receive text/html.
@@ -1619,7 +1619,7 @@ func (s *Server) serveAppRoot(writer http.ResponseWriter, req bunrouter.Request)
 
 	// Redirect root to dash0 dashboard
 	if req.URL.Path == "/" {
-		http.Redirect(writer, req.Request, "/dash0/", http.StatusFound)
+		http.Redirect(writer, req, "/dash0/", http.StatusFound)
 
 		return nil
 	}
@@ -1640,9 +1640,9 @@ func (s *Server) serveAppRoot(writer http.ResponseWriter, req bunrouter.Request)
 // the fallback is used to serve from embedded static files instead of returning 502.
 func (s *Server) serveAppRedirect(
 	writer http.ResponseWriter,
-	req bunrouter.Request,
+	req *http.Request,
 	rule config.RedirectRule,
-	fallback func(http.ResponseWriter, bunrouter.Request) error,
+	fallback func(http.ResponseWriter, *http.Request) error,
 ) error {
 	// Build the new path by replacing the matched prefix with the target path
 	newPath := rule.TargetPath + strings.TrimPrefix(req.URL.Path, rule.PathPrefix)
@@ -1689,13 +1689,13 @@ func (s *Server) serveAppRedirect(
 		}
 	}
 
-	proxy.ServeHTTP(writer, req.Request)
+	proxy.ServeHTTP(writer, req)
 
 	return nil
 }
 
 // serveAppStatic serves static files from the embedded filesystem.
-func (s *Server) serveAppStatic(writer http.ResponseWriter, req bunrouter.Request) error {
+func (s *Server) serveAppStatic(writer http.ResponseWriter, req *http.Request) error {
 	filePath := path.Join("res", req.URL.Path)
 
 	slog.InfoContext(req.Context(), "Serving static file", "path", filePath)
@@ -1743,7 +1743,7 @@ func (s *Server) serveAppStatic(writer http.ResponseWriter, req bunrouter.Reques
 }
 
 // serveDash0Root serves the dash0 status dashboard.
-func (s *Server) serveDash0Root(writer http.ResponseWriter, req bunrouter.Request) error {
+func (s *Server) serveDash0Root(writer http.ResponseWriter, req *http.Request) error {
 	// Check if any redirect rule matches for development proxying
 	for i := range s.config.Server.Redirects {
 		rule := &s.config.Server.Redirects[i]
@@ -1757,7 +1757,7 @@ func (s *Server) serveDash0Root(writer http.ResponseWriter, req bunrouter.Reques
 }
 
 // serveDash0Static serves static files from the embedded dash0res filesystem.
-func (s *Server) serveDash0Static(writer http.ResponseWriter, req bunrouter.Request) error {
+func (s *Server) serveDash0Static(writer http.ResponseWriter, req *http.Request) error {
 	// Strip /dash0 prefix and build file path
 	reqPath := strings.TrimPrefix(req.URL.Path, "/dash0")
 	if reqPath == "" {
@@ -1815,7 +1815,7 @@ func (s *Server) serveDash0Static(writer http.ResponseWriter, req bunrouter.Requ
 }
 
 // serveStatus0Root serves the status0 public status page app.
-func (s *Server) serveStatus0Root(writer http.ResponseWriter, req bunrouter.Request) error {
+func (s *Server) serveStatus0Root(writer http.ResponseWriter, req *http.Request) error {
 	for i := range s.config.Server.Redirects {
 		rule := &s.config.Server.Redirects[i]
 		if strings.HasPrefix(req.URL.Path, rule.PathPrefix) {
@@ -1827,7 +1827,7 @@ func (s *Server) serveStatus0Root(writer http.ResponseWriter, req bunrouter.Requ
 }
 
 // serveStatus0Static serves static files from the embedded status0res filesystem.
-func (s *Server) serveStatus0Static(writer http.ResponseWriter, req bunrouter.Request) error {
+func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Request) error {
 	reqPath := strings.TrimPrefix(req.URL.Path, "/status0")
 	if reqPath == "" {
 		reqPath = "/"

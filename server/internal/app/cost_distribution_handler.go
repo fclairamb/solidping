@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"github.com/uptrace/bun/dialect/pgdialect"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/scheduling/costdist"
 )
@@ -25,7 +24,7 @@ type costDistributionResponse struct {
 // Read-only and super-admin guarded (registered on the mgmtAdmin group). It is
 // the Phase-3 measurement surface for deciding whether fast/slow lanes are
 // warranted.
-func (s *Server) getCostDistribution(writer http.ResponseWriter, req bunrouter.Request) error {
+func (s *Server) getCostDistribution(writer http.ResponseWriter, req *http.Request) error {
 	threshold := costdist.DefaultThresholdMs
 
 	if raw := req.URL.Query().Get("thresholdMs"); raw != "" {
