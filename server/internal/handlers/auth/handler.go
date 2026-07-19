@@ -886,6 +886,14 @@ func (h *Handler) UpdateOrgSettings(writer http.ResponseWriter, req bunrouter.Re
 			)
 		}
 
+		if errors.Is(err, ErrInvalidEscalationPolicy) {
+			return h.WriteErrorErr(
+				writer, http.StatusBadRequest,
+				base.ErrorCodeValidationError,
+				"Escalation policy not found in this organization", err,
+			)
+		}
+
 		return h.WriteInternalError(writer, err)
 	}
 
