@@ -130,6 +130,60 @@ func (s *Service) ListPolicies(ctx context.Context, orgUID string) ([]*models.Es
 	return s.db.ListEscalationPolicies(ctx, orgUID)
 }
 
+// PolicyListItem is a policy header plus the cheap counts the list UI needs:
+// step count (for the "0 steps — silent" badge) and how many checks/groups
+// reference it (for the delete-guard confirmation).
+type PolicyListItem struct {
+	Policy          *models.EscalationPolicy
+	StepCount       int
+	UsageCheckCount int
+	UsageGroupCount int
+}
+
+// ListPoliciesWithCounts returns every policy for an org alongside its step
+// count and direct-usage counts, computed with a handful of grouped queries
+// (no per-policy round-trips).
+func (s *Service) ListPoliciesWithCounts(
+	ctx context.Context, orgUID string,
+) ([]*PolicyListItem, error) {
+	policies, err := s.db.ListEscalationPolicies(ctx, orgUID)
+	if err != nil {
+		return nil, err
+	}
+
+	uids := make([]string, 0, len(policies))
+	for _, p := range policies {
+		uids = append(uids, p.UID)
+	}
+
+	stepCounts, err := s.db.CountEscalationPolicyStepsByPolicy(ctx, uids)
+	if err != nil {
+		return nil, err
+	}
+
+	checkCounts, err := s.db.CountChecksByEscalationPolicy(ctx, orgUID)
+	if err != nil {
+		return nil, err
+	}
+
+	groupCounts, err := s.db.CountCheckGroupsByEscalationPolicy(ctx, orgUID)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]*PolicyListItem, 0, len(policies))
+	for _, p := range policies {
+		items = append(items, &PolicyListItem{
+			Policy:          p,
+			StepCount:       stepCounts[p.UID],
+			UsageCheckCount: checkCounts[p.UID],
+			UsageGroupCount: groupCounts[p.UID],
+		})
+	}
+
+	return items, nil
+}
+
 // UpdatePolicyInput captures partial update fields. Steps replace the entire
 // step list when non-nil (matches the spec's PATCH semantics).
 type UpdatePolicyInput struct {

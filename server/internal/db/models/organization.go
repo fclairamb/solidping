@@ -8,12 +8,16 @@ import (
 
 // Organization represents a tenant in the system.
 type Organization struct {
-	UID       string     `bun:"uid,pk,type:varchar(36)"`
-	Slug      string     `bun:"slug,notnull"`
-	Name      string     `bun:"name"`
-	CreatedAt time.Time  `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt *time.Time `bun:"deleted_at"`
+	UID  string `bun:"uid,pk,type:varchar(36)"`
+	Slug string `bun:"slug,notnull"`
+	Name string `bun:"name"`
+	// DefaultEscalationPolicyUID is the org-wide fallback escalation policy for
+	// checks that resolve to no policy of their own (check → group → org default
+	// → none). NULL = no org default (legacy behavior). FK `on delete set null`.
+	DefaultEscalationPolicyUID *string    `bun:"default_escalation_policy_uid"`
+	CreatedAt                  time.Time  `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt                  time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
+	DeletedAt                  *time.Time `bun:"deleted_at"`
 }
 
 // NewOrganization creates a new organization with generated UID.
@@ -33,4 +37,9 @@ func NewOrganization(slug, name string) *Organization {
 type OrganizationUpdate struct {
 	Slug *string
 	Name *string
+	// DefaultEscalationPolicyUID sets the org-wide default escalation policy.
+	// ClearDefaultEscalationPolicyUID takes precedence and clears it to NULL
+	// (mirrors the check-group clear-flag pattern).
+	DefaultEscalationPolicyUID      *string
+	ClearDefaultEscalationPolicyUID bool
 }

@@ -102,6 +102,9 @@ var (
 	// ErrInvalidAutoJoinRegex is returned when an admin tries to set a
 	// dangerously broad registration email pattern.
 	ErrInvalidAutoJoinRegex = errors.New("invalid auto-join regex pattern")
+	// ErrInvalidEscalationPolicy is returned when the default-escalation-policy
+	// UID does not reference a policy that exists in this org.
+	ErrInvalidEscalationPolicy = errors.New("escalation policy not found in this organization")
 	// ErrAlreadyAMember is returned when a user tries to request membership
 	// in an org they already belong to.
 	ErrAlreadyAMember = errors.New("already a member of this organization")
@@ -3100,6 +3103,14 @@ type OrgSettingsResponse struct {
 	// org-level override itself, so the settings page can distinguish "not
 	// set" from "explicitly set to the same number".
 	SessionMaxDurationSeconds *int `json:"sessionMaxDurationSeconds,omitempty"`
+	// DefaultEscalationPolicyUID is the org-wide fallback escalation policy
+	// applied to checks that resolve to no policy of their own (check → group →
+	// org default → none). nil/absent = no org default (legacy behavior).
+	DefaultEscalationPolicyUID *string `json:"defaultEscalationPolicyUid,omitempty"`
+	// InheritingCheckCount is how many of the org's live checks currently
+	// resolve to no policy of their own — the blast radius of setting or
+	// changing DefaultEscalationPolicyUID. Always present.
+	InheritingCheckCount int `json:"inheritingCheckCount"`
 }
 
 // GetOrgSettings returns settings for an organization.
@@ -3131,9 +3142,16 @@ func (s *Service) GetOrgSettings(ctx context.Context, orgSlug string) (*OrgSetti
 		sessionMaxDurationSeconds = &seconds
 	}
 
+	inheritingCount, err := s.db.CountChecksInheritingOrgDefault(ctx, org.UID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &OrgSettingsResponse{
-		RegistrationEmailPattern:  pattern,
-		SessionMaxDurationSeconds: sessionMaxDurationSeconds,
+		RegistrationEmailPattern:   pattern,
+		SessionMaxDurationSeconds:  sessionMaxDurationSeconds,
+		DefaultEscalationPolicyUID: org.DefaultEscalationPolicyUID,
+		InheritingCheckCount:       inheritingCount,
 	}, nil
 }
 
@@ -3145,6 +3163,10 @@ type UpdateOrgSettingsRequest struct {
 	// value sets/replaces it. Omit the field entirely to leave the
 	// override untouched.
 	SessionMaxDurationSeconds *int `json:"sessionMaxDurationSeconds"`
+	// DefaultEscalationPolicyUID, when present: an empty string clears the org
+	// default (checks fall back to no policy); a non-empty UID sets it (the UID
+	// must be a policy in this org). Omit the field to leave it untouched.
+	DefaultEscalationPolicyUID *string `json:"defaultEscalationPolicyUid"`
 }
 
 // UpdateOrgSettings updates settings for an organization.
@@ -3168,7 +3190,35 @@ func (s *Service) UpdateOrgSettings(
 		}
 	}
 
+	if req.DefaultEscalationPolicyUID != nil {
+		if updateErr := s.updateDefaultEscalationPolicy(ctx, org.UID, *req.DefaultEscalationPolicyUID); updateErr != nil {
+			return nil, updateErr
+		}
+	}
+
 	return s.GetOrgSettings(ctx, orgSlug)
+}
+
+// updateDefaultEscalationPolicy sets or clears the org's default escalation
+// policy. An empty uid clears it; a non-empty uid must reference a policy that
+// lives in this org (else ErrInvalidEscalationPolicy). Resolution of in-flight
+// incidents is unaffected — the default only applies at future incident-open.
+func (s *Service) updateDefaultEscalationPolicy(ctx context.Context, orgUID, policyUID string) error {
+	if policyUID == "" {
+		return s.db.UpdateOrganization(ctx, orgUID, models.OrganizationUpdate{
+			ClearDefaultEscalationPolicyUID: true,
+		})
+	}
+
+	// Guard against pointing the org default at a policy from another org (or a
+	// non-existent/deleted one); GetEscalationPolicy is org-scoped.
+	if _, err := s.db.GetEscalationPolicy(ctx, orgUID, policyUID); err != nil {
+		return ErrInvalidEscalationPolicy
+	}
+
+	return s.db.UpdateOrganization(ctx, orgUID, models.OrganizationUpdate{
+		DefaultEscalationPolicyUID: &policyUID,
+	})
 }
 
 func (s *Service) updateEmailPattern(ctx context.Context, orgUID, pattern string) error {

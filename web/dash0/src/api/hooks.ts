@@ -19,6 +19,8 @@ export interface CheckGroup {
   description?: string;
   sortOrder: number;
   checkCount: number;
+  /** Group-level escalation policy member checks inherit; null = none. */
+  escalationPolicyUid?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -28,6 +30,7 @@ export interface CreateCheckGroupRequest {
   slug?: string;
   description?: string;
   sortOrder?: number;
+  escalationPolicyUid?: string;
 }
 
 export interface UpdateCheckGroupRequest {
@@ -35,6 +38,8 @@ export interface UpdateCheckGroupRequest {
   slug?: string;
   description?: string;
   sortOrder?: number;
+  /** A UID sets it, "" clears it, omit leaves unchanged. */
+  escalationPolicyUid?: string;
 }
 
 export interface Check {
@@ -43,6 +48,11 @@ export interface Check {
   slug?: string;
   description?: string;
   checkGroupUid?: string;
+  /**
+   * Escalation policy assigned directly to this check. When null/absent the
+   * check inherits its group's policy, then the org default, then none.
+   */
+  escalationPolicyUid?: string | null;
   type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "rdp" | "sleep";
   config?: Record<string, unknown>;
   configPrivateKeys?: string[];
@@ -108,6 +118,8 @@ export interface CreateCheckRequest {
   slug?: string;
   description?: string;
   checkGroupUid?: string;
+  /** Escalation policy to assign; omit/empty inherits (group → org default → none). */
+  escalationPolicyUid?: string;
   type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "rdp" | "sleep";
   config: Record<string, unknown>;
   regions?: string[];
@@ -122,6 +134,8 @@ export interface UpdateCheckRequest {
   slug?: string;
   description?: string;
   checkGroupUid?: string | null;
+  /** A UID assigns it, "" clears it (inherit), omit leaves unchanged. */
+  escalationPolicyUid?: string;
   config?: Record<string, unknown>;
   regions?: string[];
   labels?: Record<string, string>;
@@ -2185,6 +2199,12 @@ export interface OrgSettings {
   // when the org has no override and inherits the system-wide default (see
   // server OrgSettingsResponse — spec 2026-07-08-01 B.4).
   sessionMaxDurationSeconds?: number | null;
+  // Org-wide default escalation policy for checks that resolve to no policy of
+  // their own (check → group → org default → none). null/absent = unset.
+  defaultEscalationPolicyUid?: string | null;
+  // How many live checks currently resolve to no policy of their own — the
+  // blast radius of setting/changing the org default. Always present.
+  inheritingCheckCount?: number;
 }
 
 export function useOrgSettings(org: string) {
@@ -2200,6 +2220,9 @@ export interface UpdateOrgSettingsRequest {
   // A value <= 0 clears the override (org reverts to inheriting the
   // system-wide value); omit the field entirely to leave it untouched.
   sessionMaxDurationSeconds?: number;
+  // A UID sets the org default escalation policy; "" clears it; omit to leave
+  // it untouched.
+  defaultEscalationPolicyUid?: string;
 }
 
 export function useUpdateOrgSettings(org: string) {
@@ -2956,6 +2979,12 @@ export interface EscalationPolicy {
   repeatMax: number;
   repeatAfterSeconds?: number | null;
   steps?: EscalationPolicyStep[];
+  /** Number of steps; 0 = "silent" (pages nobody). Present on the list response. */
+  stepCount?: number;
+  /** Checks referencing this policy — list response only (delete-guard). */
+  usageCheckCount?: number;
+  /** Groups referencing this policy — list response only (delete-guard). */
+  usageGroupCount?: number;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -3008,7 +3037,15 @@ export function useCreateEscalationPolicy(org: string) {
         method: "POST",
         body: JSON.stringify(request),
       }),
-    onSuccess: () => {
+    onSuccess: (created) => {
+      // Seed the list cache synchronously so a caller that immediately
+      // selects the newly created policy (e.g. the check form's "No
+      // escalation (silent)" shortcut) can resolve it from the very next
+      // render, instead of waiting on the invalidate-triggered refetch below.
+      queryClient.setQueryData<EscalationPolicy[]>(
+        ["escalationPolicies", org],
+        (old) => (old ? [...old, created] : old),
+      );
       queryClient.invalidateQueries({ queryKey: ["escalationPolicies", org] });
     },
   });

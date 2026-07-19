@@ -83,22 +83,27 @@ func NewService(dbService db.Service) *Service {
 
 // CheckGroupResponse represents a check group in API responses.
 type CheckGroupResponse struct {
-	UID         string    `json:"uid"`
-	Name        string    `json:"name"`
-	Slug        string    `json:"slug"`
-	Description *string   `json:"description,omitempty"`
-	SortOrder   int16     `json:"sortOrder"`
-	CheckCount  int       `json:"checkCount"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	UID         string  `json:"uid"`
+	Name        string  `json:"name"`
+	Slug        string  `json:"slug"`
+	Description *string `json:"description,omitempty"`
+	SortOrder   int16   `json:"sortOrder"`
+	CheckCount  int     `json:"checkCount"`
+	// EscalationPolicyUID is the group-level escalation policy that its member
+	// checks inherit when they have no policy of their own. nil = no group
+	// policy (checks then fall back to the org default, then none).
+	EscalationPolicyUID *string   `json:"escalationPolicyUid,omitempty"`
+	CreatedAt           time.Time `json:"createdAt"`
+	UpdatedAt           time.Time `json:"updatedAt"`
 }
 
 // CreateCheckGroupRequest represents a request to create a new check group.
 type CreateCheckGroupRequest struct {
-	Name        string  `json:"name"`
-	Slug        string  `json:"slug"`
-	Description *string `json:"description"`
-	SortOrder   *int16  `json:"sortOrder"`
+	Name                string  `json:"name"`
+	Slug                string  `json:"slug"`
+	Description         *string `json:"description"`
+	SortOrder           *int16  `json:"sortOrder"`
+	EscalationPolicyUID *string `json:"escalationPolicyUid"`
 }
 
 // UpdateCheckGroupRequest represents a request to update a check group.
@@ -107,6 +112,9 @@ type UpdateCheckGroupRequest struct {
 	Slug        *string `json:"slug,omitempty"`
 	Description *string `json:"description,omitempty"`
 	SortOrder   *int16  `json:"sortOrder,omitempty"`
+	// EscalationPolicyUID: a non-empty UID sets the group policy; an empty
+	// string clears it; omit to leave unchanged.
+	EscalationPolicyUID *string `json:"escalationPolicyUid,omitempty"`
 }
 
 // ListCheckGroups retrieves all check groups for an organization.
@@ -194,6 +202,10 @@ func (s *Service) CreateCheckGroup(
 		group.SortOrder = *req.SortOrder
 	}
 
+	if req.EscalationPolicyUID != nil && *req.EscalationPolicyUID != "" {
+		group.EscalationPolicyUID = req.EscalationPolicyUID
+	}
+
 	if err := s.db.CreateCheckGroup(ctx, group); err != nil {
 		return CheckGroupResponse{}, err
 	}
@@ -257,6 +269,16 @@ func (s *Service) UpdateCheckGroup(
 		SortOrder:   req.SortOrder,
 	}
 
+	// Escalation policy: empty string clears, non-empty sets, omission leaves
+	// untouched (mirrors the check form's inherit/set/silent semantics).
+	if req.EscalationPolicyUID != nil {
+		if *req.EscalationPolicyUID == "" {
+			update.ClearEscalationPolicyUID = true
+		} else {
+			update.EscalationPolicyUID = req.EscalationPolicyUID
+		}
+	}
+
 	if errUpdate := s.db.UpdateCheckGroup(ctx, org.UID, group.UID, &update); errUpdate != nil {
 		return CheckGroupResponse{}, errUpdate
 	}
@@ -287,14 +309,15 @@ func (s *Service) DeleteCheckGroup(ctx context.Context, orgSlug, identifier stri
 
 func convertGroupToResponse(group *models.CheckGroup) CheckGroupResponse {
 	return CheckGroupResponse{
-		UID:         group.UID,
-		Name:        group.Name,
-		Slug:        group.Slug,
-		Description: group.Description,
-		SortOrder:   group.SortOrder,
-		CheckCount:  group.CheckCount,
-		CreatedAt:   group.CreatedAt,
-		UpdatedAt:   group.UpdatedAt,
+		UID:                 group.UID,
+		Name:                group.Name,
+		Slug:                group.Slug,
+		Description:         group.Description,
+		SortOrder:           group.SortOrder,
+		CheckCount:          group.CheckCount,
+		EscalationPolicyUID: group.EscalationPolicyUID,
+		CreatedAt:           group.CreatedAt,
+		UpdatedAt:           group.UpdatedAt,
 	}
 }
 

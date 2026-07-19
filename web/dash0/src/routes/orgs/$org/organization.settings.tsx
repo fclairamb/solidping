@@ -14,7 +14,21 @@ import {
 } from "@/components/ui/card";
 import { AlertCircle, Check, Loader2 } from "lucide-react";
 import { ApiError } from "@/api/client";
-import { useOrgSettings, useUpdateOrgSettings } from "@/api/hooks";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  useEscalationPolicies,
+  useOrgSettings,
+  useUpdateOrgSettings,
+} from "@/api/hooks";
+
+// Sentinel Select value for "no org default" (Radix needs a non-empty value).
+const NO_DEFAULT = "__none__";
 
 export const Route = createFileRoute("/orgs/$org/organization/settings")({
   component: SettingsPage,
@@ -25,8 +39,14 @@ function SettingsPage() {
   const { t: tc } = useTranslation("common");
   const { org } = Route.useParams();
   const { data: settings, isLoading } = useOrgSettings(org);
+  const { data: policies } = useEscalationPolicies(org);
   const updateSettings = useUpdateOrgSettings(org);
   const updateSessionSettings = useUpdateOrgSettings(org);
+  const updateEscalationSettings = useUpdateOrgSettings(org);
+
+  const [defaultPolicyUid, setDefaultPolicyUid] = useState<string>(NO_DEFAULT);
+  const [escalationError, setEscalationError] = useState<string | null>(null);
+  const [escalationSaved, setEscalationSaved] = useState(false);
 
   const [emailPattern, setEmailPattern] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +68,7 @@ function SettingsPage() {
           ? String(Math.round(settings.sessionMaxDurationSeconds / 3600))
           : "",
       );
+      setDefaultPolicyUid(settings.defaultEscalationPolicyUid || NO_DEFAULT);
     }
   }, [settings]);
 
@@ -99,6 +120,26 @@ function SettingsPage() {
       setTimeout(() => setSessionSaved(false), 3000);
     } catch (err) {
       setSessionError(
+        err instanceof ApiError ? err.message : t("settings.unexpectedError"),
+      );
+    }
+  };
+
+  const handleSaveDefaultEscalation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEscalationError(null);
+    setEscalationSaved(false);
+
+    try {
+      await updateEscalationSettings.mutateAsync({
+        // Empty string clears the org default; a UID sets it.
+        defaultEscalationPolicyUid:
+          defaultPolicyUid === NO_DEFAULT ? "" : defaultPolicyUid,
+      });
+      setEscalationSaved(true);
+      setTimeout(() => setEscalationSaved(false), 3000);
+    } catch (err) {
+      setEscalationError(
         err instanceof ApiError ? err.message : t("settings.unexpectedError"),
       );
     }
@@ -270,6 +311,94 @@ function SettingsPage() {
               data-testid="session-duration-save"
             >
               {updateSessionSettings.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {tc("saving")}
+                </>
+              ) : (
+                tc("save")
+              )}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>
+            {t("settings.defaultEscalation", "Default escalation policy")}
+          </CardTitle>
+          <CardDescription>
+            {t(
+              "settings.defaultEscalationDescription",
+              "Applied to checks that resolve to no policy of their own (check → group → org default → none). Leave unset for no org-wide fallback.",
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSaveDefaultEscalation} className="space-y-4">
+            {escalationError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{escalationError}</AlertDescription>
+              </Alert>
+            )}
+
+            {escalationSaved && (
+              <Alert>
+                <Check className="h-4 w-4" />
+                <AlertDescription>{t("settings.saved")}</AlertDescription>
+              </Alert>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="default-escalation-policy">
+                {t("settings.defaultEscalation", "Default escalation policy")}
+              </Label>
+              <Select
+                value={defaultPolicyUid}
+                onValueChange={setDefaultPolicyUid}
+              >
+                <SelectTrigger
+                  id="default-escalation-policy"
+                  className="max-w-md"
+                  data-testid="default-escalation-select"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_DEFAULT}>
+                    {t("settings.defaultEscalationNone", "None (no fallback)")}
+                  </SelectItem>
+                  {(policies ?? []).map((p) => (
+                    <SelectItem key={p.uid} value={p.uid}>
+                      {p.name}
+                      {(p.stepCount ?? p.steps?.length ?? 0) === 0
+                        ? " — silent"
+                        : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {settings?.inheritingCheckCount != null &&
+                defaultPolicyUid !== NO_DEFAULT && (
+                  <p
+                    className="text-xs text-muted-foreground"
+                    data-testid="escalation-blast-radius"
+                  >
+                    {settings.inheritingCheckCount}{" "}
+                    {settings.inheritingCheckCount === 1 ? "check" : "checks"}{" "}
+                    currently inherit and will start using this policy.
+                  </p>
+                )}
+            </div>
+
+            <Button
+              type="submit"
+              disabled={updateEscalationSettings.isPending}
+              data-testid="default-escalation-save"
+            >
+              {updateEscalationSettings.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   {tc("saving")}

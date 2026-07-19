@@ -6139,6 +6139,20 @@ components:
         period:
           type: string
           description: Interval duration (e.g., "00:01:00" for 1 minute)
+        checkGroupUid:
+          type: string
+          format: uuid
+          nullable: true
+          description: Group this check belongs to, or null.
+        escalationPolicyUid:
+          type: string
+          format: uuid
+          nullable: true
+          description: >-
+            Escalation policy assigned directly to this check. When null, the
+            check inherits its group's policy, then the org default, then none
+            (resolved once at incident-open). Assigning a zero-step policy is the
+            "explicitly silent" convention.
         labels:
           type: object
           additionalProperties:
@@ -6322,6 +6336,17 @@ components:
         period:
           type: string
           default: "00:01:00"
+        checkGroupUid:
+          type: string
+          format: uuid
+          description: Group to place this check in.
+        escalationPolicyUid:
+          type: string
+          format: uuid
+          description: >-
+            Escalation policy to assign to this check. Omit or empty to inherit
+            (group → org default → none). A zero-step policy makes the check
+            explicitly silent.
         labels:
           type: object
           additionalProperties:
@@ -6372,6 +6397,16 @@ components:
           description: Whether this check is internal (hidden from default listings)
         period:
           type: string
+        checkGroupUid:
+          type: string
+          nullable: true
+          description: Group to move this check to; empty string clears it (no group).
+        escalationPolicyUid:
+          type: string
+          description: >-
+            Escalation policy for this check. A UID assigns it; an empty string
+            clears it (inherit group → org default → none); omit to leave
+            unchanged. A zero-step policy makes the check explicitly silent.
         labels:
           type: object
           additionalProperties:
@@ -6423,6 +6458,11 @@ components:
         period:
           type: string
           default: "00:01:00"
+        escalationPolicyUid:
+          type: string
+          description: >-
+            Escalation policy for this check. Omit or empty to inherit
+            (group → org default → none); a zero-step policy makes it silent.
         labels:
           type: object
           additionalProperties:
@@ -8414,6 +8454,13 @@ components:
           type: integer
         checkCount:
           type: integer
+        escalationPolicyUid:
+          type: string
+          format: uuid
+          nullable: true
+          description: >-
+            Group-level escalation policy that member checks inherit when they
+            have no policy of their own. Null = no group policy.
         createdAt:
           type: string
           format: date-time
@@ -8441,6 +8488,10 @@ components:
           type: string
         sortOrder:
           type: integer
+        escalationPolicyUid:
+          type: string
+          format: uuid
+          description: Group-level escalation policy member checks inherit.
 
     UpdateCheckGroupRequest:
       type: object
@@ -8453,6 +8504,11 @@ components:
           type: string
         sortOrder:
           type: integer
+        escalationPolicyUid:
+          type: string
+          description: >-
+            A UID sets the group policy; an empty string clears it; omit to
+            leave unchanged.
 
     # Severity schemas
     Severity:
@@ -8889,6 +8945,22 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EscalationStep"
+        stepCount:
+          type: integer
+          description: >-
+            Number of steps in the policy. A value of 0 marks a "silent" policy
+            (the null-object convention — pages nobody). Always present,
+            including on the light list response where steps are omitted.
+        usageCheckCount:
+          type: integer
+          description: >-
+            Checks directly referencing this policy. Present only on the list
+            response (drives the delete-guard confirmation).
+        usageGroupCount:
+          type: integer
+          description: >-
+            Check groups directly referencing this policy. Present only on the
+            list response.
         createdAt:
           type: string
           format: date-time
@@ -8994,7 +9066,7 @@ components:
 
     OrgSettingsResponse:
       type: object
-      required: [registrationEmailPattern]
+      required: [registrationEmailPattern, inheritingCheckCount]
       properties:
         registrationEmailPattern:
           type: string
@@ -9002,6 +9074,19 @@ components:
         sessionMaxDurationSeconds:
           type: integer
           description: Org-level session max duration override in seconds; omitted when inherited
+        defaultEscalationPolicyUid:
+          type: string
+          format: uuid
+          nullable: true
+          description: >-
+            Org-wide fallback escalation policy for checks that resolve to no
+            policy of their own (check → group → org default → none). Omitted
+            when unset (legacy behavior).
+        inheritingCheckCount:
+          type: integer
+          description: >-
+            How many live checks currently resolve to no policy of their own —
+            the blast radius of setting or changing the org default.
 
     UpdateOrgSettingsRequest:
       type: object
@@ -9012,6 +9097,11 @@ components:
         sessionMaxDurationSeconds:
           type: integer
           description: Session max duration override in seconds; <=0 clears the override
+        defaultEscalationPolicyUid:
+          type: string
+          description: >-
+            A UID sets the org default escalation policy (must be a policy in
+            this org); an empty string clears it; omit to leave unchanged.
 
     # Invitation schemas
     CreateInvitationRequest:

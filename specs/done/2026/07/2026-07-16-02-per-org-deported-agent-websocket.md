@@ -271,9 +271,12 @@ commit. Steps are grouped; each group is a commit (or a few).
 - Tests: token hash/verify, signature verify, skew reject, replay reject.
 
 ### Group 4 — Data model (migration + models + registration)
-- Migration `007_v0_6_0.{up,down}.sql` in **both** postgres & sqlite dirs:
-  `create table agents`, `create table agent_enrollment_tokens`, and
-  `alter table workers drop column token`.
+- Migration in **both** postgres & sqlite dirs: `create table agents`,
+  `create table agent_enrollment_tokens`, and
+  `alter table workers drop column token`. Landed as its own scratch migration
+  `007_v0_6_0.{up,down}.sql` during development; squashed into the single
+  `006_v0_5_0` consolidated release migration before release, per
+  wiki/conventions/database.md "one migration per release".
 - `models/agent.go`: `Agent`, `AgentEnrollmentToken` structs (bun tags matching
   conventions). Register in postgres + sqlite model registration lists.
 - Remove `Token` from `models.Worker`.

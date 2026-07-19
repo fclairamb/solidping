@@ -8,6 +8,8 @@
     "editToSeeSteps": "Open to see the steps.",
     "searchPlaceholder": "Search by name…",
     "noMatches": "No policies match your search.",
+    "silentBadge": "0 steps — silent",
+    "deleteUsage": "Used by {{checks}} checks and {{groups}} groups — they will fall back to inherited escalation.",
     "col": {
       "name": "Name",
       "description": "Description",

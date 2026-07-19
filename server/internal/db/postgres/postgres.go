@@ -372,6 +372,13 @@ func (s *Service) UpdateOrganization(ctx context.Context, uid string, update mod
 		query = query.Set("name = ?", *update.Name)
 	}
 
+	switch {
+	case update.ClearDefaultEscalationPolicyUID:
+		query = query.Set("default_escalation_policy_uid = NULL")
+	case update.DefaultEscalationPolicyUID != nil:
+		query = query.Set("default_escalation_policy_uid = ?", *update.DefaultEscalationPolicyUID)
+	}
+
 	_, err := query.Exec(ctx)
 
 	return err
@@ -4063,6 +4070,13 @@ func (s *Service) UpdateCheckGroup(
 
 	if update.SortOrder != nil {
 		query = query.Set("sort_order = ?", *update.SortOrder)
+	}
+
+	switch {
+	case update.ClearEscalationPolicyUID:
+		query = query.Set("escalation_policy_uid = NULL")
+	case update.EscalationPolicyUID != nil:
+		query = query.Set("escalation_policy_uid = ?", *update.EscalationPolicyUID)
 	}
 
 	if _, err := query.Exec(ctx); err != nil {

@@ -75,6 +75,14 @@ type policyJSON struct {
 	CreatedAt          time.Time  `json:"createdAt"`
 	UpdatedAt          time.Time  `json:"updatedAt"`
 	Steps              []stepJSON `json:"steps,omitempty"`
+	// StepCount is always present so a zero-step ("silent") policy is legible
+	// even on the light list response (which omits the expanded steps).
+	StepCount int `json:"stepCount"`
+	// UsageCheckCount / UsageGroupCount count the checks and groups that
+	// directly reference this policy. Present only on the list response (they
+	// drive the delete-guard confirmation); nil/omitted on the detail response.
+	UsageCheckCount *int `json:"usageCheckCount,omitempty"`
+	UsageGroupCount *int `json:"usageGroupCount,omitempty"`
 }
 
 func toPolicyJSON(detail *PolicyDetail) policyJSON {
@@ -116,6 +124,7 @@ func toPolicyJSON(detail *PolicyDetail) policyJSON {
 		CreatedAt:          policy.CreatedAt,
 		UpdatedAt:          policy.UpdatedAt,
 		Steps:              steps,
+		StepCount:          len(steps),
 	}
 }
 
@@ -130,14 +139,20 @@ func (h *Handler) ListPolicies(writer http.ResponseWriter, req bunrouter.Request
 		return h.handleError(writer, err)
 	}
 
-	policies, err := h.svc.ListPolicies(req.Context(), orgUID)
+	items, err := h.svc.ListPoliciesWithCounts(req.Context(), orgUID)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
 
-	out := make([]policyJSON, 0, len(policies))
-	for _, policy := range policies {
-		out = append(out, toPolicyHeaderJSON(policy))
+	out := make([]policyJSON, 0, len(items))
+	for _, item := range items {
+		row := toPolicyHeaderJSON(item.Policy)
+		row.StepCount = item.StepCount
+		checkCount := item.UsageCheckCount
+		groupCount := item.UsageGroupCount
+		row.UsageCheckCount = &checkCount
+		row.UsageGroupCount = &groupCount
+		out = append(out, row)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{jsonDataKey: out})
