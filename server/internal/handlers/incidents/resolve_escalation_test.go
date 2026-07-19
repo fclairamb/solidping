@@ -127,7 +127,7 @@ func TestResolveEscalationPolicyUID_OrgDefaultOptIn(t *testing.T) {
 	check := &models.Check{OrganizationUID: org.UID, CheckGroupUID: ptr(group)}
 
 	// Control: no org default → none (today's behavior, unchanged).
-	require.Equal(t, "", resolveEscalationPolicyUID(ctx, dbSvc, check),
+	require.Empty(t, resolveEscalationPolicyUID(ctx, dbSvc, check),
 		"with no org default the check must resolve to no policy")
 
 	// Set the default → the same check now pages via the default.
@@ -168,5 +168,5 @@ func TestResolveEscalationPolicyUID_DeletedPolicyFallsBack(t *testing.T) {
 	require.NoError(t, dbSvc.UpdateOrganization(ctx, org.UID, models.OrganizationUpdate{
 		ClearDefaultEscalationPolicyUID: true,
 	}))
-	require.Equal(t, "", resolveEscalationPolicyUID(ctx, dbSvc, check))
+	require.Empty(t, resolveEscalationPolicyUID(ctx, dbSvc, check))
 }

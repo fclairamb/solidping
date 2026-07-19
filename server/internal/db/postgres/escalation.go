@@ -162,7 +162,7 @@ func (s *Service) CountEscalationPolicyStepsByPolicy(
 		Model((*models.EscalationPolicyStep)(nil)).
 		ColumnExpr("policy_uid").
 		ColumnExpr("COUNT(*) AS count").
-		Where("policy_uid IN (?)", bun.In(policyUIDs)).
+		Where("policy_uid IN (?)", bun.List(policyUIDs)).
 		GroupExpr("policy_uid").
 		Scan(ctx, &rows)
 	if err != nil {

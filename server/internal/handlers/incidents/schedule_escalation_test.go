@@ -19,10 +19,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
-func countEscalationJobs(t *testing.T, dbSvc db.Service, orgUID string) int {
+func countEscalationJobs(ctx context.Context, t *testing.T, dbSvc db.Service, orgUID string) int {
 	t.Helper()
 
-	jobs, err := dbSvc.ListJobs(t.Context(), &orgUID, 100)
+	jobs, err := dbSvc.ListJobs(ctx, &orgUID, 100)
 	require.NoError(t, err)
 
 	n := 0
@@ -35,6 +35,35 @@ func countEscalationJobs(t *testing.T, dbSvc db.Service, orgUID string) int {
 	return n
 }
 
+// createPolicyWithStep inserts a policy carrying one all-admins step so its
+// cycle-0 scheduling produces exactly one escalation_step job.
+func createPolicyWithStep(
+	ctx context.Context, t *testing.T, dbSvc db.Service, orgUID, name string,
+) *models.EscalationPolicy {
+	t.Helper()
+
+	policy := models.NewEscalationPolicy(orgUID, name)
+	require.NoError(t, dbSvc.CreateEscalationPolicy(ctx, policy))
+
+	step := models.NewEscalationPolicyStep(policy.UID, 0, 0)
+	target := &models.EscalationPolicyTarget{
+		UID:        step.UID + "-tgt",
+		StepUID:    step.UID,
+		TargetType: models.EscalationTargetAllAdmins,
+		Position:   0,
+	}
+	require.NoError(t, dbSvc.ReplaceEscalationPolicySteps(
+		ctx, policy.UID,
+		[]*models.EscalationPolicyStep{step},
+		map[int][]*models.EscalationPolicyTarget{0: {target}},
+	))
+
+	return policy
+}
+
+// TestScheduleEscalationPolicy_OrgDefault walks a single check through three
+// org-default states in sequence (the scenarios share one DB and mutate the
+// org default, so they run sequentially rather than as parallel subtests).
 func TestScheduleEscalationPolicy_OrgDefault(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -59,65 +88,27 @@ func TestScheduleEscalationPolicy_OrgDefault(t *testing.T) {
 		return models.NewIncident(org.UID, check.UID, time.Now(), "down")
 	}
 
-	t.Run("no org default schedules nothing", func(t *testing.T) {
-		svc.scheduleEscalationPolicy(ctx, org.UID, check.UID, newIncident())
-		require.Equal(t, 0, countEscalationJobs(t, dbSvc, org.UID),
-			"with no org default and no check/group policy, nothing is scheduled")
-	})
+	// 1. No org default → nothing is scheduled (today's behavior, unchanged).
+	svc.scheduleEscalationPolicy(ctx, org.UID, check.UID, newIncident())
+	require.Equal(t, 0, countEscalationJobs(ctx, t, dbSvc, org.UID),
+		"with no org default and no check/group policy, nothing is scheduled")
 
-	t.Run("paging org default schedules cycle 0", func(t *testing.T) {
-		paging, err := createPolicyWithStep(t, dbSvc, org.UID, "org-paging")
-		require.NoError(t, err)
-		require.NoError(t, dbSvc.UpdateOrganization(ctx, org.UID, models.OrganizationUpdate{
-			DefaultEscalationPolicyUID: &paging.UID,
-		}))
+	// 2. A paging org default schedules its single step at incident open.
+	paging := createPolicyWithStep(ctx, t, dbSvc, org.UID, "org-paging")
+	require.NoError(t, dbSvc.UpdateOrganization(ctx, org.UID, models.OrganizationUpdate{
+		DefaultEscalationPolicyUID: &paging.UID,
+	}))
+	svc.scheduleEscalationPolicy(ctx, org.UID, check.UID, newIncident())
+	require.Equal(t, 1, countEscalationJobs(ctx, t, dbSvc, org.UID),
+		"a paging org default must schedule its (single) step at incident open")
 
-		before := countEscalationJobs(t, dbSvc, org.UID)
-		svc.scheduleEscalationPolicy(ctx, org.UID, check.UID, newIncident())
-		require.Equal(t, before+1, countEscalationJobs(t, dbSvc, org.UID),
-			"a paging org default must schedule its (single) step at incident open")
-	})
-
-	t.Run("zero-step org default schedules nothing", func(t *testing.T) {
-		silent := models.NewEscalationPolicy(org.UID, "org-silent") // no steps
-		require.NoError(t, dbSvc.CreateEscalationPolicy(ctx, silent))
-		require.NoError(t, dbSvc.UpdateOrganization(ctx, org.UID, models.OrganizationUpdate{
-			DefaultEscalationPolicyUID: &silent.UID,
-		}))
-
-		before := countEscalationJobs(t, dbSvc, org.UID)
-		svc.scheduleEscalationPolicy(ctx, org.UID, check.UID, newIncident())
-		require.Equal(t, before, countEscalationJobs(t, dbSvc, org.UID),
-			"a zero-step (silent) org default pages nobody")
-	})
-}
-
-// createPolicyWithStep inserts a policy carrying one all-admins step so its
-// cycle-0 scheduling produces exactly one escalation_step job.
-func createPolicyWithStep(
-	t *testing.T, dbSvc db.Service, orgUID, name string,
-) (*models.EscalationPolicy, error) {
-	t.Helper()
-
-	policy := models.NewEscalationPolicy(orgUID, name)
-	if err := dbSvc.CreateEscalationPolicy(t.Context(), policy); err != nil {
-		return nil, err
-	}
-
-	step := models.NewEscalationPolicyStep(policy.UID, 0, 0)
-	target := &models.EscalationPolicyTarget{
-		UID:        step.UID + "-tgt",
-		StepUID:    step.UID,
-		TargetType: models.EscalationTargetAllAdmins,
-		Position:   0,
-	}
-	if err := dbSvc.ReplaceEscalationPolicySteps(
-		t.Context(), policy.UID,
-		[]*models.EscalationPolicyStep{step},
-		map[int][]*models.EscalationPolicyTarget{0: {target}},
-	); err != nil {
-		return nil, err
-	}
-
-	return policy, nil
+	// 3. A zero-step (silent) org default pages nobody — count stays put.
+	silent := models.NewEscalationPolicy(org.UID, "org-silent") // no steps
+	require.NoError(t, dbSvc.CreateEscalationPolicy(ctx, silent))
+	require.NoError(t, dbSvc.UpdateOrganization(ctx, org.UID, models.OrganizationUpdate{
+		DefaultEscalationPolicyUID: &silent.UID,
+	}))
+	svc.scheduleEscalationPolicy(ctx, org.UID, check.UID, newIncident())
+	require.Equal(t, 1, countEscalationJobs(ctx, t, dbSvc, org.UID),
+		"a zero-step (silent) org default pages nobody (no new job)")
 }
