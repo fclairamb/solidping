@@ -49,29 +49,30 @@ func TestRouteMatchingPrecedence(t *testing.T) {
 	main.GET("/status0/*path", marker("status0-wild"))
 	main.GET("/*path", marker("app-catchall"))
 
+	// want is the matched marker tag; wantStatus defaults to 200 when want set.
 	tests := []struct {
 		name       string
 		method     string
 		path       string
 		wantStatus int
-		wantBody   string // matched marker tag, when 200
+		want       string
 	}{
-		{name: "docs root exact", method: http.MethodGet, path: "/docs", wantStatus: 200, wantBody: "docs-root"},
-		{name: "docs subpath", method: http.MethodGet, path: "/docs/guide/intro", wantStatus: 200, wantBody: "docs-wild"},
-		{name: "docs trailing slash", method: http.MethodGet, path: "/docs/", wantStatus: 200, wantBody: "docs-wild"},
-		{name: "dash0 root", method: http.MethodGet, path: "/dash0", wantStatus: 200, wantBody: "dash0-root"},
-		{name: "dash0 spa path", method: http.MethodGet, path: "/dash0/orgs/acme", wantStatus: 200, wantBody: "dash0-wild"},
-		{name: "status0 root", method: http.MethodGet, path: "/status0", wantStatus: 200, wantBody: "status0-root"},
-		{name: "status0 page", method: http.MethodGet, path: "/status0/acme", wantStatus: 200, wantBody: "status0-wild"},
-		{name: "api list beats catchall", method: http.MethodGet, path: "/api/v1/orgs/acme/checks", wantStatus: 200, wantBody: "checks-list"},
-		{name: "api param route", method: http.MethodGet, path: "/api/v1/orgs/acme/checks/abc-123", wantStatus: 200, wantBody: "check-get"},
-		{name: "static beats param sibling", method: http.MethodGet, path: "/api/v1/orgs/acme/checks/export", wantStatus: 200, wantBody: "checks-export"},
-		{name: "public api route", method: http.MethodGet, path: "/api/v1/auth/providers", wantStatus: 200, wantBody: "providers"},
-		{name: "spa catchall", method: http.MethodGet, path: "/some/spa/route", wantStatus: 200, wantBody: "app-catchall"},
-		{name: "root hits catchall", method: http.MethodGet, path: "/", wantStatus: 200, wantBody: "app-catchall"},
-		{name: "unknown GET under api falls to catchall", method: http.MethodGet, path: "/api/v1/nope", wantStatus: 200, wantBody: "app-catchall"},
-		{name: "options preflight under api", method: http.MethodOptions, path: "/api/v1/orgs/acme/checks", wantStatus: 200, wantBody: "options-catchall"},
-		{name: "options on unknown api path", method: http.MethodOptions, path: "/api/v1/whatever", wantStatus: 200, wantBody: "options-catchall"},
+		{name: "docs root exact", method: http.MethodGet, path: "/docs", want: "docs-root"},
+		{name: "docs subpath", method: http.MethodGet, path: "/docs/guide/intro", want: "docs-wild"},
+		{name: "docs trailing slash", method: http.MethodGet, path: "/docs/", want: "docs-wild"},
+		{name: "dash0 root", method: http.MethodGet, path: "/dash0", want: "dash0-root"},
+		{name: "dash0 spa path", method: http.MethodGet, path: "/dash0/orgs/acme", want: "dash0-wild"},
+		{name: "status0 root", method: http.MethodGet, path: "/status0", want: "status0-root"},
+		{name: "status0 page", method: http.MethodGet, path: "/status0/acme", want: "status0-wild"},
+		{name: "api list beats catchall", method: http.MethodGet, path: "/api/v1/orgs/acme/checks", want: "checks-list"},
+		{name: "api param route", method: http.MethodGet, path: "/api/v1/orgs/acme/checks/x1", want: "check-get"},
+		{name: "static beats param", method: http.MethodGet, path: "/api/v1/orgs/acme/checks/export", want: "checks-export"},
+		{name: "public api route", method: http.MethodGet, path: "/api/v1/auth/providers", want: "providers"},
+		{name: "spa catchall", method: http.MethodGet, path: "/some/spa/route", want: "app-catchall"},
+		{name: "root hits catchall", method: http.MethodGet, path: "/", want: "app-catchall"},
+		{name: "unknown GET under api falls to catchall", method: http.MethodGet, path: "/api/v1/nope", want: "app-catchall"},
+		{name: "options preflight", method: http.MethodOptions, path: "/api/v1/orgs/acme/checks", want: "options-catchall"},
+		{name: "options on unknown api path", method: http.MethodOptions, path: "/api/v1/whatever", want: "options-catchall"},
 		{name: "post to GET-only route is 405", method: http.MethodPost, path: "/api/v1/orgs/acme/checks", wantStatus: 405},
 		{name: "post to unknown path is 405 not 404", method: http.MethodPost, path: "/api/v1/nope", wantStatus: 405},
 	}
@@ -81,12 +82,17 @@ func TestRouteMatchingPrecedence(t *testing.T) {
 			t.Parallel()
 			r := require.New(t)
 
+			req := httptest.NewRequestWithContext(t.Context(), testCase.method, testCase.path, http.NoBody)
 			rec := httptest.NewRecorder()
-			router.ServeHTTP(rec, httptest.NewRequest(testCase.method, testCase.path, http.NoBody))
+			router.ServeHTTP(rec, req)
 
-			r.Equal(testCase.wantStatus, rec.Code, "path=%s", testCase.path)
-			if testCase.wantBody != "" {
-				r.Equal(testCase.wantBody, rec.Body.String())
+			wantStatus := testCase.wantStatus
+			if wantStatus == 0 {
+				wantStatus = http.StatusOK
+			}
+			r.Equal(wantStatus, rec.Code, "path=%s", testCase.path)
+			if testCase.want != "" {
+				r.Equal(testCase.want, rec.Body.String())
 			}
 		})
 	}

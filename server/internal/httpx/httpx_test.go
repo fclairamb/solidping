@@ -11,6 +11,14 @@ import (
 	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
+var errBoom = errors.New("boom")
+
+func newReq(t *testing.T, method, path string) *http.Request {
+	t.Helper()
+
+	return httptest.NewRequestWithContext(t.Context(), method, path, http.NoBody)
+}
+
 func ok(w http.ResponseWriter, _ *http.Request) error {
 	w.WriteHeader(http.StatusOK)
 
@@ -40,13 +48,13 @@ func TestConvertPatternAndParams(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/orgs/acme/checks/abc-123", http.NoBody))
+	router.ServeHTTP(rec, newReq(t, http.MethodGet, "/api/v1/orgs/acme/checks/abc-123"))
 	r.Equal(http.StatusOK, rec.Code)
 	r.Equal("acme", gotOrg)
 	r.Equal("abc-123", gotUID)
 
 	rec = httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/docs/guide/intro", http.NoBody))
+	router.ServeHTTP(rec, newReq(t, http.MethodGet, "/docs/guide/intro"))
 	r.Equal(http.StatusOK, rec.Code)
 	r.Equal("guide/intro", gotWildcard)
 }
@@ -73,11 +81,11 @@ func TestStaticBeatsParam(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/tokens/current", http.NoBody))
+	router.ServeHTTP(rec, newReq(t, http.MethodDelete, "/tokens/current"))
 	r.Equal("current", hits)
 
 	rec = httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/tokens/xyz", http.NoBody))
+	router.ServeHTTP(rec, newReq(t, http.MethodDelete, "/tokens/xyz"))
 	r.Equal("param:xyz", hits)
 	r.Equal(http.StatusOK, rec.Code)
 }
@@ -112,15 +120,15 @@ func TestDifferingParamNamesCoexist(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/checks/aaa", http.NoBody))
+	router.ServeHTTP(rec, newReq(t, http.MethodGet, "/checks/aaa"))
 	r.Equal("get:aaa", got)
 
 	rec = httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/checks/bbb", http.NoBody))
+	router.ServeHTTP(rec, newReq(t, http.MethodPut, "/checks/bbb"))
 	r.Equal("put:bbb", got)
 
 	rec = httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/checks/ccc/deps", http.NoBody))
+	router.ServeHTTP(rec, newReq(t, http.MethodGet, "/checks/ccc/deps"))
 	r.Equal("deps:ccc", got)
 }
 
@@ -134,7 +142,7 @@ func TestMethodNotAllowed(t *testing.T) {
 	router.GET("/thing", ok)
 
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/thing", http.NoBody))
+	router.ServeHTTP(rec, newReq(t, http.MethodPost, "/thing"))
 	r.Equal(http.StatusMethodNotAllowed, rec.Code)
 }
 
@@ -161,21 +169,20 @@ func TestMiddlewareOrderAndErrorFlow(t *testing.T) {
 		}
 	}
 
-	boom := errors.New("boom")
 	router := httpx.New()
 	group := router.Use(mw("outer")).Use(mw("inner"))
 	group.GET("/x", func(w http.ResponseWriter, _ *http.Request) error {
 		order = append(order, "handler")
 		w.WriteHeader(http.StatusTeapot)
 
-		return boom
+		return errBoom
 	})
 
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", http.NoBody))
+	router.ServeHTTP(rec, newReq(t, http.MethodGet, "/x"))
 
 	r.Equal([]string{"outer", "inner", "handler"}, order)
-	r.Equal(boom, observed)
+	r.Equal(errBoom, observed)
 	r.Equal(http.StatusTeapot, rec.Code)
 }
 
@@ -198,7 +205,7 @@ func TestGroupPrefixNesting(t *testing.T) {
 	orgs.GET("/checks", ok)
 
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/orgs/acme/checks", http.NoBody))
+	router.ServeHTTP(rec, newReq(t, http.MethodGet, "/api/v1/orgs/acme/checks"))
 	r.Equal(http.StatusOK, rec.Code)
 	r.Equal(1, hits)
 }

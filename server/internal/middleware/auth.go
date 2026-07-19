@@ -46,7 +46,7 @@ func NewAuthMiddleware(authService *auth.Service, dbService db.Service, cfg *con
 // RequireAuth is a middleware that requires a valid authentication token.
 func (m *AuthMiddleware) RequireAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
 	return func(writer http.ResponseWriter, req *http.Request) error {
-		slog.Debug("RequireAuth middleware called", "path", req.URL.Path)
+		slog.DebugContext(req.Context(), "RequireAuth middleware called", "path", req.URL.Path)
 
 		// A request already authorized by ServiceTokenBypass carries no user
 		// JWT — let it through for the handler to attribute.
@@ -141,7 +141,7 @@ func (m *AuthMiddleware) writeMCPChallenge(
 // Must be used after RequireAuth.
 func (m *AuthMiddleware) RequireOrgAccess(next httpx.HandlerFunc) httpx.HandlerFunc {
 	return func(writer http.ResponseWriter, req *http.Request) error {
-		slog.Debug("RequireOrgAccess middleware called", "path", req.URL.Path)
+		slog.DebugContext(req.Context(), "RequireOrgAccess middleware called", "path", req.URL.Path)
 
 		// Trusted service requests are cross-org by design; skip membership.
 		if isServiceAuthorized(req.Context()) {
@@ -187,7 +187,7 @@ func (m *AuthMiddleware) RequireOrgAccess(next httpx.HandlerFunc) httpx.HandlerF
 		// Add organization to context
 		ctx := context.WithValue(req.Context(), base.ContextKeyOrganization, org)
 
-		slog.Debug("RequireOrgAccess: Access granted", "orgSlug", org.Slug, "userUID", user.UID)
+		slog.DebugContext(req.Context(), "RequireOrgAccess: Access granted", "orgSlug", org.Slug, "userUID", user.UID)
 
 		return next(writer, req.WithContext(ctx))
 	}

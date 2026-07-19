@@ -109,7 +109,7 @@ func (h *Handler) Serve(writer http.ResponseWriter, req *http.Request) error {
 	claims, user, errCode, errMsg := h.authenticateToken(ctx, token)
 	if claims == nil {
 		_, cookieErr := req.Cookie(cookieAuthToken)
-		h.logger.Warn("WebSocket handshake rejected",
+		h.logger.WarnContext(ctx, "WebSocket handshake rejected",
 			"org", orgSlug,
 			"error_code", errCode,
 			"has_auth_header", req.Header.Get("Authorization") != "",

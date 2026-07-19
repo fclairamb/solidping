@@ -411,7 +411,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// ctx for RequestTimeout is taken from each request's context inside the
 	// middleware closure, not threaded through here; the contextcheck linter
 	// can't see that.
-	timeoutMW := middleware.RequestTimeout(s.config.Server.MaxRequestDuration) //nolint:contextcheck
+	timeoutMW := middleware.RequestTimeout(s.config.Server.MaxRequestDuration)
 	mainGroup := router.Use(s.corsMiddleware).Use(middleware.SentryMiddleware()).Use(s.loggingMiddleware).
 		Use(middleware.HTTPMetrics).
 		Use(timeoutMW).
@@ -1037,7 +1037,6 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// no-ops (cross-org writes); every other caller authenticates normally.
 	entitlementsHandler := entitlements.NewHandler(s.services.Entitlements, s.dbService, s.config)
 	orgEntitlements := api.NewGroup("/orgs/:org/entitlements").
-		//nolint:contextcheck // factory marks the request context; the chain threads it via req.WithContext down the middleware chain
 		Use(authMiddleware.ServiceTokenBypass(entitlements.ParamServiceToken)).
 		Use(authMiddleware.RequireAuth).
 		Use(authMiddleware.RequireOrgAccess)
@@ -1647,7 +1646,7 @@ func (s *Server) serveAppRedirect(
 	// Build the new path by replacing the matched prefix with the target path
 	newPath := rule.TargetPath + strings.TrimPrefix(req.URL.Path, rule.PathPrefix)
 
-	slog.Debug("Proxying request",
+	slog.DebugContext(req.Context(), "Proxying request",
 		"originalPath", req.URL.Path,
 		"targetHost", rule.TargetHost,
 		"newPath", newPath,
@@ -1711,7 +1710,7 @@ func (s *Server) serveAppStatic(writer http.ResponseWriter, req *http.Request) e
 
 		data, err = resFiles.ReadFile(filePath)
 		if err != nil {
-			slog.Error("Error reading file", "error", err)
+			slog.ErrorContext(req.Context(), "Error reading file", "error", err)
 			http.Error(writer, "File not found", http.StatusNotFound)
 
 			return nil
@@ -1779,7 +1778,7 @@ func (s *Server) serveDash0Static(writer http.ResponseWriter, req *http.Request)
 
 		data, err = dash0Files.ReadFile(filePath)
 		if err != nil {
-			slog.Error("Error reading dash0 file", "error", err)
+			slog.ErrorContext(req.Context(), "Error reading dash0 file", "error", err)
 			http.Error(writer, "File not found", http.StatusNotFound)
 
 			return nil
@@ -1846,7 +1845,7 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 
 		data, err = status0Files.ReadFile(filePath)
 		if err != nil {
-			slog.Error("Error reading status0 file", "error", err)
+			slog.ErrorContext(req.Context(), "Error reading status0 file", "error", err)
 			http.Error(writer, "File not found", http.StatusNotFound)
 
 			return nil
