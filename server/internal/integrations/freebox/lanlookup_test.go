@@ -126,6 +126,67 @@ func TestListLanHostsForChannelGranted(t *testing.T) {
 	r.Equal("nas", hosts[0].Name)
 }
 
+// newGrantedFreeboxChannelWithPrivateEnvelope creates a granted Freebox
+// channel whose appToken lives in a v3 plaintext SettingsPrivate envelope
+// (the config_private/settings_private structural-separation fallback) rather
+// than on the public Settings map, exercising resolveAppToken's plaintext
+// branch on a disabled credentials service.
+func (f *lanlookupFixture) newGrantedFreeboxChannelWithPrivateEnvelope(
+	t *testing.T, baseURL, status string,
+) *models.Integration {
+	t.Helper()
+
+	r := require.New(t)
+
+	settings := &models.FreeboxSettings{
+		BaseURL: baseURL,
+		AppID:   freebox.DefaultAppID,
+		Status:  status,
+	}
+	m, err := settings.ToJSONMap()
+	r.NoError(err)
+
+	envelope, err := credentials.SealPlaintext(map[string]any{"appToken": "envelope-token"})
+	r.NoError(err)
+
+	conn := models.NewIntegration(f.org.UID, models.ConnectionTypeFreebox, "Freebox")
+	conn.Settings = m
+	conn.SettingsPrivate = &envelope
+	r.NoError(f.dbSvc.CreateChannel(t.Context(), conn))
+
+	return conn
+}
+
+// TestListLanHostsForChannelGrantedWithPlaintextEnvelope is the positive
+// control for the no-master-key path on the Freebox resolver: the app_token
+// lives in a v3 plaintext SettingsPrivate envelope, and a DISABLED
+// credentials service (matching newLanlookupFixture) must still open it.
+func TestListLanHostsForChannelGrantedWithPlaintextEnvelope(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newLanlookupFixture(t)
+	srv := startFakeFreebox(t, []freebox.RawLanHost{
+		{
+			ID:          "ether-aa",
+			PrimaryName: "nas",
+			HostType:    "nas",
+			Active:      true,
+			Reachable:   true,
+			L3Connectivities: []freebox.RawLanL3Conn{
+				{Addr: "192.168.1.10", Af: freebox.LanAfIPv4, Active: true, Reachable: true, LastActivity: 100},
+			},
+		},
+	})
+
+	conn := f.newGrantedFreeboxChannelWithPrivateEnvelope(t, srv.URL, models.FreeboxStatusGranted)
+
+	hosts, err := freebox.ListLanHostsForChannel(t.Context(), f.dbSvc, f.creds, f.org.UID, conn.UID)
+	r.NoError(err)
+	r.Len(hosts, 1)
+	r.Equal("nas", hosts[0].Name)
+}
+
 func TestListLanHostsForChannelNotGranted(t *testing.T) {
 	t.Parallel()
 

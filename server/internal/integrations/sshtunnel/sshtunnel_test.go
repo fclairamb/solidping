@@ -11,6 +11,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel/sshtunneltest"
@@ -188,7 +189,11 @@ func TestLoadConfigDecryptsPrivateConfig(t *testing.T) {
 func TestLoadConfigDecryptFailures(t *testing.T) {
 	t.Parallel()
 
-	envelope := "envelope-blob"
+	// An explicit non-plaintext (key-requiring) envelope: a well-formed v1
+	// AES-GCM marker with no real ciphertext, so the case unambiguously
+	// exercises the key-requiring path rather than incidentally failing
+	// credentials.IsPlaintextEnvelope because the blob isn't valid JSON.
+	envelope := `{"v":1,"alg":"AES-256-GCM","nonce":"x","ct":"y"}`
 
 	tests := []struct {
 		name  string
@@ -216,8 +221,10 @@ func TestLoadConfigDecryptFailures(t *testing.T) {
 	}
 }
 
-// With no master key configured the secrets were stored in plaintext on the
-// public config (the documented V1 fallback) — the resolver must work there too.
+// A check with no config_private envelope at all keeps its secrets on the
+// public config map (legacy rows predating the config_private split, or a
+// check that simply has no secret fields) — the resolver must work there too,
+// with no dependency on the credentials service.
 func TestLoadConfigPlaintextFallback(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -232,6 +239,56 @@ func TestLoadConfigPlaintextFallback(t *testing.T) {
 	)
 	r.NoError(err)
 	r.Equal("plain", cfg.Password)
+}
+
+// TestLoadConfigOpensPlaintextEnvelopeWithoutKey is the positive control for
+// the no-master-key path: a v3 plaintext envelope (the structural-separation
+// fallback that keeps secrets out of the public config once
+// 2026-07-18-06 landed) must open and merge even though the credentials
+// service is disabled — this is exactly why the SSH check itself keeps
+// passing on a no-master-key server, and why a check tunneled through it must
+// too.
+func TestLoadConfigOpensPlaintextEnvelopeWithoutKey(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	envelope, err := credentials.SealPlaintext(map[string]any{"password": "from-plaintext-envelope"})
+	r.NoError(err)
+
+	check := sshCheck(map[string]any{
+		"host": "h", "username": "u", "expected_fingerprint": "SHA256:abc",
+	})
+	check.ConfigPrivate = &envelope
+
+	cfg, err := sshtunnel.LoadConfig(
+		t.Context(),
+		&stubLoader{check: check},
+		&stubCreds{enabled: false},
+		testOrgUID, testCheckUID,
+	)
+	r.NoError(err)
+	r.Equal("from-plaintext-envelope", cfg.Password)
+}
+
+// TestLoadConfigOpensPlaintextEnvelopeWithNilCreds locks in the nil-safety of
+// the plaintext branch: creds can legitimately be nil (a resolver wired
+// without a credentials service), and a plaintext envelope must still open
+// without ever touching creds.
+func TestLoadConfigOpensPlaintextEnvelopeWithNilCreds(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	envelope, err := credentials.SealPlaintext(map[string]any{"password": "from-plaintext-envelope"})
+	r.NoError(err)
+
+	check := sshCheck(map[string]any{
+		"host": "h", "username": "u", "expected_fingerprint": "SHA256:abc",
+	})
+	check.ConfigPrivate = &envelope
+
+	cfg, err := sshtunnel.LoadConfig(t.Context(), &stubLoader{check: check}, nil, testOrgUID, testCheckUID)
+	r.NoError(err)
+	r.Equal("from-plaintext-envelope", cfg.Password)
 }
 
 func TestResolveDialsWithPassword(t *testing.T) {
