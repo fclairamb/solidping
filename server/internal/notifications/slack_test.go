@@ -473,6 +473,30 @@ func (m *mockDBService) DeleteEscalationPolicy(_ context.Context, _ string) erro
 	return nil
 }
 
+func (m *mockDBService) CountEscalationPolicyStepsByPolicy(
+	_ context.Context, _ []string,
+) (map[string]int, error) {
+	return map[string]int{}, nil
+}
+
+func (m *mockDBService) CountChecksByEscalationPolicy(
+	_ context.Context, _ string,
+) (map[string]int, error) {
+	return map[string]int{}, nil
+}
+
+func (m *mockDBService) CountCheckGroupsByEscalationPolicy(
+	_ context.Context, _ string,
+) (map[string]int, error) {
+	return map[string]int{}, nil
+}
+
+func (m *mockDBService) CountChecksInheritingOrgDefault(
+	_ context.Context, _ string,
+) (int, error) {
+	return 0, nil
+}
+
 func (m *mockDBService) GetEscalationPolicyStep(
 	_ context.Context, _ string,
 ) (*models.EscalationPolicyStep, error) {

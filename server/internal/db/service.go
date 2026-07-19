@@ -292,6 +292,23 @@ type Service interface {
 	UpdateEscalationPolicy(ctx context.Context, policyUID string, update *models.EscalationPolicyUpdate) error
 	DeleteEscalationPolicy(ctx context.Context, policyUID string) error
 
+	// CountEscalationPolicyStepsByPolicy returns step counts keyed by policy
+	// UID for the given policies (zero-step policies simply have no entry). Used
+	// to badge "0 steps — silent" policies without loading every step row.
+	CountEscalationPolicyStepsByPolicy(ctx context.Context, policyUIDs []string) (map[string]int, error)
+	// CountChecksByEscalationPolicy returns, per policy UID, how many of the
+	// org's live checks reference it directly. Used for the delete-guard usage
+	// count and any inheritance UI.
+	CountChecksByEscalationPolicy(ctx context.Context, orgUID string) (map[string]int, error)
+	// CountCheckGroupsByEscalationPolicy returns, per policy UID, how many of the
+	// org's live check groups reference it directly.
+	CountCheckGroupsByEscalationPolicy(ctx context.Context, orgUID string) (map[string]int, error)
+	// CountChecksInheritingOrgDefault returns how many of the org's live checks
+	// resolve to no policy of their own (no direct policy, and either no group or
+	// a group with no policy) — i.e. the blast radius of setting/changing the
+	// org default escalation policy.
+	CountChecksInheritingOrgDefault(ctx context.Context, orgUID string) (int, error)
+
 	// Escalation policy steps (replace-all is the typical write path)
 	GetEscalationPolicyStep(ctx context.Context, stepUID string) (*models.EscalationPolicyStep, error)
 	ListEscalationPolicySteps(ctx context.Context, policyUID string) ([]*models.EscalationPolicyStep, error)

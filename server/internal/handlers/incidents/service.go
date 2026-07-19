@@ -1568,24 +1568,33 @@ func (s *Service) scheduleEscalationPolicy(
 	}
 }
 
-// resolveEscalationPolicyUID picks the right policy for a check: check's
-// own policy wins; otherwise the check group's; otherwise none.
+// resolveEscalationPolicyUID picks the right policy for a check, in precedence
+// order: the check's own policy wins; otherwise the check group's; otherwise
+// the organization's default; otherwise none. Resolution runs once at
+// incident-open — changing any level later never retargets an in-flight cycle.
+//
+// The org default is opt-in: an org that never sets one keeps the historical
+// check → group → none behavior exactly (the extra lookup only fires when both
+// the check and its group resolve to nothing).
 func resolveEscalationPolicyUID(ctx context.Context, dbSvc db.Service, check *models.Check) string {
 	if check.EscalationPolicyUID != nil && *check.EscalationPolicyUID != "" {
 		return *check.EscalationPolicyUID
 	}
 
-	if check.CheckGroupUID == nil || *check.CheckGroupUID == "" {
-		return ""
+	if check.CheckGroupUID != nil && *check.CheckGroupUID != "" {
+		group, err := dbSvc.GetCheckGroup(ctx, check.OrganizationUID, *check.CheckGroupUID)
+		if err == nil && group != nil &&
+			group.EscalationPolicyUID != nil && *group.EscalationPolicyUID != "" {
+			return *group.EscalationPolicyUID
+		}
 	}
 
-	group, err := dbSvc.GetCheckGroup(ctx, check.OrganizationUID, *check.CheckGroupUID)
-	if err != nil || group == nil {
-		return ""
-	}
-
-	if group.EscalationPolicyUID != nil && *group.EscalationPolicyUID != "" {
-		return *group.EscalationPolicyUID
+	// Neither the check nor its group named a policy — fall back to the org
+	// default (null-safe: an org without one resolves to none).
+	org, err := dbSvc.GetOrganization(ctx, check.OrganizationUID)
+	if err == nil && org != nil &&
+		org.DefaultEscalationPolicyUID != nil && *org.DefaultEscalationPolicyUID != "" {
+		return *org.DefaultEscalationPolicyUID
 	}
 
 	return ""

@@ -133,6 +133,114 @@ func (s *Service) DeleteEscalationPolicy(ctx context.Context, policyUID string) 
 	return nil
 }
 
+// policyCountRow is the shared scan target for the grouped count queries below.
+type policyCountRow struct {
+	PolicyUID string `bun:"policy_uid"`
+	Count     int    `bun:"count"`
+}
+
+func rowsToCountMap(rows []policyCountRow) map[string]int {
+	out := make(map[string]int, len(rows))
+	for _, r := range rows {
+		out[r.PolicyUID] = r.Count
+	}
+
+	return out
+}
+
+// CountEscalationPolicyStepsByPolicy returns step counts keyed by policy UID.
+func (s *Service) CountEscalationPolicyStepsByPolicy(
+	ctx context.Context, policyUIDs []string,
+) (map[string]int, error) {
+	if len(policyUIDs) == 0 {
+		return map[string]int{}, nil
+	}
+
+	var rows []policyCountRow
+
+	err := s.db.NewSelect().
+		Model((*models.EscalationPolicyStep)(nil)).
+		ColumnExpr("policy_uid").
+		ColumnExpr("COUNT(*) AS count").
+		Where("policy_uid IN (?)", bun.In(policyUIDs)).
+		GroupExpr("policy_uid").
+		Scan(ctx, &rows)
+	if err != nil {
+		return nil, fmt.Errorf("count escalation policy steps: %w", err)
+	}
+
+	return rowsToCountMap(rows), nil
+}
+
+// CountChecksByEscalationPolicy counts live checks per directly-referenced policy.
+func (s *Service) CountChecksByEscalationPolicy(
+	ctx context.Context, orgUID string,
+) (map[string]int, error) {
+	var rows []policyCountRow
+
+	err := s.db.NewSelect().
+		Model((*models.Check)(nil)).
+		ColumnExpr("escalation_policy_uid AS policy_uid").
+		ColumnExpr("COUNT(*) AS count").
+		Where("organization_uid = ?", orgUID).
+		Where("escalation_policy_uid IS NOT NULL").
+		Where("deleted_at IS NULL").
+		GroupExpr("escalation_policy_uid").
+		Scan(ctx, &rows)
+	if err != nil {
+		return nil, fmt.Errorf("count checks by escalation policy: %w", err)
+	}
+
+	return rowsToCountMap(rows), nil
+}
+
+// CountCheckGroupsByEscalationPolicy counts live groups per referenced policy.
+func (s *Service) CountCheckGroupsByEscalationPolicy(
+	ctx context.Context, orgUID string,
+) (map[string]int, error) {
+	var rows []policyCountRow
+
+	err := s.db.NewSelect().
+		Model((*models.CheckGroup)(nil)).
+		ColumnExpr("escalation_policy_uid AS policy_uid").
+		ColumnExpr("COUNT(*) AS count").
+		Where("organization_uid = ?", orgUID).
+		Where("escalation_policy_uid IS NOT NULL").
+		Where("deleted_at IS NULL").
+		GroupExpr("escalation_policy_uid").
+		Scan(ctx, &rows)
+	if err != nil {
+		return nil, fmt.Errorf("count check groups by escalation policy: %w", err)
+	}
+
+	return rowsToCountMap(rows), nil
+}
+
+// CountChecksInheritingOrgDefault counts live checks that resolve to no policy
+// of their own — no direct policy, and either no group or a group whose own
+// policy is null. This is the blast radius of the org default.
+func (s *Service) CountChecksInheritingOrgDefault(
+	ctx context.Context, orgUID string,
+) (int, error) {
+	count, err := s.db.NewSelect().
+		Model((*models.Check)(nil)).
+		ModelTableExpr("checks AS c").
+		Where("c.organization_uid = ?", orgUID).
+		Where("c.deleted_at IS NULL").
+		Where("c.escalation_policy_uid IS NULL").
+		Where(`(c.check_group_uid IS NULL OR NOT EXISTS (
+			SELECT 1 FROM check_groups g
+			WHERE g.uid = c.check_group_uid
+			AND g.deleted_at IS NULL
+			AND g.escalation_policy_uid IS NOT NULL))`).
+		Count(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count checks inheriting org default: %w", err)
+	}
+
+	return count, nil
+}
+
 // GetEscalationPolicyStep loads a single step by UID. Used by the
 // escalation runtime when a job fires and only knows its step UID.
 func (s *Service) GetEscalationPolicyStep(
