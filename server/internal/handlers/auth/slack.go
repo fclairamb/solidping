@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
@@ -32,7 +30,7 @@ func NewSlackOAuthHandler(service *SlackOAuthService, cfg *config.Config) *Slack
 
 // Login initiates the Slack OAuth flow.
 // GET /api/v1/auth/slack/login?redirect_uri=...
-func (h *SlackOAuthHandler) Login(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *SlackOAuthHandler) Login(writer http.ResponseWriter, req *http.Request) error {
 	redirectURI := req.URL.Query().Get("redirect_uri")
 	if redirectURI == "" {
 		redirectURI = "/" // Default to root
@@ -47,14 +45,14 @@ func (h *SlackOAuthHandler) Login(writer http.ResponseWriter, req bunrouter.Requ
 	// Build Slack OAuth URL
 	slackAuthURL := h.buildSlackAuthURL(state)
 
-	http.Redirect(writer, req.Request, slackAuthURL, http.StatusFound)
+	http.Redirect(writer, req, slackAuthURL, http.StatusFound)
 
 	return nil
 }
 
 // Callback handles the OAuth callback from Slack.
 // GET /api/v1/auth/slack/callback?code=...&state=...
-func (h *SlackOAuthHandler) Callback(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *SlackOAuthHandler) Callback(writer http.ResponseWriter, req *http.Request) error {
 	code := req.URL.Query().Get("code")
 	stateParam := req.URL.Query().Get("state")
 	errorParam := req.URL.Query().Get("error")
@@ -85,7 +83,7 @@ func (h *SlackOAuthHandler) Callback(writer http.ResponseWriter, req bunrouter.R
 	// authorize/consent flow) work without a login-page refresh bounce.
 	redirectURL := h.buildSuccessRedirect(oauthState.RedirectURI, result)
 	setAccessTokenCookie(writer, result.AccessToken, result.ExpiresIn)
-	http.Redirect(writer, req.Request, redirectURL, http.StatusFound)
+	http.Redirect(writer, req, redirectURL, http.StatusFound)
 
 	return nil
 }
@@ -95,7 +93,7 @@ func (h *SlackOAuthHandler) Callback(writer http.ResponseWriter, req bunrouter.R
 // immediately after landing on /dash0/auth/slack/complete.
 //
 // POST /api/v1/auth/slack/exchange  body: {"code": "..."}.
-func (h *SlackOAuthHandler) Exchange(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *SlackOAuthHandler) Exchange(writer http.ResponseWriter, req *http.Request) error {
 	var body struct {
 		Code string `json:"code"`
 	}
@@ -153,7 +151,7 @@ func (h *SlackOAuthHandler) buildSuccessRedirect(baseURI string, result *SlackOA
 
 // redirectWithError redirects with error parameters.
 func (h *SlackOAuthHandler) redirectWithError(
-	writer http.ResponseWriter, req bunrouter.Request,
+	writer http.ResponseWriter, req *http.Request,
 	baseURI, code, description string,
 ) error {
 	parsedURL, err := url.Parse(baseURI)
@@ -167,14 +165,14 @@ func (h *SlackOAuthHandler) redirectWithError(
 	query.Set("error_description", description)
 	parsedURL.RawQuery = query.Encode()
 
-	http.Redirect(writer, req.Request, parsedURL.String(), http.StatusFound)
+	http.Redirect(writer, req, parsedURL.String(), http.StatusFound)
 
 	return nil
 }
 
 // handleOAuthError handles OAuth errors by redirecting with error information.
 func (h *SlackOAuthHandler) handleOAuthError(
-	writer http.ResponseWriter, req bunrouter.Request,
+	writer http.ResponseWriter, req *http.Request,
 	redirectURI string, err error,
 ) error {
 	slog.WarnContext(req.Context(), "Slack sign-in OAuth callback failed", "error", err)

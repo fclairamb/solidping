@@ -7,10 +7,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // Handler provides HTTP handlers for check-connection management endpoints.
@@ -28,9 +27,9 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 }
 
 // ListChannels handles GET /api/v1/orgs/:org/checks/:check/connections.
-func (h *Handler) ListChannels(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	checkID := req.Param("check")
+func (h *Handler) ListChannels(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	checkID := httpx.Param(req, "check")
 
 	connections, err := h.svc.ListChannels(req.Context(), orgSlug, checkID)
 	if err != nil {
@@ -41,9 +40,9 @@ func (h *Handler) ListChannels(writer http.ResponseWriter, req bunrouter.Request
 }
 
 // SetChannels handles PUT /api/v1/orgs/:org/checks/:check/connections.
-func (h *Handler) SetChannels(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	checkID := req.Param("check")
+func (h *Handler) SetChannels(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	checkID := httpx.Param(req, "check")
 
 	var setReq SetConnectionsRequest
 	if err := json.NewDecoder(req.Body).Decode(&setReq); err != nil {
@@ -61,10 +60,10 @@ func (h *Handler) SetChannels(writer http.ResponseWriter, req bunrouter.Request)
 }
 
 // AddChannel handles POST /api/v1/orgs/:org/checks/:check/connections/:connection.
-func (h *Handler) AddChannel(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	checkID := req.Param("check")
-	connectionUID := req.Param("connection")
+func (h *Handler) AddChannel(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	checkID := httpx.Param(req, "check")
+	connectionUID := httpx.Param(req, "connection")
 
 	if err := h.svc.AddChannel(req.Context(), orgSlug, checkID, connectionUID); err != nil {
 		return h.handleError(writer, err)
@@ -75,10 +74,10 @@ func (h *Handler) AddChannel(writer http.ResponseWriter, req bunrouter.Request) 
 }
 
 // RemoveConnection handles DELETE /api/v1/orgs/:org/checks/:check/connections/:connection.
-func (h *Handler) RemoveConnection(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	checkID := req.Param("check")
-	connectionUID := req.Param("connection")
+func (h *Handler) RemoveConnection(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	checkID := httpx.Param(req, "check")
+	connectionUID := httpx.Param(req, "connection")
 
 	if err := h.svc.RemoveConnection(req.Context(), orgSlug, checkID, connectionUID); err != nil {
 		return h.handleError(writer, err)
@@ -89,10 +88,10 @@ func (h *Handler) RemoveConnection(writer http.ResponseWriter, req bunrouter.Req
 }
 
 // GetConnectionSettings handles GET /api/v1/orgs/:org/checks/:check/connections/:connection.
-func (h *Handler) GetConnectionSettings(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	checkID := req.Param("check")
-	connectionUID := req.Param("connection")
+func (h *Handler) GetConnectionSettings(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	checkID := httpx.Param(req, "check")
+	connectionUID := httpx.Param(req, "connection")
 
 	response, err := h.svc.GetConnectionSettings(req.Context(), orgSlug, checkID, connectionUID)
 	if err != nil {
@@ -103,10 +102,10 @@ func (h *Handler) GetConnectionSettings(writer http.ResponseWriter, req bunroute
 }
 
 // UpdateConnectionSettings handles PATCH /api/v1/orgs/:org/checks/:check/connections/:connection.
-func (h *Handler) UpdateConnectionSettings(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	checkID := req.Param("check")
-	connectionUID := req.Param("connection")
+func (h *Handler) UpdateConnectionSettings(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	checkID := httpx.Param(req, "check")
+	connectionUID := httpx.Param(req, "connection")
 
 	var updateReq UpdateConnectionSettingsRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {

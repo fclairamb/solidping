@@ -7,10 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // Handler handles HTTP requests for results.
@@ -28,8 +27,8 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 }
 
 // ListResults handles GET /api/v1/orgs/:org/results.
-func (h *Handler) ListResults(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) ListResults(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 
 	// Parse query parameters
 	opts := ListResultsOptions{}
@@ -135,10 +134,10 @@ func (h *Handler) handleListError(writer http.ResponseWriter, err error) error {
 // when the raw row has been rolled up. An optional comma-separated ?region=
 // narrows the previous/next neighbor scope only — the row itself is always
 // resolved by UID regardless of region.
-func (h *Handler) GetResult(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	checkIdent := req.Param("check")
-	resultUID := req.Param("uid")
+func (h *Handler) GetResult(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	checkIdent := httpx.Param(req, "check")
+	resultUID := httpx.Param(req, "uid")
 
 	var regions []string
 	if regionParam := req.URL.Query().Get("region"); regionParam != "" {

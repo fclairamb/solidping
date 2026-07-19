@@ -10,8 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/checkers/urlparse"
@@ -20,6 +18,7 @@ import (
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	entitlementshandler "github.com/fclairamb/solidping/server/internal/handlers/entitlements"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // errInvalidStatus is returned when an unknown status token appears in ?status=.
@@ -81,9 +80,9 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 
 // ValidateCheck handles validating a check configuration without persisting.
 func (h *Handler) ValidateCheck(
-	writer http.ResponseWriter, req bunrouter.Request,
+	writer http.ResponseWriter, req *http.Request,
 ) error {
-	orgSlug := req.Param("org")
+	orgSlug := httpx.Param(req, "org")
 
 	var validateReq ValidateCheckRequest
 	if err := json.NewDecoder(req.Body).Decode(&validateReq); err != nil {
@@ -124,8 +123,8 @@ func parseTypeFilter(typeParam string) []string {
 // ListChecks handles listing all checks for an organization.
 //
 //nolint:funlen,cyclop // List handler has many query parameter extractions
-func (h *Handler) ListChecks(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) ListChecks(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 	query := req.URL.Query()
 
 	// Parse the "with" query parameter
@@ -213,8 +212,8 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req bunrouter.Request) 
 }
 
 // CreateCheck handles creating a new check for an organization.
-func (h *Handler) CreateCheck(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) CreateCheck(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 
 	var createReq CreateCheckRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
@@ -267,9 +266,9 @@ func (h *Handler) CreateCheck(writer http.ResponseWriter, req bunrouter.Request)
 }
 
 // GetCheck handles retrieving a single check by UID or slug.
-func (h *Handler) GetCheck(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	identifier := req.Param("checkUid")
+func (h *Handler) GetCheck(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	identifier := httpx.Param(req, "checkUid")
 
 	// Parse the "with" query parameter
 	opts := GetCheckOptions{}
@@ -296,9 +295,9 @@ func (h *Handler) GetCheck(writer http.ResponseWriter, req bunrouter.Request) er
 }
 
 // UpdateCheck handles updating an existing check by UID or slug.
-func (h *Handler) UpdateCheck(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	identifier := req.Param("checkUid")
+func (h *Handler) UpdateCheck(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	identifier := httpx.Param(req, "checkUid")
 
 	var updateReq UpdateCheckRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
@@ -316,9 +315,9 @@ func (h *Handler) UpdateCheck(writer http.ResponseWriter, req bunrouter.Request)
 }
 
 // UpsertCheck handles creating or updating a check by slug (idempotent operation).
-func (h *Handler) UpsertCheck(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	slug := req.Param("slug")
+func (h *Handler) UpsertCheck(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	slug := httpx.Param(req, "slug")
 
 	var upsertReq UpsertCheckRequest
 	if err := json.NewDecoder(req.Body).Decode(&upsertReq); err != nil {
@@ -373,9 +372,9 @@ func (h *Handler) UpsertCheck(writer http.ResponseWriter, req bunrouter.Request)
 }
 
 // DeleteCheck handles deleting a check by UID or slug.
-func (h *Handler) DeleteCheck(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	identifier := req.Param("checkUid")
+func (h *Handler) DeleteCheck(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	identifier := httpx.Param(req, "checkUid")
 
 	if err := h.svc.DeleteCheck(req.Context(), orgSlug, identifier); err != nil {
 		return h.handleDeleteError(writer, err)
@@ -387,9 +386,9 @@ func (h *Handler) DeleteCheck(writer http.ResponseWriter, req bunrouter.Request)
 // CloneCheck handles POST /api/v1/orgs/:org/checks/:checkUid/clone.
 // Empty body is valid; defaults produce an enabled clone with `(copy)` /
 // `-copy` suffixes on name/slug.
-func (h *Handler) CloneCheck(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	identifier := req.Param("checkUid")
+func (h *Handler) CloneCheck(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	identifier := httpx.Param(req, "checkUid")
 
 	var cloneReq CloneCheckRequest
 	if err := json.NewDecoder(req.Body).Decode(&cloneReq); err != nil && !errors.Is(err, io.EOF) {
@@ -407,8 +406,8 @@ func (h *Handler) CloneCheck(writer http.ResponseWriter, req bunrouter.Request) 
 }
 
 // ExportChecks handles exporting all checks for an organization as JSON.
-func (h *Handler) ExportChecks(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) ExportChecks(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 	query := req.URL.Query()
 
 	opts := ListChecksOptions{}
@@ -459,8 +458,8 @@ func (h *Handler) ExportChecks(writer http.ResponseWriter, req bunrouter.Request
 }
 
 // ImportChecks handles importing checks from a JSON export document.
-func (h *Handler) ImportChecks(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) ImportChecks(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 	dryRun := req.URL.Query().Get("dryRun") == queryTrue
 
 	var doc ExportDocument
@@ -490,8 +489,8 @@ func (h *Handler) ImportChecks(writer http.ResponseWriter, req bunrouter.Request
 // document shape, plus an optional managed-label scope and secret references)
 // and reconciles the managed scope against it. Admin-only (gated by route
 // middleware). Query flags: dryRun, prune, force.
-func (h *Handler) ApplyChecks(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) ApplyChecks(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 	query := req.URL.Query()
 
 	body, err := io.ReadAll(req.Body)

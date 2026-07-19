@@ -5,10 +5,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 const (
@@ -32,8 +31,8 @@ func NewHandler(svc *Service, cfg *config.Config) *Handler {
 }
 
 // ListLabels handles GET /api/v1/orgs/:org/labels.
-func (h *Handler) ListLabels(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) ListLabels(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 	query := req.URL.Query()
 
 	key := query.Get("key")

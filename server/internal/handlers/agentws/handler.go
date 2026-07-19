@@ -20,7 +20,6 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/uptrace/bunrouter"
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -111,7 +110,7 @@ func NewHandler(
 
 // Serve authenticates (before the upgrade), upgrades, and runs the agent
 // connection until it closes.
-func (h *Handler) Serve(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Serve(writer http.ResponseWriter, req *http.Request) error {
 	ctx := req.Context()
 
 	authHeader := req.Header.Get("Authorization")
@@ -131,7 +130,7 @@ func (h *Handler) Serve(writer http.ResponseWriter, req bunrouter.Request) error
 // token. The token is validated (non-consuming) BEFORE the upgrade so a bad
 // token gets a real HTTP 401; the atomic consume happens on the enroll frame.
 func (h *Handler) serveEnrollment(
-	ctx context.Context, writer http.ResponseWriter, req bunrouter.Request,
+	ctx context.Context, writer http.ResponseWriter, req *http.Request,
 ) error {
 	token := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
 	tokenHash := agentcrypto.HashEnrollmentToken(token)
@@ -141,7 +140,7 @@ func (h *Handler) serveEnrollment(
 			"Enrollment token is invalid, expired, or already used")
 	}
 
-	conn, err := websocket.Accept(writer, req.Request, &websocket.AcceptOptions{
+	conn, err := websocket.Accept(writer, req, &websocket.AcceptOptions{
 		CompressionMode: websocket.CompressionDisabled,
 	})
 	if err != nil {
@@ -238,7 +237,7 @@ func (h *Handler) awaitEnroll(
 // serveReconnect handles a returning agent authenticating with signed headers:
 // Ed25519 over method|path|timestamp|nonce, ±5 min skew, replay-guarded.
 func (h *Handler) serveReconnect(
-	ctx context.Context, writer http.ResponseWriter, req bunrouter.Request,
+	ctx context.Context, writer http.ResponseWriter, req *http.Request,
 ) error {
 	agentUID := req.Header.Get(headerAgentUID)
 	timestamp := req.Header.Get(headerTimestamp)
@@ -274,7 +273,7 @@ func (h *Handler) serveReconnect(
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Invalid signature")
 	}
 
-	conn, acceptErr := websocket.Accept(writer, req.Request, &websocket.AcceptOptions{
+	conn, acceptErr := websocket.Accept(writer, req, &websocket.AcceptOptions{
 		CompressionMode: websocket.CompressionDisabled,
 	})
 	if acceptErr != nil {

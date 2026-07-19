@@ -6,10 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/jmap"
 )
 
@@ -32,7 +31,7 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 }
 
 // ListActivationFunnel handles GET /api/v1/system/activation. Super-admin only.
-func (h *Handler) ListActivationFunnel(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ListActivationFunnel(writer http.ResponseWriter, req *http.Request) error {
 	resp, err := h.svc.ListActivationFunnel(req.Context())
 	if err != nil {
 		return h.handleError(writer, err)
@@ -42,7 +41,7 @@ func (h *Handler) ListActivationFunnel(writer http.ResponseWriter, req bunrouter
 }
 
 // ListParameters handles GET /api/v1/system/parameters.
-func (h *Handler) ListParameters(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ListParameters(writer http.ResponseWriter, req *http.Request) error {
 	params, err := h.svc.ListParameters(req.Context())
 	if err != nil {
 		return h.handleError(writer, err)
@@ -52,8 +51,8 @@ func (h *Handler) ListParameters(writer http.ResponseWriter, req bunrouter.Reque
 }
 
 // GetParameter handles GET /api/v1/system/parameters/:key.
-func (h *Handler) GetParameter(writer http.ResponseWriter, req bunrouter.Request) error {
-	key := req.Param("key")
+func (h *Handler) GetParameter(writer http.ResponseWriter, req *http.Request) error {
+	key := httpx.Param(req, "key")
 
 	param, err := h.svc.GetParameter(req.Context(), key)
 	if err != nil {
@@ -64,8 +63,8 @@ func (h *Handler) GetParameter(writer http.ResponseWriter, req bunrouter.Request
 }
 
 // SetParameter handles PUT /api/v1/system/parameters/:key.
-func (h *Handler) SetParameter(writer http.ResponseWriter, req bunrouter.Request) error {
-	key := req.Param("key")
+func (h *Handler) SetParameter(writer http.ResponseWriter, req *http.Request) error {
+	key := httpx.Param(req, "key")
 
 	var setReq SetParameterRequest
 	if err := json.NewDecoder(req.Body).Decode(&setReq); err != nil {
@@ -89,8 +88,8 @@ func (h *Handler) SetParameter(writer http.ResponseWriter, req bunrouter.Request
 }
 
 // DeleteParameter handles DELETE /api/v1/system/parameters/:key.
-func (h *Handler) DeleteParameter(writer http.ResponseWriter, req bunrouter.Request) error {
-	key := req.Param("key")
+func (h *Handler) DeleteParameter(writer http.ResponseWriter, req *http.Request) error {
+	key := httpx.Param(req, "key")
 
 	if err := h.svc.DeleteParameter(req.Context(), key); err != nil {
 		return h.handleError(writer, err)
@@ -102,7 +101,7 @@ func (h *Handler) DeleteParameter(writer http.ResponseWriter, req bunrouter.Requ
 }
 
 // TestEmail handles POST /api/v1/system/test-email.
-func (h *Handler) TestEmail(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) TestEmail(writer http.ResponseWriter, req *http.Request) error {
 	var body TestEmailRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
@@ -177,7 +176,7 @@ type EmailInboxTestRequest struct {
 // EmailInboxPublic handles GET /api/v1/system/parameters/email_inbox/public.
 // Returns just the addressDomain so any authenticated user can render the
 // per-check email address. Empty when the inbox isn't configured.
-func (h *Handler) EmailInboxPublic(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) EmailInboxPublic(writer http.ResponseWriter, req *http.Request) error {
 	domain, err := h.svc.EmailInboxPublicAddressDomain(req.Context())
 	if err != nil {
 		return h.WriteInternalError(writer, err)
@@ -189,7 +188,7 @@ func (h *Handler) EmailInboxPublic(writer http.ResponseWriter, req bunrouter.Req
 // EmailInboxConfig handles GET /api/v1/system/email-inbox/config.
 // Returns the saved JMAP config with the password elided. Used by the admin
 // form to prefill its fields after navigating back to the page.
-func (h *Handler) EmailInboxConfig(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) EmailInboxConfig(writer http.ResponseWriter, req *http.Request) error {
 	cfg, err := h.svc.EmailInboxConfig(req.Context())
 	if err != nil {
 		return h.handleEmailInboxError(writer, err)
@@ -199,7 +198,7 @@ func (h *Handler) EmailInboxConfig(writer http.ResponseWriter, req bunrouter.Req
 }
 
 // EmailInboxStatus handles GET /api/v1/system/email-inbox/status.
-func (h *Handler) EmailInboxStatus(writer http.ResponseWriter, _ bunrouter.Request) error {
+func (h *Handler) EmailInboxStatus(writer http.ResponseWriter, _ *http.Request) error {
 	status, err := h.svc.EmailInboxStatus()
 	if err != nil {
 		return h.handleEmailInboxError(writer, err)
@@ -219,7 +218,7 @@ func (h *Handler) EmailInboxStatus(writer http.ResponseWriter, _ bunrouter.Reque
 }
 
 // EmailInboxTest handles POST /api/v1/system/email-inbox/test.
-func (h *Handler) EmailInboxTest(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) EmailInboxTest(writer http.ResponseWriter, req *http.Request) error {
 	var body EmailInboxTestRequest
 
 	if req.Body != nil {
@@ -262,7 +261,7 @@ func (h *Handler) EmailInboxTest(writer http.ResponseWriter, req bunrouter.Reque
 }
 
 // EmailInboxSync handles POST /api/v1/system/email-inbox/sync.
-func (h *Handler) EmailInboxSync(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) EmailInboxSync(writer http.ResponseWriter, req *http.Request) error {
 	if err := h.svc.EmailInboxSync(req.Context()); err != nil {
 		return h.handleEmailInboxError(writer, err)
 	}
@@ -291,7 +290,7 @@ func (h *Handler) handleEmailInboxError(writer http.ResponseWriter, err error) e
 // Returns each worker's offered check load per lane (job counts, summed
 // cost/delay EWMAs, summed duty cycle) so overload is visible server-side
 // instead of being re-derived client-side from raw rows.
-func (h *Handler) LaneLoad(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) LaneLoad(writer http.ResponseWriter, req *http.Request) error {
 	report, err := h.svc.LaneLoad(req.Context())
 	if err != nil {
 		return h.handleError(writer, err)

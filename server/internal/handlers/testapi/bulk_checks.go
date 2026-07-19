@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -67,7 +65,7 @@ type bulkCreateParams struct {
 }
 
 // BulkCreateChecks creates multiple checks from a template.
-func (h *Handler) BulkCreateChecks(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) BulkCreateChecks(writer http.ResponseWriter, req *http.Request) error {
 	params, err := h.parseBulkCreateParams(req)
 	if err != nil {
 		return h.writeError(writer, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
@@ -84,7 +82,7 @@ func (h *Handler) BulkCreateChecks(writer http.ResponseWriter, req bunrouter.Req
 	return h.writeJSON(writer, http.StatusOK, resp)
 }
 
-func (h *Handler) parseBulkCreateParams(req bunrouter.Request) (*bulkCreateParams, error) {
+func (h *Handler) parseBulkCreateParams(req *http.Request) (*bulkCreateParams, error) {
 	query := req.URL.Query()
 
 	checkType := query.Get("type")
@@ -204,7 +202,7 @@ func (h *Handler) executeBulkCreate(
 }
 
 // BulkDeleteChecks deletes multiple checks matching a slug template.
-func (h *Handler) BulkDeleteChecks(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) BulkDeleteChecks(writer http.ResponseWriter, req *http.Request) error {
 	ctx := req.Context()
 	query := req.URL.Query()
 

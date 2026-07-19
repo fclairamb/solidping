@@ -6,10 +6,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 )
 
@@ -30,9 +29,9 @@ type ListLanHostsResponse struct {
 // It resolves the org + channel, asserts the channel is a granted
 // Freebox connection, and proxies the LAN-browser query through to the
 // underlying Freebox.
-func (h *Handler) LanHostsHandler(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	connectionUID := req.Param("uid")
+func (h *Handler) LanHostsHandler(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	connectionUID := httpx.Param(req, "uid")
 
 	hosts, err := h.svc.ListFreeboxLanHosts(req.Context(), orgSlug, connectionUID)
 	if err != nil {

@@ -5,10 +5,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // Handler exposes the severity CRUD endpoints over HTTP.
@@ -26,8 +25,8 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 }
 
 // ListSeverities handles GET /orgs/$org/severities.
-func (h *Handler) ListSeverities(writer http.ResponseWriter, req bunrouter.Request) error {
-	severities, err := h.svc.ListSeverities(req.Context(), req.Param("org"))
+func (h *Handler) ListSeverities(writer http.ResponseWriter, req *http.Request) error {
+	severities, err := h.svc.ListSeverities(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
 		return h.handleErr(writer, err)
 	}
@@ -36,7 +35,7 @@ func (h *Handler) ListSeverities(writer http.ResponseWriter, req bunrouter.Reque
 }
 
 // CreateSeverity handles POST /orgs/$org/severities.
-func (h *Handler) CreateSeverity(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) CreateSeverity(writer http.ResponseWriter, req *http.Request) error {
 	var createReq CreateSeverityRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
@@ -50,7 +49,7 @@ func (h *Handler) CreateSeverity(writer http.ResponseWriter, req bunrouter.Reque
 		})
 	}
 
-	severity, err := h.svc.CreateSeverity(req.Context(), req.Param("org"), createReq)
+	severity, err := h.svc.CreateSeverity(req.Context(), httpx.Param(req, "org"), createReq)
 	if err != nil {
 		return h.handleErr(writer, err)
 	}
@@ -59,8 +58,8 @@ func (h *Handler) CreateSeverity(writer http.ResponseWriter, req bunrouter.Reque
 }
 
 // GetSeverity handles GET /orgs/$org/severities/$identifier.
-func (h *Handler) GetSeverity(writer http.ResponseWriter, req bunrouter.Request) error {
-	severity, err := h.svc.GetSeverity(req.Context(), req.Param("org"), req.Param("uid"))
+func (h *Handler) GetSeverity(writer http.ResponseWriter, req *http.Request) error {
+	severity, err := h.svc.GetSeverity(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid"))
 	if err != nil {
 		return h.handleErr(writer, err)
 	}
@@ -69,7 +68,7 @@ func (h *Handler) GetSeverity(writer http.ResponseWriter, req bunrouter.Request)
 }
 
 // UpdateSeverity handles PATCH /orgs/$org/severities/$identifier.
-func (h *Handler) UpdateSeverity(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) UpdateSeverity(writer http.ResponseWriter, req *http.Request) error {
 	var updateReq UpdateSeverityRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
@@ -77,7 +76,7 @@ func (h *Handler) UpdateSeverity(writer http.ResponseWriter, req bunrouter.Reque
 		})
 	}
 
-	severity, err := h.svc.UpdateSeverity(req.Context(), req.Param("org"), req.Param("uid"), updateReq)
+	severity, err := h.svc.UpdateSeverity(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid"), updateReq)
 	if err != nil {
 		return h.handleErr(writer, err)
 	}
@@ -86,8 +85,8 @@ func (h *Handler) UpdateSeverity(writer http.ResponseWriter, req bunrouter.Reque
 }
 
 // DeleteSeverity handles DELETE /orgs/$org/severities/$identifier.
-func (h *Handler) DeleteSeverity(writer http.ResponseWriter, req bunrouter.Request) error {
-	if err := h.svc.DeleteSeverity(req.Context(), req.Param("org"), req.Param("uid")); err != nil {
+func (h *Handler) DeleteSeverity(writer http.ResponseWriter, req *http.Request) error {
+	if err := h.svc.DeleteSeverity(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid")); err != nil {
 		return h.handleErr(writer, err)
 	}
 	writer.WriteHeader(http.StatusNoContent)

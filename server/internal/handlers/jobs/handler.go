@@ -6,9 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	mw "github.com/fclairamb/solidping/server/internal/middleware"
 )
@@ -29,7 +28,7 @@ func NewHandler(jobSvc jobsvc.Service) *Handler {
 
 // CreateJob creates a new job.
 // POST /api/v1/orgs/:org/jobs.
-func (h *Handler) CreateJob(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) CreateJob(writer http.ResponseWriter, req *http.Request) error {
 	org, _ := mw.GetOrganizationFromContext(req.Context())
 	if org == nil {
 		return h.writeError(writer, http.StatusNotFound, "ORGANIZATION_NOT_FOUND", "organization not found")
@@ -58,13 +57,13 @@ func (h *Handler) CreateJob(writer http.ResponseWriter, req bunrouter.Request) e
 
 // GetJob retrieves a job by UID, scoped to the URL's organization.
 // GET /api/v1/orgs/:org/jobs/:uid.
-func (h *Handler) GetJob(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) GetJob(writer http.ResponseWriter, req *http.Request) error {
 	org, _ := mw.GetOrganizationFromContext(req.Context())
 	if org == nil {
 		return h.writeError(writer, http.StatusNotFound, "ORGANIZATION_NOT_FOUND", "organization not found")
 	}
 
-	uid := req.Param("uid")
+	uid := httpx.Param(req, "uid")
 
 	job, ok := h.jobInOrg(req.Context(), org.UID, uid)
 	if !ok {
@@ -91,7 +90,7 @@ func (h *Handler) jobInOrg(ctx context.Context, orgUID, uid string) (*models.Job
 
 // ListJobs lists jobs with optional filtering.
 // GET /api/v1/orgs/:org/jobs.
-func (h *Handler) ListJobs(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ListJobs(writer http.ResponseWriter, req *http.Request) error {
 	// The :org URL segment is a SLUG that the org middleware has already
 	// resolved; filtering on the raw param (as this once did) matches no rows.
 	org, _ := mw.GetOrganizationFromContext(req.Context())
@@ -121,13 +120,13 @@ func (h *Handler) ListJobs(writer http.ResponseWriter, req bunrouter.Request) er
 // cancel another org's job by UID (org ownership is immutable, so
 // check-then-cancel cannot race).
 // DELETE /api/v1/orgs/:org/jobs/:uid.
-func (h *Handler) CancelJob(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) CancelJob(writer http.ResponseWriter, req *http.Request) error {
 	org, _ := mw.GetOrganizationFromContext(req.Context())
 	if org == nil {
 		return h.writeError(writer, http.StatusNotFound, "ORGANIZATION_NOT_FOUND", "organization not found")
 	}
 
-	uid := req.Param("uid")
+	uid := httpx.Param(req, "uid")
 
 	if _, ok := h.jobInOrg(req.Context(), org.UID, uid); !ok {
 		return h.writeError(writer, http.StatusNotFound, "NOT_FOUND", "Job not found: "+uid)
@@ -172,7 +171,7 @@ func (h *Handler) writeInternalError(w http.ResponseWriter, err error) error {
 }
 
 // RegisterRoutes registers job routes on the given router group.
-func (h *Handler) RegisterRoutes(group *bunrouter.Group) {
+func (h *Handler) RegisterRoutes(group *httpx.Group) {
 	jobs := group.NewGroup("/orgs/:org/jobs")
 	jobs.POST("", h.CreateJob)
 	jobs.GET("", h.ListJobs)

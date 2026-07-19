@@ -18,9 +18,9 @@ import (
 	"time"
 
 	ics "github.com/arran4/golang-ical"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 const (
@@ -31,8 +31,8 @@ const (
 
 // ServeICalFeed handles GET /api/v1/on-call-schedules/:secret/feed.ics. It
 // is wired outside the auth middleware: the secret is the credential.
-func (h *Handler) ServeICalFeed(writer http.ResponseWriter, req bunrouter.Request) error {
-	secret := req.Param("secret")
+func (h *Handler) ServeICalFeed(writer http.ResponseWriter, req *http.Request) error {
+	secret := httpx.Param(req, "secret")
 
 	schedule, err := h.svc.LookupScheduleByICalSecret(req.Context(), secret)
 	if err != nil {

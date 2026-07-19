@@ -3,8 +3,6 @@ package auth
 import (
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
@@ -47,7 +45,7 @@ type ProvidersResponse struct {
 // ListProviders returns which auth providers are configured.
 //
 //nolint:cyclop // Linear sequence of provider checks with the same shape; flatter than splitting up.
-func (h *ProvidersHandler) ListProviders(writer http.ResponseWriter, _ bunrouter.Request) error {
+func (h *ProvidersHandler) ListProviders(writer http.ResponseWriter, _ *http.Request) error {
 	providers := make([]ProviderInfo, 0)
 
 	if h.cfg.Slack.Enabled && h.cfg.Slack.ClientID != "" && h.cfg.Slack.ClientSecret != "" {

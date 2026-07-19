@@ -5,10 +5,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 )
 
@@ -32,7 +31,7 @@ func NewHandler(svc Service, cfg *config.Config) *Handler {
 	}
 }
 
-func orgUIDFromContext(req bunrouter.Request) (string, bool) {
+func orgUIDFromContext(req *http.Request) (string, bool) {
 	org, ok := middleware.GetOrganizationFromContext(req.Context())
 	if !ok || org == nil {
 		return "", false
@@ -41,7 +40,7 @@ func orgUIDFromContext(req bunrouter.Request) (string, bool) {
 	return org.UID, true
 }
 
-func (h *Handler) parseListOptions(req bunrouter.Request) ListOptions {
+func (h *Handler) parseListOptions(req *http.Request) ListOptions {
 	query := req.URL.Query()
 
 	limit, err := base.ParsePageLimit(query, defaultPageSize, maxPageSize)
@@ -66,7 +65,7 @@ func (h *Handler) parseListOptions(req bunrouter.Request) ListOptions {
 
 // ListSystemJobs lists jobs across all orgs incl. system jobs (super-admin).
 // GET /api/v1/system/jobs.
-func (h *Handler) ListSystemJobs(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ListSystemJobs(writer http.ResponseWriter, req *http.Request) error {
 	jobs, err := h.svc.ListJobs(req.Context(), "", h.parseListOptions(req))
 	if err != nil {
 		return h.WriteInternalError(writer, err)
@@ -77,19 +76,19 @@ func (h *Handler) ListSystemJobs(writer http.ResponseWriter, req bunrouter.Reque
 
 // GetSystemJob returns a single job across all orgs (super-admin).
 // GET /api/v1/system/jobs/:uid.
-func (h *Handler) GetSystemJob(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) GetSystemJob(writer http.ResponseWriter, req *http.Request) error {
 	return h.getJob(writer, req, "")
 }
 
 // GetSystemJobChain returns the retry chain for a job across all orgs.
 // GET /api/v1/system/jobs/:uid/chain.
-func (h *Handler) GetSystemJobChain(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) GetSystemJobChain(writer http.ResponseWriter, req *http.Request) error {
 	return h.getChain(writer, req, "")
 }
 
 // ListOrgJobs lists jobs for the org, admin-gated.
 // GET /api/v1/orgs/:org/jobs/admin.
-func (h *Handler) ListOrgJobs(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ListOrgJobs(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, ok := orgUIDFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Organization context missing")
@@ -105,7 +104,7 @@ func (h *Handler) ListOrgJobs(writer http.ResponseWriter, req bunrouter.Request)
 
 // GetOrgJob returns a single org job, admin-gated.
 // GET /api/v1/orgs/:org/jobs/:uid/detail.
-func (h *Handler) GetOrgJob(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) GetOrgJob(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, ok := orgUIDFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Organization context missing")
@@ -116,7 +115,7 @@ func (h *Handler) GetOrgJob(writer http.ResponseWriter, req bunrouter.Request) e
 
 // GetOrgJobChain returns the retry chain for an org job, admin-gated.
 // GET /api/v1/orgs/:org/jobs/:uid/chain.
-func (h *Handler) GetOrgJobChain(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) GetOrgJobChain(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, ok := orgUIDFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Organization context missing")
@@ -125,8 +124,8 @@ func (h *Handler) GetOrgJobChain(writer http.ResponseWriter, req bunrouter.Reque
 	return h.getChain(writer, req, orgUID)
 }
 
-func (h *Handler) getJob(writer http.ResponseWriter, req bunrouter.Request, orgUID string) error {
-	job, err := h.svc.GetJob(req.Context(), orgUID, req.Param("uid"))
+func (h *Handler) getJob(writer http.ResponseWriter, req *http.Request, orgUID string) error {
+	job, err := h.svc.GetJob(req.Context(), orgUID, httpx.Param(req, "uid"))
 	if err != nil {
 		if errors.Is(err, ErrJobNotFound) {
 			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Job not found")
@@ -138,8 +137,8 @@ func (h *Handler) getJob(writer http.ResponseWriter, req bunrouter.Request, orgU
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{responseKeyData: job})
 }
 
-func (h *Handler) getChain(writer http.ResponseWriter, req bunrouter.Request, orgUID string) error {
-	chain, err := h.svc.RetryChain(req.Context(), orgUID, req.Param("uid"))
+func (h *Handler) getChain(writer http.ResponseWriter, req *http.Request, orgUID string) error {
+	chain, err := h.svc.RetryChain(req.Context(), orgUID, httpx.Param(req, "uid"))
 	if err != nil {
 		if errors.Is(err, ErrJobNotFound) {
 			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Job not found")

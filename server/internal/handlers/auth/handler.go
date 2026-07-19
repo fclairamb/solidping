@@ -6,11 +6,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // CookieAuthToken is the name of the cookie used for storing the access token.
@@ -97,7 +96,7 @@ func setAccessTokenCookie(writer http.ResponseWriter, accessToken string, expire
 
 // Login handles user login with email and password.
 // Org is read from the request body (optional).
-func (h *Handler) Login(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Login(writer http.ResponseWriter, req *http.Request) error {
 	var loginReq LoginRequest
 	if err := json.NewDecoder(req.Body).Decode(&loginReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
@@ -133,7 +132,7 @@ func (h *Handler) Login(writer http.ResponseWriter, req bunrouter.Request) error
 }
 
 // Logout handles user logout. Uses claims from middleware context.
-func (h *Handler) Logout(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Logout(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
@@ -188,7 +187,7 @@ func (h *Handler) Logout(writer http.ResponseWriter, req bunrouter.Request) erro
 }
 
 // Refresh handles token refresh. No org parameter needed — derived from refresh token.
-func (h *Handler) Refresh(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Refresh(writer http.ResponseWriter, req *http.Request) error {
 	var refreshReq RefreshRequest
 	if err := json.NewDecoder(req.Body).Decode(&refreshReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
@@ -219,7 +218,7 @@ func (h *Handler) Refresh(writer http.ResponseWriter, req bunrouter.Request) err
 }
 
 // Me returns information about the current authenticated user. Uses claims from middleware context.
-func (h *Handler) Me(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Me(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
@@ -234,7 +233,7 @@ func (h *Handler) Me(writer http.ResponseWriter, req bunrouter.Request) error {
 }
 
 // UpdateMe updates the current user's profile. Uses claims from middleware context.
-func (h *Handler) UpdateMe(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) UpdateMe(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
@@ -256,7 +255,7 @@ func (h *Handler) UpdateMe(writer http.ResponseWriter, req bunrouter.Request) er
 }
 
 // GetAllUserTokens returns all tokens for the authenticated user across all orgs.
-func (h *Handler) GetAllUserTokens(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) GetAllUserTokens(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
@@ -274,13 +273,13 @@ func (h *Handler) GetAllUserTokens(writer http.ResponseWriter, req bunrouter.Req
 }
 
 // GetOrgTokens returns the list of tokens for the authenticated user scoped to an org.
-func (h *Handler) GetOrgTokens(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) GetOrgTokens(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	orgSlug := req.Param("org")
+	orgSlug := httpx.Param(req, "org")
 
 	// Get optional token type filter
 	tokenType := req.URL.Query().Get("type")
@@ -294,13 +293,13 @@ func (h *Handler) GetOrgTokens(writer http.ResponseWriter, req bunrouter.Request
 }
 
 // CreateToken creates a new Personal Access Token. Org-scoped via URL param.
-func (h *Handler) CreateToken(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) CreateToken(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	orgSlug := req.Param("org")
+	orgSlug := httpx.Param(req, "org")
 
 	var createReq CreateTokenRequest
 
@@ -325,13 +324,13 @@ func (h *Handler) CreateToken(writer http.ResponseWriter, req bunrouter.Request)
 }
 
 // RevokeToken revokes (deletes) a user token. User-scoped via middleware context.
-func (h *Handler) RevokeToken(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) RevokeToken(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	tokenUID := req.Param("tokenUid")
+	tokenUID := httpx.Param(req, "tokenUid")
 	if tokenUID == "" {
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
 			{Name: "tokenUid", Message: "Token UID is required"},
@@ -356,7 +355,7 @@ func (h *Handler) RevokeToken(writer http.ResponseWriter, req bunrouter.Request)
 // self-revoke too: dropping your own credential is never a privilege
 // escalation. A credential with no backing grant row (PAT, 2FA temp token) has
 // nothing to revoke here and gets a 422 validation error.
-func (h *Handler) RevokeCurrentToken(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) RevokeCurrentToken(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
@@ -380,7 +379,7 @@ func (h *Handler) RevokeCurrentToken(writer http.ResponseWriter, req bunrouter.R
 }
 
 // SwitchOrg switches the user's current organization context.
-func (h *Handler) SwitchOrg(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) SwitchOrg(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
@@ -506,14 +505,14 @@ func (h *Handler) clearAuthCookie(writer http.ResponseWriter) {
 }
 
 // getClaimsFromContext retrieves the JWT claims set by the auth middleware.
-func getClaimsFromContext(req bunrouter.Request) (*Claims, bool) {
+func getClaimsFromContext(req *http.Request) (*Claims, bool) {
 	claims, ok := req.Context().Value(base.ContextKeyClaims).(*Claims)
 
 	return claims, ok
 }
 
 // Register handles user self-registration.
-func (h *Handler) Register(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Register(writer http.ResponseWriter, req *http.Request) error {
 	var regReq RegisterRequest
 	if err := json.NewDecoder(req.Body).Decode(&regReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
@@ -542,7 +541,7 @@ func (h *Handler) Register(writer http.ResponseWriter, req bunrouter.Request) er
 }
 
 // ConfirmRegistration handles email confirmation for registration.
-func (h *Handler) ConfirmRegistration(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ConfirmRegistration(writer http.ResponseWriter, req *http.Request) error {
 	var confirmReq ConfirmRegistrationRequest
 	if err := json.NewDecoder(req.Body).Decode(&confirmReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
@@ -569,7 +568,7 @@ func (h *Handler) ConfirmRegistration(writer http.ResponseWriter, req bunrouter.
 }
 
 // RequestPasswordReset handles password reset requests.
-func (h *Handler) RequestPasswordReset(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) RequestPasswordReset(writer http.ResponseWriter, req *http.Request) error {
 	var resetReq RequestPasswordResetRequest
 	if err := json.NewDecoder(req.Body).Decode(&resetReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
@@ -597,7 +596,7 @@ func (h *Handler) RequestPasswordReset(writer http.ResponseWriter, req bunrouter
 }
 
 // ResetPassword handles setting a new password with a reset token.
-func (h *Handler) ResetPassword(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ResetPassword(writer http.ResponseWriter, req *http.Request) error {
 	var resetReq ResetPasswordRequest
 	if err := json.NewDecoder(req.Body).Decode(&resetReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
@@ -639,7 +638,7 @@ func (h *Handler) handlePasswordResetError(writer http.ResponseWriter, err error
 }
 
 // CreateOrg handles organization creation.
-func (h *Handler) CreateOrg(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) CreateOrg(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
@@ -692,7 +691,7 @@ func (h *Handler) CreateOrg(writer http.ResponseWriter, req bunrouter.Request) e
 }
 
 // CreateInvitation handles invitation creation.
-func (h *Handler) CreateInvitation(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) CreateInvitation(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
@@ -703,7 +702,7 @@ func (h *Handler) CreateInvitation(writer http.ResponseWriter, req bunrouter.Req
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin access required")
 	}
 
-	orgSlug := req.Param("org")
+	orgSlug := httpx.Param(req, "org")
 
 	var inviteReq InviteRequest
 	if err := json.NewDecoder(req.Body).Decode(&inviteReq); err != nil {
@@ -739,7 +738,7 @@ func (h *Handler) CreateInvitation(writer http.ResponseWriter, req bunrouter.Req
 }
 
 // ListInvitations lists pending invitations for an organization.
-func (h *Handler) ListInvitations(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ListInvitations(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
@@ -749,7 +748,7 @@ func (h *Handler) ListInvitations(writer http.ResponseWriter, req bunrouter.Requ
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin access required")
 	}
 
-	orgSlug := req.Param("org")
+	orgSlug := httpx.Param(req, "org")
 
 	resp, err := h.svc.ListInvitations(req.Context(), orgSlug)
 	if err != nil {
@@ -760,7 +759,7 @@ func (h *Handler) ListInvitations(writer http.ResponseWriter, req bunrouter.Requ
 }
 
 // RevokeInvitation revokes a pending invitation.
-func (h *Handler) RevokeInvitation(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) RevokeInvitation(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
@@ -770,8 +769,8 @@ func (h *Handler) RevokeInvitation(writer http.ResponseWriter, req bunrouter.Req
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin access required")
 	}
 
-	orgSlug := req.Param("org")
-	invitationUID := req.Param("uid")
+	orgSlug := httpx.Param(req, "org")
+	invitationUID := httpx.Param(req, "uid")
 
 	err := h.svc.RevokeInvitation(req.Context(), orgSlug, invitationUID)
 	if err != nil {
@@ -784,8 +783,8 @@ func (h *Handler) RevokeInvitation(writer http.ResponseWriter, req bunrouter.Req
 }
 
 // GetInviteInfo returns public info about an invitation (no auth required).
-func (h *Handler) GetInviteInfo(writer http.ResponseWriter, req bunrouter.Request) error {
-	token := req.Param("token")
+func (h *Handler) GetInviteInfo(writer http.ResponseWriter, req *http.Request) error {
+	token := httpx.Param(req, "token")
 	if token == "" {
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
 			{Name: keyToken, Message: msgTokenRequired},
@@ -801,7 +800,7 @@ func (h *Handler) GetInviteInfo(writer http.ResponseWriter, req bunrouter.Reques
 }
 
 // AcceptInvite accepts an invitation (no auth required for new users).
-func (h *Handler) AcceptInvite(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) AcceptInvite(writer http.ResponseWriter, req *http.Request) error {
 	var acceptReq AcceptInviteRequest
 	if err := json.NewDecoder(req.Body).Decode(&acceptReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
@@ -828,7 +827,7 @@ func (h *Handler) AcceptInvite(writer http.ResponseWriter, req bunrouter.Request
 }
 
 // GetOrgSettings returns organization settings.
-func (h *Handler) GetOrgSettings(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) GetOrgSettings(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
@@ -838,7 +837,7 @@ func (h *Handler) GetOrgSettings(writer http.ResponseWriter, req bunrouter.Reque
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin access required")
 	}
 
-	orgSlug := req.Param("org")
+	orgSlug := httpx.Param(req, "org")
 
 	resp, err := h.svc.GetOrgSettings(req.Context(), orgSlug)
 	if err != nil {
@@ -849,7 +848,7 @@ func (h *Handler) GetOrgSettings(writer http.ResponseWriter, req bunrouter.Reque
 }
 
 // UpdateOrgSettings updates organization settings.
-func (h *Handler) UpdateOrgSettings(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) UpdateOrgSettings(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
@@ -859,7 +858,7 @@ func (h *Handler) UpdateOrgSettings(writer http.ResponseWriter, req bunrouter.Re
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin access required")
 	}
 
-	orgSlug := req.Param("org")
+	orgSlug := httpx.Param(req, "org")
 
 	var updateReq UpdateOrgSettingsRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
@@ -947,7 +946,7 @@ func (h *Handler) handleInvitationError(writer http.ResponseWriter, err error) e
 }
 
 // Setup2FA initiates TOTP 2FA setup for the authenticated user.
-func (h *Handler) Setup2FA(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Setup2FA(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
@@ -962,7 +961,7 @@ func (h *Handler) Setup2FA(writer http.ResponseWriter, req bunrouter.Request) er
 }
 
 // Confirm2FA validates the TOTP code and enables 2FA, returning recovery codes.
-func (h *Handler) Confirm2FA(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Confirm2FA(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
@@ -990,7 +989,7 @@ func (h *Handler) Confirm2FA(writer http.ResponseWriter, req bunrouter.Request) 
 }
 
 // Verify2FA validates a TOTP code during login using a temporary token.
-func (h *Handler) Verify2FA(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Verify2FA(writer http.ResponseWriter, req *http.Request) error {
 	tempToken := extractBearerToken(req)
 	if tempToken == "" {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Temporary token required")
@@ -1025,7 +1024,7 @@ func (h *Handler) Verify2FA(writer http.ResponseWriter, req bunrouter.Request) e
 }
 
 // Recovery2FA uses a recovery code during login to complete authentication.
-func (h *Handler) Recovery2FA(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Recovery2FA(writer http.ResponseWriter, req *http.Request) error {
 	tempToken := extractBearerToken(req)
 	if tempToken == "" {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Temporary token required")
@@ -1060,7 +1059,7 @@ func (h *Handler) Recovery2FA(writer http.ResponseWriter, req bunrouter.Request)
 }
 
 // Disable2FA disables 2FA for the authenticated user.
-func (h *Handler) Disable2FA(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Disable2FA(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
@@ -1110,7 +1109,7 @@ func (h *Handler) handle2FAError(writer http.ResponseWriter, err error) error {
 }
 
 // extractBearerToken extracts the Bearer token from the Authorization header.
-func extractBearerToken(req bunrouter.Request) string {
+func extractBearerToken(req *http.Request) string {
 	authHeader := req.Header.Get("Authorization")
 
 	const prefix = "Bearer "

@@ -6,10 +6,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // Handler handles HTTP requests for events.
@@ -27,8 +26,8 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 }
 
 // ListEvents handles GET /api/v1/orgs/:org/events.
-func (h *Handler) ListEvents(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) ListEvents(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 
 	query := req.URL.Query()
 
@@ -73,9 +72,9 @@ func (h *Handler) ListEvents(writer http.ResponseWriter, req bunrouter.Request) 
 }
 
 // ListIncidentEvents handles GET /api/v1/orgs/:org/incidents/:uid/events.
-func (h *Handler) ListIncidentEvents(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	incidentUID := req.Param("uid")
+func (h *Handler) ListIncidentEvents(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	incidentUID := httpx.Param(req, "uid")
 
 	query := req.URL.Query()
 
@@ -106,9 +105,9 @@ func (h *Handler) ListIncidentEvents(writer http.ResponseWriter, req bunrouter.R
 }
 
 // ListCheckEvents handles GET /api/v1/orgs/:org/checks/:checkUid/events.
-func (h *Handler) ListCheckEvents(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	checkUID := req.Param("checkUid")
+func (h *Handler) ListCheckEvents(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	checkUID := httpx.Param(req, "checkUid")
 
 	query := req.URL.Query()
 

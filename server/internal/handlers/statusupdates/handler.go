@@ -7,10 +7,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 )
 
@@ -33,7 +32,7 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 	}
 }
 
-func (h *Handler) actorUID(req bunrouter.Request) string {
+func (h *Handler) actorUID(req *http.Request) string {
 	if user, ok := middleware.GetUserFromContext(req.Context()); ok && user != nil {
 		return user.UID
 	}
@@ -42,8 +41,8 @@ func (h *Handler) actorUID(req bunrouter.Request) string {
 }
 
 // ListStatusUpdates handles GET /api/v1/orgs/:org/status-updates.
-func (h *Handler) ListStatusUpdates(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) ListStatusUpdates(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 	query := req.URL.Query()
 
 	limit := 50
@@ -88,8 +87,8 @@ func (h *Handler) ListStatusUpdates(writer http.ResponseWriter, req bunrouter.Re
 }
 
 // CreateStatusUpdate handles POST /api/v1/orgs/:org/status-updates.
-func (h *Handler) CreateStatusUpdate(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) CreateStatusUpdate(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 
 	var createReq CreateStatusUpdateRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
@@ -107,9 +106,9 @@ func (h *Handler) CreateStatusUpdate(writer http.ResponseWriter, req bunrouter.R
 }
 
 // GetStatusUpdate handles GET /api/v1/orgs/:org/status-updates/:uid.
-func (h *Handler) GetStatusUpdate(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	uid := req.Param("uid")
+func (h *Handler) GetStatusUpdate(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	uid := httpx.Param(req, "uid")
 
 	update, err := h.svc.GetStatusUpdate(req.Context(), orgSlug, uid)
 	if err != nil {
@@ -120,9 +119,9 @@ func (h *Handler) GetStatusUpdate(writer http.ResponseWriter, req bunrouter.Requ
 }
 
 // UpdateStatusUpdate handles PATCH /api/v1/orgs/:org/status-updates/:uid.
-func (h *Handler) UpdateStatusUpdate(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	uid := req.Param("uid")
+func (h *Handler) UpdateStatusUpdate(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	uid := httpx.Param(req, "uid")
 
 	var updateReq UpdateStatusUpdateRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
@@ -140,9 +139,9 @@ func (h *Handler) UpdateStatusUpdate(writer http.ResponseWriter, req bunrouter.R
 }
 
 // DeleteStatusUpdate handles DELETE /api/v1/orgs/:org/status-updates/:uid → 204.
-func (h *Handler) DeleteStatusUpdate(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	uid := req.Param("uid")
+func (h *Handler) DeleteStatusUpdate(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	uid := httpx.Param(req, "uid")
 
 	if err := h.svc.DeleteStatusUpdate(req.Context(), orgSlug, uid, h.actorUID(req)); err != nil {
 		return h.handleError(writer, err)

@@ -6,12 +6,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/discovery/scantypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	mw "github.com/fclairamb/solidping/server/internal/middleware"
@@ -25,7 +24,7 @@ const (
 )
 
 // isAdmin returns true if the request context has an admin or super admin role.
-func isAdmin(req bunrouter.Request) bool {
+func isAdmin(req *http.Request) bool {
 	claims, ok := mw.GetClaimsFromContext(req.Context())
 	if !ok || claims == nil {
 		return false
@@ -50,7 +49,7 @@ func NewHandler(svc *Service, cfg *config.Config) *Handler {
 
 // RegisterRoutes registers discovery routes on the given router group.
 // The group must already point to /orgs/:org/discovery and have RequireAuth + RequireOrgAccess applied.
-func (h *Handler) RegisterRoutes(group *bunrouter.Group) {
+func (h *Handler) RegisterRoutes(group *httpx.Group) {
 	group.GET("/types", h.ListTypes)
 	group.POST("/scans", h.StartScan)
 	group.GET("/scans", h.ListScans)
@@ -71,7 +70,7 @@ type discoveryTypeDescriptor struct {
 
 // ListTypes returns the registered discovery types so the frontend can build its
 // type picker without hard-coding the set.
-func (h *Handler) ListTypes(writer http.ResponseWriter, _ bunrouter.Request) error {
+func (h *Handler) ListTypes(writer http.ResponseWriter, _ *http.Request) error {
 	defs := scantypes.List()
 	out := make([]discoveryTypeDescriptor, 0, len(defs))
 
@@ -92,7 +91,7 @@ type StartScanRequest struct {
 // generic {type, parameters}; the discovery-type registry validates parameters
 // and resolves the job to enqueue. The response carries the scan job plus its
 // ScanProgress.
-func (h *Handler) StartScan(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) StartScan(writer http.ResponseWriter, req *http.Request) error {
 	if !isAdmin(req) {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "admin access required")
 	}
@@ -161,7 +160,7 @@ func statusForDiscoveryCode(code string) int {
 }
 
 // ListScans handles GET /orgs/:org/discovery/scans.
-func (h *Handler) ListScans(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ListScans(writer http.ResponseWriter, req *http.Request) error {
 	org, _ := mw.GetOrganizationFromContext(req.Context())
 	if org == nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "organization not found")
@@ -197,13 +196,13 @@ func (h *Handler) ListScans(writer http.ResponseWriter, req bunrouter.Request) e
 // GetScan handles GET /orgs/:org/discovery/scans/:jobUid. It returns the scan's
 // job plus a uniform progress block (chunk counts, derived status, group/check
 // counts) for every scan type.
-func (h *Handler) GetScan(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) GetScan(writer http.ResponseWriter, req *http.Request) error {
 	org, _ := mw.GetOrganizationFromContext(req.Context())
 	if org == nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "organization not found")
 	}
 
-	jobUID := req.Param("jobUid")
+	jobUID := httpx.Param(req, "jobUid")
 
 	job, err := h.svc.jobSvc.GetJob(req.Context(), jobUID)
 	if err != nil {
@@ -220,7 +219,7 @@ func (h *Handler) GetScan(writer http.ResponseWriter, req bunrouter.Request) err
 
 // CancelScan handles POST /orgs/:org/discovery/scans/:jobUid/cancel.
 // Admin only. Cancels the plan job (if pending) and all pending child chunks.
-func (h *Handler) CancelScan(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) CancelScan(writer http.ResponseWriter, req *http.Request) error {
 	if !isAdmin(req) {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "admin access required")
 	}
@@ -230,7 +229,7 @@ func (h *Handler) CancelScan(writer http.ResponseWriter, req bunrouter.Request) 
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "organization not found")
 	}
 
-	jobUID := req.Param("jobUid")
+	jobUID := httpx.Param(req, "jobUid")
 
 	err := h.svc.CancelScan(req.Context(), org.UID, jobUID)
 	if errors.Is(err, ErrScanNotFound) {
@@ -245,7 +244,7 @@ func (h *Handler) CancelScan(writer http.ResponseWriter, req bunrouter.Request) 
 }
 
 // ListChecks handles GET /orgs/:org/discovery/checks.
-func (h *Handler) ListChecks(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ListChecks(writer http.ResponseWriter, req *http.Request) error {
 	org, _ := mw.GetOrganizationFromContext(req.Context())
 	if org == nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "organization not found")
@@ -281,7 +280,7 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req bunrouter.Request) 
 }
 
 // PromoteChecks handles POST /orgs/:org/discovery/checks/promote. Admin only.
-func (h *Handler) PromoteChecks(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) PromoteChecks(writer http.ResponseWriter, req *http.Request) error {
 	if !isAdmin(req) {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "admin access required")
 	}
@@ -315,14 +314,14 @@ func (h *Handler) PromoteChecks(writer http.ResponseWriter, req bunrouter.Reques
 	case errors.Is(err, ErrAlreadyPromoted):
 		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict, "discovered check already promoted")
 	case err != nil:
-		return h.WriteInternalErrorR(writer, req.Request, err)
+		return h.WriteInternalErrorR(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, map[string]any{keyData: checkResps})
 }
 
 // DismissCheck handles DELETE /orgs/:org/discovery/checks/:uid. Admin only.
-func (h *Handler) DismissCheck(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) DismissCheck(writer http.ResponseWriter, req *http.Request) error {
 	if !isAdmin(req) {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "admin access required")
 	}
@@ -332,7 +331,7 @@ func (h *Handler) DismissCheck(writer http.ResponseWriter, req bunrouter.Request
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "organization not found")
 	}
 
-	uid := req.Param("uid")
+	uid := httpx.Param(req, "uid")
 
 	err := h.svc.SoftDeleteCheck(req.Context(), org.UID, uid)
 	if errors.Is(err, ErrCheckNotFound) {
@@ -348,7 +347,7 @@ func (h *Handler) DismissCheck(writer http.ResponseWriter, req bunrouter.Request
 
 // DismissGroup handles DELETE /orgs/:org/discovery/checks?jobUid=&group=.
 // Admin only. Soft-deletes every check in a group.
-func (h *Handler) DismissGroup(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) DismissGroup(writer http.ResponseWriter, req *http.Request) error {
 	if !isAdmin(req) {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "admin access required")
 	}

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -17,7 +15,7 @@ type ResetChecksResponse struct {
 
 // DeleteAllChecks deletes all checks for an organization.
 // DELETE /api/v1/test/checks/all.
-func (h *Handler) DeleteAllChecks(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) DeleteAllChecks(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := req.URL.Query().Get("org")
 	if orgSlug == "" {
 		orgSlug = defaultOrg

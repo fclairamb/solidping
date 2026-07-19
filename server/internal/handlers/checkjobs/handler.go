@@ -5,10 +5,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 )
 
@@ -34,7 +33,7 @@ func NewHandler(svc Service, cfg *config.Config) *Handler {
 
 // orgUIDFromContext returns the resolved organization UID placed in context by
 // RequireOrgAccess. The :org URL param is a slug, never the UID.
-func orgUIDFromContext(req bunrouter.Request) (string, bool) {
+func orgUIDFromContext(req *http.Request) (string, bool) {
 	org, ok := middleware.GetOrganizationFromContext(req.Context())
 	if !ok || org == nil {
 		return "", false
@@ -43,7 +42,7 @@ func orgUIDFromContext(req bunrouter.Request) (string, bool) {
 	return org.UID, true
 }
 
-func (h *Handler) parseListOptions(req bunrouter.Request) ListOptions {
+func (h *Handler) parseListOptions(req *http.Request) ListOptions {
 	query := req.URL.Query()
 
 	limit, err := base.ParsePageLimit(query, defaultPageSize, maxPageSize)
@@ -64,7 +63,7 @@ func (h *Handler) parseListOptions(req bunrouter.Request) ListOptions {
 
 // ListCheckJobs lists check jobs for the org (org-scoped).
 // GET /api/v1/orgs/:org/check-jobs.
-func (h *Handler) ListCheckJobs(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ListCheckJobs(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, ok := orgUIDFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Organization context missing")
@@ -80,13 +79,13 @@ func (h *Handler) ListCheckJobs(writer http.ResponseWriter, req bunrouter.Reques
 
 // GetCheckJob returns a single check job (org-scoped).
 // GET /api/v1/orgs/:org/check-jobs/:uid.
-func (h *Handler) GetCheckJob(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) GetCheckJob(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, ok := orgUIDFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Organization context missing")
 	}
 
-	view, err := h.svc.GetCheckJob(req.Context(), orgUID, req.Param("uid"))
+	view, err := h.svc.GetCheckJob(req.Context(), orgUID, httpx.Param(req, "uid"))
 	if err != nil {
 		if errors.Is(err, ErrCheckJobNotFound) {
 			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Check job not found")
@@ -100,7 +99,7 @@ func (h *Handler) GetCheckJob(writer http.ResponseWriter, req bunrouter.Request)
 
 // Stats returns aggregate counts for the org (org-scoped).
 // GET /api/v1/orgs/:org/jobs/stats.
-func (h *Handler) Stats(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Stats(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, ok := orgUIDFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Organization context missing")
@@ -116,7 +115,7 @@ func (h *Handler) Stats(writer http.ResponseWriter, req bunrouter.Request) error
 
 // ListSystemCheckJobs lists check jobs across all orgs (super-admin).
 // GET /api/v1/system/check-jobs.
-func (h *Handler) ListSystemCheckJobs(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ListSystemCheckJobs(writer http.ResponseWriter, req *http.Request) error {
 	views, err := h.svc.ListCheckJobs(req.Context(), "", h.parseListOptions(req))
 	if err != nil {
 		return h.WriteInternalError(writer, err)
@@ -127,8 +126,8 @@ func (h *Handler) ListSystemCheckJobs(writer http.ResponseWriter, req bunrouter.
 
 // GetSystemCheckJob returns a single check job across all orgs (super-admin).
 // GET /api/v1/system/check-jobs/:uid.
-func (h *Handler) GetSystemCheckJob(writer http.ResponseWriter, req bunrouter.Request) error {
-	view, err := h.svc.GetCheckJob(req.Context(), "", req.Param("uid"))
+func (h *Handler) GetSystemCheckJob(writer http.ResponseWriter, req *http.Request) error {
+	view, err := h.svc.GetCheckJob(req.Context(), "", httpx.Param(req, "uid"))
 	if err != nil {
 		if errors.Is(err, ErrCheckJobNotFound) {
 			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Check job not found")
@@ -142,7 +141,7 @@ func (h *Handler) GetSystemCheckJob(writer http.ResponseWriter, req bunrouter.Re
 
 // SystemStats returns aggregate counts across all orgs (super-admin).
 // GET /api/v1/system/jobs/stats.
-func (h *Handler) SystemStats(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) SystemStats(writer http.ResponseWriter, req *http.Request) error {
 	stats, err := h.svc.Stats(req.Context(), "")
 	if err != nil {
 		return h.WriteInternalError(writer, err)

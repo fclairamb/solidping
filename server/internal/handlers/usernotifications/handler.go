@@ -6,11 +6,10 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/webpush"
 )
 
@@ -60,7 +59,7 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	}
 }
 
-func userFromContext(req bunrouter.Request) (*models.User, bool) {
+func userFromContext(req *http.Request) (*models.User, bool) {
 	v := req.Context().Value(base.ContextKeyUser)
 	if v == nil {
 		return nil, false
@@ -72,13 +71,13 @@ func userFromContext(req bunrouter.Request) (*models.User, bool) {
 }
 
 // ListRoutes handles GET /api/v1/orgs/:org/users/me/notification-routes.
-func (h *Handler) ListRoutes(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ListRoutes(writer http.ResponseWriter, req *http.Request) error {
 	user, ok := userFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Not authenticated")
 	}
 
-	resp, err := h.svc.ListRoutes(req.Context(), req.Param("org"), user)
+	resp, err := h.svc.ListRoutes(req.Context(), httpx.Param(req, "org"), user)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -87,7 +86,7 @@ func (h *Handler) ListRoutes(writer http.ResponseWriter, req bunrouter.Request) 
 }
 
 // CreateContact handles POST /api/v1/orgs/:org/users/me/notification-contacts.
-func (h *Handler) CreateContact(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) CreateContact(writer http.ResponseWriter, req *http.Request) error {
 	user, ok := userFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Not authenticated")
@@ -106,7 +105,7 @@ func (h *Handler) CreateContact(writer http.ResponseWriter, req bunrouter.Reques
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "value is required")
 	}
 
-	route, err := h.svc.CreateContact(req.Context(), req.Param("org"), user, body)
+	route, err := h.svc.CreateContact(req.Context(), httpx.Param(req, "org"), user, body)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -115,7 +114,7 @@ func (h *Handler) CreateContact(writer http.ResponseWriter, req bunrouter.Reques
 }
 
 // PatchRoute handles PATCH /api/v1/orgs/:org/users/me/notification-routes/:routeUid.
-func (h *Handler) PatchRoute(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) PatchRoute(writer http.ResponseWriter, req *http.Request) error {
 	user, ok := userFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Not authenticated")
@@ -126,9 +125,9 @@ func (h *Handler) PatchRoute(writer http.ResponseWriter, req bunrouter.Request) 
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid JSON")
 	}
 
-	routeUID := req.Param("routeUid")
+	routeUID := httpx.Param(req, "routeUid")
 
-	route, err := h.svc.PatchRoute(req.Context(), req.Param("org"), user, routeUID, body)
+	route, err := h.svc.PatchRoute(req.Context(), httpx.Param(req, "org"), user, routeUID, body)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -137,15 +136,15 @@ func (h *Handler) PatchRoute(writer http.ResponseWriter, req bunrouter.Request) 
 }
 
 // DeleteContact handles DELETE /api/v1/orgs/:org/users/me/notification-contacts/:contactUid.
-func (h *Handler) DeleteContact(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) DeleteContact(writer http.ResponseWriter, req *http.Request) error {
 	user, ok := userFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Not authenticated")
 	}
 
-	contactUID := req.Param("contactUid")
+	contactUID := httpx.Param(req, "contactUid")
 
-	if err := h.svc.DeleteContact(req.Context(), req.Param("org"), user, contactUID); err != nil {
+	if err := h.svc.DeleteContact(req.Context(), httpx.Param(req, "org"), user, contactUID); err != nil {
 		return h.handleError(writer, err)
 	}
 
@@ -155,16 +154,16 @@ func (h *Handler) DeleteContact(writer http.ResponseWriter, req bunrouter.Reques
 }
 
 // TestRoute handles POST /api/v1/orgs/:org/users/me/notification-routes/:routeUid/test.
-func (h *Handler) TestRoute(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) TestRoute(writer http.ResponseWriter, req *http.Request) error {
 	user, ok := userFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Not authenticated")
 	}
 
-	routeUID := req.Param("routeUid")
+	routeUID := httpx.Param(req, "routeUid")
 
 	err := h.svc.SendTestNotification(
-		req.Context(), req.Param("org"), user, routeUID, h.emailSender, h.slackSender, h.webPushOptions,
+		req.Context(), httpx.Param(req, "org"), user, routeUID, h.emailSender, h.slackSender, h.webPushOptions,
 	)
 	if err != nil {
 		// 422 for "provider not configured" style errors.

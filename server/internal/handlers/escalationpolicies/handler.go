@@ -6,11 +6,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // jsonDataKey wraps list responses per the project convention.
@@ -133,8 +132,8 @@ func toPolicyHeaderJSON(policy *models.EscalationPolicy) policyJSON {
 }
 
 // ListPolicies handles GET /api/v1/orgs/:org/escalation-policies.
-func (h *Handler) ListPolicies(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+func (h *Handler) ListPolicies(writer http.ResponseWriter, req *http.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -202,8 +201,8 @@ func toStepInputs(steps []stepBody) []StepInput {
 }
 
 // CreatePolicy handles POST /api/v1/orgs/:org/escalation-policies.
-func (h *Handler) CreatePolicy(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+func (h *Handler) CreatePolicy(writer http.ResponseWriter, req *http.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -234,12 +233,12 @@ func (h *Handler) CreatePolicy(writer http.ResponseWriter, req bunrouter.Request
 }
 
 // GetPolicy handles GET /api/v1/orgs/:org/escalation-policies/:uid.
-func (h *Handler) GetPolicy(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+func (h *Handler) GetPolicy(writer http.ResponseWriter, req *http.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
 		return h.handleError(writer, err)
 	}
-	uid := req.Param("uid")
+	uid := httpx.Param(req, "uid")
 
 	detail, err := h.svc.GetPolicy(req.Context(), orgUID, uid)
 	if err != nil {
@@ -259,12 +258,12 @@ type UpdatePolicyBody struct {
 }
 
 // UpdatePolicy handles PATCH /api/v1/orgs/:org/escalation-policies/:uid.
-func (h *Handler) UpdatePolicy(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+func (h *Handler) UpdatePolicy(writer http.ResponseWriter, req *http.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
 		return h.handleError(writer, err)
 	}
-	uid := req.Param("uid")
+	uid := httpx.Param(req, "uid")
 
 	var body UpdatePolicyBody
 	if decodeErr := json.NewDecoder(req.Body).Decode(&body); decodeErr != nil {
@@ -292,12 +291,12 @@ func (h *Handler) UpdatePolicy(writer http.ResponseWriter, req bunrouter.Request
 }
 
 // DeletePolicy handles DELETE /api/v1/orgs/:org/escalation-policies/:uid.
-func (h *Handler) DeletePolicy(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+func (h *Handler) DeletePolicy(writer http.ResponseWriter, req *http.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
 		return h.handleError(writer, err)
 	}
-	uid := req.Param("uid")
+	uid := httpx.Param(req, "uid")
 
 	if err := h.svc.DeletePolicy(req.Context(), orgUID, uid); err != nil {
 		return h.handleError(writer, err)

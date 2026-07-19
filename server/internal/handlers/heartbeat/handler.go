@@ -7,10 +7,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // Handler provides HTTP handlers for heartbeat ingestion endpoints.
@@ -44,7 +43,7 @@ var ErrBodyTooLarge = errors.New("heartbeat body too large")
 // existing caller keeps working unchanged. The header wins when both are
 // present. This is a bespoke per-check token, not a JWT, so it is resolved
 // here rather than via the RequireAuth middleware chain.
-func extractToken(req bunrouter.Request) string {
+func extractToken(req *http.Request) string {
 	if auth := req.Header.Get("Authorization"); auth != "" {
 		if token, ok := strings.CutPrefix(auth, "Bearer "); ok && token != "" {
 			return token
@@ -62,7 +61,7 @@ func extractToken(req bunrouter.Request) string {
 // fixed-struct decode — but exceeding the cap is a hard rejection
 // (ErrBodyTooLarge).
 func decodeHeartbeatBody(
-	writer http.ResponseWriter, req bunrouter.Request,
+	writer http.ResponseWriter, req *http.Request,
 ) (string, map[string]any, error) {
 	if req.Body == nil || req.Header.Get("Content-Type") != "application/json" {
 		return "", nil, nil
@@ -100,9 +99,9 @@ func decodeHeartbeatBody(
 }
 
 // ReceiveHeartbeat handles incoming heartbeat pings.
-func (h *Handler) ReceiveHeartbeat(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	identifier := req.Param("identifier")
+func (h *Handler) ReceiveHeartbeat(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	identifier := httpx.Param(req, "identifier")
 	token := extractToken(req)
 	status := req.URL.Query().Get("status")
 

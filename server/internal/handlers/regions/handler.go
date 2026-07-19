@@ -3,10 +3,9 @@ package regions
 import (
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // Handler provides HTTP handlers for region endpoints.
@@ -24,7 +23,7 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 }
 
 // ListGlobalRegions handles GET /api/v1/regions (public, no auth required).
-func (h *Handler) ListGlobalRegions(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ListGlobalRegions(writer http.ResponseWriter, req *http.Request) error {
 	response, err := h.svc.ListGlobalRegions(req.Context())
 	if err != nil {
 		return h.WriteInternalError(writer, err)
@@ -34,8 +33,8 @@ func (h *Handler) ListGlobalRegions(writer http.ResponseWriter, req bunrouter.Re
 }
 
 // ListOrgRegions handles GET /api/v1/orgs/:org/regions (auth required).
-func (h *Handler) ListOrgRegions(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) ListOrgRegions(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 
 	response, err := h.svc.ListOrgRegions(req.Context(), orgSlug)
 	if err != nil {

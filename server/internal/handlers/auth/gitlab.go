@@ -7,8 +7,6 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
@@ -31,7 +29,7 @@ func NewGitLabOAuthHandler(service *GitLabOAuthService, cfg *config.Config) *Git
 
 // Login initiates the GitLab OAuth flow.
 // GET /api/v1/auth/gitlab/login?org=...&redirect_uri=...
-func (h *GitLabOAuthHandler) Login(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *GitLabOAuthHandler) Login(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := req.URL.Query().Get("org")
 	if orgSlug == "" {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "org parameter is required")
@@ -56,14 +54,14 @@ func (h *GitLabOAuthHandler) Login(writer http.ResponseWriter, req bunrouter.Req
 	// Build GitLab OAuth URL
 	gitLabAuthURL := h.buildGitLabAuthURL(state)
 
-	http.Redirect(writer, req.Request, gitLabAuthURL, http.StatusFound)
+	http.Redirect(writer, req, gitLabAuthURL, http.StatusFound)
 
 	return nil
 }
 
 // Callback handles the OAuth callback from GitLab.
 // GET /api/v1/auth/gitlab/callback?code=...&state=...
-func (h *GitLabOAuthHandler) Callback(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *GitLabOAuthHandler) Callback(writer http.ResponseWriter, req *http.Request) error {
 	code := req.URL.Query().Get("code")
 	stateParam := req.URL.Query().Get("state")
 	errorParam := req.URL.Query().Get("error")
@@ -94,7 +92,7 @@ func (h *GitLabOAuthHandler) Callback(writer http.ResponseWriter, req bunrouter.
 	// authorize/consent flow) work without a login-page refresh bounce.
 	redirectURL := h.buildSuccessRedirect(oauthState.RedirectURI, result)
 	setAccessTokenCookie(writer, result.AccessToken, result.ExpiresIn)
-	http.Redirect(writer, req.Request, redirectURL, http.StatusFound)
+	http.Redirect(writer, req, redirectURL, http.StatusFound)
 
 	return nil
 }
@@ -130,7 +128,7 @@ func (h *GitLabOAuthHandler) buildSuccessRedirect(baseURI string, result *GitLab
 
 // redirectWithError redirects with error parameters.
 func (h *GitLabOAuthHandler) redirectWithError(
-	writer http.ResponseWriter, req bunrouter.Request,
+	writer http.ResponseWriter, req *http.Request,
 	baseURI, code, description string,
 ) error {
 	parsedURL, err := url.Parse(baseURI)
@@ -143,14 +141,14 @@ func (h *GitLabOAuthHandler) redirectWithError(
 	query.Set("error_description", description)
 	parsedURL.RawQuery = query.Encode()
 
-	http.Redirect(writer, req.Request, parsedURL.String(), http.StatusFound)
+	http.Redirect(writer, req, parsedURL.String(), http.StatusFound)
 
 	return nil
 }
 
 // handleOAuthError handles OAuth errors by redirecting with error information.
 func (h *GitLabOAuthHandler) handleOAuthError(
-	writer http.ResponseWriter, req bunrouter.Request,
+	writer http.ResponseWriter, req *http.Request,
 	redirectURI string, err error,
 ) error {
 	var code, description string

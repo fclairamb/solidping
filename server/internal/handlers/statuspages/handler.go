@@ -7,10 +7,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 const slugValidationMsg = "Slug must start with a lowercase letter, be 3-40 characters, " +
@@ -42,8 +41,8 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 // --- Status Page handlers ---
 
 // ListStatusPages handles listing all status pages for an organization.
-func (h *Handler) ListStatusPages(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) ListStatusPages(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 
 	pages, err := h.svc.ListStatusPages(req.Context(), orgSlug)
 	if err != nil {
@@ -56,8 +55,8 @@ func (h *Handler) ListStatusPages(writer http.ResponseWriter, req bunrouter.Requ
 }
 
 // CreateStatusPage handles creating a new status page.
-func (h *Handler) CreateStatusPage(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) CreateStatusPage(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 
 	var createReq CreateStatusPageRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
@@ -75,9 +74,9 @@ func (h *Handler) CreateStatusPage(writer http.ResponseWriter, req bunrouter.Req
 }
 
 // GetStatusPage handles retrieving a single status page by UID or slug.
-func (h *Handler) GetStatusPage(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	identifier := req.Param("statusPageUid")
+func (h *Handler) GetStatusPage(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	identifier := httpx.Param(req, "statusPageUid")
 
 	opts := GetStatusPageOptions{}
 	withParam := req.URL.Query().Get("with")
@@ -99,9 +98,9 @@ func (h *Handler) GetStatusPage(writer http.ResponseWriter, req bunrouter.Reques
 }
 
 // UpdateStatusPage handles updating an existing status page.
-func (h *Handler) UpdateStatusPage(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	identifier := req.Param("statusPageUid")
+func (h *Handler) UpdateStatusPage(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	identifier := httpx.Param(req, "statusPageUid")
 
 	var updateReq UpdateStatusPageRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
@@ -119,9 +118,9 @@ func (h *Handler) UpdateStatusPage(writer http.ResponseWriter, req bunrouter.Req
 }
 
 // DeleteStatusPage handles deleting a status page.
-func (h *Handler) DeleteStatusPage(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	identifier := req.Param("statusPageUid")
+func (h *Handler) DeleteStatusPage(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	identifier := httpx.Param(req, "statusPageUid")
 
 	if err := h.svc.DeleteStatusPage(req.Context(), orgSlug, identifier); err != nil {
 		return h.handlePageError(writer, err)
@@ -133,9 +132,9 @@ func (h *Handler) DeleteStatusPage(writer http.ResponseWriter, req bunrouter.Req
 // --- Section handlers ---
 
 // ListSections handles listing all sections for a status page.
-func (h *Handler) ListSections(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	pageIdentifier := req.Param("statusPageUid")
+func (h *Handler) ListSections(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	pageIdentifier := httpx.Param(req, "statusPageUid")
 
 	sections, err := h.svc.ListSections(req.Context(), orgSlug, pageIdentifier)
 	if err != nil {
@@ -148,9 +147,9 @@ func (h *Handler) ListSections(writer http.ResponseWriter, req bunrouter.Request
 }
 
 // CreateSection handles creating a new section within a status page.
-func (h *Handler) CreateSection(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	pageIdentifier := req.Param("statusPageUid")
+func (h *Handler) CreateSection(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	pageIdentifier := httpx.Param(req, "statusPageUid")
 
 	var createReq CreateSectionRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
@@ -168,10 +167,10 @@ func (h *Handler) CreateSection(writer http.ResponseWriter, req bunrouter.Reques
 }
 
 // GetSection handles retrieving a single section.
-func (h *Handler) GetSection(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	pageIdentifier := req.Param("statusPageUid")
-	sectionIdentifier := req.Param("sectionUid")
+func (h *Handler) GetSection(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	pageIdentifier := httpx.Param(req, "statusPageUid")
+	sectionIdentifier := httpx.Param(req, "sectionUid")
 
 	section, err := h.svc.GetSection(req.Context(), orgSlug, pageIdentifier, sectionIdentifier)
 	if err != nil {
@@ -182,10 +181,10 @@ func (h *Handler) GetSection(writer http.ResponseWriter, req bunrouter.Request) 
 }
 
 // UpdateSection handles updating an existing section.
-func (h *Handler) UpdateSection(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	pageIdentifier := req.Param("statusPageUid")
-	sectionIdentifier := req.Param("sectionUid")
+func (h *Handler) UpdateSection(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	pageIdentifier := httpx.Param(req, "statusPageUid")
+	sectionIdentifier := httpx.Param(req, "sectionUid")
 
 	var updateReq UpdateSectionRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
@@ -203,10 +202,10 @@ func (h *Handler) UpdateSection(writer http.ResponseWriter, req bunrouter.Reques
 }
 
 // DeleteSection handles deleting a section.
-func (h *Handler) DeleteSection(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	pageIdentifier := req.Param("statusPageUid")
-	sectionIdentifier := req.Param("sectionUid")
+func (h *Handler) DeleteSection(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	pageIdentifier := httpx.Param(req, "statusPageUid")
+	sectionIdentifier := httpx.Param(req, "sectionUid")
 
 	if err := h.svc.DeleteSection(req.Context(), orgSlug, pageIdentifier, sectionIdentifier); err != nil {
 		return h.handleSectionError(writer, err)
@@ -218,10 +217,10 @@ func (h *Handler) DeleteSection(writer http.ResponseWriter, req bunrouter.Reques
 // --- Resource handlers ---
 
 // ListResources handles listing all resources for a section.
-func (h *Handler) ListResources(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	pageIdentifier := req.Param("statusPageUid")
-	sectionIdentifier := req.Param("sectionUid")
+func (h *Handler) ListResources(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	pageIdentifier := httpx.Param(req, "statusPageUid")
+	sectionIdentifier := httpx.Param(req, "sectionUid")
 
 	resources, err := h.svc.ListResources(req.Context(), orgSlug, pageIdentifier, sectionIdentifier)
 	if err != nil {
@@ -234,10 +233,10 @@ func (h *Handler) ListResources(writer http.ResponseWriter, req bunrouter.Reques
 }
 
 // CreateResource handles adding a check to a section.
-func (h *Handler) CreateResource(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	pageIdentifier := req.Param("statusPageUid")
-	sectionIdentifier := req.Param("sectionUid")
+func (h *Handler) CreateResource(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	pageIdentifier := httpx.Param(req, "statusPageUid")
+	sectionIdentifier := httpx.Param(req, "sectionUid")
 
 	var createReq CreateResourceRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
@@ -255,11 +254,11 @@ func (h *Handler) CreateResource(writer http.ResponseWriter, req bunrouter.Reque
 }
 
 // UpdateResource handles updating a resource.
-func (h *Handler) UpdateResource(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	pageIdentifier := req.Param("statusPageUid")
-	sectionIdentifier := req.Param("sectionUid")
-	resourceUID := req.Param("resourceUid")
+func (h *Handler) UpdateResource(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	pageIdentifier := httpx.Param(req, "statusPageUid")
+	sectionIdentifier := httpx.Param(req, "sectionUid")
+	resourceUID := httpx.Param(req, "resourceUid")
 
 	var updateReq UpdateResourceRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
@@ -286,10 +285,10 @@ type ReorderResourcesRequest struct {
 
 // ReorderResources handles renumbering resources within a section to match
 // the supplied order. Used by the dashboard's drag-and-drop UI.
-func (h *Handler) ReorderResources(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	pageIdentifier := req.Param("statusPageUid")
-	sectionIdentifier := req.Param("sectionUid")
+func (h *Handler) ReorderResources(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	pageIdentifier := httpx.Param(req, "statusPageUid")
+	sectionIdentifier := httpx.Param(req, "sectionUid")
 
 	var reorderReq ReorderResourcesRequest
 	if err := json.NewDecoder(req.Body).Decode(&reorderReq); err != nil {
@@ -321,9 +320,9 @@ type ReorderSectionsRequest struct {
 
 // ReorderSections handles renumbering sections within a page to match the
 // supplied order. Used by the dashboard's section drag-and-drop UI.
-func (h *Handler) ReorderSections(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	pageIdentifier := req.Param("statusPageUid")
+func (h *Handler) ReorderSections(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	pageIdentifier := httpx.Param(req, "statusPageUid")
 
 	var reorderReq ReorderSectionsRequest
 	if err := json.NewDecoder(req.Body).Decode(&reorderReq); err != nil {
@@ -348,11 +347,11 @@ func (h *Handler) ReorderSections(writer http.ResponseWriter, req bunrouter.Requ
 }
 
 // DeleteResource handles removing a check from a section.
-func (h *Handler) DeleteResource(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	pageIdentifier := req.Param("statusPageUid")
-	sectionIdentifier := req.Param("sectionUid")
-	resourceUID := req.Param("resourceUid")
+func (h *Handler) DeleteResource(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	pageIdentifier := httpx.Param(req, "statusPageUid")
+	sectionIdentifier := httpx.Param(req, "sectionUid")
+	resourceUID := httpx.Param(req, "resourceUid")
 
 	if err := h.svc.DeleteResource(
 		req.Context(), orgSlug, pageIdentifier, sectionIdentifier, resourceUID,
@@ -366,9 +365,9 @@ func (h *Handler) DeleteResource(writer http.ResponseWriter, req bunrouter.Reque
 // --- Public handlers ---
 
 // ViewStatusPage handles the public view of a status page.
-func (h *Handler) ViewStatusPage(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	slug := req.Param("slug")
+func (h *Handler) ViewStatusPage(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	slug := httpx.Param(req, "slug")
 
 	page, err := h.svc.ViewStatusPage(req.Context(), orgSlug, slug)
 	if err != nil {
@@ -379,8 +378,8 @@ func (h *Handler) ViewStatusPage(writer http.ResponseWriter, req bunrouter.Reque
 }
 
 // ViewDefaultStatusPage handles the public view of an organization's default status page.
-func (h *Handler) ViewDefaultStatusPage(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) ViewDefaultStatusPage(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 
 	page, err := h.svc.ViewDefaultStatusPage(req.Context(), orgSlug)
 	if err != nil {

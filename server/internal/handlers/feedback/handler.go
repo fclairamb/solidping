@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
@@ -44,7 +42,7 @@ func NewHandler(svc *Service, authSvc *auth.Service, cfg *config.Config) *Handle
 }
 
 // SubmitReport handles POST /api/mgmt/report.
-func (h *Handler) SubmitReport(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) SubmitReport(writer http.ResponseWriter, req *http.Request) error {
 	req.Body = http.MaxBytesReader(writer, req.Body, MaxReportSize)
 
 	if err := req.ParseMultipartForm(MaxReportSize); err != nil {
