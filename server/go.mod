@@ -25,6 +25,7 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/getsentry/sentry-go v0.48.0
 	github.com/go-asn1-ber/asn1-ber v1.5.8
+	github.com/go-chi/chi/v5 v5.2.1
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/go-ldap/ldap/v3 v3.4.14
 	github.com/go-sql-driver/mysql v1.10.0
@@ -66,7 +67,6 @@ require (
 	github.com/uptrace/bun/dialect/sqlitedialect v1.2.18
 	github.com/uptrace/bun/driver/pgdriver v1.2.18
 	github.com/uptrace/bun/driver/sqliteshim v1.2.18
-	github.com/uptrace/bunrouter v1.0.23
 	github.com/urfave/cli/v3 v3.10.1
 	github.com/vanng822/go-premailer v1.34.0
 	github.com/wneessen/go-mail v0.8.1
