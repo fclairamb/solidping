@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
@@ -18,12 +17,13 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/integrations"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // handlerTestEnv bundles a router wired to a real integrations handler plus the
 // org it is scoped to, for exercising the HTTP-level admin guard.
 type handlerTestEnv struct {
-	router *bunrouter.Router
+	router *httpx.Router
 	svc    *integrations.Service
 	org    *models.Organization
 }
@@ -51,7 +51,7 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 	svc := integrations.NewService(dbSvc, creds, nil, nil)
 	handler := integrations.NewHandler(svc, &config.Config{})
 
-	router := bunrouter.New()
+	router := httpx.New()
 	group := router.NewGroup("/api/v1/orgs/:org/integrations")
 	group.POST("", handler.CreateIntegration)
 	group.GET("/:uid", handler.GetIntegration)

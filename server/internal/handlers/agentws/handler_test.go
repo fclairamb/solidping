@@ -10,7 +10,6 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -24,6 +23,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/agentws"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel/sshtunneltest"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
@@ -68,7 +68,7 @@ func newEnv(t *testing.T) *env {
 
 	handler := agentws.NewHandler(&config.Config{}, dbSvc, checkJobSvc, workersSvc, nil, events, nil)
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/api/v1/agent/ws", handler.Serve)
 
 	server := httptest.NewServer(router)

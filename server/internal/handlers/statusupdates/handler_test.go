@@ -9,18 +9,18 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // handlerSetup wraps testSetup with an HTTP handler and router.
 type handlerSetup struct {
 	*testSetup
 	handler *statusupdates.Handler
-	router  *bunrouter.Router
+	router  *httpx.Router
 }
 
 func newHandlerSetup(t *testing.T) *handlerSetup {
@@ -29,7 +29,7 @@ func newHandlerSetup(t *testing.T) *handlerSetup {
 	ts := newTestSetup(t)
 	handler := statusupdates.NewHandler(ts.svc, &config.Config{})
 
-	router := bunrouter.New()
+	router := httpx.New()
 	group := router.NewGroup("/api/v1/orgs/:org/status-updates")
 	group.GET("", handler.ListStatusUpdates)
 	group.POST("", handler.CreateStatusUpdate)

@@ -9,22 +9,22 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // newRouter builds an HTTP router wired to the fixture's discovery handler.
-func (f *discoveryFixture) newRouter(t *testing.T) *bunrouter.Router {
+func (f *discoveryFixture) newRouter(t *testing.T) *httpx.Router {
 	t.Helper()
 
 	handler := discovery.NewHandler(f.svc, &config.Config{})
 
-	router := bunrouter.New()
+	router := httpx.New()
 	group := router.NewGroup("/api/v1/orgs/:org/discovery")
 	handler.RegisterRoutes(group)
 
@@ -33,7 +33,7 @@ func (f *discoveryFixture) newRouter(t *testing.T) *bunrouter.Router {
 
 // doAdminRequest issues a request to a discovery path with admin claims + org context.
 func (f *discoveryFixture) doAdminRequest(
-	t *testing.T, router *bunrouter.Router, method, path string, body any,
+	t *testing.T, router *httpx.Router, method, path string, body any,
 ) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -64,7 +64,7 @@ func (f *discoveryFixture) doAdminRequest(
 
 // doUserRequest issues a request with a non-admin (viewer) role.
 func (f *discoveryFixture) doUserRequest(
-	t *testing.T, router *bunrouter.Router, method, path string, body any,
+	t *testing.T, router *httpx.Router, method, path string, body any,
 ) *httptest.ResponseRecorder {
 	t.Helper()
 

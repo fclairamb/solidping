@@ -11,7 +11,6 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -20,13 +19,14 @@ import (
 	authpkg "github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	enthandler "github.com/fclairamb/solidping/server/internal/handlers/entitlements"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 type entHandlerSetup struct {
 	dbSvc  *sqlite.Service
 	org    *models.Organization
 	user   *models.User
-	router *bunrouter.Router
+	router *httpx.Router
 }
 
 func newEntHandlerSetup(t *testing.T) *entHandlerSetup {
@@ -50,7 +50,7 @@ func newEntHandlerSetup(t *testing.T) *entHandlerSetup {
 	svc := entcore.NewService(dbSvc, entcore.DefaultsFor(config.DeploymentModeSelfHosted), 0)
 	handler := enthandler.NewHandler(svc, dbSvc, &config.Config{})
 
-	router := bunrouter.New()
+	router := httpx.New()
 	group := router.NewGroup("/api/v1/orgs/:org/entitlements")
 	group.GET("", handler.Get)
 	group.PUT("", handler.Put)

@@ -6,11 +6,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailpreview"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // shippedTemplates enumerates every template file
@@ -34,7 +34,7 @@ func shippedTemplates() []string {
 	}
 }
 
-func newTestRouter(t *testing.T) *bunrouter.Router {
+func newTestRouter(t *testing.T) *httpx.Router {
 	t.Helper()
 
 	formatter, err := email.NewFormatter()
@@ -42,13 +42,13 @@ func newTestRouter(t *testing.T) *bunrouter.Router {
 
 	handler := emailpreview.NewHandler(formatter, &config.Config{})
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/api/mgmt/email-preview/:template", handler.Preview)
 
 	return router
 }
 
-func doGet(t *testing.T, router *bunrouter.Router, path string) *httptest.ResponseRecorder {
+func doGet(t *testing.T, router *httpx.Router, path string) *httptest.ResponseRecorder {
 	t.Helper()
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)

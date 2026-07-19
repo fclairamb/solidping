@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
@@ -51,9 +50,9 @@ func TestGetCostDistribution_Handler(t *testing.T) {
 
 	srv := &Server{dbService: dbSvc}
 
-	// newReq builds a bunrouter request for the endpoint with the given raw
+	// newReq builds a request for the endpoint with the given raw
 	// query string, threading the test context.
-	newReq := func(rawQuery string) bunrouter.Request {
+	newReq := func(rawQuery string) *http.Request {
 		url := "/api/mgmt/scheduling/cost-distribution"
 		if rawQuery != "" {
 			url += "?" + rawQuery
@@ -61,7 +60,7 @@ func TestGetCostDistribution_Handler(t *testing.T) {
 
 		req := httptest.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 
-		return bunrouter.NewRequest(req)
+		return req
 	}
 
 	t.Run("default threshold", func(t *testing.T) {

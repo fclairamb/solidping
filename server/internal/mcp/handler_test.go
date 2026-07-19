@@ -10,16 +10,15 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
 
-// makeRequest builds a bunrouter.Request with optional claims in context.
+// makeRequest builds a *http.Request with optional claims in context.
 func makeRequest(
 	t *testing.T, method, body string, claims *auth.Claims,
-) (*httptest.ResponseRecorder, bunrouter.Request) {
+) (*httptest.ResponseRecorder, *http.Request) {
 	t.Helper()
 
 	httpReq := httptest.NewRequestWithContext(t.Context(), method, "/api/v1/mcp", bytes.NewBufferString(body))
@@ -31,7 +30,7 @@ func makeRequest(
 	}
 
 	rec := httptest.NewRecorder()
-	bunReq := bunrouter.NewRequest(httpReq)
+	bunReq := httpReq
 
 	return rec, bunReq
 }

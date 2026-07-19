@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -16,15 +15,15 @@ import (
 	"github.com/fclairamb/solidping/server/internal/middleware"
 )
 
-// requestWithUserOrg builds a bunrouter request carrying the given user and org
+// requestWithUserOrg builds a request carrying the given user and org
 // in context, mirroring what RequireAuth + RequireOrgAccess place there.
-func requestWithUserOrg(user *models.User, org *models.Organization) bunrouter.Request {
+func requestWithUserOrg(user *models.User, org *models.Organization) *http.Request {
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, base.ContextKeyUser, user)
 	ctx = context.WithValue(ctx, base.ContextKeyOrganization, org)
 	r := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/orgs/test/check-jobs", http.NoBody)
 
-	return bunrouter.NewRequest(r)
+	return r
 }
 
 func TestRequireOrgAdmin_AuthMatrix(t *testing.T) {
@@ -71,7 +70,7 @@ func TestRequireOrgAdmin_AuthMatrix(t *testing.T) {
 	cfg := &config.Config{}
 	authMw := middleware.NewAuthMiddleware(nil, dbSvc, cfg)
 
-	guarded := authMw.RequireOrgAdmin(func(w http.ResponseWriter, _ bunrouter.Request) error {
+	guarded := authMw.RequireOrgAdmin(func(w http.ResponseWriter, _ *http.Request) error {
 		w.WriteHeader(http.StatusOK)
 
 		return nil
@@ -115,7 +114,7 @@ func TestRequireSuperAdmin_AuthMatrix(t *testing.T) {
 	cfg := &config.Config{}
 	authMw := middleware.NewAuthMiddleware(nil, dbSvc, cfg)
 
-	guarded := authMw.RequireSuperAdmin(func(w http.ResponseWriter, _ bunrouter.Request) error {
+	guarded := authMw.RequireSuperAdmin(func(w http.ResponseWriter, _ *http.Request) error {
 		w.WriteHeader(http.StatusOK)
 
 		return nil
@@ -125,11 +124,11 @@ func TestRequireSuperAdmin_AuthMatrix(t *testing.T) {
 	super := models.NewUser("sup@example.com")
 	super.SuperAdmin = true
 
-	mkReq := func(u *models.User) bunrouter.Request {
+	mkReq := func(u *models.User) *http.Request {
 		c := context.WithValue(context.Background(), base.ContextKeyUser, u)
 		req := httptest.NewRequestWithContext(c, http.MethodGet, "/api/v1/system/jobs", http.NoBody)
 
-		return bunrouter.NewRequest(req)
+		return req
 	}
 
 	wRegular := httptest.NewRecorder()

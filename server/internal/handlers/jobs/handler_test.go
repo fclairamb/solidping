@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -16,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/jobs"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 )
@@ -23,7 +23,7 @@ import (
 // jobsFixture wires the jobs handler to a real jobsvc over an in-memory
 // SQLite DB, with two organizations so cross-org isolation is testable.
 type jobsFixture struct {
-	router *bunrouter.Router
+	router *httpx.Router
 	jobSvc jobsvc.Service
 	dbSvc  db.Service
 	orgA   *models.Organization
@@ -48,7 +48,7 @@ func newJobsFixture(t *testing.T) *jobsFixture {
 
 	jobSvc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 
-	router := bunrouter.New()
+	router := httpx.New()
 	jobs.NewHandler(jobSvc).RegisterRoutes(router.NewGroup("/api/v1"))
 
 	return &jobsFixture{router: router, jobSvc: jobSvc, dbSvc: dbSvc, orgA: orgA, orgB: orgB}

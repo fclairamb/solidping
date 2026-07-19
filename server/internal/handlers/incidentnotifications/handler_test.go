@@ -8,20 +8,20 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidentnotifications"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // handlerHarness builds an org/check/incident/notification fixture and a
-// bunrouter wired to the notification handlers. ServeHTTP resolves the path
+// router wired to the notification handlers. ServeHTTP resolves the path
 // params exactly as in production.
 type handlerHarness struct {
-	router   *bunrouter.Router
+	router   *httpx.Router
 	org      *models.Organization
 	incident *models.Incident
 	notif    *models.IncidentNotification
@@ -65,7 +65,7 @@ func newHandlerHarness(t *testing.T) *handlerHarness {
 	svc := incidentnotifications.NewService(dbSvc)
 	handler := incidentnotifications.NewHandler(svc, &config.Config{})
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.NewGroup("/api/v1/orgs/:org/incidents").
 		GET("/:uid/notifications/:notifUid", handler.GetForIncident)
 	orgNotifs := router.NewGroup("/api/v1/orgs/:org/notifications")

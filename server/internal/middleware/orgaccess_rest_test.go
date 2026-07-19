@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 )
 
@@ -59,16 +59,16 @@ func TestRequireOrgAccess_RESTRoutesRejectForeignOrg(t *testing.T) {
 	r.NoError(err)
 	testToken := loginResp.AccessToken
 
-	ok := func(w http.ResponseWriter, _ bunrouter.Request) error {
+	ok := func(w http.ResponseWriter, _ *http.Request) error {
 		w.WriteHeader(http.StatusOK)
 
 		return nil
 	}
-	guard := func(h bunrouter.HandlerFunc) bunrouter.HandlerFunc {
+	guard := func(h httpx.HandlerFunc) httpx.HandlerFunc {
 		return authMw.RequireAuth(authMw.RequireOrgAccess(h))
 	}
 
-	router := bunrouter.New()
+	router := httpx.New()
 	for _, suffix := range []string{"/checks", "/members", "/incidents"} {
 		router.GET("/api/v1/orgs/:org"+suffix, guard(ok))
 	}

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 )
 
 // TestOIDCCallback_SetsAccessTokenCookie is the regression test for the SSO
@@ -35,7 +34,7 @@ func TestOIDCCallback_SetsAccessTokenCookie(t *testing.T) {
 		"/api/v1/auth/oidc/callback?code=fake-code&state="+url.QueryEscape(state), nil)
 	rec := httptest.NewRecorder()
 
-	r.NoError(handler.Callback(rec, bunrouter.Request{Request: req}))
+	r.NoError(handler.Callback(rec, req))
 
 	res := rec.Result()
 	defer func() { _ = res.Body.Close() }()
@@ -78,7 +77,7 @@ func TestOIDCCallback_ErrorRedirectSetsNoCookie(t *testing.T) {
 		"/api/v1/auth/oidc/callback?code=fake-code&state=bogus-state", nil)
 	rec := httptest.NewRecorder()
 
-	r.NoError(handler.Callback(rec, bunrouter.Request{Request: req}))
+	r.NoError(handler.Callback(rec, req))
 
 	res := rec.Result()
 	defer func() { _ = res.Body.Close() }()

@@ -7,10 +7,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 func setupBulkTestHandler(t *testing.T) *Handler {
@@ -46,7 +46,7 @@ func TestBulkCreateChecks(t *testing.T) {
 			nil)
 		w := httptest.NewRecorder()
 
-		router := bunrouter.New()
+		router := httpx.New()
 		router.POST("/api/v1/test/checks/bulk", handler.BulkCreateChecks)
 		router.ServeHTTP(w, req)
 
@@ -71,7 +71,7 @@ func TestBulkCreateChecks(t *testing.T) {
 			nil)
 		w := httptest.NewRecorder()
 
-		router := bunrouter.New()
+		router := httpx.New()
 		router.POST("/api/v1/test/checks/bulk", handler.BulkCreateChecks)
 		router.ServeHTTP(w, req)
 
@@ -104,7 +104,7 @@ func TestBulkCreateChecks(t *testing.T) {
 			nil)
 		w := httptest.NewRecorder()
 
-		router := bunrouter.New()
+		router := httpx.New()
 		router.POST("/api/v1/test/checks/bulk", handler.BulkCreateChecks)
 		router.ServeHTTP(w, req)
 
@@ -122,7 +122,7 @@ func TestBulkCreateChecks(t *testing.T) {
 			nil)
 		w := httptest.NewRecorder()
 
-		router := bunrouter.New()
+		router := httpx.New()
 		router.POST("/api/v1/test/checks/bulk", handler.BulkCreateChecks)
 		router.ServeHTTP(w, req)
 
@@ -140,7 +140,7 @@ func TestBulkCreateChecks(t *testing.T) {
 			nil)
 		w := httptest.NewRecorder()
 
-		router := bunrouter.New()
+		router := httpx.New()
 		router.POST("/api/v1/test/checks/bulk", handler.BulkCreateChecks)
 		router.ServeHTTP(w, req)
 
@@ -158,7 +158,7 @@ func TestBulkCreateChecks(t *testing.T) {
 			nil)
 		w := httptest.NewRecorder()
 
-		router := bunrouter.New()
+		router := httpx.New()
 		router.POST("/api/v1/test/checks/bulk", handler.BulkCreateChecks)
 		router.ServeHTTP(w, req)
 
@@ -176,7 +176,7 @@ func TestBulkCreateChecks(t *testing.T) {
 			nil)
 		w := httptest.NewRecorder()
 
-		router := bunrouter.New()
+		router := httpx.New()
 		router.POST("/api/v1/test/checks/bulk", handler.BulkCreateChecks)
 		router.ServeHTTP(w, req)
 
@@ -189,7 +189,7 @@ func TestBulkCreateChecks(t *testing.T) {
 		r := require.New(t)
 		handler := setupBulkTestHandler(t)
 
-		router := bunrouter.New()
+		router := httpx.New()
 		router.POST("/api/v1/test/checks/bulk", handler.BulkCreateChecks)
 
 		// Create first batch
@@ -225,7 +225,7 @@ func TestBulkCreateChecks(t *testing.T) {
 			nil)
 		w := httptest.NewRecorder()
 
-		router := bunrouter.New()
+		router := httpx.New()
 		router.POST("/api/v1/test/checks/bulk", handler.BulkCreateChecks)
 		router.ServeHTTP(w, req)
 
@@ -245,7 +245,7 @@ func TestBulkDeleteChecks(t *testing.T) {
 		r := require.New(t)
 		handler := setupBulkTestHandler(t)
 
-		router := bunrouter.New()
+		router := httpx.New()
 		router.POST("/api/v1/test/checks/bulk", handler.BulkCreateChecks)
 		router.DELETE("/api/v1/test/checks/bulk", handler.BulkDeleteChecks)
 
@@ -280,7 +280,7 @@ func TestBulkDeleteChecks(t *testing.T) {
 			nil)
 		w := httptest.NewRecorder()
 
-		router := bunrouter.New()
+		router := httpx.New()
 		router.DELETE("/api/v1/test/checks/bulk", handler.BulkDeleteChecks)
 		router.ServeHTTP(w, req)
 
@@ -296,7 +296,7 @@ func TestBulkDeleteChecks(t *testing.T) {
 		r := require.New(t)
 		handler := setupBulkTestHandler(t)
 
-		router := bunrouter.New()
+		router := httpx.New()
 		router.DELETE("/api/v1/test/checks/bulk", handler.BulkDeleteChecks)
 
 		// Missing slug

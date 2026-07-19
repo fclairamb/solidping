@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
@@ -21,7 +21,7 @@ import (
 
 // listBySlugFixture bundles an in-memory db.Service with an org, a check
 // (addressed by slug), and an incident on that check — enough to exercise
-// GET /incidents?checkUid=<slug> end to end through a real bunrouter, the way
+// GET /incidents?checkUid=<slug> end to end through a real router, the way
 // the check detail page's `useIncidents` call does.
 type listBySlugFixture struct {
 	dbSvc    *sqlite.Service
@@ -53,12 +53,12 @@ func newListBySlugFixture(t *testing.T) *listBySlugFixture {
 	return &listBySlugFixture{dbSvc: dbSvc, org: org, check: check, incident: inc}
 }
 
-func newListBySlugRouter(f *listBySlugFixture) *bunrouter.Router {
+func newListBySlugRouter(f *listBySlugFixture) *httpx.Router {
 	jobs := jobsvc.NewService(f.dbSvc.DB(), f.dbSvc, notifier.NewLocalEventNotifier(), nil)
 	svc := incidents.NewService(f.dbSvc, jobs, clock.Real{}, nil)
 	handler := incidents.NewHandler(svc, &config.Config{})
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/orgs/:org/incidents", handler.ListIncidents)
 
 	return router

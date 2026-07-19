@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
@@ -43,12 +42,12 @@ func setupOAuthHandler(t *testing.T) *Handler {
 	return NewHandler(svc, cfg)
 }
 
-func doGET(t *testing.T, h func(http.ResponseWriter, bunrouter.Request) error, path string) *httptest.ResponseRecorder {
+func doGET(t *testing.T, h func(http.ResponseWriter, *http.Request) error, path string) *httptest.ResponseRecorder {
 	t.Helper()
 
 	r := httptest.NewRequestWithContext(context.Background(), http.MethodGet, path, http.NoBody)
 	rec := httptest.NewRecorder()
-	require.NoError(t, h(rec, bunrouter.NewRequest(r)))
+	require.NoError(t, h(rec, r))
 
 	return rec
 }
@@ -92,7 +91,7 @@ func TestRegisterEndpointLoopbackPublicClient(t *testing.T) {
 	body := `{"redirect_uris":["http://127.0.0.1:1234/cb"],"client_name":"Native","token_endpoint_auth_method":"none"}`
 	r := httptest.NewRequestWithContext(context.Background(), http.MethodPost, PathRegister, strings.NewReader(body))
 	rec := httptest.NewRecorder()
-	require.NoError(t, h.Register(rec, bunrouter.NewRequest(r)))
+	require.NoError(t, h.Register(rec, r))
 
 	require.Equal(t, http.StatusCreated, rec.Code)
 
@@ -111,7 +110,7 @@ func TestRegisterEndpointRejectsNonLoopbackHTTP(t *testing.T) {
 	body := `{"redirect_uris":["http://evil.example.com/cb"]}`
 	r := httptest.NewRequestWithContext(context.Background(), http.MethodPost, PathRegister, strings.NewReader(body))
 	rec := httptest.NewRecorder()
-	require.NoError(t, h.Register(rec, bunrouter.NewRequest(r)))
+	require.NoError(t, h.Register(rec, r))
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 
@@ -129,7 +128,7 @@ func TestTokenEndpointUnsupportedGrant(t *testing.T) {
 		strings.NewReader("grant_type=password"))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
-	require.NoError(t, h.Token(rec, bunrouter.NewRequest(r)))
+	require.NoError(t, h.Token(rec, r))
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 
@@ -147,7 +146,7 @@ func TestTokenEndpointAuthCodeRequiresPKCE(t *testing.T) {
 	r := httptest.NewRequestWithContext(context.Background(), http.MethodPost, PathToken, strings.NewReader(form))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
-	require.NoError(t, h.Token(rec, bunrouter.NewRequest(r)))
+	require.NoError(t, h.Token(rec, r))
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 

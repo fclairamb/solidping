@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
@@ -19,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/integrations"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 )
 
@@ -58,7 +58,7 @@ func newKEK(t *testing.T) []byte {
 type freeboxFixture struct {
 	svc     *integrations.Service
 	handler *integrations.Handler
-	router  *bunrouter.Router
+	router  *httpx.Router
 	dbSvc   db.Service
 	org     *models.Organization
 }
@@ -83,7 +83,7 @@ func newFreeboxFixture(t *testing.T) *freeboxFixture {
 	svc := integrations.NewService(dbSvc, creds, nil, nil)
 	handler := integrations.NewHandler(svc, &config.Config{})
 
-	router := bunrouter.New()
+	router := httpx.New()
 	group := router.NewGroup("/api/v1/orgs/:org")
 	group.POST("/integrations/freebox/pair", handler.StartFreeboxPairing)
 	group.GET("/integrations/freebox/pair/:uid/status", handler.GetFreeboxPairingStatus)

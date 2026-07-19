@@ -8,17 +8,17 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/statussubscribers"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 type handlerSetup struct {
 	*subSetup
 	handler *statussubscribers.Handler
-	router  *bunrouter.Router
+	router  *httpx.Router
 	sender  *fakeSender
 }
 
@@ -32,7 +32,7 @@ func newHandlerSetup(t *testing.T) *handlerSetup {
 
 	handler := statussubscribers.NewHandler(ts.svc, ts.dbSvc, sender, cfg)
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.POST("/api/v1/orgs/:org/status-pages/:statusPageUid/subscribers", handler.Subscribe)
 	router.GET("/api/v1/orgs/:org/status-pages/:statusPageUid/subscribers", handler.ListSubscribers)
 	router.DELETE("/api/v1/orgs/:org/status-pages/:statusPageUid/subscribers/:uid", handler.RemoveSubscriber)

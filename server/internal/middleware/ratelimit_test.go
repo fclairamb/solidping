@@ -10,23 +10,23 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 )
 
-func okHandler() bunrouter.HandlerFunc {
-	return func(w http.ResponseWriter, _ bunrouter.Request) error {
+func okHandler() httpx.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) error {
 		w.WriteHeader(http.StatusOK)
 		return nil
 	}
 }
 
-func newBunRequest(ip, path string) bunrouter.Request {
+func newBunRequest(ip, path string) *http.Request {
 	r := httptest.NewRequestWithContext(context.Background(), http.MethodGet, path, http.NoBody)
 	r.RemoteAddr = ip + ":12345"
-	return bunrouter.NewRequest(r)
+	return r
 }
 
 func TestRateLimit_BlocksAfterLimit(t *testing.T) {
@@ -107,7 +107,7 @@ func TestConcurrencyLimit_BlocksWhenFull(t *testing.T) {
 	// release lets the holders exit after we've confirmed the overflow 429.
 	inside := make(chan struct{}, 2)
 	release := make(chan struct{})
-	blockingHandler := func(w http.ResponseWriter, _ bunrouter.Request) error {
+	blockingHandler := func(w http.ResponseWriter, _ *http.Request) error {
 		inside <- struct{}{}
 		<-release
 		w.WriteHeader(http.StatusOK)
@@ -149,7 +149,7 @@ func TestConcurrencyLimit_ExcludedPaths(t *testing.T) {
 
 	// Block the one slot.
 	release := make(chan struct{})
-	blockingHandler := func(w http.ResponseWriter, req bunrouter.Request) error {
+	blockingHandler := func(w http.ResponseWriter, req *http.Request) error {
 		// Only block on the non-excluded path.
 		if req.URL.Path == "/api/v1/orgs/default/checks" {
 			<-release
@@ -178,13 +178,13 @@ func TestConcurrencyLimit_ExcludedPaths(t *testing.T) {
 
 // newBunRequestXFF builds a request from a fixed RemoteAddr carrying the
 // given X-Forwarded-For header, mimicking a client behind a reverse proxy.
-func newBunRequestXFF(xff string) bunrouter.Request {
+func newBunRequestXFF(xff string) *http.Request {
 	req := httptest.NewRequestWithContext(
 		context.Background(), http.MethodGet, "/api/v1/orgs/default/checks", http.NoBody,
 	)
 	req.RemoteAddr = "192.168.1.1:12345"
 	req.Header.Set("X-Forwarded-For", xff)
-	return bunrouter.NewRequest(req)
+	return req
 }
 
 func TestExtractIP_TrustedProxies(t *testing.T) {
@@ -230,7 +230,7 @@ func TestExtractIP_TrustedProxies(t *testing.T) {
 
 // newBunRequestToken builds a request from ip carrying a bearer token (empty
 // token = anonymous).
-func newBunRequestToken(ip, token string) bunrouter.Request {
+func newBunRequestToken(ip, token string) *http.Request {
 	req := httptest.NewRequestWithContext(
 		context.Background(), http.MethodGet, "/api/v1/orgs/default/checks", http.NoBody,
 	)
@@ -238,7 +238,7 @@ func newBunRequestToken(ip, token string) bunrouter.Request {
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	return bunrouter.NewRequest(req)
+	return req
 }
 
 func TestRateLimit_TokenBuckets_IndependentPerToken(t *testing.T) {
@@ -380,13 +380,13 @@ func TestRateLimit_TokenBuckets_CookieTokenAlsoKeys(t *testing.T) {
 	rl := middleware.NewRateLimiter(cfg, context.Background())
 	handler := rl.RateLimit(okHandler())
 
-	cookieReq := func() bunrouter.Request {
+	cookieReq := func() *http.Request {
 		req := httptest.NewRequestWithContext(
 			context.Background(), http.MethodGet, "/api/v1/orgs/default/checks", http.NoBody,
 		)
 		req.RemoteAddr = "14.0.0.1:12345"
 		req.AddCookie(&http.Cookie{Name: middleware.CookieAuthToken, Value: "cookie-token"})
-		return bunrouter.NewRequest(req)
+		return req
 	}
 
 	// Exhaust the cookie identity's bucket.
@@ -418,7 +418,7 @@ func TestConcurrencyLimit_TokenBuckets_IndependentPerToken(t *testing.T) {
 
 	inside := make(chan struct{}, 1)
 	release := make(chan struct{})
-	blockingHandler := func(w http.ResponseWriter, _ bunrouter.Request) error {
+	blockingHandler := func(w http.ResponseWriter, _ *http.Request) error {
 		inside <- struct{}{}
 		<-release
 		w.WriteHeader(http.StatusOK)
@@ -543,7 +543,7 @@ func TestStateFor_ReflectsInFlight(t *testing.T) {
 
 	inside := make(chan struct{}, 2)
 	release := make(chan struct{})
-	blockingHandler := func(w http.ResponseWriter, _ bunrouter.Request) error {
+	blockingHandler := func(w http.ResponseWriter, _ *http.Request) error {
 		inside <- struct{}{}
 		<-release
 		w.WriteHeader(http.StatusOK)
@@ -571,10 +571,10 @@ func TestStateFor_ReflectsInFlight(t *testing.T) {
 }
 
 // newBunRequestCtx is like newBunRequest but allows passing a parent context.
-func newBunRequestCtx(ctx context.Context, ip, path string) bunrouter.Request {
+func newBunRequestCtx(ctx context.Context, ip, path string) *http.Request {
 	r := httptest.NewRequestWithContext(ctx, http.MethodGet, path, http.NoBody)
 	r.RemoteAddr = ip + ":12345"
-	return bunrouter.NewRequest(r)
+	return r
 }
 
 func TestRateLimit_QueuesUntilRefill(t *testing.T) {
@@ -744,7 +744,7 @@ func TestConcurrencyLimit_QueuesUntilRelease(t *testing.T) {
 
 	inside := make(chan struct{}, 2)
 	release := make(chan struct{})
-	blockingHandler := func(w http.ResponseWriter, _ bunrouter.Request) error {
+	blockingHandler := func(w http.ResponseWriter, _ *http.Request) error {
 		inside <- struct{}{}
 		<-release
 		w.WriteHeader(http.StatusOK)
@@ -807,7 +807,7 @@ func TestConcurrencyLimit_RejectsBeyondQueue(t *testing.T) {
 
 	inside := make(chan struct{}, 2)
 	release := make(chan struct{})
-	blockingHandler := func(w http.ResponseWriter, _ bunrouter.Request) error {
+	blockingHandler := func(w http.ResponseWriter, _ *http.Request) error {
 		inside <- struct{}{}
 		<-release
 		w.WriteHeader(http.StatusOK)
@@ -861,7 +861,7 @@ func TestConcurrencyLimit_HonorsContextCancel(t *testing.T) {
 
 	release := make(chan struct{})
 	inside := make(chan struct{}, 1)
-	blockingHandler := func(w http.ResponseWriter, _ bunrouter.Request) error {
+	blockingHandler := func(w http.ResponseWriter, _ *http.Request) error {
 		inside <- struct{}{}
 		<-release
 		w.WriteHeader(http.StatusOK)
@@ -949,7 +949,7 @@ func TestConcurrencyLimit_DefaultsAbsorbParallelPanelFetches(t *testing.T) {
 	// ~100 streams over one HTTP/2 connection, so 40 requests can genuinely
 	// be in flight together. Hold each handler open briefly to force the
 	// overlap; every request must be admitted (active or queued), none 429d.
-	slowHandler := func(w http.ResponseWriter, _ bunrouter.Request) error {
+	slowHandler := func(w http.ResponseWriter, _ *http.Request) error {
 		time.Sleep(150 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
 		return nil

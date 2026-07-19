@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -49,7 +48,7 @@ func TestRevokeCurrentTokenRevokesOwnSession(t *testing.T) {
 	httpReq := httptest.NewRequestWithContext(reqCtx, http.MethodDelete, "/api/v1/auth/tokens/current", http.NoBody)
 	rec := httptest.NewRecorder()
 
-	r.NoError(handler.RevokeCurrentToken(rec, bunrouter.Request{Request: httpReq}))
+	r.NoError(handler.RevokeCurrentToken(rec, httpReq))
 	r.Equal(http.StatusNoContent, rec.Code)
 
 	// The grant is dead: refreshing with the now-revoked token fails immediately.
@@ -72,6 +71,6 @@ func TestRevokeCurrentTokenRejectsCredentialWithoutGrant(t *testing.T) {
 	httpReq := httptest.NewRequestWithContext(reqCtx, http.MethodDelete, "/api/v1/auth/tokens/current", http.NoBody)
 	rec := httptest.NewRecorder()
 
-	r.NoError(handler.RevokeCurrentToken(rec, bunrouter.Request{Request: httpReq}))
+	r.NoError(handler.RevokeCurrentToken(rec, httpReq))
 	r.Equal(http.StatusUnprocessableEntity, rec.Code)
 }

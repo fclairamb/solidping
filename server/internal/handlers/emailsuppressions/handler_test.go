@@ -6,20 +6,20 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailsuppressions"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
-func newTestRouter(t *testing.T, f *testFixture) *bunrouter.Router {
+func newTestRouter(t *testing.T, f *testFixture) *httpx.Router {
 	t.Helper()
 
 	svc := emailsuppressions.NewService(f.dbSvc)
 	handler := emailsuppressions.NewHandler(svc, &config.Config{})
 
-	router := bunrouter.New()
+	router := httpx.New()
 	group := router.NewGroup("/api/v1/orgs/:org/email-suppressions")
 	group.GET("", handler.ListSuppressions)
 	group.DELETE("/:uid", handler.DeleteSuppression)
@@ -27,7 +27,7 @@ func newTestRouter(t *testing.T, f *testFixture) *bunrouter.Router {
 	return router
 }
 
-func doRequest(t *testing.T, router *bunrouter.Router, method, path string) *httptest.ResponseRecorder {
+func doRequest(t *testing.T, router *httpx.Router, method, path string) *httptest.ResponseRecorder {
 	t.Helper()
 
 	req := httptest.NewRequestWithContext(t.Context(), method, path, nil)

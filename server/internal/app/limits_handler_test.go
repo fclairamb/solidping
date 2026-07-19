@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/middleware"
@@ -33,7 +32,7 @@ func getLimitsResponse(t *testing.T, srv *Server, build func(*http.Request)) Lim
 	}
 
 	w := httptest.NewRecorder()
-	r.NoError(srv.getLimits(w, bunrouter.NewRequest(req)))
+	r.NoError(srv.getLimits(w, req))
 	r.Equal(http.StatusOK, w.Code)
 
 	var resp LimitsResponse
@@ -72,7 +71,7 @@ func TestGetLimits_ReportsTokenBucketForBearerCaller(t *testing.T) {
 
 	// Consume a few tokens from the bearer identity's bucket via the actual
 	// rate-limit middleware so /limits has real state to report.
-	handler := srv.rateLimiter.RateLimit(func(w http.ResponseWriter, _ bunrouter.Request) error {
+	handler := srv.rateLimiter.RateLimit(func(w http.ResponseWriter, _ *http.Request) error {
 		w.WriteHeader(http.StatusOK)
 		return nil
 	})
@@ -83,7 +82,7 @@ func TestGetLimits_ReportsTokenBucketForBearerCaller(t *testing.T) {
 		apiReq.RemoteAddr = "10.20.30.40:5555"
 		apiReq.Header.Set("Authorization", "Bearer my-token")
 		w := httptest.NewRecorder()
-		r.NoError(handler(w, bunrouter.NewRequest(apiReq)))
+		r.NoError(handler(w, apiReq))
 		r.Equal(http.StatusOK, w.Code)
 	}
 
