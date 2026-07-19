@@ -3037,7 +3037,15 @@ export function useCreateEscalationPolicy(org: string) {
         method: "POST",
         body: JSON.stringify(request),
       }),
-    onSuccess: () => {
+    onSuccess: (created) => {
+      // Seed the list cache synchronously so a caller that immediately
+      // selects the newly created policy (e.g. the check form's "No
+      // escalation (silent)" shortcut) can resolve it from the very next
+      // render, instead of waiting on the invalidate-triggered refetch below.
+      queryClient.setQueryData<EscalationPolicy[]>(
+        ["escalationPolicies", org],
+        (old) => (old ? [...old, created] : old),
+      );
       queryClient.invalidateQueries({ queryKey: ["escalationPolicies", org] });
     },
   });

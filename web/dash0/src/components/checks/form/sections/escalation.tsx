@@ -91,6 +91,20 @@ export function EscalationSelect({
   const selectValue = value ? value : INHERIT;
 
   const handleChange = async (next: string) => {
+    if (next === "") {
+      // Radix mirrors the controlled value onto a hidden native <select> for
+      // form/accessibility compatibility. That mirror only knows about
+      // policies whose SelectItem has rendered as a native <option> at least
+      // once; assigning a uid that was never mounted (e.g. a policy created
+      // by the silent shortcut below, after which the popover is already
+      // closed and its item never gets a chance to render) leaves the native
+      // element without a matching option, and it reports back an empty
+      // change event that would otherwise stomp our selection back to "".
+      // No real SelectItem in this list ever uses "" as its value — INHERIT
+      // is the sentinel "__inherit__" — so this is always that spurious
+      // echo, never a genuine user selection. Ignore it.
+      return;
+    }
     if (next === INHERIT) {
       onChange("");
       return;
@@ -120,6 +134,20 @@ export function EscalationSelect({
 
   const showSilentNote = selected !== undefined && isSilent(selected);
 
+  // Radix's SelectValue mirrors whichever SelectItem's text last MOUNTED
+  // while the dropdown was open — it does not re-derive from `value` once
+  // closed. Picking the silent shortcut can set `value` to a policy uid
+  // whose SelectItem never rendered in that open session (freshly created,
+  // not yet in `policies` when the menu was showing), which would otherwise
+  // freeze the trigger on the previously-shown label forever. Compute the
+  // label ourselves so it always reflects current state.
+  const currentLabel =
+    selectValue === INHERIT
+      ? `Inherit — currently: ${inheritedName}`
+      : selected
+        ? `${selected.name}${isSilent(selected) ? " — silent" : ""}`
+        : undefined;
+
   return (
     <div className="space-y-2">
       <Label htmlFor="escalation-policy-select">Escalation policy</Label>
@@ -128,7 +156,7 @@ export function EscalationSelect({
           id="escalation-policy-select"
           data-testid="escalation-policy-select"
         >
-          <SelectValue />
+          <SelectValue>{currentLabel}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={INHERIT} data-testid="escalation-option-inherit">
