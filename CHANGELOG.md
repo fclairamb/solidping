@@ -25,6 +25,23 @@
 * **dash0 (realtime):** the live-updates WebSocket authenticated only via the shared `access_token` cookie, which another app on the same host can shadow (browsers ignore ports when scoping cookies) — causing the socket to `401` forever and reconnect-loop while the rest of the dashboard kept working normally over REST. It now authenticates the same way REST does, via a bearer token carried as a WebSocket subprotocol (browsers can't set an `Authorization` header on the handshake), with the cookie kept only as a fallback.
 * **checks (SSH tunnels):** with `SP_ENCRYPTION_MASTER_KEY` unset, every check tunneled through an SSH bastion **failed on every execution** (`cannot decrypt the ssh check credentials... (encryption disabled)`), even though the referenced SSH check itself ran fine — fallout from the credential-separation fix above: secrets now always live in a plaintext envelope when no master key is configured, but the SSH tunnel resolver and the Freebox LAN-lookup channel resolver still gated on `Enabled()` before ever trying to open it. Both now open a plaintext envelope first and only fall back to the key-requiring error for envelopes that actually need a key, matching how the rest of the codebase (job-secret merge, API loaders) already handles this.
 
+## [0.5.0](https://github.com/fclairamb/solidping/compare/v0.4.1...v0.5.0) (2026-07-19)
+
+
+### Features
+
+* batch 2026-07-16 — deported agents, SSH tunnels everywhere, incident comments, OAuth self-revocation, and a critical secrets-leak fix ([#145](https://github.com/fclairamb/solidping/issues/145)) ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
+* batch 2026-07-19 — escalation org default + assignment picker, migration consolidation ([#148](https://github.com/fclairamb/solidping/issues/148)) ([bb585a8](https://github.com/fclairamb/solidping/commit/bb585a8e3db6e6ab51cd7ed4e88ad770c6cce71c))
+
+
+### Bug Fixes
+
+* **deps:** update dependency docusaurus-plugin-llms to ^0.5.0 ([#147](https://github.com/fclairamb/solidping/issues/147)) ([1d30a78](https://github.com/fclairamb/solidping/commit/1d30a78dd2a4ec6c18f170dc35a8d5d651731fe4))
+* **deps:** update go dependencies (non-major) ([#139](https://github.com/fclairamb/solidping/issues/139)) ([6906133](https://github.com/fclairamb/solidping/commit/6906133b0ac073b4400c25e9cdc2bc53af5a55ee))
+* **deps:** update module github.com/go-ldap/ldap/v3 to v3.4.14 ([#141](https://github.com/fclairamb/solidping/issues/141)) ([b7166d6](https://github.com/fclairamb/solidping/commit/b7166d60754278ccf0b5b16ab6144c12ad783fbc))
+* **deps:** update module github.com/gosnmp/gosnmp to v1.44.0 ([#144](https://github.com/fclairamb/solidping/issues/144)) ([a1c5897](https://github.com/fclairamb/solidping/commit/a1c5897f620cb2dcd7922d79284f3c57205fe17b))
+* open v3 plaintext envelopes before the enabled-gate in sshtunnel and freebox resolvers ([#149](https://github.com/fclairamb/solidping/issues/149)) ([4223bdb](https://github.com/fclairamb/solidping/commit/4223bdb4110614453f15c87db6d945cb3f22c765))
+
 ## [0.4.1](https://github.com/fclairamb/solidping/compare/v0.4.0...v0.4.1) (2026-07-15)
 
 
