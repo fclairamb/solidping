@@ -122,10 +122,12 @@ returns immediately on empty steps
 ## Implementation Plan
 
 ### Backend
-1. **Migration `008_v0_7_0`** (Postgres + SQLite, mirrored): `alter table
-   organizations add column default_escalation_policy_uid ... references
-   escalation_policies(uid) on delete set null`. `.up.sql` + `.down.sql` in both
-   migration dirs.
+1. **Migration**: `alter table organizations add column
+   default_escalation_policy_uid ... references escalation_policies(uid) on
+   delete set null` (Postgres + SQLite, mirrored). Landed as its own scratch
+   migration `008_v0_7_0` during development; squashed into the single
+   `006_v0_5_0` consolidated release migration alongside 006/007 before
+   release, per wiki/conventions/database.md "one migration per release".
 2. **Organization model** (`models/organization.go`): add
    `DefaultEscalationPolicyUID *string` (bun `default_escalation_policy_uid`);
    add `DefaultEscalationPolicyUID *string` + `ClearDefaultEscalationPolicyUID

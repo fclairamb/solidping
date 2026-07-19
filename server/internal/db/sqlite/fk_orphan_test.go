@@ -1,7 +1,6 @@
 package sqlite
 
 import (
-	"io/fs"
 	"testing"
 
 	"github.com/google/uuid"
@@ -89,17 +88,16 @@ func TestMigration006PurgesOrphans(t *testing.T) {
 	r.Equal(3, countByCheck(orphanCheckUID), "orphans must exist before the migration")
 	r.Equal(1, countByCheck(check.UID), "the live check's marker row must exist")
 
-	// Run the real 006 up migration SQL (orphan purge + dedupe + NULL-proof index).
-	migrationSQL, err := fs.ReadFile(migrationsFS, "migrations/006_v0_5_0.up.sql")
-	r.NoError(err)
-	_, err = svc.db.ExecContext(ctx, string(migrationSQL))
+	// Run the real 006 up migration's aggregation-hardening block (orphan purge
+	// + dedupe + NULL-proof index).
+	_, err = svc.db.ExecContext(ctx, aggregationHardeningMigrationSQL)
 	r.NoError(err)
 
 	r.Equal(0, countByCheck(orphanCheckUID), "the migration must purge every orphan row")
 	r.Equal(1, countByCheck(check.UID), "the live check's rows must be preserved")
 
 	// Idempotent: a second run changes nothing.
-	_, err = svc.db.ExecContext(ctx, string(migrationSQL))
+	_, err = svc.db.ExecContext(ctx, aggregationHardeningMigrationSQL)
 	r.NoError(err)
 	r.Equal(1, countByCheck(check.UID))
 }

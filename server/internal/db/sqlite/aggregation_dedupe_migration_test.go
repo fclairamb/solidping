@@ -1,13 +1,47 @@
 package sqlite
 
 import (
-	"io/fs"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
+
+// aggregationHardeningMigrationSQL is section (1) of the consolidated
+// 006_v0_5_0 migration — the results-table orphan purge + NULL-region dedupe +
+// unique-index rebuild. Migration 006 is no longer just this block (it also
+// carries the deported-agents and org-default-escalation-policy DDL from the
+// same release cycle, per wiki/conventions/database.md "one migration per
+// release"), so tests that re-run this specific idempotent block after
+// Initialize() has already applied the full file inline it here rather than
+// reading the file — reading the whole file a second time would re-run
+// non-idempotent CREATE TABLE / ADD COLUMN statements from the other two
+// sections and fail. Keep this in sync with migrations/006_v0_5_0.up.sql §1.
+const aggregationHardeningMigrationSQL = `
+delete from results
+where check_uid not in (select uid from checks);
+
+delete from results
+where uid in (
+  select uid from (
+    select uid,
+      row_number() over (
+        partition by organization_uid, check_uid, coalesce(region, ''), period_type, period_start
+        order by coalesce(total_checks, -1) desc, created_at asc, uid asc
+      ) as rn
+    from results
+    where period_type != 'raw'
+  ) ranked
+  where rn > 1
+);
+
+drop index if exists results_aggregated_unique_idx;
+
+create unique index results_aggregated_unique_idx
+  on results (organization_uid, check_uid, coalesce(region, ''), period_type, period_start)
+  where period_type != 'raw';
+`
 
 // TestMigrationDedupesAggregatedResults verifies the v0.5.0 migration (spec
 // 2026-07-11-16 §3): duplicate NULL-region aggregated rows for the same bucket
@@ -82,12 +116,10 @@ func TestMigrationDedupesAggregatedResults(t *testing.T) {
 	).Exec(ctx)
 	r.NoError(err)
 
-	// Run the real 006 up migration SQL: dedupe, then rebuild the NULL-proof
-	// index. Index creation fails if any duplicate survives — so a NoError here
-	// is itself proof the dedupe worked.
-	migrationSQL, err := fs.ReadFile(migrationsFS, "migrations/006_v0_5_0.up.sql")
-	r.NoError(err)
-	_, err = svc.db.ExecContext(ctx, string(migrationSQL))
+	// Run the real 006 up migration's aggregation-hardening block: dedupe, then
+	// rebuild the NULL-proof index. Index creation fails if any duplicate
+	// survives — so a NoError here is itself proof the dedupe worked.
+	_, err = svc.db.ExecContext(ctx, aggregationHardeningMigrationSQL)
 	r.NoError(err, "dedupe + NULL-proof index creation must succeed")
 
 	type resultRow struct {
