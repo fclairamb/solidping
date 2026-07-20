@@ -197,3 +197,66 @@ func TestListChecksDefaultOrderingUnchanged_Postgres(t *testing.T) {
 	}
 	r.Equal([]string{"gs-u1", "gs-b2", "gs-c1", "gs-a2", "gs-u2", "gs-a1", "gs-b1"}, got)
 }
+
+// TestListChecksSortByGroupReorderMidWalk_Postgres is the Postgres counterpart
+// to the SQLite best-effort reorder test: when a group's sort_order changes
+// between pages (here the change even triggers the store's sort_order
+// normalization), individual rows may be skipped or repeated, but the walk must
+// still terminate cleanly and never error.
+//
+//nolint:paralleltest // shares dev-machine resources with its siblings
+func TestListChecksSortByGroupReorderMidWalk_Postgres(t *testing.T) {
+	s := newGroupSortPG(t)
+	r := require.New(t)
+	ctx := t.Context()
+
+	orgUID, _ := groupSortFixturePG(t, s)
+
+	// Page 1 (limit 2) = [a2, a1] — all of group A (sort_order 0).
+	page1, _, err := s.ListChecks(ctx, orgUID, &models.ListChecksFilter{Limit: 2, SortByGroup: true})
+	r.NoError(err)
+	r.Len(page1, 3, "limit+1 peek row expected")
+	page1 = page1[:2]
+	r.Equal("gs-a2", *page1[0].Slug)
+	r.Equal("gs-a1", *page1[1].Slug)
+
+	cursorRow := page1[1]
+	key := cursorRow.GroupSortKey
+	created := cursorRow.CreatedAt
+	uid := cursorRow.UID
+
+	// Move group A to the end by bumping its sort_order beyond every other group
+	// (this also normalizes all groups' sort_order).
+	groupA, err := s.GetCheckGroupBySlug(ctx, orgUID, "grp-a")
+	r.NoError(err)
+	newOrder := int16(30)
+	r.NoError(s.UpdateCheckGroup(ctx, orgUID, groupA.UID, &models.CheckGroupUpdate{SortOrder: &newOrder}))
+
+	// Continue the walk from the now-stale cursor. The only guarantees are that
+	// it terminates (never spins) and never errors.
+	pages := 0
+	cursorKey, cursorCreated, cursorUID := &key, &created, &uid
+	for ; pages < 100; pages++ {
+		checks, _, listErr := s.ListChecks(ctx, orgUID, &models.ListChecksFilter{
+			Limit:              2,
+			SortByGroup:        true,
+			CursorGroupSortKey: cursorKey,
+			CursorCreatedAt:    cursorCreated,
+			CursorUID:          cursorUID,
+		})
+		r.NoError(listErr)
+
+		hasMore := len(checks) > 2
+		if hasMore {
+			checks = checks[:2]
+		}
+		if len(checks) == 0 || !hasMore {
+			break
+		}
+		last := checks[len(checks)-1]
+		k, ca, u := last.GroupSortKey, last.CreatedAt, last.UID
+		cursorKey, cursorCreated, cursorUID = &k, &ca, &u
+	}
+
+	r.Less(pages, 99, "walk under concurrent reorder must terminate, not spin")
+}
