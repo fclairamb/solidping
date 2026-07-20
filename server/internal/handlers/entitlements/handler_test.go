@@ -174,6 +174,31 @@ func TestPutAcceptsMaxChecks(t *testing.T) {
 	r.Equal(7, *body.Limits.MaxChecks)
 }
 
+func TestPutAcceptsMaxDeportedAgents(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	h := newEntHandlerSetup(t)
+
+	rec := h.do(t, http.MethodPut, h.path(), map[string]any{
+		"source": string(models.EntitlementSourceAdmin),
+		"limits": map[string]any{"maxDeportedAgents": 3},
+	})
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+	// GET reflects the stored maxDeportedAgents in the limits block.
+	getRec := h.do(t, http.MethodGet, h.path(), nil)
+	r.Equal(http.StatusOK, getRec.Code)
+
+	var body struct {
+		Limits struct {
+			MaxDeportedAgents *int `json:"maxDeportedAgents"`
+		} `json:"limits"`
+	}
+	r.NoError(json.Unmarshal(getRec.Body.Bytes(), &body))
+	r.NotNil(body.Limits.MaxDeportedAgents)
+	r.Equal(3, *body.Limits.MaxDeportedAgents)
+}
+
 // putMaxUsers PUTs a limits body and returns the recorder. rawLimits is the
 // raw limits object so tests can send the deprecated alias or both keys.
 func (h *entHandlerSetup) putLimits(t *testing.T, rawLimits map[string]any) *httptest.ResponseRecorder {

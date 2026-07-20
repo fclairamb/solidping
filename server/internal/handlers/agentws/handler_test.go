@@ -20,6 +20,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/agentws"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
@@ -46,6 +47,15 @@ const testRegion = "@acme/dc1"
 func newEnv(t *testing.T) *env {
 	t.Helper()
 
+	return newEnvWith(t, nil)
+}
+
+// newEnvWith is newEnv but wires the given entitlements service into the
+// handler (nil disables entitlement enforcement entirely, matching the
+// production optionality of Handler.entitlements).
+func newEnvWith(t *testing.T, entSvc *entitlements.Service) *env {
+	t.Helper()
+
 	ctx := t.Context()
 	r := require.New(t)
 
@@ -67,7 +77,51 @@ func newEnv(t *testing.T) *env {
 		dbSvc, checkJobSvc, incidents.NewService(dbSvc, jobs, clock.Real{}, nil),
 	)
 
-	handler := agentws.NewHandler(&config.Config{}, dbSvc, checkJobSvc, workersSvc, nil, events, nil)
+	handler := agentws.NewHandler(&config.Config{}, dbSvc, checkJobSvc, workersSvc, entSvc, events, nil)
+
+	router := httpx.New()
+	router.GET("/api/v1/agent/ws", handler.Serve)
+
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	return &env{t: t, dbSvc: dbSvc, server: server, org: org}
+}
+
+// newEnvWithAgentCap is newEnv but wires a real entitlements.Service
+// enforcing the given MaxDeportedAgents cap on the "acme" org — used to
+// exercise the enrollment-time quota guard in awaitEnroll.
+func newEnvWithAgentCap(t *testing.T, maxDeportedAgents int) *env {
+	t.Helper()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("acme", "Acme")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	entSvc := entitlements.NewService(dbSvc, entitlements.DefaultsFor(config.DeploymentModeSelfHosted), 0)
+	r.NoError(entSvc.Set(ctx, org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{MaxDeportedAgents: entitlements.Int(maxDeportedAgents)},
+		Source: models.EntitlementSourceAdmin,
+	}, "user:tester", ""))
+
+	events := notifier.NewLocalEventNotifier()
+	t.Cleanup(func() { _ = events.Close() })
+
+	checkJobSvc := checkjobsvc.NewService(dbSvc.DB())
+	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, events, nil)
+
+	workersSvc := workers.NewService(
+		dbSvc, checkJobSvc, incidents.NewService(dbSvc, jobs, clock.Real{}, nil),
+	)
+
+	handler := agentws.NewHandler(&config.Config{}, dbSvc, checkJobSvc, workersSvc, entSvc, events, nil)
 
 	router := httpx.New()
 	router.GET("/api/v1/agent/ws", handler.Serve)
@@ -330,6 +384,85 @@ func TestEnrollmentTokenSingleUse(t *testing.T) {
 	_, status, err := e.dial(headers)
 	r.Error(err)
 	r.Equal(http.StatusUnauthorized, status)
+}
+
+// TestEnrollmentAllowedUnderAgentCap asserts a normal enrollment succeeds
+// when the org is under its MaxDeportedAgents cap.
+func TestEnrollmentAllowedUnderAgentCap(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newEnvWithAgentCap(t, 2)
+
+	conn, _, enrolled := e.enroll(e.mintToken(), "agent-1")
+	defer conn.CloseNow()
+	r.NotEmpty(enrolled.AgentUID)
+
+	agentsRows, err := e.dbSvc.ListAgents(t.Context(), e.org.UID)
+	r.NoError(err)
+	r.Len(agentsRows, 1)
+}
+
+// TestEnrollmentRejectedAtAgentCapDoesNotConsumeToken verifies awaitEnroll's
+// MaxDeportedAgents guard: once the org is at cap, a new enrollment attempt
+// gets an explicit `error` frame naming the quota breach and the one-shot
+// token is NOT consumed — the pre-upgrade check still accepts it afterward,
+// so the operator can retry after revoking another agent or upgrading.
+func TestEnrollmentRejectedAtAgentCapDoesNotConsumeToken(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	e := newEnvWithAgentCap(t, 1)
+
+	// Reach the cap with one already-enrolled agent.
+	firstConn, _, _ := e.enroll(e.mintToken(), "first")
+	defer firstConn.CloseNow()
+
+	// A second, independent token: enrollment is the only thing standing
+	// between this org and a second agent.
+	token := e.mintToken()
+
+	keys, err := agentcrypto.GenerateAgentKeys()
+	r.NoError(err)
+
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer "+token)
+
+	conn, _, err := e.dial(headers)
+	r.NoError(err)
+	defer conn.CloseNow()
+
+	var hello agentcrypto.ServerFrame
+	r.NoError(wsjson.Read(ctx, conn, &hello))
+	r.Equal(agentcrypto.MsgTypeHello, hello.Type)
+
+	r.NoError(wsjson.Write(ctx, conn, agentcrypto.ClientFrame{
+		Type:             agentcrypto.MsgTypeEnroll,
+		ID:               "enroll-2",
+		Name:             "second",
+		Ed25519PublicKey: keys.Ed25519PublicKey,
+		X25519PublicKey:  keys.X25519Recipient,
+	}))
+
+	var errFrame agentcrypto.ServerFrame
+	r.NoError(wsjson.Read(ctx, conn, &errFrame))
+	r.Equal(agentcrypto.MsgTypeError, errFrame.Type)
+	r.Equal("enroll-2", errFrame.ID)
+	r.Contains(errFrame.Title, "MaxDeportedAgents")
+
+	// The token was never consumed: a fresh dial with it still passes the
+	// pre-upgrade check (a consumed token would 401 immediately — see
+	// TestEnrollmentTokenSingleUse for the contrasting consumed case).
+	headers2 := http.Header{}
+	headers2.Set("Authorization", "Bearer "+token)
+	conn2, status, err := e.dial(headers2)
+	r.NoError(err)
+	r.NotEqual(http.StatusUnauthorized, status)
+	_ = conn2.CloseNow()
+
+	// And only the first agent ever got created.
+	agentsRows, err := e.dbSvc.ListAgents(ctx, e.org.UID)
+	r.NoError(err)
+	r.Len(agentsRows, 1)
 }
 
 // TestReconnectWithSignedHeaders: a returning agent authenticates with Ed25519
