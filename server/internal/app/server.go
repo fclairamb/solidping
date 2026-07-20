@@ -2324,6 +2324,33 @@ func (s *Server) MaybeAutoMigrateEncryption(ctx context.Context) error {
 	return nil
 }
 
+// ReconcileCheckJobSchedules recomputes period, scheduled_at, and
+// effective_scheduled_at for every check_job whose period no longer matches
+// its check's period (spec 2026-07-20-05). One-shot at startup: multi-region
+// checks written before the per-region-full-period change carry a stale
+// basePeriod×region_count job period and would keep it until the check is next
+// edited. Idempotent — a database whose jobs already match reconciles nothing.
+func (s *Server) ReconcileCheckJobSchedules(ctx context.Context) error {
+	if s.dbService == nil || s.services == nil {
+		return nil
+	}
+
+	checksService := checks.NewService(
+		s.dbService, s.services.EventNotifier, s.services.Credentials, s.services.Entitlements)
+
+	reconciled, err := checksService.ReconcileStaleJobSchedules(ctx)
+	if err != nil {
+		return fmt.Errorf("reconcile stale check job schedules: %w", err)
+	}
+
+	if reconciled > 0 {
+		slog.InfoContext(ctx, "reconciled stale multi-region check job schedules at startup",
+			"checksReconciled", reconciled)
+	}
+
+	return nil
+}
+
 // maybeSplitPlaintextSecrets is the no-master-key counterpart to the encryption
 // auto-migrate: with encryption disabled, it moves any secret still sitting in a
 // PUBLIC column (checks.config, check_jobs.config, connection settings) into a

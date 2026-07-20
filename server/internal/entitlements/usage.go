@@ -9,10 +9,12 @@ import (
 // Usage is the org's current resource consumption, computed on demand
 // (only when the API caller asks for it via ?with=usage).
 //
-// ChecksPerMinute is sum(60s/period) over enabled, non-internal checks.
-// It excludes internal checks (discovery hosts, heartbeats) and therefore
-// may be lower than the effective worker-dispatch rate enforced by
-// ReserveCheckExecution, whose token bucket counts every execution
+// ChecksPerMinute is sum((60s/period) × max(1, len(regions))) over enabled,
+// non-internal checks — a multi-region check executes once per region per
+// period, so its per-minute cost scales with the region count (spec
+// 2026-07-20-05). It excludes internal checks (discovery hosts, heartbeats)
+// and therefore may be lower than the effective worker-dispatch rate enforced
+// by ReserveCheckExecution, whose token bucket counts every execution
 // including internal ones. Checks counts all non-internal, non-deleted
 // checks regardless of enabled state.
 type Usage struct {
@@ -35,7 +37,15 @@ func (s *Service) Usage(ctx context.Context, orgUID string) (Usage, error) {
 	var perMin float64
 	for _, r := range rates {
 		if r.Enabled && time.Duration(r.Period) > 0 {
-			perMin += float64(time.Minute) / float64(time.Duration(r.Period))
+			// Each selected region runs the check every period, so the
+			// per-minute cost is the single-region rate times the region count
+			// (min 1 — a no-region check still runs once). Mirrors the actual
+			// worker dispatch rate the ReserveCheckExecution token bucket sees.
+			regions := len(r.Regions)
+			if regions < 1 {
+				regions = 1
+			}
+			perMin += float64(time.Minute) / float64(time.Duration(r.Period)) * float64(regions)
 		}
 	}
 

@@ -690,6 +690,7 @@ func isCheckFieldValidationError(err error) bool {
 	var periodErr *periodBoundError
 
 	return errors.Is(err, errIncidentPeriodOutOfRange) ||
+		errors.Is(err, errRegionSpreadOutOfRange) ||
 		errors.Is(err, errFlappingWindowNegative) ||
 		errors.Is(err, errFlapBackoffTooSmall) ||
 		errors.Is(err, errMaxRecoveryMultTooSmall) ||

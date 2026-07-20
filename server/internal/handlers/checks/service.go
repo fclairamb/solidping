@@ -140,6 +140,22 @@ func validateIncidentPeriod(seconds int) error {
 	return nil
 }
 
+// errRegionSpreadOutOfRange is returned when regionSpread is negative or is
+// not strictly less than the check's period (spec 2026-07-20-05). Absent/null
+// regionSpread reverts to the period/region_count default and is never
+// validated here.
+var errRegionSpreadOutOfRange = errors.New("regionSpread must be at least 0 and less than the check period")
+
+// validateRegionSpread enforces 0 <= spread < period. period is the check's
+// effective period (the new value on a period edit, else the stored one).
+func validateRegionSpread(spread, period time.Duration) error {
+	if spread < 0 || spread >= period {
+		return errRegionSpreadOutOfRange
+	}
+
+	return nil
+}
+
 // periodBoundError reports a check period outside its type's allowed bounds
 // (spec 2026-07-01-04 D1). It is a distinct error type (not a sentinel)
 // because the message embeds the per-type bound ("period for browser checks
@@ -624,12 +640,16 @@ type CheckResponse struct {
 	// (agent enrolled or revoked since the write), or that could not be sealed
 	// at write time. Fix: re-save the check's credentials. Nil when the check
 	// targets no private region.
-	NeedsReseal *bool             `json:"needsReseal,omitempty"`
-	Regions     []string          `json:"regions,omitempty"`
-	Enabled     *bool             `json:"enabled,omitempty"`
-	Internal    *bool             `json:"internal,omitempty"`
-	Period      *string           `json:"period,omitempty"`
-	Labels      map[string]string `json:"labels,omitempty"`
+	NeedsReseal *bool    `json:"needsReseal,omitempty"`
+	Regions     []string `json:"regions,omitempty"`
+	Enabled     *bool    `json:"enabled,omitempty"`
+	Internal    *bool    `json:"internal,omitempty"`
+	Period      *string  `json:"period,omitempty"`
+	// RegionSpread is the resolved inter-region scheduling offset override
+	// (spec 2026-07-20-05), a duration string (HH:MM:SS). Omitted when the
+	// check uses the default period/region_count spread.
+	RegionSpread *string           `json:"regionSpread,omitempty"`
+	Labels       map[string]string `json:"labels,omitempty"`
 	// Status is the synthesized check-level status: "up", "down",
 	// "validating" (failure observed but threshold not crossed), "created",
 	// or "degraded". Distinct from LastResult.Status, which echoes the raw
@@ -984,6 +1004,12 @@ type CreateCheckRequest struct {
 	Period        *string           `json:"period"`
 	Labels        map[string]string `json:"labels"`
 
+	// RegionSpread is the optional inter-region scheduling offset (spec
+	// 2026-07-20-05), a duration string like the period. Absent/empty = the
+	// default of period/region_count; "0s" fires all regions together. Must
+	// satisfy 0 <= regionSpread < period.
+	RegionSpread *string `json:"regionSpread,omitempty"`
+
 	// Wall-clock incident-tracking periods (seconds), per spec
 	// 2026-05-08-02. 0 means "open / resolve immediately on first signal".
 	ConfirmationPeriodSeconds *int `json:"confirmationPeriodSeconds,omitempty"`
@@ -1150,6 +1176,19 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 			return CheckResponse{}, err
 		}
 		check.Period = duration
+	}
+
+	// Set the optional inter-region spread override (spec 2026-07-20-05),
+	// validated against the effective period. Empty string = default.
+	if req.RegionSpread != nil && *req.RegionSpread != "" {
+		var spread timeutils.Duration
+		if err := spread.Scan(*req.RegionSpread); err != nil { //nolint:govet
+			return CheckResponse{}, err
+		}
+		if vErr := validateRegionSpread(time.Duration(spread), time.Duration(check.Period)); vErr != nil {
+			return CheckResponse{}, vErr
+		}
+		check.RegionSpread = &spread
 	}
 
 	// Set adaptive resolution / flapping settings.
@@ -1321,6 +1360,12 @@ type UpdateCheckRequest struct {
 	Period        *string            `json:"period,omitempty"`
 	Labels        *map[string]string `json:"labels,omitempty"`
 
+	// RegionSpread is the optional inter-region scheduling offset override
+	// (spec 2026-07-20-05). A duration string sets it; an explicit empty
+	// string "" clears it back to the period/region_count default; absent
+	// (nil) leaves it unchanged.
+	RegionSpread *string `json:"regionSpread,omitempty"`
+
 	// EscalationPolicyUID points to the escalation policy that fires when
 	// an incident on this check opens. nil = no policy on the check
 	// itself (the group's policy may still apply); empty string = clear.
@@ -1477,6 +1522,28 @@ func (s *Service) UpdateCheck(
 		}
 		update.Period = &duration
 	}
+	// Optional inter-region spread override (spec 2026-07-20-05). An explicit
+	// empty string clears it back to the period/region_count default; a value
+	// is validated against the effective period (the new one if this PATCH
+	// sets the period, else the stored value).
+	if req.RegionSpread != nil {
+		if *req.RegionSpread == "" {
+			update.ClearRegionSpread = true
+		} else {
+			var spread timeutils.Duration
+			if errScan := spread.Scan(*req.RegionSpread); errScan != nil {
+				return CheckResponse{}, errScan
+			}
+			effectivePeriod := time.Duration(check.Period)
+			if update.Period != nil {
+				effectivePeriod = time.Duration(*update.Period)
+			}
+			if vErr := validateRegionSpread(time.Duration(spread), effectivePeriod); vErr != nil {
+				return CheckResponse{}, vErr
+			}
+			update.RegionSpread = &spread
+		}
+	}
 	if req.ReopenCooldownMultiplier != nil {
 		update.ReopenCooldownMultiplier = req.ReopenCooldownMultiplier
 	}
@@ -1512,14 +1579,20 @@ func (s *Service) UpdateCheck(
 		return CheckResponse{}, errUpdate
 	}
 
-	// Reconcile check jobs if regions, period, enabled, or config changed
-	if req.Regions != nil || req.Period != nil || req.Enabled != nil || req.Config != nil {
+	// Reconcile check jobs if regions, period, spread, enabled, or config
+	// changed (a regionSpread-only edit re-levels the per-region phases).
+	if req.Regions != nil || req.Period != nil || req.RegionSpread != nil ||
+		req.Enabled != nil || req.Config != nil {
 		updatedCheck, fetchErr := s.db.GetCheck(ctx, org.UID, check.UID)
 		if fetchErr != nil {
 			return CheckResponse{}, fetchErr
 		}
 
-		if reconcileErr := s.reconcileCheckJobs(ctx, updatedCheck); reconcileErr != nil {
+		// A region_spread-only edit changes the phase stagger but nothing on the
+		// job row, so force a re-level in that case (period / region changes are
+		// already detected from the row itself).
+		relevel := req.RegionSpread != nil
+		if reconcileErr := s.reconcileCheckJobs(ctx, updatedCheck, relevel); reconcileErr != nil {
 			return CheckResponse{}, fmt.Errorf("failed to reconcile check jobs: %w", reconcileErr)
 		}
 	}
@@ -2024,10 +2097,40 @@ func (s *Service) ensureUniqueSlug(ctx context.Context, orgUID, slug string, use
 	return slug, nil
 }
 
-// reconcileCheckJobs ensures the check_jobs match the check's current regions and period.
+// ReconcileStaleJobSchedules re-reconciles every enabled check that has at
+// least one check_job whose period no longer matches the check's period, and
+// returns the number of checks reconciled (spec 2026-07-20-05). It exists for
+// the one-shot startup pass: multi-region checks written before the
+// per-region-full-period change carry a stale basePeriod×region_count job
+// period and would keep it until the check is next edited. reconcileCheckJobs
+// recomputes period, scheduled_at, and effective_scheduled_at for those jobs.
+// Idempotent — a check whose jobs already match is never returned by the
+// query, and a second run finds nothing to fix.
+func (s *Service) ReconcileStaleJobSchedules(ctx context.Context) (int, error) {
+	stale, err := s.db.ListChecksWithStaleJobPeriods(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("list checks with stale job periods: %w", err)
+	}
+
+	for _, check := range stale {
+		// relevel=false: the stale jobs are detected by their mismatched period,
+		// which already forces the phase recompute; correct jobs are untouched.
+		if reconcileErr := s.reconcileCheckJobs(ctx, check, false); reconcileErr != nil {
+			return 0, fmt.Errorf("reconcile check %s: %w", check.UID, reconcileErr)
+		}
+	}
+
+	return len(stale), nil
+}
+
+// reconcileCheckJobs ensures the check_jobs match the check's current regions
+// and period. relevel forces every surviving job's phase to be recomputed even
+// when nothing on the row changed — needed for a region_spread-only edit, whose
+// effect (the phase stagger) is an input to the phase formula but is not stored
+// on the job row, so it cannot be detected by comparing job columns.
 //
 //nolint:cyclop,gocognit,nestif,funlen // Reconciliation handles multiple update paths
-func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) error {
+func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, relevel bool) error {
 	existingJobs, err := s.db.ListCheckJobsByCheckUID(ctx, check.UID)
 	if err != nil {
 		return fmt.Errorf("failed to list check jobs: %w", err)
@@ -2066,6 +2169,13 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 	basePeriod := time.Duration(check.Period)
 	n := len(targetRegions)
 
+	// Inter-region offset ("spread"), resolved once from the same inputs the
+	// worker's release path uses (spec 2026-07-20-05) so the phase is
+	// reproducible across processes: default period/n, or the check's
+	// region_spread override. Every region's job now runs at the FULL base
+	// period (no split) — the spread only staggers their phases.
+	spread := scheduling.RegionSpread(basePeriod, n, check.RegionSpreadDuration())
+
 	// No regions: ensure exactly one job without a region. Still jitters the
 	// single job (NextAligned with region=nil) so identical checks don't
 	// herd on creation (D1's "single/no-region jobs get jitter-only phase").
@@ -2077,7 +2187,7 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 			}
 		}
 
-		scheduledAt := scheduling.NextAligned(time.Now(), basePeriod, basePeriod, check.UID, nil, nil)
+		scheduledAt := scheduling.NextAligned(time.Now(), basePeriod, basePeriod, check.UID, nil, nil, 0)
 		job := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
 		job.Type = check.Type
 		job.Config = check.Config
@@ -2130,16 +2240,17 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 		}
 	}
 
-	// Create jobs for new regions, update period for existing
-	splitPeriod := timeutils.Duration(basePeriod * time.Duration(n))
-
+	// Create jobs for new regions, update period for existing. Every region's
+	// job runs at the full base period (spec 2026-07-20-05 — no more split
+	// period); the spread staggers their phases.
 	for _, region := range targetRegions {
 		if existing, ok := existingByRegion[region]; ok {
 			// Update period, config, type, and plan weight if changed, or if
 			// the region set changed (an add/remove elsewhere shifts this
 			// job's own index even though nothing on this row directly
 			// changed) — D2.
-			needsUpdate := existing.Period != splitPeriod ||
+			needsUpdate := relevel ||
+				existing.Period != check.Period ||
 				existing.Type != check.Type ||
 				existing.PlanWeight != planWeight ||
 				!configEqual(existing.Config, check.Config) ||
@@ -2150,12 +2261,12 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 			if needsUpdate {
 				regionCopy := region
 				scheduledAt := scheduling.NextAligned(
-					time.Now(), basePeriod, time.Duration(splitPeriod), check.UID, &regionCopy, targetRegions,
+					time.Now(), basePeriod, basePeriod, check.UID, &regionCopy, targetRegions, spread,
 				)
 
 				if _, err := s.db.DB().NewUpdate().
 					Model((*models.CheckJob)(nil)).
-					Set("period = ?", splitPeriod).
+					Set("period = ?", check.Period).
 					Set("type = ?", check.Type).
 					Set("config = ?", check.Config).
 					// Keep the job's secret columns in step with the check so an
@@ -2181,10 +2292,10 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 			// maintained after creation — F1).
 			regionCopy := region
 			scheduledAt := scheduling.NextAligned(
-				time.Now(), basePeriod, time.Duration(splitPeriod), check.UID, &regionCopy, targetRegions,
+				time.Now(), basePeriod, basePeriod, check.UID, &regionCopy, targetRegions, spread,
 			)
 
-			job := models.NewCheckJob(check.OrganizationUID, check.UID, splitPeriod)
+			job := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
 			job.Type = check.Type
 			job.Config = check.Config
 			job.ConfigPrivate = check.ConfigPrivate
@@ -2243,6 +2354,16 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 	periodValue, _ := check.Period.Value()
 	periodStr, _ := periodValue.(string)
 
+	// RegionSpread (optional): same HH:MM:SS string form as the period; left
+	// nil in the response when the check uses the default period/region_count.
+	var regionSpreadStr *string
+	if check.RegionSpread != nil {
+		spreadValue, _ := check.RegionSpread.Value()
+		if s, ok := spreadValue.(string); ok {
+			regionSpreadStr = &s
+		}
+	}
+
 	var privateKeys []string
 	if check.ConfigPrivateKeys != nil {
 		_ = json.Unmarshal([]byte(*check.ConfigPrivateKeys), &privateKeys)
@@ -2270,6 +2391,7 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		Enabled:                   &check.Enabled,
 		Internal:                  &check.Internal,
 		Period:                    &periodStr,
+		RegionSpread:              regionSpreadStr,
 		Status:                    check.Status.String(),
 		CreatedAt:                 &check.CreatedAt,
 		ReopenCooldownMultiplier:  check.ReopenCooldownMultiplier,

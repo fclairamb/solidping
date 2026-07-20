@@ -1447,8 +1447,16 @@ func (r *CheckWorker) calculateNextScheduledAt(checkJob *models.CheckJob) time.T
 	if checkJob.Check != nil {
 		basePeriod := time.Duration(checkJob.Check.Period)
 		if basePeriod > 0 && jobPeriod > 0 {
+			// Resolve the inter-region spread from the same inputs reconcile
+			// uses (check period, region count, region_spread override) so the
+			// phase this worker computes matches the one written at reconcile —
+			// reproducible across processes (spec 2026-07-20-05).
+			spread := scheduling.RegionSpread(
+				basePeriod, len(checkJob.Check.Regions), checkJob.Check.RegionSpreadDuration(),
+			)
+
 			return scheduling.NextAligned(
-				now, basePeriod, jobPeriod, checkJob.CheckUID, checkJob.Region, checkJob.Check.Regions,
+				now, basePeriod, jobPeriod, checkJob.CheckUID, checkJob.Region, checkJob.Check.Regions, spread,
 			)
 		}
 	}

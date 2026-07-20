@@ -509,7 +509,8 @@ func (s *serviceImpl) selectAvailableJobsForCheck(
 // Claim-ahead is what makes firing punctual (a runner claims slightly early
 // and sleeps the remainder in-slot rather than missing the tick entirely),
 // but the historical flat FetchMaxAhead default (5 minutes) let it consume
-// most of the pool: with N jobs/region on a short split period, nearly every
+// most of the pool: with many short-period jobs (e.g. a check running per
+// region every minute, one job per region — spec 2026-07-20-05), nearly every
 // job is "due within 5 minutes" at any instant, so claim-ahead alone parked
 // ~22 of 25 runners. Bounding it per job to at most half its own period (and
 // never more than this floor) keeps the parked count near actual poll churn.
@@ -517,11 +518,11 @@ const maxClaimAheadFloor = 30 * time.Second
 
 // clampAhead returns the eligibility window for one job: the smaller of the
 // caller's maxAhead (the configured FetchMaxAhead), half the job's own
-// period, and maxClaimAheadFloor. A job with a short period (e.g. 1 minute,
-// split across 3 regions to 3 minutes) never parks for longer than it
-// actually needs to bridge between polls; a job with a long period (e.g. 1
-// hour) is still bounded by the flat floor so a single slow-period job can't
-// occupy a runner slot for minutes either.
+// period, and maxClaimAheadFloor. A job with a short period (e.g. a 1-minute
+// check, now one full-period job per region — spec 2026-07-20-05) never parks
+// for longer than it actually needs to bridge between polls; a job with a long
+// period (e.g. 1 hour) is still bounded by the flat floor so a single
+// slow-period job can't occupy a runner slot for minutes either.
 //
 // period <= 0 degrades to maxAhead unclamped (defensive only — check_jobs
 // always carries a positive period).

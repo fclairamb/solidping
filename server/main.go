@@ -225,6 +225,14 @@ func serve(ctx context.Context, _ *cli.Command) error {
 		return migrateErr
 	}
 
+	// One-shot: re-level any multi-region check_jobs still carrying the old
+	// split period (basePeriod × region_count) onto the per-region full period
+	// and inter-region spread (spec 2026-07-20-05). Idempotent no-op once done.
+	if recErr := server.ReconcileCheckJobSchedules(ctx); recErr != nil {
+		slog.ErrorContext(ctx, "Failed to reconcile check job schedules", "error", recErr)
+		return recErr
+	}
+
 	// Initialize test data if in test mode
 	if testDataErr := server.InitializeTestData(ctx); testDataErr != nil {
 		slog.ErrorContext(ctx,

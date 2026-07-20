@@ -23,11 +23,11 @@ import (
 	"github.com/uptrace/bun/migrate"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sloghook"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
-	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
 // backendLabel is the value used for the "backend" label on
@@ -1152,15 +1152,18 @@ func createCheckJobs(ctx context.Context, tx bun.Tx, check *models.Check) error 
 		return nil
 	}
 
-	// Multi-region: create one job per region with period splitting
+	// Multi-region: one job per region at the full check period (spec
+	// 2026-07-20-05 — no more basePeriod×n split). Stagger the first tick by
+	// the inter-region spread; region 0 stays at now so the check-created
+	// express path fires a fast first result (see the postgres twin).
 	n := len(check.Regions)
-	splitPeriod := timeutils.Duration(basePeriod * time.Duration(n))
+	spread := scheduling.RegionSpread(basePeriod, n, check.RegionSpreadDuration())
 
 	for i, region := range check.Regions {
-		scheduledAt := now.Add(basePeriod * time.Duration(i))
+		scheduledAt := now.Add(spread * time.Duration(i))
 		regionCopy := region
 
-		checkJob := models.NewCheckJob(check.OrganizationUID, check.UID, splitPeriod)
+		checkJob := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
 		checkJob.Type = check.Type
 		checkJob.Config = check.Config
 		checkJob.ConfigPrivate = check.ConfigPrivate
@@ -1489,6 +1492,13 @@ func (s *Service) UpdateCheck( //nolint:funlen // PATCH builder spans many optio
 			return fmt.Errorf("failed to marshal regions: %w", jsonErr)
 		}
 		query = query.Set("regions = ?", string(regionsJSON))
+	}
+
+	switch {
+	case update.ClearRegionSpread:
+		query = query.Set("region_spread = NULL")
+	case update.RegionSpread != nil:
+		query = query.Set("region_spread = ?", *update.RegionSpread)
 	}
 
 	if update.ReopenCooldownMultiplier != nil {
@@ -4681,7 +4691,7 @@ func (s *Service) ListOrgCheckRates(ctx context.Context, orgUID string) ([]model
 
 	err := s.db.NewSelect().
 		Model((*models.Check)(nil)).
-		Column("enabled", "period").
+		Column("enabled", "period", "regions").
 		Where("organization_uid = ?", orgUID).
 		Where("deleted_at IS NULL").
 		Where("internal = ?", false).
@@ -4691,6 +4701,41 @@ func (s *Service) ListOrgCheckRates(ctx context.Context, orgUID string) ([]model
 	}
 
 	return rates, nil
+}
+
+// ListChecksWithStaleJobPeriods returns enabled, non-deleted checks that have
+// at least one check_job whose period no longer matches the check's own period
+// (spec 2026-07-20-05). Byte-for-byte the postgres twin's shape so the startup
+// reconcile behaves identically on both backends; period is the canonical
+// HH:MM:SS text, so a split-period job never text-equals its check's period.
+func (s *Service) ListChecksWithStaleJobPeriods(ctx context.Context) ([]*models.Check, error) {
+	var uids []string
+
+	if err := s.db.NewSelect().
+		ColumnExpr("DISTINCT cj.check_uid").
+		TableExpr("check_jobs AS cj").
+		Join("JOIN checks AS c ON c.uid = cj.check_uid").
+		Where("c.deleted_at IS NULL").
+		Where("c.enabled = ?", true).
+		Where("cj.period <> c.period").
+		Scan(ctx, &uids); err != nil {
+		return nil, fmt.Errorf("list stale check job periods: %w", err)
+	}
+
+	if len(uids) == 0 {
+		return nil, nil
+	}
+
+	var checks []*models.Check
+	if err := s.db.NewSelect().
+		Model(&checks).
+		Where("uid IN (?)", bun.In(uids)).
+		Where("deleted_at IS NULL").
+		Scan(ctx); err != nil {
+		return nil, fmt.Errorf("load stale checks: %w", err)
+	}
+
+	return checks, nil
 }
 
 // ListPublicStatusUpdates is implemented in status_update.go.
