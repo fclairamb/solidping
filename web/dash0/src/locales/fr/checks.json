@@ -32,6 +32,7 @@
   "menu": {
     "viewDetails": "Voir les détails",
     "edit": "Modifier",
+    "editGroup": "Modifier le groupe",
     "changeGroup": "Changer de groupe",
     "delete": "Supprimer",
     "rename": "Renommer",
@@ -65,6 +66,18 @@
     "moveCheckDescription": "Déplacer <strong>{{name}}</strong> vers un autre groupe.",
     "group": "Groupe"
   },
+  "groupForm": {
+    "title": "Modifier le groupe",
+    "detailsTitle": "Détails",
+    "detailsDescription": "Nom et description de ce groupe de contrôles.",
+    "description": "Description",
+    "descriptionPlaceholder": "À quoi sert ce groupe de contrôles ?",
+    "escalationTitle": "Politique d'escalade",
+    "escalationDescription": "Les contrôles membres héritent de cette politique sauf s'ils en définissent une.",
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "indicatorTooltip": "Politique d'escalade : {{name}}"
+  },
   "noChecks": "Aucun contrôle dans ce groupe",
   "noUngroupedChecks": "Aucun contrôle non groupé ne correspond à votre recherche",
   "failedToLoadChecks": "Échec du chargement des contrôles",
@@ -76,6 +89,8 @@
     "groupDeleted": "Groupe supprimé. Les contrôles ont été dégroupés.",
     "groupCreated": "Groupe créé",
     "groupRenamed": "Groupe renommé",
+    "groupUpdated": "Groupe mis à jour",
+    "groupUpdateFailed": "Échec de la mise à jour du groupe",
     "exportSuccess": "Contrôles exportés",
     "importSuccess": "{{count}} contrôles importés ({{created}} créés, {{updated}} mis à jour)",
     "deleteFailed": "Échec de la suppression du contrôle",

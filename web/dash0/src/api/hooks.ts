@@ -513,12 +513,24 @@ export function useCheckGroups(org: string) {
   });
 }
 
-export function useCheckGroup(org: string, uid: string) {
+export function useCheckGroup(
+  org: string,
+  uid: string,
+  options?: {
+    /**
+     * Pass "always" when the consumer seeds local state from the response
+     * once (e.g. the edit form): combined with `isFetchedAfterMount`, it
+     * guarantees the seed comes from fresh data, not a stale cache entry.
+     */
+    refetchOnMount?: boolean | "always";
+  },
+) {
   return useQuery({
     queryKey: ["checkGroups", org, uid],
     queryFn: () =>
       apiFetch<CheckGroup>(`/api/v1/orgs/${org}/check-groups/${uid}`),
     enabled: !!org && !!uid,
+    refetchOnMount: options?.refetchOnMount,
   });
 }
 

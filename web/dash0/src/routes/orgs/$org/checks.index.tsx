@@ -21,6 +21,7 @@ import {
   Download,
   Upload,
   Waypoints,
+  ArrowUpRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -30,8 +31,10 @@ import {
   useCreateCheckGroup,
   useDeleteCheckGroup,
   useImportChecks,
+  useEscalationPolicies,
   type Check,
   type CheckGroup,
+  type EscalationPolicy,
   type ExportDocument,
   type ImportResult,
 } from "@/api/hooks";
@@ -336,6 +339,7 @@ function CheckGroupSection({
   onChangeGroup,
   groups,
   checksByUid,
+  escalationPolicyByUid,
 }: {
   group: CheckGroup;
   org: string;
@@ -353,6 +357,7 @@ function CheckGroupSection({
   onChangeGroup: (check: Check) => void;
   groups: CheckGroup[];
   checksByUid: Map<string, Check>;
+  escalationPolicyByUid: Map<string, EscalationPolicy>;
 }) {
   const { t } = useTranslation("checks");
   const [collapsed, setCollapsed] = useState(false);
@@ -361,6 +366,10 @@ function CheckGroupSection({
   useEffect(() => {
     if (search) setCollapsed(false);
   }, [search]);
+
+  const escalationPolicy = group.escalationPolicyUid
+    ? escalationPolicyByUid.get(group.escalationPolicyUid)
+    : undefined;
 
   return (
     <div className="border rounded-lg" data-testid="group-section">
@@ -378,8 +387,45 @@ function CheckGroupSection({
           <Badge variant="secondary" className="text-xs">
             {group.checkCount}
           </Badge>
+          {group.escalationPolicyUid && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className="inline-flex text-muted-foreground"
+                  data-testid="group-escalation-indicator"
+                >
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {t("groupForm.indicatorTooltip", {
+                  name: escalationPolicy
+                    ? `${escalationPolicy.name}${(escalationPolicy.stepCount ?? escalationPolicy.steps?.length ?? 0) === 0 ? " — silent" : ""}`
+                    : "…",
+                })}
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
-        <div onClick={(e) => e.stopPropagation()}>
+        <div
+          className="flex items-center gap-1"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            aria-label={t("menu.editGroup")}
+            data-testid="group-edit-button"
+            asChild
+          >
+            <Link
+              to="/orgs/$org/check-groups/$uid/edit"
+              params={{ org, uid: group.uid }}
+            >
+              <Pencil className="h-4 w-4" />
+            </Link>
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-8 w-8" data-testid="group-menu-button">
@@ -538,6 +584,15 @@ function ChecksIndexPage() {
     refetch: refetchGroups,
     isRefetching,
   } = useCheckGroups(org);
+
+  // Only fetched for the group-header escalation indicator (name/silent
+  // lookup) — a small, already-cached list shared with the check form.
+  const { data: escalationPolicies } = useEscalationPolicies(org);
+  const escalationPolicyByUid = useMemo(() => {
+    const map = new Map<string, EscalationPolicy>();
+    for (const p of escalationPolicies ?? []) map.set(p.uid, p);
+    return map;
+  }, [escalationPolicies]);
 
   // Single page-level infinite query — replaces the former per-group N+1
   // fan-out (one useInfiniteChecks per CheckGroupSection plus one for the
@@ -911,6 +966,7 @@ function ChecksIndexPage() {
               onChangeGroup={setChangeGroupCheck}
               groups={groups || []}
               checksByUid={checksByUid}
+              escalationPolicyByUid={escalationPolicyByUid}
             />
           ))}
 

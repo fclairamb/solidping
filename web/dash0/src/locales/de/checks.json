@@ -32,6 +32,7 @@
   "menu": {
     "viewDetails": "Details anzeigen",
     "edit": "Bearbeiten",
+    "editGroup": "Gruppe bearbeiten",
     "changeGroup": "Gruppe ändern",
     "delete": "Löschen",
     "rename": "Umbenennen",
@@ -65,6 +66,18 @@
     "moveCheckDescription": "<strong>{{name}}</strong> in eine andere Gruppe verschieben.",
     "group": "Gruppe"
   },
+  "groupForm": {
+    "title": "Gruppe bearbeiten",
+    "detailsTitle": "Details",
+    "detailsDescription": "Name und Beschreibung dieser Prüfungsgruppe.",
+    "description": "Beschreibung",
+    "descriptionPlaceholder": "Wofür ist diese Gruppe von Prüfungen?",
+    "escalationTitle": "Eskalationsrichtlinie",
+    "escalationDescription": "Mitgliedsprüfungen erben diese Richtlinie, sofern sie keine eigene festlegen.",
+    "cancel": "Abbrechen",
+    "save": "Änderungen speichern",
+    "indicatorTooltip": "Eskalationsrichtlinie: {{name}}"
+  },
   "noChecks": "Keine Prüfungen in dieser Gruppe",
   "noUngroupedChecks": "Keine nicht gruppierten Prüfungen entsprechen Ihrer Suche",
   "failedToLoadChecks": "Prüfungen konnten nicht geladen werden",
@@ -76,6 +89,8 @@
     "groupDeleted": "Gruppe gelöscht. Prüfungen wurden aus der Gruppe entfernt.",
     "groupCreated": "Gruppe erstellt",
     "groupRenamed": "Gruppe umbenannt",
+    "groupUpdated": "Gruppe aktualisiert",
+    "groupUpdateFailed": "Aktualisieren der Gruppe fehlgeschlagen",
     "exportSuccess": "Prüfungen exportiert",
     "importSuccess": "{{count}} Prüfungen importiert ({{created}} erstellt, {{updated}} aktualisiert)",
     "deleteFailed": "Löschen der Prüfung fehlgeschlagen",

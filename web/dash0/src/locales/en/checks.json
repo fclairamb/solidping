@@ -32,6 +32,7 @@
   "menu": {
     "viewDetails": "View Details",
     "edit": "Edit",
+    "editGroup": "Edit group",
     "changeGroup": "Change Group",
     "delete": "Delete",
     "rename": "Rename",
@@ -65,6 +66,18 @@
     "moveCheckDescription": "Move <strong>{{name}}</strong> to a different group.",
     "group": "Group"
   },
+  "groupForm": {
+    "title": "Edit group",
+    "detailsTitle": "Details",
+    "detailsDescription": "Name and description for this check group.",
+    "description": "Description",
+    "descriptionPlaceholder": "What is this group of checks for?",
+    "escalationTitle": "Escalation policy",
+    "escalationDescription": "Member checks inherit this policy unless they set their own.",
+    "cancel": "Cancel",
+    "save": "Save changes",
+    "indicatorTooltip": "Escalation policy: {{name}}"
+  },
   "noChecks": "No checks in this group",
   "noUngroupedChecks": "No ungrouped checks match your search",
   "failedToLoadChecks": "Failed to load checks",
@@ -76,6 +89,8 @@
     "groupDeleted": "Group deleted. Checks have been ungrouped.",
     "groupCreated": "Group created",
     "groupRenamed": "Group renamed",
+    "groupUpdated": "Group updated",
+    "groupUpdateFailed": "Failed to update group",
     "exportSuccess": "Checks exported",
     "importSuccess": "Imported {{count}} checks ({{created}} created, {{updated}} updated)",
     "deleteFailed": "Failed to delete check",
