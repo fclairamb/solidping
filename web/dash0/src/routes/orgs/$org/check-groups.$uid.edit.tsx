@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   useCheckGroup,
+  useDeleteCheckGroup,
   useUpdateCheckGroup,
   type CheckGroup,
 } from "@/api/hooks";
@@ -13,6 +14,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Card,
   CardContent,
@@ -45,10 +56,24 @@ function CheckGroupEditPage() {
     refetch,
   } = useCheckGroup(org, uid, { refetchOnMount: "always" });
   const updateGroup = useUpdateCheckGroup(org, uid);
+  const deleteGroup = useDeleteCheckGroup(org);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const waitingForFreshData = !error && !isFetchedAfterMount;
 
   const goBack = () => navigate({ to: "/orgs/$org/checks", params: { org } });
+
+  const handleDelete = async () => {
+    try {
+      await deleteGroup.mutateAsync(uid);
+      toast.success(t("toast.groupDeleted"));
+      goBack();
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : t("toast.groupDeleteFailed"),
+      );
+    }
+  };
 
   if (isLoading || waitingForFreshData) {
     return (
@@ -78,29 +103,53 @@ function CheckGroupEditPage() {
   if (!group) return null;
 
   return (
-    <CheckGroupEditForm
-      org={org}
-      group={group}
-      isPending={updateGroup.isPending}
-      onCancel={goBack}
-      onSubmit={async ({ name, description, escalationPolicyUid }) => {
-        try {
-          await updateGroup.mutateAsync({
-            name,
-            description,
-            escalationPolicyUid,
-          });
-          toast.success(t("toast.groupUpdated"));
-          goBack();
-        } catch (err) {
-          toast.error(
-            err instanceof ApiError
-              ? err.message
-              : t("toast.groupUpdateFailed"),
-          );
-        }
-      }}
-    />
+    <>
+      <CheckGroupEditForm
+        org={org}
+        group={group}
+        isPending={updateGroup.isPending}
+        onCancel={goBack}
+        onDelete={() => setConfirmDelete(true)}
+        onSubmit={async ({ name, description, escalationPolicyUid }) => {
+          try {
+            await updateGroup.mutateAsync({
+              name,
+              description,
+              escalationPolicyUid,
+            });
+            toast.success(t("toast.groupUpdated"));
+            goBack();
+          } catch (err) {
+            toast.error(
+              err instanceof ApiError
+                ? err.message
+                : t("toast.groupUpdateFailed"),
+            );
+          }
+        }}
+      />
+
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("dialog.deleteGroupTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("dialog.deleteGroupDescription")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("groupForm.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="confirm-delete-group"
+            >
+              {t("menu.deleteGroup")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
@@ -116,12 +165,14 @@ function CheckGroupEditForm({
   group,
   isPending,
   onCancel,
+  onDelete,
   onSubmit,
 }: {
   org: string;
   group: CheckGroup;
   isPending: boolean;
   onCancel: () => void;
+  onDelete: () => void;
   onSubmit: (data: CheckGroupEditFormSubmit) => void;
 }) {
   const { t } = useTranslation("checks");
@@ -151,6 +202,17 @@ function CheckGroupEditForm({
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
           {t("groupForm.title")}
         </h1>
+        <Button
+          type="button"
+          variant="destructive"
+          className="ml-auto"
+          onClick={onDelete}
+          aria-label={t("menu.deleteGroup")}
+          data-testid="group-delete-button"
+        >
+          <Trash2 className="sm:mr-2 h-4 w-4" />
+          <span className="hidden sm:inline">{t("menu.deleteGroup")}</span>
+        </Button>
       </div>
 
       <Card>

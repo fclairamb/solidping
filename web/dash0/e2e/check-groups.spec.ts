@@ -141,27 +141,27 @@ test.describe("Check Groups", () => {
 
     await navigateToChecks(page);
 
-    // Find the group section and open its menu
+    // Find the group section and open its edit page
     const groupSection = page
       .getByTestId("group-section")
       .filter({ has: page.getByTestId("group-name").getByText(originalName) });
     await expect(groupSection).toBeVisible({ timeout: 10000 });
 
-    await groupSection.getByTestId("group-menu-button").click();
-    await page.getByTestId("group-rename-action").click();
+    await groupSection.getByTestId("group-edit-button").click();
+    await page.waitForURL(/\/check-groups\/[0-9a-f-]+\/edit$/, {
+      timeout: 10000,
+    });
 
-    // Wait for rename dialog
-    const dialog = page.getByRole("dialog", { name: "Rename Group" });
-    await expect(dialog).toBeVisible();
-
-    // Fill in new name
+    // Change the name and save
     const newName = `E2E Renamed ${Date.now()}`;
-    await page.getByTestId("rename-group-input").clear();
-    await page.getByTestId("rename-group-input").fill(newName);
-    await page.getByTestId("rename-group-submit").click();
+    const nameInput = page.getByTestId("group-edit-name-input");
+    await expect(nameInput).toHaveValue(originalName, { timeout: 10000 });
+    await nameInput.clear();
+    await nameInput.fill(newName);
+    await page.getByTestId("group-edit-submit").click();
 
-    // Wait for dialog to close
-    await expect(dialog).not.toBeVisible({ timeout: 10000 });
+    // Saving navigates back to the checks list
+    await page.waitForURL(/\/checks$/, { timeout: 10000 });
 
     // Verify the name has changed
     await expect(
@@ -193,19 +193,23 @@ test.describe("Check Groups", () => {
 
     await navigateToChecks(page);
 
-    // Find the group section and open its menu
+    // Find the group section and open its edit page
     const groupSection = page
       .getByTestId("group-section")
       .filter({ has: page.getByTestId("group-name").getByText(groupName) });
     await expect(groupSection).toBeVisible({ timeout: 10000 });
 
-    await groupSection.getByTestId("group-menu-button").click();
-    await page.getByTestId("group-delete-action").click();
+    await groupSection.getByTestId("group-edit-button").click();
+    await page.waitForURL(/\/check-groups\/[0-9a-f-]+\/edit$/, {
+      timeout: 10000,
+    });
 
-    // Confirm deletion
+    // Delete from the edit page, confirming the dialog
+    await page.getByTestId("group-delete-button").click();
     await page.getByTestId("confirm-delete-group").click();
 
-    // Verify the group is gone
+    // Deleting navigates back to the checks list; the group is gone
+    await page.waitForURL(/\/checks$/, { timeout: 10000 });
     await expect(
       page.getByTestId("group-name").getByText(groupName)
     ).not.toBeVisible({ timeout: 10000 });
@@ -243,14 +247,13 @@ test.describe("Check Groups", () => {
     const secondIdx = allNames.findIndex((n) => n === `E2E Second ${ts}`);
     expect(firstIdx).toBeLessThan(secondIdx);
 
-    // Open second group's menu and move it up
+    // Move the second group up via its header button
     const secondGroupSection = page
       .getByTestId("group-section")
       .filter({
         has: page.getByTestId("group-name").getByText(`E2E Second ${ts}`),
       });
-    await secondGroupSection.getByTestId("group-menu-button").click();
-    await page.getByTestId("group-move-up-action").click();
+    await secondGroupSection.getByTestId("group-move-up-button").click();
 
     // Wait for reorder to take effect
     await page.waitForLoadState("networkidle");

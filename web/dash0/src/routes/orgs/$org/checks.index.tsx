@@ -29,7 +29,6 @@ import {
   useDeleteCheck,
   useCheckGroups,
   useCreateCheckGroup,
-  useDeleteCheckGroup,
   useImportChecks,
   useEscalationPolicies,
   type Check,
@@ -331,8 +330,6 @@ function CheckGroupSection({
   search,
   isFirst,
   isLast,
-  onDelete,
-  onRename,
   onMoveUp,
   onMoveDown,
   onDeleteCheck,
@@ -349,8 +346,6 @@ function CheckGroupSection({
   search: string;
   isFirst: boolean;
   isLast: boolean;
-  onDelete: () => void;
-  onRename: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
   onDeleteCheck: (uid: string) => void;
@@ -415,6 +410,28 @@ function CheckGroupSection({
             variant="ghost"
             size="icon"
             className="h-8 w-8"
+            aria-label={t("menu.moveUp")}
+            disabled={isFirst}
+            onClick={onMoveUp}
+            data-testid="group-move-up-button"
+          >
+            <ArrowUp className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            aria-label={t("menu.moveDown")}
+            disabled={isLast}
+            onClick={onMoveDown}
+            data-testid="group-move-down-button"
+          >
+            <ArrowDown className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
             aria-label={t("menu.editGroup")}
             data-testid="group-edit-button"
             asChild
@@ -426,40 +443,6 @@ function CheckGroupSection({
               <Pencil className="h-4 w-4" />
             </Link>
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8" data-testid="group-menu-button">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onRename} data-testid="group-rename-action">
-                <Pencil className="mr-2 h-4 w-4" />
-                {t("menu.rename")}
-              </DropdownMenuItem>
-              {!isFirst && (
-                <DropdownMenuItem onClick={onMoveUp} data-testid="group-move-up-action">
-                  <ArrowUp className="mr-2 h-4 w-4" />
-                  {t("menu.moveUp")}
-                </DropdownMenuItem>
-              )}
-              {!isLast && (
-                <DropdownMenuItem onClick={onMoveDown} data-testid="group-move-down-action">
-                  <ArrowDown className="mr-2 h-4 w-4" />
-                  {t("menu.moveDown")}
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive"
-                onClick={onDelete}
-                data-testid="group-delete-action"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                {t("menu.deleteGroup")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </div>
 
@@ -563,11 +546,8 @@ function ChecksIndexPage() {
   const [search, setSearch] = useState("");
   const [internalFilter, setInternalFilter] = useState<string>("false");
   const [deleteCheckUid, setDeleteCheckUid] = useState<string | null>(null);
-  const [deleteGroupUid, setDeleteGroupUid] = useState<string | null>(null);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
-  const [renameGroup, setRenameGroup] = useState<CheckGroup | null>(null);
-  const [renameValue, setRenameValue] = useState("");
   const [changeGroupCheck, setChangeGroupCheck] = useState<Check | null>(null);
   const debouncedSearch = useDebounce(search, 300);
 
@@ -676,7 +656,6 @@ function ChecksIndexPage() {
 
   const deleteCheck = useDeleteCheck(org);
   const createGroup = useCreateCheckGroup(org);
-  const deleteGroup = useDeleteCheckGroup(org);
   const importChecks = useImportChecks(org);
 
   const handleDeleteCheck = async () => {
@@ -690,17 +669,6 @@ function ChecksIndexPage() {
     }
   };
 
-  const handleDeleteGroup = async () => {
-    if (!deleteGroupUid) return;
-    try {
-      await deleteGroup.mutateAsync(deleteGroupUid);
-      toast.success(t("toast.groupDeleted"));
-      setDeleteGroupUid(null);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t("toast.groupDeleteFailed"));
-    }
-  };
-
   const handleCreateGroup = async () => {
     if (!newGroupName.trim()) return;
     try {
@@ -710,21 +678,6 @@ function ChecksIndexPage() {
       setShowNewGroup(false);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : t("toast.groupCreateFailed"));
-    }
-  };
-
-  const handleRename = async () => {
-    if (!renameGroup || !renameValue.trim()) return;
-    try {
-      await apiFetch(`/api/v1/orgs/${org}/check-groups/${renameGroup.uid}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name: renameValue.trim() }),
-      });
-      queryClient.invalidateQueries({ queryKey: ["checkGroups", org] });
-      toast.success(t("toast.groupRenamed"));
-      setRenameGroup(null);
-    } catch {
-      toast.error(t("toast.groupRenameFailed"));
     }
   };
 
@@ -955,11 +908,6 @@ function ChecksIndexPage() {
               search={debouncedSearch}
               isFirst={idx === 0}
               isLast={idx === (groups?.length ?? 0) - 1}
-              onDelete={() => setDeleteGroupUid(group.uid)}
-              onRename={() => {
-                setRenameGroup(group);
-                setRenameValue(group.name);
-              }}
               onMoveUp={() => handleMoveGroup(group, "up")}
               onMoveDown={() => handleMoveGroup(group, "down")}
               onDeleteCheck={setDeleteCheckUid}
@@ -1016,28 +964,6 @@ function ChecksIndexPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete Group Dialog */}
-      <AlertDialog open={!!deleteGroupUid} onOpenChange={() => setDeleteGroupUid(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("dialog.deleteGroupTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("dialog.deleteGroupDescription")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteGroup}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              data-testid="confirm-delete-group"
-            >
-              {t("menu.deleteGroup")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       {/* New Group Dialog */}
       <Dialog open={showNewGroup} onOpenChange={setShowNewGroup}>
         <DialogContent>
@@ -1073,42 +999,6 @@ function ChecksIndexPage() {
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : null}
               {tc("create")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Rename Group Dialog */}
-      <Dialog open={!!renameGroup} onOpenChange={() => setRenameGroup(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("dialog.renameGroupTitle")}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="rename-group">{tc("name")}</Label>
-              <Input
-                id="rename-group"
-                value={renameValue}
-                onChange={(e) => setRenameValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleRename();
-                }}
-                autoFocus
-                data-testid="rename-group-input"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRenameGroup(null)}>
-              {tc("cancel")}
-            </Button>
-            <Button
-              onClick={handleRename}
-              disabled={!renameValue.trim()}
-              data-testid="rename-group-submit"
-            >
-              {t("menu.rename")}
             </Button>
           </DialogFooter>
         </DialogContent>
