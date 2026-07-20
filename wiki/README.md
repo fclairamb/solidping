@@ -2,13 +2,45 @@
 
 ## Roadmap
 
-- [roadmap.md](roadmap.md) — Current feature roadmap and priorities (refreshed May 2026)
+- [roadmap.md](roadmap.md) — Feature roadmap and priorities — **stale (May 2026 snapshot)**; counts corrected 2026-07-20 but priorities still need a rewrite, see the banner at the top of the file
 
 ## Architecture & Design
 
 - [architecture.md](architecture.md) — System architecture: handler-service pattern, multi-tenancy, distributed checks, data model, scalability
-- [api-specification.md](api-specification.md) — Complete REST API specification: auth, orgs, users, workers, checks, results, config
-- [database-model.md](database-model.md) — Database schema with all 28 tables, columns, foreign keys, and design patterns
+- [api-specification/README.md](api-specification/README.md) — REST API index: conventions, auth legend, and a table of contents for every domain page
+  - [api-specification/management.md](api-specification/management.md) — Health, version, limits, memory, bug report, feature flags, scheduling cost, email preview
+  - [api-specification/auth.md](api-specification/auth.md) — Login, registration, tokens, 2FA, passkeys, OAuth providers, OIDC, SAML
+  - [api-specification/orgs.md](api-specification/orgs.md) — Organizations, settings, org tokens, invitations, members, membership requests
+  - [api-specification/entitlements.md](api-specification/entitlements.md) — Per-org limits, the billing-service write API, and the audit log
+  - [api-specification/checks.md](api-specification/checks.md) — Checks, validate, export/import/apply, dependencies, clone, labels, check types, groups, severities, badges
+  - [api-specification/results-incidents.md](api-specification/results-incidents.md) — Results, incidents and their actions, events, and the live-update WebSocket
+  - [api-specification/notifications.md](api-specification/notifications.md) — Notification routes/contacts, delivery history, web push, email suppressions, public unsubscribe
+  - [api-specification/on-call.md](api-specification/on-call.md) — Escalation policies, on-call schedules, overrides, iCal feeds
+  - [api-specification/status-pages.md](api-specification/status-pages.md) — Status pages, sections, resources, subscribers, status updates, public views and feeds
+  - [api-specification/maintenance.md](api-specification/maintenance.md) — Maintenance windows and their check associations
+  - [api-specification/integrations.md](api-specification/integrations.md) — Integrations/channels, Slack app endpoints, Freebox pairing and LAN hosts
+  - [api-specification/agents.md](api-specification/agents.md) — Deported agent WebSocket, private regions, enrollment tokens, agent inventory
+  - [api-specification/discovery.md](api-specification/discovery.md) — Network discovery scans and discovered checks
+  - [api-specification/jobs.md](api-specification/jobs.md) — Org jobs, admin job observability, system-wide job observability
+  - [api-specification/files.md](api-specification/files.md) — Generic file storage and signed public reads
+  - [api-specification/heartbeat.md](api-specification/heartbeat.md) — Heartbeat / cron ping endpoints
+  - [api-specification/mcp-oauth.md](api-specification/mcp-oauth.md) — MCP endpoint and the embedded OAuth 2.1 authorization server
+  - [api-specification/system.md](api-specification/system.md) — Regions, system parameters, email inbox, activation, scheduling lane load
+  - [api-specification/test-and-static.md](api-specification/test-and-static.md) — Test-mode endpoints, SPA/docs/static routes, metrics, CORS preflight
+  - [api-specification/errors.md](api-specification/errors.md) — Error envelope and standard error codes
+- [database-model/README.md](database-model/README.md) — Database schema index: all 50 tables grouped by domain, plus the entity-relationship overview
+  - [database-model/core.md](database-model/core.md) — Tenancy root and configuration: organizations, parameters, app_settings, files
+  - [database-model/auth.md](database-model/auth.md) — Users, credentials, identity providers, org membership, OAuth client registry
+  - [database-model/checks.md](database-model/checks.md) — Checks, groups, labels, dependencies, the lease-based check_jobs scheduler, workers
+  - [database-model/agents.md](database-model/agents.md) — Deported org-scoped agents and their one-shot enrollment tokens
+  - [database-model/results-incidents.md](database-model/results-incidents.md) — Time-series results, incident lifecycle, notification ledger, severities, audit events
+  - [database-model/notifications.md](database-model/notifications.md) — Integrations, per-check channels, escalation policies, on-call schedules, email suppressions
+  - [database-model/status-pages.md](database-model/status-pages.md) — Status pages, sections, resources, subscribers, published updates
+  - [database-model/maintenance.md](database-model/maintenance.md) — Maintenance windows and the checks/groups they cover
+  - [database-model/discovery.md](database-model/discovery.md) — discovered_checks: scan-produced check suggestions awaiting promotion
+  - [database-model/entitlements.md](database-model/entitlements.md) — Per-org plan limits and the entitlement change audit trail
+  - [database-model/jobs.md](database-model/jobs.md) — Generic background job queue and the key-value state store
+  - [database-model/patterns.md](database-model/patterns.md) — Schema-wide design patterns, migration layout, file locations
 - [terraform-provider-api-audit.md](terraform-provider-api-audit.md) — API completeness audit for the out-of-tree Terraform provider: per-resource lifecycle/secret/import coverage and gaps
 
 ## Features
@@ -18,9 +50,10 @@ the relevant code.
 
 - [features/notifications-and-escalation.md](features/notifications-and-escalation.md) — How a check failure becomes a page: incident lifecycle, channel fan-out, escalation policies, on-call resolution, suppression layers (maintenance windows, cascade rollup, ack/snooze).
 - [features/check-dependencies.md](features/check-dependencies.md) — Hard vs soft dependency edges, cascade rollup walk, parent-resolve re-evaluation, correlation windows, edge cases.
-- [features/entitlements.md](features/entitlements.md) — Per-org limits and feature toggles: defaults seed, three-layer resolution (defaults → row → live usage), sources (default / self-hosted / admin / billing-service), stale fallback, audit log.
+- [features/entitlements.md](features/entitlements.md) — Per-org limits (`maxChecks`, `maxUsers`, `maxChecksPerMinute`) and where each is enforced; defaults per deployment mode, resolution (defaults → row → live usage), sources, stale fallback, audit log. Note: there are **no** feature toggles.
 - [features/email-inbox-checks.md](features/email-inbox-checks.md) — Passive checks that succeed when an email arrives. JMAP supervisor, per-check token, status resolution priority, mailbox retention, distinction from email-as-channel.
 - [features/mcp.md](features/mcp.md) — Model Context Protocol surface: endpoint, scopes (`mcp` / `mcp:read`), tool inventory, prompts, sessions, protocol version negotiation, how to add a new tool.
+- [features/deported-agents.md](features/deported-agents.md) — Deported agents / private locations: customer-hosted check workers, outbound WebSocket protocol, Ed25519 enrollment & reconnect, age-sealed credentials the server cannot decrypt, private-region security boundary, and a competitor comparison.
 - [features/browser-monitoring.md](features/browser-monitoring.md) — Headless-Chrome (chromedp) checks: when to pick browser over http, execution model, capabilities & limits, worker requirements, security model.
 - [features/config-as-code.md](features/config-as-code.md) — Declarative checks: export → edit → `sp apply` loop, the `solidping.io/managed` scope, reconcile plan (create/update/delete/unmanaged/rename), `${env:}`/`${param:}` secret references, prune + deletion cap, admin gating.
 
@@ -59,7 +92,8 @@ Operational procedures for diagnosing the running system.
 ## Research
 
 - [research/alerting-patterns.md](research/alerting-patterns.md) — Monitoring & alerting design ideas distilled from BetterStack and Hyperping research; input for future specs (May 2026)
-- [research/screenshot-tools.md](research/screenshot-tools.md) — Go screenshot tools comparison (chromedp, Rod, gowitness, gochro) — Rod recommended
+- [research/screenshot-tools.md](research/screenshot-tools.md) — Go screenshot tools comparison (chromedp, Rod, gowitness, gochro) — recommended Rod at the time; **note the shipped browser checker actually uses chromedp**, so treat this as a historical evaluation
+- [research/market-feedback.md](research/market-feedback.md) — What users hate, want, and will pay for: public sentiment about uptime/incident tools from HN, Indie Hackers, dev.to and review aggregators (complements `competitors/`, which covers what the tools *do*)
 
 ## Competitors
 

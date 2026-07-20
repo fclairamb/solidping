@@ -1,10 +1,21 @@
 # Features Roadmap
 
 > **Status**: Snapshot of priorities as of **May 2026**. Replaces the original Dec 2025 roadmap (Incidents + Email Alerts, Database Checks, Slack Alerts, OpenTelemetry — all shipped). Pull this file forward whenever priorities shift; don't archive it as historical reference.
+>
+> ⚠️ **This file is stale as of 2026-07-20 and needs a rewrite.** The counts below
+> have been corrected, but the *priorities* have not. Several P-items already
+> shipped — P1.2 status-page subscriber notifications, P2.2 Terraform provider,
+> P2.3 automatic discovery (now network, Freebox, container **and** Kubernetes),
+> P4.3 (Web Push shipped), P4.6 heartbeat enhancements (partly). P1.3
+> screenshot capture is still open but its stated blocker, S3-compatible object
+> storage, is resolved. Genuinely still open: P1.1 (Telegram / MS Teams /
+> PagerDuty), P2.1 third-party importers, P3.3 subchecks.
+> Also absent entirely: deported agents, SSH tunnels, config-as-code, MCP OAuth
+> 2.1, scheduler lanes, realtime v2, LDAP/SAML.
 
 ## Where we are
 
-The original roadmap is fully shipped. SolidPing now has 32 check types, 9 native notification channels, multi-region distributed workers, group-incident correlation, on-call schedules, escalation policies, credentials encryption at rest, labels, check templates, Slack Marketplace install, and an MCP server.
+The original roadmap is fully shipped. SolidPing now has 39 check types, 10 native notification channels, multi-region distributed workers, **deported agents (private locations)**, group-incident correlation, on-call schedules, escalation policies, credentials encryption at rest, labels, check templates, Slack Marketplace install, and an MCP server.
 
 The product has crossed the bar where it can credibly replace **BetterStack + Opsgenie/PagerDuty** for self-hosted teams. The remaining work is about **closing the last competitive gaps** and **lowering switching cost** for users on other tools.
 

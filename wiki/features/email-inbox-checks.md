@@ -130,7 +130,7 @@ A check of type `email` carries a single config field:
 Don't write the token by hand — the create flow generates it. The DB
 has a partial index on `json_extract(config, '$.token')` filtered by
 `type = 'email' AND deleted_at IS NULL`
-([`migrations/003_email_token_index.up.sql`](../../server/internal/db/sqlite/migrations/003_email_token_index.up.sql))
+([`migrations/001_v0_1_0.up.sql`](../../server/internal/db/sqlite/migrations/001_v0_1_0.up.sql) — the old standalone `003_email_token_index` migration was folded into the consolidated versioned migrations)
 so token lookups during inbound mail processing are O(log n).
 
 The dashboard renders the full address (`<token>@<addressDomain>`) on
@@ -188,7 +188,7 @@ expired or the provider rate-limited us.
 | Per-check config | [`server/internal/checkers/checkemail/config.go`](../../server/internal/checkers/checkemail/config.go) |
 | JMAP supervisor (connect, watch, retry) | [`server/internal/jmap/manager.go`](../../server/internal/jmap/manager.go) |
 | Token-lookup handler | [`server/internal/handlers/emailcheck/handler.go`](../../server/internal/handlers/emailcheck/handler.go) |
-| Token DB index | [`server/internal/db/sqlite/migrations/003_email_token_index.up.sql`](../../server/internal/db/sqlite/migrations/003_email_token_index.up.sql) |
+| Token DB index | [`server/internal/db/sqlite/migrations/001_v0_1_0.up.sql`](../../server/internal/db/sqlite/migrations/001_v0_1_0.up.sql) |
 | EventSource (push) client | [`server/internal/jmap/eventsource.go`](../../server/internal/jmap/eventsource.go) |
 
 ## Origin

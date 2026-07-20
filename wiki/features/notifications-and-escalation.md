@@ -7,8 +7,9 @@ This page is the end-to-end view a contributor needs before touching the
 incident or notifier code: it walks from the moment a worker writes a
 result through the state machine, the incident lifecycle, the events
 table, and out to the channels that actually buzz. For per-resource API
-details see [api-specification.md](../api-specification.md). For the
-data model see [database-model.md](../database-model.md). For the
+details see [api-specification/notifications.md](../api-specification/notifications.md). For the
+data model see [database-model/notifications.md](../database-model/notifications.md)
+and [database-model/results-incidents.md](../database-model/results-incidents.md). For the
 dependency-graph rules behind cascade rollup see
 [check-dependencies.md](check-dependencies.md).
 
@@ -344,7 +345,7 @@ and the operator action poisons the queue.
 The notification target is stored as an `integration_connections` row
 in the database and called a "channel" everywhere a user sees it.
 The split is a known papercut tracked in spec
-[2026-05-07-03-align-channel-and-connection-naming.md](../../specs/todos/2026-05-07-03-align-channel-and-connection-naming.md).
+[2026-05-07-03-align-channel-and-connection-naming.md](../../specs/done/2026/05/2026-05-07-03-align-channel-and-connection-naming.md).
 
 A channel:
 
@@ -440,7 +441,8 @@ are not gated by incident state.
 
 ## What this page does NOT cover
 
-- Detailed REST surface: see [api-specification.md](../api-specification.md).
+- Detailed REST surface: see [api-specification/notifications.md](../api-specification/notifications.md)
+  and [api-specification/on-call.md](../api-specification/on-call.md).
 - Exact JSONB schema of `integration_connections.settings`:
   per-channel-type, see the relevant `notifications/{slack,discord,…}.go`.
 - Email-as-channel vs email-as-passive-check: those are different
@@ -451,9 +453,9 @@ are not gated by incident state.
 ## Known issues / planned changes
 
 - **Manual resolve currently skips notifications.** Tracked in spec
-  [2026-05-07-01-fix-manual-incident-resolve-missing-notifications.md](../../specs/todos/2026-05-07-01-fix-manual-incident-resolve-missing-notifications.md).
+  [2026-05-07-01-fix-manual-incident-resolve-missing-notifications.md](../../specs/done/2026/05/2026-05-07-01-fix-manual-incident-resolve-missing-notifications.md).
   Once that ships, the "which lifecycle events notify" table is fully
   accurate; today the manual-resolve row is aspirational for that path
   (the recovery-window-elapsed path already notifies).
 - **Channel/connection naming alignment.** Tracked in spec
-  [2026-05-07-03-align-channel-and-connection-naming.md](../../specs/todos/2026-05-07-03-align-channel-and-connection-naming.md).
+  [2026-05-07-03-align-channel-and-connection-naming.md](../../specs/done/2026/05/2026-05-07-03-align-channel-and-connection-naming.md).

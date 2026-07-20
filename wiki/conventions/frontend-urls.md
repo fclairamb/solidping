@@ -111,5 +111,9 @@ Frontend URLs mirror the API endpoint structure for consistency and predictabili
 
 **Key differences:**
 - Frontend uses `$` prefix for path parameters (TanStack Router convention)
-- API uses `:` prefix for path parameters (bunrouter convention)
+- API route declarations use the `:` prefix for path parameters
+  (e.g. `/orgs/:org/checks`). The underlying router is go-chi since v0.5.0, but
+  `internal/httpx` deliberately preserves the original bunrouter-style syntax
+  and rewrites `:param` → chi's `{param}` internally, so route declarations did
+  not have to change.
 - Both use UIDs for resource identification

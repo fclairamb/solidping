@@ -47,8 +47,8 @@ docs/
   README.md                    # Full index (every leaf file)
   CLAUDE.md                    # This file
   architecture.md              # System architecture overview
-  api-specification.md         # REST API specification
-  database-model.md            # Database schema & tables
+  api-specification/           # REST API specification (one page per domain)
+  database-model/              # Database schema & tables (one page per domain)
   roadmap.md                   # Current priorities snapshot
   conventions/                 # Project conventions
   features/                    # End-to-end feature pages

@@ -2385,7 +2385,7 @@ paths:
   # WebSocket endpoint. Full protocol documentation (handshake, message
   # table, close codes, a websocat example) lives in prose at
   # web/docs/docs/features/live-updates.md, with a pointer from
-  # wiki/api-specification.md.
+  # wiki/api-specification/results-incidents.md.
 
   # Member APIs
   /api/v1/orgs/{org}/members:

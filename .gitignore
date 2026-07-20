@@ -29,7 +29,9 @@ server/internal/app/res/
 # Various garbage
 .DS_Store
 *.db
+*.db-journal
 logs/
+agent-keys.json
 
 # Claude Code
 .claude/scheduled_tasks.lock
