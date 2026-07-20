@@ -3944,12 +3944,16 @@ export interface EntitlementsLimits {
   maxChecks?: number | null;
   maxChecksPerMinute?: number | null;
   maxUsers?: number | null;
+  /** Cap on active deported (private-location) agents. null = unlimited. */
+  maxDeportedAgents?: number | null;
 }
 
 export interface EntitlementsUsage {
   checks: number;
   checksPerMinute: number;
   ssoUsers: number;
+  /** Count of active deported (private-location) agents. */
+  agents: number;
 }
 
 export interface EntitlementsResponse {

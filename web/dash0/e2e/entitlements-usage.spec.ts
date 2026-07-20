@@ -48,7 +48,7 @@ test.describe("Entitlements usage", () => {
     await resetEntitlements(authenticatedPage, token);
   });
 
-  test("usage page renders three limit/usage rows", async ({
+  test("usage page renders four limit/usage rows", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -59,11 +59,15 @@ test.describe("Entitlements usage", () => {
     await page.goto("orgs/test/organization/usage");
     await page.waitForLoadState("networkidle");
 
-    // Heading + the three rows (Checks, Checks per minute, SSO users).
+    // Heading + the four rows (Checks, Checks per minute, Users, Private
+    // location agents).
     await expect(
       page.getByRole("heading", { name: /usage/i }),
     ).toBeVisible();
-    await expect(page.getByTestId(/^usage-row-/)).toHaveCount(3);
+    await expect(page.getByTestId(/^usage-row-/)).toHaveCount(4);
+    await expect(
+      page.getByTestId("usage-row-Private location agents"),
+    ).toBeVisible();
 
     // With null limits, each row shows the "Unlimited" label.
     await expect(page.getByText(/unlimited/i).first()).toBeVisible();

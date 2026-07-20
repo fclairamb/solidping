@@ -66,7 +66,7 @@ function UsagePage() {
       <CardContent className="space-y-6">
         {isLoading ? (
           <div className="space-y-6">
-            {[0, 1, 2].map((i) => (
+            {[0, 1, 2, 3].map((i) => (
               <div key={i} className="space-y-2">
                 <Skeleton className="h-4 w-40" />
                 <Skeleton className="h-2 w-full" />
@@ -112,6 +112,12 @@ function UsagePage() {
                 label={t("usage.users")}
                 current={data.usage?.ssoUsers ?? 0}
                 limit={data.limits.maxUsers}
+                unlimitedLabel={t("usage.unlimited")}
+              />
+              <UsageRow
+                label={t("usage.privateLocationAgents")}
+                current={data.usage?.agents ?? 0}
+                limit={data.limits.maxDeportedAgents}
                 unlimitedLabel={t("usage.unlimited")}
               />
             </div>
