@@ -197,9 +197,9 @@ func TestNextAligned(t *testing.T) {
 
 		// Consecutive regions' phases must be exactly one spread (20s) apart —
 		// the new-formula leveling. Each region still fires every full period.
-		require.EqualValues(t, int64(spread/time.Second),
+		require.Equal(t, int64(spread/time.Second),
 			diffSecs(phaseOf(nextEu2), phaseOf(nextDefault)), "eu-2 is one spread after default")
-		require.EqualValues(t, int64(2*spread/time.Second),
+		require.Equal(t, int64(2*spread/time.Second),
 			diffSecs(phaseOf(nextUs1), phaseOf(nextDefault)), "us-1 is two spreads after default")
 	})
 

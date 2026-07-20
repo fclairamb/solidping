@@ -6149,6 +6149,14 @@ components:
         period:
           type: string
           description: Interval duration (e.g., "00:01:00" for 1 minute)
+        regionSpread:
+          type: string
+          nullable: true
+          description: >-
+            Optional inter-region scheduling offset (e.g., "00:00:20"). Every
+            selected region runs the check at the full period; this staggers
+            their phases. Null uses the default of period ÷ region count. Must
+            satisfy 0 <= regionSpread < period.
         checkGroupUid:
           type: string
           format: uuid
@@ -6346,6 +6354,13 @@ components:
         period:
           type: string
           default: "00:01:00"
+        regionSpread:
+          type: string
+          nullable: true
+          description: >-
+            Optional inter-region scheduling offset (e.g., "00:00:20"). Null (or
+            omitted) uses the default of period ÷ region count. Must satisfy
+            0 <= regionSpread < period.
         checkGroupUid:
           type: string
           format: uuid
@@ -6407,6 +6422,13 @@ components:
           description: Whether this check is internal (hidden from default listings)
         period:
           type: string
+        regionSpread:
+          type: string
+          nullable: true
+          description: >-
+            Optional inter-region scheduling offset (e.g., "00:00:20"). An empty
+            string clears it back to the default of period ÷ region count. Must
+            satisfy 0 <= regionSpread < period.
         checkGroupUid:
           type: string
           nullable: true

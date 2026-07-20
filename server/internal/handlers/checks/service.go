@@ -156,6 +156,31 @@ func validateRegionSpread(spread, period time.Duration) error {
 	return nil
 }
 
+// applyRegionSpreadUpdate maps a PATCH's regionSpread string onto a CheckUpdate
+// (spec 2026-07-20-05): an explicit empty string clears the override back to
+// the period/region_count default; a value is parsed and validated against the
+// effective period before being set.
+func applyRegionSpreadUpdate(update *models.CheckUpdate, raw string, effectivePeriod time.Duration) error {
+	if raw == "" {
+		update.ClearRegionSpread = true
+
+		return nil
+	}
+
+	var spread timeutils.Duration
+	if err := spread.Scan(raw); err != nil {
+		return err
+	}
+
+	if err := validateRegionSpread(time.Duration(spread), effectivePeriod); err != nil {
+		return err
+	}
+
+	update.RegionSpread = &spread
+
+	return nil
+}
+
 // periodBoundError reports a check period outside its type's allowed bounds
 // (spec 2026-07-01-04 D1). It is a distinct error type (not a sentinel)
 // because the message embeds the per-type bound ("period for browser checks
@@ -1522,26 +1547,14 @@ func (s *Service) UpdateCheck(
 		}
 		update.Period = &duration
 	}
-	// Optional inter-region spread override (spec 2026-07-20-05). An explicit
-	// empty string clears it back to the period/region_count default; a value
-	// is validated against the effective period (the new one if this PATCH
-	// sets the period, else the stored value).
+	// Optional inter-region spread override (spec 2026-07-20-05).
 	if req.RegionSpread != nil {
-		if *req.RegionSpread == "" {
-			update.ClearRegionSpread = true
-		} else {
-			var spread timeutils.Duration
-			if errScan := spread.Scan(*req.RegionSpread); errScan != nil {
-				return CheckResponse{}, errScan
-			}
-			effectivePeriod := time.Duration(check.Period)
-			if update.Period != nil {
-				effectivePeriod = time.Duration(*update.Period)
-			}
-			if vErr := validateRegionSpread(time.Duration(spread), effectivePeriod); vErr != nil {
-				return CheckResponse{}, vErr
-			}
-			update.RegionSpread = &spread
+		effectivePeriod := time.Duration(check.Period)
+		if update.Period != nil {
+			effectivePeriod = time.Duration(*update.Period)
+		}
+		if applyErr := applyRegionSpreadUpdate(&update, *req.RegionSpread, effectivePeriod); applyErr != nil {
+			return CheckResponse{}, applyErr
 		}
 	}
 	if req.ReopenCooldownMultiplier != nil {

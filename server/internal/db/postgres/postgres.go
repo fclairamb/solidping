@@ -1531,13 +1531,6 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 		query = query.Set("regions = ?", pgdialect.Array(*update.Regions))
 	}
 
-	switch {
-	case update.ClearRegionSpread:
-		query = query.Set("region_spread = NULL")
-	case update.RegionSpread != nil:
-		query = query.Set("region_spread = ?", *update.RegionSpread)
-	}
-
 	query = applyAdaptiveAndIncidentTrackingPg(query, update)
 
 	switch {
@@ -1558,6 +1551,12 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 func applyAdaptiveAndIncidentTrackingPg(
 	query *bun.UpdateQuery, update *models.CheckUpdate,
 ) *bun.UpdateQuery {
+	switch {
+	case update.ClearRegionSpread:
+		query = query.Set("region_spread = NULL")
+	case update.RegionSpread != nil:
+		query = query.Set("region_spread = ?", *update.RegionSpread)
+	}
 	if update.ReopenCooldownMultiplier != nil {
 		query = query.Set("reopen_cooldown_multiplier = ?", *update.ReopenCooldownMultiplier)
 	}
@@ -4755,7 +4754,7 @@ func (s *Service) ListChecksWithStaleJobPeriods(ctx context.Context) ([]*models.
 	var checks []*models.Check
 	if err := s.db.NewSelect().
 		Model(&checks).
-		Where("uid IN (?)", bun.In(uids)).
+		Where("uid IN (?)", bun.List(uids)).
 		Where("deleted_at IS NULL").
 		Scan(ctx); err != nil {
 		return nil, fmt.Errorf("load stale checks: %w", err)

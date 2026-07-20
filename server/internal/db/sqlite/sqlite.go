@@ -4729,7 +4729,7 @@ func (s *Service) ListChecksWithStaleJobPeriods(ctx context.Context) ([]*models.
 	var checks []*models.Check
 	if err := s.db.NewSelect().
 		Model(&checks).
-		Where("uid IN (?)", bun.In(uids)).
+		Where("uid IN (?)", bun.List(uids)).
 		Where("deleted_at IS NULL").
 		Scan(ctx); err != nil {
 		return nil, fmt.Errorf("load stale checks: %w", err)

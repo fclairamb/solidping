@@ -217,20 +217,11 @@ func serve(ctx context.Context, _ *cli.Command) error {
 	// the WebAuthn RP ID.
 	server.SetupRoutes(ctx)
 
-	// Auto-encrypt any plaintext secrets so existing self-hosted installs
-	// pick up encryption transparently when the operator first sets the
-	// master key. No-op when encryption is disabled or AutoMigrate=false.
-	if migrateErr := server.MaybeAutoMigrateEncryption(ctx); migrateErr != nil {
-		slog.ErrorContext(ctx, "Failed to auto-migrate credentials", "error", migrateErr)
-		return migrateErr
-	}
-
-	// One-shot: re-level any multi-region check_jobs still carrying the old
-	// split period (basePeriod × region_count) onto the per-region full period
-	// and inter-region spread (spec 2026-07-20-05). Idempotent no-op once done.
-	if recErr := server.ReconcileCheckJobSchedules(ctx); recErr != nil {
-		slog.ErrorContext(ctx, "Failed to reconcile check job schedules", "error", recErr)
-		return recErr
+	// Idempotent one-shot startup data fixups (credential encryption sweep,
+	// multi-region check-job re-leveling). No-ops once the DB is already in the
+	// current shape.
+	if fixupErr := runStartupDataFixups(ctx, server); fixupErr != nil {
+		return fixupErr
 	}
 
 	// Initialize test data if in test mode
@@ -260,6 +251,32 @@ func serve(ctx context.Context, _ *cli.Command) error {
 	}
 
 	return err
+}
+
+// runStartupDataFixups runs the idempotent one-shot data migrations that must
+// happen after routes are set up but before the server accepts traffic:
+//   - auto-encrypt plaintext secrets so existing self-hosted installs pick up
+//     encryption transparently when the operator first sets the master key
+//     (no-op when encryption is disabled or AutoMigrate=false);
+//   - re-level any multi-region check_jobs still carrying the old split period
+//     (basePeriod × region_count) onto the per-region full period and
+//     inter-region spread (spec 2026-07-20-05).
+//
+// Both are idempotent no-ops once the database is already in the current shape.
+func runStartupDataFixups(ctx context.Context, server *app.Server) error {
+	if migrateErr := server.MaybeAutoMigrateEncryption(ctx); migrateErr != nil {
+		slog.ErrorContext(ctx, "Failed to auto-migrate credentials", "error", migrateErr)
+
+		return migrateErr
+	}
+
+	if recErr := server.ReconcileCheckJobSchedules(ctx); recErr != nil {
+		slog.ErrorContext(ctx, "Failed to reconcile check job schedules", "error", recErr)
+
+		return recErr
+	}
+
+	return nil
 }
 
 // runAgentMode runs the deported-agent loop until interrupted (spec

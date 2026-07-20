@@ -35,17 +35,18 @@ func (s *Service) Usage(ctx context.Context, orgUID string) (Usage, error) {
 	}
 
 	var perMin float64
-	for _, r := range rates {
-		if r.Enabled && time.Duration(r.Period) > 0 {
+	for i := range rates {
+		rate := &rates[i]
+		if rate.Enabled && time.Duration(rate.Period) > 0 {
 			// Each selected region runs the check every period, so the
 			// per-minute cost is the single-region rate times the region count
 			// (min 1 — a no-region check still runs once). Mirrors the actual
 			// worker dispatch rate the ReserveCheckExecution token bucket sees.
-			regions := len(r.Regions)
+			regions := len(rate.Regions)
 			if regions < 1 {
 				regions = 1
 			}
-			perMin += float64(time.Minute) / float64(time.Duration(r.Period)) * float64(regions)
+			perMin += float64(time.Minute) / float64(time.Duration(rate.Period)) * float64(regions)
 		}
 	}
 
