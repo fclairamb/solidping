@@ -513,6 +513,15 @@ export function useCheckGroups(org: string) {
   });
 }
 
+export function useCheckGroup(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["checkGroups", org, uid],
+    queryFn: () =>
+      apiFetch<CheckGroup>(`/api/v1/orgs/${org}/check-groups/${uid}`),
+    enabled: !!org && !!uid,
+  });
+}
+
 export function useCreateCheckGroup(org: string) {
   const queryClient = useQueryClient();
 
