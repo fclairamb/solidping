@@ -142,6 +142,12 @@ type Check struct {
 	CreatedAt time.Time  `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
 	DeletedAt *time.Time `bun:"deleted_at"`
+
+	// GroupSortKey is the effective group-ordering key populated only by the
+	// sort=group ListChecks path: the check's group sort_order, or a large
+	// sentinel (int16 max is 32767, so ungrouped sorts strictly last). Scan-only
+	// and transient — never selected, inserted, or updated outside that query.
+	GroupSortKey int64 `bun:"group_sort_key,scanonly"`
 }
 
 // NewCheck creates a new check with generated UID.
@@ -295,4 +301,13 @@ type ListChecksFilter struct {
 	Limit           int               // max results to return (0 = no limit)
 	CursorCreatedAt *time.Time        // cursor: created_at of last item from previous page
 	CursorUID       *string           // cursor: uid of last item from previous page
+
+	// SortByGroup opts into display-order pagination (sort=group): group
+	// sort_order asc, ungrouped last, then created_at DESC / uid DESC within a
+	// bucket. Off = the default created_at DESC / uid DESC ordering.
+	SortByGroup bool
+	// CursorGroupSortKey is the effective group sort key of the last item from
+	// the previous page — the leading component of the composite sort=group
+	// cursor. Only set alongside CursorCreatedAt/CursorUID when SortByGroup.
+	CursorGroupSortKey *int64
 }

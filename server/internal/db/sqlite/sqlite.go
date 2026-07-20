@@ -1266,6 +1266,15 @@ func applyCheckTypeFilter(query *bun.SelectQuery, types []string) *bun.SelectQue
 	return query.Where("type IN (?)", bun.List(types))
 }
 
+// groupSortKeyExpr is the effective group-ordering key for sort=group: the
+// check's group sort_order, or a large sentinel for ungrouped checks so they
+// sort strictly last (sort_order is int16, max 32767 < the sentinel). It is a
+// correlated subquery referencing the outer checks.check_group_uid by bare
+// column name — deliberately not qualified, since bun aliases the checks table
+// as the reserved word "check". Kept byte-identical to the postgres twin so the
+// composite cursor produced by one store is honoured by the other.
+const groupSortKeyExpr = `COALESCE((SELECT g.sort_order FROM check_groups AS g WHERE g.uid = check_group_uid), 2147483647)`
+
 //nolint:funlen // List query builder handles many optional filters inline
 func (s *Service) ListChecks(
 	ctx context.Context, orgUID string, filter *models.ListChecksFilter,
@@ -1275,8 +1284,7 @@ func (s *Service) ListChecks(
 	query := s.db.NewSelect().
 		Model(&checks).
 		Where("organization_uid = ?", orgUID).
-		Where("deleted_at IS NULL").
-		Order("created_at DESC", "uid DESC")
+		Where("deleted_at IS NULL")
 
 	countQuery := s.db.NewSelect().
 		Model((*models.Check)(nil)).
@@ -1340,8 +1348,22 @@ func (s *Service) ListChecks(
 			countQuery = countQuery.Where("status IN (?)", bun.List(filter.Statuses))
 		}
 
-		// Apply cursor
-		if filter.CursorCreatedAt != nil && filter.CursorUID != nil {
+		// Apply cursor (keyset). For sort=group the cursor is composite —
+		// (group sort key, created_at, uid) — so the predicate compares the
+		// effective group key first, then falls back to the created_at/uid pair
+		// within a group. Default ordering keeps the original two-part cursor.
+		if filter.SortByGroup {
+			if filter.CursorGroupSortKey != nil && filter.CursorCreatedAt != nil && filter.CursorUID != nil {
+				query = query.Where(
+					"("+groupSortKeyExpr+" > ?"+
+						" OR ("+groupSortKeyExpr+" = ? AND created_at < ?)"+
+						" OR ("+groupSortKeyExpr+" = ? AND created_at = ? AND uid < ?))",
+					*filter.CursorGroupSortKey,
+					*filter.CursorGroupSortKey, *filter.CursorCreatedAt,
+					*filter.CursorGroupSortKey, *filter.CursorCreatedAt, *filter.CursorUID,
+				)
+			}
+		} else if filter.CursorCreatedAt != nil && filter.CursorUID != nil {
 			query = query.Where(
 				"(created_at < ? OR (created_at = ? AND uid < ?))",
 				*filter.CursorCreatedAt, *filter.CursorCreatedAt, *filter.CursorUID,
@@ -1352,6 +1374,20 @@ func (s *Service) ListChecks(
 		if filter.Limit > 0 {
 			query = query.Limit(filter.Limit + 1)
 		}
+	}
+
+	// Apply ordering. sort=group loads in the page's display order (group
+	// sort_order asc, ungrouped last via the COALESCE sentinel, then created_at
+	// DESC / uid DESC within a bucket) and selects the effective key so the
+	// service can encode it into the composite cursor. Default is unchanged.
+	if filter != nil && filter.SortByGroup {
+		query = query.
+			ColumnExpr("*").
+			ColumnExpr(groupSortKeyExpr+" AS group_sort_key").
+			OrderExpr(groupSortKeyExpr+" ASC").
+			Order("created_at DESC", "uid DESC")
+	} else {
+		query = query.Order("created_at DESC", "uid DESC")
 	}
 
 	total, err := countQuery.Count(ctx)
