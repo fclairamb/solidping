@@ -316,10 +316,10 @@ function TokenRevealDialog({
           </DialogDescription>
         </DialogHeader>
         {minted && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
+          <div className="min-w-0 space-y-3">
+            <div className="flex min-w-0 items-center gap-2">
               <code
-                className="flex-1 overflow-x-auto rounded bg-muted px-2 py-1.5 text-xs"
+                className="min-w-0 flex-1 overflow-x-auto rounded bg-muted px-2 py-1.5 text-xs"
                 data-testid="minted-token"
               >
                 {minted.token}
@@ -331,7 +331,7 @@ function TokenRevealDialog({
             <p className="text-xs text-muted-foreground">
               {t("privateLocations.token.run", "Run the agent with:")}
             </p>
-            <pre className="overflow-x-auto rounded bg-muted p-2 text-xs">
+            <pre className="max-w-full overflow-x-auto rounded bg-muted p-2 text-xs">
               {`docker run -v agent-data:/data \\
   -e SP_NODE_ROLE=agent \\
   -e SP_AGENT_SERVER_URL=${window.location.origin} \\
