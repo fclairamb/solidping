@@ -51,6 +51,7 @@ no-op-ing.
 | `limits.maxChecks` | int / null | null ⇒ unlimited |
 | `limits.maxUsers` | int / null | null ⇒ unlimited |
 | `limits.maxChecksPerMinute` | int / null | null ⇒ unlimited |
+| `limits.maxDeportedAgents` | int / null | null ⇒ unlimited; caps active deported (private-location) agents across all private regions |
 | `limits.maxSsoUsers` | int / null | **deprecated alias** for `maxUsers`; sending both is rejected (`ErrConflictingUserLimitKeys`) |
 | `source` | string | defaults to `billing` for a service token, `admin` for an admin JWT |
 | `displayName` | string | display-only plan name, e.g. `Team` |

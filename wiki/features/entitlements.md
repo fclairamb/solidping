@@ -23,7 +23,7 @@ The OSS never models "you're on the Pro plan, so you get…". It stores the
 
 ## Limits
 
-`EntitlementLimits` carries exactly three fields. Each is a `*int`; `nil` means
+`EntitlementLimits` carries exactly four fields. Each is a `*int`; `nil` means
 **unlimited**.
 
 | Field | Meaning | Enforced at |
@@ -31,6 +31,7 @@ The OSS never models "you're on the Pro plan, so you get…". It stores the
 | `maxChecks` | Non-internal, non-deleted checks the org may hold. | `CheckCreateAllowed` → [`checks/service.go:946,3062`](../../server/internal/handlers/checks/service.go) |
 | `maxUsers` | Total org members, however they joined. | `CheckMembership` → [`auth/service.go:413`](../../server/internal/handlers/auth/service.go) |
 | `maxChecksPerMinute` | Aggregate check-execution rate (token bucket). | `ReserveCheckExecution` → [`checkworker/worker.go:877`](../../server/internal/checkworker/worker.go), [`agentws/handler.go:502`](../../server/internal/handlers/agentws/handler.go) |
+| `maxDeportedAgents` | Active deported (private-location) agents across all private regions. | `AgentCreateAllowed` → [`agents/service.go` (`MintEnrollmentToken`)](../../server/internal/handlers/agents/service.go), [`agentws/handler.go` (`awaitEnroll`)](../../server/internal/handlers/agentws/handler.go) |
 
 `maxUsers` was renamed from `maxSsoUsers` (spec `2026-07-12-02`). The old key
 survives as a **decode-only alias**; the payload always re-marshals as
@@ -47,14 +48,28 @@ workers: `agentws` reserves rate-limit tokens on the agent dispatch path too, so
 a private location cannot be used to bypass `maxChecksPerMinute`. See
 [deported-agents.md](deported-agents.md).
 
+`maxDeportedAgents` is enforced twice: `MintEnrollmentToken` checks it first
+for early UX (the dashboard can surface an upgrade prompt before the operator
+ever starts a container), and `agentws`'s `awaitEnroll` checks it again at the
+actual enrollment — the correctness point, since a token minted under the cap
+could still over-enroll if the cap drops or another token is consumed first.
+A rejection at enrollment time sends the agent a protocol `error` frame and
+**does not consume the one-shot token**, so the same token can be retried
+after an upgrade or after deleting another agent.
+
 ### Defaults by deployment mode
 
 `DefaultsFor(mode)` — anything not listed is `nil` (unlimited):
 
-| Mode | maxChecks | maxUsers | maxChecksPerMinute | Display identity |
-|---|---|---|---|---|
-| Self-hosted | unlimited | 30 | unlimited | 🏠 Self-hosted |
-| SaaS | 100 | 5 | 6 | 🆓 Free |
+| Mode | maxChecks | maxUsers | maxChecksPerMinute | maxDeportedAgents | Display identity |
+|---|---|---|---|---|---|
+| Self-hosted | unlimited | 30 | unlimited | unlimited | 🏠 Self-hosted |
+| SaaS | 100 | 5 | 6 | 1 | 🆓 Free |
+
+Self-hosted's unlimited `maxDeportedAgents` preserves the "free private
+locations" competitive positioning (see
+[deported-agents.md](deported-agents.md#competitive-position)). SaaS's `1`
+mirrors the Free SKU of the plan ladder (Free 1, Starter 3, Pro 6, Scale 9).
 
 The SaaS numbers implement the Free tier of the 2026-07-12 pricing decision and
 **must stay in sync** with `solidping-billing`'s Free SKU — they are the
@@ -84,13 +99,14 @@ composing three things:
 The resolver always merges defaults in first, so external callers never see a
 nil-means-default ambiguity.
 
-`Usage` has three fields:
+`Usage` has four fields:
 
 | Field | Meaning |
 |---|---|
 | `checks` | Non-internal, non-deleted checks. System-created checks neither consume nor are gated by quota. |
 | `checksPerMinute` | Aggregate execution rate derived from per-check periods. |
 | `ssoUsers` | Total member count. **The wire key stays `ssoUsers` for back-compat** even though it is enforced against `maxUsers`. |
+| `agents` | Active (non-revoked, non-deleted) deported agents across all private regions. Enforced against `maxDeportedAgents`. |
 
 ## Sources
 
@@ -154,7 +170,12 @@ The complete payload is:
 {
   "version": 1,
   "source": "billing-service",
-  "limits": { "maxChecks": 100, "maxUsers": 5, "maxChecksPerMinute": 6 },
+  "limits": {
+    "maxChecks": 100,
+    "maxUsers": 5,
+    "maxChecksPerMinute": 6,
+    "maxDeportedAgents": 1
+  },
   "displayName": "Team",
   "displayEmoji": "🚀"
 }
@@ -170,8 +191,8 @@ The complete payload is:
   or `allowedCheckTypes` fails the entire request.
 
 Accepted request keys: `limits` (`maxChecks`, `maxUsers`, `maxChecksPerMinute`,
-`maxSsoUsers`), `source`, `displayName`, `displayEmoji`, `externalRef`,
-`metadata`, `expiresAt`, `lastSyncedAt`.
+`maxDeportedAgents`, `maxSsoUsers`), `source`, `displayName`, `displayEmoji`,
+`externalRef`, `metadata`, `expiresAt`, `lastSyncedAt`.
 
 > **PATCH quirk.** `mergePartial` seeds the outgoing row from the current
 > resolved values for `Limits`, `DisplayName`, `DisplayEmoji`, `ExpiresAt` and

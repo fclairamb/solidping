@@ -176,7 +176,7 @@ secrets. Surveyed 2026-07-20; see [sources](#sources).
 
 | Vendor | Product | Transport | Enrollment auth | **Vendor can read check secrets?** | Plan gate |
 |---|---|---|---|---|---|
-| **SolidPing** | Private locations | Outbound WebSocket | One-shot token → **agent-generated** Ed25519 keypair | **No**, for private-only checks (age-sealed to the agent) | Self-hosted: free |
+| **SolidPing** | Private locations | Outbound WebSocket | One-shot token → **agent-generated** Ed25519 keypair | **No**, for private-only checks (age-sealed to the agent) | SaaS: 1/3/6/9 agents by plan · Self-hosted: unlimited |
 | Checkly | Private Locations | Outbound, protocol undocumented | Shared API key | Yes | Team ($64/mo)+ |
 | Datadog | Private Locations | Outbound HTTPS poll | SigV4 keys + RSA keypair (**vendor-generated**) | Yes | Usage-billed |
 | New Relic | Synthetics job manager | Outbound HTTPS poll | Shared key, **non-rotatable** | Yes (vendor-held KMS) | Counts vs check budget |
@@ -197,8 +197,11 @@ secrets. Surveyed 2026-07-20; see [sources](#sources).
    surrendering server-side configuration and result detail.
    SolidPing's agent generates its own keypair locally and receives secrets
    sealed to it: cryptographic, not contractual.
-2. **No plan gate.** Checkly gates at $64/mo, Site24x7 excludes its Free tier.
-   Self-hosted SolidPing has no upcharge.
+2. **No self-hosted upcharge, and the SaaS free tier still includes one.**
+   Checkly gates the feature entirely behind its $64/mo Team plan, and
+   Site24x7 excludes its Free tier outright. SolidPing's SaaS Free plan ships
+   1 agent (ladder: Free 1, Starter 3, Pro 6, Scale 9 — `maxDeportedAgents`,
+   see [entitlements.md](entitlements.md)); self-hosted has no cap at all.
 3. **Enrollment is one-shot and rotatable.** Everyone else ships a long-lived
    shared bearer secret; New Relic's explicitly cannot be rotated.
 4. **Real multi-agent HA** with the sealed envelope addressed to every active
