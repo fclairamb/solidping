@@ -22,7 +22,7 @@ const ungroupedSortKeySentinel = int64(2147483647)
 // B 10, C 20) plus two ungrouped checks, controlled created_at so the
 // within-bucket order (created_at DESC / uid DESC) is deterministic. Returns
 // the org UID and the slugs in the exact order sort=group must produce.
-func groupSortFixturePG(t *testing.T, s *Service) (orgUID string, wantOrder []string) {
+func groupSortFixturePG(t *testing.T, s *Service) (string, []string) {
 	t.Helper()
 
 	ctx := t.Context()

@@ -203,7 +203,7 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req *http.Request) erro
 		opts.Statuses = statuses
 	}
 
-	// Parse sort ordering (opt-in). Only "group" is recognised today; any other
+	// Parse sort ordering (opt-in). Only "group" is recognized today; any other
 	// non-empty value is a validation error rather than a silently-ignored
 	// no-op. Empty/absent keeps the default created_at DESC ordering.
 	if sortParam := query.Get("sort"); sortParam != "" {

@@ -768,21 +768,8 @@ func (s *Service) ListChecks(ctx context.Context, orgSlug string, opts ListCheck
 	// Parse cursor. sort=group carries a composite cursor (group sort key +
 	// created_at + uid); the default ordering keeps the two-part cursor.
 	if opts.Cursor != "" {
-		if sortByGroup {
-			groupKey, ts, uid, errCursor := s.decodeGroupCursor(opts.Cursor)
-			if errCursor != nil {
-				return nil, ErrInvalidCursor
-			}
-			filter.CursorGroupSortKey = &groupKey
-			filter.CursorCreatedAt = &ts
-			filter.CursorUID = &uid
-		} else {
-			ts, uid, errCursor := s.decodeCursor(opts.Cursor)
-			if errCursor != nil {
-				return nil, ErrInvalidCursor
-			}
-			filter.CursorCreatedAt = &ts
-			filter.CursorUID = &uid
+		if cursorErr := s.applyListCursor(filter, opts.Cursor, sortByGroup); cursorErr != nil {
+			return nil, cursorErr
 		}
 	}
 
@@ -898,6 +885,32 @@ func (s *Service) ListChecks(ctx context.Context, orgSlug string, opts ListCheck
 			Limit:  limit,
 		},
 	}, nil
+}
+
+// applyListCursor decodes the pagination cursor and populates the filter's
+// cursor fields. sort=group expects the composite (group key, created_at, uid)
+// cursor; the default ordering expects the two-part (created_at, uid) cursor.
+func (s *Service) applyListCursor(filter *models.ListChecksFilter, cursor string, sortByGroup bool) error {
+	if sortByGroup {
+		groupKey, ts, uid, err := s.decodeGroupCursor(cursor)
+		if err != nil {
+			return ErrInvalidCursor
+		}
+		filter.CursorGroupSortKey = &groupKey
+		filter.CursorCreatedAt = &ts
+		filter.CursorUID = &uid
+
+		return nil
+	}
+
+	ts, uid, err := s.decodeCursor(cursor)
+	if err != nil {
+		return ErrInvalidCursor
+	}
+	filter.CursorCreatedAt = &ts
+	filter.CursorUID = &uid
+
+	return nil
 }
 
 func (s *Service) encodeCursor(createdAt time.Time, uid string) string {

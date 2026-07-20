@@ -17,7 +17,7 @@ const ungroupedSortKeySentinel = int64(2147483647)
 // ungrouped checks, each with a controlled created_at so the within-bucket
 // order (created_at DESC / uid DESC) is deterministic. It returns the org UID
 // and the slugs in the exact order sort=group must produce.
-func groupSortFixtureSQLite(t *testing.T, s *Service) (orgUID string, wantOrder []string) {
+func groupSortFixtureSQLite(t *testing.T, s *Service) (string, []string) {
 	t.Helper()
 
 	ctx := t.Context()
