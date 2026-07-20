@@ -448,15 +448,15 @@ function CheckGroupSection({
 
       {!collapsed && (
         <div className="border-t">
+          {/* Rows win over the loading branch: an already-populated bucket
+           * keeps rendering its rows while the page-level stream continues.
+           * A still-empty bucket reads as loading (skeletons) as long as the
+           * stream can still deliver more (`isLoading` folds in
+           * hasNextPage/isFetchingNextPage) — the truthful "no checks" empty
+           * state only shows once the stream is fully drained. */}
           {error ? (
             <div className="p-4 text-sm text-destructive">
               {t("failedToLoadChecks")}
-            </div>
-          ) : isLoading ? (
-            <div className="p-4 space-y-2">
-              {[...Array(3)].map((_, i) => (
-                <Skeleton key={i} className="h-10 rounded-lg" />
-              ))}
             </div>
           ) : checks.length > 0 ? (
             <ChecksTable
@@ -467,6 +467,12 @@ function CheckGroupSection({
               groups={groups}
               checksByUid={checksByUid}
             />
+          ) : isLoading ? (
+            <div className="p-4 space-y-2">
+              {[...Array(3)].map((_, i) => (
+                <Skeleton key={i} className="h-10 rounded-lg" />
+              ))}
+            </div>
           ) : (
             <div className="p-4 text-center text-sm text-muted-foreground">
               {t("noChecks")}
@@ -513,18 +519,21 @@ function UngroupedChecksSection({
       <h3 className="text-sm font-medium text-muted-foreground mb-2">
         {t("ungroupedChecks")}
       </h3>
+      {/* Rows win over the loading branch, same as CheckGroupSection: keep any
+       * loaded ungrouped rows visible while the stream continues, and treat an
+       * empty bucket as loading (skeletons) until the stream drains. */}
       {error ? (
         <div className="p-4 text-sm text-destructive">
           {t("failedToLoadChecks")}
         </div>
+      ) : checks.length > 0 ? (
+        <ChecksTable checks={checks} org={org} onDelete={onDeleteCheck} onChangeGroup={onChangeGroup} groups={groups} checksByUid={checksByUid} />
       ) : isLoading ? (
         <div className="space-y-2">
           {[...Array(3)].map((_, i) => (
             <Skeleton key={i} className="h-10 rounded-lg" />
           ))}
         </div>
-      ) : checks.length > 0 ? (
-        <ChecksTable checks={checks} org={org} onDelete={onDeleteCheck} onChangeGroup={onChangeGroup} groups={groups} checksByUid={checksByUid} />
       ) : search ? (
         <div className="text-center py-6 text-muted-foreground text-sm">
           {t("noUngroupedChecks")}
@@ -596,7 +605,18 @@ function ChecksIndexPage() {
     labels: labelsParam,
     status: statusParam,
     limit: 100,
+    // Load the stream in the exact order the page renders it (group sortOrder
+    // asc, ungrouped last, created_at DESC within a bucket), so the top of the
+    // page fills first instead of arriving in unrelated created_at order.
+    sort: "group",
   });
+
+  // A bucket that is still empty must read as *loading*, never as an empty
+  // state, as long as the page-level stream can still deliver more rows
+  // (initial load, or a not-yet-fetched later page). Folded into each section's
+  // `isLoading` prop so a not-yet-reached group shows skeletons — never the
+  // false "No checks" — until the stream is fully drained.
+  const checksStreaming = checksLoading || hasNextPage || isFetchingNextPage;
 
   // Bucket loaded checks by group. Ungrouped = falsy checkGroupUid (matches the
   // server's checkGroupUid=none semantics). Order within a bucket follows the
@@ -641,8 +661,12 @@ function ChecksIndexPage() {
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
+    // rootMargin ~two viewports so the next page starts loading well before
+    // the sentinel scrolls into view — draining self-chains (the effect
+    // re-runs when handleObserver's identity flips on isFetchingNextPage).
     const observer = new IntersectionObserver(handleObserver, {
-      threshold: 0.1,
+      rootMargin: "1200px 0px",
+      threshold: 0,
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -903,7 +927,7 @@ function ChecksIndexPage() {
               group={group}
               org={org}
               checks={checksByGroup.get(group.uid) ?? []}
-              isLoading={checksLoading}
+              isLoading={checksStreaming}
               error={checksError}
               search={debouncedSearch}
               isFirst={idx === 0}
@@ -921,7 +945,7 @@ function ChecksIndexPage() {
           <UngroupedChecksSection
             org={org}
             checks={ungroupedChecks}
-            isLoading={checksLoading}
+            isLoading={checksStreaming}
             error={checksError}
             search={debouncedSearch}
             onDeleteCheck={setDeleteCheckUid}

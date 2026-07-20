@@ -254,6 +254,9 @@ function buildChecksUrl(
     status?: string;
     limit?: number;
     cursor?: string;
+    /** Opt-in ordering. "group" = group sortOrder asc, ungrouped last, then
+     * created_at DESC within a bucket. Omitted = default created_at DESC. */
+    sort?: string;
   }
 ): string {
   const params = new URLSearchParams();
@@ -266,6 +269,7 @@ function buildChecksUrl(
   if (options?.status) params.set("status", options.status);
   if (options?.limit) params.set("limit", options.limit.toString());
   if (options?.cursor) params.set("cursor", options.cursor);
+  if (options?.sort) params.set("sort", options.sort);
   const query = params.toString();
   return `/api/v1/orgs/${org}/checks${query ? `?${query}` : ""}`;
 }
@@ -304,6 +308,8 @@ export function useInfiniteChecks(
     internal?: string;
     status?: string;
     limit?: number;
+    /** Opt-in ordering; "group" loads in the page's display order. */
+    sort?: string;
   }
 ) {
   return useInfiniteQuery({
