@@ -63,6 +63,38 @@ func TestDefaultsForSaaS(t *testing.T) {
 	r.Equal("🆓", *defaults.DisplayEmoji)
 }
 
+// TestUsageChecksPerMinuteCountsRegions verifies that a multi-region check
+// contributes (60s/period) × region_count to ChecksPerMinute (spec
+// 2026-07-20-05): every selected region runs the check every period.
+func TestUsageChecksPerMinuteCountsRegions(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, org, dbSvc := setup(t)
+
+	mkCheck := func(slug string, period time.Duration, regions []string) {
+		check := models.NewCheck(org.UID, slug, "http")
+		check.Period = timeutils.Duration(period)
+		check.Regions = regions
+		check.Config = models.JSONMap{"url": "https://example.com"}
+		r.NoError(dbSvc.CreateCheck(ctx, check))
+	}
+
+	// 1m check, no regions → 1.0/min (min region count is 1).
+	mkCheck("no-regions", time.Minute, nil)
+	// 1m check, 3 regions → 3.0/min.
+	mkCheck("three-regions", time.Minute, []string{"default", "eu-2", "us-1"})
+	// 30s check, 2 regions → (60/30) × 2 = 4.0/min.
+	mkCheck("two-regions-30s", 30*time.Second, []string{"default", "eu-2"})
+
+	usage, err := svc.Usage(ctx, org.UID)
+	r.NoError(err)
+	r.Equal(3, usage.Checks)
+	r.InDelta(8.0, usage.ChecksPerMinute, 0.001,
+		"1 (no-region) + 3 (3 regions) + 4 (2 regions @30s) = 8 checks/minute")
+}
+
 func TestDefaultsForUnknownFallsBackToSelfHosted(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

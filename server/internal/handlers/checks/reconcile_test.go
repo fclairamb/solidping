@@ -12,6 +12,7 @@ import (
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
 // newReconcileTestService builds a checks.Service over a fresh in-memory
@@ -53,24 +54,22 @@ func jobsByRegion(t *testing.T, jobs []*models.CheckJob) map[string]*models.Chec
 }
 
 // Scope boundary: check *creation* (db/sqlite's and db/postgres's
-// createCheckJobs, which materializes the first job per region) is NOT
-// touched by this spec and is NOT phase-aligned by D1/D2 — it deliberately
-// keeps pinning region 0's very first scheduled_at to literal time.Now() so
-// the check.created express-runner path (checkjobsvc.ClaimJobsForCheck,
-// which gates on "scheduled_at <= now" with no claim-ahead window) can still
-// claim and execute it immediately, guaranteeing a fast first result after
-// check creation. Jittering that very first tick (as NextAligned would) was
-// tried and reverted during implementation: it pushed region 0's first
-// scheduled_at up to a full base period into the future, silently starving
-// the express path and regressing "check created → fast first result".
-// Region leveling for a fresh multi-region check therefore only takes full
+// createCheckJobs, which materializes the first job per region) now creates
+// each region's job at the FULL check period and staggers the first
+// scheduled_at by the inter-region spread (spec 2026-07-20-05) — but it is
+// still NOT phase-aligned by D1/D2: it deliberately keeps pinning region 0's
+// very first scheduled_at to literal time.Now() so the check.created
+// express-runner path (checkjobsvc.ClaimJobsForCheck, which gates on
+// "scheduled_at <= now" with no claim-ahead window) can still claim and
+// execute it immediately, guaranteeing a fast first result after check
+// creation. Jittering that very first tick (as NextAligned would) was tried
+// and reverted during implementation: it pushed region 0's first scheduled_at
+// a full period into the future, starving the express path. Deterministic
+// phase leveling for a fresh multi-region check therefore only takes full
 // effect starting from its first reconcile (any subsequent edit — see
 // TestReconcilePeriodEditRelevelsAllRegions etc. below) or from its first
 // organic release cycle (calculateNextScheduledAt in worker.go, covered by
-// TestCalculateNextScheduledAt_PhaseLocked in worker_test.go). This mirrors
-// the spec's own D1/D2 file:line scope, which cites only
-// calculateNextScheduledAt (worker.go) and reconcileCheckJobs (this file's
-// service.go) — not createCheckJobs (db/sqlite.go, db/postgres.go).
+// TestCalculateNextScheduledAt_PhaseLocked in worker_test.go).
 
 // TestReconcilePeriodEditRelevelsAllRegions verifies AC2: editing the
 // check's period immediately re-levels scheduled_at for every region's job
@@ -117,7 +116,14 @@ func TestReconcilePeriodEditRelevelsAllRegions(t *testing.T) {
 	r.Len(jobsAfter, 2)
 
 	byRegion := jobsByRegion(t, jobsAfter)
-	jobPeriod := 4 * time.Minute // 2 regions × 2m new base period
+
+	// Every region now runs at the FULL new period (2m) — no basePeriod×n
+	// split — with an inter-region spread of period/n = 2m/2 = 1m.
+	jobPeriod := 2 * time.Minute
+	for _, j := range jobsAfter {
+		r.Equal(jobPeriod, time.Duration(j.Period), "each region's job runs at the full period, not the split period")
+	}
+
 	phaseOf := func(cj *models.CheckJob) int64 {
 		return cj.ScheduledAt.Unix() % int64(jobPeriod/time.Second)
 	}
@@ -131,8 +137,8 @@ func TestReconcilePeriodEditRelevelsAllRegions(t *testing.T) {
 		return d
 	}
 
-	r.InDelta(120, diff(phaseOf(byRegion["eu-2"]), phaseOf(byRegion["default"])), 1,
-		"period edit must re-level both regions to the new phase, 2m apart")
+	r.InDelta(60, diff(phaseOf(byRegion["eu-2"]), phaseOf(byRegion["default"])), 1,
+		"period edit must re-level both regions one spread (period/n = 1m) apart")
 }
 
 // TestReconcileRegionAddedShiftsSurvivorsAndAddsNewSlot verifies D2: adding a
@@ -168,7 +174,12 @@ func TestReconcileRegionAddedShiftsSurvivorsAndAddsNewSlot(t *testing.T) {
 	r.Contains(byRegion, "eu-2", "new region gets its own job")
 	r.Contains(byRegion, "us-1")
 
-	jobPeriod := 3 * time.Minute
+	// Full period per region (1m, not the old 3m split); spread = 1m/3 = 20s.
+	jobPeriod := time.Minute
+	for _, j := range jobsAfter {
+		r.Equal(jobPeriod, time.Duration(j.Period), "each region's job runs at the full period, not the split period")
+	}
+
 	phaseOf := func(cj *models.CheckJob) int64 {
 		return cj.ScheduledAt.Unix() % int64(jobPeriod/time.Second)
 	}
@@ -183,10 +194,10 @@ func TestReconcileRegionAddedShiftsSurvivorsAndAddsNewSlot(t *testing.T) {
 	}
 
 	// us-1 shifted from index 1 (2-region set) to index 2 (3-region set) —
-	// its phase relative to default must now be 2×basePeriod, proving the
+	// its phase relative to default must now be 2×spread (40s), proving the
 	// survivor was re-leveled rather than left at its stale phase.
-	r.InDelta(60, diff(phaseOf(byRegion["eu-2"]), phaseOf(byRegion["default"])), 1)
-	r.InDelta(120, diff(phaseOf(byRegion["us-1"]), phaseOf(byRegion["default"])), 1)
+	r.InDelta(20, diff(phaseOf(byRegion["eu-2"]), phaseOf(byRegion["default"])), 1)
+	r.InDelta(40, diff(phaseOf(byRegion["us-1"]), phaseOf(byRegion["default"])), 1)
 }
 
 // TestReconcileRegionRemovedRelevelsSurvivors verifies D2: removing a region
@@ -221,7 +232,12 @@ func TestReconcileRegionRemovedRelevelsSurvivors(t *testing.T) {
 	r.Contains(byRegion, "default")
 	r.Contains(byRegion, "us-1")
 
-	jobPeriod := 2 * time.Minute // 2 regions × 1m base period
+	// Full period per region (1m); spread after removal = 1m/2 = 30s.
+	jobPeriod := time.Minute
+	for _, j := range jobsAfter {
+		r.Equal(jobPeriod, time.Duration(j.Period), "each region's job runs at the full period, not the split period")
+	}
+
 	phaseOf := func(cj *models.CheckJob) int64 {
 		return cj.ScheduledAt.Unix() % int64(jobPeriod/time.Second)
 	}
@@ -235,8 +251,10 @@ func TestReconcileRegionRemovedRelevelsSurvivors(t *testing.T) {
 		return d
 	}
 
-	// us-1 shifted from index 2 (3-region set) to index 1 (2-region set).
-	r.InDelta(60, diff(phaseOf(byRegion["us-1"]), phaseOf(byRegion["default"])), 1,
+	// us-1 shifted from index 2 (3-region set) to index 1 (2-region set) — its
+	// phase relative to default must now be one spread (30s), proving it was
+	// re-leveled rather than left at its stale index-2 phase.
+	r.InDelta(30, diff(phaseOf(byRegion["us-1"]), phaseOf(byRegion["default"])), 1,
 		"us-1 must be re-leveled to its new index-1 phase, not left at its stale index-2 phase")
 }
 
@@ -285,6 +303,174 @@ func TestReconcileConfigOnlyEditDoesNotRewriteScheduledAt(t *testing.T) {
 		r.True(before.Equal(*j.ScheduledAt),
 			"scheduled_at must not change on an edit unrelated to period/regions/config/plan_weight")
 	}
+}
+
+// TestReconcileRegionSpreadOverrideApplied verifies that a regionSpread
+// override (spec 2026-07-20-05) is persisted and drives the per-region phase
+// leveling: three regions with a 5s spread land 5s apart instead of the
+// default period/n = 20s.
+func TestReconcileRegionSpreadOverrideApplied(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, dbSvc, org := newReconcileTestService(t)
+
+	resp, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Type:    "http",
+		Config:  map[string]any{"url": "https://example.com"},
+		Regions: []string{"default", "eu-2", "us-1"},
+		Period:  strPtr("00:01:00"),
+	})
+	r.NoError(err)
+
+	// Set a 5s override via update — this triggers a reconcile that re-levels
+	// every region's phase deterministically (NextAligned, sorted index).
+	updated, err := svc.UpdateCheck(ctx, org.Slug, resp.UID, &checks.UpdateCheckRequest{
+		RegionSpread: strPtr("00:00:05"),
+	})
+	r.NoError(err)
+	r.NotNil(updated.RegionSpread, "response echoes the persisted regionSpread")
+	r.Equal("00:00:05", *updated.RegionSpread)
+
+	jobsAfter, err := dbSvc.ListCheckJobsByCheckUID(ctx, resp.UID)
+	r.NoError(err)
+	r.Len(jobsAfter, 3)
+
+	byRegion := jobsByRegion(t, jobsAfter)
+	jobPeriod := time.Minute
+	phaseOf := func(cj *models.CheckJob) int64 {
+		return cj.ScheduledAt.Unix() % int64(jobPeriod/time.Second)
+	}
+	diff := func(a, b int64) int64 {
+		d := a - b
+		if d < 0 {
+			d += int64(jobPeriod / time.Second)
+		}
+
+		return d
+	}
+
+	r.InDelta(5, diff(phaseOf(byRegion["eu-2"]), phaseOf(byRegion["default"])), 1,
+		"eu-2 is one 5s override-spread after default")
+	r.InDelta(10, diff(phaseOf(byRegion["us-1"]), phaseOf(byRegion["default"])), 1,
+		"us-1 is two 5s override-spreads after default")
+
+	// Clearing it (explicit empty string) reverts to the default and persists.
+	cleared, err := svc.UpdateCheck(ctx, org.Slug, resp.UID, &checks.UpdateCheckRequest{
+		RegionSpread: strPtr(""),
+	})
+	r.NoError(err)
+	r.Nil(cleared.RegionSpread, "empty string clears the override back to the default")
+}
+
+// TestRegionSpreadValidation verifies the 0 <= regionSpread < period bound on
+// both create and update (spec 2026-07-20-05).
+func TestRegionSpreadValidation(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, _, org := newReconcileTestService(t)
+
+	// Create: spread == period is rejected (must be strictly less).
+	_, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Type:         "http",
+		Config:       map[string]any{"url": "https://example.com"},
+		Regions:      []string{"default", "eu-2"},
+		Period:       strPtr("00:01:00"),
+		RegionSpread: strPtr("00:01:00"),
+	})
+	r.Error(err)
+	r.Contains(err.Error(), "regionSpread")
+
+	// Create: spread > period is rejected.
+	_, err = svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Type:         "http",
+		Config:       map[string]any{"url": "https://example.com"},
+		Regions:      []string{"default", "eu-2"},
+		Period:       strPtr("00:01:00"),
+		RegionSpread: strPtr("00:02:00"),
+	})
+	r.Error(err)
+
+	// Create: negative spread is rejected.
+	_, err = svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Type:         "http",
+		Config:       map[string]any{"url": "https://example.com"},
+		Regions:      []string{"default", "eu-2"},
+		Period:       strPtr("00:01:00"),
+		RegionSpread: strPtr("-5s"),
+	})
+	r.Error(err)
+
+	// Create: a valid spread (and 0 = fire together) is accepted and persisted.
+	resp, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Type:         "http",
+		Config:       map[string]any{"url": "https://example.com"},
+		Regions:      []string{"default", "eu-2"},
+		Period:       strPtr("00:01:00"),
+		RegionSpread: strPtr("00:00:10"),
+	})
+	r.NoError(err)
+	r.NotNil(resp.RegionSpread)
+	r.Equal("00:00:10", *resp.RegionSpread)
+
+	// Update: spread >= the effective period is rejected.
+	_, err = svc.UpdateCheck(ctx, org.Slug, resp.UID, &checks.UpdateCheckRequest{
+		RegionSpread: strPtr("00:01:30"),
+	})
+	r.Error(err)
+	r.Contains(err.Error(), "regionSpread")
+}
+
+// TestStartupReconcileFixesStaleSplitPeriodJobs verifies the one-shot startup
+// pass (spec 2026-07-20-05): a multi-region check whose jobs still carry the
+// old basePeriod×n split period is re-leveled to the full per-region period,
+// and re-running the pass is a no-op (idempotent).
+func TestStartupReconcileFixesStaleSplitPeriodJobs(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, dbSvc, org := newReconcileTestService(t)
+
+	resp, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Type:    "http",
+		Config:  map[string]any{"url": "https://example.com"},
+		Regions: []string{"default", "eu-2", "us-1"},
+		Period:  strPtr("00:01:00"),
+	})
+	r.NoError(err)
+
+	// Simulate pre-spec rows: rewrite every job to the old 3m split period.
+	stale := timeutils.Duration(3 * time.Minute)
+	_, err = dbSvc.DB().NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("period = ?", stale).
+		Where("check_uid = ?", resp.UID).
+		Exec(ctx)
+	r.NoError(err)
+
+	// First pass: finds and fixes the one stale check.
+	n, err := svc.ReconcileStaleJobSchedules(ctx)
+	r.NoError(err)
+	r.Equal(1, n)
+
+	jobsAfter, err := dbSvc.ListCheckJobsByCheckUID(ctx, resp.UID)
+	r.NoError(err)
+	r.Len(jobsAfter, 3)
+	for _, j := range jobsAfter {
+		r.Equal(time.Minute, time.Duration(j.Period),
+			"stale split-period job must be re-leveled to the full per-region period")
+		r.NotNil(j.ScheduledAt)
+		r.NotNil(j.EffectiveScheduledAt)
+	}
+
+	// Second pass: nothing stale remains — idempotent.
+	n, err = svc.ReconcileStaleJobSchedules(ctx)
+	r.NoError(err)
+	r.Zero(n, "startup reconcile must be idempotent")
 }
 
 func strPtr(s string) *string { return &s }

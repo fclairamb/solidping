@@ -197,7 +197,8 @@ func TestCalculateNextScheduledAt_PhaseLocked(t *testing.T) {
 
 		got := runner.calculateNextScheduledAt(checkJob)
 		after := time.Now()
-		want := scheduling.NextAligned(after, basePeriod, jobPeriod, checkUID, regionOf("eu-2"), regions)
+		want := scheduling.NextAligned(after, basePeriod, jobPeriod, checkUID, regionOf("eu-2"), regions,
+			scheduling.RegionSpread(basePeriod, len(regions), nil))
 
 		// The method reads its own clock, so `want` (from a later sample) can
 		// land one full period after `got` if the phase-aligned second ticks
@@ -219,7 +220,8 @@ func TestCalculateNextScheduledAt_PhaseLocked(t *testing.T) {
 
 		// Compute the phase this job should have landed on.
 		refNow := time.Now()
-		refNext := scheduling.NextAligned(refNow, basePeriod, jobPeriod, checkUID, region, regions)
+		refNext := scheduling.NextAligned(refNow, basePeriod, jobPeriod, checkUID, region, regions,
+			scheduling.RegionSpread(basePeriod, len(regions), nil))
 
 		// Simulate a very-late release (well past scheduled_at, e.g. after a
 		// restart) — the OLD behavior would return now+period, losing phase.
