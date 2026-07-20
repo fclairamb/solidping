@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
@@ -42,14 +43,19 @@ type Service struct {
 	// decrypt mixed-mode checks so they can be re-sealed to the region's
 	// current agent set. Always non-nil; Enabled() reports availability.
 	creds credentials.Service
+	// ent gates MintEnrollmentToken against MaxDeportedAgents. Optional (nil
+	// disables the guard) so tests that don't care about entitlements can
+	// omit it, mirroring the optionality of agentws.Handler.entitlements.
+	ent *entitlements.Service
 }
 
 // NewService creates a new agents admin service.
-func NewService(dbService db.Service, creds credentials.Service) *Service {
+func NewService(dbService db.Service, creds credentials.Service, entSvc *entitlements.Service) *Service {
 	return &Service{
 		db:      dbService,
 		regions: regions.NewService(dbService),
 		creds:   creds,
+		ent:     entSvc,
 	}
 }
 
@@ -240,6 +246,18 @@ func (s *Service) MintEnrollmentToken(
 	org, err := s.resolveOrg(ctx, orgSlug)
 	if err != nil {
 		return nil, err
+	}
+
+	// Enforce the MaxDeportedAgents quota before minting — early UX so the
+	// dashboard can surface the upgrade prompt before the operator ever starts
+	// a container. This is not the correctness point: a token minted under
+	// the cap could still over-enroll if the cap drops or another token is
+	// consumed first, which is why agentws' awaitEnroll checks again at
+	// enrollment time.
+	if s.ent != nil {
+		if quotaErr := s.ent.AgentCreateAllowed(ctx, org.UID); quotaErr != nil {
+			return nil, quotaErr
+		}
 	}
 
 	defs, err := s.regions.GetOrgCustomRegions(ctx, org.UID)

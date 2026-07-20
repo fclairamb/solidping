@@ -201,6 +201,10 @@ func (h *Handler) awaitEnroll(
 		return nil, errors.New("x25519PublicKey must be an age recipient (age1…)") //nolint:err113 // protocol diagnostic
 	}
 
+	if quotaErr := h.checkAgentQuota(ctx, conn, tokenHash, frame.ID); quotaErr != nil {
+		return nil, quotaErr
+	}
+
 	name := frame.Name
 	if name == "" {
 		name = "agent"
@@ -232,6 +236,38 @@ func (h *Handler) awaitEnroll(
 	}
 
 	return agent, nil
+}
+
+// checkAgentQuota enforces MaxDeportedAgents BEFORE the enrollment token is
+// consumed: it looks the token up again (non-consuming, same call the
+// pre-upgrade check used) to learn the org, so a rejected enrollment leaves
+// the one-shot token usable for a retry after an upgrade or after deleting
+// another agent. Writes an `error` frame naming the quota breach (the
+// operator sees it in agent logs) before returning. A nil h.entitlements
+// (disabled in some tests) skips the guard entirely.
+func (h *Handler) checkAgentQuota(
+	ctx context.Context, conn *websocket.Conn, tokenHash, frameID string,
+) error {
+	if h.entitlements == nil {
+		return nil
+	}
+
+	token, err := h.dbService.GetAgentEnrollmentTokenByHash(ctx, tokenHash)
+	if err != nil {
+		return fmt.Errorf("lookup enrollment token: %w", err)
+	}
+
+	quotaErr := h.entitlements.AgentCreateAllowed(ctx, token.OrganizationUID)
+	if quotaErr == nil {
+		return nil
+	}
+
+	_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{
+		Type: agentcrypto.MsgTypeError, ID: frameID,
+		Code: string(base.ErrorCodeQuotaExceeded), Title: quotaErr.Error(),
+	})
+
+	return quotaErr
 }
 
 // serveReconnect handles a returning agent authenticating with signed headers:

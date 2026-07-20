@@ -41,7 +41,7 @@ func newSetup(t *testing.T) *setup {
 	creds, err := credentials.NewService(nil, credentials.ParamStore{})
 	r.NoError(err)
 
-	return &setup{svc: agents.NewService(dbSvc, creds), dbSvc: dbSvc, org: org}
+	return &setup{svc: agents.NewService(dbSvc, creds, nil), dbSvc: dbSvc, org: org}
 }
 
 func TestCreateAndListPrivateRegion(t *testing.T) {

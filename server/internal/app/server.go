@@ -790,7 +790,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Org-admin only: minting an enrollment token grants the ability to run
 	// checks inside the customer's network, and revoking an agent is
 	// security-relevant.
-	agentsAdminSvc := agentsadmin.NewService(s.dbService, s.services.Credentials)
+	agentsAdminSvc := agentsadmin.NewService(s.dbService, s.services.Credentials, s.services.Entitlements)
 	agentsAdminHandler := agentsadmin.NewHandler(agentsAdminSvc, s.config)
 	orgAgentsAdmin := api.NewGroup("/orgs/:org").
 		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)

@@ -6,7 +6,9 @@ import (
 	"net/http"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	entitlementshandler "github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 	"github.com/fclairamb/solidping/server/internal/regions"
@@ -128,6 +130,16 @@ func (h *Handler) RevokeAgent(writer http.ResponseWriter, req *http.Request) err
 // writeServiceError maps domain errors to HTTP responses.
 func (h *Handler) writeServiceError(writer http.ResponseWriter, err error) error {
 	switch {
+	case errors.Is(err, entcore.ErrEntitlementExceeded):
+		var qe *entcore.QuotaError
+		if !errors.As(err, &qe) {
+			return h.WriteInternalError(writer, err)
+		}
+
+		body := entitlementshandler.FormatQuotaError(qe)
+		body["code"] = string(base.ErrorCodeQuotaExceeded)
+
+		return h.WriteJSON(writer, http.StatusPaymentRequired, body)
 	case errors.Is(err, ErrOrgNotFound):
 		return h.WriteErrorErr(
 			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
