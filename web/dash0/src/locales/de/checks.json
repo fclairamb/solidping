@@ -125,6 +125,7 @@
     "escalationThreshold": "Eskalationsschwelle",
     "recoveryPeriod": "Wiederherstellungszeitraum",
     "recoveryPeriodHelp": "Diese Zeit nach dem ersten Erfolg warten, bevor der Vorfall aufgelöst wird. Jeder Fehlschlag im Fenster setzt den Zähler zurück.",
+    "regionsHint": "Jede ausgewählte Region führt die Prüfung alle {{period}} aus.",
     "periodEstimate": "= {{duration}}",
     "periodEstimateChecks_one": "· ≈ {{count}} Prüfung im Intervall von {{interval}}",
     "periodEstimateChecks_other": "· ≈ {{count}} Prüfungen im Intervall von {{interval}}",

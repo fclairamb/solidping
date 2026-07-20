@@ -467,6 +467,11 @@ export function CheckForm({
   // estimate shows the duration only — never a probe count.
   const estimateIntervalSeconds = isPassiveType(type) ? 0 : hmsToSeconds(period);
 
+  // Effective per-region period for the regions hint: since each selected
+  // region runs the check at the FULL period (spec 2026-07-20-05), spell that
+  // out so users understand multi-region multiplies coverage, not divides it.
+  const regionPeriodSeconds = hmsToSeconds(isPassiveType(type) ? formatPeriod(periodValue, periodUnit) : period);
+
   const activeModule = checkTypeRegistry[type];
   const ActiveFields = activeModule.Fields;
   const authSection = authFieldsRegistry[type];
@@ -931,6 +936,14 @@ export function CheckForm({
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground">Select the regions where this check should run</p>
+                  {selectedRegions.length > 1 && regionPeriodSeconds > 0 && (
+                    <p className="text-xs text-muted-foreground" data-testid="regions-period-hint">
+                      {t("form.regionsHint", {
+                        period: formatDuration(regionPeriodSeconds),
+                        defaultValue: "Each selected region runs the check every {{period}}.",
+                      })}
+                    </p>
+                  )}
                   {/* A region change can be rejected because of an SSH tunnel
                       dependency (the tunnel's SSH check must cover every private
                       region this check runs in). The server reports it on the

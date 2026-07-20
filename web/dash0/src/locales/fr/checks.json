@@ -125,6 +125,7 @@
     "escalationThreshold": "Seuil d'escalade",
     "recoveryPeriod": "Période de récupération",
     "recoveryPeriodHelp": "Attendre cette durée après le premier succès avant de résoudre l'incident. Tout échec dans la fenêtre réinitialise le compteur.",
+    "regionsHint": "Chaque région sélectionnée exécute la vérification toutes les {{period}}.",
     "periodEstimate": "= {{duration}}",
     "periodEstimateChecks_one": "· ≈ {{count}} vérification à l'intervalle de {{interval}}",
     "periodEstimateChecks_other": "· ≈ {{count}} vérifications à l'intervalle de {{interval}}",

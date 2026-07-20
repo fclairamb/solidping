@@ -98,13 +98,16 @@ function UsagePage() {
                 limit={data.limits.maxChecks}
                 unlimitedLabel={t("usage.unlimited")}
               />
-              <UsageRow
-                label={t("usage.checksPerMinute")}
-                current={data.usage?.checksPerMinute ?? 0}
-                limit={data.limits.maxChecksPerMinute}
-                unlimitedLabel={t("usage.unlimited")}
-                format={(n) => (Number.isInteger(n) ? String(n) : n.toFixed(1))}
-              />
+              <div className="space-y-1">
+                <UsageRow
+                  label={t("usage.checksPerMinute")}
+                  current={data.usage?.checksPerMinute ?? 0}
+                  limit={data.limits.maxChecksPerMinute}
+                  unlimitedLabel={t("usage.unlimited")}
+                  format={(n) => (Number.isInteger(n) ? String(n) : n.toFixed(1))}
+                />
+                <p className="text-xs text-muted-foreground">{t("usage.multiRegionNote")}</p>
+              </div>
               <UsageRow
                 label={t("usage.users")}
                 current={data.usage?.ssoUsers ?? 0}

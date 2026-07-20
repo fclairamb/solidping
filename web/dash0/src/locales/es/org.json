@@ -28,6 +28,7 @@
     "plan": "Plan actual",
     "checks": "Comprobaciones",
     "checksPerMinute": "Comprobaciones por minuto",
+    "multiRegionNote": "Una comprobación multirregión se ejecuta en cada región seleccionada, por lo que consume regiones × 60 s / período comprobaciones por minuto.",
     "users": "Usuarios",
     "unlimited": "Ilimitado",
     "upgrade": "Mejorar plan",
