@@ -11,6 +11,7 @@ import (
 	"math"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -715,6 +716,10 @@ type ListChecksOptions struct {
 	Statuses []models.CheckStatus
 	Cursor   string
 	Limit    int
+	// Sort opts into an alternate ordering. "group" = group sort_order asc,
+	// ungrouped last, then created_at DESC / uid DESC within a bucket. Empty =
+	// the default created_at DESC ordering. The handler validates the value.
+	Sort string
 }
 
 // PaginationResponse contains pagination metadata.
@@ -746,6 +751,8 @@ func (s *Service) ListChecks(ctx context.Context, orgSlug string, opts ListCheck
 		return nil, ErrOrganizationNotFound
 	}
 
+	sortByGroup := opts.Sort == "group"
+
 	// Build filter
 	filter := &models.ListChecksFilter{
 		Labels:        opts.Labels,
@@ -755,16 +762,28 @@ func (s *Service) ListChecks(ctx context.Context, orgSlug string, opts ListCheck
 		Internal:      opts.Internal,
 		Statuses:      opts.Statuses,
 		Limit:         opts.Limit,
+		SortByGroup:   sortByGroup,
 	}
 
-	// Parse cursor
+	// Parse cursor. sort=group carries a composite cursor (group sort key +
+	// created_at + uid); the default ordering keeps the two-part cursor.
 	if opts.Cursor != "" {
-		ts, uid, errCursor := s.decodeCursor(opts.Cursor)
-		if errCursor != nil {
-			return nil, ErrInvalidCursor
+		if sortByGroup {
+			groupKey, ts, uid, errCursor := s.decodeGroupCursor(opts.Cursor)
+			if errCursor != nil {
+				return nil, ErrInvalidCursor
+			}
+			filter.CursorGroupSortKey = &groupKey
+			filter.CursorCreatedAt = &ts
+			filter.CursorUID = &uid
+		} else {
+			ts, uid, errCursor := s.decodeCursor(opts.Cursor)
+			if errCursor != nil {
+				return nil, ErrInvalidCursor
+			}
+			filter.CursorCreatedAt = &ts
+			filter.CursorUID = &uid
 		}
-		filter.CursorCreatedAt = &ts
-		filter.CursorUID = &uid
 	}
 
 	// Get checks for the organization
@@ -853,11 +872,17 @@ func (s *Service) ListChecks(ctx context.Context, orgSlug string, opts ListCheck
 		}
 	}
 
-	// Build next cursor
+	// Build next cursor. sort=group emits the composite cursor carrying the
+	// last row's effective group sort key (scanned into GroupSortKey by the
+	// store) so the next page resumes at the right group boundary.
 	var nextCursor string
 	if hasMore && len(checks) > 0 {
 		lastCheck := checks[len(checks)-1]
-		nextCursor = s.encodeCursor(lastCheck.CreatedAt, lastCheck.UID)
+		if sortByGroup {
+			nextCursor = s.encodeGroupCursor(lastCheck.GroupSortKey, lastCheck.CreatedAt, lastCheck.UID)
+		} else {
+			nextCursor = s.encodeCursor(lastCheck.CreatedAt, lastCheck.UID)
+		}
 	}
 
 	limit := opts.Limit
@@ -897,6 +922,39 @@ func (s *Service) decodeCursor(cursor string) (time.Time, string, error) {
 	}
 
 	return ts, parts[1], nil
+}
+
+// encodeGroupCursor encodes the composite sort=group cursor: the effective
+// group sort key, then the created_at/uid pair, pipe-delimited. Distinct from
+// the two-part default cursor so decodeGroupCursor can reject a default cursor
+// fed to a group listing (and vice versa).
+func (s *Service) encodeGroupCursor(groupSortKey int64, createdAt time.Time, uid string) string {
+	cursorStr := fmt.Sprintf("%d|%s|%s", groupSortKey, createdAt.Format(time.RFC3339Nano), uid)
+	return base64.URLEncoding.EncodeToString([]byte(cursorStr))
+}
+
+func (s *Service) decodeGroupCursor(cursor string) (int64, time.Time, string, error) {
+	decoded, err := base64.URLEncoding.DecodeString(cursor)
+	if err != nil {
+		return 0, time.Time{}, "", err
+	}
+
+	parts := strings.SplitN(string(decoded), "|", 3)
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		return 0, time.Time{}, "", ErrInvalidCursor
+	}
+
+	groupSortKey, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return 0, time.Time{}, "", ErrInvalidCursor
+	}
+
+	ts, err := time.Parse(time.RFC3339Nano, parts[1])
+	if err != nil {
+		return 0, time.Time{}, "", err
+	}
+
+	return groupSortKey, ts, parts[2], nil
 }
 
 // CreateCheckRequest represents a request to create a new check.
