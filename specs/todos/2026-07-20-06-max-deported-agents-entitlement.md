@@ -104,3 +104,92 @@ Scale) prices only those. Agents should be a plan lever too:
 - Whether existing over-cap orgs (already >1 agent on Free) should be
   grandfathered: proposal is the standard soft-cap behavior — existing agents
   keep working, only *new* enrollments are blocked. No reconciliation job.
+
+## Implementation Plan
+
+Scope: this repo only. `../solidping-billing` (item 4 in the Proposal) is out
+of reach for this run — noted as pending in the final report.
+
+1. **Model** (`server/internal/db/models/entitlements_payload.go`): add
+   `MaxDeportedAgents *int` (`maxDeportedAgents,omitempty`) to
+   `EntitlementLimits`; add the same field to the strict wire struct inside
+   `UnmarshalJSON` (plain field, no alias — unlike `maxUsers`/`maxSsoUsers`).
+   No `Version` bump. Update the struct's doc comment.
+
+2. **Defaults** (`server/internal/entitlements/defaults.go`): add
+   `defaultMaxDeportedAgentsSaaS = 1`; set it on the SaaS branch of
+   `DefaultsFor`; leave self-hosted's `Limits` untouched (field absent ⇒ nil ⇒
+   unlimited), with a comment explaining why.
+
+3. **Resolver merge** (`server/internal/entitlements/service.go`): propagate
+   `MaxDeportedAgents` in `Service.merge` alongside the other three limits.
+
+4. **Usage + enforcement** (`server/internal/entitlements/usage.go`):
+   - Add `Agents int` (`json:"agents"`) to `Usage`.
+   - Add a shared `countActiveAgents(ctx, orgUID)` helper (uses the existing
+     `db.Service.ListAgents`, filters `Status == models.AgentStatusActive` —
+     no new db-layer method needed).
+   - Wire it into `Usage()`.
+   - Add `AgentCreateAllowed(ctx, orgUID) error`, modeled on
+     `CheckCreateAllowed`: nil cap ⇒ allow; else compare `countActiveAgents`
+     against the cap and return `&QuotaError{LimitName: "MaxDeportedAgents", ...}`.
+
+5. **Admin API wire-through** (`server/internal/handlers/entitlements/handler.go`):
+   add `MaxDeportedAgents` to `overlayLimits` so PATCH merges it like the other
+   three limits.
+
+6. **Enrollment-token mint guard** (`server/internal/handlers/agents/service.go`
+   + `handler.go`): add an `ent *entitlements.Service` field to `agents.Service`
+   (new `NewService` parameter), call `AgentCreateAllowed` first thing in
+   `MintEnrollmentToken` (mirrors `CheckCreateAllowed`'s placement at the top of
+   `checks.Service.CreateCheck`); map `ErrEntitlementExceeded` to `402
+   QUOTA_EXCEEDED` in `writeServiceError` exactly like `checks/handler.go`'s
+   `handleCreateError`. Update the `server.go` call site
+   (`agentsadmin.NewService(s.dbService, s.services.Credentials,
+   s.services.Entitlements)`) and the existing `agents/service_test.go` setup
+   (pass `nil` to keep current tests behavior-identical).
+
+7. **Enrollment guard** (`server/internal/handlers/agentws/handler.go`): in
+   `awaitEnroll`, after the structural frame checks and before
+   `EnrollAgent`'s atomic consume, look the token up again (non-consuming, via
+   the existing `GetAgentEnrollmentTokenByHash`) to learn the org, then call
+   `entitlements.AgentCreateAllowed`. On rejection: write an `error` frame
+   (`Code: QUOTA_EXCEEDED`) and return WITHOUT calling `EnrollAgent` — the
+   token stays unconsumed and retryable. Guard is skipped when
+   `h.entitlements == nil` (existing optionality pattern already used for
+   `ReserveCheckExecution`).
+
+8. **Frontend**: add `EntitlementsUsage.agents` and
+   `EntitlementsLimits.maxDeportedAgents` to `web/dash0/src/api/hooks.ts`; add a
+   `UsageRow` for "Private location agents" in
+   `organization.usage.tsx`; add `usage.privateLocationAgents` to all four
+   locale files (`en`/`de`/`fr`/`es` `org.json`). Copy says "private location",
+   never "deported agent" (naming rule in `wiki/features/deported-agents.md`).
+
+9. **Docs**: update `wiki/features/entitlements.md` (limits table, defaults
+   table, Usage field table), `wiki/api-specification/entitlements.md` (wire
+   field list), `wiki/database-model/entitlements.md` (payload column
+   description — also fixing its stale `maxSsoUsers` mention while touching
+   the line), and `wiki/features/deported-agents.md` (plan-gate cell in the
+   competitive table + the "no plan gate" bullet, reflecting the SaaS
+   1/3/6/9 ladder vs. self-hosted unlimited).
+
+10. **Tests**:
+    - `entitlements_payload_test.go`: encode/decode of `maxDeportedAgents`.
+    - `entitlements/service_test.go`: `DefaultsFor` (SaaS=1, self-hosted=nil),
+      `AgentCreateAllowed` unlimited/under/at cap, `Usage.Agents` excludes
+      revoked/deleted agents.
+    - `handlers/entitlements/handler_test.go`: PUT round-trip of
+      `maxDeportedAgents` (mirrors `TestPutAcceptsMaxChecks`).
+    - `handlers/agents/service_test.go`: `MintEnrollmentToken` rejected at cap
+      (402-mappable error), allowed under cap.
+    - `handlers/agentws/handler_test.go`: enrollment rejected at cap WITHOUT
+      consuming the token (token remains usable — or at least the agent row
+      count doesn't grow — after a rejected attempt); enrollment allowed under
+      cap.
+    - dash0 E2E (`entitlements-usage.spec.ts`): bump the "three rows" assertion
+      to four; assert the new row's label renders.
+
+11. **QA**: `make build-backend lint-back test`, `make build-dash0`,
+    `cd web/dash0 && bun run lint`. Re-run any flaky Postgres testcontainer
+    package with `-p 1` before treating it as a regression.
