@@ -78,15 +78,15 @@ func (b *DirectBackend) ClaimJobs(
 	fastLimit int,
 	slowLimit int,
 	maxAhead time.Duration,
-) ([]*models.CheckJob, error) {
-	jobs, err := b.checkJobSvc.ClaimJobs(
+) ([]*models.CheckJob, time.Duration, error) {
+	jobs, nextIn, err := b.checkJobSvc.ClaimJobs(
 		ctx, workerUID, region, fastLimit, slowLimit, maxAhead,
 	)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return b.mergeClaimedSecrets(ctx, workerUID, jobs), nil
+	return b.mergeClaimedSecrets(ctx, workerUID, jobs), nextIn, nil
 }
 
 // ClaimJobsForCheck claims any due job rows for one check (express path).

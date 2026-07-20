@@ -479,7 +479,7 @@ func (h *Handler) handleClaim(
 		maxJobs = maxClaimJobs
 	}
 
-	jobs, err := h.checkJobSvc.ClaimJobsForAgent(
+	jobs, nextIn, err := h.checkJobSvc.ClaimJobsForAgent(
 		ctx, state.workerUID, state.agent.OrganizationUID, state.agent.Region,
 		frame.CheckUID, maxJobs, claimMaxAhead,
 	)
@@ -532,7 +532,20 @@ func (h *Handler) handleClaim(
 	}
 
 	_ = h.dbService.UpdateAgentLastSeen(ctx, state.agent.UID, time.Now())
-	_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{Type: agentcrypto.MsgTypeJobs, ID: frame.ID, Jobs: dispatched})
+	_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{
+		Type: agentcrypto.MsgTypeJobs, ID: frame.ID, Jobs: dispatched,
+		RetryInMs: retryInMs(nextIn),
+	})
+}
+
+// retryInMs converts the next-eligible hint to wire milliseconds, rounding UP
+// so the agent never wakes before the job is actually claimable.
+func retryInMs(d time.Duration) int64 {
+	if d <= 0 {
+		return 0
+	}
+
+	return int64((d + time.Millisecond - 1) / time.Millisecond)
 }
 
 // buildTunnelBlock loads the referenced SSH check from the live row and RE-ASSERTS

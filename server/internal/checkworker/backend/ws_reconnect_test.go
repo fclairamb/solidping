@@ -341,7 +341,7 @@ func TestWSBackendRequestFailsFastOnDrop(t *testing.T) {
 	r.NoError(err)
 
 	start := time.Now()
-	_, claimErr := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
+	_, _, claimErr := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
 	elapsed := time.Since(start)
 
 	r.Error(claimErr, "a claim whose connection drops mid-flight must fail")

@@ -55,7 +55,11 @@ type WorkerBackend interface {
 
 	// ClaimJobs claims due jobs with per-lane reservation (fastLimit is the
 	// total capacity, slowLimit the slow-lane budget — see
-	// checkjobsvc.Service.ClaimJobs).
+	// checkjobsvc.Service.ClaimJobs). The second return is the next-eligible
+	// hint: how long until the earliest still-unleased job in this worker's
+	// scope becomes claimable (0 = none known). The fetcher sleeps on it
+	// instead of its flat fallback poll, which is what keeps sub-minute
+	// periods honest on an otherwise idle worker or deported agent.
 	ClaimJobs(
 		ctx context.Context,
 		workerUID string,
@@ -63,7 +67,7 @@ type WorkerBackend interface {
 		fastLimit int,
 		slowLimit int,
 		maxAhead time.Duration,
-	) ([]*models.CheckJob, error)
+	) ([]*models.CheckJob, time.Duration, error)
 
 	// ClaimJobsForCheck claims any due job rows for one check (the express
 	// path for freshly created checks).

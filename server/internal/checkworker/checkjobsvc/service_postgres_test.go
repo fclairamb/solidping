@@ -99,7 +99,7 @@ func TestClaimJobsBoundedClaimAheadWindow_Postgres(t *testing.T) {
 	// Due-now job: must always be claimed regardless of period.
 	dueNowJob := newJob("cjpg-duenow", now.Add(-5*time.Second), time.Minute)
 
-	jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+	jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
 	r.NoError(err)
 
 	r.False(containsUID(jobs, tooFarJob.UID),
@@ -176,7 +176,7 @@ func TestMergeJobSecretsClaimedFromPostgres(t *testing.T) {
 
 	svc := checkjobsvc.NewService(dbSvc.DB())
 
-	claimed, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+	claimed, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
 	r.NoError(err)
 	r.Len(claimed, 1)
 	r.NotNil(claimed[0].ConfigPrivate, "the envelope must survive the Postgres round-trip")

@@ -116,6 +116,12 @@ type ServerFrame struct {
 
 	// jobs
 	Jobs []AgentJob `json:"jobs,omitempty"`
+	// RetryInMs, on a jobs frame, tells the agent how long until the next job
+	// in its scope becomes claimable (0/absent = none known within the
+	// server's hint horizon). The agent's fetcher sleeps on it instead of its
+	// flat fallback poll, so sub-minute check periods hold on an idle agent.
+	// Optional on both sides: old agents ignore it, old servers omit it.
+	RetryInMs int64 `json:"retryInMs,omitempty"`
 
 	// ack
 	NextScheduledAt *time.Time `json:"nextScheduledAt,omitempty"`

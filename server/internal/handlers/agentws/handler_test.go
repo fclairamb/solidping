@@ -29,6 +29,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
+	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
 // env is the in-process WS test environment: a real sqlite DB, the real
@@ -735,7 +736,7 @@ func TestTunnelEndToEndThroughAgent(t *testing.T) {
 	r.NoError(e.dbSvc.CreateCheck(ctx, dep))
 
 	// Claim: the WSBackend unseals the tunnel block and registers the snapshot.
-	jobs, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 10, 10, time.Minute)
+	jobs, _, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 10, 10, time.Minute)
 	r.NoError(err)
 
 	var depJob *models.CheckJob
@@ -883,7 +884,7 @@ func TestWSBackendClientEndToEnd(t *testing.T) {
 	r.NoError(e.dbSvc.CreateCheck(ctx, check))
 
 	// ClaimJobs unseals and merges the secrets in memory.
-	jobs, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
+	jobs, _, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
 	r.NoError(err)
 	r.Len(jobs, 1)
 	r.Equal("hunter2", jobs[0].Config["password"], "the client must unseal and merge the secrets")
@@ -935,7 +936,7 @@ func TestWSBackendUnsealFailureReportsJobError(t *testing.T) {
 	worker, err := wsBackend.Register(ctx, nil)
 	r.NoError(err)
 
-	jobs, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
+	jobs, _, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
 	r.NoError(err)
 	r.Empty(jobs, "an undecryptable job must be dropped from the batch")
 
@@ -946,4 +947,56 @@ func TestWSBackendUnsealFailureReportsJobError(t *testing.T) {
 	r.True(ok, "a decrypt failure must produce a visible error result")
 	r.Equal(int(models.ResultStatusError), *got.Status)
 	r.Contains(got.Output["error"], "re-save the check's credentials")
+}
+
+// TestClaimCarriesNextEligibleHint (spec 2026-07-20-03): a jobs frame for an
+// idle agent carries retryInMs — how long until the next job in its scope
+// becomes claimable — so the agent's fetcher can come back in time for a
+// sub-minute-period check instead of sleeping its flat fallback minute (the
+// "10s check on a deported agent runs once per minute" bug).
+func TestClaimCarriesNextEligibleHint(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newEnv(t)
+	ctx := t.Context()
+
+	check := e.createCheck("fast-check", []string{testRegion})
+
+	// Reschedule the job 10s out with a 10s period: claimable in ~5s
+	// (scheduled_at − period/2), a delay only the hint can carry.
+	scheduledAt := time.Now().Add(10 * time.Second)
+	_, err := e.dbSvc.DB().NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("scheduled_at = ?", scheduledAt).
+		Set("effective_scheduled_at = ?", scheduledAt).
+		Set("period = ?", timeutils.Duration(10*time.Second)).
+		Where("check_uid = ?", check.UID).
+		Exec(ctx)
+	r.NoError(err)
+
+	// Raw protocol level: the jobs frame carries retryInMs.
+	conn, _, _ := e.enroll(e.mintToken(), "dc1-agent")
+
+	resp := roundTrip(t, conn, agentcrypto.ClientFrame{Type: agentcrypto.MsgTypeClaim, ID: "c1", MaxJobs: 10})
+	r.Equal(agentcrypto.MsgTypeJobs, resp.Type)
+	r.Empty(resp.Jobs, "the job is outside its own 5s claim window")
+	r.InDelta(5000, resp.RetryInMs, 1500, "retryInMs must be ~scheduled_at − period/2")
+
+	// WSBackend level: the hint reaches the worker loop's ClaimJobs return.
+	keys, err := agentcrypto.GenerateAgentKeys()
+	r.NoError(err)
+
+	wsBackend := backend.NewWSBackend(
+		e.server.URL, e.mintToken(), "hint-agent",
+		&backend.Identity{AgentKeys: *keys}, nil,
+	)
+
+	worker, err := wsBackend.Register(ctx, nil)
+	r.NoError(err)
+
+	jobs, nextIn, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
+	r.NoError(err)
+	r.Empty(jobs)
+	r.InDelta((5 * time.Second).Seconds(), nextIn.Seconds(), 1.5,
+		"the agent fetcher must receive the server's eligibility hint")
 }

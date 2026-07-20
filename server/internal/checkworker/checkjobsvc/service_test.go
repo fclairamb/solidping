@@ -116,7 +116,7 @@ func TestClaimJobs(t *testing.T) {
 		_ = createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-5*time.Second), nil)
 
 		// Claim jobs
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+		jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		require.Len(t, jobs, 2, "should claim 2 jobs")
 
@@ -156,7 +156,7 @@ func TestClaimJobs(t *testing.T) {
 		}
 
 		// Claim with limit of 3
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 3, 3, 5*time.Minute)
+		jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 3, 3, 5*time.Minute)
 		require.NoError(t, err)
 		assert.Len(t, jobs, 3, "should respect limit")
 	})
@@ -166,7 +166,7 @@ func TestClaimJobs(t *testing.T) {
 		now := time.Now()
 
 		// First, claim and clear any existing unclaimed jobs to avoid interference
-		existingJobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 100, 5*time.Minute)
+		existingJobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 100, 5*time.Minute)
 		require.NoError(t, err)
 		// Mark them all as released with far future schedule so they don't interfere
 		for _, existingJob := range existingJobs {
@@ -187,7 +187,7 @@ func TestClaimJobs(t *testing.T) {
 		require.NoError(t, err)
 
 		// Try to claim jobs
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+		jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		assert.Empty(t, jobs, "should not claim jobs with active lease")
 	})
@@ -211,7 +211,7 @@ func TestClaimJobs(t *testing.T) {
 		require.NoError(t, err)
 
 		// Try to claim jobs
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+		jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		require.Len(t, jobs, 1, "should claim job with expired lease")
 
@@ -231,7 +231,7 @@ func TestClaimJobs(t *testing.T) {
 
 		// Worker with EU region should claim global and EU jobs
 		euWorker := createTestWorker(t, ctx, dbSvc, &euRegion)
-		jobs, err := svc.ClaimJobs(ctx, euWorker.UID, &euRegion, 10, 10, 5*time.Minute)
+		jobs, _, err := svc.ClaimJobs(ctx, euWorker.UID, &euRegion, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		assert.Len(t, jobs, 2, "EU worker should claim global and EU jobs")
 
@@ -247,7 +247,7 @@ func TestClaimJobs(t *testing.T) {
 		now := time.Now()
 
 		// First, claim and clear any existing jobs to avoid interference
-		existingJobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 100, 10*time.Minute)
+		existingJobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 100, 10*time.Minute)
 		require.NoError(t, err)
 		// Mark them all as released with far future schedule so they don't interfere
 		for _, existingJob := range existingJobs {
@@ -258,7 +258,7 @@ func TestClaimJobs(t *testing.T) {
 		_ = createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(10*time.Minute), nil)
 
 		// Try to claim with 5 minute max_ahead - should not claim the far future job
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+		jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		assert.Empty(t, jobs, "should not claim jobs beyond max_ahead")
 
@@ -266,7 +266,7 @@ func TestClaimJobs(t *testing.T) {
 		nearJob := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
 
 		// Should claim the near job
-		jobs, err = svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+		jobs, _, err = svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		require.Len(t, jobs, 1, "should claim job that is due")
 		assert.Equal(t, nearJob.UID, jobs[0].UID)
@@ -275,7 +275,7 @@ func TestClaimJobs(t *testing.T) {
 	t.Run("NoJobsAvailable", func(t *testing.T) {
 		// Claim when no jobs exist
 		newWorker := createTestWorker(t, ctx, dbSvc, nil)
-		jobs, err := svc.ClaimJobs(ctx, newWorker.UID, nil, 10, 10, 5*time.Minute)
+		jobs, _, err := svc.ClaimJobs(ctx, newWorker.UID, nil, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		assert.Empty(t, jobs, "should return empty slice when no jobs available")
 	})
@@ -287,7 +287,7 @@ func TestClaimJobs(t *testing.T) {
 		createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
 		createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-9*time.Second), nil)
 
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+		jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		require.GreaterOrEqual(t, len(jobs), 2)
 
@@ -340,7 +340,7 @@ func TestClaimOrdersByEffectiveScheduledAt(t *testing.T) {
 	setEffective(t, ctx, dbSvc, fastPaid.UID, now.Add(-10*time.Second))
 
 	// Claim a single slot under contention: the earlier effective deadline wins.
-	jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 1, 1, 5*time.Minute)
+	jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 1, 1, 5*time.Minute)
 	require.NoError(t, err)
 	require.Len(t, jobs, 1, "should claim exactly one job under the limit")
 	assert.Equal(t, fastPaid.UID, jobs[0].UID,
@@ -372,7 +372,7 @@ func TestClaimAdmitsDueJobRegardlessOfEffective(t *testing.T) {
 	job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-1*time.Second), nil)
 	setEffective(t, ctx, dbSvc, job.UID, now.Add(95*time.Minute))
 
-	jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, maxAhead)
+	jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, maxAhead)
 	require.NoError(t, err)
 	require.Len(t, jobs, 1, "a due job must be claimable immediately regardless of any stored effective value")
 	assert.Equal(t, job.UID, jobs[0].UID)
@@ -435,7 +435,7 @@ func TestClaimJobsLaneReservation(t *testing.T) {
 			createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
 		}
 
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 4, 1, 5*time.Minute)
+		jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 4, 1, 5*time.Minute)
 		require.NoError(t, err)
 		require.Len(t, jobs, 4, "claim must fill the whole capacity")
 
@@ -447,7 +447,7 @@ func TestClaimJobsLaneReservation(t *testing.T) {
 		for _, j := range jobs {
 			require.NoError(t, svc.ReleaseLease(ctx, j.UID, worker.UID, now.Add(2*time.Hour)))
 		}
-		remaining, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 100, 5*time.Minute)
+		remaining, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 100, 5*time.Minute)
 		require.NoError(t, err)
 		for _, j := range remaining {
 			require.NoError(t, svc.ReleaseLease(ctx, j.UID, worker.UID, now.Add(2*time.Hour)))
@@ -462,14 +462,14 @@ func TestClaimJobsLaneReservation(t *testing.T) {
 		markSlow(t, ctx, dbSvc, slowJob.UID)
 		fastJob := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
 
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 4, 0, 5*time.Minute)
+		jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 4, 0, 5*time.Minute)
 		require.NoError(t, err)
 		require.Len(t, jobs, 1, "only the fast job is claimable with a zero slow budget")
 		assert.Equal(t, fastJob.UID, jobs[0].UID)
 
 		// Drain.
 		require.NoError(t, svc.ReleaseLease(ctx, jobs[0].UID, worker.UID, now.Add(2*time.Hour)))
-		rest, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 100, 5*time.Minute)
+		rest, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 100, 5*time.Minute)
 		require.NoError(t, err)
 		for _, j := range rest {
 			require.NoError(t, svc.ReleaseLease(ctx, j.UID, worker.UID, now.Add(2*time.Hour)))
@@ -486,7 +486,7 @@ func TestClaimJobsLaneReservation(t *testing.T) {
 			markSlow(t, ctx, dbSvc, j.UID)
 		}
 
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 4, 3, 5*time.Minute)
+		jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 4, 3, 5*time.Minute)
 		require.NoError(t, err)
 		require.Len(t, jobs, 3, "with no fast work, slow claims exactly the budget")
 		_, slow := countByLane(jobs)
@@ -496,7 +496,7 @@ func TestClaimJobsLaneReservation(t *testing.T) {
 		for _, j := range jobs {
 			require.NoError(t, svc.ReleaseLease(ctx, j.UID, worker.UID, now.Add(2*time.Hour)))
 		}
-		rest, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 100, 5*time.Minute)
+		rest, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 100, 5*time.Minute)
 		require.NoError(t, err)
 		for _, j := range rest {
 			require.NoError(t, svc.ReleaseLease(ctx, j.UID, worker.UID, now.Add(2*time.Hour)))
@@ -516,7 +516,7 @@ func TestClaimJobsLaneReservation(t *testing.T) {
 			markSlow(t, ctx, dbSvc, j.UID)
 		}
 
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 4, 4, 5*time.Minute)
+		jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 4, 4, 5*time.Minute)
 		require.NoError(t, err)
 		require.Len(t, jobs, 4)
 		fast, slow := countByLane(jobs)
@@ -527,7 +527,7 @@ func TestClaimJobsLaneReservation(t *testing.T) {
 		for _, j := range jobs {
 			require.NoError(t, svc.ReleaseLease(ctx, j.UID, worker.UID, now.Add(2*time.Hour)))
 		}
-		rest, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 100, 5*time.Minute)
+		rest, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 100, 5*time.Minute)
 		require.NoError(t, err)
 		for _, j := range rest {
 			require.NoError(t, svc.ReleaseLease(ctx, j.UID, worker.UID, now.Add(2*time.Hour)))
@@ -552,7 +552,7 @@ func TestClaimJobsLaneReservation(t *testing.T) {
 			markSlow(t, ctx, dbSvc, j.UID)
 		}
 
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 4, 2, 5*time.Minute)
+		jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 4, 2, 5*time.Minute)
 		require.NoError(t, err)
 		require.Len(t, jobs, 4, "claim must still fill the whole capacity")
 
@@ -585,7 +585,7 @@ func TestClaimOrdersByEffectiveWithinLane(t *testing.T) {
 	setEffective(t, ctx, dbSvc, slowEarly.UID, now.Add(-10*time.Second))
 
 	// One slow slot: the earlier effective deadline wins within the lane.
-	jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 1, 1, 5*time.Minute)
+	jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 1, 1, 5*time.Minute)
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
 	assert.Equal(t, slowEarly.UID, jobs[0].UID,
@@ -902,7 +902,7 @@ func TestClaimJobsBoundedClaimAheadWindow(t *testing.T) {
 		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(40*time.Second), nil)
 		setTestCheckJobPeriod(t, ctx, dbSvc, job.UID, time.Minute)
 
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+		jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		assert.False(t, containsUID(jobs, job.UID),
 			"a 1-minute-period job 40s out must not be claimed (window clamps to 30s)")
@@ -918,7 +918,7 @@ func TestClaimJobsBoundedClaimAheadWindow(t *testing.T) {
 		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(10*time.Second), nil)
 		setTestCheckJobPeriod(t, ctx, dbSvc, job.UID, time.Minute)
 
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+		jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		assert.True(t, containsUID(jobs, job.UID), "a 1-minute-period job 10s out is inside its own 30s window")
 	})
@@ -933,7 +933,7 @@ func TestClaimJobsBoundedClaimAheadWindow(t *testing.T) {
 		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(20*time.Second), nil)
 		setTestCheckJobPeriod(t, ctx, dbSvc, job.UID, 10*time.Minute)
 
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+		jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		assert.True(t, containsUID(jobs, job.UID), "a 10-minute-period job 20s out is inside the 30s floor")
 	})
@@ -948,7 +948,7 @@ func TestClaimJobsBoundedClaimAheadWindow(t *testing.T) {
 		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(10*time.Second), nil)
 		setTestCheckJobPeriod(t, ctx, dbSvc, job.UID, time.Minute)
 
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Second)
+		jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Second)
 		require.NoError(t, err)
 		assert.False(t, containsUID(jobs, job.UID), "a small FetchMaxAhead override must still be respected")
 	})
@@ -963,7 +963,7 @@ func TestClaimJobsBoundedClaimAheadWindow(t *testing.T) {
 		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-5*time.Second), nil)
 		setTestCheckJobPeriod(t, ctx, dbSvc, job.UID, time.Minute)
 
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+		jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		assert.True(t, containsUID(jobs, job.UID), "a due-now job must always be claimed regardless of period")
 	})
@@ -1005,7 +1005,7 @@ func TestClaimJobsFleetScaleClampBoundsParkedCount(t *testing.T) {
 		setTestCheckJobPeriod(t, ctx, dbSvc, job.UID, jobPeriod)
 	}
 
-	jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, fleetSize, fleetSize, fetchAhead)
+	jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, fleetSize, fleetSize, fetchAhead)
 	require.NoError(t, err)
 
 	// jobPeriod/2 = 90s, which is above the 30s floor, so every job's own
@@ -1021,4 +1021,153 @@ func TestClaimJobsFleetScaleClampBoundsParkedCount(t *testing.T) {
 		assert.True(t, j.ScheduledAt.Before(now.Add(30*time.Second+time.Second)),
 			"every claimed job must be within its own 30s clamp window (with a 1s scheduling-jitter allowance)")
 	}
+}
+
+// TestClaimJobsNextEligibleHint covers the claim's next-eligible hint (spec
+// 2026-07-20-03). The fetcher's only periodic wake used to be a flat
+// one-minute poll, so on an idle worker a 10s-period job — claimable only
+// period/2 = 5s before it is due — was never claimable at the moment a
+// completion woke the fetcher, and ran once per minute. The claim now
+// reports how long until the earliest still-unleased job in scope becomes
+// claimable; the fetcher sleeps exactly that long.
+func TestClaimJobsNextEligibleHint(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ShortPeriodJobYieldsItsEligibilityDelay", func(t *testing.T) {
+		t.Parallel()
+
+		dbSvc, ctx := setupTestDB(t)
+		defer func() { _ = dbSvc.Close() }()
+
+		svc := checkjobsvc.NewService(dbSvc.DB())
+		org := createTestOrg(t, ctx, dbSvc)
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		// 10s period, due 10s out: claimable in ~5s (scheduled_at − period/2).
+		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(10*time.Second), nil)
+		setTestCheckJobPeriod(t, ctx, dbSvc, job.UID, 10*time.Second)
+
+		jobs, nextIn, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+		require.NoError(t, err)
+		assert.Empty(t, jobs, "the job is outside its own 5s claim window")
+		assert.InDelta(t, (5 * time.Second).Seconds(), nextIn.Seconds(), 1.5,
+			"the hint must be ~scheduled_at − period/2, not a flat fallback")
+	})
+
+	t.Run("ClaimedBatchProducesNoImmediateRepoll", func(t *testing.T) {
+		t.Parallel()
+
+		dbSvc, ctx := setupTestDB(t)
+		defer func() { _ = dbSvc.Close() }()
+
+		svc := checkjobsvc.NewService(dbSvc.DB())
+		org := createTestOrg(t, ctx, dbSvc)
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		// A due job is claimed and leased in this very call; its next tick is
+		// only written at release, so nothing upcoming remains — the hint must
+		// be zero, not an immediate wasted re-poll against our own claim.
+		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-time.Second), nil)
+		setTestCheckJobPeriod(t, ctx, dbSvc, job.UID, 10*time.Second)
+
+		jobs, nextIn, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+		require.NoError(t, err)
+		require.Len(t, jobs, 1)
+		assert.Zero(t, nextIn, "a job claimed in this batch must not drive the hint")
+	})
+
+	t.Run("ForeignLeaseAndFarFutureAreExcluded", func(t *testing.T) {
+		t.Parallel()
+
+		dbSvc, ctx := setupTestDB(t)
+		defer func() { _ = dbSvc.Close() }()
+
+		svc := checkjobsvc.NewService(dbSvc.DB())
+		org := createTestOrg(t, ctx, dbSvc)
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		other := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		// Upcoming but leased by another worker: that worker's release will
+		// reschedule it, so it must not drive this worker's wake.
+		leased := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(10*time.Second), nil)
+		setTestCheckJobPeriod(t, ctx, dbSvc, leased.UID, 10*time.Second)
+		_, err := dbSvc.DB().NewUpdate().
+			Model((*models.CheckJob)(nil)).
+			Set("lease_worker_uid = ?", other.UID).
+			Set("lease_expires_at = ?", now.Add(2*time.Minute)).
+			Where("uid = ?", leased.UID).
+			Exec(ctx)
+		require.NoError(t, err)
+
+		// Beyond the hint horizon: the fallback poll reaches it first.
+		far := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(3*time.Minute), nil)
+		setTestCheckJobPeriod(t, ctx, dbSvc, far.UID, time.Hour)
+
+		jobs, nextIn, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+		require.NoError(t, err)
+		assert.Empty(t, jobs)
+		assert.Zero(t, nextIn, "leased and beyond-horizon jobs must yield no hint")
+	})
+
+	t.Run("EligibleButUnclaimedJobFloorsTheHint", func(t *testing.T) {
+		t.Parallel()
+
+		dbSvc, ctx := setupTestDB(t)
+		defer func() { _ = dbSvc.Close() }()
+
+		svc := checkjobsvc.NewService(dbSvc.DB())
+		org := createTestOrg(t, ctx, dbSvc)
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		// Already inside its own 30s window (so eligible right now) but the
+		// claim has zero capacity: the hint must clamp to a small positive
+		// delay — never zero/negative, which would fall back to the flat poll
+		// or spin the fetcher.
+		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(5*time.Second), nil)
+		setTestCheckJobPeriod(t, ctx, dbSvc, job.UID, time.Minute)
+
+		jobs, nextIn, err := svc.ClaimJobs(ctx, worker.UID, nil, 0, 0, 5*time.Minute)
+		require.NoError(t, err)
+		assert.Empty(t, jobs)
+		assert.Positive(t, nextIn)
+		assert.LessOrEqual(t, nextIn, time.Second,
+			"an already-eligible job must yield a floored short hint")
+	})
+
+	t.Run("AgentHintIsScopedToOrgAndRegion", func(t *testing.T) {
+		t.Parallel()
+
+		dbSvc, ctx := setupTestDB(t)
+		defer func() { _ = dbSvc.Close() }()
+
+		svc := checkjobsvc.NewService(dbSvc.DB())
+		org := createTestOrg(t, ctx, dbSvc)
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		region := "@test-org/dc1"
+		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(10*time.Second), &region)
+		setTestCheckJobPeriod(t, ctx, dbSvc, job.UID, 10*time.Second)
+
+		jobs, nextIn, err := svc.ClaimJobsForAgent(
+			ctx, worker.UID, org.UID, region, "", 10, 5*time.Minute,
+		)
+		require.NoError(t, err)
+		assert.Empty(t, jobs, "the job is outside its own 5s claim window")
+		assert.InDelta(t, (5 * time.Second).Seconds(), nextIn.Seconds(), 1.5,
+			"the agent claim must carry the same eligibility hint")
+
+		// The same claim for a different private region must see nothing —
+		// the hint is bounded by the agent's hard scope like the claim itself.
+		jobs, nextIn, err = svc.ClaimJobsForAgent(
+			ctx, worker.UID, org.UID, "@test-org/dc2", "", 10, 5*time.Minute,
+		)
+		require.NoError(t, err)
+		assert.Empty(t, jobs)
+		assert.Zero(t, nextIn, "another region's job must not leak into the hint")
+	})
 }

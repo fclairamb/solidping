@@ -2523,3 +2523,19 @@ func TestExecuteJobPassiveJobHonorsScheduledAtSleep(t *testing.T) {
 		return n == 1
 	}, 2*time.Second, 10*time.Millisecond, "the passive job must produce exactly one result once it actually runs")
 }
+
+// TestNextPollDelay pins the fetcher's hint-driven wake (spec 2026-07-20-03):
+// before the hint existed, the only periodic wake was the flat fallback poll,
+// so on an idle worker a 10s-period job (claimable only 5s before due) ran
+// once per minute.
+func TestNextPollDelay(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.Equal(fallbackPollInterval, nextPollDelay(0), "no hint falls back to the flat poll")
+	r.Equal(fallbackPollInterval, nextPollDelay(-time.Second), "a negative hint falls back")
+	r.Equal(fallbackPollInterval, nextPollDelay(2*time.Minute), "a hint past the fallback is capped by it")
+	r.Equal(fallbackPollInterval, nextPollDelay(fallbackPollInterval), "an exactly-fallback hint stays the fallback")
+	r.Equal(5*time.Second, nextPollDelay(5*time.Second), "a sub-minute hint is honored as-is")
+	r.Equal(minPollDelay, nextPollDelay(time.Millisecond), "a tiny hint is floored so the fetcher cannot spin")
+}
