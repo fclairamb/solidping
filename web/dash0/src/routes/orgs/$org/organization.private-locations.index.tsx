@@ -331,7 +331,10 @@ function TokenRevealDialog({
             <p className="text-xs text-muted-foreground">
               {t("privateLocations.token.run", "Run the agent with:")}
             </p>
-            <pre className="max-w-full overflow-x-auto rounded bg-muted p-2 text-xs">
+            <pre
+              className="max-w-full overflow-x-auto rounded bg-muted p-2 text-xs"
+              data-testid="docker-run-command"
+            >
               {`docker run -v agent-data:/data \\
   -e SP_NODE_ROLE=agent \\
   -e SP_AGENT_SERVER_URL=${window.location.origin} \\
