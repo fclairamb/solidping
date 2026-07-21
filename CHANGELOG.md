@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/fclairamb/solidping/compare/v0.6.0...v0.6.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* **dash0:** accept multiple HTTP expected status codes via a chip input ([#158](https://github.com/fclairamb/solidping/issues/158)) ([85f6d41](https://github.com/fclairamb/solidping/commit/85f6d41f90f8b9a85ef01bcdafad531e00596215))
+
 ## [Unreleased]
 
 ### Bug Fixes
