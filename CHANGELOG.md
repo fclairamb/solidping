@@ -1,10 +1,11 @@
 # Changelog
 
-## [Unreleased]
+## [0.6.1](https://github.com/fclairamb/solidping/compare/v0.6.0...v0.6.1) (2026-07-21)
+
 
 ### Bug Fixes
 
-* **checks (HTTP):** the expected-status field only ever accepted a single numeric code, even though the backend has long supported a list of exact codes and `NXX` wildcards (`4XX`, `5XX`, …) — the UI just never exposed it. The HTTP check form now uses a chip input: type or paste `200 201 4XX` (space/comma/semicolon/Enter-separated) to get one removable chip per code, invalid patterns render as a destructive chip and block save, and a plain `200`-only check keeps saving with neither status key (today's implicit-default behavior, unchanged). Existing checks using the deprecated single `expectedStatus` field keep working and migrate to the list on next save. The chip input itself is a new reusable `TokenChipsInput` shared with (and replacing the bespoke implementation behind) the email-integration recipients field, and is documented in the dashboard's design reference.
+* **checks (HTTP):** the expected-status field only ever accepted a single numeric code, even though the backend has long supported a list of exact codes and `NXX` wildcards (`4XX`, `5XX`, …) — the UI just never exposed it. The HTTP check form now uses a chip input: type or paste `200 201 4XX` (space/comma/semicolon/Enter-separated) to get one removable chip per code, invalid patterns render as a destructive chip and block save, and a plain `200`-only check keeps saving with neither status key (today's implicit-default behavior, unchanged). Existing checks using the deprecated single `expectedStatus` field keep working and migrate to the list on next save. The chip input itself is a new reusable `TokenChipsInput` shared with (and replacing the bespoke implementation behind) the email-integration recipients field, and is documented in the dashboard's design reference. ([#158](https://github.com/fclairamb/solidping/issues/158)) ([85f6d41](https://github.com/fclairamb/solidping/commit/85f6d41f90f8b9a85ef01bcdafad531e00596215))
 
 ## [0.6.0](https://github.com/fclairamb/solidping/compare/v0.5.0...v0.6.0) (2026-07-21)
 
