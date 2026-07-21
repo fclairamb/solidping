@@ -33,7 +33,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gookit/color v1.6.1
 	github.com/gosnmp/gosnmp v1.44.0
-	github.com/jedib0t/go-pretty/v6 v6.8.2
+	github.com/jedib0t/go-pretty/v6 v6.8.3
 	github.com/jimlambrt/gldap v0.1.14
 	github.com/jlaffaye/ftp v0.2.1
 	github.com/jonboulle/clockwork v0.5.0
@@ -52,7 +52,7 @@ require (
 	github.com/ohler55/ojg v1.28.2
 	github.com/pkg/sftp v1.13.11
 	github.com/pquerna/otp v1.5.0
-	github.com/prometheus/client_golang v1.23.2
+	github.com/prometheus/client_golang v1.24.0
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.70.0
 	github.com/rabbitmq/amqp091-go v1.12.0
@@ -216,7 +216,7 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.27 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/prometheus/procfs v0.21.0 // indirect
+	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
