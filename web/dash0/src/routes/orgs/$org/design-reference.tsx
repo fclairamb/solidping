@@ -35,6 +35,8 @@ import { toast } from "sonner";
 
 import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
 import { RecipientsInput } from "@/components/shared/recipients-input";
+import { TokenChipsInput } from "@/components/shared/token-chips-input";
+import { isValidStatusPattern, normalizeStatusPattern } from "@/lib/http-status";
 import {
   CollapsibleCode,
   CopyableCode,
@@ -147,7 +149,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "feedback", label: "Feedback" },
   { id: "label-filter", label: "Label filter" },
   { id: "check-multi-picker", label: "Check multi-picker" },
-  { id: "recipients-input", label: "Recipients input" },
+  { id: "token-chips-input", label: "Token chips input" },
   { id: "kpi-tiles", label: "KPI tiles" },
   { id: "uptime-strip", label: "Uptime strip" },
   { id: "jobs-primitives", label: "Jobs primitives" },
@@ -183,7 +185,7 @@ function DesignReferencePage() {
       <FeedbackSection />
       <LabelFilterSection />
       <CheckMultiPickerSection />
-      <RecipientsInputSection />
+      <TokenChipsInputSection />
       <KpiTileSection />
       <UptimeStripSection />
       <JobsPrimitivesSection />
@@ -2158,30 +2160,44 @@ function CheckMultiPickerSection() {
   );
 }
 
-function RecipientsInputSection() {
+function TokenChipsInputSection() {
   const [valid, setValid] = useState<string[]>(["ops@example.com"]);
   const [withInvalid, setWithInvalid] = useState<string[]>([
     "oncall@example.com",
     "not-an-email",
   ]);
+  const [statusCodes, setStatusCodes] = useState<string[]>(["200", "4XX"]);
 
   return (
     <Section
-      id="recipients-input"
-      title="Recipients input"
-      description="Chip/tag input for a free-form list of addresses (currently used for the email integration's recipients). Each entry is a removable Badge chip — destructive-red when it fails isValidEmail. Typing a separator (space/comma/semicolon), pressing Enter, pasting a delimited list, or blurring all commit the current token(s). Backspace on an empty field pops the last chip."
+      id="token-chips-input"
+      title="Token chips input"
+      description="Generic chip/tag input for a free-form list of validated tokens — parameterized by validate, an optional normalize, placeholder, and data-testid. Each entry is a removable Badge chip, destructive-red when it fails validate. Typing a separator (space/comma/semicolon), pressing Enter, pasting a delimited list, or blurring all commit the current token(s) — normalize (if given) runs on commit and also sets the de-dupe key. Backspace on an empty field pops the last chip. RecipientsInput (email recipients, below) is a thin wrapper over this component; the HTTP check form's expected-status field is another."
     >
       <p className="text-xs text-muted-foreground">
-        import {"{ RecipientsInput }"} from "@/components/shared/recipients-input"
+        import {"{ TokenChipsInput }"} from "@/components/shared/token-chips-input"
       </p>
       <div className="grid gap-4 sm:grid-cols-2 max-w-2xl">
         <div className="space-y-2">
-          <Label>All valid</Label>
+          <Label>Email recipients — all valid</Label>
+          <p className="text-xs text-muted-foreground">
+            import {"{ RecipientsInput }"} from "@/components/shared/recipients-input"
+          </p>
           <RecipientsInput value={valid} onChange={setValid} placeholder="ops@example.com" />
         </div>
         <div className="space-y-2">
-          <Label>With an invalid entry</Label>
+          <Label>Email recipients — with an invalid entry</Label>
           <RecipientsInput value={withInvalid} onChange={setWithInvalid} placeholder="ops@example.com" />
+        </div>
+        <div className="space-y-2">
+          <Label>HTTP expected-status codes (exact or NXX wildcard)</Label>
+          <TokenChipsInput
+            value={statusCodes}
+            onChange={setStatusCodes}
+            validate={isValidStatusPattern}
+            normalize={normalizeStatusPattern}
+            placeholder="200"
+          />
         </div>
       </div>
     </Section>
