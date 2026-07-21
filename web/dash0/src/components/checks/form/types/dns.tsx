@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getFieldError } from "@/hooks/use-check-validation";
+import { TokenChipsInput } from "@/components/shared/token-chips-input";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
 import { getConfigField, splitBlocklists } from "./common";
@@ -21,6 +22,45 @@ export interface DnsState {
   host: string;
   nameserver: string;
   recordType: string;
+  // Chips bound to `expected_ips` (A/AAAA answers). Kept separate from
+  // `expectedValues` because the backend rejects a config carrying both keys —
+  // toConfig only writes the one matching the current record type.
+  expectedIps: string[];
+  // Textarea (one entry per line) bound to `expected_values` (CNAME/MX/NS/TXT
+  // answers). A textarea rather than chips because TXT values legitimately
+  // contain spaces (e.g. an SPF record), which a chip input would split on.
+  expectedValues: string;
+}
+
+// A/AAAA lookups resolve to IPs and assert against `expected_ips`; every other
+// record type resolves to strings and asserts against `expected_values`.
+export function isIpRecordType(recordType: string): boolean {
+  return recordType === "A" || recordType === "AAAA";
+}
+
+export function isValidIPv4(token: string): boolean {
+  const parts = token.split(".");
+  return (
+    parts.length === 4 &&
+    parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255)
+  );
+}
+
+export function isValidIPv6(token: string): boolean {
+  if (!/^[0-9a-f:]+$/i.test(token) || !token.includes(":")) return false;
+  const halves = token.split("::");
+  if (halves.length > 2) return false;
+  const groups = token.split(/::?/).filter(Boolean);
+  if (groups.length > 8) return false;
+  // Without "::" compression, exactly 8 groups are required.
+  if (halves.length === 1 && groups.length !== 8) return false;
+  return groups.every((g) => /^[0-9a-f]{1,4}$/i.test(g));
+}
+
+function seedStringArray(config: CheckConfig, field: string): string[] {
+  const raw = config[field];
+  if (!Array.isArray(raw)) return [];
+  return raw.map(String).filter((s) => s.trim() !== "");
 }
 
 export const dnsModule: CheckTypeModule<DnsState> = {
@@ -29,6 +69,8 @@ export const dnsModule: CheckTypeModule<DnsState> = {
     host: getConfigField(config, "host"),
     nameserver: getConfigField(config, "nameserver"),
     recordType: getConfigField(config, "record_type") || "A",
+    expectedIps: seedStringArray(config, "expected_ips"),
+    expectedValues: seedStringArray(config, "expected_values").join("\n"),
   }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
@@ -39,12 +81,32 @@ export const dnsModule: CheckTypeModule<DnsState> = {
     const errors: FieldErrors = state.host
       ? []
       : [{ name: "host", message: "Domain is required" }];
+    // Only the expectation matching the record type is written; the other is
+    // dropped so a record-type change never produces the (rejected)
+    // both-keys config, or an assertion that can never match.
+    if (isIpRecordType(state.recordType || "A")) {
+      if (state.expectedIps.length > 0) cfg.expected_ips = state.expectedIps;
+      const validate = state.recordType === "AAAA" ? isValidIPv6 : isValidIPv4;
+      const invalid = state.expectedIps.filter((ip) => !validate(ip));
+      if (invalid.length > 0) {
+        errors.push({
+          name: "expected_ips",
+          message: `Not ${state.recordType === "AAAA" ? "IPv6" : "IPv4"} address${invalid.length > 1 ? "es" : ""}: ${invalid.join(", ")}`,
+        });
+      }
+    } else {
+      const values = splitBlocklists(state.expectedValues);
+      if (values.length > 0) cfg.expected_values = values;
+    }
     return { config: cfg, errors };
   },
   Fields: DnsFields,
 };
 
 function DnsFields({ state, onChange, errors }: CheckTypeFieldsProps<DnsState>) {
+  const { t } = useTranslation("checks");
+  const ipMode = isIpRecordType(state.recordType || "A");
+  const validateIp = state.recordType === "AAAA" ? isValidIPv6 : isValidIPv4;
   return (
     <>
       <div className="space-y-2">
@@ -105,6 +167,75 @@ function DnsFields({ state, onChange, errors }: CheckTypeFieldsProps<DnsState>) 
           </p>
         )}
       </div>
+      {ipMode ? (
+        <div className="space-y-2">
+          <Label htmlFor="dnsExpectedIps">
+            {t("form.dnsExpectedIps", "Expected IPs (optional)")}
+          </Label>
+          <TokenChipsInput
+            id="dnsExpectedIps"
+            value={state.expectedIps}
+            onChange={(expectedIps) => onChange({ ...state, expectedIps })}
+            validate={validateIp}
+            normalize={(token) => token.trim().toLowerCase()}
+            placeholder={state.recordType === "AAAA" ? "2606:4700::1111" : "1.1.1.1"}
+            data-testid="check-dns-expected-ips"
+            invalidTitle={t(
+              "form.dnsExpectedIpInvalid",
+              "Not a valid {{recordType}} address",
+              { recordType: state.recordType === "AAAA" ? "IPv6" : "IPv4" },
+            )}
+            getRemoveLabel={(ip) =>
+              t("form.dnsRemoveExpectedIp", "Remove {{ip}}", { ip })
+            }
+          />
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "form.dnsExpectedIpsHint",
+              "The check fails unless every listed IP is present in the resolved answers. Leave empty to only require a successful resolution.",
+            )}
+          </p>
+          {getFieldError(errors, "expected_ips") && (
+            <p
+              className="text-xs text-destructive"
+              data-testid="check-dns-expected-ips-error"
+            >
+              {getFieldError(errors, "expected_ips")}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <Label htmlFor="dnsExpectedValues">
+            {t("form.dnsExpectedValues", "Expected values (optional)")}
+          </Label>
+          <Textarea
+            id="dnsExpectedValues"
+            rows={3}
+            placeholder={
+              state.recordType === "MX"
+                ? "10 mail.example.com"
+                : "target.example.com"
+            }
+            value={state.expectedValues}
+            onChange={(e) =>
+              onChange({ ...state, expectedValues: e.target.value })
+            }
+            data-testid="check-dns-expected-values"
+          />
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "form.dnsExpectedValuesHint",
+              "One value per line, matched exactly against the resolved records (MX as \"priority host\", names without a trailing dot). The check fails unless every listed value is present. Leave empty to only require a successful resolution.",
+            )}
+          </p>
+          {getFieldError(errors, "expected_values") && (
+            <p className="text-xs text-destructive">
+              {getFieldError(errors, "expected_values")}
+            </p>
+          )}
+        </div>
+      )}
     </>
   );
 }

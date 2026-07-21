@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Bug Fixes
+
+* **checks (DNS):** the check form had no way to assert on what a DNS lookup actually resolved to — it could only confirm the lookup succeeded. A record, AAAA record, and every other supported record type (CNAME, MX, NS, TXT) now expose an "Expected" field: A/AAAA use a chip input (validated as IPv4/IPv6 respectively, invalid entries block save) since a lookup can return multiple IPs, while the others use a one-value-per-line textarea (TXT values may contain spaces, which a chip input would incorrectly split on) matched exactly against the resolved records. The check fails unless every listed value is present; leaving the field empty keeps today's behavior of only requiring a successful resolution. Switching record type always writes only the matching config key, never both (the backend rejects a config carrying both `expected_ips` and `expected_values`).
+
 ## [0.6.1](https://github.com/fclairamb/solidping/compare/v0.6.0...v0.6.1) (2026-07-21)
 
 
