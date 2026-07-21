@@ -432,7 +432,8 @@ func (r *CheckWorker) fetcherLoop(ctx context.Context) {
 		}
 
 		// Fetch and distribute jobs if runners are available
-		if err := r.fetchAndDistributeJobs(ctx, logger); err != nil {
+		nextIn, err := r.fetchAndDistributeJobs(ctx, logger)
+		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return
 			}
@@ -453,20 +454,50 @@ func (r *CheckWorker) fetcherLoop(ctx context.Context) {
 			// A runner completed a job, capacity available
 		case <-checkCreatedChan:
 			// New check created, might be ready to execute
-		case <-time.After(time.Minute):
-			// Periodic check for newly-scheduled jobs
+		case <-time.After(nextPollDelay(nextIn)):
+			// The claim's next-eligible hint, or the fallback poll
 		}
 	}
 }
 
-// fetchAndDistributeJobs claims jobs from the database and sends them to runners.
-// Returns nil if no runners available or no jobs to distribute.
-func (r *CheckWorker) fetchAndDistributeJobs(ctx context.Context, logger *slog.Logger) error {
+// fallbackPollInterval is the fetcher's periodic re-poll when the last claim
+// returned no next-eligible hint (nothing upcoming in the hint horizon, an
+// older server on the agent path, or a claim skipped for lack of runners).
+const fallbackPollInterval = time.Minute
+
+// minPollDelay floors a hint-driven wake so a hint at (or past) the
+// eligibility boundary can never spin the fetcher hot.
+const minPollDelay = 100 * time.Millisecond
+
+// nextPollDelay converts a claim's next-eligible hint into the fetcher's
+// sleep. Before the hint existed the only periodic wake was the flat
+// fallback, so on an idle worker a 10s-period job — claimable just 5s
+// (period/2) before it is due — was never claimable at wake time and ran
+// once per minute (spec 2026-07-20-03).
+func nextPollDelay(nextEligibleIn time.Duration) time.Duration {
+	if nextEligibleIn <= 0 || nextEligibleIn >= fallbackPollInterval {
+		return fallbackPollInterval
+	}
+
+	if nextEligibleIn < minPollDelay {
+		return minPollDelay
+	}
+
+	return nextEligibleIn
+}
+
+// fetchAndDistributeJobs claims jobs from the database and sends them to
+// runners. Returns the claim's next-eligible hint (0 when none, or when the
+// claim was skipped because no runner was free — a completion wakes the
+// fetcher in that case).
+func (r *CheckWorker) fetchAndDistributeJobs(
+	ctx context.Context, logger *slog.Logger,
+) (time.Duration, error) {
 	available := int(r.availableRunners.Load())
 
 	if available == 0 {
 		logger.DebugContext(ctx, "All runners busy, waiting for completion")
-		return nil
+		return 0, nil
 	}
 
 	// Per-lane reservation (spec 2026-07-01-03 D3): fast may fill every free
@@ -478,7 +509,7 @@ func (r *CheckWorker) fetchAndDistributeJobs(ctx context.Context, logger *slog.L
 	cfg := r.config.Server.CheckWorker
 	fetchStart := time.Now()
 	worker := r.getWorker()
-	jobs, err := r.backend.ClaimJobs(
+	jobs, nextIn, err := r.backend.ClaimJobs(
 		ctx,
 		worker.UID,
 		worker.Region,
@@ -501,7 +532,7 @@ func (r *CheckWorker) fetchAndDistributeJobs(ctx context.Context, logger *slog.L
 		if !errors.Is(err, context.Canceled) {
 			logger.ErrorContext(ctx, "Failed to claim jobs", "error", err)
 		}
-		return err
+		return 0, err
 	}
 
 	// Account in-flight slow jobs at claim time (D4): the count must be
@@ -525,7 +556,7 @@ func (r *CheckWorker) fetchAndDistributeJobs(ctx context.Context, logger *slog.L
 		case r.jobsChan <- job:
 			// Job delivered to a runner
 		case <-ctx.Done():
-			return ctx.Err()
+			return 0, ctx.Err()
 		}
 	}
 
@@ -535,7 +566,7 @@ func (r *CheckWorker) fetchAndDistributeJobs(ctx context.Context, logger *slog.L
 			"available_runners", available)
 	}
 
-	return nil
+	return nextIn, nil
 }
 
 // expressLoop subscribes to check.created and runs the freshly-created
@@ -1416,8 +1447,16 @@ func (r *CheckWorker) calculateNextScheduledAt(checkJob *models.CheckJob) time.T
 	if checkJob.Check != nil {
 		basePeriod := time.Duration(checkJob.Check.Period)
 		if basePeriod > 0 && jobPeriod > 0 {
+			// Resolve the inter-region spread from the same inputs reconcile
+			// uses (check period, region count, region_spread override) so the
+			// phase this worker computes matches the one written at reconcile —
+			// reproducible across processes (spec 2026-07-20-05).
+			spread := scheduling.RegionSpread(
+				basePeriod, len(checkJob.Check.Regions), checkJob.Check.RegionSpreadDuration(),
+			)
+
 			return scheduling.NextAligned(
-				now, basePeriod, jobPeriod, checkJob.CheckUID, checkJob.Region, checkJob.Check.Regions,
+				now, basePeriod, jobPeriod, checkJob.CheckUID, checkJob.Region, checkJob.Check.Regions, spread,
 			)
 		}
 	}

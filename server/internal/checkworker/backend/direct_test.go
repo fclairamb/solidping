@@ -295,7 +295,7 @@ func claimOne(ctx context.Context, t *testing.T, be *backend.DirectBackend, work
 ) *models.CheckJob {
 	t.Helper()
 
-	jobs, err := be.ClaimJobs(ctx, workerUID, nil, 10, 10, time.Minute)
+	jobs, _, err := be.ClaimJobs(ctx, workerUID, nil, 10, 10, time.Minute)
 	require.NoError(t, err)
 
 	for _, job := range jobs {
@@ -524,7 +524,7 @@ func TestClaimJobsNeverLogsDecryptedSecrets(t *testing.T) {
 
 	workerUID := registerWorker(ctx, t, dbSvc, "wk-logs")
 
-	jobs, err := be.ClaimJobs(ctx, workerUID, nil, 10, 10, time.Minute)
+	jobs, _, err := be.ClaimJobs(ctx, workerUID, nil, 10, 10, time.Minute)
 	r.NoError(err)
 
 	var okJob *models.CheckJob
@@ -619,7 +619,7 @@ func TestClaimJobsDropsUndecryptableJobOnPostgres(t *testing.T) {
 	check := seedJob(t, ctx, dbSvc, org, "pgbaddec", publicOnly(), envelope)
 	workerUID := registerWorker(ctx, t, dbSvc, "wk-pgbaddec")
 
-	jobs, err := be.ClaimJobs(ctx, workerUID, nil, 10, 10, time.Minute)
+	jobs, _, err := be.ClaimJobs(ctx, workerUID, nil, 10, 10, time.Minute)
 	r.NoError(err)
 
 	for _, job := range jobs {

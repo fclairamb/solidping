@@ -87,6 +87,15 @@ type Check struct {
 	Internal     bool               `bun:"internal,notnull,default:false"`
 	Period       timeutils.Duration `bun:"period,notnull"`
 
+	// RegionSpread is the optional inter-region scheduling offset ("spread")
+	// applied between consecutive regions' phases (spec 2026-07-20-05). NULL =
+	// the default of Period / region_count (even coverage across the period);
+	// a non-null value forces a fixed offset (e.g. 0 = all regions fire
+	// together for comparative cross-region sampling), validated
+	// 0 <= RegionSpread < Period. It is a first-class scheduling input (it
+	// drives check_jobs phase), not checker config, hence a column like Period.
+	RegionSpread *timeutils.Duration `bun:"region_spread,nullzero"`
+
 	// Incident tracking — wall-clock periods (seconds). Replaces the old
 	// count-based thresholds per spec
 	// 2026-05-08-02-time-based-confirmation-and-recovery-periods.md.
@@ -142,6 +151,27 @@ type Check struct {
 	CreatedAt time.Time  `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
 	DeletedAt *time.Time `bun:"deleted_at"`
+
+	// GroupSortKey is the effective group-ordering key populated only by the
+	// sort=group ListChecks path: the check's group sort_order, or a large
+	// sentinel (int16 max is 32767, so ungrouped sorts strictly last). Scan-only
+	// and transient — never selected, inserted, or updated outside that query.
+	GroupSortKey int64 `bun:"group_sort_key,scanonly"`
+}
+
+// RegionSpreadDuration returns the check's optional inter-region spread
+// override as a *time.Duration (nil when unset), for the
+// scheduling.RegionSpread resolver. Keeps the *timeutils.Duration ⇄
+// *time.Duration conversion in one place so the reconcile, create, and worker
+// paths all resolve the identical spread.
+func (c *Check) RegionSpreadDuration() *time.Duration {
+	if c.RegionSpread == nil {
+		return nil
+	}
+
+	d := time.Duration(*c.RegionSpread)
+
+	return &d
 }
 
 // NewCheck creates a new check with generated UID.
@@ -175,13 +205,16 @@ func NewCheck(orgUID, slug, checkType string) *Check {
 }
 
 // CheckRate is a thin projection of a check used to compute usage stats:
-// just whether the check is enabled and its execution period. Returned by
-// ListOrgCheckRates so the entitlements service can sum the aggregate
-// checks-per-minute in Go (the SQL interval/text representation of Period
-// is not portable for a SUM(60/period) across Postgres and SQLite).
+// whether the check is enabled, its execution period, and its region set.
+// Returned by ListOrgCheckRates so the entitlements service can sum the
+// aggregate checks-per-minute in Go (the SQL interval/text representation of
+// Period is not portable for a SUM(60/period) across Postgres and SQLite).
+// Regions is needed because a multi-region check executes once per region per
+// period, so its per-minute cost is (60s/period) × max(1, len(Regions)).
 type CheckRate struct {
 	Enabled bool               `bun:"enabled"`
 	Period  timeutils.Duration `bun:"period"`
+	Regions []string           `bun:"regions,type:text[],array"`
 }
 
 // CheckUpdate represents fields that can be updated.
@@ -201,6 +234,10 @@ type CheckUpdate struct {
 	Enabled            *bool
 	Internal           *bool
 	Period             *timeutils.Duration
+	// RegionSpread sets the inter-region offset override; ClearRegionSpread
+	// resets it to NULL (revert to the period/region_count default).
+	RegionSpread      *timeutils.Duration
+	ClearRegionSpread bool
 
 	// Incident tracking — wall-clock periods replacing the legacy count
 	// thresholds. EscalationThreshold stays count-based for now.
@@ -295,4 +332,13 @@ type ListChecksFilter struct {
 	Limit           int               // max results to return (0 = no limit)
 	CursorCreatedAt *time.Time        // cursor: created_at of last item from previous page
 	CursorUID       *string           // cursor: uid of last item from previous page
+
+	// SortByGroup opts into display-order pagination (sort=group): group
+	// sort_order asc, ungrouped last, then created_at DESC / uid DESC within a
+	// bucket. Off = the default created_at DESC / uid DESC ordering.
+	SortByGroup bool
+	// CursorGroupSortKey is the effective group sort key of the last item from
+	// the previous page — the leading component of the composite sort=group
+	// cursor. Only set alongside CursorCreatedAt/CursorUID when SortByGroup.
+	CursorGroupSortKey *int64
 }

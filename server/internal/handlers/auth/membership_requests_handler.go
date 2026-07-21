@@ -5,15 +5,14 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // CreateMembershipRequestHandler — POST /api/v1/auth/membership-requests.
 func (h *Handler) CreateMembershipRequestHandler(
-	writer http.ResponseWriter, req bunrouter.Request,
+	writer http.ResponseWriter, req *http.Request,
 ) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
@@ -46,7 +45,7 @@ func (h *Handler) CreateMembershipRequestHandler(
 
 // ListOwnMembershipRequestsHandler — GET /api/v1/auth/membership-requests.
 func (h *Handler) ListOwnMembershipRequestsHandler(
-	writer http.ResponseWriter, req bunrouter.Request,
+	writer http.ResponseWriter, req *http.Request,
 ) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
@@ -66,7 +65,7 @@ func (h *Handler) ListOwnMembershipRequestsHandler(
 
 // CancelMembershipRequestHandler — DELETE /api/v1/auth/membership-requests/{uid}.
 func (h *Handler) CancelMembershipRequestHandler(
-	writer http.ResponseWriter, req bunrouter.Request,
+	writer http.ResponseWriter, req *http.Request,
 ) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
@@ -76,7 +75,7 @@ func (h *Handler) CancelMembershipRequestHandler(
 		)
 	}
 
-	requestUID := req.Param("uid")
+	requestUID := httpx.Param(req, "uid")
 	if err := h.svc.CancelMembershipRequest(req.Context(), claims.UserUID, requestUID); err != nil {
 		return h.writeMembershipRequestError(writer, err)
 	}
@@ -88,7 +87,7 @@ func (h *Handler) CancelMembershipRequestHandler(
 
 // ListOrgMembershipRequestsHandler — GET /api/v1/orgs/{org}/membership-requests.
 func (h *Handler) ListOrgMembershipRequestsHandler(
-	writer http.ResponseWriter, req bunrouter.Request,
+	writer http.ResponseWriter, req *http.Request,
 ) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
@@ -105,7 +104,7 @@ func (h *Handler) ListOrgMembershipRequestsHandler(
 		)
 	}
 
-	orgSlug := req.Param("org")
+	orgSlug := httpx.Param(req, "org")
 	status := models.MembershipRequestStatus(req.URL.Query().Get("status"))
 
 	resp, err := h.svc.ListOrgMembershipRequests(req.Context(), orgSlug, status)
@@ -118,7 +117,7 @@ func (h *Handler) ListOrgMembershipRequestsHandler(
 
 // ApproveMembershipRequestHandler — POST .../approve.
 func (h *Handler) ApproveMembershipRequestHandler(
-	writer http.ResponseWriter, req bunrouter.Request,
+	writer http.ResponseWriter, req *http.Request,
 ) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
@@ -144,8 +143,8 @@ func (h *Handler) ApproveMembershipRequestHandler(
 		}
 	}
 
-	orgSlug := req.Param("org")
-	requestUID := req.Param("uid")
+	orgSlug := httpx.Param(req, "org")
+	requestUID := httpx.Param(req, "uid")
 
 	if err := h.svc.ApproveMembershipRequest(
 		req.Context(), claims.UserUID, orgSlug, requestUID, body.Role,
@@ -160,7 +159,7 @@ func (h *Handler) ApproveMembershipRequestHandler(
 
 // RejectMembershipRequestHandler — POST .../reject.
 func (h *Handler) RejectMembershipRequestHandler(
-	writer http.ResponseWriter, req bunrouter.Request,
+	writer http.ResponseWriter, req *http.Request,
 ) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
@@ -186,8 +185,8 @@ func (h *Handler) RejectMembershipRequestHandler(
 		}
 	}
 
-	orgSlug := req.Param("org")
-	requestUID := req.Param("uid")
+	orgSlug := httpx.Param(req, "org")
+	requestUID := httpx.Param(req, "uid")
 
 	if err := h.svc.RejectMembershipRequest(
 		req.Context(), claims.UserUID, orgSlug, requestUID, body.Reason,

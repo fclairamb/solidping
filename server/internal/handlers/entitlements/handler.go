@@ -17,13 +17,13 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 )
 
@@ -70,7 +70,7 @@ type principal struct {
 // an admin user JWT (gated by entitlements.admin_writes_enabled, default
 // true in self-hosted, false in SaaS). Read-only endpoints accept any
 // authenticated org member.
-func (h *Handler) authorize(req bunrouter.Request, requireWrite bool) (*principal, error) {
+func (h *Handler) authorize(req *http.Request, requireWrite bool) (*principal, error) {
 	authHeader := req.Header.Get("Authorization")
 	token := extractBearerToken(authHeader)
 
@@ -111,7 +111,7 @@ var (
 )
 
 // Get handles GET /api/v1/orgs/:org/entitlements.
-func (h *Handler) Get(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Get(writer http.ResponseWriter, req *http.Request) error {
 	prin, err := h.authorize(req, false)
 	if err != nil {
 		return h.writeAuthError(writer, err)
@@ -156,16 +156,16 @@ func (h *Handler) Get(writer http.ResponseWriter, req bunrouter.Request) error {
 }
 
 // Put handles PUT /api/v1/orgs/:org/entitlements — replaces the row.
-func (h *Handler) Put(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Put(writer http.ResponseWriter, req *http.Request) error {
 	return h.write(writer, req, false)
 }
 
 // Patch handles PATCH /api/v1/orgs/:org/entitlements — partial update.
-func (h *Handler) Patch(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Patch(writer http.ResponseWriter, req *http.Request) error {
 	return h.write(writer, req, true)
 }
 
-func (h *Handler) write(writer http.ResponseWriter, req bunrouter.Request, partial bool) error {
+func (h *Handler) write(writer http.ResponseWriter, req *http.Request, partial bool) error {
 	prin, err := h.authorize(req, true)
 	if err != nil {
 		return h.writeAuthError(writer, err)
@@ -217,7 +217,7 @@ func (h *Handler) write(writer http.ResponseWriter, req bunrouter.Request, parti
 }
 
 // ListAudits handles GET /api/v1/orgs/:org/entitlements/audits.
-func (h *Handler) ListAudits(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ListAudits(writer http.ResponseWriter, req *http.Request) error {
 	prin, err := h.authorize(req, false)
 	if err != nil {
 		return h.writeAuthError(writer, err)
@@ -311,11 +311,14 @@ func overlayLimits(dst *entcore.Limits, src entcore.Limits) {
 	if src.MaxChecksPerMinute != nil {
 		dst.MaxChecksPerMinute = src.MaxChecksPerMinute
 	}
+	if src.MaxDeportedAgents != nil {
+		dst.MaxDeportedAgents = src.MaxDeportedAgents
+	}
 }
 
 // lookupOrg resolves :org from the route into a model.
-func (h *Handler) lookupOrg(req bunrouter.Request) (*models.Organization, error) {
-	slug := req.Param("org")
+func (h *Handler) lookupOrg(req *http.Request) (*models.Organization, error) {
+	slug := httpx.Param(req, "org")
 	if slug == "" {
 		return nil, errMissingOrgPath
 	}

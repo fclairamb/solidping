@@ -107,7 +107,7 @@ targets:
 2. **"Sub-minute checks, free. No paid tier required."**
    → anyone evaluating Hyperping Essentials or Better Stack's "30-second checks."
 3. **"Uptime Kuma's big sibling — same single binary, plus distributed workers,
-   on-call rotations, status pages, 32 check types."**
+   on-call rotations, status pages, 39 check types."**
    → Kuma users feeling the limits (one node, no on-call, fewer protocols).
 4. **"Heartbeat + active checks in one tool."**
    → anyone running Healthchecks.io alongside a separate active-check tool.
@@ -128,6 +128,21 @@ targets:
    → Freshping (Freshworks) closed 2026-03-06; its free-tier users are actively
    looking for a home. Lead with self-host (nothing to shut down on you) + a free
    import path. Time-boxed: the migration window closes as those users settle.
+
+11. **"Monitor your private network — without letting us read the credentials."**
+   → the strongest structural differentiator we currently have. Every serious
+   competitor's private-location agent receives check secrets the vendor's
+   control plane can decrypt (Checkly, Datadog, New Relic, Grafana, Site24x7);
+   SolarWinds simply forbids secrets on private probes. SolidPing's deported
+   agent generates its own keypair locally and receives age-sealed credentials,
+   so a private-region-only check is *structurally* unreadable by the server.
+   Targets regulated/security-conscious buyers and anyone who has been told
+   "just open a firewall hole" or "run a Squid proxy" (Better Stack's actual
+   documented answer). Also a price wedge: Checkly gates private locations at
+   $64/mo, Site24x7 excludes its Free tier.
+   Full analysis: [features/deported-agents.md](../features/deported-agents.md#competitive-position).
+   *Caveat: our nonce replay cache is per-instance, and we have no
+   standby-poller/HA sizing story — don't oversell operational maturity.*
 
 For the underlying capability claims behind these hooks (multi-tenant self-host,
 JMAP inbox monitoring, envelope-encrypted credentials, distributed workers,

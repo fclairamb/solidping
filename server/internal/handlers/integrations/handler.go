@@ -6,11 +6,10 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	mw "github.com/fclairamb/solidping/server/internal/middleware"
 )
 
@@ -24,7 +23,7 @@ const (
 // isAdmin returns true if the request context has an admin or super admin role.
 // Mirrors the discovery handler's admin check so source-type (cluster)
 // connections share a single authorization rule.
-func isAdmin(req bunrouter.Request) bool {
+func isAdmin(req *http.Request) bool {
 	claims, ok := mw.GetClaimsFromContext(req.Context())
 	if !ok || claims == nil {
 		return false
@@ -39,7 +38,7 @@ func isAdmin(req bunrouter.Request) bool {
 // self-service and never gated here, so non-admins keep managing their own
 // channels. Returns false when the request may proceed.
 func (h *Handler) requireAdminForSourceType(
-	writer http.ResponseWriter, req bunrouter.Request, connType models.ConnectionType,
+	writer http.ResponseWriter, req *http.Request, connType models.ConnectionType,
 ) (bool, error) {
 	if !models.CapabilitiesFor(connType).CanSource {
 		return false, nil
@@ -71,8 +70,8 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 }
 
 // ListIntegrations handles listing all connections of an organization.
-func (h *Handler) ListIntegrations(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) ListIntegrations(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 	connType := req.URL.Query().Get("type")
 
 	var typeFilter *string
@@ -89,9 +88,9 @@ func (h *Handler) ListIntegrations(writer http.ResponseWriter, req bunrouter.Req
 }
 
 // GetIntegration handles getting a specific connection by UID.
-func (h *Handler) GetIntegration(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	connectionUID := req.Param("uid")
+func (h *Handler) GetIntegration(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	connectionUID := httpx.Param(req, "uid")
 
 	connection, err := h.svc.GetIntegration(req.Context(), orgSlug, connectionUID)
 	if err != nil {
@@ -102,8 +101,8 @@ func (h *Handler) GetIntegration(writer http.ResponseWriter, req bunrouter.Reque
 }
 
 // CreateIntegration handles creating a new connection.
-func (h *Handler) CreateIntegration(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) CreateIntegration(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 
 	var createReq CreateIntegrationRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
@@ -146,9 +145,9 @@ func (h *Handler) CreateIntegration(writer http.ResponseWriter, req bunrouter.Re
 }
 
 // UpdateIntegration handles updating a connection.
-func (h *Handler) UpdateIntegration(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	connectionUID := req.Param("uid")
+func (h *Handler) UpdateIntegration(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	connectionUID := httpx.Param(req, "uid")
 
 	var updateReq UpdateIntegrationRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
@@ -178,9 +177,9 @@ func (h *Handler) UpdateIntegration(writer http.ResponseWriter, req bunrouter.Re
 }
 
 // DeleteIntegration handles deleting a connection.
-func (h *Handler) DeleteIntegration(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	connectionUID := req.Param("uid")
+func (h *Handler) DeleteIntegration(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	connectionUID := httpx.Param(req, "uid")
 
 	// Deleting a source-type (cluster) connection is admin-only. Look up the
 	// existing connection so the guard keys off its stored type.
@@ -207,8 +206,8 @@ func (h *Handler) DeleteIntegration(writer http.ResponseWriter, req bunrouter.Re
 // success, returns the new connectionUid + trackId; the dashboard then
 // polls GetFreeboxPairingStatus every 2 s until the user approves the
 // prompt on the Freebox.
-func (h *Handler) StartFreeboxPairing(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) StartFreeboxPairing(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 
 	var body StartFreeboxPairingRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
@@ -228,9 +227,9 @@ func (h *Handler) StartFreeboxPairing(writer http.ResponseWriter, req bunrouter.
 // GetFreeboxPairingStatus returns the current Freebox pairing status
 // for a channel. The dashboard polls this every ~2 s until the response
 // is `granted`, `denied`, or `timeout`.
-func (h *Handler) GetFreeboxPairingStatus(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	connectionUID := req.Param("uid")
+func (h *Handler) GetFreeboxPairingStatus(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	connectionUID := httpx.Param(req, "uid")
 
 	resp, err := h.svc.CheckFreeboxPairingStatus(req.Context(), orgSlug, connectionUID)
 	if err != nil {
@@ -243,9 +242,9 @@ func (h *Handler) GetFreeboxPairingStatus(writer http.ResponseWriter, req bunrou
 // RotateWebhookSecret rotates the signing secret of a webhook channel. The
 // current secret becomes the previous one (valid for a 24 h grace window) and
 // a fresh secret is generated. Returns the updated channel.
-func (h *Handler) RotateWebhookSecret(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	connectionUID := req.Param("uid")
+func (h *Handler) RotateWebhookSecret(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	connectionUID := httpx.Param(req, "uid")
 
 	connection, err := h.svc.RotateWebhookSecret(req.Context(), orgSlug, connectionUID)
 	if err != nil {
@@ -258,9 +257,9 @@ func (h *Handler) RotateWebhookSecret(writer http.ResponseWriter, req bunrouter.
 // TestIntegration sends a sample notification through the integration and
 // reports the outcome. Always returns HTTP 200 for a notifiable integration —
 // the caller inspects the `success` field to know whether delivery worked.
-func (h *Handler) TestIntegration(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	connectionUID := req.Param("uid")
+func (h *Handler) TestIntegration(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	connectionUID := httpx.Param(req, "uid")
 
 	result, err := h.svc.TestIntegration(req.Context(), orgSlug, connectionUID)
 	if err != nil {

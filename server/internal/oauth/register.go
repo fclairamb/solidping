@@ -3,8 +3,6 @@ package oauth
 import (
 	"encoding/json"
 	"net/http"
-
-	"github.com/uptrace/bunrouter"
 )
 
 // registrationRequest is the RFC 7591 §2 client-metadata request body. Only the
@@ -41,7 +39,7 @@ type registrationResponse struct {
 // is treated as confidential and gets a generated secret. All redirect URIs are
 // validated (loopback http or https only) before persistence so the issuer can
 // never be turned into an open redirector.
-func (h *Handler) Register(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Register(writer http.ResponseWriter, req *http.Request) error {
 	var body registrationRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 		return h.writeRegisterError(writer, ErrInvalidClientMetadata, "malformed registration body")

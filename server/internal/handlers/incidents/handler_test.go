@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/incidentlinks"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
@@ -22,7 +22,7 @@ import (
 const ackHandlerTestSecret = "ack-handler-test-secret"
 
 // ackHandlerFixture bundles an in-memory db.Service with an org, a check, and
-// an unacknowledged incident, wired behind a real bunrouter so tests hit
+// an unacknowledged incident, wired behind a real router so tests hit
 // AcknowledgeIncidentByLink exactly the way a mail client's browser
 // navigation would (through routing, not by calling the Go method directly).
 type ackHandlerFixture struct {
@@ -55,20 +55,20 @@ func newAckHandlerFixture(t *testing.T) *ackHandlerFixture {
 	return &ackHandlerFixture{dbSvc: dbSvc, org: org, check: check, incident: inc}
 }
 
-func newAckTestRouter(f *ackHandlerFixture) *bunrouter.Router {
+func newAckTestRouter(f *ackHandlerFixture) *httpx.Router {
 	jobs := jobsvc.NewService(f.dbSvc.DB(), f.dbSvc, notifier.NewLocalEventNotifier(), nil)
 	svc := incidents.NewService(f.dbSvc, jobs, clock.Real{}, nil)
 
 	cfg := &config.Config{Auth: config.AuthConfig{JWTSecret: ackHandlerTestSecret}}
 	handler := incidents.NewHandler(svc, cfg)
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/orgs/:org/incidents/:uid/ack", handler.AcknowledgeIncidentByLink)
 
 	return router
 }
 
-func doAckRequest(t *testing.T, router *bunrouter.Router, path string) *httptest.ResponseRecorder {
+func doAckRequest(t *testing.T, router *httpx.Router, path string) *httptest.ResponseRecorder {
 	t.Helper()
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)

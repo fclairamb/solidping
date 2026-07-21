@@ -6,10 +6,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 const (
@@ -32,8 +31,8 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 }
 
 // List handles listing all maintenance windows for an organization.
-func (h *Handler) List(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) List(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 	query := req.URL.Query()
 
 	status := query.Get("status")
@@ -62,8 +61,8 @@ func (h *Handler) List(writer http.ResponseWriter, req bunrouter.Request) error 
 }
 
 // Create handles creating a new maintenance window.
-func (h *Handler) Create(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) Create(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 
 	var createReq CreateRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
@@ -81,9 +80,9 @@ func (h *Handler) Create(writer http.ResponseWriter, req bunrouter.Request) erro
 }
 
 // Get handles retrieving a single maintenance window by UID.
-func (h *Handler) Get(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	uid := req.Param("uid")
+func (h *Handler) Get(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	uid := httpx.Param(req, "uid")
 
 	window, err := h.svc.GetMaintenanceWindow(req.Context(), orgSlug, uid)
 	if err != nil {
@@ -94,9 +93,9 @@ func (h *Handler) Get(writer http.ResponseWriter, req bunrouter.Request) error {
 }
 
 // Update handles updating an existing maintenance window.
-func (h *Handler) Update(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	uid := req.Param("uid")
+func (h *Handler) Update(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	uid := httpx.Param(req, "uid")
 
 	var updateReq UpdateRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
@@ -114,9 +113,9 @@ func (h *Handler) Update(writer http.ResponseWriter, req bunrouter.Request) erro
 }
 
 // Delete handles deleting a maintenance window.
-func (h *Handler) Delete(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	uid := req.Param("uid")
+func (h *Handler) Delete(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	uid := httpx.Param(req, "uid")
 
 	if err := h.svc.DeleteMaintenanceWindow(req.Context(), orgSlug, uid); err != nil {
 		return h.handleWindowError(writer, err)
@@ -128,9 +127,9 @@ func (h *Handler) Delete(writer http.ResponseWriter, req bunrouter.Request) erro
 }
 
 // ListChecks handles listing check associations for a maintenance window.
-func (h *Handler) ListChecks(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	uid := req.Param("uid")
+func (h *Handler) ListChecks(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	uid := httpx.Param(req, "uid")
 
 	checks, err := h.svc.ListChecks(req.Context(), orgSlug, uid)
 	if err != nil {
@@ -143,9 +142,9 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req bunrouter.Request) 
 }
 
 // SetChecks handles setting check associations for a maintenance window.
-func (h *Handler) SetChecks(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	uid := req.Param("uid")
+func (h *Handler) SetChecks(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	uid := httpx.Param(req, "uid")
 
 	var setReq SetChecksRequest
 	if err := json.NewDecoder(req.Body).Decode(&setReq); err != nil {

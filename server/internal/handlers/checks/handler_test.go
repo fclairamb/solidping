@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -17,6 +16,7 @@ import (
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
@@ -45,7 +45,7 @@ func TestCreateCheckHandlerReturns402OverCap(t *testing.T) {
 	svc := checks.NewService(dbSvc, notifier.NewLocalEventNotifier(), disabledCreds(t), entSvc)
 	handler := checks.NewHandler(svc, &config.Config{})
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.NewGroup("/api/v1/orgs/:org/checks").POST("", handler.CreateCheck)
 
 	post := func() *httptest.ResponseRecorder {
@@ -81,7 +81,7 @@ func TestCreateCheckHandlerReturns402OverCap(t *testing.T) {
 
 // newCheckHandlerRouter builds a checks handler over a fresh in-memory db with
 // a single org and POST/GET/PATCH routes wired. Returns the router and org slug.
-func newCheckHandlerRouter(t *testing.T) (*bunrouter.Router, string) {
+func newCheckHandlerRouter(t *testing.T) (*httpx.Router, string) {
 	t.Helper()
 	r := require.New(t)
 	ctx := t.Context()
@@ -98,7 +98,7 @@ func newCheckHandlerRouter(t *testing.T) (*bunrouter.Router, string) {
 	svc := checks.NewService(dbSvc, notifier.NewLocalEventNotifier(), disabledCreds(t), entSvc)
 	handler := checks.NewHandler(svc, &config.Config{})
 
-	router := bunrouter.New()
+	router := httpx.New()
 	group := router.NewGroup("/api/v1/orgs/:org/checks")
 	group.POST("", handler.CreateCheck)
 	group.GET("/:checkUid", handler.GetCheck)
@@ -153,7 +153,7 @@ func TestCreateCheckFlappingFieldsRoundTrip(t *testing.T) {
 }
 
 // postCheck marshals body and POSTs it to the org's checks collection.
-func postCheck(t *testing.T, router *bunrouter.Router, orgSlug string, body map[string]any) *httptest.ResponseRecorder {
+func postCheck(t *testing.T, router *httpx.Router, orgSlug string, body map[string]any) *httptest.ResponseRecorder {
 	t.Helper()
 	r := require.New(t)
 
@@ -343,7 +343,7 @@ func TestCheckDetailSchedulingBlock(t *testing.T) {
 	svc := checks.NewService(dbSvc, notifier.NewLocalEventNotifier(), disabledCreds(t), entSvc)
 	handler := checks.NewHandler(svc, &config.Config{})
 
-	router := bunrouter.New()
+	router := httpx.New()
 	group := router.NewGroup("/api/v1/orgs/:org/checks")
 	group.POST("", handler.CreateCheck)
 	group.GET("", handler.ListChecks)
@@ -659,7 +659,7 @@ func TestLastResultListVsDetailShape(t *testing.T) {
 	svc := checks.NewService(dbSvc, notifier.NewLocalEventNotifier(), disabledCreds(t), entSvc)
 	handler := checks.NewHandler(svc, &config.Config{})
 
-	router := bunrouter.New()
+	router := httpx.New()
 	group := router.NewGroup("/api/v1/orgs/:org/checks")
 	group.POST("", handler.CreateCheck)
 	group.GET("", handler.ListChecks)

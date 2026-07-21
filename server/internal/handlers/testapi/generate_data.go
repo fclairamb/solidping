@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
@@ -66,7 +65,7 @@ func parseStartDate(dateStr string) (time.Time, error) {
 
 // GenerateData creates a check and inserts historical results.
 // POST /api/v1/test/generate-data.
-func (h *Handler) GenerateData(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) GenerateData(writer http.ResponseWriter, req *http.Request) error {
 	var body GenerateDataRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 		return h.writeError(writer, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")

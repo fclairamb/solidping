@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+
+* **checks (multi-region):** selecting several regions no longer divides the check frequency between them — the configured period now applies **per region**. A 1-minute check on 3 regions runs every minute *in each region* (previously every 3 minutes per region), with executions staggered evenly across the period by default (e.g. +0s / +20s / +40s). A new optional **`regionSpread`** override — a first-class field on the check, exposed as a "Region spread" control on the check form (shown with 2+ regions, all locales) — forces a custom inter-region offset (e.g. `1s` for near-simultaneous sampling to compare cross-region latency); validated `0 ≤ spread < period`, empty reverts to automatic spreading. Existing multi-region checks are migrated by an idempotent startup reconcile (migration `007_v0_6_0`, `checks.region_spread`). (**behavior change**: a multi-region check now actually executes `regions ×` more often and its checks-per-minute consumption is counted as `regions × 60s / period` — the check form and the org Usage page both say so.)
+* **check groups:** groups are now manageable end-to-end from the dashboard — a group edit page with an **escalation policy** picker (and a policy indicator on the groups list), direct edit/delete row actions replacing the old overflow menu, delete from the edit page, and a breadcrumb back to the checks index.
+* **checks (list API):** opt-in **`sort=group`** on `GET /checks` orders results by check group with a composite keyset cursor, so the grouped checks index paginates correctly instead of slicing groups apart across pages; default ordering is unchanged and unknown `sort` values are rejected.
+* **private locations (deported agents):** a new **`maxDeportedAgents`** entitlement caps how many agents an org can enroll — enforced at both enrollment-token mint and agent enrollment — with agent usage shown on the org Usage page and a SaaS plan-gate ladder documented.
+* **server (internal):** the HTTP router migrated from the archived `uptrace/bunrouter` to **`go-chi/chi`** behind an in-repo `httpx` adapter that keeps error-returning handlers and the middleware-group ergonomics; route-matching precedence is covered by table-driven parity tests.
+
+### Bug Fixes
+
+* **checks (sub-minute):** a sub-minute check could sit idle past its tick when every worker was parked on the long-poll — the fetcher now wakes on a next-eligible-job hint instead of waiting out the full poll interval, on both in-process workers and deported agents.
+* **dash0 (check groups):** the checks index no longer flashes a false "no checks" empty state for a group whose checks live on a later page.
+* **dash0 (dialogs):** long unbreakable strings (e.g. enrollment tokens) no longer blow the dialog grid out past the viewport; an E2E guard pins the containment.
+
 ## [0.5.0](https://github.com/fclairamb/solidping/compare/v0.4.1...v0.5.0) (2026-07-19)
 
 

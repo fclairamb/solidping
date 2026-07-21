@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -289,7 +288,7 @@ func TestStatus0MetaForPath_NoExistenceLeak(t *testing.T) {
 			httpReq, err := http.NewRequestWithContext(
 				ctx, http.MethodGet, "http://status.example.com/status0"+testCase.reqPath, nil)
 			r.NoError(err)
-			req := bunrouter.NewRequest(httpReq)
+			req := httpReq
 
 			meta, ok := srv.status0MetaForPath(req, testCase.reqPath)
 			r.Equal(testCase.wantOK, ok)
@@ -328,6 +327,6 @@ func TestStatus0MetaForPath_NilServiceIsGeneric(t *testing.T) {
 		context.Background(), http.MethodGet, "http://status.example.com/status0/acme/public", nil)
 	r.NoError(err)
 
-	_, ok := (&Server{}).status0MetaForPath(bunrouter.NewRequest(httpReq), "/acme/public")
+	_, ok := (&Server{}).status0MetaForPath(httpReq, "/acme/public")
 	r.False(ok)
 }

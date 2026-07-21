@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 )
 
@@ -55,17 +55,17 @@ func setupMCPAuth(t *testing.T) (*middleware.AuthMiddleware, *auth.Service, *mod
 	return mw, authSvc, user, ctx
 }
 
-func mcpRequest(ctx context.Context, token string) (bunrouter.Request, *httptest.ResponseRecorder) {
+func mcpRequest(ctx context.Context, token string) (*http.Request, *httptest.ResponseRecorder) {
 	r := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/mcp", http.NoBody)
 	if token != "" {
 		r.Header.Set("Authorization", "Bearer "+token)
 	}
 
-	return bunrouter.NewRequest(r), httptest.NewRecorder()
+	return r, httptest.NewRecorder()
 }
 
-func okMCPHandler(called *bool) bunrouter.HandlerFunc {
-	return func(w http.ResponseWriter, _ bunrouter.Request) error {
+func okMCPHandler(called *bool) httpx.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) error {
 		*called = true
 		w.WriteHeader(http.StatusOK)
 

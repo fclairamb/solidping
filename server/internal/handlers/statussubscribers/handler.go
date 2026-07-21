@@ -11,12 +11,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // Handler provides HTTP handlers for subscriber management + the Atom feed.
@@ -51,9 +50,9 @@ func (h *Handler) baseURL() string {
 
 // Subscribe handles POST /api/v1/orgs/:org/status-pages/:statusPageUid/subscribers.
 // Public, no auth. Always returns 202 on success and sends a confirm mail.
-func (h *Handler) Subscribe(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	statusPageUID := req.Param("statusPageUid")
+func (h *Handler) Subscribe(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	statusPageUID := httpx.Param(req, "statusPageUid")
 
 	var body SubscribeRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
@@ -103,7 +102,7 @@ func (h *Handler) sendConfirmMail(ctx context.Context, result *SubscribeResult) 
 }
 
 // Confirm handles GET /api/v1/public/status-subscribers/confirm?token=… .
-func (h *Handler) Confirm(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Confirm(writer http.ResponseWriter, req *http.Request) error {
 	token := req.URL.Query().Get("token")
 
 	result, err := h.svc.Confirm(req.Context(), token)
@@ -118,7 +117,7 @@ func (h *Handler) Confirm(writer http.ResponseWriter, req bunrouter.Request) err
 }
 
 // Unsubscribe handles GET /api/v1/public/status-subscribers/unsubscribe?token=… .
-func (h *Handler) Unsubscribe(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Unsubscribe(writer http.ResponseWriter, req *http.Request) error {
 	token := req.URL.Query().Get("token")
 
 	result, err := h.svc.Unsubscribe(req.Context(), token)
@@ -141,9 +140,9 @@ func (h *Handler) statusPageURL(orgSlug, pageSlug string) string {
 }
 
 // ListSubscribers handles GET /api/v1/orgs/:org/status-pages/:statusPageUid/subscribers (authed).
-func (h *Handler) ListSubscribers(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	statusPageUID := req.Param("statusPageUid")
+func (h *Handler) ListSubscribers(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	statusPageUID := httpx.Param(req, "statusPageUid")
 
 	subs, err := h.svc.ListSubscribers(req.Context(), orgSlug, statusPageUID)
 	if err != nil {
@@ -157,10 +156,10 @@ func (h *Handler) ListSubscribers(writer http.ResponseWriter, req bunrouter.Requ
 }
 
 // RemoveSubscriber handles DELETE /api/v1/orgs/:org/status-pages/:statusPageUid/subscribers/:uid (authed).
-func (h *Handler) RemoveSubscriber(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	statusPageUID := req.Param("statusPageUid")
-	uid := req.Param("uid")
+func (h *Handler) RemoveSubscriber(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	statusPageUID := httpx.Param(req, "statusPageUid")
+	uid := httpx.Param(req, "uid")
 
 	if err := h.svc.RemoveSubscriber(req.Context(), orgSlug, statusPageUID, uid); err != nil {
 		return h.handleError(writer, err)
@@ -277,9 +276,9 @@ type atomText struct {
 
 // Feed handles GET /api/v1/status-pages/:org/:slug/feed.xml — a public Atom feed
 // of the status-update timeline. No auth.
-func (h *Handler) Feed(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	slug := req.Param("slug")
+func (h *Handler) Feed(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	slug := httpx.Param(req, "slug")
 
 	ctx := req.Context()
 

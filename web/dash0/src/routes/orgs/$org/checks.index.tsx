@@ -21,6 +21,7 @@ import {
   Download,
   Upload,
   Waypoints,
+  ArrowUpRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -28,10 +29,11 @@ import {
   useDeleteCheck,
   useCheckGroups,
   useCreateCheckGroup,
-  useDeleteCheckGroup,
   useImportChecks,
+  useEscalationPolicies,
   type Check,
   type CheckGroup,
+  type EscalationPolicy,
   type ExportDocument,
   type ImportResult,
 } from "@/api/hooks";
@@ -328,14 +330,13 @@ function CheckGroupSection({
   search,
   isFirst,
   isLast,
-  onDelete,
-  onRename,
   onMoveUp,
   onMoveDown,
   onDeleteCheck,
   onChangeGroup,
   groups,
   checksByUid,
+  escalationPolicyByUid,
 }: {
   group: CheckGroup;
   org: string;
@@ -345,14 +346,13 @@ function CheckGroupSection({
   search: string;
   isFirst: boolean;
   isLast: boolean;
-  onDelete: () => void;
-  onRename: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
   onDeleteCheck: (uid: string) => void;
   onChangeGroup: (check: Check) => void;
   groups: CheckGroup[];
   checksByUid: Map<string, Check>;
+  escalationPolicyByUid: Map<string, EscalationPolicy>;
 }) {
   const { t } = useTranslation("checks");
   const [collapsed, setCollapsed] = useState(false);
@@ -361,6 +361,10 @@ function CheckGroupSection({
   useEffect(() => {
     if (search) setCollapsed(false);
   }, [search]);
+
+  const escalationPolicy = group.escalationPolicyUid
+    ? escalationPolicyByUid.get(group.escalationPolicyUid)
+    : undefined;
 
   return (
     <div className="border rounded-lg" data-testid="group-section">
@@ -378,56 +382,81 @@ function CheckGroupSection({
           <Badge variant="secondary" className="text-xs">
             {group.checkCount}
           </Badge>
+          {group.escalationPolicyUid && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className="inline-flex text-muted-foreground"
+                  data-testid="group-escalation-indicator"
+                >
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {t("groupForm.indicatorTooltip", {
+                  name: escalationPolicy
+                    ? `${escalationPolicy.name}${(escalationPolicy.stepCount ?? escalationPolicy.steps?.length ?? 0) === 0 ? " — silent" : ""}`
+                    : "…",
+                })}
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
-        <div onClick={(e) => e.stopPropagation()}>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8" data-testid="group-menu-button">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onRename} data-testid="group-rename-action">
-                <Pencil className="mr-2 h-4 w-4" />
-                {t("menu.rename")}
-              </DropdownMenuItem>
-              {!isFirst && (
-                <DropdownMenuItem onClick={onMoveUp} data-testid="group-move-up-action">
-                  <ArrowUp className="mr-2 h-4 w-4" />
-                  {t("menu.moveUp")}
-                </DropdownMenuItem>
-              )}
-              {!isLast && (
-                <DropdownMenuItem onClick={onMoveDown} data-testid="group-move-down-action">
-                  <ArrowDown className="mr-2 h-4 w-4" />
-                  {t("menu.moveDown")}
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive"
-                onClick={onDelete}
-                data-testid="group-delete-action"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                {t("menu.deleteGroup")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <div
+          className="flex items-center gap-1"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            aria-label={t("menu.moveUp")}
+            disabled={isFirst}
+            onClick={onMoveUp}
+            data-testid="group-move-up-button"
+          >
+            <ArrowUp className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            aria-label={t("menu.moveDown")}
+            disabled={isLast}
+            onClick={onMoveDown}
+            data-testid="group-move-down-button"
+          >
+            <ArrowDown className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            aria-label={t("menu.editGroup")}
+            data-testid="group-edit-button"
+            asChild
+          >
+            <Link
+              to="/orgs/$org/check-groups/$uid/edit"
+              params={{ org, uid: group.uid }}
+            >
+              <Pencil className="h-4 w-4" />
+            </Link>
+          </Button>
         </div>
       </div>
 
       {!collapsed && (
         <div className="border-t">
+          {/* Rows win over the loading branch: an already-populated bucket
+           * keeps rendering its rows while the page-level stream continues.
+           * A still-empty bucket reads as loading (skeletons) as long as the
+           * stream can still deliver more (`isLoading` folds in
+           * hasNextPage/isFetchingNextPage) — the truthful "no checks" empty
+           * state only shows once the stream is fully drained. */}
           {error ? (
             <div className="p-4 text-sm text-destructive">
               {t("failedToLoadChecks")}
-            </div>
-          ) : isLoading ? (
-            <div className="p-4 space-y-2">
-              {[...Array(3)].map((_, i) => (
-                <Skeleton key={i} className="h-10 rounded-lg" />
-              ))}
             </div>
           ) : checks.length > 0 ? (
             <ChecksTable
@@ -438,6 +467,12 @@ function CheckGroupSection({
               groups={groups}
               checksByUid={checksByUid}
             />
+          ) : isLoading ? (
+            <div className="p-4 space-y-2">
+              {[...Array(3)].map((_, i) => (
+                <Skeleton key={i} className="h-10 rounded-lg" />
+              ))}
+            </div>
           ) : (
             <div className="p-4 text-center text-sm text-muted-foreground">
               {t("noChecks")}
@@ -484,18 +519,21 @@ function UngroupedChecksSection({
       <h3 className="text-sm font-medium text-muted-foreground mb-2">
         {t("ungroupedChecks")}
       </h3>
+      {/* Rows win over the loading branch, same as CheckGroupSection: keep any
+       * loaded ungrouped rows visible while the stream continues, and treat an
+       * empty bucket as loading (skeletons) until the stream drains. */}
       {error ? (
         <div className="p-4 text-sm text-destructive">
           {t("failedToLoadChecks")}
         </div>
+      ) : checks.length > 0 ? (
+        <ChecksTable checks={checks} org={org} onDelete={onDeleteCheck} onChangeGroup={onChangeGroup} groups={groups} checksByUid={checksByUid} />
       ) : isLoading ? (
         <div className="space-y-2">
           {[...Array(3)].map((_, i) => (
             <Skeleton key={i} className="h-10 rounded-lg" />
           ))}
         </div>
-      ) : checks.length > 0 ? (
-        <ChecksTable checks={checks} org={org} onDelete={onDeleteCheck} onChangeGroup={onChangeGroup} groups={groups} checksByUid={checksByUid} />
       ) : search ? (
         <div className="text-center py-6 text-muted-foreground text-sm">
           {t("noUngroupedChecks")}
@@ -517,11 +555,8 @@ function ChecksIndexPage() {
   const [search, setSearch] = useState("");
   const [internalFilter, setInternalFilter] = useState<string>("false");
   const [deleteCheckUid, setDeleteCheckUid] = useState<string | null>(null);
-  const [deleteGroupUid, setDeleteGroupUid] = useState<string | null>(null);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
-  const [renameGroup, setRenameGroup] = useState<CheckGroup | null>(null);
-  const [renameValue, setRenameValue] = useState("");
   const [changeGroupCheck, setChangeGroupCheck] = useState<Check | null>(null);
   const debouncedSearch = useDebounce(search, 300);
 
@@ -538,6 +573,15 @@ function ChecksIndexPage() {
     refetch: refetchGroups,
     isRefetching,
   } = useCheckGroups(org);
+
+  // Only fetched for the group-header escalation indicator (name/silent
+  // lookup) — a small, already-cached list shared with the check form.
+  const { data: escalationPolicies } = useEscalationPolicies(org);
+  const escalationPolicyByUid = useMemo(() => {
+    const map = new Map<string, EscalationPolicy>();
+    for (const p of escalationPolicies ?? []) map.set(p.uid, p);
+    return map;
+  }, [escalationPolicies]);
 
   // Single page-level infinite query — replaces the former per-group N+1
   // fan-out (one useInfiniteChecks per CheckGroupSection plus one for the
@@ -561,7 +605,18 @@ function ChecksIndexPage() {
     labels: labelsParam,
     status: statusParam,
     limit: 100,
+    // Load the stream in the exact order the page renders it (group sortOrder
+    // asc, ungrouped last, created_at DESC within a bucket), so the top of the
+    // page fills first instead of arriving in unrelated created_at order.
+    sort: "group",
   });
+
+  // A bucket that is still empty must read as *loading*, never as an empty
+  // state, as long as the page-level stream can still deliver more rows
+  // (initial load, or a not-yet-fetched later page). Folded into each section's
+  // `isLoading` prop so a not-yet-reached group shows skeletons — never the
+  // false "No checks" — until the stream is fully drained.
+  const checksStreaming = checksLoading || hasNextPage || isFetchingNextPage;
 
   // Bucket loaded checks by group. Ungrouped = falsy checkGroupUid (matches the
   // server's checkGroupUid=none semantics). Order within a bucket follows the
@@ -606,8 +661,12 @@ function ChecksIndexPage() {
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
+    // rootMargin ~two viewports so the next page starts loading well before
+    // the sentinel scrolls into view — draining self-chains (the effect
+    // re-runs when handleObserver's identity flips on isFetchingNextPage).
     const observer = new IntersectionObserver(handleObserver, {
-      threshold: 0.1,
+      rootMargin: "1200px 0px",
+      threshold: 0,
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -621,7 +680,6 @@ function ChecksIndexPage() {
 
   const deleteCheck = useDeleteCheck(org);
   const createGroup = useCreateCheckGroup(org);
-  const deleteGroup = useDeleteCheckGroup(org);
   const importChecks = useImportChecks(org);
 
   const handleDeleteCheck = async () => {
@@ -635,17 +693,6 @@ function ChecksIndexPage() {
     }
   };
 
-  const handleDeleteGroup = async () => {
-    if (!deleteGroupUid) return;
-    try {
-      await deleteGroup.mutateAsync(deleteGroupUid);
-      toast.success(t("toast.groupDeleted"));
-      setDeleteGroupUid(null);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t("toast.groupDeleteFailed"));
-    }
-  };
-
   const handleCreateGroup = async () => {
     if (!newGroupName.trim()) return;
     try {
@@ -655,21 +702,6 @@ function ChecksIndexPage() {
       setShowNewGroup(false);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : t("toast.groupCreateFailed"));
-    }
-  };
-
-  const handleRename = async () => {
-    if (!renameGroup || !renameValue.trim()) return;
-    try {
-      await apiFetch(`/api/v1/orgs/${org}/check-groups/${renameGroup.uid}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name: renameValue.trim() }),
-      });
-      queryClient.invalidateQueries({ queryKey: ["checkGroups", org] });
-      toast.success(t("toast.groupRenamed"));
-      setRenameGroup(null);
-    } catch {
-      toast.error(t("toast.groupRenameFailed"));
     }
   };
 
@@ -895,29 +927,25 @@ function ChecksIndexPage() {
               group={group}
               org={org}
               checks={checksByGroup.get(group.uid) ?? []}
-              isLoading={checksLoading}
+              isLoading={checksStreaming}
               error={checksError}
               search={debouncedSearch}
               isFirst={idx === 0}
               isLast={idx === (groups?.length ?? 0) - 1}
-              onDelete={() => setDeleteGroupUid(group.uid)}
-              onRename={() => {
-                setRenameGroup(group);
-                setRenameValue(group.name);
-              }}
               onMoveUp={() => handleMoveGroup(group, "up")}
               onMoveDown={() => handleMoveGroup(group, "down")}
               onDeleteCheck={setDeleteCheckUid}
               onChangeGroup={setChangeGroupCheck}
               groups={groups || []}
               checksByUid={checksByUid}
+              escalationPolicyByUid={escalationPolicyByUid}
             />
           ))}
 
           <UngroupedChecksSection
             org={org}
             checks={ungroupedChecks}
-            isLoading={checksLoading}
+            isLoading={checksStreaming}
             error={checksError}
             search={debouncedSearch}
             onDeleteCheck={setDeleteCheckUid}
@@ -960,28 +988,6 @@ function ChecksIndexPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete Group Dialog */}
-      <AlertDialog open={!!deleteGroupUid} onOpenChange={() => setDeleteGroupUid(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("dialog.deleteGroupTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("dialog.deleteGroupDescription")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteGroup}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              data-testid="confirm-delete-group"
-            >
-              {t("menu.deleteGroup")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       {/* New Group Dialog */}
       <Dialog open={showNewGroup} onOpenChange={setShowNewGroup}>
         <DialogContent>
@@ -1017,42 +1023,6 @@ function ChecksIndexPage() {
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : null}
               {tc("create")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Rename Group Dialog */}
-      <Dialog open={!!renameGroup} onOpenChange={() => setRenameGroup(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("dialog.renameGroupTitle")}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="rename-group">{tc("name")}</Label>
-              <Input
-                id="rename-group"
-                value={renameValue}
-                onChange={(e) => setRenameValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleRename();
-                }}
-                autoFocus
-                data-testid="rename-group-input"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRenameGroup(null)}>
-              {tc("cancel")}
-            </Button>
-            <Button
-              onClick={handleRename}
-              disabled={!renameValue.trim()}
-              data-testid="rename-group-submit"
-            >
-              {t("menu.rename")}
             </Button>
           </DialogFooter>
         </DialogContent>

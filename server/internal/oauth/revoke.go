@@ -3,8 +3,6 @@ package oauth
 import (
 	"log/slog"
 	"net/http"
-
-	"github.com/uptrace/bunrouter"
 )
 
 // Revoke is the RFC 7009 token revocation endpoint. A client posts a
@@ -18,7 +16,7 @@ import (
 // so the endpoint can't be used as an oracle to probe token validity. It uses
 // the same client-authentication model as /token: client_id binding, no
 // client-secret verification.
-func (h *Handler) Revoke(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Revoke(writer http.ResponseWriter, req *http.Request) error {
 	if err := req.ParseForm(); err != nil {
 		// A malformed body is the single RFC 7009 error case (invalid_request);
 		// it reveals nothing about any token.

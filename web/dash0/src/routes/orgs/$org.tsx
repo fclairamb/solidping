@@ -44,6 +44,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   useBackgroundJob,
   useCheck,
+  useCheckGroup,
   useCheckJob,
   useIntegration,
   useEscalationPolicy,
@@ -127,6 +128,7 @@ function Breadcrumbs({ org }: { org: string }) {
   // Determine the active section
   const isDashboard = routeIds.has("/orgs/$org/");
   const isChecks = matches.some((m) => m.routeId.startsWith("/orgs/$org/checks"));
+  const isCheckGroups = matches.some((m) => m.routeId.startsWith("/orgs/$org/check-groups"));
   const isIncidents = matches.some((m) => m.routeId.startsWith("/orgs/$org/incidents"));
   const isEvents = routeIds.has("/orgs/$org/events");
   const isStatusPages = matches.some((m) => m.routeId.startsWith("/orgs/$org/status-pages"));
@@ -155,6 +157,12 @@ function Breadcrumbs({ org }: { org: string }) {
 
   // Checks section
   const { data: check } = useCheck(org, params.checkUid ?? "");
+  // Check-groups section — the route param is `uid`, shared with on-call and
+  // escalation-policies, so gate on the section flag like those do.
+  const { data: checkGroup } = useCheckGroup(
+    org,
+    isCheckGroups ? (params.uid ?? "") : "",
+  );
   const { data: result } = useResult(
     org,
     params.checkUid ?? "",
@@ -357,6 +365,23 @@ function Breadcrumbs({ org }: { org: string }) {
             <span className={activeClass}>{resultLabel}</span>
           </>
         )}
+      </>
+    );
+  }
+
+  if (isCheckGroups) {
+    // Check groups live inside the checks page; edit is their only route.
+    const groupLabel = checkGroup?.name || params.uid?.slice(0, 8);
+    return (
+      <>
+        <Link to="/orgs/$org/checks" params={{ org }} className={linkClass}>
+          <ListChecks className={iconClass} />
+          {t("checks")}
+        </Link>
+        <BreadcrumbSeparator />
+        <span className={activeClass}>{groupLabel}</span>
+        <BreadcrumbSeparator />
+        <span className={activeClass}>{t("edit")}</span>
       </>
     );
   }

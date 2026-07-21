@@ -830,6 +830,16 @@ paths:
             type: string
             enum: ["true", "false", "all"]
             default: "false"
+        - name: sort
+          in: query
+          description: >-
+            Opt-in ordering. "group" orders by group sortOrder ascending with
+            ungrouped checks last, then created_at descending within a bucket —
+            matching the dashboard's display order. Omitted keeps the default
+            created_at descending ordering. Any other value is a validation error.
+          schema:
+            type: string
+            enum: ["group"]
       responses:
         "200":
           description: List of checks
@@ -2385,7 +2395,7 @@ paths:
   # WebSocket endpoint. Full protocol documentation (handshake, message
   # table, close codes, a websocat example) lives in prose at
   # web/docs/docs/features/live-updates.md, with a pointer from
-  # wiki/api-specification.md.
+  # wiki/api-specification/results-incidents.md.
 
   # Member APIs
   /api/v1/orgs/{org}/members:
@@ -6139,6 +6149,14 @@ components:
         period:
           type: string
           description: Interval duration (e.g., "00:01:00" for 1 minute)
+        regionSpread:
+          type: string
+          nullable: true
+          description: >-
+            Optional inter-region scheduling offset (e.g., "00:00:20"). Every
+            selected region runs the check at the full period; this staggers
+            their phases. Null uses the default of period ÷ region count. Must
+            satisfy 0 <= regionSpread < period.
         checkGroupUid:
           type: string
           format: uuid
@@ -6336,6 +6354,13 @@ components:
         period:
           type: string
           default: "00:01:00"
+        regionSpread:
+          type: string
+          nullable: true
+          description: >-
+            Optional inter-region scheduling offset (e.g., "00:00:20"). Null (or
+            omitted) uses the default of period ÷ region count. Must satisfy
+            0 <= regionSpread < period.
         checkGroupUid:
           type: string
           format: uuid
@@ -6397,6 +6422,13 @@ components:
           description: Whether this check is internal (hidden from default listings)
         period:
           type: string
+        regionSpread:
+          type: string
+          nullable: true
+          description: >-
+            Optional inter-region scheduling offset (e.g., "00:00:20"). An empty
+            string clears it back to the default of period ÷ region count. Must
+            satisfy 0 <= regionSpread < period.
         checkGroupUid:
           type: string
           nullable: true

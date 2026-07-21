@@ -11,7 +11,6 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -19,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/realtimews"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/realtime"
 )
@@ -84,8 +84,8 @@ func newWSFixture(t *testing.T, opts wsFixtureOpts) *wsFixture {
 
 	handler := realtimews.NewHandler(hub, authService, dbSvc, cfg)
 
-	router := bunrouter.New()
-	router.GET("/api/v1/orgs/:org/events/ws", func(w http.ResponseWriter, req bunrouter.Request) error {
+	router := httpx.New()
+	router.GET("/api/v1/orgs/:org/events/ws", func(w http.ResponseWriter, req *http.Request) error {
 		return handler.Serve(w, req)
 	})
 	server := httptest.NewServer(router)

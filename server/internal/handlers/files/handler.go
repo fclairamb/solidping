@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/files/signedurl"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // Standard error codes for file operations.
@@ -40,8 +40,8 @@ func NewHandler(svc *Service, cfg *config.Config) *Handler {
 }
 
 // List handles GET /api/v1/orgs/:org/files.
-func (h *Handler) List(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) List(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 	query := req.URL.Query()
 
 	limit := 50
@@ -67,8 +67,8 @@ func (h *Handler) List(writer http.ResponseWriter, req bunrouter.Request) error 
 }
 
 // Get handles GET /api/v1/orgs/:org/files/:uid.
-func (h *Handler) Get(writer http.ResponseWriter, req bunrouter.Request) error {
-	resp, err := h.svc.GetFile(req.Context(), req.Param("org"), req.Param("uid"))
+func (h *Handler) Get(writer http.ResponseWriter, req *http.Request) error {
+	resp, err := h.svc.GetFile(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid"))
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -77,8 +77,8 @@ func (h *Handler) Get(writer http.ResponseWriter, req bunrouter.Request) error {
 }
 
 // GetContent handles GET /api/v1/orgs/:org/files/:uid/content (auth, org-scoped).
-func (h *Handler) GetContent(writer http.ResponseWriter, req bunrouter.Request) error {
-	file, body, err := h.svc.GetFileContent(req.Context(), req.Param("org"), req.Param("uid"))
+func (h *Handler) GetContent(writer http.ResponseWriter, req *http.Request) error {
+	file, body, err := h.svc.GetFileContent(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid"))
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -89,8 +89,8 @@ func (h *Handler) GetContent(writer http.ResponseWriter, req bunrouter.Request) 
 }
 
 // Delete handles DELETE /api/v1/orgs/:org/files/:uid.
-func (h *Handler) Delete(writer http.ResponseWriter, req bunrouter.Request) error {
-	if err := h.svc.DeleteFile(req.Context(), req.Param("org"), req.Param("uid")); err != nil {
+func (h *Handler) Delete(writer http.ResponseWriter, req *http.Request) error {
+	if err := h.svc.DeleteFile(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid")); err != nil {
 		return h.handleError(writer, err)
 	}
 
@@ -100,8 +100,8 @@ func (h *Handler) Delete(writer http.ResponseWriter, req bunrouter.Request) erro
 }
 
 // PublicGet handles GET /pub/files/:uid?exp=&sig= — no auth, signature gates access.
-func (h *Handler) PublicGet(writer http.ResponseWriter, req bunrouter.Request) error {
-	uid := req.Param("uid")
+func (h *Handler) PublicGet(writer http.ResponseWriter, req *http.Request) error {
+	uid := httpx.Param(req, "uid")
 
 	fileUID, err := uuid.Parse(uid)
 	if err != nil {

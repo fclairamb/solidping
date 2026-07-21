@@ -28,7 +28,9 @@
     "plan": "Offre actuelle",
     "checks": "Vérifications",
     "checksPerMinute": "Vérifications par minute",
+    "multiRegionNote": "Une vérification multi-région s'exécute dans chaque région sélectionnée : elle consomme donc régions × 60 s / période vérifications par minute.",
     "users": "Utilisateurs",
+    "privateLocationAgents": "Agents de localisation privée",
     "unlimited": "Illimité",
     "upgrade": "Mettre à niveau",
     "loadError": "Impossible de charger l'utilisation."

@@ -31,7 +31,9 @@
     "plan": "Current plan",
     "checks": "Checks",
     "checksPerMinute": "Checks per minute",
+    "multiRegionNote": "A multi-region check runs in every selected region, so it consumes regions × 60s / period checks per minute.",
     "users": "Users",
+    "privateLocationAgents": "Private location agents",
     "unlimited": "Unlimited",
     "upgrade": "Upgrade",
     "loadError": "Could not load usage."

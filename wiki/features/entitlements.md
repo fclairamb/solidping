@@ -1,185 +1,237 @@
 # Entitlements
 
-Per-org limits and feature toggles, with a deliberate split between the
-OSS code (which knows raw numbers and booleans) and an external billing
-service (which knows plans, prices, trials, and invoices).
+Per-org quantitative limits, with a deliberate split between the OSS code
+(which knows only raw numbers) and an external billing service (which knows
+plans, prices, trials, and invoices).
 
-The OSS never has to model "you're on the Pro plan, so you get…". It
-stores the *result* — `maxChecks: 50`, `mcp: true` — and enforces those
-numbers at the create boundaries.
+The OSS never models "you're on the Pro plan, so you get…". It stores the
+*result* — `maxChecks: 50` — and enforces it at the write boundaries.
+
+> **There are no feature toggles.** Entitlements carry limits and display-only
+> plan identity, nothing else. Feature gating is not done through this
+> subsystem. (Earlier revisions of this page described a boolean `features` map
+> and an `allowedCheckTypes` list; neither has ever existed in the code, and the
+> API actively rejects them — see [Wire format](#wire-format-and-storage).)
 
 ## Where it lives
 
-- **Resolver and merge**: [`server/internal/entitlements/`](../../server/internal/entitlements/)
-- **HTTP handlers** (GET / PUT / PATCH / audit list): [`server/internal/handlers/entitlements/handler.go`](../../server/internal/handlers/entitlements/handler.go)
-- **Database row**: `org_entitlements` — one row per org, JSONB `payload` column carrying limits, features, and source. Audit log in `org_entitlement_audits`.
-- **Defaults seed**: [`server/internal/entitlements/defaults.go`](../../server/internal/entitlements/defaults.go) — the in-code defaults applied when a row is missing or has a `nil` field.
+- **Resolver, usage, enforcement**: [`server/internal/entitlements/`](../../server/internal/entitlements/)
+- **HTTP handlers** (GET / PUT / PATCH / audit list): [`handlers/entitlements/handler.go`](../../server/internal/handlers/entitlements/handler.go)
+- **Payload model**: [`db/models/entitlements_payload.go`](../../server/internal/db/models/entitlements_payload.go)
+- **Database**: `org_entitlements` — one row per org, JSONB `payload`. Audit log in `org_entitlement_audits`.
+- **Defaults seed**: [`entitlements/defaults.go`](../../server/internal/entitlements/defaults.go)
 
-## Two halves: limits and features
+## Limits
 
-`Limits` are quantitative caps. Each field is a `*int`; `nil` means
+`EntitlementLimits` carries exactly four fields. Each is a `*int`; `nil` means
 **unlimited**.
 
-| Field | Default | Meaning |
+| Field | Meaning | Enforced at |
 |---|---|---|
-| `maxChecks` | nil (unlimited) | Number of non-deleted checks the org can hold. |
-| `maxMembers` | nil | User memberships. |
-| `maxStatusPages` | nil | Public status pages. |
-| `maxCheckGroups` | nil | Logical check groupings. |
-| `maxMaintenanceWindows` | nil | Concurrently-stored maintenance windows. |
-| `maxConnections` | nil | Notification channels (DB calls them `integration_connections`). |
-| `maxWorkers` | nil | Self-registered worker count. |
-| `maxApiTokens` | nil | Personal access tokens per user. |
-| `retentionDaysRaw` | 30 | Days before raw results roll up. |
-| `retentionDaysAggregated` | 365 | Days before aggregated results are pruned. |
-| `minCheckPeriodSeconds` | 30 | Floor on check polling frequency. |
+| `maxChecks` | Non-internal, non-deleted checks the org may hold. | `CheckCreateAllowed` → [`checks/service.go:946,3062`](../../server/internal/handlers/checks/service.go) |
+| `maxUsers` | Total org members, however they joined. | `CheckMembership` → [`auth/service.go:413`](../../server/internal/handlers/auth/service.go) |
+| `maxChecksPerMinute` | Aggregate check-execution rate (token bucket). | `ReserveCheckExecution` → [`checkworker/worker.go:877`](../../server/internal/checkworker/worker.go), [`agentws/handler.go:502`](../../server/internal/handlers/agentws/handler.go) |
+| `maxDeportedAgents` | Active deported (private-location) agents across all private regions. | `AgentCreateAllowed` → [`agents/service.go` (`MintEnrollmentToken`)](../../server/internal/handlers/agents/service.go), [`agentws/handler.go` (`awaitEnroll`)](../../server/internal/handlers/agentws/handler.go) |
 
-`Features` are boolean toggles. Each field is a `*bool`; `nil` means
-"use the in-code default".
+`maxUsers` was renamed from `maxSsoUsers` (spec `2026-07-12-02`). The old key
+survives as a **decode-only alias**; the payload always re-marshals as
+`maxUsers`, and sending both keys at once is rejected with
+`ErrConflictingUserLimitKeys`.
 
-| Field | OSS default | Notes |
-|---|---|---|
-| `sso` | true | OAuth provider availability. |
-| `mcp` | true | Model Context Protocol endpoint. |
-| `customBranding` | true | Status-page custom logo / colors. |
-| `prioritySupport` | false | Marketing flag, not enforced anywhere code-side. |
-| `multiRegion` | true | Multi-region check workers. |
-| `advancedAlerts` | true | Group incidents, cascade rollup, escalation policies. |
+Breaches return a `QuotaError` carrying `LimitName`, `Limit` and
+`CurrentUsage`. Both `CheckCreateAllowed` and `CheckMembership` count and then
+insert non-atomically, so a tight race can slip one item past the cap — an
+accepted trade-off for a soft quota guard, documented in the source.
 
-`AllowedCheckTypes` is a separate `[]string`. Empty list = all check
-types allowed; a non-empty list restricts the org to a subset (used to
-gate browser checks behind a higher-tier plan, for example).
+Note the enforcement path covers **deported agents** as well as in-cluster
+workers: `agentws` reserves rate-limit tokens on the agent dispatch path too, so
+a private location cannot be used to bypass `maxChecksPerMinute`. See
+[deported-agents.md](deported-agents.md).
 
-## Three-layer resolution
+`maxDeportedAgents` is enforced twice: `MintEnrollmentToken` checks it first
+for early UX (the dashboard can surface an upgrade prompt before the operator
+ever starts a container), and `agentws`'s `awaitEnroll` checks it again at the
+actual enrollment — the correctness point, since a token minted under the cap
+could still over-enroll if the cap drops or another token is consumed first.
+A rejection at enrollment time sends the agent a protocol `error` frame and
+**does not consume the one-shot token**, so the same token can be retried
+after an upgrade or after deleting another agent.
 
-A request to `GET /api/v1/orgs/$org/entitlements` (or any internal
-caller) goes through `Service.Resolve`
-([`entitlements/service.go:82`](../../server/internal/entitlements/service.go)).
-Three things compose:
+### Defaults by deployment mode
 
-1. **Defaults** from `DefaultEntitlements` (the in-code seed).
-2. **The org's stored row** from `org_entitlements`. Any non-nil field
-   in `Limits` / `Features` overrides the default. `AllowedCheckTypes`
-   replaces the default when non-empty.
-3. **Live usage**, computed on every resolve. Counts of non-deleted
-   checks, members, status pages, check groups, and connections so the
-   dashboard can render "X / Y used" inline.
+`DefaultsFor(mode)` — anything not listed is `nil` (unlimited):
 
-The resolved struct is what the API returns and what
-`/api/v1/features` exposes to the dashboard. The stored row is *not*
-returned directly — the resolver always merges defaults in first, so
-external callers never see a nil-mean-default ambiguity.
+| Mode | maxChecks | maxUsers | maxChecksPerMinute | maxDeportedAgents | Display identity |
+|---|---|---|---|---|---|
+| Self-hosted | unlimited | 30 | unlimited | unlimited | 🏠 Self-hosted |
+| SaaS | 100 | 5 | 6 | 1 | 🆓 Free |
+
+Self-hosted's unlimited `maxDeportedAgents` preserves the "free private
+locations" competitive positioning (see
+[deported-agents.md](deported-agents.md#competitive-position)). SaaS's `1`
+mirrors the Free SKU of the plan ladder (Free 1, Starter 3, Pro 6, Scale 9).
+
+The SaaS numbers implement the Free tier of the 2026-07-12 pricing decision and
+**must stay in sync** with `solidping-billing`'s Free SKU — they are the
+"billing service has not reconciled us yet" fallback for a fresh org, and must
+render and enforce identically to the real Free plan until billing writes its
+own row. An unknown mode logs a warning and falls back to self-hosted defaults
+rather than booting unbounded.
+
+## Display identity
+
+Alongside limits, the payload carries `displayName` and `displayEmoji`
+(e.g. "🚀 Team"), supplied by the billing service and shown on the org **Usage**
+page. These are **display-only and never enforced**. When a row has none of its
+own, the mode defaults above apply — self-hosted deliberately gets a plain
+"Self-hosted" label so it never claims to be "Free".
+
+## Resolution
+
+`GET /api/v1/orgs/:org/entitlements` (and every internal caller) goes through
+`Service.Resolve` ([`entitlements/service.go:83`](../../server/internal/entitlements/service.go)),
+composing three things:
+
+1. **Defaults** for the deployment mode.
+2. **The org's stored row** — any non-nil field overrides the default.
+3. **Live usage**, recomputed on every resolve.
+
+The resolver always merges defaults in first, so external callers never see a
+nil-means-default ambiguity.
+
+`Usage` has four fields:
+
+| Field | Meaning |
+|---|---|
+| `checks` | Non-internal, non-deleted checks. System-created checks neither consume nor are gated by quota. |
+| `checksPerMinute` | Aggregate execution rate derived from per-check periods. |
+| `ssoUsers` | Total member count. **The wire key stays `ssoUsers` for back-compat** even though it is enforced against `maxUsers`. |
+| `agents` | Active (non-revoked, non-deleted) deported agents across all private regions. Enforced against `maxDeportedAgents`. |
 
 ## Sources
 
-Every row records who wrote it. The `source` field discriminates the
-write path:
+Every row records who wrote it:
 
 | Source | Who writes it | Stale check applies? |
 |---|---|---|
-| `default` | The auto-create path when an org first calls Resolve and has no row. | no |
-| `self-hosted` | The startup hook that establishes "this is a self-hosted instance, here are the local defaults". | no |
-| `admin` | Manual override via `PUT /api/v1/orgs/$org/entitlements` from a logged-in admin (when admin writes are enabled). | no |
-| `billing-service` | The external billing service writing via service-token auth. | yes |
+| `default` | Auto-create path when an org first resolves with no row. | no |
+| `self-hosted` | Startup hook establishing local defaults. | no |
+| `admin` | Manual override via PUT/PATCH from an org admin (when admin writes are enabled). | no |
+| `billing-service` | External billing service via service-token auth. | yes |
 
 ## Stale fallback
 
-A `billing-service` row carries `lastSyncedAt`. The resolver compares
-this against `entitlements.stale_after_days` (system parameter,
-default 0 = never stale). When the row is past its window, the API
-response sets `stale: true`. Today this is informational — the
-dashboard can show a "billing data outdated" banner — but the
-limits remain in effect; we don't *unfreeze* limits when billing goes
-silent.
+A `billing-service` row carries `lastSyncedAt`, compared against the
+`entitlements.stale_after_days` system parameter (default 0 = never stale).
+Past the window the API response sets `stale: true`. This is **informational** —
+limits remain in effect. We do not *unfreeze* limits when billing goes silent.
 
-The stale check applies **only** to billing-service rows. Admin
-overrides are deliberate and persist; default and self-hosted rows
-have no notion of staleness.
+The stale check applies only to billing-service rows; admin overrides are
+deliberate and persist.
 
 ## Auth gating
 
-The handler accepts two principals (service-token or admin user). Both
-gates are configurable via system parameters so a self-hosted operator
-can choose which path is open.
+Two principals can write, both governed by system parameters:
 
-- **Service token** — set `entitlements.service_token` to a
-  cryptographically-random opaque string and pass it in `X-Entitlement-Token`
-  on PUT/PATCH calls. Compared with `subtle.ConstantTimeCompare`. This
-  is how the SaaS billing service writes.
-- **Admin user** — when `entitlements.admin_writes_enabled = true`, an
-  authenticated org admin can also PUT/PATCH directly. Self-hosted
-  operators turn this on; SaaS leaves it off so customers can't grant
-  themselves the Enterprise tier.
+- **Service token** — set `entitlements.service_token` to a random opaque
+  string and send it as a normal **`Authorization: Bearer <token>`**. The
+  `ServiceTokenBypass` middleware ([`middleware/auth.go:211`](../../server/internal/middleware/auth.go))
+  compares it with `subtle.ConstantTimeCompare` and, on match, marks the request
+  service-authorized so the following `RequireAuth` + `RequireOrgAccess` become
+  no-ops. This is how the SaaS billing service writes. It is a shared secret,
+  not a JWT — which is why the route needs the bypass rather than the normal
+  auth chain.
+- **Admin user** — when `entitlements.admin_writes_enabled` is true (default in
+  self-hosted), an authenticated org admin may PUT/PATCH directly. SaaS leaves
+  it off so customers cannot grant themselves a higher tier.
 
 GET reads use the standard auth surface (any authenticated org member).
 
+System parameters: `entitlements.service_token`,
+`entitlements.admin_writes_enabled`, `entitlements.upgrade_url_template`,
+`entitlements.stale_after_days`, `entitlements.billing_inbound_secret`.
+
 ## Audit log
 
-Every write (PUT or PATCH) records a row in `org_entitlement_audits`
-with the before-snapshot, after-snapshot, source, actor, and an
-optional reason string. Service-token actors record as
-`service:billing` (or whatever ID they self-identified as); admin
-users record their UID. The list endpoint
-(`GET /api/v1/orgs/$org/entitlements/audits`) returns paginated rows
-for forensic trail; pagination uses `limit` (default 50, max 200).
-
-## Enforcement
-
-Limits are stored uniformly but enforced at write boundaries. The
-`Service.CanCreate` hook is the integration point — handlers ask
-"can I create another check?" before persisting. Today the package is
-permissive (the v1 hook is a stub at
-[`service.go:152`](../../server/internal/entitlements/service.go));
-follow-up specs wire enforcement at each create-* boundary one by one
-so each can be tested and rolled back independently.
-
-Features are enforced at the use site, not at the storage layer:
-`mcp: false` causes the MCP handler to refuse with 403; `multiRegion:
-false` causes the worker context match to fall back to the default
-region; etc.
+Every write records a row in `org_entitlement_audits` with before/after
+snapshots, source, actor, and an optional reason taken from the
+**`X-Entitlements-Reason`** request header. The list endpoint
+(`GET …/entitlements/audits`) paginates with `limit` (default 50, max 200).
 
 ## Wire format and storage
 
-The on-disk shape is versioned. `EntitlementsPayload.Version = 1`
-today; breaking shape changes bump the version and add a branch in
-`UnmarshalJSON`
-([`models/entitlements_payload.go:111`](../../server/internal/db/models/entitlements_payload.go)).
-v0 (rows written before the version field landed) is treated as v1.
-Forward-compat is unlimited for additive fields — unknown JSON keys
-are silently ignored at unmarshal time.
+The on-disk shape equals the wire shape. `EntitlementsPayloadVersion = 1`;
+breaking changes bump the version and branch in `UnmarshalJSON`. v0 rows
+(written before the version field) are treated as v1.
 
-The wire JSON is identical to the on-disk JSON. Renaming a field
-breaks both surfaces; adding a field is safe in either direction.
+The complete payload is:
+
+```json
+{
+  "version": 1,
+  "source": "billing-service",
+  "limits": {
+    "maxChecks": 100,
+    "maxUsers": 5,
+    "maxChecksPerMinute": 6,
+    "maxDeportedAgents": 1
+  },
+  "displayName": "Team",
+  "displayEmoji": "🚀"
+}
+```
+
+**Two different strictness rules apply, and the distinction matters:**
+
+- **At storage unmarshal**, unknown keys are silently ignored for
+  forward-compatibility.
+- **At the HTTP handler**, the request body is decoded with
+  `DisallowUnknownFields` ([`handler.go:180`](../../server/internal/handlers/entitlements/handler.go)),
+  so an unmodeled key is a hard **400** — it is not ignored. Sending `features`
+  or `allowedCheckTypes` fails the entire request.
+
+Accepted request keys: `limits` (`maxChecks`, `maxUsers`, `maxChecksPerMinute`,
+`maxDeportedAgents`, `maxSsoUsers`), `source`, `displayName`, `displayEmoji`,
+`externalRef`, `metadata`, `expiresAt`, `lastSyncedAt`.
+
+> **PATCH quirk.** `mergePartial` seeds the outgoing row from the current
+> resolved values for `Limits`, `DisplayName`, `DisplayEmoji`, `ExpiresAt` and
+> `LastSyncedAt` — but **not** for `ExternalRef` or `Metadata`. A PATCH that
+> omits `externalRef` therefore **drops** it. Send those fields explicitly, or
+> use PUT.
 
 ## Common operations
 
 ```bash
-# Read current entitlements
+# Read current entitlements (any org member)
 curl -s -H "Authorization: Bearer $TOKEN" \
   http://localhost:4000/api/v1/orgs/default/entitlements | jq .
 
-# Admin overrides max checks (admin-writes must be enabled)
+# Admin raises the check cap (admin writes must be enabled)
 curl -s -X PATCH \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
+  -H 'X-Entitlements-Reason: manual bump for load test' \
   -d '{"limits":{"maxChecks":50}}' \
   http://localhost:4000/api/v1/orgs/default/entitlements
 
-# Billing service replaces the entire row (PUT semantics)
+# Billing service replaces the whole row (service token is a plain bearer)
 curl -s -X PUT \
-  -H 'X-Entitlement-Token: <opaque>' \
+  -H "Authorization: Bearer $SP_ENTITLEMENTS_SERVICE_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"source":"billing-service","limits":{...},"features":{...}}' \
+  -d '{"source":"billing-service","limits":{"maxChecks":100,"maxUsers":5},"displayName":"Team","displayEmoji":"🚀"}' \
   http://localhost:4000/api/v1/orgs/default/entitlements
 
-# List the audit trail
+# Audit trail
 curl -s -H "Authorization: Bearer $TOKEN" \
   'http://localhost:4000/api/v1/orgs/default/entitlements/audits?limit=10' | jq .
 ```
 
 ## Origin
 
-The entitlements model shipped in May 2026; design rationale and the
-JSONB-collapse refactor are captured in:
 - [`2026-05-05-06-entitlements-model.md`](../../specs/done/2026/05/2026-05-05-06-entitlements-model.md) — initial schema (broken-out columns).
-- [`2026-05-05-16-entitlements-collapse-to-jsonb.md`](../../specs/done/2026/05/2026-05-05-16-entitlements-collapse-to-jsonb.md) — collapse to JSONB payload with versioning.
+- [`2026-05-05-16-entitlements-collapse-to-jsonb.md`](../../specs/done/2026/05/2026-05-05-16-entitlements-collapse-to-jsonb.md) — collapse to a versioned JSONB payload.
+- `2026-07-12-02` — `maxSsoUsers` → `maxUsers` rename.
+
+See also: [API reference — Entitlements](../api-specification/entitlements.md),
+[database-model/entitlements.md](../database-model/entitlements.md).

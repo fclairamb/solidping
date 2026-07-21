@@ -21,10 +21,12 @@ var ErrUnknownEntitlementsPayloadVersion = errors.New("unknown entitlements payl
 // EntitlementLimits is the quantitative half of an entitlement set.
 // nil = unlimited. JSON tags are the wire format consumed by the API.
 //
-// Three limits are modeled: MaxChecks (total non-internal checks an org
+// Four limits are modeled: MaxChecks (total non-internal checks an org
 // may own, enforced at check creation), MaxUsers (total org members —
-// capped on self-hosted by default) and MaxChecksPerMinute (aggregate
-// dispatch rate, capped on SaaS). Adding an optional field to the v1
+// capped on self-hosted by default), MaxChecksPerMinute (aggregate
+// dispatch rate, capped on SaaS), and MaxDeportedAgents (active deported /
+// private-location agents across all private regions, enforced at
+// enrollment — see AgentCreateAllowed). Adding an optional field to the v1
 // JSONB payload is backward-compatible — absent keys unmarshal to nil
 // (= unlimited), so no version bump is needed.
 //
@@ -36,6 +38,9 @@ type EntitlementLimits struct {
 	MaxChecks          *int `json:"maxChecks,omitempty"`
 	MaxUsers           *int `json:"maxUsers,omitempty"`
 	MaxChecksPerMinute *int `json:"maxChecksPerMinute,omitempty"`
+	// MaxDeportedAgents caps the org's active deported (private-location)
+	// agents across all private regions. nil = unlimited.
+	MaxDeportedAgents *int `json:"maxDeportedAgents,omitempty"`
 }
 
 // ErrConflictingUserLimitKeys is returned when a payload sends both the
@@ -57,6 +62,7 @@ func (l *EntitlementLimits) UnmarshalJSON(data []byte) error {
 		MaxUsers           *int `json:"maxUsers"`
 		MaxSSOUsers        *int `json:"maxSsoUsers"` // deprecated alias for maxUsers
 		MaxChecksPerMinute *int `json:"maxChecksPerMinute"`
+		MaxDeportedAgents  *int `json:"maxDeportedAgents"`
 	}
 
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -71,6 +77,7 @@ func (l *EntitlementLimits) UnmarshalJSON(data []byte) error {
 
 	l.MaxChecks = wire.MaxChecks
 	l.MaxChecksPerMinute = wire.MaxChecksPerMinute
+	l.MaxDeportedAgents = wire.MaxDeportedAgents
 	if wire.MaxUsers != nil {
 		l.MaxUsers = wire.MaxUsers
 	} else {

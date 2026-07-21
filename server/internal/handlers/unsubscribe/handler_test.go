@@ -7,20 +7,20 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/unsubscribe"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/incidentlinks"
 )
 
-func newTestRouter(t *testing.T, f *testFixture) *bunrouter.Router {
+func newTestRouter(t *testing.T, f *testFixture) *httpx.Router {
 	t.Helper()
 
 	svc := unsubscribe.NewService(f.svc, []byte(testSecret))
 	handler := unsubscribe.NewHandler(svc, &config.Config{})
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.POST("/unsubscribe", handler.OneClickUnsubscribe)
 	router.GET("/unsubscribe", handler.ConfirmationPage)
 	router.GET("/unsubscribe/undo", handler.Undo)
@@ -28,7 +28,7 @@ func newTestRouter(t *testing.T, f *testFixture) *bunrouter.Router {
 	return router
 }
 
-func doRequest(t *testing.T, router *bunrouter.Router, method, path string) *httptest.ResponseRecorder {
+func doRequest(t *testing.T, router *httpx.Router, method, path string) *httptest.ResponseRecorder {
 	t.Helper()
 
 	req := httptest.NewRequestWithContext(t.Context(), method, path, nil)

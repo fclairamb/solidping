@@ -876,6 +876,25 @@ occupies 50% or more of a runner slot (its *duty cycle*).
 
 Recommended minimum: `30s` for production.
 
+### Multiple regions
+
+The `period` applies **per region**: each region you select runs the check at
+the full interval, and SolidPing staggers the regions across the period so they
+don't all fire at once. A `60s` check on 3 regions runs every 60 seconds *in
+each region* (roughly 20 seconds apart), for a combined detection interval of
+about 20 seconds — selecting more regions multiplies coverage, it does not
+divide the frequency.
+
+By default the inter-region offset ("spread") is `period ÷ region count`. Set
+`regionSpread` (a duration, API-first) to override it — e.g. `1s` to sample all
+regions almost simultaneously for comparative cross-region latency, or `0s` to
+fire them together. It must satisfy `0 ≤ regionSpread < period`.
+
+Because every region executes independently, a multi-region check consumes
+`regions × 60s ÷ period` checks per minute against your plan's
+**checks-per-minute** limit (a `60s` check on 3 regions counts as 3/min). The
+**Usage** page reflects this multiplier.
+
 ## Best Practices
 
 1. **Use appropriate timeouts** - Set timeouts based on expected response times

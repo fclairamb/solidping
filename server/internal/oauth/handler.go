@@ -3,8 +3,6 @@ package oauth
 import (
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
@@ -44,17 +42,17 @@ func (h *Handler) writeNoStoreJSON(w http.ResponseWriter, status int, data any) 
 }
 
 // ProtectedResourceMetadata serves the RFC 9728 document. Public, no auth.
-func (h *Handler) ProtectedResourceMetadata(w http.ResponseWriter, _ bunrouter.Request) error {
+func (h *Handler) ProtectedResourceMetadata(w http.ResponseWriter, _ *http.Request) error {
 	return h.WriteJSON(w, http.StatusOK, h.metadata().BuildProtectedResourceMetadata())
 }
 
 // AuthorizationServerMetadata serves the RFC 8414 document (and its OIDC alias).
 // Public, no auth.
-func (h *Handler) AuthorizationServerMetadata(w http.ResponseWriter, _ bunrouter.Request) error {
+func (h *Handler) AuthorizationServerMetadata(w http.ResponseWriter, _ *http.Request) error {
 	return h.WriteJSON(w, http.StatusOK, h.metadata().BuildAuthorizationServerMetadata())
 }
 
 // JWKS serves the (empty, symmetric-key) JSON Web Key Set. Public, no auth.
-func (h *Handler) JWKS(w http.ResponseWriter, _ bunrouter.Request) error {
+func (h *Handler) JWKS(w http.ResponseWriter, _ *http.Request) error {
 	return h.WriteJSON(w, http.StatusOK, BuildJWKS())
 }

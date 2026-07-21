@@ -5,10 +5,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 )
 
@@ -27,8 +26,8 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 }
 
 // ListMembers handles listing all members of an organization.
-func (h *Handler) ListMembers(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) ListMembers(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 
 	members, err := h.svc.ListMembers(req.Context(), orgSlug)
 	if err != nil {
@@ -39,9 +38,9 @@ func (h *Handler) ListMembers(writer http.ResponseWriter, req bunrouter.Request)
 }
 
 // GetMember handles getting a specific member by UID.
-func (h *Handler) GetMember(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	memberUID := req.Param("uid")
+func (h *Handler) GetMember(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	memberUID := httpx.Param(req, "uid")
 
 	member, err := h.svc.GetMember(req.Context(), orgSlug, memberUID)
 	if err != nil {
@@ -52,8 +51,8 @@ func (h *Handler) GetMember(writer http.ResponseWriter, req bunrouter.Request) e
 }
 
 // AddMember handles adding a new member to the organization.
-func (h *Handler) AddMember(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) AddMember(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 
 	var addReq AddMemberRequest
 	if err := json.NewDecoder(req.Body).Decode(&addReq); err != nil {
@@ -95,9 +94,9 @@ func (h *Handler) AddMember(writer http.ResponseWriter, req bunrouter.Request) e
 }
 
 // UpdateMember handles updating a member's role.
-func (h *Handler) UpdateMember(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	memberUID := req.Param("uid")
+func (h *Handler) UpdateMember(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	memberUID := httpx.Param(req, "uid")
 
 	var updateReq UpdateMemberRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
@@ -115,9 +114,9 @@ func (h *Handler) UpdateMember(writer http.ResponseWriter, req bunrouter.Request
 }
 
 // RemoveMember handles removing a member from the organization.
-func (h *Handler) RemoveMember(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	memberUID := req.Param("uid")
+func (h *Handler) RemoveMember(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	memberUID := httpx.Param(req, "uid")
 
 	if err := h.svc.RemoveMember(req.Context(), orgSlug, memberUID); err != nil {
 		return h.handleError(writer, err)

@@ -5,8 +5,6 @@ import (
 	"html"
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
@@ -38,7 +36,7 @@ func NewHandler(svc *Service, cfg *config.Config) *Handler {
 // without the recipient seeing any page, so the response body is minimal —
 // what matters is the status code and that repeated submissions are
 // harmless. No auth: the signed token IS the authentication.
-func (h *Handler) OneClickUnsubscribe(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) OneClickUnsubscribe(writer http.ResponseWriter, req *http.Request) error {
 	token := req.URL.Query().Get("token")
 	if token == "" {
 		writer.WriteHeader(http.StatusBadRequest)
@@ -74,7 +72,7 @@ func (h *Handler) OneClickUnsubscribe(writer http.ResponseWriter, req bunrouter.
 // below are plain <a> links with the scope baked into the href — no POST
 // needed from the browser since GET here has no side effect until a scope
 // is chosen, and choosing IS the confirmation).
-func (h *Handler) ConfirmationPage(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ConfirmationPage(writer http.ResponseWriter, req *http.Request) error {
 	token := req.URL.Query().Get("token")
 	if token == "" {
 		writePage(writer, http.StatusBadRequest, "Missing token", missingTokenBody())
@@ -101,7 +99,7 @@ func (h *Handler) ConfirmationPage(writer http.ResponseWriter, req bunrouter.Req
 // renderChoicePage shows the two scope buttons without unsubscribing yet.
 // It still needs to verify the token (to show the check name and reject a
 // bad token up front) but performs no write.
-func (h *Handler) renderChoicePage(writer http.ResponseWriter, req bunrouter.Request, token string) error {
+func (h *Handler) renderChoicePage(writer http.ResponseWriter, req *http.Request, token string) error {
 	org, email, checkUID, err := h.svc.resolve(req.Context(), token, ScopeFromToken)
 	if err != nil {
 		return h.renderErrorPage(writer, err)
@@ -127,7 +125,7 @@ func (h *Handler) renderChoicePage(writer http.ResponseWriter, req bunrouter.Req
 // from the outcome page's undo link. Re-verifies the token server-side
 // (Service.ResubscribeByUID) rather than trusting the uid alone, so an
 // expired/forged undo link can't delete an arbitrary suppression row.
-func (h *Handler) Undo(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Undo(writer http.ResponseWriter, req *http.Request) error {
 	token := req.URL.Query().Get("token")
 	uid := req.URL.Query().Get("uid")
 

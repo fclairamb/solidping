@@ -19,13 +19,13 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/realtime"
 )
@@ -98,22 +98,22 @@ func NewHandler(
 // org-scope denial — stay post-upgrade close codes (4404/4403) because a
 // rejected upgrade is invisible to browser JS and those are the states the
 // browser must act on differently (see the Close* constants).
-func (h *Handler) Serve(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Serve(writer http.ResponseWriter, req *http.Request) error {
 	ctx := req.Context()
-	orgSlug := req.Param("org")
+	orgSlug := httpx.Param(req, "org")
 
 	// Authenticate the token at the HTTP level, before upgrading, so a bad
 	// token gets a real 401 instead of a dangling socket closed with an
 	// app-defined code the caller may not read.
-	token := extractToken(req.Request)
+	token := extractToken(req)
 	claims, user, errCode, errMsg := h.authenticateToken(ctx, token)
 	if claims == nil {
 		_, cookieErr := req.Cookie(cookieAuthToken)
-		h.logger.Warn("WebSocket handshake rejected",
+		h.logger.WarnContext(ctx, "WebSocket handshake rejected",
 			"org", orgSlug,
 			"error_code", errCode,
 			"has_auth_header", req.Header.Get("Authorization") != "",
-			"has_subprotocol_token", extractSubprotocolToken(req.Request) != "",
+			"has_subprotocol_token", extractSubprotocolToken(req) != "",
 			"has_cookie", cookieErr == nil,
 			"token_iss", unverifiedIssuer(token),
 		)
@@ -121,7 +121,7 @@ func (h *Handler) Serve(writer http.ResponseWriter, req bunrouter.Request) error
 		return h.WriteError(writer, http.StatusUnauthorized, errCode, errMsg)
 	}
 
-	conn, err := websocket.Accept(writer, req.Request, &websocket.AcceptOptions{
+	conn, err := websocket.Accept(writer, req, &websocket.AcceptOptions{
 		CompressionMode: websocket.CompressionDisabled,
 		// Negotiated back when the client offered it alongside its bearer.*
 		// token entry (see extractToken) — a browser that offered subprotocols

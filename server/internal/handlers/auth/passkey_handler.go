@@ -6,9 +6,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // PasskeyHandler exposes the passkey HTTP endpoints. It's a sibling of
@@ -62,7 +61,7 @@ type passkeyRegisterFinishResponse struct {
 }
 
 // RegisterBegin handles POST /api/v1/auth/passkeys/register/begin.
-func (h *PasskeyHandler) RegisterBegin(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *PasskeyHandler) RegisterBegin(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
@@ -77,7 +76,7 @@ func (h *PasskeyHandler) RegisterBegin(writer http.ResponseWriter, req bunrouter
 }
 
 // RegisterFinish handles POST /api/v1/auth/passkeys/register/finish.
-func (h *PasskeyHandler) RegisterFinish(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *PasskeyHandler) RegisterFinish(writer http.ResponseWriter, req *http.Request) error {
 	if _, ok := getClaimsFromContext(req); !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
@@ -104,7 +103,7 @@ func (h *PasskeyHandler) RegisterFinish(writer http.ResponseWriter, req bunroute
 }
 
 // LoginBegin handles POST /api/v1/auth/passkeys/login/begin (public).
-func (h *PasskeyHandler) LoginBegin(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *PasskeyHandler) LoginBegin(writer http.ResponseWriter, req *http.Request) error {
 	body, err := readPasskeyLoginBegin(req.Body)
 	if err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
@@ -121,7 +120,7 @@ func (h *PasskeyHandler) LoginBegin(writer http.ResponseWriter, req bunrouter.Re
 }
 
 // LoginFinish handles POST /api/v1/auth/passkeys/login/finish (public).
-func (h *PasskeyHandler) LoginFinish(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *PasskeyHandler) LoginFinish(writer http.ResponseWriter, req *http.Request) error {
 	body, err := readPasskeyFinishLogin(req.Body)
 	if err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
@@ -151,7 +150,7 @@ func (h *PasskeyHandler) LoginFinish(writer http.ResponseWriter, req bunrouter.R
 }
 
 // List handles GET /api/v1/auth/passkeys.
-func (h *PasskeyHandler) List(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *PasskeyHandler) List(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
@@ -166,13 +165,13 @@ func (h *PasskeyHandler) List(writer http.ResponseWriter, req bunrouter.Request)
 }
 
 // Rename handles PATCH /api/v1/auth/passkeys/:uid.
-func (h *PasskeyHandler) Rename(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *PasskeyHandler) Rename(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	uid := req.Param("uid")
+	uid := httpx.Param(req, "uid")
 	if uid == "" {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "passkey UID required")
 	}
@@ -192,13 +191,13 @@ func (h *PasskeyHandler) Rename(writer http.ResponseWriter, req bunrouter.Reques
 }
 
 // Delete handles DELETE /api/v1/auth/passkeys/:uid.
-func (h *PasskeyHandler) Delete(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *PasskeyHandler) Delete(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
 	if !ok {
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	uid := req.Param("uid")
+	uid := httpx.Param(req, "uid")
 	if uid == "" {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "passkey UID required")
 	}

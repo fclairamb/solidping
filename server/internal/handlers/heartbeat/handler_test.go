@@ -9,24 +9,24 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 )
 
-// heartbeatHandlerSetup spins up an in-memory sqlite world plus a bunrouter
+// heartbeatHandlerSetup spins up an in-memory sqlite world plus a router
 // wired to the real handler, mirroring checks' TestCreateCheckHandler pattern
 // — this exercises the HTTP layer (header parsing, MaxBytesReader) that a
 // service-level test can't reach.
 type heartbeatHandlerSetup struct {
 	dbSvc  *sqlite.Service
-	router *bunrouter.Router
+	router *httpx.Router
 	org    *models.Organization
 	check  *models.Check
 }
@@ -52,7 +52,7 @@ func newHeartbeatHandlerSetup(t *testing.T) *heartbeatHandlerSetup {
 	check.Config["token"] = testToken
 	r.NoError(dbSvc.CreateCheck(ctx, check))
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/api/v1/heartbeat/:org/:identifier", handler.ReceiveHeartbeat)
 	router.POST("/api/v1/heartbeat/:org/:identifier", handler.ReceiveHeartbeat)
 

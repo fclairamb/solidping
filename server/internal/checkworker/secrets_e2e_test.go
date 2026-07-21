@@ -220,7 +220,7 @@ func TestInProcessWorkerCheckerReceivesEncryptedSecret(t *testing.T) {
 	check := seedSecretCheck(t, ctx, dbSvc, org.UID, "secret-e2e", envelope)
 
 	// The exact call the pool fetcher makes.
-	jobs, err := runner.backend.ClaimJobs(ctx, runner.getWorker().UID, nil, 10, 10, time.Minute)
+	jobs, _, err := runner.backend.ClaimJobs(ctx, runner.getWorker().UID, nil, 10, 10, time.Minute)
 	r.NoError(err)
 	r.Len(jobs, 1)
 
@@ -266,7 +266,7 @@ func TestInProcessWorkerPlaintextConfigUnchanged(t *testing.T) {
 		Exec(ctx)
 	r.NoError(err)
 
-	jobs, err := runner.backend.ClaimJobs(ctx, runner.getWorker().UID, nil, 10, 10, time.Minute)
+	jobs, _, err := runner.backend.ClaimJobs(ctx, runner.getWorker().UID, nil, 10, 10, time.Minute)
 	r.NoError(err)
 	r.Len(jobs, 1)
 
@@ -344,7 +344,7 @@ func TestInProcessWorkerNeverLogsDecryptedSecrets(t *testing.T) {
 
 	seedSecretCheck(t, ctx, dbSvc, org.UID, "secret-logs", envelope)
 
-	jobs, err := runner.backend.ClaimJobs(ctx, runner.getWorker().UID, nil, 10, 10, time.Minute)
+	jobs, _, err := runner.backend.ClaimJobs(ctx, runner.getWorker().UID, nil, 10, 10, time.Minute)
 	r.NoError(err)
 	r.Len(jobs, 1)
 	r.NoError(runner.executeJob(ctx, runner.logger, jobs[0]))

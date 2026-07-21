@@ -7,8 +7,6 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
@@ -40,7 +38,7 @@ func NewSAMLHandler(service *SAMLService, cfg *config.Config) *SAMLHandler {
 // Login initiates the SP-initiated SAML flow: builds an AuthnRequest and
 // redirects the browser to the configured IdP's SSO endpoint.
 // GET /api/v1/auth/saml/login?org=...&redirect_uri=...
-func (h *SAMLHandler) Login(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *SAMLHandler) Login(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := req.URL.Query().Get("org")
 	if orgSlug == "" {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "org parameter is required")
@@ -65,7 +63,7 @@ func (h *SAMLHandler) Login(writer http.ResponseWriter, req bunrouter.Request) e
 		return h.WriteInternalError(writer, err)
 	}
 
-	http.Redirect(writer, req.Request, redirectURL, http.StatusFound)
+	http.Redirect(writer, req, redirectURL, http.StatusFound)
 
 	return nil
 }
@@ -73,7 +71,7 @@ func (h *SAMLHandler) Login(writer http.ResponseWriter, req bunrouter.Request) e
 // ACS (Assertion Consumer Service) consumes the SAML assertion POSTed back
 // by the IdP after the user authenticates there.
 // POST /api/v1/auth/saml/acs.
-func (h *SAMLHandler) ACS(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *SAMLHandler) ACS(writer http.ResponseWriter, req *http.Request) error {
 	// ParseForm reads SAMLResponse/RelayState from the POST body
 	// (application/x-www-form-urlencoded), which sp.ParseResponse expects on
 	// req.PostForm.
@@ -94,7 +92,7 @@ func (h *SAMLHandler) ACS(writer http.ResponseWriter, req bunrouter.Request) err
 		return h.redirectWithError(writer, req, "/", OAuthCodeInvalidState, OAuthDescInvalidState)
 	}
 
-	result, err := h.svc.HandleACS(req.Context(), req.Request, state)
+	result, err := h.svc.HandleACS(req.Context(), req, state)
 	if err != nil {
 		return h.handleSAMLError(writer, req, state.RedirectURI, err)
 	}
@@ -104,7 +102,7 @@ func (h *SAMLHandler) ACS(writer http.ResponseWriter, req bunrouter.Request) err
 	// authorize/consent flow) work without a login-page refresh bounce.
 	redirectURL := h.buildSuccessRedirect(state.RedirectURI, result)
 	setAccessTokenCookie(writer, result.AccessToken, result.ExpiresIn)
-	http.Redirect(writer, req.Request, redirectURL, http.StatusFound)
+	http.Redirect(writer, req, redirectURL, http.StatusFound)
 
 	return nil
 }
@@ -112,7 +110,7 @@ func (h *SAMLHandler) ACS(writer http.ResponseWriter, req bunrouter.Request) err
 // Metadata serves this SP's own metadata document (entity ID, ACS URL,
 // certificate) so IdP admins can configure their side by URL.
 // GET /api/v1/auth/saml/metadata.
-func (h *SAMLHandler) Metadata(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *SAMLHandler) Metadata(writer http.ResponseWriter, req *http.Request) error {
 	data, err := h.svc.Metadata(req.Context())
 	if err != nil {
 		if errors.Is(err, ErrSAMLNotConfigured) {
@@ -148,7 +146,7 @@ func (h *SAMLHandler) buildSuccessRedirect(baseURI string, result *SAMLResult) s
 
 // redirectWithError redirects with error parameters.
 func (h *SAMLHandler) redirectWithError(
-	writer http.ResponseWriter, req bunrouter.Request,
+	writer http.ResponseWriter, req *http.Request,
 	baseURI, code, description string,
 ) error {
 	parsedURL, err := url.Parse(baseURI)
@@ -161,14 +159,14 @@ func (h *SAMLHandler) redirectWithError(
 	query.Set("error_description", description)
 	parsedURL.RawQuery = query.Encode()
 
-	http.Redirect(writer, req.Request, parsedURL.String(), http.StatusFound)
+	http.Redirect(writer, req, parsedURL.String(), http.StatusFound)
 
 	return nil
 }
 
 // handleSAMLError handles SAML errors by redirecting with error information.
 func (h *SAMLHandler) handleSAMLError(
-	writer http.ResponseWriter, req bunrouter.Request,
+	writer http.ResponseWriter, req *http.Request,
 	redirectURI string, err error,
 ) error {
 	var code, description string

@@ -2301,9 +2301,13 @@ function MaintenanceScheduleSection() {
       <div className="space-y-2">
         <h3 className="text-sm font-medium">Duration input (number + unit)</h3>
         <p className="text-xs text-muted-foreground">
-          {"<Input type=\"number\">"} paired with a unit {"<Select>"}.
+          {"<Input type=\"number\">"} paired with a unit {"<Select>"}. Also
+          used inline in <code>check-form.tsx</code>'s Scheduling card for the
+          check period (minutes/hours/days/weeks) and the optional "Region
+          Spread" override (seconds/minutes/hours — spread needs finer
+          granularity than a whole-minute period).
         </p>
-        <div className="flex gap-2 max-w-xs">
+        <div className="flex flex-wrap gap-2 max-w-xs">
           <Input
             type="number"
             min={1}
@@ -2317,6 +2321,7 @@ function MaintenanceScheduleSection() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="seconds">seconds</SelectItem>
               <SelectItem value="minutes">minutes</SelectItem>
               <SelectItem value="hours">hours</SelectItem>
             </SelectContent>

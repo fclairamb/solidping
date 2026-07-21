@@ -4,7 +4,7 @@ This file provides backend-specific guidance for the SolidPing monitoring system
 
 ## Core Technologies
 - **Language**: Go 1.24+
-- **HTTP Router**: bunrouter (lightweight HTTP routing)
+- **HTTP Router**: go-chi/chi v5, behind the in-repo `internal/httpx` adapter that preserves error-returning handlers (`func(w, *http.Request) error`) and a `Group`/`Use` middleware tree
 - **ORM**: Bun ORM (PostgreSQL)
 - **Configuration**: koanf (YAML + environment variables)
 - **CLI**: urfave/cli
@@ -52,7 +52,7 @@ Strict separation between HTTP concerns and business logic:
 The Go backend follows a clean architecture pattern with strict separation of concerns:
 
 - **`main.go`**: CLI entry point with serve/migrate commands using urfave/cli
-- **`internal/app/server.go`**: HTTP server setup with bunrouter, middleware, route definitions, and service dependency injection
+- **`internal/app/server.go`**: HTTP server setup with the `internal/httpx` (chi) router, middleware, route definitions, and service dependency injection
 - **`internal/app/services/`**: Centralized service registry (`ServicesList`) for dependency injection
 - **`internal/handlers/`**: Domain-specific handlers organized by domain
   - **`handler.go`**: HTTP request/response handling, input validation, error translation

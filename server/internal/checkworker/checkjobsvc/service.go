@@ -34,7 +34,11 @@ type Service interface {
 	// maxAhead, so a leftovers-only slow allowance would be zero forever and
 	// starve the slow lane outright. Both SELECTs run in one transaction.
 	// Lease duration is calculated per job as scheduled_at + period + 30s.
-	// Returns claimed jobs or nil if none available.
+	// Returns claimed jobs (nil if none available) plus a next-eligible hint:
+	// how long until the earliest still-unleased job in scope becomes
+	// claimable (0 = none within the hint horizon). The worker's fetcher
+	// sleeps on that hint instead of a flat fallback poll, which is what
+	// keeps sub-minute periods honest on an otherwise idle worker.
 	ClaimJobs(
 		ctx context.Context,
 		workerUID string,
@@ -42,7 +46,7 @@ type Service interface {
 		fastLimit int,
 		slowLimit int,
 		maxAhead time.Duration,
-	) ([]*models.CheckJob, error)
+	) ([]*models.CheckJob, time.Duration, error)
 
 	// ClaimJobsForCheck atomically claims any due check_jobs rows for the
 	// given checkUID. Used by the express runner that wakes up on
@@ -64,7 +68,10 @@ type Service interface {
 	// another region's work. checkUID, when non-empty, further pins the claim
 	// to one check (the agent express path). No lane split applies (a private
 	// location has one agent pool, not the server's fast/slow reservation);
-	// ordering stays cost-aware via effective_scheduled_at.
+	// ordering stays cost-aware via effective_scheduled_at. The second return
+	// is the same next-eligible hint as ClaimJobs, computed over the agent's
+	// whole (org, region) scope regardless of any checkUID pin, so the agent's
+	// fetcher always learns when to come back.
 	ClaimJobsForAgent(
 		ctx context.Context,
 		workerUID string,
@@ -73,7 +80,7 @@ type Service interface {
 		checkUID string,
 		limit int,
 		maxAhead time.Duration,
-	) ([]*models.CheckJob, error)
+	) ([]*models.CheckJob, time.Duration, error)
 
 	// ReleaseLease releases the lease and reschedules the job for next execution.
 	// It folds in no fresh cost/delay sample (the probe was skipped, or ran on a
@@ -129,16 +136,30 @@ func (s *serviceImpl) ClaimJobs(
 	fastLimit int,
 	slowLimit int,
 	maxAhead time.Duration,
-) ([]*models.CheckJob, error) {
+) ([]*models.CheckJob, time.Duration, error) {
 	var jobs []*models.CheckJob
+	var nextIn time.Duration
 	now := time.Now()
 	claimStart := time.Now()
 
 	// Check if database is PostgreSQL
 	_, isPostgres := s.db.Dialect().(*pgdialect.Dialect)
 
+	cloudScope := func(query *bun.SelectQuery) *bun.SelectQuery {
+		if region != nil {
+			query = query.WhereGroup(" AND ", func(sub *bun.SelectQuery) *bun.SelectQuery {
+				return sub.
+					WhereOr("region IS NULL").
+					WhereOr("? LIKE region || '%'", *region)
+			})
+		}
+
+		return query
+	}
+
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		jobs = nil
+		nextIn = 0
 
 		// Slow lane FIRST, capped by its reservation budget and the free
 		// capacity. Order matters: with FetchMaxAhead-style claim-ahead, a
@@ -177,30 +198,39 @@ func (s *serviceImpl) ClaimJobs(
 			jobs = append(jobs, fastJobs...)
 		}
 
-		if len(jobs) == 0 {
-			return nil // No jobs available
+		if len(jobs) > 0 {
+			// Update each job with lease info
+			if err := s.updateJobsWithLease(ctx, tx, jobs, workerUID, now, isPostgres); err != nil {
+				return err
+			}
+
+			// Attach each job's check so the incident hot path can skip a
+			// per-result GetCheck. Same tx so claim + fetch are one round-trip pair.
+			if err := attachChecks(ctx, tx, jobs); err != nil {
+				return err
+			}
 		}
 
-		// Update each job with lease info
-		if err := s.updateJobsWithLease(ctx, tx, jobs, workerUID, now, isPostgres); err != nil {
-			return err
-		}
+		// The hint runs AFTER the lease writes so jobs claimed in this very
+		// batch (their scheduled_at may still be up to claim-ahead in the
+		// future) are excluded by the lease filter instead of producing an
+		// immediate wasted re-poll.
+		var hintErr error
+		nextIn, hintErr = s.nextEligibleIn(ctx, tx, now, maxAhead, cloudScope)
 
-		// Attach each job's check so the incident hot path can skip a
-		// per-result GetCheck. Same tx so claim + fetch are one round-trip pair.
-		return attachChecks(ctx, tx, jobs)
+		return hintErr
 	})
 	prommetrics.RecordCheckStage("claim", time.Since(claimStart).Seconds())
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil // No jobs available
+			return nil, nextIn, nil // No jobs available
 		}
 
-		return nil, err
+		return nil, 0, err
 	}
 
-	return jobs, nil
+	return jobs, nextIn, nil
 }
 
 // expressClaimLimit caps how many rows the express path may claim per
@@ -262,8 +292,9 @@ func (s *serviceImpl) ClaimJobsForAgent(
 	checkUID string,
 	limit int,
 	maxAhead time.Duration,
-) ([]*models.CheckJob, error) {
+) ([]*models.CheckJob, time.Duration, error) {
 	var jobs []*models.CheckJob
+	var nextIn time.Duration
 
 	now := time.Now()
 
@@ -274,63 +305,96 @@ func (s *serviceImpl) ClaimJobsForAgent(
 		coarseAhead = maxClaimAheadFloor
 	}
 
+	// The hint deliberately ignores any checkUID pin: the agent's fetcher
+	// wants to know when ANY of its jobs becomes claimable, even when this
+	// particular claim was an express one pinned to a single check.
+	agentScope := func(q *bun.SelectQuery) *bun.SelectQuery {
+		return q.
+			Where("organization_uid = ?", orgUID).
+			Where("region = ?", region)
+	}
+
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		jobs = nil
+		nextIn = 0
 
-		query := tx.NewSelect().
-			Model(&jobs).
-			// HARD scope: exact org + exact region. Never NULL-region, never a
-			// prefix match — structurally the inverse of the cloud-worker path.
-			Where("organization_uid = ?", orgUID).
-			Where("region = ?", region).
-			Where("scheduled_at <= ?", now.Add(coarseAhead)).
-			WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
-				return q.
-					WhereOr("lease_expires_at IS NULL").
-					WhereOr("lease_expires_at < ?", now)
-			}).
-			OrderExpr("effective_scheduled_at ASC").
-			Limit(limit)
-
-		if checkUID != "" {
-			query = query.Where("check_uid = ?", checkUID)
+		var selErr error
+		jobs, selErr = selectAvailableJobsForAgent(
+			ctx, tx, orgUID, region, checkUID, limit, maxAhead, coarseAhead, now, isPostgres,
+		)
+		if selErr != nil {
+			return selErr
 		}
 
-		if isPostgres {
-			query = query.For("UPDATE SKIP LOCKED")
-		}
-
-		if err := query.Scan(ctx); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return nil
+		if len(jobs) > 0 {
+			if err := s.updateJobsWithLease(ctx, tx, jobs, workerUID, now, isPostgres); err != nil {
+				return err
 			}
 
-			return err
-		}
-
-		// Same per-job claim-ahead clamp as the in-process path (spec
-		// 2026-07-05-08 D3).
-		filtered := jobs[:0]
-		for _, job := range jobs {
-			window := clampAhead(maxAhead, job.Period)
-			if job.ScheduledAt == nil || !job.ScheduledAt.After(now.Add(window)) {
-				filtered = append(filtered, job)
+			if err := attachChecks(ctx, tx, jobs); err != nil {
+				return err
 			}
 		}
 
-		jobs = filtered
+		// After the lease writes, so this batch's claims are excluded (same
+		// ordering rationale as ClaimJobs).
+		var hintErr error
+		nextIn, hintErr = s.nextEligibleIn(ctx, tx, now, maxAhead, agentScope)
 
-		if len(jobs) == 0 {
-			return nil
-		}
-
-		if err := s.updateJobsWithLease(ctx, tx, jobs, workerUID, now, isPostgres); err != nil {
-			return err
-		}
-
-		return attachChecks(ctx, tx, jobs)
+		return hintErr
 	})
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nextIn, nil
+		}
+
+		return nil, 0, err
+	}
+
+	return jobs, nextIn, nil
+}
+
+// selectAvailableJobsForAgent runs the agent claim's SELECT: hard-scoped to
+// exact org + exact region (never NULL-region, never a prefix match —
+// structurally the inverse of the cloud-worker path), optionally pinned to one
+// check, then narrowed by the same per-job claim-ahead clamp as the in-process
+// path (spec 2026-07-05-08 D3).
+func selectAvailableJobsForAgent(
+	ctx context.Context,
+	tx bun.Tx,
+	orgUID string,
+	region string,
+	checkUID string,
+	limit int,
+	maxAhead time.Duration,
+	coarseAhead time.Duration,
+	now time.Time,
+	isPostgres bool,
+) ([]*models.CheckJob, error) {
+	var jobs []*models.CheckJob
+
+	query := tx.NewSelect().
+		Model(&jobs).
+		Where("organization_uid = ?", orgUID).
+		Where("region = ?", region).
+		Where("scheduled_at <= ?", now.Add(coarseAhead)).
+		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.
+				WhereOr("lease_expires_at IS NULL").
+				WhereOr("lease_expires_at < ?", now)
+		}).
+		OrderExpr("effective_scheduled_at ASC").
+		Limit(limit)
+
+	if checkUID != "" {
+		query = query.Where("check_uid = ?", checkUID)
+	}
+
+	if isPostgres {
+		query = query.For("UPDATE SKIP LOCKED")
+	}
+
+	if err := query.Scan(ctx); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -338,7 +402,16 @@ func (s *serviceImpl) ClaimJobsForAgent(
 		return nil, err
 	}
 
-	return jobs, nil
+	filtered := jobs[:0]
+
+	for _, job := range jobs {
+		window := clampAhead(maxAhead, job.Period)
+		if job.ScheduledAt == nil || !job.ScheduledAt.After(now.Add(window)) {
+			filtered = append(filtered, job)
+		}
+	}
+
+	return filtered, nil
 }
 
 // attachChecks fetches every claimed job's check in one batched SELECT inside
@@ -436,7 +509,8 @@ func (s *serviceImpl) selectAvailableJobsForCheck(
 // Claim-ahead is what makes firing punctual (a runner claims slightly early
 // and sleeps the remainder in-slot rather than missing the tick entirely),
 // but the historical flat FetchMaxAhead default (5 minutes) let it consume
-// most of the pool: with N jobs/region on a short split period, nearly every
+// most of the pool: with many short-period jobs (e.g. a check running per
+// region every minute, one job per region — spec 2026-07-20-05), nearly every
 // job is "due within 5 minutes" at any instant, so claim-ahead alone parked
 // ~22 of 25 runners. Bounding it per job to at most half its own period (and
 // never more than this floor) keeps the parked count near actual poll churn.
@@ -444,11 +518,11 @@ const maxClaimAheadFloor = 30 * time.Second
 
 // clampAhead returns the eligibility window for one job: the smaller of the
 // caller's maxAhead (the configured FetchMaxAhead), half the job's own
-// period, and maxClaimAheadFloor. A job with a short period (e.g. 1 minute,
-// split across 3 regions to 3 minutes) never parks for longer than it
-// actually needs to bridge between polls; a job with a long period (e.g. 1
-// hour) is still bounded by the flat floor so a single slow-period job can't
-// occupy a runner slot for minutes either.
+// period, and maxClaimAheadFloor. A job with a short period (e.g. a 1-minute
+// check, now one full-period job per region — spec 2026-07-20-05) never parks
+// for longer than it actually needs to bridge between polls; a job with a long
+// period (e.g. 1 hour) is still bounded by the flat floor so a single
+// slow-period job can't occupy a runner slot for minutes either.
 //
 // period <= 0 degrades to maxAhead unclamped (defensive only — check_jobs
 // always carries a positive period).
@@ -464,6 +538,83 @@ func clampAhead(maxAhead time.Duration, period timeutils.Duration) time.Duration
 	}
 
 	return window
+}
+
+// nextEligibleHorizon bounds how far ahead nextEligibleIn looks. The fetcher
+// falls back to a flat poll (one minute) when no hint is returned, so a job
+// whose eligibility is further out than fallback + the widest possible
+// claim-ahead window (maxClaimAheadFloor) can never need a hint-driven wake —
+// the fallback poll reaches it first.
+const nextEligibleHorizon = time.Minute + maxClaimAheadFloor
+
+// nextEligibleScanLimit caps the hint scan. Eligibility is scheduled_at minus
+// a per-job window in [0, maxClaimAheadFloor], so scanning the first rows by
+// scheduled_at can miss the true minimum by at most maxClaimAheadFloor — an
+// error far below the flat fallback the hint replaces.
+const nextEligibleScanLimit = 50
+
+// minNextEligibleIn floors the hint so a job that is already claimable (e.g.
+// clipped from this claim by its limit) yields a short positive wait instead
+// of a zero/negative one that would spin the fetcher.
+const minNextEligibleIn = 100 * time.Millisecond
+
+// nextEligibleIn returns how long until the earliest still-unleased job in
+// scope becomes claimable (its scheduled_at minus its per-job claim-ahead
+// window), or 0 when no such job exists within nextEligibleHorizon. This is
+// the fix for sub-minute periods on an idle worker (spec 2026-07-20-03): the
+// fetcher's only periodic wake used to be a flat one-minute poll, and a 10s
+// job — claimable only 5s (period/2) before it is due — was never claimable
+// at the moment a completion woke the fetcher, so it ran once per minute.
+// Scope is injected because the cloud claim (NULL/prefix region match) and
+// the agent claim (hard org+region) gate rows differently.
+func (s *serviceImpl) nextEligibleIn(
+	ctx context.Context,
+	tx bun.Tx,
+	now time.Time,
+	maxAhead time.Duration,
+	scope func(*bun.SelectQuery) *bun.SelectQuery,
+) (time.Duration, error) {
+	var upcoming []*models.CheckJob
+
+	query := tx.NewSelect().
+		Model(&upcoming).
+		Column("scheduled_at", "period").
+		Where("scheduled_at > ?", now).
+		Where("scheduled_at <= ?", now.Add(nextEligibleHorizon)).
+		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.
+				WhereOr("lease_expires_at IS NULL").
+				WhereOr("lease_expires_at < ?", now)
+		}).
+		Order("scheduled_at ASC").
+		Limit(nextEligibleScanLimit)
+
+	if err := scope(query).Scan(ctx); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+
+		return 0, err
+	}
+
+	var best time.Duration
+
+	for _, job := range upcoming {
+		if job.ScheduledAt == nil {
+			continue
+		}
+
+		eligibleIn := job.ScheduledAt.Sub(now) - clampAhead(maxAhead, job.Period)
+		if eligibleIn < minNextEligibleIn {
+			eligibleIn = minNextEligibleIn
+		}
+
+		if best == 0 || eligibleIn < best {
+			best = eligibleIn
+		}
+	}
+
+	return best, nil
 }
 
 // selectAvailableJobs builds and executes the query to select available jobs

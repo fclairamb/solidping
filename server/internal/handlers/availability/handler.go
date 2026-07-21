@@ -5,10 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // Handler handles HTTP requests for the per-check availability endpoint.
@@ -26,9 +25,9 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 }
 
 // GetAvailability handles GET /api/v1/orgs/:org/checks/:check/availability.
-func (h *Handler) GetAvailability(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	checkIdent := req.Param("check")
+func (h *Handler) GetAvailability(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	checkIdent := httpx.Param(req, "check")
 
 	query := req.URL.Query()
 

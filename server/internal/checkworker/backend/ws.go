@@ -211,29 +211,36 @@ func (b *WSBackend) ClaimJobs(
 	fastLimit int,
 	_ int,
 	_ time.Duration,
-) ([]*models.CheckJob, error) {
+) ([]*models.CheckJob, time.Duration, error) {
 	return b.claim(ctx, fastLimit, "")
 }
 
 // ClaimJobsForCheck is the agent express path: a claim pinned to one check.
+// The next-eligible hint is dropped — the express goroutine doesn't poll.
 func (b *WSBackend) ClaimJobsForCheck(
 	ctx context.Context,
 	_ string,
 	_ *string,
 	checkUID string,
 ) ([]*models.CheckJob, error) {
-	return b.claim(ctx, 4, checkUID)
+	jobs, _, err := b.claim(ctx, 4, checkUID)
+
+	return jobs, err
 }
 
-// claim sends one claim frame and converts/unseals the response.
-func (b *WSBackend) claim(ctx context.Context, maxJobs int, checkUID string) ([]*models.CheckJob, error) {
+// claim sends one claim frame and converts/unseals the response. The second
+// return is the server's next-eligible hint (0 when absent — e.g. an older
+// server that predates retryInMs).
+func (b *WSBackend) claim(
+	ctx context.Context, maxJobs int, checkUID string,
+) ([]*models.CheckJob, time.Duration, error) {
 	resp, err := b.request(ctx, &agents.ClientFrame{
 		Type:     agents.MsgTypeClaim,
 		MaxJobs:  maxJobs,
 		CheckUID: checkUID,
 	})
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	jobs := make([]*models.CheckJob, 0, len(resp.Jobs))
@@ -280,7 +287,7 @@ func (b *WSBackend) claim(ctx context.Context, maxJobs int, checkUID string) ([]
 		jobs = append(jobs, job)
 	}
 
-	return jobs, nil
+	return jobs, time.Duration(resp.RetryInMs) * time.Millisecond, nil
 }
 
 // submitSealError reports a decrypt failure as an error result so the check's

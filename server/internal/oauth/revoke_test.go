@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -232,7 +231,7 @@ func doRevoke(t *testing.T, h *Handler, form url.Values) *httptest.ResponseRecor
 		context.Background(), http.MethodPost, PathRevoke, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
-	require.NoError(t, h.Revoke(rec, bunrouter.NewRequest(req)))
+	require.NoError(t, h.Revoke(rec, req))
 
 	return rec
 }

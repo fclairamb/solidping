@@ -4,8 +4,6 @@ package webpush
 import (
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
@@ -35,7 +33,7 @@ type vapidPublicKeyData struct {
 
 // GetVAPIDPublicKey returns the server's VAPID public key.
 // Route: GET /api/v1/orgs/:org/webpush/vapid-public-key.
-func (h *Handler) GetVAPIDPublicKey(w http.ResponseWriter, _ bunrouter.Request) error {
+func (h *Handler) GetVAPIDPublicKey(w http.ResponseWriter, _ *http.Request) error {
 	if h.cfg.WebPush.VAPIDPublicKey == "" {
 		return h.WriteError(w, http.StatusNotFound, base.ErrorCodeNotFound, "Web Push not configured")
 	}

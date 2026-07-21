@@ -17,7 +17,7 @@ fail too" — A is the parent, B is the child, and the edge has a kind:
 
 This page covers what the cascade rollup actually does at incident-open
 and parent-resolve time. For the data model and CRUD API surface see
-[api-specification.md](../api-specification.md). For the broader
+[api-specification/checks.md](../api-specification/checks.md). For the broader
 notification pipeline see [notifications-and-escalation.md](notifications-and-escalation.md).
 
 ## When rollup applies

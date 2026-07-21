@@ -7,8 +7,6 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
@@ -33,7 +31,7 @@ func NewDiscordOAuthHandler(
 
 // Login initiates the Discord OAuth flow.
 // GET /api/v1/auth/discord/login?redirect_uri=...
-func (h *DiscordOAuthHandler) Login(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *DiscordOAuthHandler) Login(writer http.ResponseWriter, req *http.Request) error {
 	redirectURI := req.URL.Query().Get("redirect_uri")
 	if redirectURI == "" {
 		redirectURI = "/" // Default to root
@@ -48,14 +46,14 @@ func (h *DiscordOAuthHandler) Login(writer http.ResponseWriter, req bunrouter.Re
 	// Build Discord OAuth URL
 	discordAuthURL := h.buildDiscordAuthURL(state)
 
-	http.Redirect(writer, req.Request, discordAuthURL, http.StatusFound)
+	http.Redirect(writer, req, discordAuthURL, http.StatusFound)
 
 	return nil
 }
 
 // Callback handles the OAuth callback from Discord.
 // GET /api/v1/auth/discord/callback?code=...&state=...
-func (h *DiscordOAuthHandler) Callback(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *DiscordOAuthHandler) Callback(writer http.ResponseWriter, req *http.Request) error {
 	code := req.URL.Query().Get("code")
 	stateParam := req.URL.Query().Get("state")
 	errorParam := req.URL.Query().Get("error")
@@ -90,7 +88,7 @@ func (h *DiscordOAuthHandler) Callback(writer http.ResponseWriter, req bunrouter
 	// authorize/consent flow) work without a login-page refresh bounce.
 	redirectURL := h.buildSuccessRedirect(oauthState.RedirectURI, result)
 	setAccessTokenCookie(writer, result.AccessToken, result.ExpiresIn)
-	http.Redirect(writer, req.Request, redirectURL, http.StatusFound)
+	http.Redirect(writer, req, redirectURL, http.StatusFound)
 
 	return nil
 }
@@ -128,7 +126,7 @@ func (h *DiscordOAuthHandler) buildSuccessRedirect(
 
 // redirectWithError redirects with error parameters.
 func (h *DiscordOAuthHandler) redirectWithError(
-	writer http.ResponseWriter, req bunrouter.Request,
+	writer http.ResponseWriter, req *http.Request,
 	baseURI, code, description string,
 ) error {
 	parsedURL, err := url.Parse(baseURI)
@@ -141,14 +139,14 @@ func (h *DiscordOAuthHandler) redirectWithError(
 	query.Set("error_description", description)
 	parsedURL.RawQuery = query.Encode()
 
-	http.Redirect(writer, req.Request, parsedURL.String(), http.StatusFound)
+	http.Redirect(writer, req, parsedURL.String(), http.StatusFound)
 
 	return nil
 }
 
 // handleOAuthError handles OAuth errors by redirecting with error information.
 func (h *DiscordOAuthHandler) handleOAuthError(
-	writer http.ResponseWriter, req bunrouter.Request,
+	writer http.ResponseWriter, req *http.Request,
 	redirectURI string, err error,
 ) error {
 	var code, description string

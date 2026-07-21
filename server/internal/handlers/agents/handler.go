@@ -5,10 +5,11 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
+	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	entitlementshandler "github.com/fclairamb/solidping/server/internal/handlers/entitlements"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 	"github.com/fclairamb/solidping/server/internal/regions"
 )
@@ -34,8 +35,8 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 }
 
 // ListPrivateRegions handles GET /api/v1/orgs/:org/private-regions.
-func (h *Handler) ListPrivateRegions(writer http.ResponseWriter, req bunrouter.Request) error {
-	resp, err := h.svc.ListPrivateRegions(req.Context(), req.Param("org"))
+func (h *Handler) ListPrivateRegions(writer http.ResponseWriter, req *http.Request) error {
+	resp, err := h.svc.ListPrivateRegions(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
 		return h.writeServiceError(writer, err)
 	}
@@ -44,13 +45,13 @@ func (h *Handler) ListPrivateRegions(writer http.ResponseWriter, req bunrouter.R
 }
 
 // CreatePrivateRegion handles POST /api/v1/orgs/:org/private-regions.
-func (h *Handler) CreatePrivateRegion(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) CreatePrivateRegion(writer http.ResponseWriter, req *http.Request) error {
 	var body CreatePrivateRegionRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid request body")
 	}
 
-	resp, err := h.svc.CreatePrivateRegion(req.Context(), req.Param("org"), &body)
+	resp, err := h.svc.CreatePrivateRegion(req.Context(), httpx.Param(req, "org"), &body)
 	if err != nil {
 		return h.writeServiceError(writer, err)
 	}
@@ -59,8 +60,8 @@ func (h *Handler) CreatePrivateRegion(writer http.ResponseWriter, req bunrouter.
 }
 
 // DeletePrivateRegion handles DELETE /api/v1/orgs/:org/private-regions/:slug.
-func (h *Handler) DeletePrivateRegion(writer http.ResponseWriter, req bunrouter.Request) error {
-	if err := h.svc.DeletePrivateRegion(req.Context(), req.Param("org"), req.Param("slug")); err != nil {
+func (h *Handler) DeletePrivateRegion(writer http.ResponseWriter, req *http.Request) error {
+	if err := h.svc.DeletePrivateRegion(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "slug")); err != nil {
 		return h.writeServiceError(writer, err)
 	}
 
@@ -69,7 +70,7 @@ func (h *Handler) DeletePrivateRegion(writer http.ResponseWriter, req bunrouter.
 
 // MintEnrollmentToken handles POST /api/v1/orgs/:org/agent-enrollment-tokens.
 // The response is the only time the token secret is readable.
-func (h *Handler) MintEnrollmentToken(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) MintEnrollmentToken(writer http.ResponseWriter, req *http.Request) error {
 	var body MintEnrollmentTokenRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid request body")
@@ -80,7 +81,7 @@ func (h *Handler) MintEnrollmentToken(writer http.ResponseWriter, req bunrouter.
 		createdBy = &user.UID
 	}
 
-	resp, err := h.svc.MintEnrollmentToken(req.Context(), req.Param("org"), &body, createdBy)
+	resp, err := h.svc.MintEnrollmentToken(req.Context(), httpx.Param(req, "org"), &body, createdBy)
 	if err != nil {
 		return h.writeServiceError(writer, err)
 	}
@@ -89,8 +90,8 @@ func (h *Handler) MintEnrollmentToken(writer http.ResponseWriter, req bunrouter.
 }
 
 // ListEnrollmentTokens handles GET /api/v1/orgs/:org/agent-enrollment-tokens.
-func (h *Handler) ListEnrollmentTokens(writer http.ResponseWriter, req bunrouter.Request) error {
-	resp, err := h.svc.ListEnrollmentTokens(req.Context(), req.Param("org"))
+func (h *Handler) ListEnrollmentTokens(writer http.ResponseWriter, req *http.Request) error {
+	resp, err := h.svc.ListEnrollmentTokens(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
 		return h.writeServiceError(writer, err)
 	}
@@ -99,8 +100,8 @@ func (h *Handler) ListEnrollmentTokens(writer http.ResponseWriter, req bunrouter
 }
 
 // DeleteEnrollmentToken handles DELETE /api/v1/orgs/:org/agent-enrollment-tokens/:uid.
-func (h *Handler) DeleteEnrollmentToken(writer http.ResponseWriter, req bunrouter.Request) error {
-	if err := h.svc.DeleteEnrollmentToken(req.Context(), req.Param("org"), req.Param("uid")); err != nil {
+func (h *Handler) DeleteEnrollmentToken(writer http.ResponseWriter, req *http.Request) error {
+	if err := h.svc.DeleteEnrollmentToken(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid")); err != nil {
 		return h.writeServiceError(writer, err)
 	}
 
@@ -108,8 +109,8 @@ func (h *Handler) DeleteEnrollmentToken(writer http.ResponseWriter, req bunroute
 }
 
 // ListAgents handles GET /api/v1/orgs/:org/agents.
-func (h *Handler) ListAgents(writer http.ResponseWriter, req bunrouter.Request) error {
-	resp, err := h.svc.ListAgents(req.Context(), req.Param("org"))
+func (h *Handler) ListAgents(writer http.ResponseWriter, req *http.Request) error {
+	resp, err := h.svc.ListAgents(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
 		return h.writeServiceError(writer, err)
 	}
@@ -118,8 +119,8 @@ func (h *Handler) ListAgents(writer http.ResponseWriter, req bunrouter.Request) 
 }
 
 // RevokeAgent handles DELETE /api/v1/orgs/:org/agents/:uid.
-func (h *Handler) RevokeAgent(writer http.ResponseWriter, req bunrouter.Request) error {
-	if err := h.svc.RevokeAgent(req.Context(), req.Param("org"), req.Param("uid")); err != nil {
+func (h *Handler) RevokeAgent(writer http.ResponseWriter, req *http.Request) error {
+	if err := h.svc.RevokeAgent(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid")); err != nil {
 		return h.writeServiceError(writer, err)
 	}
 
@@ -129,6 +130,16 @@ func (h *Handler) RevokeAgent(writer http.ResponseWriter, req bunrouter.Request)
 // writeServiceError maps domain errors to HTTP responses.
 func (h *Handler) writeServiceError(writer http.ResponseWriter, err error) error {
 	switch {
+	case errors.Is(err, entcore.ErrEntitlementExceeded):
+		var qe *entcore.QuotaError
+		if !errors.As(err, &qe) {
+			return h.WriteInternalError(writer, err)
+		}
+
+		body := entitlementshandler.FormatQuotaError(qe)
+		body["code"] = string(base.ErrorCodeQuotaExceeded)
+
+		return h.WriteJSON(writer, http.StatusPaymentRequired, body)
 	case errors.Is(err, ErrOrgNotFound):
 		return h.WriteErrorErr(
 			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)

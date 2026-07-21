@@ -195,6 +195,10 @@ type Service interface {
 	ListChecksByTunnelCheckUID(ctx context.Context, orgUID, tunnelCheckUID string) ([]*models.Check, error)
 	UpdateCheck(ctx context.Context, uid string, update *models.CheckUpdate) error
 	DeleteCheck(ctx context.Context, uid string) error
+	// ListChecksWithStaleJobPeriods returns enabled, non-deleted checks that
+	// have at least one check_job whose period no longer matches the check's
+	// period — the one-shot startup reconcile target (spec 2026-07-20-05).
+	ListChecksWithStaleJobPeriods(ctx context.Context) ([]*models.Check, error)
 
 	// CheckJob operations
 	ListCheckJobsByCheckUID(ctx context.Context, checkUID string) ([]*models.CheckJob, error)

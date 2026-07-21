@@ -40,6 +40,9 @@ func TestDefaultsForSelfHosted(t *testing.T) {
 	r.Equal(30, *defaults.Limits.MaxUsers)
 	r.Nil(defaults.Limits.MaxChecksPerMinute)
 	r.Nil(defaults.Limits.MaxChecks)
+	// Self-hosted keeps the "free private locations" competitive
+	// positioning: unlimited deported agents.
+	r.Nil(defaults.Limits.MaxDeportedAgents)
 	r.NotNil(defaults.DisplayName)
 	r.Equal("Self-hosted", *defaults.DisplayName)
 }
@@ -57,10 +60,45 @@ func TestDefaultsForSaaS(t *testing.T) {
 	r.Equal(6, *defaults.Limits.MaxChecksPerMinute)
 	r.NotNil(defaults.Limits.MaxChecks)
 	r.Equal(100, *defaults.Limits.MaxChecks)
+	// Mirrors the Free SKU's private-location agent cap (ladder 1/3/6/9).
+	r.NotNil(defaults.Limits.MaxDeportedAgents)
+	r.Equal(1, *defaults.Limits.MaxDeportedAgents)
 	r.NotNil(defaults.DisplayName)
 	r.Equal("Free", *defaults.DisplayName)
 	r.NotNil(defaults.DisplayEmoji)
 	r.Equal("🆓", *defaults.DisplayEmoji)
+}
+
+// TestUsageChecksPerMinuteCountsRegions verifies that a multi-region check
+// contributes (60s/period) × region_count to ChecksPerMinute (spec
+// 2026-07-20-05): every selected region runs the check every period.
+func TestUsageChecksPerMinuteCountsRegions(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, org, dbSvc := setup(t)
+
+	mkCheck := func(slug string, period time.Duration, regions []string) {
+		check := models.NewCheck(org.UID, slug, "http")
+		check.Period = timeutils.Duration(period)
+		check.Regions = regions
+		check.Config = models.JSONMap{"url": "https://example.com"}
+		r.NoError(dbSvc.CreateCheck(ctx, check))
+	}
+
+	// 1m check, no regions → 1.0/min (min region count is 1).
+	mkCheck("no-regions", time.Minute, nil)
+	// 1m check, 3 regions → 3.0/min.
+	mkCheck("three-regions", time.Minute, []string{"default", "eu-2", "us-1"})
+	// 30s check, 2 regions → (60/30) × 2 = 4.0/min.
+	mkCheck("two-regions-30s", 30*time.Second, []string{"default", "eu-2"})
+
+	usage, err := svc.Usage(ctx, org.UID)
+	r.NoError(err)
+	r.Equal(3, usage.Checks)
+	r.InDelta(8.0, usage.ChecksPerMinute, 0.001,
+		"1 (no-region) + 3 (3 regions) + 4 (2 regions @30s) = 8 checks/minute")
 }
 
 func TestDefaultsForUnknownFallsBackToSelfHosted(t *testing.T) {
@@ -405,6 +443,26 @@ func seedCheck(t *testing.T, dbSvc *sqlite.Service, orgUID string, enabled, inte
 	r.NoError(dbSvc.CreateCheck(t.Context(), check))
 }
 
+// seedAgent mints a one-shot enrollment token bound to (orgUID, region) and
+// immediately consumes it, returning the newly-active agent row. tokenHash
+// must be unique per call within a test (no real crypto needed at this
+// db-level layer, mirroring handlers/agents/service_test.go's fixtures).
+func seedAgent(t *testing.T, dbSvc *sqlite.Service, orgUID, region, tokenHash string) *models.Agent {
+	t.Helper()
+	r := require.New(t)
+	ctx := t.Context()
+
+	tok := models.NewAgentEnrollmentToken(orgUID, region, tokenHash, time.Now().Add(time.Hour), nil)
+	r.NoError(dbSvc.CreateAgentEnrollmentToken(ctx, tok))
+
+	agent, err := dbSvc.EnrollAgent(
+		ctx, tokenHash, "agent-"+tokenHash, "ed-"+tokenHash, "age1"+tokenHash, "fp-"+tokenHash,
+	)
+	r.NoError(err)
+
+	return agent
+}
+
 func TestUsageCountsAndRate(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -444,6 +502,30 @@ func TestUsageWithSSOMembers(t *testing.T) {
 	r.NoError(err)
 	r.Equal(0, usage.Checks)
 	r.Equal(1, usage.SSOUsers)
+}
+
+// TestUsageAgentsExcludesRevoked verifies Usage.Agents counts only active
+// agents — a revoked one drops out of the count immediately.
+func TestUsageAgentsExcludesRevoked(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org, dbSvc := setup(t)
+
+	region := "@" + org.Slug + "/dc1"
+	a1 := seedAgent(t, dbSvc, org.UID, region, "h1")
+	seedAgent(t, dbSvc, org.UID, region, "h2")
+	seedAgent(t, dbSvc, org.UID, "@"+org.Slug+"/dc2", "h3")
+
+	usage, err := svc.Usage(ctx, org.UID)
+	r.NoError(err)
+	r.Equal(3, usage.Agents)
+
+	r.NoError(dbSvc.RevokeAgent(ctx, org.UID, a1.UID))
+
+	usage, err = svc.Usage(ctx, org.UID)
+	r.NoError(err)
+	r.Equal(2, usage.Agents)
 }
 
 func TestCheckCreateAllowedUnlimitedWhenNil(t *testing.T) {
@@ -517,6 +599,87 @@ func TestCheckCreateAllowedInternalExempt(t *testing.T) {
 	r.NoError(svc.CheckCreateAllowed(ctx, org.UID))
 }
 
+func TestAgentCreateAllowedUnlimitedWhenNil(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org, dbSvc := setup(t)
+
+	region := "@" + org.Slug + "/dc1"
+	// Self-hosted defaults: MaxDeportedAgents is nil → unlimited.
+	seedAgent(t, dbSvc, org.UID, region, "h1")
+	seedAgent(t, dbSvc, org.UID, region, "h2")
+	seedAgent(t, dbSvc, org.UID, region, "h3")
+	r.NoError(svc.AgentCreateAllowed(ctx, org.UID))
+}
+
+func TestAgentCreateAllowedUnderCap(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org, dbSvc := setup(t)
+
+	r.NoError(svc.Set(ctx, org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{MaxDeportedAgents: entitlements.Int(3)},
+		Source: models.EntitlementSourceAdmin,
+	}, "user:tester", ""))
+
+	seedAgent(t, dbSvc, org.UID, "@"+org.Slug+"/dc1", "h1")
+	r.NoError(svc.AgentCreateAllowed(ctx, org.UID))
+}
+
+func TestAgentCreateAllowedBlocksAtCap(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org, dbSvc := setup(t)
+
+	r.NoError(svc.Set(ctx, org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{MaxDeportedAgents: entitlements.Int(2)},
+		Source: models.EntitlementSourceAdmin,
+	}, "user:tester", ""))
+
+	region := "@" + org.Slug + "/dc1"
+	seedAgent(t, dbSvc, org.UID, region, "h1")
+	seedAgent(t, dbSvc, org.UID, region, "h2")
+
+	err := svc.AgentCreateAllowed(ctx, org.UID)
+	r.Error(err)
+	r.ErrorIs(err, entitlements.ErrEntitlementExceeded)
+
+	var quotaErr *entitlements.QuotaError
+	r.ErrorAs(err, &quotaErr)
+	r.Equal("MaxDeportedAgents", quotaErr.LimitName)
+	r.Equal(2, quotaErr.Limit)
+	r.Equal(2, quotaErr.CurrentUsage)
+}
+
+// TestAgentCreateAllowedRevokedAgentsDontCountAgainstCap verifies a revoked
+// agent frees a slot immediately — the standard soft-cap "delete one to add
+// one" recovery path.
+func TestAgentCreateAllowedRevokedAgentsDontCountAgainstCap(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org, dbSvc := setup(t)
+
+	r.NoError(svc.Set(ctx, org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{MaxDeportedAgents: entitlements.Int(1)},
+		Source: models.EntitlementSourceAdmin,
+	}, "user:tester", ""))
+
+	region := "@" + org.Slug + "/dc1"
+	a1 := seedAgent(t, dbSvc, org.UID, region, "h1")
+
+	// At cap: the next enrollment is blocked.
+	r.Error(svc.AgentCreateAllowed(ctx, org.UID))
+
+	r.NoError(dbSvc.RevokeAgent(ctx, org.UID, a1.UID))
+
+	// Revoking frees the slot.
+	r.NoError(svc.AgentCreateAllowed(ctx, org.UID))
+}
+
 func TestMergePropagatesMaxChecks(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -557,6 +720,7 @@ func TestPayloadRoundTrip(t *testing.T) {
 		Limits: entitlements.Limits{
 			MaxUsers:           entitlements.Int(50),
 			MaxChecksPerMinute: entitlements.Int(120),
+			MaxDeportedAgents:  entitlements.Int(9),
 		},
 		Source:       models.EntitlementSourceBilling,
 		DisplayName:  &displayName,

@@ -6,10 +6,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // Handler handles badge HTTP requests.
@@ -50,10 +49,10 @@ func parseIntParam(raw string, minVal, maxVal int) (int, bool) {
 }
 
 // GetBadge handles GET requests for badge images.
-func (h *Handler) GetBadge(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	checkIdentifier := req.Param("check")
-	components := req.Param("components")
+func (h *Handler) GetBadge(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	checkIdentifier := httpx.Param(req, "check")
+	components := httpx.Param(req, "components")
 
 	opts := BadgeOptions{
 		Period: req.URL.Query().Get("period"),

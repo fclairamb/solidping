@@ -13,8 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
@@ -63,7 +61,7 @@ func NewHandler(jobSvc jobsvc.Service, dbService db.Service, eventNotifier notif
 
 // ListStateEntries lists state entries matching a prefix.
 // GET /api/v1/test/state-entries?prefix=email_registration:.
-func (h *Handler) ListStateEntries(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ListStateEntries(writer http.ResponseWriter, req *http.Request) error {
 	prefix := req.URL.Query().Get("prefix")
 
 	entries, err := h.dbService.ListStateEntries(req.Context(), nil, prefix)
@@ -101,7 +99,7 @@ func getTemplateForType(emailType string) (string, bool) {
 
 // CreateEmailJob creates an email job for testing.
 // POST /api/v1/test/jobs.
-func (h *Handler) CreateEmailJob(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) CreateEmailJob(writer http.ResponseWriter, req *http.Request) error {
 	var body EmailJobRequest
 
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
@@ -225,15 +223,15 @@ type fakeResponse struct {
 // GET /api/v1/fake.
 //
 //nolint:cyclop,funlen,nestif
-func (h *Handler) FakeAPI(writer http.ResponseWriter, req bunrouter.Request) error {
-	params, err := h.parseFakeParams(req.Request)
+func (h *Handler) FakeAPI(writer http.ResponseWriter, req *http.Request) error {
+	params, err := h.parseFakeParams(req)
 	if err != nil {
 		return h.writeError(writer, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 	}
 
 	// Check authentication first (401)
 	if params.requiredAuth != "" {
-		if !h.checkBasicAuth(req.Request, params.requiredAuth) {
+		if !h.checkBasicAuth(req, params.requiredAuth) {
 			writer.Header().Set("WWW-Authenticate", `Basic realm="Fake API"`)
 			return h.writeError(writer, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid credentials")
 		}
@@ -241,7 +239,7 @@ func (h *Handler) FakeAPI(writer http.ResponseWriter, req bunrouter.Request) err
 
 	// Check required header (400)
 	if params.requiredHeader != "" {
-		if !h.checkRequiredHeader(req.Request, params.requiredHeader) {
+		if !h.checkRequiredHeader(req, params.requiredHeader) {
 			return h.writeError(writer, http.StatusBadRequest, "VALIDATION_ERROR", "Required header missing or invalid")
 		}
 	}

@@ -46,18 +46,28 @@ interface EscalationSelectProps {
   /** The check's currently-selected group (for the inherit resolution). */
   checkGroupUid?: string;
   checkGroups?: CheckGroup[];
+  /**
+   * "check" (default): inherit resolves check's group → org default → none.
+   * "group": this picker is editing a GROUP's own policy, which has no
+   * further group to inherit from — inherit resolves straight to the org
+   * default, skipping the group-resolution step. `checkGroupUid`/
+   * `checkGroups` are ignored in this variant.
+   */
+  variant?: "check" | "group";
 }
 
-// EscalationSelect is the check form's escalation-policy picker. It offers the
-// inherit default (live-resolving group → org default so the choice is never
-// blind), the org's policies (silent ones badged), and a "No escalation
-// (silent)" shortcut that reuses or creates a zero-step policy.
+// EscalationSelect is the check form's escalation-policy picker (and, via
+// variant="group", the check-group edit form's). It offers the inherit
+// default (live-resolving down the chain so the choice is never blind), the
+// org's policies (silent ones badged), and a "No escalation (silent)"
+// shortcut that reuses or creates a zero-step policy.
 export function EscalationSelect({
   org,
   value,
   onChange,
   checkGroupUid,
   checkGroups,
+  variant = "check",
 }: EscalationSelectProps) {
   const { data: policies } = useEscalationPolicies(org);
   // Org settings is admin-only; a non-admin editing a check simply won't see
@@ -72,12 +82,15 @@ export function EscalationSelect({
     return map;
   }, [policies]);
 
-  // Resolve what "Inherit" currently means: the group's policy wins, then the
-  // org default, then nothing. Mirrors the server resolver (minus the check's
-  // own policy, which is what this picker overrides).
-  const group = checkGroupUid
-    ? checkGroups?.find((g) => g.uid === checkGroupUid)
-    : undefined;
+  // Resolve what "Inherit" currently means. For a check, the group's policy
+  // wins, then the org default, then nothing — mirrors the server resolver
+  // (minus the check's own policy, which is what this picker overrides). For
+  // a group itself, there is no further group to resolve through: inherit
+  // goes straight to the org default.
+  const group =
+    variant === "check" && checkGroupUid
+      ? checkGroups?.find((g) => g.uid === checkGroupUid)
+      : undefined;
   const inheritedUid =
     (group?.escalationPolicyUid ?? undefined) ||
     (orgSettings?.defaultEscalationPolicyUid ?? undefined) ||

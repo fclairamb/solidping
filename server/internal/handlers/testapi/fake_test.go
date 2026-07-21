@@ -10,7 +10,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
+
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 func TestFakeAPI_BasicJSON(t *testing.T) {
@@ -21,7 +22,7 @@ func TestFakeAPI_BasicJSON(t *testing.T) {
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/fake?statusDown=200", nil)
 	w := httptest.NewRecorder()
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/api/v1/fake", handler.FakeAPI)
 
 	router.ServeHTTP(w, req)
@@ -41,7 +42,7 @@ func TestFakeAPI_XMLFormat(t *testing.T) {
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/fake?format=xml&statusDown=200", nil)
 	w := httptest.NewRecorder()
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/api/v1/fake", handler.FakeAPI)
 
 	router.ServeHTTP(w, req)
@@ -64,7 +65,7 @@ func TestFakeAPI_TextFormat(t *testing.T) {
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/fake?format=text&statusDown=200", nil)
 	w := httptest.NewRecorder()
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/api/v1/fake", handler.FakeAPI)
 
 	router.ServeHTTP(w, req)
@@ -87,7 +88,7 @@ func TestFakeAPI_StateToggling(t *testing.T) {
 	)
 	w := httptest.NewRecorder()
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/api/v1/fake", handler.FakeAPI)
 
 	router.ServeHTTP(w, req)
@@ -105,7 +106,7 @@ func TestFakeAPI_CustomStatusCodes(t *testing.T) {
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/fake?statusUp=201&statusDown=404", nil)
 	w := httptest.NewRecorder()
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/api/v1/fake", handler.FakeAPI)
 
 	router.ServeHTTP(w, req)
@@ -123,7 +124,7 @@ func TestFakeAPI_MethodValidation(t *testing.T) {
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/fake?supportedMethod=POST", nil)
 	w := httptest.NewRecorder()
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/api/v1/fake", handler.FakeAPI)
 
 	router.ServeHTTP(w, req)
@@ -159,7 +160,7 @@ func TestFakeAPI_BasicAuth(t *testing.T) {
 			}
 			w := httptest.NewRecorder()
 
-			router := bunrouter.New()
+			router := httpx.New()
 			router.GET("/api/v1/fake", handler.FakeAPI)
 
 			router.ServeHTTP(w, req)
@@ -198,7 +199,7 @@ func TestFakeAPI_RequiredHeader(t *testing.T) {
 			}
 			w := httptest.NewRecorder()
 
-			router := bunrouter.New()
+			router := httpx.New()
 			router.GET("/api/v1/fake", handler.FakeAPI)
 
 			router.ServeHTTP(w, req)
@@ -218,7 +219,7 @@ func TestFakeAPI_SetCookie(t *testing.T) {
 	)
 	w := httptest.NewRecorder()
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/api/v1/fake", handler.FakeAPI)
 
 	router.ServeHTTP(w, req)
@@ -244,7 +245,7 @@ func TestFakeAPI_SetHeader(t *testing.T) {
 	)
 	w := httptest.NewRecorder()
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/api/v1/fake", handler.FakeAPI)
 
 	router.ServeHTTP(w, req)
@@ -270,7 +271,7 @@ func TestFakeAPI_Redirect(t *testing.T) {
 	)
 	w := httptest.NewRecorder()
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/api/v1/fake", handler.FakeAPI)
 
 	router.ServeHTTP(w, req)
@@ -292,7 +293,7 @@ func TestFakeAPI_InvalidRedirectURL(t *testing.T) {
 	)
 	w := httptest.NewRecorder()
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/api/v1/fake", handler.FakeAPI)
 
 	router.ServeHTTP(w, req)
@@ -313,7 +314,7 @@ func TestFakeAPI_Delay(t *testing.T) {
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/fake?delay=100", nil)
 	w := httptest.NewRecorder()
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/api/v1/fake", handler.FakeAPI)
 
 	router.ServeHTTP(w, req)
@@ -330,7 +331,7 @@ func TestFakeAPI_SlowResponse(t *testing.T) {
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/fake?slowResponse=3,10,50", nil)
 	w := httptest.NewRecorder()
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/api/v1/fake", handler.FakeAPI)
 
 	router.ServeHTTP(w, req)
@@ -374,7 +375,7 @@ func TestFakeAPI_ValidationErrors(t *testing.T) {
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/fake?"+tt.query, nil)
 			w := httptest.NewRecorder()
 
-			router := bunrouter.New()
+			router := httpx.New()
 			router.GET("/api/v1/fake", handler.FakeAPI)
 
 			router.ServeHTTP(w, req)
@@ -397,7 +398,7 @@ func TestFakeAPI_SlowResponseWithStatus(t *testing.T) {
 	)
 	w := httptest.NewRecorder()
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/api/v1/fake", handler.FakeAPI)
 
 	router.ServeHTTP(w, req)
@@ -420,7 +421,7 @@ func TestFakeAPI_AllParametersCombined(t *testing.T) {
 	)
 	w := httptest.NewRecorder()
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/api/v1/fake", handler.FakeAPI)
 
 	start := time.Now()
@@ -441,7 +442,7 @@ func TestFakeAPI_ReadSlowResponse(t *testing.T) {
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/fake?slowResponse=5,20,100", nil)
 	w := httptest.NewRecorder()
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/api/v1/fake", handler.FakeAPI)
 
 	start := time.Now()

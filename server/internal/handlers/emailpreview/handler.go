@@ -9,11 +9,10 @@ package emailpreview
 import (
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // Handler serves GET /api/mgmt/email-preview/{template}.
@@ -34,8 +33,8 @@ func NewHandler(formatter email.Formatter, cfg *config.Config) *Handler {
 
 // Preview renders a template with fixture data.
 // GET /api/mgmt/email-preview/{template}?format=html|text (default html).
-func (h *Handler) Preview(writer http.ResponseWriter, req bunrouter.Request) error {
-	templateName := req.Param("template")
+func (h *Handler) Preview(writer http.ResponseWriter, req *http.Request) error {
+	templateName := httpx.Param(req, "template")
 
 	data, ok := fixtureFor(templateName)
 	if !ok {

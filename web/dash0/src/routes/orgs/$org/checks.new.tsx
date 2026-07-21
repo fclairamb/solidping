@@ -158,6 +158,12 @@ function CheckNewPage() {
         });
       }}
       onSubmit={async (data) => {
+        // NOTE: this list must stay in sync with the fields CheckForm's
+        // onSubmit builder puts in `data` (check-form.tsx) that also belong
+        // in CreateCheckRequest (hooks.ts) — a field added to the form but
+        // missed here is silently dropped before the request is ever sent
+        // (see the identical warning in checks.$checkUid.edit.tsx, and spec
+        // 2026-07-15-04's confirmation/recovery period regression).
         const check = await createCheck.mutateAsync({
           type: data.type,
           enabled: data.enabled,
@@ -167,6 +173,7 @@ function CheckNewPage() {
           period: data.period,
           config: data.config ?? {},
           regions: data.regions,
+          ...(data.regionSpread !== undefined ? { regionSpread: data.regionSpread } : {}),
           ...(data.escalationPolicyUid
             ? { escalationPolicyUid: data.escalationPolicyUid }
             : {}),

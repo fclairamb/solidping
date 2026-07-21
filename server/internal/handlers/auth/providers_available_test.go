@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 )
@@ -146,7 +145,7 @@ func TestListProviders(t *testing.T) {
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/auth/providers", nil)
 			rec := httptest.NewRecorder()
 
-			r.NoError(h.ListProviders(rec, bunrouter.Request{Request: req}))
+			r.NoError(h.ListProviders(rec, req))
 
 			var resp ProvidersResponse
 			r.NoError(json.NewDecoder(rec.Body).Decode(&resp))

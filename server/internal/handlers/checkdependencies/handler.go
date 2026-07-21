@@ -5,10 +5,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // Handler exposes the check-dependency endpoints.
@@ -27,9 +26,9 @@ func NewHandler(svc *Service, cfg *config.Config) *Handler {
 }
 
 // ListForCheck handles GET /orgs/:org/checks/:check/dependencies.
-func (h *Handler) ListForCheck(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	check := req.Param("check")
+func (h *Handler) ListForCheck(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	check := httpx.Param(req, "check")
 
 	deps, err := h.svc.ListForCheck(req.Context(), orgSlug, check)
 	if err != nil {
@@ -40,9 +39,9 @@ func (h *Handler) ListForCheck(writer http.ResponseWriter, req bunrouter.Request
 }
 
 // Create handles POST /orgs/:org/checks/:check/dependencies.
-func (h *Handler) Create(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	check := req.Param("check")
+func (h *Handler) Create(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	check := httpx.Param(req, "check")
 
 	var body CreateDependencyRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
@@ -60,9 +59,9 @@ func (h *Handler) Create(writer http.ResponseWriter, req bunrouter.Request) erro
 }
 
 // Update handles PATCH /orgs/:org/checks/:check/dependencies/:uid.
-func (h *Handler) Update(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	depUID := req.Param("uid")
+func (h *Handler) Update(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	depUID := httpx.Param(req, "uid")
 
 	var body UpdateDependencyRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
@@ -80,9 +79,9 @@ func (h *Handler) Update(writer http.ResponseWriter, req bunrouter.Request) erro
 }
 
 // Delete handles DELETE /orgs/:org/checks/:check/dependencies/:uid.
-func (h *Handler) Delete(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	depUID := req.Param("uid")
+func (h *Handler) Delete(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	depUID := httpx.Param(req, "uid")
 
 	if err := h.svc.Delete(req.Context(), orgSlug, depUID); err != nil {
 		return h.handleError(writer, err)
@@ -94,8 +93,8 @@ func (h *Handler) Delete(writer http.ResponseWriter, req bunrouter.Request) erro
 }
 
 // Graph handles GET /orgs/:org/dependencies.
-func (h *Handler) Graph(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) Graph(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 
 	graph, err := h.svc.Graph(req.Context(), orgSlug)
 	if err != nil {

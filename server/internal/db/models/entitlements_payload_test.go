@@ -95,3 +95,56 @@ func TestEntitlementsPayload_ValueRoundTripAlias(t *testing.T) {
 	r.Contains(s, `"maxUsers":15`)
 	r.NotContains(s, "maxSsoUsers")
 }
+
+// TestEntitlementLimits_MaxDeportedAgentsDecodes verifies the new field
+// decodes onto its plain (non-aliased) wire key.
+func TestEntitlementLimits_MaxDeportedAgentsDecodes(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	var l EntitlementLimits
+	r.NoError(json.Unmarshal([]byte(`{"maxDeportedAgents":3}`), &l))
+	r.NotNil(l.MaxDeportedAgents)
+	r.Equal(3, *l.MaxDeportedAgents)
+}
+
+// TestEntitlementLimits_MaxDeportedAgentsAbsentIsNil verifies an absent key
+// unmarshals to nil (= unlimited), the documented forward-compat contract.
+func TestEntitlementLimits_MaxDeportedAgentsAbsentIsNil(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	var l EntitlementLimits
+	r.NoError(json.Unmarshal([]byte(`{"maxChecks":10}`), &l))
+	r.Nil(l.MaxDeportedAgents)
+}
+
+// TestEntitlementLimits_MaxDeportedAgentsMarshal verifies the field
+// round-trips through Marshal using its plain wire key.
+func TestEntitlementLimits_MaxDeportedAgentsMarshal(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	limit := 6
+	data, err := json.Marshal(EntitlementLimits{MaxDeportedAgents: &limit})
+	r.NoError(err)
+	r.Contains(string(data), `"maxDeportedAgents":6`)
+}
+
+// TestEntitlementsPayload_ScanMaxDeportedAgents verifies a stored v1 payload
+// carrying maxDeportedAgents scans and round-trips through Value().
+func TestEntitlementsPayload_ScanMaxDeportedAgents(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	var p EntitlementsPayload
+	r.NoError(p.Scan(`{"version":1,"limits":{"maxDeportedAgents":9}}`))
+	r.NotNil(p.Limits.MaxDeportedAgents)
+	r.Equal(9, *p.Limits.MaxDeportedAgents)
+
+	v, err := p.Value()
+	r.NoError(err)
+	s, ok := v.(string)
+	r.True(ok)
+	r.Contains(s, `"maxDeportedAgents":9`)
+}

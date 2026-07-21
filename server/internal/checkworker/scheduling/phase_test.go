@@ -117,6 +117,38 @@ func TestRegionIndex(t *testing.T) {
 	}
 }
 
+func TestRegionSpread(t *testing.T) {
+	t.Parallel()
+
+	durPtr := func(d time.Duration) *time.Duration { return &d }
+
+	tests := []struct {
+		name       string
+		basePeriod time.Duration
+		n          int
+		override   *time.Duration
+		want       time.Duration
+	}{
+		{name: "DefaultIsPeriodOverN", basePeriod: time.Minute, n: 3, override: nil, want: 20 * time.Second},
+		{name: "DefaultTwoRegions", basePeriod: time.Minute, n: 2, override: nil, want: 30 * time.Second},
+		{name: "OverrideUsedVerbatim", basePeriod: time.Minute, n: 3, override: durPtr(time.Second), want: time.Second},
+		{name: "OverrideZeroFiresTogether", basePeriod: time.Minute, n: 3, override: durPtr(0), want: 0},
+		{name: "SingleRegionNoSpread", basePeriod: time.Minute, n: 1, override: nil, want: 0},
+		{name: "SingleRegionOverrideStillZero", basePeriod: time.Minute, n: 1, override: durPtr(time.Second), want: 0},
+		{name: "ZeroRegionsNoSpread", basePeriod: time.Minute, n: 0, override: nil, want: 0},
+		{name: "ZeroBasePeriodNoSpread", basePeriod: 0, n: 3, override: nil, want: 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := scheduling.RegionSpread(tc.basePeriod, tc.n, tc.override)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
 func TestNextAligned(t *testing.T) {
 	t.Parallel()
 
@@ -125,79 +157,92 @@ func TestNextAligned(t *testing.T) {
 
 	regionOf := func(s string) *string { return &s }
 
+	// Since spec 2026-07-20-05 every region runs at the FULL base period
+	// (jobPeriod == basePeriod), staggered by the inter-region spread.
+	basePeriod := time.Minute
+	jobPeriod := basePeriod
+	spread := scheduling.RegionSpread(basePeriod, len(regions), nil) // 20s for 3 regions
+
+	// phaseOf reduces a tick to its second-of-period, the value the phase
+	// formula pins (mod jobPeriod).
+	phaseOf := func(tt time.Time) int64 { return tt.Unix() % int64(jobPeriod/time.Second) }
+	diffSecs := func(a, b int64) int64 {
+		d := a - b
+		if d < 0 {
+			d += int64(jobPeriod / time.Second)
+		}
+
+		return d
+	}
+
 	t.Run("ResultIsAlwaysStrictlyFuture", func(t *testing.T) {
 		t.Parallel()
 
 		now := time.Now()
-		basePeriod := time.Minute
-		jobPeriod := 3 * time.Minute // 3 regions, split period
-
 		for _, region := range []*string{regionOf("default"), regionOf("eu-2"), regionOf("us-1")} {
-			next := scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, region, regions)
+			next := scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, region, regions, spread)
 			require.True(t, next.After(now), "next scheduled tick must be strictly after now")
 			require.LessOrEqual(t, next.Sub(now), jobPeriod, "should never wait more than one full period")
 		}
 	})
 
-	t.Run("RegionsAreLeveled", func(t *testing.T) {
+	t.Run("RegionsAreLeveledBySpread", func(t *testing.T) {
 		t.Parallel()
 
 		now := time.Now()
-		basePeriod := time.Minute
-		jobPeriod := 3 * time.Minute
 
-		nextDefault := scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("default"), regions)
-		nextEu2 := scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("eu-2"), regions)
-		nextUs1 := scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("us-1"), regions)
+		nextDefault := scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("default"), regions, spread)
+		nextEu2 := scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("eu-2"), regions, spread)
+		nextUs1 := scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("us-1"), regions, spread)
 
-		// Each region's phase (mod jobPeriod) must be exactly basePeriod apart
-		// from its neighbor's — the D1 leveling guarantee. Compare phases (the
-		// value mod jobPeriod), not raw ticks, since ticks can differ by
-		// whole multiples of jobPeriod depending on where "now" falls.
-		phaseOf := func(t time.Time) time.Duration {
-			secs := t.Unix() % int64(jobPeriod/time.Second)
-			return time.Duration(secs) * time.Second
-		}
+		// Consecutive regions' phases must be exactly one spread (20s) apart —
+		// the new-formula leveling. Each region still fires every full period.
+		require.Equal(t, int64(spread/time.Second),
+			diffSecs(phaseOf(nextEu2), phaseOf(nextDefault)), "eu-2 is one spread after default")
+		require.Equal(t, int64(2*spread/time.Second),
+			diffSecs(phaseOf(nextUs1), phaseOf(nextDefault)), "us-1 is two spreads after default")
+	})
 
-		pDefault := phaseOf(nextDefault)
-		pEu2 := phaseOf(nextEu2)
-		pUs1 := phaseOf(nextUs1)
+	t.Run("ZeroSpreadFiresAllRegionsTogether", func(t *testing.T) {
+		t.Parallel()
 
-		diff := func(a, b time.Duration) time.Duration {
-			d := a - b
-			if d < 0 {
-				d += jobPeriod
-			}
-			return d
-		}
+		now := time.Now()
 
-		require.InDelta(t, float64(basePeriod), float64(diff(pEu2, pDefault)), float64(time.Second))
-		require.InDelta(t, float64(2*basePeriod), float64(diff(pUs1, pDefault)), float64(time.Second))
+		pd := phaseOf(scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("default"), regions, 0))
+		pe := phaseOf(scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("eu-2"), regions, 0))
+		pu := phaseOf(scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("us-1"), regions, 0))
+
+		require.Equal(t, pd, pe, "spread=0 → every region shares the jitter-only phase")
+		require.Equal(t, pd, pu, "spread=0 → every region shares the jitter-only phase")
+	})
+
+	t.Run("OverrideSpreadStaggersByOverride", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Now()
+		override := 5 * time.Second
+
+		pd := phaseOf(scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("default"), regions, override))
+		pe := phaseOf(scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("eu-2"), regions, override))
+		pu := phaseOf(scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("us-1"), regions, override))
+
+		require.EqualValues(t, 5, diffSecs(pe, pd), "override spread applied between region 0 and 1")
+		require.EqualValues(t, 10, diffSecs(pu, pd), "override spread applied between region 0 and 2")
 	})
 
 	t.Run("LateRunResumesAtNextPhaseTick_NoLockstep", func(t *testing.T) {
 		t.Parallel()
 
-		basePeriod := time.Minute
-		jobPeriod := 3 * time.Minute
 		region := regionOf("default")
 
-		// On-time: job would naturally fire at some phase-aligned instant.
 		onTimeNow := time.Now()
-		onTimeNext := scheduling.NextAligned(onTimeNow, basePeriod, jobPeriod, checkUID, region, regions)
+		onTimeNext := scheduling.NextAligned(onTimeNow, basePeriod, jobPeriod, checkUID, region, regions, spread)
 
-		// Late: simulate the job being released much later than its original
-		// tick (e.g. after a long restart) — it must resume at the NEXT
-		// phase-aligned tick from the new "now", not now+period (which would
-		// re-anchor and lose the phase per F2).
-		lateNow := onTimeNext.Add(37 * time.Second) // arbitrary lateness, not a period multiple
-		lateNext := scheduling.NextAligned(lateNow, basePeriod, jobPeriod, checkUID, region, regions)
+		// Late: released well after its original tick — it must resume at the
+		// NEXT phase-aligned tick, not now+period (which would lose the phase).
+		lateNow := onTimeNext.Add(37 * time.Second)
+		lateNext := scheduling.NextAligned(lateNow, basePeriod, jobPeriod, checkUID, region, regions, spread)
 
-		// The late tick's phase (mod jobPeriod) must match the on-time tick's
-		// phase — proving the run resumed on-phase rather than drifting.
-		phaseOf := func(t time.Time) int64 {
-			return t.Unix() % int64(jobPeriod/time.Second)
-		}
 		require.Equal(t, phaseOf(onTimeNext), phaseOf(lateNext),
 			"a late run must resume at the next phase-aligned tick, not drift to a new phase")
 		require.True(t, lateNext.After(lateNow))
@@ -206,52 +251,24 @@ func TestNextAligned(t *testing.T) {
 	t.Run("RestartAfterLongGapReturnsToOriginalPhase", func(t *testing.T) {
 		t.Parallel()
 
-		basePeriod := time.Minute
-		jobPeriod := time.Minute
 		region := regionOf("default")
 
 		now := time.Now()
-		firstNext := scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, region, regions)
+		firstNext := scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, region, regions, spread)
 
-		// Simulate a restart many periods later (e.g. server down for an hour).
 		muchLater := firstNext.Add(53 * time.Minute).Add(17 * time.Second)
-		afterRestart := scheduling.NextAligned(muchLater, basePeriod, jobPeriod, checkUID, region, regions)
+		afterRestart := scheduling.NextAligned(muchLater, basePeriod, jobPeriod, checkUID, region, regions, spread)
 
-		phaseOf := func(t time.Time) int64 { return t.Unix() % int64(jobPeriod/time.Second) }
 		require.Equal(t, phaseOf(firstNext), phaseOf(afterRestart),
 			"phase must be identical across an arbitrarily long gap (self-healing after restart)")
 		require.True(t, afterRestart.After(muchLater))
-	})
-
-	t.Run("RegionAddedShiftsIndexButStaysPhaseAligned", func(t *testing.T) {
-		t.Parallel()
-
-		now := time.Now()
-		basePeriod := time.Minute
-
-		// Before: 2 regions, us-1 is index 1.
-		before := []string{"default", "us-1"}
-		nextBefore := scheduling.NextAligned(now, basePeriod, 2*basePeriod, checkUID, regionOf("us-1"), before)
-
-		// After: eu-2 added, us-1 is now index 2 (sorted: default, eu-2, us-1).
-		after := []string{"default", "eu-2", "us-1"}
-		nextAfter := scheduling.NextAligned(now, basePeriod, 3*basePeriod, checkUID, regionOf("us-1"), after)
-
-		require.True(t, nextBefore.After(now))
-		require.True(t, nextAfter.After(now))
-		// Just assert both are valid future ticks with the new job period;
-		// the exact instant differs because both the index and jobPeriod
-		// changed, which is expected — reconcile explicitly re-levels on
-		// region-set change per D2.
 	})
 
 	t.Run("NoRegionJobGetsJitterOnlyPhase", func(t *testing.T) {
 		t.Parallel()
 
 		now := time.Now()
-		basePeriod := time.Minute
-
-		next := scheduling.NextAligned(now, basePeriod, basePeriod, checkUID, nil, nil)
+		next := scheduling.NextAligned(now, basePeriod, basePeriod, checkUID, nil, nil, 0)
 		require.True(t, next.After(now))
 		require.LessOrEqual(t, next.Sub(now), basePeriod)
 	})
@@ -260,10 +277,10 @@ func TestNextAligned(t *testing.T) {
 		t.Parallel()
 
 		now := time.Now()
-		basePeriod := time.Minute
 		single := []string{"default"}
+		singleSpread := scheduling.RegionSpread(basePeriod, len(single), nil) // 0
 
-		next := scheduling.NextAligned(now, basePeriod, basePeriod, checkUID, regionOf("default"), single)
+		next := scheduling.NextAligned(now, basePeriod, basePeriod, checkUID, regionOf("default"), single, singleSpread)
 		require.True(t, next.After(now))
 		require.LessOrEqual(t, next.Sub(now), basePeriod)
 	})
@@ -272,16 +289,12 @@ func TestNextAligned(t *testing.T) {
 		t.Parallel()
 
 		now := time.Now()
-		basePeriod := time.Minute
-		jobPeriod := 3 * time.Minute
 
-		// A stale job whose region no longer appears in check.Regions (about
-		// to be reconciled away) must not panic or produce a nonsensical
-		// result — it degrades to i=0.
-		staleNext := scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("ap-3"), regions)
-		defaultNext := scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("default"), regions)
+		// A stale job whose region no longer appears in check.Regions degrades
+		// to i=0 (same phase as index 0), never panics.
+		staleNext := scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("ap-3"), regions, spread)
+		defaultNext := scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("default"), regions, spread)
 
-		phaseOf := func(t time.Time) int64 { return t.Unix() % int64(jobPeriod/time.Second) }
 		require.Equal(t, phaseOf(defaultNext), phaseOf(staleNext),
 			"region missing from check.Regions should fall back to the same phase as index 0")
 	})
@@ -290,7 +303,7 @@ func TestNextAligned(t *testing.T) {
 		t.Parallel()
 
 		now := time.Now()
-		next := scheduling.NextAligned(now, 0, time.Minute, checkUID, regionOf("default"), regions)
+		next := scheduling.NextAligned(now, 0, time.Minute, checkUID, regionOf("default"), regions, spread)
 		require.WithinDuration(t, now.Add(time.Minute), next, time.Second)
 	})
 
@@ -298,7 +311,7 @@ func TestNextAligned(t *testing.T) {
 		t.Parallel()
 
 		now := time.Now()
-		next := scheduling.NextAligned(now, time.Minute, 0, checkUID, regionOf("default"), regions)
+		next := scheduling.NextAligned(now, time.Minute, 0, checkUID, regionOf("default"), regions, spread)
 		require.Equal(t, now, next)
 	})
 
@@ -306,11 +319,9 @@ func TestNextAligned(t *testing.T) {
 		t.Parallel()
 
 		now := time.Now()
-		basePeriod := time.Minute
-		jobPeriod := 3 * time.Minute
 
-		n1 := scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("eu-2"), regions)
-		n2 := scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("eu-2"), regions)
+		n1 := scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("eu-2"), regions, spread)
+		n2 := scheduling.NextAligned(now, basePeriod, jobPeriod, checkUID, regionOf("eu-2"), regions, spread)
 		require.Equal(t, n1, n2, "same inputs must always produce the same output (cross-process agreement)")
 	})
 }

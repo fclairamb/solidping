@@ -8,10 +8,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/agents"
 	"github.com/fclairamb/solidping/server/internal/regions"
 )
@@ -41,7 +43,36 @@ func newSetup(t *testing.T) *setup {
 	creds, err := credentials.NewService(nil, credentials.ParamStore{})
 	r.NoError(err)
 
-	return &setup{svc: agents.NewService(dbSvc, creds), dbSvc: dbSvc, org: org}
+	return &setup{svc: agents.NewService(dbSvc, creds, nil), dbSvc: dbSvc, org: org}
+}
+
+// newSetupWithEntitlements is newSetup but wires a real entitlements.Service
+// with the given MaxDeportedAgents cap, so MintEnrollmentToken's quota guard
+// can be exercised.
+func newSetupWithEntitlements(t *testing.T, maxDeportedAgents int) *setup {
+	t.Helper()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("acme", "Acme")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	creds, err := credentials.NewService(nil, credentials.ParamStore{})
+	r.NoError(err)
+
+	entSvc := entcore.NewService(dbSvc, entcore.DefaultsFor(config.DeploymentModeSelfHosted), 0)
+	r.NoError(entSvc.Set(ctx, org.UID, entcore.Entitlements{
+		Limits: entcore.Limits{MaxDeportedAgents: entcore.Int(maxDeportedAgents)},
+		Source: models.EntitlementSourceAdmin,
+	}, "user:tester", ""))
+
+	return &setup{svc: agents.NewService(dbSvc, creds, entSvc), dbSvc: dbSvc, org: org}
 }
 
 func TestCreateAndListPrivateRegion(t *testing.T) {
@@ -317,4 +348,54 @@ func TestRevokeAgentIsOrgScoped(t *testing.T) {
 
 	err = s.svc.RevokeAgent(ctx, "other", agent.UID)
 	r.ErrorIs(err, agents.ErrAgentNotFound)
+}
+
+// TestMintEnrollmentTokenAllowedUnderCap asserts a mint under the
+// MaxDeportedAgents cap succeeds.
+func TestMintEnrollmentTokenAllowedUnderCap(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	s := newSetupWithEntitlements(t, 2)
+	ctx := t.Context()
+
+	_, err := s.svc.CreatePrivateRegion(ctx, "acme", &agents.CreatePrivateRegionRequest{Slug: "dc1"})
+	r.NoError(err)
+
+	_, err = s.svc.MintEnrollmentToken(ctx, "acme", &agents.MintEnrollmentTokenRequest{RegionSlug: "dc1"}, nil)
+	r.NoError(err)
+}
+
+// TestMintEnrollmentTokenRejectedAtCap asserts minting a token once the org is
+// at its MaxDeportedAgents cap fails with a QuotaError (mapped to 402
+// QUOTA_EXCEEDED at the handler) — the early-UX guard, distinct from the
+// enrollment-time guard in agentws.
+func TestMintEnrollmentTokenRejectedAtCap(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	s := newSetupWithEntitlements(t, 1)
+	ctx := t.Context()
+
+	_, err := s.svc.CreatePrivateRegion(ctx, "acme", &agents.CreatePrivateRegionRequest{Slug: "dc1"})
+	r.NoError(err)
+
+	// Enroll one agent to reach the cap of 1.
+	minted, err := s.svc.MintEnrollmentToken(ctx, "acme", &agents.MintEnrollmentTokenRequest{RegionSlug: "dc1"}, nil)
+	r.NoError(err)
+	_, err = s.dbSvc.EnrollAgent(
+		ctx, agentcrypto.HashEnrollmentToken(minted.Token), "a1", "ed1", "age1x", "fp1",
+	)
+	r.NoError(err)
+
+	// A second mint is rejected at cap.
+	_, err = s.svc.MintEnrollmentToken(ctx, "acme", &agents.MintEnrollmentTokenRequest{RegionSlug: "dc1"}, nil)
+	r.Error(err)
+	r.ErrorIs(err, entcore.ErrEntitlementExceeded)
+
+	var quotaErr *entcore.QuotaError
+	r.ErrorAs(err, &quotaErr)
+	r.Equal("MaxDeportedAgents", quotaErr.LimitName)
+	r.Equal(1, quotaErr.Limit)
+	r.Equal(1, quotaErr.CurrentUsage)
 }

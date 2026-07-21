@@ -55,4 +55,4 @@ retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
 
 ## See Also
 
-- [Full Specification](/specs/2026-02-05-frontend-error-handling.md)
+- [Full Specification](../../specs/done/2026/02/2026-02-05-frontend-error-handling.md)

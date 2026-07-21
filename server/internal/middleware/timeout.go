@@ -7,12 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
-// RequestTimeout returns a bunrouter middleware that aborts a request with
+// RequestTimeout returns a middleware that aborts a request with
 // 504 REQUEST_TIMEOUT when the handler (plus any time it spent in earlier
 // middlewares wrapped beneath this one) takes longer than maxDuration.
 //
@@ -21,9 +20,9 @@ import (
 // realtime hint WebSocket (/api/v1/orgs/:org/events/ws) bypass the timeout —
 // long-running worker endpoints, Prometheus scrapes and held-open WebSocket
 // connections must not be capped.
-func RequestTimeout(maxDuration time.Duration) func(bunrouter.HandlerFunc) bunrouter.HandlerFunc {
-	return func(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
-		return func(writer http.ResponseWriter, req bunrouter.Request) error {
+func RequestTimeout(maxDuration time.Duration) func(httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(next httpx.HandlerFunc) httpx.HandlerFunc {
+		return func(writer http.ResponseWriter, req *http.Request) error {
 			if maxDuration <= 0 || isExcluded(req.URL.Path) {
 				return next(writer, req)
 			}
@@ -31,7 +30,7 @@ func RequestTimeout(maxDuration time.Duration) func(bunrouter.HandlerFunc) bunro
 			ctx, cancel := context.WithTimeout(req.Context(), maxDuration)
 			defer cancel()
 
-			req.Request = req.Request.WithContext(ctx)
+			req = req.WithContext(ctx)
 			guarded := &timeoutWriter{ResponseWriter: writer}
 
 			done := make(chan error, 1)

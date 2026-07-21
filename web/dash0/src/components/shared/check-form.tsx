@@ -149,6 +149,39 @@ function hmsToSeconds(hms: string): number {
   return h * 3600 + m * 60 + s;
 }
 
+// The optional multi-region "Region Spread" override (spec 2026-07-20-05
+// backend / 2026-07-21-01 this UI) needs finer granularity than the
+// whole-minute period picker — the automatic default can be a handful of
+// seconds — so it gets its own number+unit pair down to seconds.
+type RegionSpreadUnit = "seconds" | "minutes" | "hours";
+
+const regionSpreadUnits: { value: RegionSpreadUnit; label: string }[] = [
+  { value: "seconds", label: "Seconds" },
+  { value: "minutes", label: "Minutes" },
+  { value: "hours", label: "Hours" },
+];
+
+const regionSpreadUnitSeconds: Record<RegionSpreadUnit, number> = {
+  seconds: 1,
+  minutes: 60,
+  hours: 3600,
+};
+
+// parseRegionSpread seeds the number+unit input from a stored "HH:MM:SS"
+// regionSpread: picks the largest whole unit that divides the value evenly
+// (falling back to seconds), so an existing value round-trips without a
+// surprising unit jump (e.g. 90s stays "90 seconds", not "1.5 minutes").
+function parseRegionSpread(hms: string): { value: string; unit: RegionSpreadUnit } {
+  const totalSeconds = hmsToSeconds(hms);
+  if (totalSeconds > 0 && totalSeconds % 3600 === 0) {
+    return { value: String(totalSeconds / 3600), unit: "hours" };
+  }
+  if (totalSeconds > 0 && totalSeconds % 60 === 0) {
+    return { value: String(totalSeconds / 60), unit: "minutes" };
+  }
+  return { value: String(totalSeconds), unit: "seconds" };
+}
+
 function buildIntervalOptions(minSeconds: number, maxSeconds: number): { value: string; label: string }[] {
   const allOptions = [
     { seconds: 5, value: "00:00:05", label: "5 seconds" },
@@ -178,6 +211,8 @@ export interface CheckFormData {
   period?: string;
   config?: Record<string, unknown>;
   regions?: string[];
+  /** "" clears an existing override back to automatic; omit to leave unchanged. */
+  regionSpread?: string;
   reopenCooldownMultiplier?: number | null;
   flappingWindowSeconds?: number | null;
   flapBackoffFactor?: number | null;
@@ -395,6 +430,16 @@ export function CheckForm({
   );
 
   const [selectedRegions, setSelectedRegions] = useState<string[]>(initialData?.regions ?? defaultRegions ?? []);
+  // Region Spread: "" = unset (keep automatic default). Seeded from the
+  // stored override, if any — absent means the check uses the automatic
+  // period/region-count default.
+  const initialRegionSpread = initialData?.regionSpread
+    ? parseRegionSpread(initialData.regionSpread)
+    : null;
+  const [regionSpreadValue, setRegionSpreadValue] = useState(initialRegionSpread?.value ?? "");
+  const [regionSpreadUnit, setRegionSpreadUnit] = useState<RegionSpreadUnit>(
+    initialRegionSpread?.unit ?? "seconds",
+  );
   const [reopenCooldownMultiplier, setReopenCooldownMultiplier] = useState(initialData?.reopenCooldownMultiplier?.toString() ?? "");
   const [flappingWindowSeconds, setFlappingWindowSeconds] = useState(initialData?.flappingWindowSeconds?.toString() ?? "");
   const [flapBackoffFactor, setFlapBackoffFactor] = useState(initialData?.flapBackoffFactor?.toString() ?? "");
@@ -466,6 +511,39 @@ export function CheckForm({
   // checks (heartbeat / email) have no real probe cadence, so we pass 0 and the
   // estimate shows the duration only — never a probe count.
   const estimateIntervalSeconds = isPassiveType(type) ? 0 : hmsToSeconds(period);
+
+  // Effective per-region period for the regions hint: since each selected
+  // region runs the check at the FULL period (spec 2026-07-20-05), spell that
+  // out so users understand multi-region multiplies coverage, not divides it.
+  const regionPeriodSeconds = hmsToSeconds(isPassiveType(type) ? formatPeriod(periodValue, periodUnit) : period);
+
+  // Region Spread is only meaningful once 2+ regions are actually selected
+  // (a single region has nothing to stagger against) — mirrors the existing
+  // regions-hint visibility gate below.
+  const hasMultiRegionSpread = showRegions && selectedRegions.length > 1;
+  const hasRegionSpreadInput = regionSpreadValue.trim() !== "";
+  const regionSpreadSeconds = hasRegionSpreadInput
+    ? Math.round(Number(regionSpreadValue) * regionSpreadUnitSeconds[regionSpreadUnit])
+    : null;
+  const autoRegionSpreadSeconds =
+    selectedRegions.length > 0 ? Math.floor(regionPeriodSeconds / selectedRegions.length) : 0;
+  // Client-side mirror of the backend bound 0 <= regionSpread < period
+  // (service.go's validateRegionSpread) — catches the common mistakes before
+  // a round trip; the backend VALIDATION_ERROR is still authoritative and
+  // surfaces via the top-level error Alert if this client check is ever wrong
+  // (e.g. the period changed elsewhere) or stale.
+  const regionSpreadError =
+    hasMultiRegionSpread &&
+    hasRegionSpreadInput &&
+    (regionSpreadSeconds === null ||
+      isNaN(regionSpreadSeconds) ||
+      regionSpreadSeconds < 0 ||
+      regionSpreadSeconds >= regionPeriodSeconds)
+      ? t("form.regionSpreadRangeError", {
+          period: formatDuration(regionPeriodSeconds),
+          defaultValue: `Region spread must be at least 0 and less than the check period (${formatDuration(regionPeriodSeconds)}).`,
+        })
+      : null;
 
   const activeModule = checkTypeRegistry[type];
   const ActiveFields = activeModule.Fields;
@@ -574,6 +652,13 @@ export function CheckForm({
       return;
     }
 
+    // Region spread: block on the same client-side mirror shown inline under
+    // the field, so an out-of-range value never reaches the server.
+    if (regionSpreadError) {
+      setError(regionSpreadError);
+      return;
+    }
+
     try {
       await onSubmit({
         type: mode === "create" ? type : undefined,
@@ -589,6 +674,18 @@ export function CheckForm({
         // Don't send config for passive edits — the token is managed by the backend
         ...(isPassiveType(type) && mode === "edit" ? {} : { config }),
         ...(showRegions ? { regions: selectedRegions } : {}),
+        // Mirrors the checkGroupUid/escalationPolicyUid PATCH idiom: a
+        // duration string sets the override, "" clears it back to automatic
+        // on edit, and the key is omitted (untouched) whenever the field
+        // isn't visible (< 2 regions) or create mode leaves it unset — never
+        // send `0` for "unset" (0 is a valid explicit spread).
+        ...(hasMultiRegionSpread
+          ? {
+              regionSpread: hasRegionSpreadInput
+                ? secondsToHMS(regionSpreadSeconds ?? 0)
+                : (mode === "edit" ? "" : undefined),
+            }
+          : {}),
         reopenCooldownMultiplier: reopenCooldownMultiplier !== "" ? parseInt(reopenCooldownMultiplier, 10) : null,
         ...(flappingWindowSeconds !== "" ? { flappingWindowSeconds: parseInt(flappingWindowSeconds, 10) } : {}),
         ...(flapBackoffFactor !== "" ? { flapBackoffFactor: parseInt(flapBackoffFactor, 10) } : {}),
@@ -931,6 +1028,80 @@ export function CheckForm({
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground">Select the regions where this check should run</p>
+                  {selectedRegions.length > 1 && regionPeriodSeconds > 0 && (
+                    <p className="text-xs text-muted-foreground" data-testid="regions-period-hint">
+                      {hasRegionSpreadInput && !regionSpreadError
+                        ? t("form.regionsHintSpread", {
+                            period: formatDuration(regionPeriodSeconds),
+                            spread: formatDuration(regionSpreadSeconds ?? 0),
+                            defaultValue:
+                              "Each selected region runs the check every {{period}}, staggered {{spread}} apart.",
+                          })
+                        : t("form.regionsHint", {
+                            period: formatDuration(regionPeriodSeconds),
+                            defaultValue: "Each selected region runs the check every {{period}}.",
+                          })}
+                    </p>
+                  )}
+
+                  {/* Advanced/secondary override — only relevant once there is
+                      more than one region to stagger. Default path (nothing
+                      typed) stays zero-config: the backend already spreads
+                      regions evenly across the period. */}
+                  {hasMultiRegionSpread && (
+                    <div className="space-y-1.5 rounded-md border border-dashed p-3">
+                      <Label htmlFor="regionSpread" className="text-sm">
+                        {t("form.regionSpread", { defaultValue: "Region Spread" })}
+                      </Label>
+                      <div className="flex flex-wrap gap-2">
+                        <Input
+                          id="regionSpread"
+                          type="number"
+                          min={0}
+                          step={1}
+                          placeholder={String(autoRegionSpreadSeconds)}
+                          value={regionSpreadValue}
+                          onChange={(e) => setRegionSpreadValue(e.target.value)}
+                          className={cn("w-24", regionSpreadError && "border-destructive")}
+                          data-testid="check-region-spread-input"
+                        />
+                        <Select
+                          value={regionSpreadUnit}
+                          onValueChange={(v) => setRegionSpreadUnit(v as RegionSpreadUnit)}
+                        >
+                          <SelectTrigger
+                            data-testid="check-region-spread-unit-select"
+                            className="min-w-[8rem] flex-1"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {regionSpreadUnits.map((u) => (
+                              <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {regionSpreadError ? (
+                        <p className="text-xs text-destructive" data-testid="region-spread-error">
+                          {regionSpreadError}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground" data-testid="region-spread-help">
+                          {hasRegionSpreadInput
+                            ? t("form.regionSpreadHelp", {
+                                defaultValue:
+                                  "Overrides how far apart regions are staggered. Leave empty to keep automatic spreading.",
+                              })
+                            : t("form.regionSpreadAutomatic", {
+                                spread: formatDuration(autoRegionSpreadSeconds),
+                                count: selectedRegions.length,
+                                defaultValue: "Automatic: {{spread}} (period / {{count}} regions)",
+                              })}
+                        </p>
+                      )}
+                    </div>
+                  )}
                   {/* A region change can be rejected because of an SSH tunnel
                       dependency (the tunnel's SSH check must cover every private
                       region this check runs in). The server reports it on the

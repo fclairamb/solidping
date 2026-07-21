@@ -7,8 +7,6 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
@@ -31,7 +29,7 @@ func NewMicrosoftOAuthHandler(service *MicrosoftOAuthService, cfg *config.Config
 
 // Login initiates the Microsoft OAuth flow.
 // GET /api/v1/auth/microsoft/login?org=...&redirect_uri=...
-func (h *MicrosoftOAuthHandler) Login(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *MicrosoftOAuthHandler) Login(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := req.URL.Query().Get("org")
 	if orgSlug == "" {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "org parameter is required")
@@ -56,14 +54,14 @@ func (h *MicrosoftOAuthHandler) Login(writer http.ResponseWriter, req bunrouter.
 	// Build Microsoft OAuth URL
 	microsoftAuthURL := h.buildMicrosoftAuthURL(state)
 
-	http.Redirect(writer, req.Request, microsoftAuthURL, http.StatusFound)
+	http.Redirect(writer, req, microsoftAuthURL, http.StatusFound)
 
 	return nil
 }
 
 // Callback handles the OAuth callback from Microsoft.
 // GET /api/v1/auth/microsoft/callback?code=...&state=...
-func (h *MicrosoftOAuthHandler) Callback(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *MicrosoftOAuthHandler) Callback(writer http.ResponseWriter, req *http.Request) error {
 	code := req.URL.Query().Get("code")
 	stateParam := req.URL.Query().Get("state")
 	errorParam := req.URL.Query().Get("error")
@@ -94,7 +92,7 @@ func (h *MicrosoftOAuthHandler) Callback(writer http.ResponseWriter, req bunrout
 	// authorize/consent flow) work without a login-page refresh bounce.
 	redirectURL := h.buildSuccessRedirect(oauthState.RedirectURI, result)
 	setAccessTokenCookie(writer, result.AccessToken, result.ExpiresIn)
-	http.Redirect(writer, req.Request, redirectURL, http.StatusFound)
+	http.Redirect(writer, req, redirectURL, http.StatusFound)
 
 	return nil
 }
@@ -135,7 +133,7 @@ func (h *MicrosoftOAuthHandler) buildSuccessRedirect(baseURI string, result *Mic
 
 // redirectWithError redirects with error parameters.
 func (h *MicrosoftOAuthHandler) redirectWithError(
-	writer http.ResponseWriter, req bunrouter.Request,
+	writer http.ResponseWriter, req *http.Request,
 	baseURI, code, description string,
 ) error {
 	parsedURL, err := url.Parse(baseURI)
@@ -148,14 +146,14 @@ func (h *MicrosoftOAuthHandler) redirectWithError(
 	query.Set("error_description", description)
 	parsedURL.RawQuery = query.Encode()
 
-	http.Redirect(writer, req.Request, parsedURL.String(), http.StatusFound)
+	http.Redirect(writer, req, parsedURL.String(), http.StatusFound)
 
 	return nil
 }
 
 // handleOAuthError handles OAuth errors by redirecting with error information.
 func (h *MicrosoftOAuthHandler) handleOAuthError(
-	writer http.ResponseWriter, req bunrouter.Request,
+	writer http.ResponseWriter, req *http.Request,
 	redirectURI string, err error,
 ) error {
 	var code, description string

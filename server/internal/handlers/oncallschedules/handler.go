@@ -7,12 +7,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 )
 
@@ -107,7 +106,7 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	}
 }
 
-func (h *Handler) currentUserUID(req bunrouter.Request) string {
+func (h *Handler) currentUserUID(req *http.Request) string {
 	if user, ok := middleware.GetUserFromContext(req.Context()); ok && user != nil {
 		return user.UID
 	}
@@ -117,8 +116,8 @@ func (h *Handler) currentUserUID(req bunrouter.Request) string {
 
 // resolveOrgUID maps the URL :org slug to the organization UID. Centralizes
 // the lookup so each handler doesn't repeat the slug→UID dance.
-func (h *Handler) resolveOrgUID(req bunrouter.Request) (string, error) {
-	org, err := h.dbSvc.GetOrganizationBySlug(req.Context(), req.Param("org"))
+func (h *Handler) resolveOrgUID(req *http.Request) (string, error) {
+	org, err := h.dbSvc.GetOrganizationBySlug(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
 		return "", err
 	}
@@ -126,7 +125,7 @@ func (h *Handler) resolveOrgUID(req bunrouter.Request) (string, error) {
 	return org.UID, nil
 }
 
-func (h *Handler) currentlyOnCall(req bunrouter.Request, scheduleUID string) *models.User {
+func (h *Handler) currentlyOnCall(req *http.Request, scheduleUID string) *models.User {
 	user, err := h.svc.Resolve(req.Context(), scheduleUID, time.Now())
 	if err != nil {
 		return nil
@@ -135,7 +134,7 @@ func (h *Handler) currentlyOnCall(req bunrouter.Request, scheduleUID string) *mo
 	return user
 }
 
-func (h *Handler) userUIDs(req bunrouter.Request, scheduleUID string) []string {
+func (h *Handler) userUIDs(req *http.Request, scheduleUID string) []string {
 	roster, err := h.svc.ListUsers(req.Context(), scheduleUID)
 	if err != nil {
 		return nil
@@ -150,7 +149,7 @@ func (h *Handler) userUIDs(req bunrouter.Request, scheduleUID string) []string {
 }
 
 // ListSchedules handles GET /api/v1/orgs/:org/on-call-schedules.
-func (h *Handler) ListSchedules(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ListSchedules(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, orgErr := h.resolveOrgUID(req)
 	if orgErr != nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
@@ -186,7 +185,7 @@ type CreateScheduleBody struct {
 }
 
 // CreateSchedule handles POST /api/v1/orgs/:org/on-call-schedules.
-func (h *Handler) CreateSchedule(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) CreateSchedule(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, orgErr := h.resolveOrgUID(req)
 	if orgErr != nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
@@ -220,12 +219,12 @@ func (h *Handler) CreateSchedule(writer http.ResponseWriter, req bunrouter.Reque
 }
 
 // GetSchedule handles GET /api/v1/orgs/:org/on-call-schedules/:uid.
-func (h *Handler) GetSchedule(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) GetSchedule(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, orgErr := h.resolveOrgUID(req)
 	if orgErr != nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
-	uid := req.Param("uid")
+	uid := httpx.Param(req, "uid")
 
 	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
@@ -252,12 +251,12 @@ type UpdateScheduleBody struct {
 }
 
 // UpdateSchedule handles PATCH /api/v1/orgs/:org/on-call-schedules/:uid.
-func (h *Handler) UpdateSchedule(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) UpdateSchedule(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, orgErr := h.resolveOrgUID(req)
 	if orgErr != nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
-	uid := req.Param("uid")
+	uid := httpx.Param(req, "uid")
 
 	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
@@ -297,12 +296,12 @@ func (h *Handler) UpdateSchedule(writer http.ResponseWriter, req bunrouter.Reque
 }
 
 // DeleteSchedule handles DELETE /api/v1/orgs/:org/on-call-schedules/:uid.
-func (h *Handler) DeleteSchedule(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) DeleteSchedule(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, orgErr := h.resolveOrgUID(req)
 	if orgErr != nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
-	uid := req.Param("uid")
+	uid := httpx.Param(req, "uid")
 
 	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
@@ -319,12 +318,12 @@ func (h *Handler) DeleteSchedule(writer http.ResponseWriter, req bunrouter.Reque
 }
 
 // PreviewSchedule handles GET /api/v1/orgs/:org/on-call-schedules/:uid/preview.
-func (h *Handler) PreviewSchedule(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) PreviewSchedule(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, orgErr := h.resolveOrgUID(req)
 	if orgErr != nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
-	uid := req.Param("uid")
+	uid := httpx.Param(req, "uid")
 
 	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
@@ -375,12 +374,12 @@ func (h *Handler) PreviewSchedule(writer http.ResponseWriter, req bunrouter.Requ
 }
 
 // ListOverrides handles GET /api/v1/orgs/:org/on-call-schedules/:uid/overrides.
-func (h *Handler) ListOverrides(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ListOverrides(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, orgErr := h.resolveOrgUID(req)
 	if orgErr != nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
-	uid := req.Param("uid")
+	uid := httpx.Param(req, "uid")
 
 	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
@@ -424,12 +423,12 @@ type CreateOverrideBody struct {
 }
 
 // CreateOverride handles POST /api/v1/orgs/:org/on-call-schedules/:uid/overrides.
-func (h *Handler) CreateOverride(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) CreateOverride(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, orgErr := h.resolveOrgUID(req)
 	if orgErr != nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
-	uid := req.Param("uid")
+	uid := httpx.Param(req, "uid")
 
 	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
@@ -457,8 +456,8 @@ func (h *Handler) CreateOverride(writer http.ResponseWriter, req bunrouter.Reque
 }
 
 // DeleteOverride handles DELETE /api/v1/orgs/:org/on-call-schedules/:uid/overrides/:overrideUid.
-func (h *Handler) DeleteOverride(writer http.ResponseWriter, req bunrouter.Request) error {
-	overrideUID := req.Param("overrideUid")
+func (h *Handler) DeleteOverride(writer http.ResponseWriter, req *http.Request) error {
+	overrideUID := httpx.Param(req, "overrideUid")
 
 	if err := h.svc.DeleteOverride(req.Context(), overrideUID); err != nil {
 		return h.handleError(writer, err)
@@ -470,12 +469,12 @@ func (h *Handler) DeleteOverride(writer http.ResponseWriter, req bunrouter.Reque
 }
 
 // EnableICalFeed handles POST /api/v1/orgs/:org/on-call-schedules/:uid/ical-feed/enable.
-func (h *Handler) EnableICalFeed(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) EnableICalFeed(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, orgErr := h.resolveOrgUID(req)
 	if orgErr != nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
-	uid := req.Param("uid")
+	uid := httpx.Param(req, "uid")
 
 	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
@@ -496,13 +495,13 @@ func (h *Handler) EnableICalFeed(writer http.ResponseWriter, req bunrouter.Reque
 // RotateICalFeed handles POST /api/v1/orgs/:org/on-call-schedules/:uid/ical-feed/rotate.
 // Replaces the existing secret with a fresh one; subscribers on the old URL
 // start receiving 410 immediately.
-func (h *Handler) RotateICalFeed(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) RotateICalFeed(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, orgErr := h.resolveOrgUID(req)
 	if orgErr != nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
 
-	uid := req.Param("uid")
+	uid := httpx.Param(req, "uid")
 
 	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
@@ -521,12 +520,12 @@ func (h *Handler) RotateICalFeed(writer http.ResponseWriter, req bunrouter.Reque
 }
 
 // DisableICalFeed handles POST /api/v1/orgs/:org/on-call-schedules/:uid/ical-feed/disable.
-func (h *Handler) DisableICalFeed(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) DisableICalFeed(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, orgErr := h.resolveOrgUID(req)
 	if orgErr != nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
-	uid := req.Param("uid")
+	uid := httpx.Param(req, "uid")
 
 	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {

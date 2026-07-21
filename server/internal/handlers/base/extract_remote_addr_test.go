@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
@@ -81,7 +80,7 @@ func TestExtractRemoteAddr(t *testing.T) {
 
 			httpReq.RemoteAddr = tt.remoteAddr
 
-			req := bunrouter.NewRequest(httpReq)
+			req := httpReq
 			r.Equal(tt.want, base.ExtractRemoteAddr(req))
 		})
 	}

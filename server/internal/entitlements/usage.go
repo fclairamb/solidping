@@ -4,15 +4,19 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
 // Usage is the org's current resource consumption, computed on demand
 // (only when the API caller asks for it via ?with=usage).
 //
-// ChecksPerMinute is sum(60s/period) over enabled, non-internal checks.
-// It excludes internal checks (discovery hosts, heartbeats) and therefore
-// may be lower than the effective worker-dispatch rate enforced by
-// ReserveCheckExecution, whose token bucket counts every execution
+// ChecksPerMinute is sum((60s/period) × max(1, len(regions))) over enabled,
+// non-internal checks — a multi-region check executes once per region per
+// period, so its per-minute cost scales with the region count (spec
+// 2026-07-20-05). It excludes internal checks (discovery hosts, heartbeats)
+// and therefore may be lower than the effective worker-dispatch rate enforced
+// by ReserveCheckExecution, whose token bucket counts every execution
 // including internal ones. Checks counts all non-internal, non-deleted
 // checks regardless of enabled state.
 type Usage struct {
@@ -22,6 +26,9 @@ type Usage struct {
 	// of how they joined). The wire key stays `ssoUsers` for backward
 	// compatibility; it is enforced against the MaxUsers cap.
 	SSOUsers int `json:"ssoUsers"`
+	// Agents is the org's count of active (non-revoked, non-deleted) deported
+	// agents across all private regions. Enforced against MaxDeportedAgents.
+	Agents int `json:"agents"`
 }
 
 // Usage computes the org's current resource consumption. Non-internal
@@ -33,9 +40,18 @@ func (s *Service) Usage(ctx context.Context, orgUID string) (Usage, error) {
 	}
 
 	var perMin float64
-	for _, r := range rates {
-		if r.Enabled && time.Duration(r.Period) > 0 {
-			perMin += float64(time.Minute) / float64(time.Duration(r.Period))
+	for i := range rates {
+		rate := &rates[i]
+		if rate.Enabled && time.Duration(rate.Period) > 0 {
+			// Each selected region runs the check every period, so the
+			// per-minute cost is the single-region rate times the region count
+			// (min 1 — a no-region check still runs once). Mirrors the actual
+			// worker dispatch rate the ReserveCheckExecution token bucket sees.
+			regions := len(rate.Regions)
+			if regions < 1 {
+				regions = 1
+			}
+			perMin += float64(time.Minute) / float64(time.Duration(rate.Period)) * float64(regions)
 		}
 	}
 
@@ -44,7 +60,75 @@ func (s *Service) Usage(ctx context.Context, orgUID string) (Usage, error) {
 		return Usage{}, fmt.Errorf("count members: %w", err)
 	}
 
-	return Usage{Checks: len(rates), ChecksPerMinute: perMin, SSOUsers: members}, nil
+	agentCount, err := s.countActiveAgents(ctx, orgUID)
+	if err != nil {
+		return Usage{}, fmt.Errorf("count agents: %w", err)
+	}
+
+	return Usage{
+		Checks: len(rates), ChecksPerMinute: perMin, SSOUsers: members, Agents: agentCount,
+	}, nil
+}
+
+// countActiveAgents counts the org's active (non-revoked, non-deleted)
+// deported agents across all private regions. Shared by Usage and
+// AgentCreateAllowed so both agree on what counts against the cap.
+func (s *Service) countActiveAgents(ctx context.Context, orgUID string) (int, error) {
+	agents, err := s.db.ListAgents(ctx, orgUID)
+	if err != nil {
+		return 0, fmt.Errorf("list agents: %w", err)
+	}
+
+	count := 0
+
+	for _, agent := range agents {
+		if agent.Status == models.AgentStatusActive {
+			count++
+		}
+	}
+
+	return count, nil
+}
+
+// AgentCreateAllowed returns ErrEntitlementExceeded (wrapped in QuotaError)
+// when enrolling another agent would breach the org's MaxDeportedAgents cap.
+// nil cap = unlimited. Counts active (non-revoked, non-deleted) agents across
+// all private regions — mirrors CheckCreateAllowed.
+//
+// Called from two places: MintEnrollmentToken (early UX, before an operator
+// ever starts a container) and the agentws enrollment path (the correctness
+// point — a token minted under the cap could still over-enroll if the cap
+// drops or another token is consumed first).
+//
+// Race window: the count and the caller's insert are not atomic, mirroring
+// CheckCreateAllowed and CheckMembership. A tight race may slip one extra
+// agent past the cap; acceptable for a soft quota guard.
+func (s *Service) AgentCreateAllowed(ctx context.Context, orgUID string) error {
+	resolved, err := s.Resolve(ctx, orgUID)
+	if err != nil {
+		return fmt.Errorf("resolve entitlements: %w", err)
+	}
+
+	if resolved.Limits.MaxDeportedAgents == nil {
+		return nil
+	}
+
+	limit := *resolved.Limits.MaxDeportedAgents
+
+	count, err := s.countActiveAgents(ctx, orgUID)
+	if err != nil {
+		return fmt.Errorf("count agents: %w", err)
+	}
+
+	if count >= limit {
+		return &QuotaError{
+			LimitName:    "MaxDeportedAgents",
+			Limit:        limit,
+			CurrentUsage: count,
+		}
+	}
+
+	return nil
 }
 
 // CheckCreateAllowed returns ErrEntitlementExceeded (wrapped in QuotaError)

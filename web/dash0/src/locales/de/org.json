@@ -28,7 +28,9 @@
     "plan": "Aktueller Tarif",
     "checks": "Prüfungen",
     "checksPerMinute": "Prüfungen pro Minute",
+    "multiRegionNote": "Eine Multi-Region-Prüfung läuft in jeder ausgewählten Region und verbraucht daher Regionen × 60 s / Intervall Prüfungen pro Minute.",
     "users": "Benutzer",
+    "privateLocationAgents": "Agenten für private Standorte",
     "unlimited": "Unbegrenzt",
     "upgrade": "Upgrade",
     "loadError": "Nutzung konnte nicht geladen werden."

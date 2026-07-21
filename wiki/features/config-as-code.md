@@ -8,7 +8,7 @@ opted-in managed scope. The manifest is the existing export document shape, so
 
 This page covers the workflow and the CLI; the HTTP surface (request/response,
 query flags, managed scope, secret references, deletion safety) is documented at
-[`api-specification.md`](../api-specification.md) under
+[`api-specification/checks.md`](../api-specification/checks.md) under
 `POST /api/v1/orgs/:org/checks/apply`.
 
 ## The managed scope

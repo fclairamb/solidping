@@ -9,10 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 )
 
@@ -36,8 +35,8 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 }
 
 // ListIncidents handles GET /api/v1/orgs/:org/incidents.
-func (h *Handler) ListIncidents(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) ListIncidents(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 
 	opts, parseErr := parseListIncidentsOptions(req.URL.Query())
 	if parseErr != nil {
@@ -129,9 +128,9 @@ func applyListIncidentsExtras(query url.Values, opts *ListIncidentsOptions) {
 }
 
 // GetIncident handles GET /api/v1/orgs/:org/incidents/:uid.
-func (h *Handler) GetIncident(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	incidentUID := req.Param("uid")
+func (h *Handler) GetIncident(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	incidentUID := httpx.Param(req, "uid")
 
 	// Parse with parameter (e.g., ?with=check)
 	opts := &GetIncidentOptions{}
@@ -184,7 +183,7 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	}
 }
 
-func (h *Handler) actorUID(req bunrouter.Request) string {
+func (h *Handler) actorUID(req *http.Request) string {
 	if user, ok := middleware.GetUserFromContext(req.Context()); ok && user != nil {
 		return user.UID
 	}
@@ -197,9 +196,9 @@ func (h *Handler) actorUID(req bunrouter.Request) string {
 // it renders nicely when opened from a mail client (the link is opened via a
 // browser navigation, not a fetch call). Token verification both authenticates
 // and identifies the recipient.
-func (h *Handler) AcknowledgeIncidentByLink(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	incidentUID := req.Param("uid")
+func (h *Handler) AcknowledgeIncidentByLink(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	incidentUID := httpx.Param(req, "uid")
 	token := req.URL.Query().Get("token")
 
 	if token == "" {
@@ -251,9 +250,9 @@ func (h *Handler) AcknowledgeIncidentByLink(writer http.ResponseWriter, req bunr
 }
 
 // AcknowledgeIncident handles POST /api/v1/orgs/:org/incidents/:uid/ack.
-func (h *Handler) AcknowledgeIncident(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	incidentUID := req.Param("uid")
+func (h *Handler) AcknowledgeIncident(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	incidentUID := httpx.Param(req, "uid")
 
 	var body struct {
 		Note string `json:"note"`
@@ -277,9 +276,9 @@ func (h *Handler) AcknowledgeIncident(writer http.ResponseWriter, req bunrouter.
 }
 
 // UnacknowledgeIncident handles POST /api/v1/orgs/:org/incidents/:uid/unack.
-func (h *Handler) UnacknowledgeIncident(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	incidentUID := req.Param("uid")
+func (h *Handler) UnacknowledgeIncident(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	incidentUID := httpx.Param(req, "uid")
 
 	incident, err := h.svc.UnacknowledgeIncident(req.Context(), orgSlug, incidentUID, h.actorUID(req), viaWeb)
 	if err != nil {
@@ -290,9 +289,9 @@ func (h *Handler) UnacknowledgeIncident(writer http.ResponseWriter, req bunroute
 }
 
 // SnoozeIncident handles POST /api/v1/orgs/:org/incidents/:uid/snooze.
-func (h *Handler) SnoozeIncident(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	incidentUID := req.Param("uid")
+func (h *Handler) SnoozeIncident(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	incidentUID := httpx.Param(req, "uid")
 
 	var body struct {
 		Until    *time.Time `json:"until"`
@@ -332,9 +331,9 @@ func (h *Handler) SnoozeIncident(writer http.ResponseWriter, req bunrouter.Reque
 }
 
 // UnsnoozeIncident handles POST /api/v1/orgs/:org/incidents/:uid/unsnooze.
-func (h *Handler) UnsnoozeIncident(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	incidentUID := req.Param("uid")
+func (h *Handler) UnsnoozeIncident(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	incidentUID := httpx.Param(req, "uid")
 
 	incident, err := h.svc.UnsnoozeIncident(req.Context(), orgSlug, incidentUID, h.actorUID(req), "manual")
 	if err != nil {
@@ -345,9 +344,9 @@ func (h *Handler) UnsnoozeIncident(writer http.ResponseWriter, req bunrouter.Req
 }
 
 // ResolveIncident handles POST /api/v1/orgs/:org/incidents/:uid/resolve.
-func (h *Handler) ResolveIncident(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	incidentUID := req.Param("uid")
+func (h *Handler) ResolveIncident(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	incidentUID := httpx.Param(req, "uid")
 
 	var body struct {
 		Note string `json:"note"`
@@ -386,9 +385,9 @@ type commentEventResponse struct {
 // AddComment handles POST /api/v1/orgs/:org/incidents/:uid/comments — an
 // authenticated dashboard user appends a free-text comment to the incident
 // timeline. Returns the created event so the client can render it optimistically.
-func (h *Handler) AddComment(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	incidentUID := req.Param("uid")
+func (h *Handler) AddComment(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	incidentUID := httpx.Param(req, "uid")
 
 	var body struct {
 		Text string `json:"text"`

@@ -20,7 +20,6 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/uptrace/bunrouter"
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -111,7 +110,7 @@ func NewHandler(
 
 // Serve authenticates (before the upgrade), upgrades, and runs the agent
 // connection until it closes.
-func (h *Handler) Serve(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Serve(writer http.ResponseWriter, req *http.Request) error {
 	ctx := req.Context()
 
 	authHeader := req.Header.Get("Authorization")
@@ -131,7 +130,7 @@ func (h *Handler) Serve(writer http.ResponseWriter, req bunrouter.Request) error
 // token. The token is validated (non-consuming) BEFORE the upgrade so a bad
 // token gets a real HTTP 401; the atomic consume happens on the enroll frame.
 func (h *Handler) serveEnrollment(
-	ctx context.Context, writer http.ResponseWriter, req bunrouter.Request,
+	ctx context.Context, writer http.ResponseWriter, req *http.Request,
 ) error {
 	token := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
 	tokenHash := agentcrypto.HashEnrollmentToken(token)
@@ -141,7 +140,7 @@ func (h *Handler) serveEnrollment(
 			"Enrollment token is invalid, expired, or already used")
 	}
 
-	conn, err := websocket.Accept(writer, req.Request, &websocket.AcceptOptions{
+	conn, err := websocket.Accept(writer, req, &websocket.AcceptOptions{
 		CompressionMode: websocket.CompressionDisabled,
 	})
 	if err != nil {
@@ -202,6 +201,10 @@ func (h *Handler) awaitEnroll(
 		return nil, errors.New("x25519PublicKey must be an age recipient (age1…)") //nolint:err113 // protocol diagnostic
 	}
 
+	if quotaErr := h.checkAgentQuota(ctx, conn, tokenHash, frame.ID); quotaErr != nil {
+		return nil, quotaErr
+	}
+
 	name := frame.Name
 	if name == "" {
 		name = "agent"
@@ -235,10 +238,42 @@ func (h *Handler) awaitEnroll(
 	return agent, nil
 }
 
+// checkAgentQuota enforces MaxDeportedAgents BEFORE the enrollment token is
+// consumed: it looks the token up again (non-consuming, same call the
+// pre-upgrade check used) to learn the org, so a rejected enrollment leaves
+// the one-shot token usable for a retry after an upgrade or after deleting
+// another agent. Writes an `error` frame naming the quota breach (the
+// operator sees it in agent logs) before returning. A nil h.entitlements
+// (disabled in some tests) skips the guard entirely.
+func (h *Handler) checkAgentQuota(
+	ctx context.Context, conn *websocket.Conn, tokenHash, frameID string,
+) error {
+	if h.entitlements == nil {
+		return nil
+	}
+
+	token, err := h.dbService.GetAgentEnrollmentTokenByHash(ctx, tokenHash)
+	if err != nil {
+		return fmt.Errorf("lookup enrollment token: %w", err)
+	}
+
+	quotaErr := h.entitlements.AgentCreateAllowed(ctx, token.OrganizationUID)
+	if quotaErr == nil {
+		return nil
+	}
+
+	_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{
+		Type: agentcrypto.MsgTypeError, ID: frameID,
+		Code: string(base.ErrorCodeQuotaExceeded), Title: quotaErr.Error(),
+	})
+
+	return quotaErr
+}
+
 // serveReconnect handles a returning agent authenticating with signed headers:
 // Ed25519 over method|path|timestamp|nonce, ±5 min skew, replay-guarded.
 func (h *Handler) serveReconnect(
-	ctx context.Context, writer http.ResponseWriter, req bunrouter.Request,
+	ctx context.Context, writer http.ResponseWriter, req *http.Request,
 ) error {
 	agentUID := req.Header.Get(headerAgentUID)
 	timestamp := req.Header.Get(headerTimestamp)
@@ -274,7 +309,7 @@ func (h *Handler) serveReconnect(
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Invalid signature")
 	}
 
-	conn, acceptErr := websocket.Accept(writer, req.Request, &websocket.AcceptOptions{
+	conn, acceptErr := websocket.Accept(writer, req, &websocket.AcceptOptions{
 		CompressionMode: websocket.CompressionDisabled,
 	})
 	if acceptErr != nil {
@@ -480,7 +515,7 @@ func (h *Handler) handleClaim(
 		maxJobs = maxClaimJobs
 	}
 
-	jobs, err := h.checkJobSvc.ClaimJobsForAgent(
+	jobs, nextIn, err := h.checkJobSvc.ClaimJobsForAgent(
 		ctx, state.workerUID, state.agent.OrganizationUID, state.agent.Region,
 		frame.CheckUID, maxJobs, claimMaxAhead,
 	)
@@ -533,7 +568,20 @@ func (h *Handler) handleClaim(
 	}
 
 	_ = h.dbService.UpdateAgentLastSeen(ctx, state.agent.UID, time.Now())
-	_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{Type: agentcrypto.MsgTypeJobs, ID: frame.ID, Jobs: dispatched})
+	_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{
+		Type: agentcrypto.MsgTypeJobs, ID: frame.ID, Jobs: dispatched,
+		RetryInMs: retryInMs(nextIn),
+	})
+}
+
+// retryInMs converts the next-eligible hint to wire milliseconds, rounding UP
+// so the agent never wakes before the job is actually claimable.
+func retryInMs(d time.Duration) int64 {
+	if d <= 0 {
+		return 0
+	}
+
+	return int64((d + time.Millisecond - 1) / time.Millisecond)
 }
 
 // buildTunnelBlock loads the referenced SSH check from the live row and RE-ASSERTS

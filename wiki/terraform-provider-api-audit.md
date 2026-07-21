@@ -121,7 +121,7 @@ header; section/resource management is a future nested-resource concern, not a r
 | # | Gap | Severity | Follow-up |
 |---|---|---|---|
 | 1 | `escalation-policies` and `on-call-schedules` are only addressable by **slug**, not **uid**; `terraform import org/uid` cannot fetch them. | Blocks clean `import org/uid` for 2 of 5 resources. | `specs/todos/2026-05-25-14-uid-addressing-escalation-oncall.md` |
-| 2 | `escalation-policies` and `on-call-schedules` are missing from `wiki/api-specification.md`. | Docs only; non-blocking. | Folded into task `14` (doc the endpoints while adding uid routes). |
+| 2 | `escalation-policies` and `on-call-schedules` are missing from `wiki/api-specification/`. | Docs only; non-blocking. | Folded into task `14` (doc the endpoints while adding uid routes). |
 
 Everything else required for a clean declarative lifecycle (create-returns-full-object,
 read-back fidelity, secret placeholders, PATCH preserve-secrets, idempotent delete) is

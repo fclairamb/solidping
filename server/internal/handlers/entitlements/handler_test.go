@@ -11,7 +11,6 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -20,13 +19,14 @@ import (
 	authpkg "github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	enthandler "github.com/fclairamb/solidping/server/internal/handlers/entitlements"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 type entHandlerSetup struct {
 	dbSvc  *sqlite.Service
 	org    *models.Organization
 	user   *models.User
-	router *bunrouter.Router
+	router *httpx.Router
 }
 
 func newEntHandlerSetup(t *testing.T) *entHandlerSetup {
@@ -50,7 +50,7 @@ func newEntHandlerSetup(t *testing.T) *entHandlerSetup {
 	svc := entcore.NewService(dbSvc, entcore.DefaultsFor(config.DeploymentModeSelfHosted), 0)
 	handler := enthandler.NewHandler(svc, dbSvc, &config.Config{})
 
-	router := bunrouter.New()
+	router := httpx.New()
 	group := router.NewGroup("/api/v1/orgs/:org/entitlements")
 	group.GET("", handler.Get)
 	group.PUT("", handler.Put)
@@ -172,6 +172,31 @@ func TestPutAcceptsMaxChecks(t *testing.T) {
 	r.NoError(json.Unmarshal(getRec.Body.Bytes(), &body))
 	r.NotNil(body.Limits.MaxChecks)
 	r.Equal(7, *body.Limits.MaxChecks)
+}
+
+func TestPutAcceptsMaxDeportedAgents(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	h := newEntHandlerSetup(t)
+
+	rec := h.do(t, http.MethodPut, h.path(), map[string]any{
+		"source": string(models.EntitlementSourceAdmin),
+		"limits": map[string]any{"maxDeportedAgents": 3},
+	})
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+	// GET reflects the stored maxDeportedAgents in the limits block.
+	getRec := h.do(t, http.MethodGet, h.path(), nil)
+	r.Equal(http.StatusOK, getRec.Code)
+
+	var body struct {
+		Limits struct {
+			MaxDeportedAgents *int `json:"maxDeportedAgents"`
+		} `json:"limits"`
+	}
+	r.NoError(json.Unmarshal(getRec.Body.Bytes(), &body))
+	r.NotNil(body.Limits.MaxDeportedAgents)
+	r.Equal(3, *body.Limits.MaxDeportedAgents)
 }
 
 // putMaxUsers PUTs a limits body and returns the recorder. rawLimits is the

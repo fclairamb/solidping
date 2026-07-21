@@ -10,7 +10,6 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -21,14 +20,17 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/agentws"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel/sshtunneltest"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
+	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
 // env is the in-process WS test environment: a real sqlite DB, the real
@@ -43,6 +45,15 @@ type env struct {
 const testRegion = "@acme/dc1"
 
 func newEnv(t *testing.T) *env {
+	t.Helper()
+
+	return newEnvWith(t, nil)
+}
+
+// newEnvWith is newEnv but wires the given entitlements service into the
+// handler (nil disables entitlement enforcement entirely, matching the
+// production optionality of Handler.entitlements).
+func newEnvWith(t *testing.T, entSvc *entitlements.Service) *env {
 	t.Helper()
 
 	ctx := t.Context()
@@ -66,9 +77,53 @@ func newEnv(t *testing.T) *env {
 		dbSvc, checkJobSvc, incidents.NewService(dbSvc, jobs, clock.Real{}, nil),
 	)
 
-	handler := agentws.NewHandler(&config.Config{}, dbSvc, checkJobSvc, workersSvc, nil, events, nil)
+	handler := agentws.NewHandler(&config.Config{}, dbSvc, checkJobSvc, workersSvc, entSvc, events, nil)
 
-	router := bunrouter.New()
+	router := httpx.New()
+	router.GET("/api/v1/agent/ws", handler.Serve)
+
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	return &env{t: t, dbSvc: dbSvc, server: server, org: org}
+}
+
+// newEnvWithAgentCap is newEnv but wires a real entitlements.Service
+// enforcing the given MaxDeportedAgents cap on the "acme" org — used to
+// exercise the enrollment-time quota guard in awaitEnroll.
+func newEnvWithAgentCap(t *testing.T, maxDeportedAgents int) *env {
+	t.Helper()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("acme", "Acme")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	entSvc := entitlements.NewService(dbSvc, entitlements.DefaultsFor(config.DeploymentModeSelfHosted), 0)
+	r.NoError(entSvc.Set(ctx, org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{MaxDeportedAgents: entitlements.Int(maxDeportedAgents)},
+		Source: models.EntitlementSourceAdmin,
+	}, "user:tester", ""))
+
+	events := notifier.NewLocalEventNotifier()
+	t.Cleanup(func() { _ = events.Close() })
+
+	checkJobSvc := checkjobsvc.NewService(dbSvc.DB())
+	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, events, nil)
+
+	workersSvc := workers.NewService(
+		dbSvc, checkJobSvc, incidents.NewService(dbSvc, jobs, clock.Real{}, nil),
+	)
+
+	handler := agentws.NewHandler(&config.Config{}, dbSvc, checkJobSvc, workersSvc, entSvc, events, nil)
+
+	router := httpx.New()
 	router.GET("/api/v1/agent/ws", handler.Serve)
 
 	server := httptest.NewServer(router)
@@ -329,6 +384,85 @@ func TestEnrollmentTokenSingleUse(t *testing.T) {
 	_, status, err := e.dial(headers)
 	r.Error(err)
 	r.Equal(http.StatusUnauthorized, status)
+}
+
+// TestEnrollmentAllowedUnderAgentCap asserts a normal enrollment succeeds
+// when the org is under its MaxDeportedAgents cap.
+func TestEnrollmentAllowedUnderAgentCap(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newEnvWithAgentCap(t, 2)
+
+	conn, _, enrolled := e.enroll(e.mintToken(), "agent-1")
+	defer func() { _ = conn.CloseNow() }()
+	r.NotEmpty(enrolled.AgentUID)
+
+	agentsRows, err := e.dbSvc.ListAgents(t.Context(), e.org.UID)
+	r.NoError(err)
+	r.Len(agentsRows, 1)
+}
+
+// TestEnrollmentRejectedAtAgentCapDoesNotConsumeToken verifies awaitEnroll's
+// MaxDeportedAgents guard: once the org is at cap, a new enrollment attempt
+// gets an explicit `error` frame naming the quota breach and the one-shot
+// token is NOT consumed — the pre-upgrade check still accepts it afterward,
+// so the operator can retry after revoking another agent or upgrading.
+func TestEnrollmentRejectedAtAgentCapDoesNotConsumeToken(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	e := newEnvWithAgentCap(t, 1)
+
+	// Reach the cap with one already-enrolled agent.
+	firstConn, _, _ := e.enroll(e.mintToken(), "first")
+	defer func() { _ = firstConn.CloseNow() }()
+
+	// A second, independent token: enrollment is the only thing standing
+	// between this org and a second agent.
+	token := e.mintToken()
+
+	keys, err := agentcrypto.GenerateAgentKeys()
+	r.NoError(err)
+
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer "+token)
+
+	conn, _, err := e.dial(headers)
+	r.NoError(err)
+	defer func() { _ = conn.CloseNow() }()
+
+	var hello agentcrypto.ServerFrame
+	r.NoError(wsjson.Read(ctx, conn, &hello))
+	r.Equal(agentcrypto.MsgTypeHello, hello.Type)
+
+	r.NoError(wsjson.Write(ctx, conn, agentcrypto.ClientFrame{
+		Type:             agentcrypto.MsgTypeEnroll,
+		ID:               "enroll-2",
+		Name:             "second",
+		Ed25519PublicKey: keys.Ed25519PublicKey,
+		X25519PublicKey:  keys.X25519Recipient,
+	}))
+
+	var errFrame agentcrypto.ServerFrame
+	r.NoError(wsjson.Read(ctx, conn, &errFrame))
+	r.Equal(agentcrypto.MsgTypeError, errFrame.Type)
+	r.Equal("enroll-2", errFrame.ID)
+	r.Contains(errFrame.Title, "MaxDeportedAgents")
+
+	// The token was never consumed: a fresh dial with it still passes the
+	// pre-upgrade check (a consumed token would 401 immediately — see
+	// TestEnrollmentTokenSingleUse for the contrasting consumed case).
+	headers2 := http.Header{}
+	headers2.Set("Authorization", "Bearer "+token)
+	conn2, status, err := e.dial(headers2)
+	r.NoError(err)
+	r.NotEqual(http.StatusUnauthorized, status)
+	_ = conn2.CloseNow()
+
+	// And only the first agent ever got created.
+	agentsRows, err := e.dbSvc.ListAgents(ctx, e.org.UID)
+	r.NoError(err)
+	r.Len(agentsRows, 1)
 }
 
 // TestReconnectWithSignedHeaders: a returning agent authenticates with Ed25519
@@ -735,7 +869,7 @@ func TestTunnelEndToEndThroughAgent(t *testing.T) {
 	r.NoError(e.dbSvc.CreateCheck(ctx, dep))
 
 	// Claim: the WSBackend unseals the tunnel block and registers the snapshot.
-	jobs, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 10, 10, time.Minute)
+	jobs, _, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 10, 10, time.Minute)
 	r.NoError(err)
 
 	var depJob *models.CheckJob
@@ -883,7 +1017,7 @@ func TestWSBackendClientEndToEnd(t *testing.T) {
 	r.NoError(e.dbSvc.CreateCheck(ctx, check))
 
 	// ClaimJobs unseals and merges the secrets in memory.
-	jobs, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
+	jobs, _, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
 	r.NoError(err)
 	r.Len(jobs, 1)
 	r.Equal("hunter2", jobs[0].Config["password"], "the client must unseal and merge the secrets")
@@ -935,7 +1069,7 @@ func TestWSBackendUnsealFailureReportsJobError(t *testing.T) {
 	worker, err := wsBackend.Register(ctx, nil)
 	r.NoError(err)
 
-	jobs, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
+	jobs, _, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
 	r.NoError(err)
 	r.Empty(jobs, "an undecryptable job must be dropped from the batch")
 
@@ -946,4 +1080,56 @@ func TestWSBackendUnsealFailureReportsJobError(t *testing.T) {
 	r.True(ok, "a decrypt failure must produce a visible error result")
 	r.Equal(int(models.ResultStatusError), *got.Status)
 	r.Contains(got.Output["error"], "re-save the check's credentials")
+}
+
+// TestClaimCarriesNextEligibleHint (spec 2026-07-20-03): a jobs frame for an
+// idle agent carries retryInMs — how long until the next job in its scope
+// becomes claimable — so the agent's fetcher can come back in time for a
+// sub-minute-period check instead of sleeping its flat fallback minute (the
+// "10s check on a deported agent runs once per minute" bug).
+func TestClaimCarriesNextEligibleHint(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newEnv(t)
+	ctx := t.Context()
+
+	check := e.createCheck("fast-check", []string{testRegion})
+
+	// Reschedule the job 10s out with a 10s period: claimable in ~5s
+	// (scheduled_at − period/2), a delay only the hint can carry.
+	scheduledAt := time.Now().Add(10 * time.Second)
+	_, err := e.dbSvc.DB().NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("scheduled_at = ?", scheduledAt).
+		Set("effective_scheduled_at = ?", scheduledAt).
+		Set("period = ?", timeutils.Duration(10*time.Second)).
+		Where("check_uid = ?", check.UID).
+		Exec(ctx)
+	r.NoError(err)
+
+	// Raw protocol level: the jobs frame carries retryInMs.
+	conn, _, _ := e.enroll(e.mintToken(), "dc1-agent")
+
+	resp := roundTrip(t, conn, agentcrypto.ClientFrame{Type: agentcrypto.MsgTypeClaim, ID: "c1", MaxJobs: 10})
+	r.Equal(agentcrypto.MsgTypeJobs, resp.Type)
+	r.Empty(resp.Jobs, "the job is outside its own 5s claim window")
+	r.InDelta(5000, resp.RetryInMs, 1500, "retryInMs must be ~scheduled_at − period/2")
+
+	// WSBackend level: the hint reaches the worker loop's ClaimJobs return.
+	keys, err := agentcrypto.GenerateAgentKeys()
+	r.NoError(err)
+
+	wsBackend := backend.NewWSBackend(
+		e.server.URL, e.mintToken(), "hint-agent",
+		&backend.Identity{AgentKeys: *keys}, nil,
+	)
+
+	worker, err := wsBackend.Register(ctx, nil)
+	r.NoError(err)
+
+	jobs, nextIn, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
+	r.NoError(err)
+	r.Empty(jobs)
+	r.InDelta((5 * time.Second).Seconds(), nextIn.Seconds(), 1.5,
+		"the agent fetcher must receive the server's eligibility hint")
 }

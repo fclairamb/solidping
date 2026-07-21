@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -471,7 +470,7 @@ func TestRefreshHandlerResetsAccessTokenCookie(t *testing.T) {
 	httpReq := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/auth/refresh", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	r.NoError(handler.Refresh(rec, bunrouter.Request{Request: httpReq}))
+	r.NoError(handler.Refresh(rec, httpReq))
 	r.Equal(http.StatusOK, rec.Code)
 
 	result := rec.Result()

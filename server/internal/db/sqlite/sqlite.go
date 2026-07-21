@@ -23,11 +23,11 @@ import (
 	"github.com/uptrace/bun/migrate"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sloghook"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
-	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
 // backendLabel is the value used for the "backend" label on
@@ -1152,15 +1152,18 @@ func createCheckJobs(ctx context.Context, tx bun.Tx, check *models.Check) error 
 		return nil
 	}
 
-	// Multi-region: create one job per region with period splitting
+	// Multi-region: one job per region at the full check period (spec
+	// 2026-07-20-05 — no more basePeriod×n split). Stagger the first tick by
+	// the inter-region spread; region 0 stays at now so the check-created
+	// express path fires a fast first result (see the postgres twin).
 	n := len(check.Regions)
-	splitPeriod := timeutils.Duration(basePeriod * time.Duration(n))
+	spread := scheduling.RegionSpread(basePeriod, n, check.RegionSpreadDuration())
 
 	for i, region := range check.Regions {
-		scheduledAt := now.Add(basePeriod * time.Duration(i))
+		scheduledAt := now.Add(spread * time.Duration(i))
 		regionCopy := region
 
-		checkJob := models.NewCheckJob(check.OrganizationUID, check.UID, splitPeriod)
+		checkJob := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
 		checkJob.Type = check.Type
 		checkJob.Config = check.Config
 		checkJob.ConfigPrivate = check.ConfigPrivate
@@ -1266,6 +1269,61 @@ func applyCheckTypeFilter(query *bun.SelectQuery, types []string) *bun.SelectQue
 	return query.Where("type IN (?)", bun.List(types))
 }
 
+// groupSortKeyExpr is the effective group-ordering key for sort=group: the
+// check's group sort_order, or a large sentinel for ungrouped checks so they
+// sort strictly last (sort_order is int16, max 32767 < the sentinel). It is a
+// correlated subquery referencing the outer checks.check_group_uid by bare
+// column name — deliberately not qualified, since bun aliases the checks table
+// as the reserved word "check". Kept byte-identical to the postgres twin so the
+// composite cursor produced by one store is honored by the other.
+const groupSortKeyExpr = `COALESCE((SELECT g.sort_order FROM check_groups AS g ` +
+	`WHERE g.uid = check_group_uid), 2147483647)`
+
+// applyChecksCursor adds the keyset cursor predicate to the ListChecks row
+// query. sort=group uses a composite (group key, created_at, uid) tuple; the
+// default ordering keeps the two-part (created_at, uid) cursor.
+func applyChecksCursor(query *bun.SelectQuery, filter *models.ListChecksFilter) *bun.SelectQuery {
+	if filter.SortByGroup {
+		if filter.CursorGroupSortKey == nil || filter.CursorCreatedAt == nil || filter.CursorUID == nil {
+			return query
+		}
+
+		return query.Where(
+			"("+groupSortKeyExpr+" > ?"+
+				" OR ("+groupSortKeyExpr+" = ? AND created_at < ?)"+
+				" OR ("+groupSortKeyExpr+" = ? AND created_at = ? AND uid < ?))",
+			*filter.CursorGroupSortKey,
+			*filter.CursorGroupSortKey, *filter.CursorCreatedAt,
+			*filter.CursorGroupSortKey, *filter.CursorCreatedAt, *filter.CursorUID,
+		)
+	}
+
+	if filter.CursorCreatedAt != nil && filter.CursorUID != nil {
+		return query.Where(
+			"(created_at < ? OR (created_at = ? AND uid < ?))",
+			*filter.CursorCreatedAt, *filter.CursorCreatedAt, *filter.CursorUID,
+		)
+	}
+
+	return query
+}
+
+// applyChecksOrdering applies the row ordering. sort=group loads in display
+// order (group sort_order asc, ungrouped last via the COALESCE sentinel, then
+// created_at DESC / uid DESC within a bucket) and selects the effective key so
+// the service can encode it into the composite cursor. Default is unchanged.
+func applyChecksOrdering(query *bun.SelectQuery, filter *models.ListChecksFilter) *bun.SelectQuery {
+	if filter != nil && filter.SortByGroup {
+		return query.
+			ColumnExpr("*").
+			ColumnExpr(groupSortKeyExpr+" AS group_sort_key").
+			OrderExpr(groupSortKeyExpr+" ASC").
+			Order("created_at DESC", "uid DESC")
+	}
+
+	return query.Order("created_at DESC", "uid DESC")
+}
+
 //nolint:funlen // List query builder handles many optional filters inline
 func (s *Service) ListChecks(
 	ctx context.Context, orgUID string, filter *models.ListChecksFilter,
@@ -1275,8 +1333,7 @@ func (s *Service) ListChecks(
 	query := s.db.NewSelect().
 		Model(&checks).
 		Where("organization_uid = ?", orgUID).
-		Where("deleted_at IS NULL").
-		Order("created_at DESC", "uid DESC")
+		Where("deleted_at IS NULL")
 
 	countQuery := s.db.NewSelect().
 		Model((*models.Check)(nil)).
@@ -1340,19 +1397,16 @@ func (s *Service) ListChecks(
 			countQuery = countQuery.Where("status IN (?)", bun.List(filter.Statuses))
 		}
 
-		// Apply cursor
-		if filter.CursorCreatedAt != nil && filter.CursorUID != nil {
-			query = query.Where(
-				"(created_at < ? OR (created_at = ? AND uid < ?))",
-				*filter.CursorCreatedAt, *filter.CursorCreatedAt, *filter.CursorUID,
-			)
-		}
+		// Apply cursor (keyset) — composite for sort=group, two-part otherwise.
+		query = applyChecksCursor(query, filter)
 
 		// Apply limit
 		if filter.Limit > 0 {
 			query = query.Limit(filter.Limit + 1)
 		}
 	}
+
+	query = applyChecksOrdering(query, filter)
 
 	total, err := countQuery.Count(ctx)
 	if err != nil {
@@ -1438,6 +1492,13 @@ func (s *Service) UpdateCheck( //nolint:funlen // PATCH builder spans many optio
 			return fmt.Errorf("failed to marshal regions: %w", jsonErr)
 		}
 		query = query.Set("regions = ?", string(regionsJSON))
+	}
+
+	switch {
+	case update.ClearRegionSpread:
+		query = query.Set("region_spread = NULL")
+	case update.RegionSpread != nil:
+		query = query.Set("region_spread = ?", *update.RegionSpread)
 	}
 
 	if update.ReopenCooldownMultiplier != nil {
@@ -4630,7 +4691,7 @@ func (s *Service) ListOrgCheckRates(ctx context.Context, orgUID string) ([]model
 
 	err := s.db.NewSelect().
 		Model((*models.Check)(nil)).
-		Column("enabled", "period").
+		Column("enabled", "period", "regions").
 		Where("organization_uid = ?", orgUID).
 		Where("deleted_at IS NULL").
 		Where("internal = ?", false).
@@ -4640,6 +4701,41 @@ func (s *Service) ListOrgCheckRates(ctx context.Context, orgUID string) ([]model
 	}
 
 	return rates, nil
+}
+
+// ListChecksWithStaleJobPeriods returns enabled, non-deleted checks that have
+// at least one check_job whose period no longer matches the check's own period
+// (spec 2026-07-20-05). Byte-for-byte the postgres twin's shape so the startup
+// reconcile behaves identically on both backends; period is the canonical
+// HH:MM:SS text, so a split-period job never text-equals its check's period.
+func (s *Service) ListChecksWithStaleJobPeriods(ctx context.Context) ([]*models.Check, error) {
+	var uids []string
+
+	if err := s.db.NewSelect().
+		ColumnExpr("DISTINCT cj.check_uid").
+		TableExpr("check_jobs AS cj").
+		Join("JOIN checks AS c ON c.uid = cj.check_uid").
+		Where("c.deleted_at IS NULL").
+		Where("c.enabled = ?", true).
+		Where("cj.period <> c.period").
+		Scan(ctx, &uids); err != nil {
+		return nil, fmt.Errorf("list stale check job periods: %w", err)
+	}
+
+	if len(uids) == 0 {
+		return nil, nil
+	}
+
+	var checks []*models.Check
+	if err := s.db.NewSelect().
+		Model(&checks).
+		Where("uid IN (?)", bun.List(uids)).
+		Where("deleted_at IS NULL").
+		Scan(ctx); err != nil {
+		return nil, fmt.Errorf("load stale checks: %w", err)
+	}
+
+	return checks, nil
 }
 
 // ListPublicStatusUpdates is implemented in status_update.go.

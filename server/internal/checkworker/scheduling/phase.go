@@ -18,9 +18,17 @@ import (
 //
 //	the base period instead of all ticking on the wall-clock minute boundary.
 //
-// phase  = jitter + i × basePeriod           — region i always fires
+// phase  = jitter + i × spread                — region i fires i × spread after
 //
-//	i × basePeriod after region 0, the round-robin leveling the user expects.
+//	region 0, staggering the regions across the period. Since spec
+//	2026-07-20-05 every region runs at the FULL check period (jobPeriod ==
+//	basePeriod), so the spread is the inter-region offset, not the whole base
+//	period: it defaults to basePeriod / region_count (even coverage) and can be
+//	overridden per check (checks.region_spread) down to 0 (all regions fire
+//	together). Callers resolve it once via RegionSpread and pass it in, so the
+//	reconcile, create, and worker paths all compute the identical phase.
+//	(Before that spec, multi-region checks used a split jobPeriod of
+//	basePeriod × region_count and a spread of exactly basePeriod.)
 //
 // next   = now stepped forward 1..jobPeriod whole seconds to the next t with
 //
@@ -74,6 +82,28 @@ func RegionIndex(region *string, regions []string) int {
 	return 0
 }
 
+// RegionSpread resolves the inter-region offset applied between consecutive
+// regions' phases (spec 2026-07-20-05). override is the check's optional
+// region_spread column (nil = use the default). The default is
+// basePeriod / n — even coverage across the period, so the org gets a global
+// detection interval of period/n. n <= 1 or basePeriod <= 0 yields 0 (a single
+// region / no-region job needs no spreading). The result is identical on every
+// process that passes the same (basePeriod, n, override), which is what keeps
+// the phase formula reproducible across the reconcile, create, and worker
+// paths. The override is used verbatim — callers validate 0 <= override <
+// basePeriod at write time; the modulo in NextAligned tolerates any value.
+func RegionSpread(basePeriod time.Duration, n int, override *time.Duration) time.Duration {
+	if basePeriod <= 0 || n <= 1 {
+		return 0
+	}
+
+	if override != nil {
+		return *override
+	}
+
+	return basePeriod / time.Duration(n)
+}
+
 // NextAligned returns now advanced by a whole number of seconds — at least 1,
 // at most jobPeriod — to the next instant whose Unix second is congruent to
 // this job's phase modulo jobPeriod (now's sub-second component is carried
@@ -81,11 +111,12 @@ func RegionIndex(region *string, regions []string) int {
 // second, the result is a full jobPeriod later: a check that just fired on
 // its tick must not re-fire within the same second. Callers comparing the
 // result against their own earlier clock sample must allow for the gap
-// between the two reads on top of the [1s, jobPeriod] guarantee. basePeriod
-// is the check's pre-split period (used only to derive the jitter and the
-// region spacing); jobPeriod is the actual period this job fires on (the
-// post-split period for multi-region checks, or basePeriod itself for
-// single/no-region jobs).
+// between the two reads on top of the [1s, jobPeriod] guarantee. basePeriod is
+// the check's period (used only to derive the jitter); jobPeriod is the actual
+// period this job fires on — since spec 2026-07-20-05 that equals basePeriod
+// for every region. spread is the inter-region offset (resolve it once via
+// RegionSpread so all processes agree): region i's phase is jitter + i × spread
+// modulo jobPeriod.
 //
 // basePeriod <= 0 or jobPeriod <= 0 falls back to now.Add(jobPeriod) — this
 // should not happen in practice (reconcile never produces a zero period) but
@@ -97,6 +128,7 @@ func NextAligned(
 	checkUID string,
 	region *string,
 	regions []string,
+	spread time.Duration,
 ) time.Time {
 	if basePeriod <= 0 || jobPeriod <= 0 {
 		return now.Add(jobPeriod)
@@ -104,7 +136,7 @@ func NextAligned(
 
 	jitter := JitterFor(checkUID, basePeriod)
 	i := RegionIndex(region, regions)
-	phase := (jitter + time.Duration(i)*basePeriod) % jobPeriod
+	phase := (jitter + time.Duration(i)*spread) % jobPeriod
 
 	periodSecs := int64(jobPeriod / time.Second)
 	if periodSecs <= 0 {

@@ -5,10 +5,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 const fieldSlug = "slug"
@@ -28,8 +27,8 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 }
 
 // ListCheckGroups handles listing all check groups for an organization.
-func (h *Handler) ListCheckGroups(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) ListCheckGroups(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 
 	groups, err := h.svc.ListCheckGroups(req.Context(), orgSlug)
 	if err != nil {
@@ -42,8 +41,8 @@ func (h *Handler) ListCheckGroups(writer http.ResponseWriter, req bunrouter.Requ
 }
 
 // CreateCheckGroup handles creating a new check group.
-func (h *Handler) CreateCheckGroup(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) CreateCheckGroup(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 
 	var createReq CreateCheckGroupRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
@@ -67,9 +66,9 @@ func (h *Handler) CreateCheckGroup(writer http.ResponseWriter, req bunrouter.Req
 }
 
 // GetCheckGroup handles retrieving a single check group by UID or slug.
-func (h *Handler) GetCheckGroup(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	identifier := req.Param("uid")
+func (h *Handler) GetCheckGroup(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	identifier := httpx.Param(req, "uid")
 
 	group, err := h.svc.GetCheckGroup(req.Context(), orgSlug, identifier)
 	if err != nil {
@@ -80,9 +79,9 @@ func (h *Handler) GetCheckGroup(writer http.ResponseWriter, req bunrouter.Reques
 }
 
 // UpdateCheckGroup handles updating an existing check group.
-func (h *Handler) UpdateCheckGroup(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	identifier := req.Param("uid")
+func (h *Handler) UpdateCheckGroup(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	identifier := httpx.Param(req, "uid")
 
 	var updateReq UpdateCheckGroupRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
@@ -100,9 +99,9 @@ func (h *Handler) UpdateCheckGroup(writer http.ResponseWriter, req bunrouter.Req
 }
 
 // DeleteCheckGroup handles deleting a check group by UID or slug.
-func (h *Handler) DeleteCheckGroup(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	identifier := req.Param("uid")
+func (h *Handler) DeleteCheckGroup(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	identifier := httpx.Param(req, "uid")
 
 	if err := h.svc.DeleteCheckGroup(req.Context(), orgSlug, identifier); err != nil {
 		return h.handleGroupError(writer, err)

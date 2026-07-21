@@ -4,10 +4,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // Handler exposes the org-scoped suppression list/delete API.
@@ -25,8 +24,8 @@ func NewHandler(svc *Service, cfg *config.Config) *Handler {
 }
 
 // ListSuppressions handles GET /api/v1/orgs/:org/email-suppressions.
-func (h *Handler) ListSuppressions(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
+func (h *Handler) ListSuppressions(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
 
 	rows, err := h.svc.List(req.Context(), orgSlug)
 	if err != nil {
@@ -38,9 +37,9 @@ func (h *Handler) ListSuppressions(writer http.ResponseWriter, req bunrouter.Req
 
 // DeleteSuppression handles DELETE /api/v1/orgs/:org/email-suppressions/:uid
 // — the dashboard's re-subscribe action.
-func (h *Handler) DeleteSuppression(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	uid := req.Param("uid")
+func (h *Handler) DeleteSuppression(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	uid := httpx.Param(req, "uid")
 
 	if err := h.svc.Delete(req.Context(), orgSlug, uid); err != nil {
 		return h.handleError(writer, err)

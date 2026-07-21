@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
@@ -33,7 +31,7 @@ type CreateUserRequest struct {
 // Test-only: only routed when SP_RUNMODE=test, same as the other
 // /api/v1/test/* routes registered in server.go.
 // POST /api/v1/test/users.
-func (h *Handler) CreateUser(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) CreateUser(writer http.ResponseWriter, req *http.Request) error {
 	var body CreateUserRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 		return h.writeError(writer, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")

@@ -10,7 +10,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/buildinfo"
@@ -139,10 +138,10 @@ func TestGetMemoryAuthMatrix(t *testing.T) {
 	authMw := middleware.NewAuthMiddleware(nil, dbSvc, &config.Config{})
 	guarded := authMw.RequireSuperAdmin(srv.getMemory)
 
-	requestWithUser := func(u *models.User) bunrouter.Request {
+	requestWithUser := func(u *models.User) *http.Request {
 		c := context.WithValue(context.Background(), base.ContextKeyUser, u)
 		req := httptest.NewRequestWithContext(c, http.MethodGet, "/api/mgmt/memory", http.NoBody)
-		return bunrouter.NewRequest(req)
+		return req
 	}
 
 	tests := []struct {

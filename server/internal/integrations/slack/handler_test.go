@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 	"github.com/fclairamb/solidping/server/internal/oauthstate"
@@ -27,7 +27,7 @@ import (
 // criteria in spec 2026-07-05-01 are proven against the real middleware,
 // not simulated by injecting context.
 type installURLTestEnv struct {
-	router  *bunrouter.Router
+	router  *httpx.Router
 	db      *sqlite.Service
 	authSvc *auth.Service
 	orgA    *models.Organization
@@ -67,7 +67,7 @@ func newInstallURLTestEnv(t *testing.T) *installURLTestEnv {
 	orgB := models.NewOrganization("install-url-org-b", "Org B")
 	r.NoError(dbSvc.CreateOrganization(ctx, orgB))
 
-	router := bunrouter.New()
+	router := httpx.New()
 	group := router.NewGroup("/api/v1/orgs/:org/integrations/slack").
 		Use(authMw.RequireAuth, authMw.RequireOrgAccess)
 	group.POST("/install-url", slackHandler.BuildInstallURLForOrg)
@@ -284,7 +284,7 @@ func TestInstall_IgnoresOrgAndChannelUIDQueryParams(t *testing.T) {
 	slackSvc := slack.NewService(dbSvc, cfg, nil, nil, nil)
 	slackHandler := slack.NewHandler(slackSvc, cfg)
 
-	router := bunrouter.New()
+	router := httpx.New()
 	group := router.NewGroup("/api/v1/integrations/slack")
 	group.GET("/install", slackHandler.Install)
 

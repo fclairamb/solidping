@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bunrouter"
 
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 )
 
@@ -20,7 +20,7 @@ func TestRequestTimeout_Slow504(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	slow := func(w http.ResponseWriter, req bunrouter.Request) error {
+	slow := func(w http.ResponseWriter, req *http.Request) error {
 		select {
 		case <-time.After(500 * time.Millisecond):
 			w.WriteHeader(http.StatusOK)
@@ -56,7 +56,7 @@ func TestRequestTimeout_WriteHeaderThenWriteBodyReachesWire(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	jsonHandler := func(w http.ResponseWriter, _ bunrouter.Request) error {
+	jsonHandler := func(w http.ResponseWriter, _ *http.Request) error {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"accessToken":"abc"}`))
@@ -82,7 +82,7 @@ func TestRequestTimeout_HandlerHeaderWriteAfterTimeoutDoesNotRace(t *testing.T) 
 	r := require.New(t)
 
 	released := make(chan struct{})
-	racing := func(w http.ResponseWriter, req bunrouter.Request) error {
+	racing := func(w http.ResponseWriter, req *http.Request) error {
 		<-req.Context().Done() // wait until the middleware has timed us out
 		// Hammer the header map the way a late rate-limiter rejection would,
 		// concurrently with the middleware committing its 504.
@@ -124,7 +124,7 @@ func TestRequestTimeout_CommittedResponseStreamsToCompletion(t *testing.T) {
 	r := require.New(t)
 
 	var handlerDone atomic.Bool
-	streaming := func(w http.ResponseWriter, _ bunrouter.Request) error {
+	streaming := func(w http.ResponseWriter, _ *http.Request) error {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("part-1;"))
 		time.Sleep(60 * time.Millisecond) // 20ms deadline fires mid-stream
@@ -153,9 +153,9 @@ func TestRequestTimeout_RealServerLateStreamDoesNotCrash(t *testing.T) {
 
 	const lateChunk = 64 * 1024
 
-	router := bunrouter.New()
+	router := httpx.New()
 	router.GET("/api/v1/orgs/:org/checks",
-		middleware.RequestTimeout(30*time.Millisecond)(func(w http.ResponseWriter, _ bunrouter.Request) error {
+		middleware.RequestTimeout(30*time.Millisecond)(func(w http.ResponseWriter, _ *http.Request) error {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("head;"))
 			time.Sleep(90 * time.Millisecond) // outlive the deadline mid-response
@@ -183,7 +183,7 @@ func TestRequestTimeout_Disabled(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	slow := func(w http.ResponseWriter, _ bunrouter.Request) error {
+	slow := func(w http.ResponseWriter, _ *http.Request) error {
 		time.Sleep(50 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
 		return nil
@@ -199,7 +199,7 @@ func TestRequestTimeout_ExcludedPaths(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	slow := func(w http.ResponseWriter, _ bunrouter.Request) error {
+	slow := func(w http.ResponseWriter, _ *http.Request) error {
 		time.Sleep(80 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
 		return nil

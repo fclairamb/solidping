@@ -11,9 +11,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 const (
@@ -28,8 +27,8 @@ const (
 )
 
 // VerifyMiddleware creates a middleware that verifies Slack request signatures.
-func (h *Handler) VerifyMiddleware(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
-	return func(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) VerifyMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(writer http.ResponseWriter, req *http.Request) error {
 		// Get the signing secret from config
 		signingSecret := h.cfg.Slack.SigningSecret
 		if signingSecret == "" {

@@ -44,8 +44,8 @@ Dev logs live in `logs/*.log` (`backend.log`, `dash0.log`, `status0.log`), size-
 
 `SP_DEPLOYMENT_MODE=saas` switches per-org defaults to the SaaS tier and lets a
 separate billing service (`../solidping-billing`) drive plan upgrades. Per-org
-limits live in `org_entitlements` (`maxChecks`, `maxSsoUsers`,
-`maxChecksPerMinute`) plus display-only plan identity (`displayName`,
+limits live in `org_entitlements` (`maxChecks`, `maxUsers` — `maxSsoUsers` is a
+deprecated decode-only alias, `maxChecksPerMinute`) plus display-only plan identity (`displayName`,
 `displayEmoji`, e.g. "🚀 Team") — both shown on the org **Usage** page
 (`/orgs/$org/organization/usage`).
 
@@ -81,7 +81,7 @@ Additional frontend rules:
 - Use `PATCH` for updates, `q` for search, `limit` for page-size.
 - camelCase for all JSON properties and query parameters.
 - Multi-value query params use the singular form, comma-separated (e.g. `?checkUid=a,b`).
-- Full endpoint list: `wiki/api-specification.md`.
+- Full endpoint list: `wiki/api-specification/`.
 
 ### Error shape
 ```json

@@ -65,6 +65,13 @@ export interface Check {
    */
   needsReseal?: boolean;
   regions?: string[];
+  /**
+   * Optional inter-region scheduling offset override ("spread"), as
+   * "HH:MM:SS". Present only when a non-default value is set — absent means
+   * the check uses the automatic default (period / region count). See spec
+   * 2026-07-20-05 (backend) and 2026-07-21-01 (this UI control).
+   */
+  regionSpread?: string;
   labels?: Record<string, string>;
   enabled?: boolean;
   internal?: boolean;
@@ -123,6 +130,8 @@ export interface CreateCheckRequest {
   type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "rdp" | "sleep";
   config: Record<string, unknown>;
   regions?: string[];
+  /** Omit to use the automatic default (period / region count). */
+  regionSpread?: string;
   labels?: Record<string, string>;
   enabled?: boolean;
   internal?: boolean;
@@ -138,6 +147,8 @@ export interface UpdateCheckRequest {
   escalationPolicyUid?: string;
   config?: Record<string, unknown>;
   regions?: string[];
+  /** A duration string sets it, "" clears it back to automatic, omit leaves unchanged. */
+  regionSpread?: string;
   labels?: Record<string, string>;
   enabled?: boolean;
   internal?: boolean;
@@ -254,6 +265,9 @@ function buildChecksUrl(
     status?: string;
     limit?: number;
     cursor?: string;
+    /** Opt-in ordering. "group" = group sortOrder asc, ungrouped last, then
+     * created_at DESC within a bucket. Omitted = default created_at DESC. */
+    sort?: string;
   }
 ): string {
   const params = new URLSearchParams();
@@ -266,6 +280,7 @@ function buildChecksUrl(
   if (options?.status) params.set("status", options.status);
   if (options?.limit) params.set("limit", options.limit.toString());
   if (options?.cursor) params.set("cursor", options.cursor);
+  if (options?.sort) params.set("sort", options.sort);
   const query = params.toString();
   return `/api/v1/orgs/${org}/checks${query ? `?${query}` : ""}`;
 }
@@ -304,6 +319,8 @@ export function useInfiniteChecks(
     internal?: string;
     status?: string;
     limit?: number;
+    /** Opt-in ordering; "group" loads in the page's display order. */
+    sort?: string;
   }
 ) {
   return useInfiniteQuery({
@@ -510,6 +527,27 @@ export function useCheckGroups(org: string) {
       return response.data || [];
     },
     enabled: !!org,
+  });
+}
+
+export function useCheckGroup(
+  org: string,
+  uid: string,
+  options?: {
+    /**
+     * Pass "always" when the consumer seeds local state from the response
+     * once (e.g. the edit form): combined with `isFetchedAfterMount`, it
+     * guarantees the seed comes from fresh data, not a stale cache entry.
+     */
+    refetchOnMount?: boolean | "always";
+  },
+) {
+  return useQuery({
+    queryKey: ["checkGroups", org, uid],
+    queryFn: () =>
+      apiFetch<CheckGroup>(`/api/v1/orgs/${org}/check-groups/${uid}`),
+    enabled: !!org && !!uid,
+    refetchOnMount: options?.refetchOnMount,
   });
 }
 
@@ -3917,12 +3955,16 @@ export interface EntitlementsLimits {
   maxChecks?: number | null;
   maxChecksPerMinute?: number | null;
   maxUsers?: number | null;
+  /** Cap on active deported (private-location) agents. null = unlimited. */
+  maxDeportedAgents?: number | null;
 }
 
 export interface EntitlementsUsage {
   checks: number;
   checksPerMinute: number;
   ssoUsers: number;
+  /** Count of active deported (private-location) agents. */
+  agents: number;
 }
 
 export interface EntitlementsResponse {

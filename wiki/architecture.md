@@ -1,6 +1,6 @@
 # SolidPing Architecture
 
-This document describes the architecture of SolidPing, a distributed monitoring platform for checking availability and performance of services across 32 protocols.
+This document describes the architecture of SolidPing, a distributed monitoring platform for checking availability and performance of services across 39 protocols.
 
 ## System Overview
 
@@ -69,6 +69,22 @@ The system uses a lease-based mechanism for distributing checks across workers:
 4. **Lease Renewal**: Lease expires if worker fails, allowing another worker to take over
 5. **Results Storage**: Time-series data stored with aggregation by period
 
+**Two ways a worker reaches the scheduler:**
+
+- **In-cluster workers** run inside SolidPing's own deployment and take leases
+  directly against the database, as described above.
+- **Deported agents** run inside a customer network and never touch the
+  database. They connect outbound over a WebSocket (`/api/v1/agent/ws`), claim
+  jobs through the protocol, and serve **private regions** (`@org/region`).
+  Credentials for private-only checks are sealed to the agent, so the server
+  cannot decrypt them. See
+  [features/deported-agents.md](features/deported-agents.md).
+
+Scheduling is also cost-aware: jobs are placed in fast/slow **lanes** with an
+EWMA cost model and duty-cycle admission for heavy checks
+(specs `2026-07-01-01`…`-04`). Note that agent-path jobs do not currently
+feed those EWMAs.
+
 Workers acquire jobs using PostgreSQL's `SELECT FOR UPDATE SKIP LOCKED` to prevent conflicts:
 
 ```sql
@@ -116,7 +132,7 @@ Jobs are defined in `jobdef/`, registered in `jobtypes/`, managed by `jobsvc/`, 
 
 ### Backend
 - **Language**: Go 1.24+
-- **HTTP Router**: bunrouter (lightweight, fast routing)
+- **HTTP Router**: go-chi, wrapped by `internal/httpx` (replaced the unmaintained bunrouter in v0.5.0; `httpx` keeps the old `:param` declaration syntax and rewrites it to chi's `{param}`)
 - **ORM**: Bun (type-safe SQL builder for PostgreSQL and SQLite)
 - **Configuration**: koanf (YAML files + environment variables)
 - **CLI**: urfave/cli (command structure)
@@ -142,7 +158,7 @@ solidping/
       app/
         server.go              # HTTP server, routing, middleware, DI
         services/              # Service registry
-      checkers/                # 30 check type implementations
+      checkers/                # 39 check type implementations
         checkhttp/             # HTTP/HTTPS checks
         checktcp/              # TCP connectivity
         checkicmp/             # ICMP ping
@@ -207,7 +223,7 @@ solidping/
       integrations/            # External service integrations
         slack/                 # Slack app integration
         discord/               # Discord bot integration
-      notifications/           # 9 notification senders
+      notifications/           # 10 notification senders
         slack.go               # Slack notifications
         discord.go             # Discord notifications
         email.go               # Email notifications
@@ -248,7 +264,7 @@ solidping/
 
 ## Monitoring Features
 
-### Check Types (32)
+### Check Types (39)
 
 **Network:**
 - HTTP/HTTPS: Status code validation, response time, JSON body validation, custom headers, custom user-agent
@@ -259,6 +275,10 @@ solidping/
 - WebSocket: WebSocket connectivity
 - SSL: Certificate validation, expiration monitoring
 - Domain: WHOIS-based domain expiration tracking
+- DNSBL: DNS blocklist / reputation lookups
+- NTP: Time-server reachability and clock offset
+- SIP: SIP endpoint registration and response
+- RDP: Remote Desktop endpoint availability
 
 **Email:**
 - SMTP: Mail server connectivity and authentication
@@ -280,13 +300,16 @@ solidping/
 - SNMP: SNMP device monitoring
 - A2S: Source / Steam game server query (Valve A2S)
 - Minecraft: Minecraft server query
+- Kubernetes: Cluster/workload health via the Kubernetes API
+- Freebox line quality: ISP line metrics (SNR, attenuation, sync rate)
 
 **Specialized:**
 - JavaScript: Sandboxed custom check logic
-- Browser: Full browser-based checks (Rod)
+- Browser: Full browser-based checks (chromedp)
 - Heartbeat: Passive push-based monitoring (services report in)
+- Sleep: Fixed-duration synthetic check used to exercise the scheduler and lanes
 
-### Notification Channels (9)
+### Notification Channels (10)
 
 - **Slack**: OAuth + threaded incident messages, Marketplace direct install
 - **Discord**: OAuth + webhook embeds
@@ -297,6 +320,7 @@ solidping/
 - **Ntfy**: Push notifications via ntfy.sh
 - **Opsgenie**: On-call alerting and escalation
 - **Pushover**: Mobile push notifications
+- **Web Push**: Browser push notifications (VAPID), no app install required
 
 ### Incident Management
 - Automatic incident creation on check status changes
@@ -368,7 +392,7 @@ solidping/
 - Heartbeat mechanism via `last_active_at`
 
 #### Checks
-- Monitoring target definitions with 32 protocol types
+- Monitoring target definitions with 39 protocol types
 - JSONB configuration for check-specific parameters
 - Configurable frequency (period)
 - Enable/disable flag
@@ -412,6 +436,10 @@ solidping/
 2. **OAuth2**: Google, GitHub, GitLab, Microsoft, Slack, Discord
 3. **Personal Access Tokens (PAT)**: Long-lived API access tokens
 4. **Two-Factor Authentication**: TOTP-based 2FA
+5. **Passkeys / WebAuthn**: Passwordless authentication (`user_passkeys`)
+6. **LDAP**: Directory-backed authentication (`config/ldap_auth.go`)
+7. **SAML**: Enterprise SSO (`handlers/auth/saml.go`)
+8. **Deported agents**: Ed25519 request signing, not JWT — see [features/deported-agents.md](features/deported-agents.md)
 
 ### Authorization
 - JWT-based with refresh tokens

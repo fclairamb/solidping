@@ -348,6 +348,9 @@ func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	if limits.MaxChecksPerMinute != nil {
 		out.Limits.MaxChecksPerMinute = limits.MaxChecksPerMinute
 	}
+	if limits.MaxDeportedAgents != nil {
+		out.Limits.MaxDeportedAgents = limits.MaxDeportedAgents
+	}
 
 	return out
 }

@@ -6,8 +6,6 @@ package features
 import (
 	"net/http"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
@@ -32,7 +30,7 @@ type Response struct {
 }
 
 // GetFeatures handles GET /api/v1/features (auth required upstream).
-func (h *Handler) GetFeatures(writer http.ResponseWriter, _ bunrouter.Request) error {
+func (h *Handler) GetFeatures(writer http.ResponseWriter, _ *http.Request) error {
 	return h.WriteJSON(writer, http.StatusOK, Response{
 		BugReport: h.cfg.App.EnableBugReport,
 	})

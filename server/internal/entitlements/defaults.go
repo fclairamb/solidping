@@ -66,6 +66,11 @@ const (
 	defaultMaxChecksSaaS          = 100
 	defaultMaxChecksPerMinuteSaaS = 6
 	defaultMaxUsersSaaS           = 5
+	// defaultMaxDeportedAgentsSaaS mirrors the Free SKU's private-location
+	// agent cap (plan ladder: Free 1, Starter 3, Pro 6, Scale 9 — see
+	// wiki/features/deported-agents.md). Self-hosted stays unlimited
+	// (nil) — no const needed, the field is simply left unset below.
+	defaultMaxDeportedAgentsSaaS = 1
 )
 
 // Display identity shown on the usage page when a row has none of its
@@ -98,6 +103,7 @@ func DefaultsFor(mode string) Entitlements {
 				MaxChecks:          Int(defaultMaxChecksSaaS),
 				MaxChecksPerMinute: Int(defaultMaxChecksPerMinuteSaaS),
 				MaxUsers:           Int(defaultMaxUsersSaaS),
+				MaxDeportedAgents:  Int(defaultMaxDeportedAgentsSaaS),
 			},
 			Source:       models.EntitlementSourceDefault,
 			DisplayName:  strPtr(displayNameSaaS),
@@ -107,6 +113,9 @@ func DefaultsFor(mode string) Entitlements {
 		return Entitlements{
 			Limits: Limits{
 				MaxUsers: Int(defaultMaxUsersSelfHosted),
+				// MaxDeportedAgents stays nil (unlimited) — self-hosted keeps
+				// the "free private locations" competitive positioning
+				// documented in wiki/features/deported-agents.md.
 			},
 			Source:       models.EntitlementSourceDefault,
 			DisplayName:  strPtr(displayNameSelfHosted),

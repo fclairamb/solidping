@@ -6,11 +6,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 )
 
@@ -46,7 +45,7 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 }
 
 // parseListFilter parses shared query-string parameters into a ListFilter.
-func parseListFilter(req bunrouter.Request) ListFilter {
+func parseListFilter(req *http.Request) ListFilter {
 	filter := ListFilter{Limit: 100}
 
 	if v := req.URL.Query().Get("status"); v != "" {
@@ -77,13 +76,13 @@ func parseListFilter(req bunrouter.Request) ListFilter {
 }
 
 // ListForIncident handles GET /api/v1/orgs/:org/incidents/:uid/notifications.
-func (h *Handler) ListForIncident(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+func (h *Handler) ListForIncident(writer http.ResponseWriter, req *http.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
 		return h.handleError(writer, err)
 	}
 
-	incidentUID := req.Param("uid")
+	incidentUID := httpx.Param(req, "uid")
 	filter := parseListFilter(req)
 
 	rows, err := h.svc.ListForIncident(req.Context(), orgUID, incidentUID, filter)
@@ -96,14 +95,14 @@ func (h *Handler) ListForIncident(writer http.ResponseWriter, req bunrouter.Requ
 
 // GetForIncident handles
 // GET /api/v1/orgs/:org/incidents/:uid/notifications/:notifUid.
-func (h *Handler) GetForIncident(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+func (h *Handler) GetForIncident(writer http.ResponseWriter, req *http.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
 		return h.handleError(writer, err)
 	}
 
-	incidentUID := req.Param("uid")
-	notifUID := req.Param("notifUid")
+	incidentUID := httpx.Param(req, "uid")
+	notifUID := httpx.Param(req, "notifUid")
 
 	detail, err := h.svc.GetForIncident(req.Context(), orgUID, incidentUID, notifUID)
 	if err != nil {
@@ -115,13 +114,13 @@ func (h *Handler) GetForIncident(writer http.ResponseWriter, req bunrouter.Reque
 
 // GetByOrg handles GET /api/v1/orgs/:org/notifications/:notifUid.
 // Fetches a single notification scoped only by org UID (no incident required).
-func (h *Handler) GetByOrg(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+func (h *Handler) GetByOrg(writer http.ResponseWriter, req *http.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
 		return h.handleError(writer, err)
 	}
 
-	notifUID := req.Param("notifUid")
+	notifUID := httpx.Param(req, "notifUid")
 
 	detail, err := h.svc.GetByOrg(req.Context(), orgUID, notifUID)
 	if err != nil {
@@ -133,8 +132,8 @@ func (h *Handler) GetByOrg(writer http.ResponseWriter, req bunrouter.Request) er
 
 // ListByOrg handles GET /api/v1/orgs/:org/notifications?connectionUid=&limit=.
 // Requires connectionUid; returns 400 if absent. Defaults limit to 10, max 50.
-func (h *Handler) ListByOrg(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+func (h *Handler) ListByOrg(writer http.ResponseWriter, req *http.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -166,13 +165,13 @@ func (h *Handler) ListByOrg(writer http.ResponseWriter, req bunrouter.Request) e
 
 // ListForUser handles GET /api/v1/orgs/:org/users/:uid/notifications.
 // Admins can query any user; regular members can only query themselves.
-func (h *Handler) ListForUser(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+func (h *Handler) ListForUser(writer http.ResponseWriter, req *http.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
 		return h.handleError(writer, err)
 	}
 
-	targetUID := req.Param("uid")
+	targetUID := httpx.Param(req, "uid")
 
 	callerUser, ok := middleware.GetUserFromContext(req.Context())
 	if !ok {
@@ -199,8 +198,8 @@ func (h *Handler) ListForUser(writer http.ResponseWriter, req bunrouter.Request)
 
 // ListForMe handles GET /api/v1/orgs/:org/me/notifications.
 // Alias for ListForUser with the caller's own UID.
-func (h *Handler) ListForMe(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+func (h *Handler) ListForMe(writer http.ResponseWriter, req *http.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
 		return h.handleError(writer, err)
 	}
