@@ -57,6 +57,20 @@ Incidents can be managed directly from the dashboard or API:
 
 Auto-resolution (the check recovering on its own) records a `auto` resolution instead.
 
+## Comments
+
+Responders can append free-text **comments** to an incident from the dashboard or API.
+Each comment is added to the incident timeline as an append-only `incident.comment`
+event authored by the calling user, so the running commentary of an outage — what was
+tried, what was found, who took over — lives alongside the automated events.
+
+```bash
+curl -X POST http://localhost:4000/api/v1/orgs/default/incidents/{uid}/comments \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"comment":"Restarted the upstream pool, watching recovery."}'
+```
+
 ## Maintenance Windows
 
 During an active [maintenance window](/features/maintenance-windows), incident processing is suppressed for the affected checks — failures do not create incidents or fire notifications. Use this to silence alerts during planned deployments or upgrades.
