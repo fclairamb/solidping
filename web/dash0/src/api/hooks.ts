@@ -65,6 +65,13 @@ export interface Check {
    */
   needsReseal?: boolean;
   regions?: string[];
+  /**
+   * Optional inter-region scheduling offset override ("spread"), as
+   * "HH:MM:SS". Present only when a non-default value is set — absent means
+   * the check uses the automatic default (period / region count). See spec
+   * 2026-07-20-05 (backend) and 2026-07-21-01 (this UI control).
+   */
+  regionSpread?: string;
   labels?: Record<string, string>;
   enabled?: boolean;
   internal?: boolean;
@@ -123,6 +130,8 @@ export interface CreateCheckRequest {
   type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "rdp" | "sleep";
   config: Record<string, unknown>;
   regions?: string[];
+  /** Omit to use the automatic default (period / region count). */
+  regionSpread?: string;
   labels?: Record<string, string>;
   enabled?: boolean;
   internal?: boolean;
@@ -138,6 +147,8 @@ export interface UpdateCheckRequest {
   escalationPolicyUid?: string;
   config?: Record<string, unknown>;
   regions?: string[];
+  /** A duration string sets it, "" clears it back to automatic, omit leaves unchanged. */
+  regionSpread?: string;
   labels?: Record<string, string>;
   enabled?: boolean;
   internal?: boolean;
