@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0](https://github.com/fclairamb/solidping/compare/v0.5.0...v0.6.0) (2026-07-21)
+
+
+### Features
+
+* per-region check periods with spread control, check-group management, grouped pagination, agent quotas, chi router ([#156](https://github.com/fclairamb/solidping/issues/156)) ([a08bfd8](https://github.com/fclairamb/solidping/commit/a08bfd8ff56c7449a206e62f0613c874a3a5372b))
+
+
+### Bug Fixes
+
+* **deps:** update dependency recharts to v3.10.0 ([#155](https://github.com/fclairamb/solidping/issues/155)) ([6c855f4](https://github.com/fclairamb/solidping/commit/6c855f4250f9c164f88735dbadbaa4fe9c0430a0))
+* **deps:** update github.com/dop251/goja digest to 0fc1d42 ([#150](https://github.com/fclairamb/solidping/issues/150)) ([05b578c](https://github.com/fclairamb/solidping/commit/05b578c4a46404246e60de8b25c7e6c4c9f49583))
+* **deps:** update go dependencies (non-major) ([#154](https://github.com/fclairamb/solidping/issues/154)) ([03ce71c](https://github.com/fclairamb/solidping/commit/03ce71c4983464b65ab81b588579d0fc3be834dc))
+
 ## [Unreleased]
 
 ### Features
