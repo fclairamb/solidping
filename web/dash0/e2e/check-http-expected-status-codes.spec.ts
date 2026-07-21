@@ -84,6 +84,10 @@ test.describe("HTTP check expected-status codes", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
+    // A fresh form seeds the implicit ["200"] default as chip-0 — remove it
+    // first so the only chip left is the one this test types.
+    await page.getByTestId("check-expected-status-codes-chip-remove-0").click();
+
     const codesField = page.getByTestId("check-expected-status-codes-input");
     await codesField.fill("4xx");
     await codesField.press("Enter");
@@ -107,6 +111,10 @@ test.describe("HTTP check expected-status codes", () => {
     await page
       .getByTestId("check-url-input")
       .fill("https://example.com/status-invalid");
+
+    // Remove the seeded implicit ["200"] default so the only chip is the
+    // invalid one this test exercises.
+    await page.getByTestId("check-expected-status-codes-chip-remove-0").click();
 
     const codesField = page.getByTestId("check-expected-status-codes-input");
     await codesField.fill("6XX");
