@@ -73,7 +73,7 @@ active through 2026-05). Markets verbatim as "the best uptime kuma alternative"
 for professional DevOps teams. Websites/APIs, status pages, alerts; storage on
 SQLite / PostgreSQL / MongoDB. Homepage + live demo + docs + community Terraform
 provider; self-described beta. **The closest kind of rival — same lane as Uptime
-Kuma itself.** SolidPing counters on 39 check types + distributed multi-region
+Kuma itself.** SolidPing counters on 38 check types + distributed multi-region
 workers + built-in on-call, none of which Peekaping matches yet; Peekaping's edge
 is 1.1k★ of momentum, a polished site/demo, and pluggable storage backends.
 *Watch:* whether it ships distributed probing or a hosted/paid tier. Surfaced
@@ -117,7 +117,7 @@ SolidPing's distributed workers). HTTP/TCP/UDP/SSL/DNS + cron; Email/Slack/
 Telegram/Webhook. Free ($0, 5 monitors, 1 Lighthouse, 5-min, HTTP/TCP/UDP only) /
 Starter (**$10/mo**, 1-min, +SSL/DNS) / Pro (**$24/mo**, 25 monitors, 3 Lighthouses,
 6 members). SolidPing counters:
-self-hosted/OSS, 39 check types vs ~6, 10 channels vs 4. Surfaced 2026-05-25 via
+self-hosted/OSS, 38 check types vs ~6, 10 channels vs 4. Surfaced 2026-05-25 via
 an r/selfhosted self-promo that was heavily downvoted ("AI slop advertisement") —
 community mood is hostile to promo posts here. *Update 2026-07-12:* paid prices
 **roughly doubled** (Starter $5→$10, Pro $12→$24); Lighthouse agents now also stream

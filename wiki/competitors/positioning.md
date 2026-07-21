@@ -107,7 +107,7 @@ targets:
 2. **"Sub-minute checks, free. No paid tier required."**
    → anyone evaluating Hyperping Essentials or Better Stack's "30-second checks."
 3. **"Uptime Kuma's big sibling — same single binary, plus distributed workers,
-   on-call rotations, status pages, 39 check types."**
+   on-call rotations, status pages, 38 check types."**
    → Kuma users feeling the limits (one node, no on-call, fewer protocols).
 4. **"Heartbeat + active checks in one tool."**
    → anyone running Healthchecks.io alongside a separate active-check tool.
