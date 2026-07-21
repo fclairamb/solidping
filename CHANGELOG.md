@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/fclairamb/solidping/compare/v0.6.1...v0.6.2) (2026-07-21)
+
+
+### Bug Fixes
+
+* **dash0:** accept multiple DNS expected IPs/values via chip input ([#161](https://github.com/fclairamb/solidping/issues/161)) ([d91e60b](https://github.com/fclairamb/solidping/commit/d91e60b60b452d38ba84326e680e932b25bbacec))
+
 ## [Unreleased]
 
 ### Bug Fixes
