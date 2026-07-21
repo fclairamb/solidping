@@ -121,6 +121,7 @@ function CheckEditPage() {
           period: data.period,
           config: data.config,
           regions: data.regions,
+          ...(data.regionSpread !== undefined ? { regionSpread: data.regionSpread } : {}),
           reopenCooldownMultiplier: data.reopenCooldownMultiplier,
           flappingWindowSeconds: data.flappingWindowSeconds,
           flapBackoffFactor: data.flapBackoffFactor,
