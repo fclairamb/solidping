@@ -20,6 +20,7 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 | ntfy | Available | HTTP push |
 | Opsgenie | Available | API integration |
 | Pushover | Available | API integration |
+| Web Push | Available | Browser push (VAPID) |
 
 ## Email (SMTP)
 
@@ -250,6 +251,40 @@ Add a Pushover connection in SolidPing with:
 1. Create an account at https://pushover.net
 2. Create a new Application/API Token for SolidPing
 3. Add your user key and API token in SolidPing's integration settings
+
+## Web Push
+
+Web Push delivers browser notifications straight to a user's device — no third-party
+service required. It is typically used as an on-call/escalation contact so an operator
+gets paged even when the dashboard tab is closed.
+
+Web Push relies on [VAPID](https://datatracker.ietf.org/doc/html/rfc8292) keys that the
+server holds. Once configured, each user opts in from their notification settings, and
+the browser registers a push subscription.
+
+### Environment Variables
+
+```bash
+SP_WEBPUSH_ENABLED=true
+SP_WEBPUSH_VAPID_PUBLIC_KEY=your-vapid-public-key
+SP_WEBPUSH_VAPID_PRIVATE_KEY=your-vapid-private-key
+SP_WEBPUSH_SUBJECT=mailto:admin@example.com   # contact URI advertised to push services
+```
+
+### Configuration File
+
+```yaml
+webpush:
+  enabled: true
+  vapid_public_key: your-vapid-public-key
+  vapid_private_key: your-vapid-private-key
+  subject: mailto:admin@example.com
+```
+
+:::note Generating VAPID keys
+Generate a VAPID key pair with any web-push tooling (e.g. `npx web-push generate-vapid-keys`).
+Keep the private key secret.
+:::
 
 ## Webhooks
 

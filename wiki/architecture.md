@@ -1,6 +1,6 @@
 # SolidPing Architecture
 
-This document describes the architecture of SolidPing, a distributed monitoring platform for checking availability and performance of services across 39 protocols.
+This document describes the architecture of SolidPing, a distributed monitoring platform for checking availability and performance of services across 38 public protocols (plus one internal `sleep` synthetic check, 39 registered types in total).
 
 ## System Overview
 
