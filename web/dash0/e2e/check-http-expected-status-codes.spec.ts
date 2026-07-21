@@ -230,4 +230,21 @@ test.describe("HTTP check expected-status codes", () => {
       headers: { Authorization: `Bearer ${token}` },
     });
   });
+
+  test("the ?expectedStatus= prefill search param seeds a single chip", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.goto("orgs/test/checks/new?checkType=http&expectedStatus=201");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    await expect(
+      page.getByTestId("check-expected-status-codes-chip-0"),
+    ).toContainText("201");
+    await expect(
+      page.getByTestId("check-expected-status-codes-chip-1"),
+    ).toHaveCount(0);
+  });
 });
