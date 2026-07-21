@@ -23,6 +23,20 @@ async function getCheck(page: Page, token: string, uid: string) {
   return await resp.json();
 }
 
+// Matches the established mobile-viewport convention in this repo (see
+// incident-comments.spec.ts, refresh-button-responsive.spec.ts): an explicit
+// setViewportSize rather than a devices[...] preset, plus a
+// scrollWidth-vs-clientWidth check for horizontal overflow.
+const MOBILE = { width: 375, height: 812 };
+
+async function hasHorizontalOverflow(page: Page): Promise<boolean> {
+  return page.evaluate(
+    () =>
+      document.documentElement.scrollWidth >
+      document.documentElement.clientWidth + 1,
+  );
+}
+
 test.describe("HTTP check expected-status codes", () => {
   test("space-separated codes become two chips, persist on reload, and save as expectedStatusCodes", async ({
     authenticatedPage,
@@ -246,5 +260,94 @@ test.describe("HTTP check expected-status codes", () => {
     await expect(
       page.getByTestId("check-expected-status-codes-chip-1"),
     ).toHaveCount(0);
+  });
+
+  test("the status-codes chip input wraps, stays tappable, and saves at a mobile viewport", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    await page.setViewportSize(MOBILE);
+
+    await page.goto("orgs/test/checks/new?checkType=http");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    const checkName = `E2E Status Mobile ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page
+      .getByTestId("check-url-input")
+      .fill("https://example.com/status-mobile");
+
+    // Add enough chips to force wrapping in the narrow container (the
+    // ["200"] default plus four more).
+    const codesField = page.getByTestId("check-expected-status-codes-input");
+    await codesField.fill("201 4XX 500 3XX");
+    await page.getByTestId("check-name-input").click(); // blur, commits the draft
+
+    const chipsContainer = page.getByTestId("check-expected-status-codes");
+    await expect(chipsContainer).toBeVisible();
+    for (const idx of [0, 1, 2, 3, 4]) {
+      await expect(
+        page.getByTestId(`check-expected-status-codes-chip-${idx}`),
+      ).toBeVisible();
+    }
+
+    // No horizontal overflow on the page from the wrapped chip row.
+    expect(await hasHorizontalOverflow(page)).toBe(false);
+
+    // Chips remain tappable/removable at this width — remove one.
+    await page.getByTestId("check-expected-status-codes-chip-remove-2").click();
+    await expect(
+      page.getByTestId("check-expected-status-codes-chip-4"),
+    ).toHaveCount(0);
+
+    // The free-text input stays usable: type and commit one more chip. The
+    // list is now ["200","201","500","3XX"] (4 entries, indices 0-3), so the
+    // new chip lands at index 4.
+    await codesField.fill("2XX");
+    await codesField.press("Enter");
+    await expect(
+      page.getByTestId("check-expected-status-codes-chip-4"),
+    ).toContainText("2XX");
+
+    expect(await hasHorizontalOverflow(page)).toBe(false);
+
+    // Saving still works at this viewport.
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    const uid = page.url().match(/\/checks\/([0-9a-f-]{36})/)![1];
+
+    const created = await getCheck(page, token, uid);
+    expect(created.config.expectedStatusCodes).toEqual(
+      expect.arrayContaining(["201", "500", "2XX"]),
+    );
+
+    await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  });
+
+  test("the design reference's token-chips-input section has no horizontal overflow at a mobile viewport", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.setViewportSize(MOBILE);
+
+    await page.goto("orgs/test/design-reference");
+    await page.waitForLoadState("networkidle");
+
+    const section = page.locator("#token-chips-input");
+    await section.scrollIntoViewIfNeeded();
+    await expect(section).toBeVisible();
+
+    // Both the RecipientsInput and the raw TokenChipsInput examples render
+    // and wrap within the viewport width.
+    await expect(section.getByText("Email recipients — all valid")).toBeVisible();
+    await expect(
+      section.getByText("HTTP expected-status codes (exact or NXX wildcard)"),
+    ).toBeVisible();
+
+    expect(await hasHorizontalOverflow(page)).toBe(false);
   });
 });
