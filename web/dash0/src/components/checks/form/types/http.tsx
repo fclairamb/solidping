@@ -11,6 +11,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { TokenChipsInput } from "@/components/shared/token-chips-input";
+import {
+  dedupeStatusPatterns,
+  isValidStatusPattern,
+  normalizeStatusPattern,
+} from "@/lib/http-status";
 import { getFieldError } from "@/hooks/use-check-validation";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
@@ -20,7 +26,11 @@ import { useCheckFormFields } from "./context";
 export interface HttpState {
   url: string;
   method: string;
-  expectedStatus: string;
+  // A list of exact codes ("200") and/or NXX wildcards ("4XX"). Always
+  // normalized (trimmed + uppercased) and de-duplicated — see
+  // dedupeStatusPatterns. Never empty in practice: fromConfig defaults it to
+  // ["200"] when the config carries neither status key.
+  expectedStatusCodes: string[];
   username: string;
   password: string;
   secretHeaders: { key: string; value: string }[];
@@ -32,6 +42,24 @@ export interface HttpState {
   // carried those values, and set by the inputs' own onChange.
   authDirty: boolean;
   headersDirty: boolean;
+}
+
+// seedExpectedStatusCodes implements the fromConfig precedence from spec
+// 2026-07-21-02: prefer the new expectedStatusCodes list; else fall back to
+// the legacy single expectedStatus int as one exact chip; else default to
+// the implicit ["200"].
+function seedExpectedStatusCodes(config: CheckConfig): string[] {
+  const rawCodes = config.expectedStatusCodes;
+  if (Array.isArray(rawCodes) && rawCodes.length > 0) {
+    const deduped = dedupeStatusPatterns(rawCodes.map(String));
+    if (deduped.length > 0) return deduped;
+  }
+  const legacy = config.expectedStatus;
+  if (legacy !== undefined && legacy !== null && String(legacy) !== "") {
+    const deduped = dedupeStatusPatterns([String(legacy)]);
+    if (deduped.length > 0) return deduped;
+  }
+  return ["200"];
 }
 
 function fromConfig(config: CheckConfig): HttpState {
@@ -48,7 +76,7 @@ function fromConfig(config: CheckConfig): HttpState {
   return {
     url: getConfigField(config, "url"),
     method: getConfigField(config, "method") || "GET",
-    expectedStatus: getConfigField(config, "expectedStatus") || "200",
+    expectedStatusCodes: seedExpectedStatusCodes(config),
     username,
     password,
     secretHeaders,
@@ -65,8 +93,17 @@ function toConfig(state: HttpState): { config: CheckConfig; errors: FieldErrors 
   const cfg: CheckConfig = {};
   if (state.url) cfg.url = state.url;
   if (state.method && state.method !== "GET") cfg.method = state.method;
-  const statusCode = parseInt(state.expectedStatus, 10);
-  if (!isNaN(statusCode) && statusCode !== 200) cfg.expectedStatus = statusCode;
+  // The default ["200"] (or an empty list) stays implicit — omit both status
+  // keys, matching today's "200 is implicit" behavior. Otherwise write the
+  // list and never the deprecated `expectedStatus`: toConfig rebuilds the
+  // config object from state every time, so a legacy key from a previously
+  // saved check drops off automatically the next time this form saves it.
+  const codes = state.expectedStatusCodes;
+  const isImplicitDefault =
+    codes.length === 0 || (codes.length === 1 && codes[0] === "200");
+  if (!isImplicitDefault) {
+    cfg.expectedStatusCodes = codes;
+  }
   if (state.authDirty) {
     if (state.username || state.password) {
       // The server folds this pair into the encrypted `basicAuth` key.
@@ -86,13 +123,34 @@ function toConfig(state: HttpState): { config: CheckConfig; errors: FieldErrors 
     // entirely and the stored headers are preserved.
     cfg.secretHeaders = shMap;
   }
-  const errors: FieldErrors = state.url
-    ? []
-    : [{ name: "url", message: "URL is required" }];
+  const errors: FieldErrors = [];
+  if (!state.url) errors.push({ name: "url", message: "URL is required" });
+  // Invalid chips block save with a field-scoped error, the same mechanism
+  // the URL-required check above uses (see check-form.tsx's
+  // `serialized.errors` / `blockingErrors`) — the chip itself is also flagged
+  // destructive-red by TokenChipsInput, but that's a live hint, not what
+  // gates the actual submit.
+  const invalidCodes = codes.filter((code) => !isValidStatusPattern(code));
+  if (invalidCodes.length > 0) {
+    errors.push({
+      name: "expectedStatusCodes",
+      message: `Invalid status code pattern${invalidCodes.length > 1 ? "s" : ""}: ${invalidCodes.join(", ")} (use an exact code like 200 or a wildcard like 4XX)`,
+    });
+  }
   return { config: cfg, errors };
 }
 
 function Fields({ state, onChange, errors }: CheckTypeFieldsProps<HttpState>) {
+  const { t } = useTranslation("checks");
+  const invalidCodes = state.expectedStatusCodes.filter(
+    (code) => !isValidStatusPattern(code),
+  );
+  const statusCodesError =
+    invalidCodes.length > 0
+      ? t("form.statusCodeInvalidSummary", "Invalid: {{codes}}", {
+          codes: invalidCodes.join(", "),
+        })
+      : getFieldError(errors, "expected_status_codes");
   return (
     <>
       <div className="space-y-2">
@@ -135,15 +193,37 @@ function Fields({ state, onChange, errors }: CheckTypeFieldsProps<HttpState>) {
         )}
       </div>
       <div className="space-y-2">
-        <Label htmlFor="expectedStatus">Expected Status</Label>
-        <Input
-          id="expectedStatus"
-          type="number"
+        <Label htmlFor="expectedStatusCodes">Expected Status</Label>
+        <TokenChipsInput
+          id="expectedStatusCodes"
+          value={state.expectedStatusCodes}
+          onChange={(codes) => onChange({ ...state, expectedStatusCodes: codes })}
+          validate={isValidStatusPattern}
+          normalize={normalizeStatusPattern}
           placeholder="200"
-          value={state.expectedStatus}
-          onChange={(e) => onChange({ ...state, expectedStatus: e.target.value })}
-          data-testid="check-expected-status-input"
+          data-testid="check-expected-status-codes"
+          invalidTitle={t(
+            "form.statusCodeInvalid",
+            "Not a valid status code or wildcard (e.g. 200, 4XX)",
+          )}
+          getRemoveLabel={(code) =>
+            t("form.removeStatusCode", "Remove {{code}}", { code })
+          }
         />
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "form.expectedStatusCodesHint",
+            "Exact codes or ranges: 200, 201, 4XX",
+          )}
+        </p>
+        {statusCodesError && (
+          <p
+            className="text-xs text-destructive"
+            data-testid="check-expected-status-codes-error"
+          >
+            {statusCodesError}
+          </p>
+        )}
       </div>
     </>
   );
