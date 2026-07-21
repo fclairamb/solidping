@@ -15,7 +15,7 @@
 
 ## Where we are
 
-The original roadmap is fully shipped. SolidPing now has 39 check types, 10 native notification channels, multi-region distributed workers, **deported agents (private locations)**, group-incident correlation, on-call schedules, escalation policies, credentials encryption at rest, labels, check templates, Slack Marketplace install, and an MCP server.
+The original roadmap is fully shipped. SolidPing now has 38 public check types (39 registered, including the internal `sleep` synthetic type), 10 native notification channels, multi-region distributed workers, **deported agents (private locations)**, group-incident correlation, on-call schedules, escalation policies, credentials encryption at rest, labels, check templates, Slack Marketplace install, and an MCP server.
 
 The product has crossed the bar where it can credibly replace **BetterStack + Opsgenie/PagerDuty** for self-hosted teams. The remaining work is about **closing the last competitive gaps** and **lowering switching cost** for users on other tools.
 

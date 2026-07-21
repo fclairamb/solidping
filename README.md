@@ -8,24 +8,27 @@ SolidPing is a multi-tenant monitoring system that enables organizations to moni
 
 ### Key Features
 
-- **32 check types**: HTTP, TCP, UDP, ICMP, DNS, SSL/Domain, SSH, FTP/SFTP, SMTP/POP3/IMAP, Email (JMAP passive inbox), WebSocket, gRPC, 6 databases (Postgres, MySQL, MSSQL, Oracle, MongoDB, Redis), 3 message queues (Kafka, RabbitMQ, MQTT), Docker, SNMP, game server (Source/A2S, Minecraft), headless browser, custom JS, heartbeat
-- **Distributed workers**: Multi-region check execution with lease-based scheduling
+- **38 check types**: HTTP, TCP, UDP, ICMP, DNS, DNSBL, NTP, SSL/Domain, SSH, RDP, FTP/SFTP, SMTP/POP3/IMAP, Email (JMAP passive inbox), WebSocket, SIP, gRPC, 6 databases (Postgres, MySQL, MSSQL, Oracle, MongoDB, Redis), 3 message queues (Kafka, RabbitMQ, MQTT), Docker, Kubernetes, SNMP, Freebox line, game server (Source/A2S, Minecraft), headless browser, custom JS, heartbeat
+- **Distributed workers**: Multi-region check execution with lease-based scheduling, per-region check periods with spread control, and per-org check-rate quotas
+- **Private locations**: Deported agents run checks from inside your own network over an outbound WebSocket, with per-org agent quotas
 - **Multi-tenant**: Organization-scoped data isolation, RBAC, 2FA (TOTP), labels with autocomplete
 - **Low footprint**: Single binary; SQLite, embedded Postgres, or external Postgres
 - **Fast checks**: Sub-minute frequencies supported
-- **Notifications (9 native)**: Slack (OAuth + threads + Marketplace install), Discord (OAuth + webhook), Email, Webhooks, Google Chat, Mattermost, Ntfy, Opsgenie, Pushover
-- **Incidents**: Adaptive resolution with cooldown, group-incident correlation (one alert per outage, not per check), acknowledgment, snooze, manual resolve
+- **Notifications (10 native)**: Slack (OAuth + threads + Marketplace install), Discord (OAuth + webhook), Email, Webhooks, Google Chat, Mattermost, Ntfy, Opsgenie, Pushover, Web Push (VAPID)
+- **Incidents**: Adaptive resolution with cooldown, group-incident correlation (one alert per outage, not per check), acknowledgment, snooze, manual resolve, and per-incident comments
+- **Check groups**: Organize checks into groups with grouped pagination and group-level incident correlation
 - **On-call & escalation**: Rotation schedules with overrides, multi-step escalation policies (user / schedule / connection / all-admins targets, repeats)
 - **Credentials encryption at rest**: Envelope encryption with out-of-band master key; secrets never echoed back to the dashboard
+- **SSH tunnels**: Reach otherwise-unreachable targets through SSH jump hosts
 - **Status pages**: Sections, resources, public availability metrics, locale-aware date formatting
 - **Maintenance windows**: Recurring suppression of alerts
 - **JavaScript scripting**: Sandboxed custom monitoring logic
 - **Browser monitoring**: Headless Chrome via Rod
 - **MCP server**: AI/LLM tool access via Model Context Protocol
-- **OAuth**: Google, GitHub, GitLab, Microsoft, Slack, Discord SSO (per-provider enable toggle)
+- **SSO / OAuth**: Google, GitHub, GitLab, Microsoft, Slack, Discord, plus generic OIDC, SAML, and LDAP / Active Directory (per-provider enable toggle, with self-service token revocation)
 - **Observability**: Prometheus `/metrics`, Sentry integration, OpenTelemetry
 - **CLI client**: Manage checks and results from the terminal
-- **i18n**: Multi-language dashboard (English, French)
+- **i18n**: Multi-language dashboard (English, French, German, Spanish)
 
 ## Quick Start
 
@@ -75,7 +78,10 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | UDP | Port reachability |
 | ICMP | Ping |
 | DNS | Record resolution |
+| DNSBL | DNS blocklist (RBL) membership |
+| NTP | Time server reachability and clock drift |
 | WebSocket | Connection check |
+| SIP | VoIP SIP server (OPTIONS ping) |
 
 ### Security & Certificates
 | Protocol | Description |
@@ -96,6 +102,8 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 |----------|-------------|
 | PostgreSQL | Connection + query execution |
 | MySQL/MariaDB | Connection + query execution |
+| MSSQL | Connection + query execution |
+| Oracle | Connection + query execution |
 | MongoDB | Ping command |
 | Redis | PING command |
 
@@ -103,6 +111,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | Protocol | Description |
 |----------|-------------|
 | SSH | Server availability |
+| RDP | Pre-auth RDP negotiation handshake (no credentials) |
 | FTP | Server availability |
 | SFTP | Server availability |
 
@@ -117,6 +126,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | Type | Description |
 |------|-------------|
 | Docker | Container health |
+| Kubernetes | Cluster / API server health |
 | SNMP | Device monitoring |
 | gRPC | Service health |
 | A2S | Source / Steam game server query (Valve A2S) |
@@ -128,6 +138,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | Heartbeat | Passive monitoring via incoming pings |
 | JavaScript | Sandboxed custom monitoring logic |
 | Browser | Headless Chrome (Rod) — JS, CSS, full render |
+| Freebox Line | Freebox xDSL/fiber line quality (via connected Freebox) |
 
 ## Environment Variables
 
@@ -219,11 +230,11 @@ Set both `_CLIENT_ID` and `_CLIENT_SECRET` to enable an OAuth provider.
 - **Dashboard** (`web/dash0`): Admin UI (React + TanStack Router + shadcn/ui)
 - **Status Page** (`web/status0`): Public-facing status dashboard
 - **Workers**: Distributed agents executing monitoring checks
-- **Notifications**: Slack, Discord, Email, Webhooks, Google Chat, Mattermost, Ntfy, Opsgenie, Pushover
+- **Notifications**: Slack, Discord, Email, Webhooks, Google Chat, Mattermost, Ntfy, Opsgenie, Pushover, Web Push
 - **Database**: PostgreSQL (partitioned results) or SQLite
 
 ### Technology Stack
-- **Backend**: Go 1.24+, bunrouter, Bun ORM, koanf
+- **Backend**: Go 1.24+, go-chi/chi v5, Bun ORM, koanf
 - **Frontend**: React 19, TypeScript, Vite, TanStack Router/Query, Tailwind CSS, shadcn/ui
 - **Database**: PostgreSQL (production), SQLite (development/single-node)
 
@@ -237,8 +248,7 @@ solidping/
 │       ├── handlers/            # HTTP handlers + business logic
 │       ├── checkers/            # Protocol checker implementations
 │       ├── notifications/       # Notification channels
-│       ├── models/              # Database entities
-│       ├── migrations/          # Database migrations
+│       ├── db/                  # Bun models + Postgres/SQLite migrations
 │       └── middleware/          # Auth, CORS, org context
 ├── web/
 │   ├── dash0/                   # Admin dashboard (React)
