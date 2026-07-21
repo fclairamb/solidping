@@ -394,7 +394,7 @@ func TestEnrollmentAllowedUnderAgentCap(t *testing.T) {
 	e := newEnvWithAgentCap(t, 2)
 
 	conn, _, enrolled := e.enroll(e.mintToken(), "agent-1")
-	defer conn.CloseNow()
+	defer func() { _ = conn.CloseNow() }()
 	r.NotEmpty(enrolled.AgentUID)
 
 	agentsRows, err := e.dbSvc.ListAgents(t.Context(), e.org.UID)
@@ -415,7 +415,7 @@ func TestEnrollmentRejectedAtAgentCapDoesNotConsumeToken(t *testing.T) {
 
 	// Reach the cap with one already-enrolled agent.
 	firstConn, _, _ := e.enroll(e.mintToken(), "first")
-	defer firstConn.CloseNow()
+	defer func() { _ = firstConn.CloseNow() }()
 
 	// A second, independent token: enrollment is the only thing standing
 	// between this org and a second agent.
@@ -429,7 +429,7 @@ func TestEnrollmentRejectedAtAgentCapDoesNotConsumeToken(t *testing.T) {
 
 	conn, _, err := e.dial(headers)
 	r.NoError(err)
-	defer conn.CloseNow()
+	defer func() { _ = conn.CloseNow() }()
 
 	var hello agentcrypto.ServerFrame
 	r.NoError(wsjson.Read(ctx, conn, &hello))
