@@ -2082,8 +2082,12 @@ type AcknowledgeIncidentRequest struct {
 	AcknowledgedByEmail string
 	SlackUserID         string // Slack user ID if acknowledged via Slack
 	SlackUsername       string // Slack username for display
-	Note                string // Optional free-text note
-	Via                 string // "slack", "web", "email", etc.
+	// PhoneNumber is the E.164 number of the caller for phone (DTMF) acks. Goes
+	// into the event payload so the audit trail names the acker even when the
+	// number belongs to no known platform user.
+	PhoneNumber string
+	Note        string // Optional free-text note
+	Via         string // "slack", "web", "email", "phone", etc.
 }
 
 // AcknowledgeIncident marks an incident as acknowledged. Accepts the org
@@ -2163,6 +2167,11 @@ func (s *Service) acknowledgeIncidentByOrgUID(
 	if req.AcknowledgedByEmail != "" {
 		event.Payload["acknowledged_by_email"] = req.AcknowledgedByEmail
 	}
+	// Phone (DTMF) acks record the caller's number, mirroring the email
+	// attribution above.
+	if req.PhoneNumber != "" {
+		event.Payload["acknowledged_by_phone"] = req.PhoneNumber
+	}
 	if req.AcknowledgedBy != "" {
 		event.ActorUID = &req.AcknowledgedBy
 	}
@@ -2225,6 +2234,19 @@ func (s *Service) AcknowledgeIncidentFromSlack(
 		SlackUserID:   slackUserID,
 		SlackUsername: slackUsername,
 		Via:           "slack",
+	})
+}
+
+// AcknowledgeIncidentFromPhone marks an incident acknowledged via a phone
+// (DTMF) callback. The caller's number is recorded on the event payload. Like
+// the Slack/email variants it is idempotent and cancels pending escalation jobs.
+func (s *Service) AcknowledgeIncidentFromPhone(
+	ctx context.Context, orgUID, incidentUID, phone string,
+) (*models.Incident, error) {
+	return s.acknowledgeIncidentByOrgUID(ctx, orgUID, &AcknowledgeIncidentRequest{
+		IncidentUID: incidentUID,
+		PhoneNumber: phone,
+		Via:         "phone",
 	})
 }
 

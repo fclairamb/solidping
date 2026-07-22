@@ -373,6 +373,12 @@ type Service interface {
 		details *models.DeliveryDetails,
 	) error
 	CancelIncidentNotificationsForIncident(ctx context.Context, incidentUID string, canceledAt time.Time) (int64, error)
+	// UpdateIncidentNotificationDeliveryByMessageID sets delivery_details on the
+	// notification row whose message_id matches within the org. No-op (no error)
+	// when nothing matches. Used by the Twilio delivery-status callback.
+	UpdateIncidentNotificationDeliveryByMessageID(
+		ctx context.Context, orgUID, messageID string, details *models.DeliveryDetails,
+	) error
 	ListIncidentNotifications(
 		ctx context.Context, orgUID string, f ListIncidentNotificationsFilter,
 	) ([]*models.IncidentNotificationRow, error)

@@ -1303,6 +1303,12 @@ func (m *mockDBService) CancelIncidentNotificationsForIncident(
 	return 0, nil
 }
 
+func (m *mockDBService) UpdateIncidentNotificationDeliveryByMessageID(
+	_ context.Context, _, _ string, _ *models.DeliveryDetails,
+) error {
+	return nil
+}
+
 func (m *mockDBService) ListIncidentNotifications(
 	_ context.Context, _ string, _ db.ListIncidentNotificationsFilter,
 ) ([]*models.IncidentNotificationRow, error) {

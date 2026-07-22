@@ -82,6 +82,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
+	"github.com/fclairamb/solidping/server/internal/handlers/twiliocb"
 	"github.com/fclairamb/solidping/server/internal/handlers/unsubscribe"
 	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
 	webpushhandler "github.com/fclairamb/solidping/server/internal/handlers/webpush"
@@ -1206,6 +1207,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	slackIntegration.POST("/events", slackHandler.VerifyMiddleware(slackHandler.HandleEvents))
 	slackIntegration.POST("/command", slackHandler.VerifyMiddleware(slackHandler.HandleCommand))
 	slackIntegration.POST("/interaction", slackHandler.VerifyMiddleware(slackHandler.HandleInteraction))
+
+	// Twilio inbound callbacks (voice TwiML + DTMF ack + delivery status).
+	// No org auth — authenticity is the per-request X-Twilio-Signature check in
+	// VerifyMiddleware, which resolves the connection from the `cid` query param.
+	twilioHandler := twiliocb.NewHandler(s.dbService, s.services.Credentials, s.config, incidentsService)
+	twilioIntegration := api.NewGroup("/integrations/twilio")
+	twilioIntegration.POST("/voice", twilioHandler.VerifyMiddleware(twilioHandler.HandleVoice))
+	twilioIntegration.POST("/voice/gather", twilioHandler.VerifyMiddleware(twilioHandler.HandleGather))
+	twilioIntegration.POST("/status", twilioHandler.VerifyMiddleware(twilioHandler.HandleStatus))
 
 	// Slack destinations picker (authenticated, org-scoped)
 	slackOrgRoutes := orgGroup("/orgs/:org/channels/:uid/slack")

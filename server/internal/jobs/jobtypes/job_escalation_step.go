@@ -765,8 +765,9 @@ func (r *EscalationStepJobRun) placePhoneCall(
 		return false
 	}
 
-	twimlURL := fmt.Sprintf("%s/api/v1/integrations/twilio/voice?cid=%s&token=%s",
-		strings.TrimRight(baseURL, "/"), url.QueryEscape(conn.UID), url.QueryEscape(ackToken))
+	twimlURL := fmt.Sprintf("%s/api/v1/integrations/twilio/voice?cid=%s&iid=%s&token=%s",
+		strings.TrimRight(baseURL, "/"),
+		url.QueryEscape(conn.UID), url.QueryEscape(incident.UID), url.QueryEscape(ackToken))
 
 	client := newTwilioClient(settings.AccountSID, settings.AuthToken)
 	res, err := client.CreateCall(ctx, twilio.CreateCallParams{
