@@ -1,4 +1,11 @@
 -- Teardown/parity only — never run in production. Reverses 008_v0_7_0.up.sql.
+-- Reverse order: later-appended feature blocks are torn down before the
+-- earlier ones they were stacked on top of.
+
+-- reverse phone contact verification (spec 2026-07-22-02)
+alter table user_contacts drop column verify_attempts;
+alter table user_contacts drop column verify_expires_at;
+alter table user_contacts drop column verify_code_hash;
 
 -- reverse custom domains for status pages (spec 2026-07-22-01)
 drop index if exists status_pages_custom_domain_idx;

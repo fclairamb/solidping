@@ -37,3 +37,21 @@ comment on column status_pages.custom_domain_failures is
 -- ---------------------------------------------------------------------------
 -- (append further v0.7.0 blocks below this line)
 -- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- Phone (SMS/voice) contact verification (spec 2026-07-22-02)
+-- ---------------------------------------------------------------------------
+-- Per-user phone contacts are created unverified. A 6-digit code (SHA-256
+-- hashed, 10-min expiry, attempt-capped) is issued via the org's Twilio
+-- connection and confirmed here; only a verified number is ever texted/dialed
+-- by the escalation dispatcher.
+alter table user_contacts add column verify_code_hash varchar(64);
+alter table user_contacts add column verify_expires_at timestamptz;
+alter table user_contacts add column verify_attempts smallint not null default 0;
+
+comment on column user_contacts.verify_code_hash is
+  'SHA-256 hex of the in-flight 6-digit verification code. NULL when no verification is pending or after a successful confirm.';
+comment on column user_contacts.verify_expires_at is
+  'Expiry of the in-flight verification code (issue + 10 minutes).';
+comment on column user_contacts.verify_attempts is
+  'Failed confirm attempts for the in-flight code; at 5 the code is invalidated.';

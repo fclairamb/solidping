@@ -1823,6 +1823,20 @@ func (m *mockDBService) DeleteUserContact(_ context.Context, _ string) error {
 	return nil
 }
 
+func (m *mockDBService) GetUserContact(_ context.Context, _ string) (*models.UserContact, error) {
+	return nil, nil //nolint:nilnil // test stub
+}
+
+func (m *mockDBService) SetUserContactVerifyState(
+	_ context.Context, _ string, _ *string, _ *time.Time, _ int,
+) error {
+	return nil
+}
+
+func (m *mockDBService) MarkUserContactVerified(_ context.Context, _ string, _ time.Time) error {
+	return nil
+}
+
 func (m *mockDBService) SetRouteEnabled(_ context.Context, _ string, _ bool) error {
 	return nil
 }

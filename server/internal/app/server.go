@@ -928,7 +928,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgEscalation.DELETE("/:uid", escalationHandler.DeletePolicy)
 
 	// User notification routes (authentication required)
-	userNotifService := usernotifications.NewService(s.dbService)
+	userNotifService := usernotifications.NewService(s.dbService, s.services.Credentials)
 	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender)
 	slackAdapter := usernotifications.NewSlackDMSenderAdapter()
 	userNotifHandler := usernotifications.NewHandler(
@@ -940,6 +940,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgUserNotif.PATCH("/notification-routes/:routeUid", userNotifHandler.PatchRoute)
 	orgUserNotif.DELETE("/notification-contacts/:contactUid", userNotifHandler.DeleteContact)
 	orgUserNotif.POST("/notification-routes/:routeUid/test", userNotifHandler.TestRoute)
+	orgUserNotif.POST("/notification-contacts/:contactUid/verify", userNotifHandler.VerifyContact)
+	orgUserNotif.POST("/notification-contacts/:contactUid/verify/confirm", userNotifHandler.ConfirmVerify)
 
 	// Events routes (authentication required)
 	eventsService := events.NewService(s.dbService)

@@ -685,6 +685,20 @@ type Service interface {
 	// it undeletes the row and updates the label.
 	UpsertUserContact(ctx context.Context, c *models.UserContact) error
 
+	// GetUserContact returns a single non-deleted contact by UID.
+	GetUserContact(ctx context.Context, uid string) (*models.UserContact, error)
+
+	// SetUserContactVerifyState writes the in-flight verification columns
+	// (code hash, expiry, attempt count). nil codeHash/expiresAt clears the
+	// pending code while preserving the attempt count.
+	SetUserContactVerifyState(
+		ctx context.Context, uid string, codeHash *string, expiresAt *time.Time, attempts int,
+	) error
+
+	// MarkUserContactVerified stamps verified_at and clears the pending
+	// verification columns.
+	MarkUserContactVerified(ctx context.Context, uid string, at time.Time) error
+
 	// DeleteUserContact soft-deletes a contact by UID.
 	DeleteUserContact(ctx context.Context, uid string) error
 
