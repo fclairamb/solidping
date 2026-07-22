@@ -77,6 +77,39 @@ func TestReserveSMS_MonthlyCap(t *testing.T) {
 	r.Equal("MaxSmsPerMonth", qErr.LimitName)
 }
 
+// TestReserveSMS_RunawayCapConfigurable verifies WithRunawayCaps overrides the
+// default hourly cap.
+func TestReserveSMS_RunawayCapConfigurable(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := context.Background()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("res-org", "Res Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	// Override the SMS runaway cap to 3 (far below the default 30).
+	svc := NewService(dbSvc, DefaultsFor(config.DeploymentModeSelfHosted), 0, WithRunawayCaps(3, 2))
+
+	fixed := time.Now()
+	svc.now = func() time.Time { return fixed }
+
+	for i := 0; i < 3; i++ {
+		r.NoError(svc.ReserveSMS(ctx, org.UID), "reservation %d within the overridden cap of 3", i)
+	}
+	r.ErrorIs(svc.ReserveSMS(ctx, org.UID), ErrEntitlementExceeded, "the 4th SMS must hit the overridden cap")
+
+	// Voice cap overridden to 2 and enforced independently.
+	for i := 0; i < 2; i++ {
+		r.NoError(svc.ReserveCall(ctx, org.UID), "call %d within the overridden cap of 2", i)
+	}
+	r.ErrorIs(svc.ReserveCall(ctx, org.UID), ErrEntitlementExceeded, "the 3rd call must hit the overridden cap")
+}
+
 // TestReserveCall_ZeroLimitDenies verifies a 0 monthly cap denies immediately.
 func TestReserveCall_ZeroLimitDenies(t *testing.T) {
 	t.Parallel()

@@ -240,38 +240,39 @@ type WebPushConfig struct {
 
 // Config represents the application configuration structure.
 type Config struct {
-	Server      ServerConfig         `koanf:"server"`
-	Database    DatabaseConfig       `koanf:"db"`
-	Auth        AuthConfig           `koanf:"auth"`
-	Encryption  EncryptionConfig     `koanf:"encryption"`
-	Email       EmailConfig          `koanf:"email"`
-	Slack       SlackConfig          `koanf:"slack"`
-	Google      GoogleOAuthConfig    `koanf:"google"`
-	GitHub      GitHubOAuthConfig    `koanf:"github"`
-	Microsoft   MicrosoftOAuthConfig `koanf:"microsoft"`
-	GitLab      GitLabOAuthConfig    `koanf:"gitlab"`
-	Discord     DiscordOAuthConfig   `koanf:"discord"`
-	OIDC        OIDCOAuthConfig      `koanf:"oidc"`
-	SAML        SAMLConfig           `koanf:"saml"`
-	LDAP        LDAPConfig           `koanf:"ldap"`
-	Node        NodeConfig           `koanf:"node"`
-	Agent       AgentConfig          `koanf:"agent"`
-	Profiler    ProfilerConfig       `koanf:"profiler"`
-	Runtime     RuntimeConfig        `koanf:"runtime"`
-	OTel        OTelConfig           `koanf:"otel"`
-	Sentry      SentryConfig         `koanf:"sentry"`
-	Prometheus  PrometheusConfig     `koanf:"prometheus"`
-	Realtime    RealtimeConfig       `koanf:"realtime"`
-	Checkers    CheckersConfig       `koanf:"checkers"`
-	Aggregation AggregationConfig    `koanf:"aggregation"`
-	Jobs        JobsConfig           `koanf:"jobs"`
-	FileStorage FileStorageConfig    `koanf:"filestorage"`
-	App         AppConfig            `koanf:"app"`
-	Deployment  DeploymentConfig     `koanf:"deployment"`
-	WebPush     WebPushConfig        `koanf:"webpush"`
-	RunMode     string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
-	UserAgent   string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
-	LogLevel    slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
+	Server       ServerConfig         `koanf:"server"`
+	Database     DatabaseConfig       `koanf:"db"`
+	Auth         AuthConfig           `koanf:"auth"`
+	Encryption   EncryptionConfig     `koanf:"encryption"`
+	Email        EmailConfig          `koanf:"email"`
+	Slack        SlackConfig          `koanf:"slack"`
+	Google       GoogleOAuthConfig    `koanf:"google"`
+	GitHub       GitHubOAuthConfig    `koanf:"github"`
+	Microsoft    MicrosoftOAuthConfig `koanf:"microsoft"`
+	GitLab       GitLabOAuthConfig    `koanf:"gitlab"`
+	Discord      DiscordOAuthConfig   `koanf:"discord"`
+	OIDC         OIDCOAuthConfig      `koanf:"oidc"`
+	SAML         SAMLConfig           `koanf:"saml"`
+	LDAP         LDAPConfig           `koanf:"ldap"`
+	Node         NodeConfig           `koanf:"node"`
+	Agent        AgentConfig          `koanf:"agent"`
+	Profiler     ProfilerConfig       `koanf:"profiler"`
+	Runtime      RuntimeConfig        `koanf:"runtime"`
+	OTel         OTelConfig           `koanf:"otel"`
+	Sentry       SentryConfig         `koanf:"sentry"`
+	Prometheus   PrometheusConfig     `koanf:"prometheus"`
+	Realtime     RealtimeConfig       `koanf:"realtime"`
+	Checkers     CheckersConfig       `koanf:"checkers"`
+	Aggregation  AggregationConfig    `koanf:"aggregation"`
+	Jobs         JobsConfig           `koanf:"jobs"`
+	FileStorage  FileStorageConfig    `koanf:"filestorage"`
+	App          AppConfig            `koanf:"app"`
+	Deployment   DeploymentConfig     `koanf:"deployment"`
+	WebPush      WebPushConfig        `koanf:"webpush"`
+	Entitlements EntitlementsConfig   `koanf:"entitlements"`
+	RunMode      string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
+	UserAgent    string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
+	LogLevel     slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
 }
 
 // DeploymentConfig picks per-org entitlement defaults. SP_DEPLOYMENT_MODE
@@ -280,6 +281,18 @@ type Config struct {
 // startup — unknown values fail fast.
 type DeploymentConfig struct {
 	Mode string `koanf:"mode"`
+}
+
+// EntitlementsConfig tunes the per-org SMS/voice runaway guard — an in-memory
+// hourly token bucket that bounds a broken escalation loop independent of the
+// billing-driven monthly quota. Because these keys contain underscores that the
+// env TransformFunc turns into dots, they are read manually from
+// SP_ENTITLEMENTS_SMS_RUNAWAY_PER_HOUR / SP_ENTITLEMENTS_CALL_RUNAWAY_PER_HOUR.
+type EntitlementsConfig struct {
+	// SMSRunawayPerHour caps outbound SMS per org per hour (default 30).
+	SMSRunawayPerHour int `koanf:"sms_runaway_per_hour"`
+	// CallRunawayPerHour caps outbound voice calls per org per hour (default 10).
+	CallRunawayPerHour int `koanf:"call_runaway_per_hour"`
 }
 
 // NodeConfig contains node role configuration.
@@ -871,6 +884,10 @@ func Load() (*Config, error) {
 		Deployment: DeploymentConfig{
 			Mode: DeploymentModeSelfHosted,
 		},
+		Entitlements: EntitlementsConfig{
+			SMSRunawayPerHour:  30,
+			CallRunawayPerHour: 10,
+		},
 	}
 
 	if err := koanfInstance.Load(structs.Provider(defaults, "koanf"), nil); err != nil {
@@ -922,6 +939,16 @@ func Load() (*Config, error) {
 	// Manually read SP_REGION for worker region configuration
 	if region := os.Getenv("SP_REGION"); region != "" {
 		cfg.Server.CheckWorker.Region = region
+	}
+
+	// Manually read the entitlements runaway caps — the underscores in these
+	// key segments are converted to dots by the env TransformFunc, so they
+	// never reach the koanf `*_per_hour` tags automatically.
+	if v := envInt("SP_ENTITLEMENTS_SMS_RUNAWAY_PER_HOUR"); v > 0 {
+		cfg.Entitlements.SMSRunawayPerHour = v
+	}
+	if v := envInt("SP_ENTITLEMENTS_CALL_RUNAWAY_PER_HOUR"); v > 0 {
+		cfg.Entitlements.CallRunawayPerHour = v
 	}
 
 	// If node region is set, also set the check worker region if not already set
@@ -1673,6 +1700,22 @@ func validatePasswordIntRange(key string, value any, low, high int) error {
 // parseRedirects parses the SP_REDIRECTS environment variable.
 // Format: /path:host:port/targetpath,/path2:host2:port2/targetpath2.
 // Example: /dashboard:localhost:5173/dashboard,/status:localhost:5174/status.
+// envInt reads an integer environment variable, returning 0 when unset or
+// unparseable (callers treat 0 as "leave the default").
+func envInt(key string) int {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return 0
+	}
+
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0
+	}
+
+	return n
+}
+
 func parseRedirects(value string) []RedirectRule {
 	if value == "" {
 		return nil

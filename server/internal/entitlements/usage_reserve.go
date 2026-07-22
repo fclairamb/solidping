@@ -11,7 +11,8 @@ import (
 
 // Runaway-guard hourly caps, independent of the billing-driven monthly quota.
 // These bound a broken escalation loop even for self-hosted (unlimited-quota)
-// orgs so a bug can't run up an unbounded Twilio bill.
+// orgs so a bug can't run up an unbounded Twilio bill. They are the defaults;
+// deployments override them via config (WithRunawayCaps).
 const (
 	defaultSMSRunawayPerHour  = 30
 	defaultCallRunawayPerHour = 10
@@ -32,7 +33,7 @@ func (s *Service) ReserveCall(ctx context.Context, orgUID string) error {
 func (s *Service) reserveUsage(ctx context.Context, orgUID, kind string) error {
 	// 1. Runaway guard first (in-memory, no persistence) so a denial here never
 	//    increments the durable monthly counter.
-	capacity := runawayCapFor(kind)
+	capacity := s.runawayCapFor(kind)
 	if !s.runawayBucketFor(orgUID, kind, capacity).allow(s.now()) {
 		return &QuotaError{LimitName: kind + "_runaway_per_hour", Limit: capacity, CurrentUsage: capacity}
 	}
@@ -64,12 +65,12 @@ func (s *Service) reserveUsage(ctx context.Context, orgUID, kind string) error {
 	return nil
 }
 
-func runawayCapFor(kind string) int {
+func (s *Service) runawayCapFor(kind string) int {
 	if kind == models.UsageCounterKindVoice {
-		return defaultCallRunawayPerHour
+		return s.callRunawayPerHour
 	}
 
-	return defaultSMSRunawayPerHour
+	return s.smsRunawayPerHour
 }
 
 func monthlyLimitFor(limits Limits, kind string) *int {

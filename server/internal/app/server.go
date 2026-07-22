@@ -334,6 +334,9 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// parameters.
 	entitlementsService := entitlementsapi.NewService(
 		dbService, entitlementsapi.DefaultsFor(cfg.Deployment.Mode), 0,
+		entitlementsapi.WithRunawayCaps(
+			cfg.Entitlements.SMSRunawayPerHour, cfg.Entitlements.CallRunawayPerHour,
+		),
 	)
 	svcList.Entitlements = entitlementsService
 
