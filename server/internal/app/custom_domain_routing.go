@@ -16,6 +16,14 @@ import (
 // de-verified/disabled page stops being served within the TTL.
 const customDomainCacheTTL = 60 * time.Second
 
+// Path prefixes used by the custom-host allowlist routing.
+const (
+	routeStatus0 = "/status0"
+	routeDash0   = "/dash0"
+	routeDocs    = "/docs"
+	routeMetrics = "/metrics"
+)
+
 // resolvedCustomDomain is the cached resolution of a custom host to a servable
 // status page (org slug + page slug for the SPA bootstrap, plus name/description
 // for OG-meta injection).
@@ -158,25 +166,25 @@ func (s *Server) resolveCustomDomain(ctx context.Context, host string) *resolved
 
 // lookupCustomDomain hits the DB and enforces the verified+enabled+public gate.
 func (s *Server) lookupCustomDomain(ctx context.Context, host string) *resolvedCustomDomain {
-	sp, err := s.dbService.GetStatusPageByCustomDomain(ctx, host)
-	if err != nil || sp == nil {
+	statusPage, err := s.dbService.GetStatusPageByCustomDomain(ctx, host)
+	if err != nil || statusPage == nil {
 		return nil
 	}
 
-	if sp.CustomDomainVerifiedAt == nil || !sp.Enabled || sp.Visibility != "public" {
+	if statusPage.CustomDomainVerifiedAt == nil || !statusPage.Enabled || statusPage.Visibility != "public" {
 		return nil
 	}
 
-	org, err := s.dbService.GetOrganization(ctx, sp.OrganizationUID)
+	org, err := s.dbService.GetOrganization(ctx, statusPage.OrganizationUID)
 	if err != nil || org == nil {
 		return nil
 	}
 
 	return &resolvedCustomDomain{
 		OrgSlug:     org.Slug,
-		Slug:        sp.Slug,
-		Name:        sp.Name,
-		Description: sp.Description,
+		Slug:        statusPage.Slug,
+		Name:        statusPage.Name,
+		Description: statusPage.Description,
 	}
 }
 
@@ -187,7 +195,7 @@ func (s *Server) serveCustomHost(writer http.ResponseWriter, req *http.Request, 
 	reqPath := req.URL.Path
 
 	switch {
-	case reqPath == "/status0" || strings.HasPrefix(reqPath, "/status0/"):
+	case reqPath == routeStatus0 || strings.HasPrefix(reqPath, routeStatus0+"/"):
 		// The SPA is built with the /status0 base, so its asset URLs keep working
 		// on the custom host. Serve them as normal static assets.
 		_ = s.serveStatus0Static(writer, req)
@@ -230,10 +238,10 @@ func isCustomHostAPIAllowed(reqPath string) bool {
 // isCustomHostForbidden reports whether a path must always 404 on a custom host
 // (the operator dashboard, docs, and the OpenAPI/metrics surfaces).
 func isCustomHostForbidden(reqPath string) bool {
-	return reqPath == "/dash0" || strings.HasPrefix(reqPath, "/dash0/") ||
-		reqPath == "/docs" || strings.HasPrefix(reqPath, "/docs/") ||
+	return reqPath == routeDash0 || strings.HasPrefix(reqPath, routeDash0+"/") ||
+		reqPath == routeDocs || strings.HasPrefix(reqPath, routeDocs+"/") ||
 		reqPath == "/openapi" || reqPath == "/openapi.yaml" ||
-		reqPath == "/metrics"
+		reqPath == routeMetrics
 }
 
 // serveStatus0IndexForCustomHost serves the status0 SPA index with per-page
@@ -249,7 +257,7 @@ func (s *Server) serveStatus0IndexForCustomHost(
 	}
 
 	meta := s.status0MetaForCustomHost(req, page)
-	data = []byte(injectStatus0Meta(string(data), meta))
+	data = []byte(injectStatus0Meta(string(data), &meta))
 
 	writer.Header().Set("Cache-Control", "public, max-age=60")
 	writer.Header().Set("Content-Type", contentTypeHTML)

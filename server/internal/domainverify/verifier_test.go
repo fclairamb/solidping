@@ -8,6 +8,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// errTestLookup is a static stub error for lookup-failure cases.
+var errTestLookup = errors.New("stub lookup failure")
+
 func TestNormalize(t *testing.T) {
 	t.Parallel()
 
@@ -67,7 +70,7 @@ func TestRecords(t *testing.T) {
 func TestCheckTXT(t *testing.T) {
 	t.Parallel()
 
-	errLookup := errors.New("nxdomain")
+	errLookup := errTestLookup
 
 	tests := []struct {
 		name    string
@@ -112,7 +115,7 @@ func TestCheckTXT(t *testing.T) {
 func TestCheckCNAME(t *testing.T) {
 	t.Parallel()
 
-	errLookup := errors.New("nxdomain")
+	errLookup := errTestLookup
 
 	tests := []struct {
 		name    string

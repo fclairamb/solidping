@@ -18,7 +18,7 @@ func TestHostOnly(t *testing.T) {
 	r.Equal("status.acme.com", hostOnly("status.acme.com"))
 	r.Equal("status.acme.com", hostOnly("status.acme.com:8080"))
 	r.Equal("status.acme.com", hostOnly("Status.Acme.Com"))
-	r.Equal("", hostOnly(""))
+	r.Empty(hostOnly(""))
 }
 
 func TestIsCustomHostAPIAllowed(t *testing.T) {
@@ -170,7 +170,7 @@ func TestHandlerWithCustomDomains(t *testing.T) {
 			t.Parallel()
 			r := require.New(t)
 
-			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tc.path, nil)
 			req.Host = tc.host
 			rec := httptest.NewRecorder()
 

@@ -20,9 +20,6 @@ import (
 const (
 	// customDomainVerifyPerMinute caps synchronous verify-now calls per org.
 	customDomainVerifyPerMinute = 10
-	// customDomainMaxFailures is the consecutive re-verification failure count
-	// at which the periodic job clears verification (takeover protection).
-	customDomainMaxFailures = 3
 	// customDomainTokenBytes is the entropy of the DNS-challenge token.
 	customDomainTokenBytes = 32
 )

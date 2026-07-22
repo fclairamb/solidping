@@ -1867,7 +1867,7 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	// the generic head (no page-existence leak).
 	if servingIndexFallback {
 		if meta, ok := s.status0MetaForPath(req, reqPath); ok {
-			data = []byte(injectStatus0Meta(string(data), meta))
+			data = []byte(injectStatus0Meta(string(data), &meta))
 		}
 	}
 

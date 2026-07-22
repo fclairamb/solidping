@@ -105,7 +105,7 @@ func TestBuildStatus0MetaTags(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	block := buildStatus0MetaTags(ogMetadata{
+	block := buildStatus0MetaTags(&ogMetadata{
 		Title:       "Acme API — Status",
 		Description: "Our public API status",
 		URL:         "https://status.example.com/status0/acme/api",
@@ -129,7 +129,7 @@ func TestBuildStatus0MetaTagsSpPage(t *testing.T) {
 	r := require.New(t)
 
 	// With Page set (custom-host serving) the sp-page bootstrap tag appears.
-	withPage := buildStatus0MetaTags(ogMetadata{
+	withPage := buildStatus0MetaTags(&ogMetadata{
 		Title: "Acme — Status",
 		URL:   "https://status.acme.com/",
 		Page:  "acme/main",
@@ -137,7 +137,7 @@ func TestBuildStatus0MetaTagsSpPage(t *testing.T) {
 	r.Contains(withPage, `<meta name="sp-page" content="acme/main" />`)
 
 	// Without Page (path-based serving) the tag must not appear.
-	withoutPage := buildStatus0MetaTags(ogMetadata{
+	withoutPage := buildStatus0MetaTags(&ogMetadata{
 		Title: "Acme — Status",
 		URL:   "https://solidping.io/status0/acme/main",
 	})
@@ -148,7 +148,7 @@ func TestBuildStatus0MetaTagsEscaping(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	block := buildStatus0MetaTags(ogMetadata{
+	block := buildStatus0MetaTags(&ogMetadata{
 		Title:       `A & B <script> "x"` + ogTitleSuffix,
 		Description: `desc & "quoted" <b>`,
 		URL:         "https://status.example.com/status0/a%26b",
@@ -177,7 +177,7 @@ func TestInjectStatus0Meta(t *testing.T) {
   <body><div id="root"></div></body>
 </html>`
 
-	out := injectStatus0Meta(doc, ogMetadata{
+	out := injectStatus0Meta(doc, &ogMetadata{
 		Title:       "Acme API — Status",
 		Description: "Our public API status",
 		URL:         "https://status.example.com/status0/acme/api",
@@ -201,7 +201,7 @@ func TestInjectStatus0MetaNoHead(t *testing.T) {
 
 	const doc = `<title>x</title><p>no head here</p>`
 
-	out := injectStatus0Meta(doc, ogMetadata{Title: "T", Description: "D"})
+	out := injectStatus0Meta(doc, &ogMetadata{Title: "T", Description: "D"})
 	// Without a </head> the document is returned with the title stripped and
 	// no partial block spliced in.
 	r.NotContains(out, "og:title")
@@ -316,7 +316,7 @@ func TestStatus0MetaForPath_NoExistenceLeak(t *testing.T) {
 			// Mirror serveStatus0Static: only rewrite the served bytes when ok.
 			served := status0MetaGenericDoc
 			if ok {
-				served = injectStatus0Meta(status0MetaGenericDoc, meta)
+				served = injectStatus0Meta(status0MetaGenericDoc, &meta)
 			}
 
 			if testCase.wantOK {

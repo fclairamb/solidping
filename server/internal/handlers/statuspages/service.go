@@ -421,25 +421,32 @@ func (s *Service) CreateStatusPage(
 		return StatusPageResponse{}, errCreate
 	}
 
-	// A custom domain supplied at create time is set as a second step (it needs
-	// the persisted UID for the conflict check and token write).
-	if req.CustomDomain != nil && strings.TrimSpace(*req.CustomDomain) != "" {
-		if errDomain := s.setCustomDomain(ctx, org.UID, page, strings.TrimSpace(*req.CustomDomain)); errDomain != nil {
-			return StatusPageResponse{}, errDomain
-		}
-
-		reloaded, errGet := s.db.GetStatusPage(ctx, org.UID, page.UID)
-		if errGet != nil {
-			return StatusPageResponse{}, errGet
-		}
-
-		page = reloaded
+	page, err = s.applyCreateCustomDomain(ctx, org.UID, page, req)
+	if err != nil {
+		return StatusPageResponse{}, err
 	}
 
 	response := convertPageToResponse(page)
 	s.enrichCustomDomain(&response, page)
 
 	return response, nil
+}
+
+// applyCreateCustomDomain binds a custom domain supplied at create time. It runs
+// as a second step because it needs the persisted UID for the conflict check
+// and token write, and reloads the page so the response reflects it.
+func (s *Service) applyCreateCustomDomain(
+	ctx context.Context, orgUID string, page *models.StatusPage, req *CreateStatusPageRequest,
+) (*models.StatusPage, error) {
+	if req.CustomDomain == nil || strings.TrimSpace(*req.CustomDomain) == "" {
+		return page, nil
+	}
+
+	if err := s.setCustomDomain(ctx, orgUID, page, strings.TrimSpace(*req.CustomDomain)); err != nil {
+		return nil, err
+	}
+
+	return s.db.GetStatusPage(ctx, orgUID, page.UID)
 }
 
 // GetStatusPage retrieves a single status page by UID or slug.
@@ -544,21 +551,30 @@ func (s *Service) UpdateStatusPage(
 		return StatusPageResponse{}, err
 	}
 
-	// Custom-domain set/clear is applied as a separate write (it has its own
-	// normalization, quota, conflict, and token semantics).
-	if errDomain := s.applyCustomDomainChange(ctx, org.UID, updated, req); errDomain != nil {
-		return StatusPageResponse{}, errDomain
+	return s.finalizeCustomDomainUpdate(ctx, org.UID, updated, req)
+}
+
+// finalizeCustomDomainUpdate applies the custom-domain set/clear (a separate
+// write with its own normalization, quota, conflict, and token semantics),
+// reloads the page if the domain changed, and builds the enriched response.
+func (s *Service) finalizeCustomDomainUpdate(
+	ctx context.Context, orgUID string, page *models.StatusPage, req *UpdateStatusPageRequest,
+) (StatusPageResponse, error) {
+	if err := s.applyCustomDomainChange(ctx, orgUID, page, req); err != nil {
+		return StatusPageResponse{}, err
 	}
 
 	if req.CustomDomainSet {
-		updated, err = s.db.GetStatusPage(ctx, org.UID, page.UID)
+		reloaded, err := s.db.GetStatusPage(ctx, orgUID, page.UID)
 		if err != nil {
 			return StatusPageResponse{}, err
 		}
+
+		page = reloaded
 	}
 
-	response := convertPageToResponse(updated)
-	s.enrichCustomDomain(&response, updated)
+	response := convertPageToResponse(page)
+	s.enrichCustomDomain(&response, page)
 
 	return response, nil
 }

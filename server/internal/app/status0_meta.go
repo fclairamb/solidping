@@ -107,7 +107,7 @@ func requestOrigin(req *http.Request) string {
 // buildStatus0MetaTags renders the escaped <title> plus Open Graph / Twitter
 // Card / description meta tags for a status page. Every dynamic value is
 // HTML-escaped.
-func buildStatus0MetaTags(meta ogMetadata) string {
+func buildStatus0MetaTags(meta *ogMetadata) string {
 	var builder strings.Builder
 
 	writeTag := func(tag string) {
@@ -154,7 +154,7 @@ func buildStatus0MetaTags(meta ogMetadata) string {
 // injectStatus0Meta rewrites a status0 index.html head with per-page metadata:
 // it drops the static <title> and splices the rendered meta block in just
 // before </head>. If there is no </head> the document is returned unchanged.
-func injectStatus0Meta(htmlDoc string, meta ogMetadata) string {
+func injectStatus0Meta(htmlDoc string, meta *ogMetadata) string {
 	block := buildStatus0MetaTags(meta)
 
 	htmlDoc = status0TitleTagRegexp.ReplaceAllString(htmlDoc, "")

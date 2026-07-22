@@ -13,9 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 )
 
-func setupCustomDomainTest(
-	t *testing.T, ent *entitlements.Service,
-) (context.Context, *Service, *models.Organization) {
+func setupCustomDomainTest(t *testing.T) (context.Context, *Service, *models.Organization) {
 	t.Helper()
 
 	ctx := t.Context()
@@ -33,13 +31,13 @@ func setupCustomDomainTest(
 	cfg.Server.DocsHost = "docs.solidping.io"
 	cfg.Server.CustomDomainCNAMETarget = "cname.solidping.io"
 
-	return ctx, NewService(dbService, cfg, ent), org
+	return ctx, NewService(dbService, cfg, nil), org
 }
 
-func mkPage(t *testing.T, ctx context.Context, svc *Service, org *models.Organization, slug string) *models.StatusPage {
+func mkPage(t *testing.T, svc *Service, org *models.Organization, slug string) *models.StatusPage {
 	t.Helper()
 	page := models.NewStatusPage(org.UID, slug, slug)
-	require.NoError(t, svc.db.CreateStatusPage(ctx, page))
+	require.NoError(t, svc.db.CreateStatusPage(t.Context(), page))
 
 	return page
 }
@@ -50,8 +48,8 @@ func TestSetCustomDomain_NormalizesAndGeneratesRecords(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	ctx, svc, org := setupCustomDomainTest(t, nil)
-	page := mkPage(t, ctx, svc, org, "main")
+	ctx, svc, org := setupCustomDomainTest(t)
+	page := mkPage(t, svc, org, "main")
 
 	resp, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
 		CustomDomain: strptr("Status.ACME.com"), CustomDomainSet: true,
@@ -71,8 +69,8 @@ func TestSetCustomDomain_Invalid(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	ctx, svc, org := setupCustomDomainTest(t, nil)
-	page := mkPage(t, ctx, svc, org, "main")
+	ctx, svc, org := setupCustomDomainTest(t)
+	page := mkPage(t, svc, org, "main")
 
 	_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
 		CustomDomain: strptr("localhost"), CustomDomainSet: true,
@@ -84,8 +82,8 @@ func TestSetCustomDomain_SelfShadow(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	ctx, svc, org := setupCustomDomainTest(t, nil)
-	page := mkPage(t, ctx, svc, org, "main")
+	ctx, svc, org := setupCustomDomainTest(t)
+	page := mkPage(t, svc, org, "main")
 
 	// Equal to the CNAME target.
 	_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
@@ -104,9 +102,9 @@ func TestSetCustomDomain_Conflict(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	ctx, svc, org := setupCustomDomainTest(t, nil)
-	page1 := mkPage(t, ctx, svc, org, "one")
-	page2 := mkPage(t, ctx, svc, org, "two")
+	ctx, svc, org := setupCustomDomainTest(t)
+	page1 := mkPage(t, svc, org, "one")
+	page2 := mkPage(t, svc, org, "two")
 
 	_, err := svc.UpdateStatusPage(ctx, org.Slug, page1.UID, &UpdateStatusPageRequest{
 		CustomDomain: strptr("status.acme.com"), CustomDomainSet: true,
@@ -123,8 +121,8 @@ func TestClearCustomDomain(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	ctx, svc, org := setupCustomDomainTest(t, nil)
-	page := mkPage(t, ctx, svc, org, "main")
+	ctx, svc, org := setupCustomDomainTest(t)
+	page := mkPage(t, svc, org, "main")
 
 	_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
 		CustomDomain: strptr("status.acme.com"), CustomDomainSet: true,
@@ -144,8 +142,8 @@ func TestUpdate_OmittedCustomDomainLeavesItUntouched(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	ctx, svc, org := setupCustomDomainTest(t, nil)
-	page := mkPage(t, ctx, svc, org, "main")
+	ctx, svc, org := setupCustomDomainTest(t)
+	page := mkPage(t, svc, org, "main")
 
 	_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
 		CustomDomain: strptr("status.acme.com"), CustomDomainSet: true,
@@ -166,7 +164,7 @@ func TestSetCustomDomain_EntitlementDenied(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	ctx, svc, org := setupCustomDomainTest(t, nil)
+	ctx, svc, org := setupCustomDomainTest(t)
 
 	// Rebuild the service with an entitlements service capping MaxCustomDomains
 	// at 1 (defaults apply to every org with no stored row).
@@ -175,8 +173,8 @@ func TestSetCustomDomain_EntitlementDenied(t *testing.T) {
 	}, 0)
 	svc.ent = ent
 
-	page1 := mkPage(t, ctx, svc, org, "one")
-	page2 := mkPage(t, ctx, svc, org, "two")
+	page1 := mkPage(t, svc, org, "one")
+	page2 := mkPage(t, svc, org, "two")
 
 	_, err := svc.UpdateStatusPage(ctx, org.Slug, page1.UID, &UpdateStatusPageRequest{
 		CustomDomain: strptr("a.example.com"), CustomDomainSet: true,
@@ -193,8 +191,8 @@ func TestVerifyCustomDomain(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	ctx, svc, org := setupCustomDomainTest(t, nil)
-	page := mkPage(t, ctx, svc, org, "main")
+	ctx, svc, org := setupCustomDomainTest(t)
+	page := mkPage(t, svc, org, "main")
 
 	_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
 		CustomDomain: strptr("status.acme.com"), CustomDomainSet: true,
@@ -226,8 +224,8 @@ func TestPublicViewOmitsCustomDomain(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	ctx, svc, org := setupCustomDomainTest(t, nil)
-	page := mkPage(t, ctx, svc, org, "public")
+	ctx, svc, org := setupCustomDomainTest(t)
+	page := mkPage(t, svc, org, "public")
 
 	_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
 		CustomDomain: strptr("status.acme.com"), CustomDomainSet: true,
@@ -246,8 +244,8 @@ func TestCustomDomainServable_Gating(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	ctx, svc, org := setupCustomDomainTest(t, nil)
-	page := mkPage(t, ctx, svc, org, "main")
+	ctx, svc, org := setupCustomDomainTest(t)
+	page := mkPage(t, svc, org, "main")
 
 	_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
 		CustomDomain: strptr("status.acme.com"), CustomDomainSet: true,
