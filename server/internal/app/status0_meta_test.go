@@ -124,6 +124,26 @@ func TestBuildStatus0MetaTags(t *testing.T) {
 	r.Contains(block, `<meta name="description" content="Our public API status" />`)
 }
 
+func TestBuildStatus0MetaTagsSpPage(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	// With Page set (custom-host serving) the sp-page bootstrap tag appears.
+	withPage := buildStatus0MetaTags(ogMetadata{
+		Title: "Acme — Status",
+		URL:   "https://status.acme.com/",
+		Page:  "acme/main",
+	})
+	r.Contains(withPage, `<meta name="sp-page" content="acme/main" />`)
+
+	// Without Page (path-based serving) the tag must not appear.
+	withoutPage := buildStatus0MetaTags(ogMetadata{
+		Title: "Acme — Status",
+		URL:   "https://solidping.io/status0/acme/main",
+	})
+	r.NotContains(withoutPage, "sp-page")
+}
+
 func TestBuildStatus0MetaTagsEscaping(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
