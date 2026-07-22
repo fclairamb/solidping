@@ -94,6 +94,10 @@ func manualReaderEnvVars() []string {
 		"SP_REDIRECTS",
 		"SP_RUN_MODE",
 		"SP_REGION",
+		// Entitlements runaway caps — underscores collapse to dots under the
+		// env provider, so Load reads these by hand (see envInt calls).
+		"SP_ENTITLEMENTS_SMS_RUNAWAY_PER_HOUR",
+		"SP_ENTITLEMENTS_CALL_RUNAWAY_PER_HOUR",
 		"SP_SHUTDOWN_TIMEOUT",
 		"SP_SERVER_MAX_REQUEST_DURATION",
 		"SP_DB_RESET",
