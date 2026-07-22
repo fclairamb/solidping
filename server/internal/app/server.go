@@ -157,6 +157,7 @@ type Server struct {
 	rateLimiter           *middleware.RateLimiter // For the /api/mgmt/limits introspection handler
 	realtimeHub           *realtime.Hub           // Live hint stream fan-out (nil when realtime disabled)
 	statusPagesService    *statuspages.Service    // Public status-page lookups for status0 OG-metadata injection
+	customDomainCache     *customDomainCache      // host -> status-page resolution cache for custom-domain routing
 	cancelCtx             context.CancelFunc
 	workersWg             sync.WaitGroup // Tracks workers
 }
@@ -364,12 +365,13 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 
 	server := &Server{
-		dbService:   dbService,
-		jobSvc:      jobService,
-		services:    svcList,
-		config:      cfg,
-		authService: authService,
-		profilerSrv: profiler.New(&cfg.Profiler),
+		dbService:         dbService,
+		jobSvc:            jobService,
+		services:          svcList,
+		config:            cfg,
+		authService:       authService,
+		profilerSrv:       profiler.New(&cfg.Profiler),
+		customDomainCache: newCustomDomainCache(customDomainCacheTTL),
 	}
 
 	return server, nil
@@ -2006,7 +2008,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 		srv := &http.Server{
 			Addr:              s.config.Server.Listen,
-			Handler:           s.handlerWithDocsHost(),
+			Handler:           s.handlerWithCustomDomains(s.handlerWithDocsHost()),
 			ReadHeaderTimeout: readHeaderTimeout,
 		}
 

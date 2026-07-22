@@ -39,6 +39,11 @@ type ogMetadata struct {
 	Description string
 	URL         string
 	Image       string
+	// Page, when set ("{org}/{slug}"), emits an extra <meta name="sp-page">
+	// tag the status0 SPA reads to render a page resolved from the request host
+	// (custom domains) rather than from the URL path. Empty on path-based
+	// serving, so the tag never appears there.
+	Page string
 }
 
 // statusPagePathParts extracts (org, slug) from a status0 request path whose
@@ -135,6 +140,12 @@ func buildStatus0MetaTags(meta ogMetadata) string {
 
 	if meta.Image != "" {
 		writeTag(`<meta name="twitter:image" content="` + html.EscapeString(meta.Image) + `" />`)
+	}
+
+	// sp-page is the custom-host bootstrap hint: the SPA renders {org}/{slug}
+	// in place (without navigating) when this tag is present.
+	if meta.Page != "" {
+		writeTag(`<meta name="sp-page" content="` + html.EscapeString(meta.Page) + `" />`)
 	}
 
 	return builder.String()
