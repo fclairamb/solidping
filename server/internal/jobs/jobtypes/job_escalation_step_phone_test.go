@@ -287,7 +287,8 @@ func TestDispatch_UnverifiedPhoneNeverContacted(t *testing.T) {
 	route.Contact.VerifiedAt = nil // unverified
 
 	run := newRun()
-	sent := run.dispatchRoute(ctx, env.jctx, slog.Default(), env.incident, route, map[string]bool{"sms": true, "voice": true})
+	filter := map[string]bool{"sms": true, "voice": true}
+	sent := run.dispatchRoute(ctx, env.jctx, slog.Default(), env.incident, route, filter)
 
 	r.Equal(0, sent)
 	r.Equal(0, fake.smsCount())
@@ -307,7 +308,8 @@ func TestDispatch_MissingProviderDegradesToSkip(t *testing.T) {
 	useFakeTwilio(t, srv)
 
 	run := newRun()
-	sent := run.dispatchRoute(ctx, env.jctx, slog.Default(), env.incident, verifiedPhoneRoute(env.org.UID), map[string]bool{"sms": true})
+	filter := map[string]bool{"sms": true}
+	sent := run.dispatchRoute(ctx, env.jctx, slog.Default(), env.incident, verifiedPhoneRoute(env.org.UID), filter)
 
 	r.Equal(0, sent)
 	r.Equal(0, fake.smsCount())
@@ -334,7 +336,8 @@ func TestDispatch_SMSQuotaExhaustedSkips(t *testing.T) {
 	env.jctx.Services.Entitlements = entSvc
 
 	run := newRun()
-	sent := run.dispatchRoute(ctx, env.jctx, slog.Default(), env.incident, verifiedPhoneRoute(env.org.UID), map[string]bool{"sms": true})
+	filter := map[string]bool{"sms": true}
+	sent := run.dispatchRoute(ctx, env.jctx, slog.Default(), env.incident, verifiedPhoneRoute(env.org.UID), filter)
 
 	r.Equal(0, sent, "quota-exhausted SMS must not count as sent")
 	r.Equal(0, fake.smsCount(), "no SMS is dispatched when the quota is exhausted")

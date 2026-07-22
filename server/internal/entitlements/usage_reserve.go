@@ -100,13 +100,13 @@ func (s *Service) runawayBucketFor(orgUID, kind string, capacity int) *hourlyBuc
 	defer s.runawayMu.Unlock()
 
 	key := orgUID + ":" + kind
-	b, ok := s.runawayBuckets[key]
+	bucket, ok := s.runawayBuckets[key]
 	if !ok {
-		b = newHourlyBucket(capacity, s.now())
-		s.runawayBuckets[key] = b
+		bucket = newHourlyBucket(capacity, s.now())
+		s.runawayBuckets[key] = bucket
 	}
 
-	return b
+	return bucket
 }
 
 // hourlyBucket is a per-org token bucket that refills its full capacity over one

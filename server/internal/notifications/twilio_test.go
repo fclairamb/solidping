@@ -51,10 +51,13 @@ func twilioPayload(event string, settings models.JSONMap) *Payload {
 			UID:       "018e4a2b-incident",
 			StartedAt: time.Now().Add(-2 * time.Minute),
 		},
-		Check:       &models.Check{UID: "chk-1", Name: &name, Type: "http"},
-		OrgSlug:     "acme",
-		AppBaseURL:  "https://app.example.com",
-		Integration: &models.Integration{UID: "chan-1", OrganizationUID: "org-1", Type: models.ConnectionTypeTwilio, Settings: settings},
+		Check:      &models.Check{UID: "chk-1", Name: &name, Type: "http"},
+		OrgSlug:    "acme",
+		AppBaseURL: "https://app.example.com",
+		Integration: &models.Integration{
+			UID: "chan-1", OrganizationUID: "org-1",
+			Type: models.ConnectionTypeTwilio, Settings: settings,
+		},
 	}
 }
 

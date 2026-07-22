@@ -3,8 +3,7 @@ package twilio
 import (
 	"context"
 	"crypto/hmac"
-	//nolint:gosec // Twilio mandates HMAC-SHA1; the test mirrors that.
-	"crypto/sha1"
+	"crypto/sha1" // Twilio mandates HMAC-SHA1; the test mirrors that.
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
@@ -20,8 +19,8 @@ import (
 // signForTest independently reproduces Twilio's webhook-signature algorithm so
 // the ValidateSignature assertions aren't tautological against the same code.
 func signForTest(authToken, fullURL string, params url.Values) string {
-	var b strings.Builder
-	b.WriteString(fullURL)
+	var builder strings.Builder
+	builder.WriteString(fullURL)
 
 	keys := make([]string, 0, len(params))
 	for k := range params {
@@ -30,14 +29,13 @@ func signForTest(authToken, fullURL string, params url.Values) string {
 	sort.Strings(keys)
 	for _, k := range keys {
 		for _, v := range params[k] {
-			b.WriteString(k)
-			b.WriteString(v)
+			builder.WriteString(k)
+			builder.WriteString(v)
 		}
 	}
 
-	//nolint:gosec // Twilio mandates HMAC-SHA1.
 	mac := hmac.New(sha1.New, []byte(authToken))
-	mac.Write([]byte(b.String()))
+	mac.Write([]byte(builder.String()))
 
 	return base64.StdEncoding.EncodeToString(mac.Sum(nil))
 }
@@ -84,7 +82,7 @@ func TestSendSMS_PostsFormFields(t *testing.T) {
 
 	cs, client := newCapturingServer(t, http.StatusCreated, `{"sid":"SM123","status":"queued"}`)
 
-	res, err := client.SendSMS(context.Background(), SendSMSParams{
+	res, err := client.SendSMS(context.Background(), &SendSMSParams{
 		To:             "+15551230000",
 		From:           "+15559990000",
 		Body:           "hello",
@@ -113,7 +111,7 @@ func TestSendSMS_MessagingService(t *testing.T) {
 
 	cs, client := newCapturingServer(t, http.StatusCreated, `{"sid":"SM9"}`)
 
-	_, err := client.SendSMS(context.Background(), SendSMSParams{
+	_, err := client.SendSMS(context.Background(), &SendSMSParams{
 		To:                  "+15551230000",
 		MessagingServiceSID: "MG123",
 		Body:                "hi",
@@ -131,7 +129,7 @@ func TestSendSMS_MissingSender(t *testing.T) {
 	r := require.New(t)
 
 	client := NewClientWithBaseURL("AC1", "tok", "http://127.0.0.1:0")
-	_, err := client.SendSMS(context.Background(), SendSMSParams{To: "+15551230000", Body: "x"})
+	_, err := client.SendSMS(context.Background(), &SendSMSParams{To: "+15551230000", Body: "x"})
 	r.ErrorIs(err, ErrMissingSender)
 }
 
@@ -141,7 +139,7 @@ func TestSendSMS_APIError(t *testing.T) {
 
 	_, client := newCapturingServer(t, http.StatusBadRequest, `{"code":21211,"message":"Invalid 'To'"}`)
 
-	_, err := client.SendSMS(context.Background(), SendSMSParams{
+	_, err := client.SendSMS(context.Background(), &SendSMSParams{
 		To: "+1", From: "+15559990000", Body: "x",
 	})
 	r.ErrorIs(err, ErrRequestFailed)

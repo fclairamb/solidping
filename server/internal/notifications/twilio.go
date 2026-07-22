@@ -69,16 +69,16 @@ func (s *TwilioSender) Send(ctx context.Context, jctx *jobdef.JobContext, payloa
 	}
 
 	var lastSID string
-	for _, to := range settings.ToNumbers {
-		res, sendErr := client.SendSMS(ctx, twilio.SendSMSParams{
-			To:                  to,
+	for _, toNumber := range settings.ToNumbers {
+		res, sendErr := client.SendSMS(ctx, &twilio.SendSMSParams{
+			To:                  toNumber,
 			From:                settings.FromNumber,
 			MessagingServiceSID: settings.MessagingServiceSID,
 			Body:                body,
 			StatusCallback:      statusCallback,
 		})
 		if sendErr != nil {
-			return fmt.Errorf("sending SMS to %s: %w", to, sendErr)
+			return fmt.Errorf("sending SMS to %s: %w", toNumber, sendErr)
 		}
 
 		if res != nil {

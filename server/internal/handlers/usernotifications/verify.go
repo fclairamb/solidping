@@ -210,15 +210,15 @@ func hashCode(code string) string {
 
 // sendVerificationSMS sends the code through the resolved Twilio connection.
 func sendVerificationSMS(
-	ctx context.Context, settings *models.TwilioSettings, to, code string,
+	ctx context.Context, settings *models.TwilioSettings, toNumber, code string,
 ) error {
 	if settings.AccountSID == "" || settings.AuthToken == "" {
 		return ErrNoProvider
 	}
 
 	client := newTwilioClient(settings.AccountSID, settings.AuthToken)
-	_, err := client.SendSMS(ctx, twilio.SendSMSParams{
-		To:                  to,
+	_, err := client.SendSMS(ctx, &twilio.SendSMSParams{
+		To:                  toNumber,
 		From:                settings.FromNumber,
 		MessagingServiceSID: settings.MessagingServiceSID,
 		Body:                fmt.Sprintf("[SolidPing] Your verification code is %s (valid 10 minutes).", code),

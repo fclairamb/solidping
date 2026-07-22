@@ -8,8 +8,7 @@ package twilio
 import (
 	"context"
 	"crypto/hmac"
-	//nolint:gosec // Twilio mandates HMAC-SHA1 for X-Twilio-Signature validation.
-	"crypto/sha1"
+	"crypto/sha1" // Twilio mandates HMAC-SHA1 for X-Twilio-Signature validation.
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -88,9 +87,8 @@ type Result struct {
 }
 
 type apiError struct {
-	Code     int    `json:"code"`
-	Message  string `json:"message"`
-	MoreInfo string `json:"more_info"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
 }
 
 // SendSMSParams are the inputs to SendSMS. Exactly one of From /
@@ -104,7 +102,7 @@ type SendSMSParams struct {
 }
 
 // SendSMS sends one SMS message via Twilio's Messages resource.
-func (c *Client) SendSMS(ctx context.Context, params SendSMSParams) (*Result, error) {
+func (c *Client) SendSMS(ctx context.Context, params *SendSMSParams) (*Result, error) {
 	data := url.Values{}
 	data.Set("To", params.To)
 	switch {
@@ -195,8 +193,8 @@ func (c *Client) post(ctx context.Context, resource string, data url.Values, out
 // (sorted by name, each key immediately followed by its value), signed with the
 // account auth token. This is Twilio's documented webhook-signature scheme.
 func ValidateSignature(authToken, fullURL string, params url.Values, signature string) bool {
-	var b strings.Builder
-	b.WriteString(fullURL)
+	var builder strings.Builder
+	builder.WriteString(fullURL)
 
 	keys := make([]string, 0, len(params))
 	for k := range params {
@@ -206,14 +204,13 @@ func ValidateSignature(authToken, fullURL string, params url.Values, signature s
 
 	for _, k := range keys {
 		for _, v := range params[k] {
-			b.WriteString(k)
-			b.WriteString(v)
+			builder.WriteString(k)
+			builder.WriteString(v)
 		}
 	}
 
-	//nolint:gosec // Twilio mandates HMAC-SHA1 for signature validation.
 	mac := hmac.New(sha1.New, []byte(authToken))
-	mac.Write([]byte(b.String()))
+	mac.Write([]byte(builder.String()))
 	expected := base64.StdEncoding.EncodeToString(mac.Sum(nil))
 
 	return hmac.Equal([]byte(expected), []byte(signature))

@@ -302,7 +302,7 @@ func (r *EscalationStepJobRun) connectionPassesSeverityFilter(
 	// Twilio's type string ("twilio") is not a severity token; it delivers
 	// SMS/voice, so it passes when either of those is requested.
 	if conn.Type == models.ConnectionTypeTwilio {
-		if filter["sms"] || filter["voice"] {
+		if filter[channelTokenSMS] || filter[channelTokenVoice] {
 			return true
 		}
 
@@ -322,6 +322,15 @@ func (r *EscalationStepJobRun) connectionPassesSeverityFilter(
 	return true
 }
 
+// Severity channel tokens (the strings stored in a severity's channels[]).
+const (
+	channelTokenEmail        = "email"
+	channelTokenSMS          = "sms"
+	channelTokenVoice        = "voice"
+	channelTokenPush         = "push"
+	channelTokenCriticalPush = "critical_push"
+)
+
 // severityAllowsPersonTargets reports whether a severity permits paging
 // person-type targets (user / schedule / all_admins) at all. A nil filter (no
 // severity) allows everything; otherwise any person-deliverable token opens the
@@ -331,7 +340,10 @@ func severityAllowsPersonTargets(filter map[string]bool) bool {
 		return true
 	}
 
-	for _, tok := range []string{"email", "sms", "voice", "push", "critical_push"} {
+	for _, tok := range []string{
+		channelTokenEmail, channelTokenSMS, channelTokenVoice,
+		channelTokenPush, channelTokenCriticalPush,
+	} {
 		if filter[tok] {
 			return true
 		}
@@ -343,19 +355,20 @@ func severityAllowsPersonTargets(filter map[string]bool) bool {
 // severityAllowsEmail reports whether an email (or Slack DM, which historically
 // rides the email token) delivery is permitted.
 func severityAllowsEmail(filter map[string]bool) bool {
-	return filter == nil || filter["email"]
+	return filter == nil || filter[channelTokenEmail]
 }
 
 // severityAllowsWebPush reports whether a web-push delivery is permitted:
 // nil (everything), the historical email-compat token, or an explicit push token.
 func severityAllowsWebPush(filter map[string]bool) bool {
-	return filter == nil || filter["email"] || filter["push"] || filter["critical_push"]
+	return filter == nil || filter[channelTokenEmail] ||
+		filter[channelTokenPush] || filter[channelTokenCriticalPush]
 }
 
 // severityAllowsSMS reports whether an SMS to a phone contact is permitted:
 // nil (everything) or an explicit sms token.
 func severityAllowsSMS(filter map[string]bool) bool {
-	return filter == nil || filter["sms"]
+	return filter == nil || filter[channelTokenSMS]
 }
 
 // severityAllowsVoice reports whether a voice call is permitted. Voice is only
@@ -363,7 +376,7 @@ func severityAllowsSMS(filter map[string]bool) bool {
 // severity-less escalation never surprises an on-call engineer with a phone
 // call.
 func severityAllowsVoice(filter map[string]bool) bool {
-	return filter["voice"]
+	return filter[channelTokenVoice]
 }
 
 // enqueueNotificationFor queues a notification job for the
@@ -794,7 +807,7 @@ func (r *EscalationStepJobRun) sendPhoneSMS(
 	}
 
 	client := newTwilioClient(settings.AccountSID, settings.AuthToken)
-	res, err := client.SendSMS(ctx, twilio.SendSMSParams{
+	res, err := client.SendSMS(ctx, &twilio.SendSMSParams{
 		To:                  route.Contact.Value,
 		From:                settings.FromNumber,
 		MessagingServiceSID: settings.MessagingServiceSID,
@@ -994,47 +1007,11 @@ func (r *EscalationStepJobRun) pageAllAdmins(
 
 	count := 0
 	for _, member := range members {
-		if member.Role != models.MemberRoleAdmin {
+		if member.Role != models.MemberRoleAdmin || member.User == nil {
 			continue
 		}
 
-		if member.User == nil {
-			continue
-		}
-
-		// Walk all enabled notification routes for the admin user.
-		routes, routesErr := jctx.DBService.ListUserContactsWithRoutes(ctx, member.UserUID, incident.OrganizationUID)
-		if routesErr != nil || len(routes) == 0 {
-			// Fallback: email directly, but only when the severity permits email.
-			if member.User.Email != "" && severityAllowsEmail(filter) {
-				count += r.sendEscalationEmail(
-					ctx, jctx, log, incident, member.User.Email, member.UserUID,
-					models.IncidentNotificationSourceEscalationAllAdmins,
-				)
-			}
-
-			continue
-		}
-
-		routeSent := 0
-		for _, route := range routes {
-			if !route.Enabled {
-				continue
-			}
-
-			routeSent += r.dispatchRoute(ctx, jctx, log, incident, route, filter)
-		}
-
-		if routeSent == 0 && member.User.Email != "" && severityAllowsEmail(filter) {
-			// All routes were disabled/unknown/filtered — fall back to direct
-			// email, but only when the severity permits it.
-			routeSent = r.sendEscalationEmail(
-				ctx, jctx, log, incident, member.User.Email, member.UserUID,
-				models.IncidentNotificationSourceEscalationAllAdmins,
-			)
-		}
-
-		count += routeSent
+		count += r.pageAdminMember(ctx, jctx, log, incident, member, filter)
 	}
 
 	if count == 0 {
@@ -1052,6 +1029,48 @@ func (r *EscalationStepJobRun) pageAllAdmins(
 	}
 
 	return count
+}
+
+// pageAdminMember pages one admin member: walks their enabled routes (severity
+// filtered) and falls back to a direct email when no route delivered and the
+// severity permits email. Returns the number of pages produced.
+func (r *EscalationStepJobRun) pageAdminMember(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, member *models.OrganizationMember, filter map[string]bool,
+) int {
+	routes, routesErr := jctx.DBService.ListUserContactsWithRoutes(ctx, member.UserUID, incident.OrganizationUID)
+	if routesErr != nil || len(routes) == 0 {
+		return r.adminFallbackEmail(ctx, jctx, log, incident, member, filter)
+	}
+
+	sent := 0
+	for _, route := range routes {
+		if route.Enabled {
+			sent += r.dispatchRoute(ctx, jctx, log, incident, route, filter)
+		}
+	}
+
+	if sent == 0 {
+		return r.adminFallbackEmail(ctx, jctx, log, incident, member, filter)
+	}
+
+	return sent
+}
+
+// adminFallbackEmail sends a direct escalation email to an admin member when
+// the severity permits email and the member has an address.
+func (r *EscalationStepJobRun) adminFallbackEmail(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, member *models.OrganizationMember, filter map[string]bool,
+) int {
+	if member.User.Email == "" || !severityAllowsEmail(filter) {
+		return 0
+	}
+
+	return r.sendEscalationEmail(
+		ctx, jctx, log, incident, member.User.Email, member.UserUID,
+		models.IncidentNotificationSourceEscalationAllAdmins,
+	)
 }
 
 // sendEscalationEmail sends a minimal escalation email directly via the

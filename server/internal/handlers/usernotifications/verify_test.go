@@ -117,12 +117,15 @@ func TestVerifyContact_ResendRateLimited(t *testing.T) {
 	r.ErrorIs(svc.VerifyContact(ctx, org.Slug, user, contact.UID), ErrResendTooSoon)
 }
 
-// stampCode writes a known code hash + future expiry so confirm can be driven
+// testVerifyCode is the fixed code stampCode writes so confirm can be driven
 // deterministically.
-func stampCode(t *testing.T, svc *Service, contactUID, code string, expiry time.Time) {
+const testVerifyCode = "123456"
+
+// stampCode writes a known code hash + given expiry onto the contact.
+func stampCode(t *testing.T, svc *Service, contactUID string, expiry time.Time) {
 	t.Helper()
 
-	h := hashCode(code)
+	h := hashCode(testVerifyCode)
 	require.NoError(t, svc.db.SetUserContactVerifyState(context.Background(), contactUID, &h, &expiry, 0))
 }
 
@@ -132,9 +135,9 @@ func TestConfirmVerify_Success(t *testing.T) {
 	ctx := context.Background()
 
 	svc, org, user, contact := setupVerifyEnv(t, true)
-	stampCode(t, svc, contact.UID, "123456", time.Now().Add(5*time.Minute))
+	stampCode(t, svc, contact.UID, time.Now().Add(5*time.Minute))
 
-	r.NoError(svc.ConfirmVerify(ctx, org.Slug, user, contact.UID, "123456"))
+	r.NoError(svc.ConfirmVerify(ctx, org.Slug, user, contact.UID, testVerifyCode))
 
 	reloaded, err := svc.db.GetUserContact(ctx, contact.UID)
 	r.NoError(err)
@@ -148,7 +151,7 @@ func TestConfirmVerify_NoPendingCode(t *testing.T) {
 	ctx := context.Background()
 
 	svc, org, user, contact := setupVerifyEnv(t, true)
-	r.ErrorIs(svc.ConfirmVerify(ctx, org.Slug, user, contact.UID, "123456"), ErrNoPendingCode)
+	r.ErrorIs(svc.ConfirmVerify(ctx, org.Slug, user, contact.UID, testVerifyCode), ErrNoPendingCode)
 }
 
 func TestConfirmVerify_Expired(t *testing.T) {
@@ -157,9 +160,9 @@ func TestConfirmVerify_Expired(t *testing.T) {
 	ctx := context.Background()
 
 	svc, org, user, contact := setupVerifyEnv(t, true)
-	stampCode(t, svc, contact.UID, "123456", time.Now().Add(-time.Minute))
+	stampCode(t, svc, contact.UID, time.Now().Add(-time.Minute))
 
-	r.ErrorIs(svc.ConfirmVerify(ctx, org.Slug, user, contact.UID, "123456"), ErrCodeExpired)
+	r.ErrorIs(svc.ConfirmVerify(ctx, org.Slug, user, contact.UID, testVerifyCode), ErrCodeExpired)
 }
 
 func TestConfirmVerify_WrongCodeIncrementsThenCaps(t *testing.T) {
@@ -168,7 +171,7 @@ func TestConfirmVerify_WrongCodeIncrementsThenCaps(t *testing.T) {
 	ctx := context.Background()
 
 	svc, org, user, contact := setupVerifyEnv(t, true)
-	stampCode(t, svc, contact.UID, "123456", time.Now().Add(5*time.Minute))
+	stampCode(t, svc, contact.UID, time.Now().Add(5*time.Minute))
 
 	// verifyMaxAttempts wrong tries, each a mismatch.
 	for i := 0; i < verifyMaxAttempts; i++ {
@@ -176,7 +179,7 @@ func TestConfirmVerify_WrongCodeIncrementsThenCaps(t *testing.T) {
 	}
 
 	// Code is now invalidated: even the correct code yields no-pending-code.
-	r.ErrorIs(svc.ConfirmVerify(ctx, org.Slug, user, contact.UID, "123456"), ErrNoPendingCode)
+	r.ErrorIs(svc.ConfirmVerify(ctx, org.Slug, user, contact.UID, testVerifyCode), ErrNoPendingCode)
 
 	reloaded, err := svc.db.GetUserContact(ctx, contact.UID)
 	r.NoError(err)
@@ -190,11 +193,11 @@ func TestConfirmVerify_ForeignContactRejected(t *testing.T) {
 	ctx := context.Background()
 
 	svc, org, _, contact := setupVerifyEnv(t, true)
-	stampCode(t, svc, contact.UID, "123456", time.Now().Add(5*time.Minute))
+	stampCode(t, svc, contact.UID, time.Now().Add(5*time.Minute))
 
 	// A different user must not confirm someone else's contact.
 	otherUser := models.NewUser("intruder@example.com")
 	r.NoError(svc.db.CreateUser(ctx, otherUser))
 
-	r.ErrorIs(svc.ConfirmVerify(ctx, org.Slug, otherUser, contact.UID, "123456"), ErrContactNotFound)
+	r.ErrorIs(svc.ConfirmVerify(ctx, org.Slug, otherUser, contact.UID, testVerifyCode), ErrContactNotFound)
 }

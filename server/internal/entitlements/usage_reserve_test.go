@@ -2,7 +2,6 @@ package entitlements
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -74,7 +73,7 @@ func TestReserveSMS_MonthlyCap(t *testing.T) {
 	r.ErrorIs(err, ErrEntitlementExceeded)
 
 	var qErr *QuotaError
-	r.True(errors.As(err, &qErr))
+	r.ErrorAs(err, &qErr)
 	r.Equal("MaxSmsPerMonth", qErr.LimitName)
 }
 

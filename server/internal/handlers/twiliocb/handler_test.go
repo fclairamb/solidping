@@ -3,8 +3,7 @@ package twiliocb
 import (
 	"context"
 	"crypto/hmac"
-	//nolint:gosec // Twilio mandates HMAC-SHA1; the test reproduces it.
-	"crypto/sha1"
+	"crypto/sha1" // Twilio mandates HMAC-SHA1; the test reproduces it.
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
@@ -119,7 +118,6 @@ func signTwilio(authToken, fullURL string, form url.Values) string {
 		}
 	}
 
-	//nolint:gosec // Twilio mandates HMAC-SHA1.
 	mac := hmac.New(sha1.New, []byte(authToken))
 	mac.Write([]byte(b.String()))
 
@@ -128,11 +126,15 @@ func signTwilio(authToken, fullURL string, form url.Values) string {
 
 // buildRequest constructs a signed (unless sign=false / badSig) POST request to
 // the given twilio callback path with the given query + body params.
-func (e *cbEnv) buildRequest(t *testing.T, path string, query, body url.Values, signIt bool, badSig bool) *http.Request {
+func (e *cbEnv) buildRequest(
+	t *testing.T, path string, query, body url.Values, signIt, badSig bool,
+) *http.Request {
 	t.Helper()
 
 	target := path + "?" + query.Encode()
-	req := httptest.NewRequest(http.MethodPost, target, strings.NewReader(body.Encode()))
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPost, target, strings.NewReader(body.Encode()),
+	)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	fullURL := strings.TrimRight(e.cfg.Server.BaseURL, "/") + req.URL.RequestURI()

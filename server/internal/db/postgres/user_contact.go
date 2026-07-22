@@ -149,15 +149,15 @@ func (s *Service) SetUserContactVerifyState(
 
 // MarkUserContactVerified stamps verified_at and clears the pending
 // verification columns.
-func (s *Service) MarkUserContactVerified(ctx context.Context, uid string, at time.Time) error {
+func (s *Service) MarkUserContactVerified(ctx context.Context, uid string, verifiedAt time.Time) error {
 	_, err := s.db.NewUpdate().
 		Model((*models.UserContact)(nil)).
 		Where("uid::text = ?", uid).
-		Set("verified_at = ?", at).
+		Set("verified_at = ?", verifiedAt).
 		Set("verify_code_hash = NULL").
 		Set("verify_expires_at = NULL").
 		Set("verify_attempts = 0").
-		Set("updated_at = ?", at).
+		Set("updated_at = ?", verifiedAt).
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("mark user contact verified: %w", err)
