@@ -18,7 +18,7 @@ Comprehensive comparison of uptime monitoring services for the SolidPing project
 
 > **Closest self-hosted analogue**: [Maintenant](maintenant.md) (kOlapsis) — self-hosted Go single-binary like SolidPing, with deep Docker/Kubernetes container observability, HTTP/TCP/SSL/heartbeat checks, an MCP server for AI assistants, and an AGPL-3.0 open-core (Community/Pro/Enterprise) model. SQLite-only, ~17 MB RAM, four core probe types, and no built-in auth (reverse-proxy gated). Not in the tables below (kept SaaS-first), but its container monitoring and Docker-label config are the standout features worth studying.
 
-> **Where SolidPing stands today (May 2026; counts refreshed 2026-07-20)**: 39 check types (broadest of any tool surveyed), 10 native notification channels, multi-region distributed workers, status pages with availability, maintenance windows, **adaptive incident resolution + group-incident correlation + ack/snooze/manual-resolve**, **on-call schedules + multi-step escalation policies**, **credentials encryption at rest** (envelope encryption with out-of-band master key), labels with autocomplete + filtering, 2FA, MCP/AI integration, browser monitoring (chromedp), Prometheus metrics, dual PostgreSQL/SQLite backend, single-binary self-hosting. See "SolidPing Competitive Position" below for the full ✅/❌ inventory.
+> **Where SolidPing stands today (counts refreshed 2026-07-22)**: 38 check types (39 registered internally, including a non-customer-facing sleep/keepalive type — broadest of any tool surveyed either way), 10 native notification channels, multi-region distributed workers with per-region check periods, private locations (deported agents the server cannot decrypt secrets for), status pages with availability, subscriber notifications, and maintenance windows, **adaptive incident resolution + group-incident correlation + ack/snooze/manual-resolve**, **on-call schedules + multi-step escalation policies**, **credentials encryption at rest** (envelope encryption with out-of-band master key), configuration as code (YAML export/import/apply via API + CLI), labels with autocomplete + filtering, 2FA, MCP/AI integration, browser monitoring (chromedp), Prometheus metrics, dual PostgreSQL/SQLite backend, single-binary self-hosting. See "SolidPing Competitive Position" below for the full ✅/❌ inventory.
 
 > **Design ideas worth borrowing**: distilled in [../research/alerting-patterns.md](../research/alerting-patterns.md) — synthesizes findings from the deep-dive research on BetterStack ([betterstack/](betterstack/)) and Hyperping ([hyperping/](hyperping/)) into actionable input for future specs.
 
@@ -149,7 +149,7 @@ be treated as fact without a manual check.*
 | **External script** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ⚠️ (via JS check) |
 | **Cron exit codes** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
 
-**Most Comprehensive**: SolidPing (39 check types — broadest protocol coverage of any tool surveyed)
+**Most Comprehensive**: SolidPing (38 check types — broadest protocol coverage of any tool surveyed)
 
 **Best Free**: UptimeRobot (8 types, 50 free monitors) for SaaS; SolidPing for self-hosted (unlimited)
 
@@ -255,6 +255,7 @@ be treated as fact without a manual check.*
 | **Mattermost** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
 | **Webhooks** | ✅ Custom | ✅ Custom | ✅ Custom | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Push (Pushover)** | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **Web Push** (browser, no app) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | **Ntfy** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
 | **Signal** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
 | **Matrix** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ |
@@ -489,14 +490,15 @@ Based on competitive analysis, prioritize these features:
 35. ✅ Status badges (SVG)
 36. ✅ Labels with autocomplete API and list-page filtering
 37. ✅ Email inbox passive monitoring via JMAP (deliverability end-to-end)
+38. ✅ Status-page subscriber notifications — end users subscribe to a status page and are emailed on published status updates/incidents (wired end-to-end, not just a subscription list)
+39. ✅ Configuration as Code — declarative YAML export/import/apply via `POST /orgs/:org/checks/apply` and the `sp` CLI (`export`/`import`/`apply`)
+40. ✅ Per-org check-execution rate limiting + cost/plan-weighted scheduler fairness — a token-bucket `maxChecksPerMinute` entitlement plus scheduler-level de-prioritization of slow checks under contention; addresses "one tenant can't DoS the shared workers" via a different mechanism than the original proportional-fair-period-scaling design
 
 **Tier 2 - High-Impact Gaps** (not yet implemented, multiple competitors offer these):
-1. ❌ Status-page subscriber notifications — let end users subscribe to incident updates by email/RSS (UptimeRobot, Pingdom, Checkly, BetterStack)
-2. ❌ Telegram, Microsoft Teams, PagerDuty notification channels — specs ready in `specs/ideas/2026-03-22-telegram-notifications.md` and `specs/ideas/2026-03-22-notification-channels.md`
-3. ❌ Screenshot capture on HTTP failure (BetterStack, Checkly) — research done, Rod chosen, spec ready in `specs/ideas/2026-01-05-screenshots.md`
-4. ❌ Configuration as Code — declarative YAML / Terraform provider (Gatus, Checkly, BetterStack)
-5. ❌ Importers from BetterStack / UptimeRobot / Uptime Kuma (spec stub in `specs/ideas/2025-12-28-importers.md` — lowers switching friction)
-6. ❌ Org-level check rate limiting — proportional fair scaling so one tenant cannot DoS the workers (spec ready in `specs/backlog/2026-03-30-org-check-rate-limit.md`)
+1. ❌ Telegram, Microsoft Teams, PagerDuty notification channels — specs ready in `specs/ideas/2026-03-22-telegram-notifications.md` and `specs/ideas/2026-03-22-notification-channels.md`
+2. ❌ Screenshot capture on HTTP failure (BetterStack, Checkly) — research done, Rod chosen, spec ready in `specs/ideas/2026-01-05-screenshots.md`
+3. ❌ Importers from BetterStack / UptimeRobot / Uptime Kuma (spec stub in `specs/ideas/2025-12-28-importers.md` — lowers switching friction)
+4. ⚠️ Terraform provider (Gatus, Checkly, BetterStack) — lives in a separate `terraform-provider-solidping` repo per a "done" spec; this repo only has an API-completeness audit (`../terraform-provider-api-audit.md`), so its actual shipped/published state isn't verifiable from here
 
 **Tier 3 - Competitive Differentiators** (nice to have):
 1. ❌ Page speed / Core Web Vitals monitoring (Pingdom, StatusCake)
@@ -515,7 +517,7 @@ Based on competitive analysis, prioritize these features:
 | Strength | Closest Competitor |
 |----------|-------------------|
 | Self-hosted + Multi-tenancy + RBAC + 2FA | None (unique combination) |
-| 39 check types in a single binary | Site24x7 (SaaS only); Uptime Kuma has ~12 |
+| 38 check types in a single binary | Site24x7 (SaaS only); Uptime Kuma has ~12 |
 | Dual PostgreSQL / SQLite + embedded Postgres | None (most OSS tools are single-DB) |
 | Distributed workers + multi-region scheduling | SaaS only (BetterStack, Pingdom); not in self-hosted OSS |
 | Group-incident correlation (one alert per outage, not per check) in self-hosted | BetterStack (SaaS only, "automatic incident merging") |
@@ -591,6 +593,6 @@ Based on competitive analysis, prioritize these features:
 4. Skip Pingdom's mistakes (no false positives, no complex pricing)
 5. Offer optional SaaS with pricing that undercuts UptimeRobot
 
-**Today (May 2026)**: SolidPing covers parity on (1), (2), and most protocol/feature breadth, and has overtaken BetterStack on (3) for self-hosted incident management — group-incident correlation, on-call schedules, multi-step escalation policies, ack/snooze/manual-resolve, and credentials encryption are all in. Remaining items are: status-page subscriber notifications, Telegram/Teams/PagerDuty channels, screenshots, importers, and a Terraform provider.
+**Today (2026-07-22)**: SolidPing covers parity on (1), (2), and most protocol/feature breadth, and has overtaken BetterStack on (3) for self-hosted incident management — group-incident correlation, on-call schedules, multi-step escalation policies, ack/snooze/manual-resolve, credentials encryption, status-page subscriber notifications, and configuration-as-code (YAML export/import/apply) are all in. Remaining items are: Telegram/Teams/PagerDuty channels, screenshots, importers, and a published Terraform provider (unverified from this repo).
 
 **Result**: Best of all worlds — self-hosted freedom with optional affordable SaaS.

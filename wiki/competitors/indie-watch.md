@@ -73,7 +73,7 @@ active through 2026-05). Markets verbatim as "the best uptime kuma alternative"
 for professional DevOps teams. Websites/APIs, status pages, alerts; storage on
 SQLite / PostgreSQL / MongoDB. Homepage + live demo + docs + community Terraform
 provider; self-described beta. **The closest kind of rival — same lane as Uptime
-Kuma itself.** SolidPing counters on 39 check types + distributed multi-region
+Kuma itself.** SolidPing counters on 38 check types + distributed multi-region
 workers + built-in on-call, none of which Peekaping matches yet; Peekaping's edge
 is 1.1k★ of momentum, a polished site/demo, and pluggable storage backends.
 *Watch:* whether it ships distributed probing or a hosted/paid tier. Surfaced
@@ -117,7 +117,7 @@ SolidPing's distributed workers). HTTP/TCP/UDP/SSL/DNS + cron; Email/Slack/
 Telegram/Webhook. Free ($0, 5 monitors, 1 Lighthouse, 5-min, HTTP/TCP/UDP only) /
 Starter (**$10/mo**, 1-min, +SSL/DNS) / Pro (**$24/mo**, 25 monitors, 3 Lighthouses,
 6 members). SolidPing counters:
-self-hosted/OSS, 39 check types vs ~6, 10 channels vs 4. Surfaced 2026-05-25 via
+self-hosted/OSS, 38 check types vs ~6, 10 channels vs 4. Surfaced 2026-05-25 via
 an r/selfhosted self-promo that was heavily downvoted ("AI slop advertisement") —
 community mood is hostile to promo posts here. *Update 2026-07-12:* paid prices
 **roughly doubled** (Starter $5→$10, Pro $12→$24); Lighthouse agents now also stream
@@ -257,3 +257,17 @@ projects, content-farm SEO, and paid templates. Not head-to-head rivals.
 - **Hesklo** (dev.to/expertblink) — indie "most flexible uptime monitoring tool,"
   escalation-flow hook. No homepage/pricing captured; SaaS-vs-OSS unknown. Zero
   engagement on launch. Escalation emphasis overlaps SolidPing's on-call.
+- **UptimeMonitoring.com** (uptimemonitoring.com, by Monitive) — MCP-FIRST SaaS,
+  "API-first uptime monitoring for deploy pipelines, developers, and AI agents."
+  Ships an MCP server for Claude/ChatGPT/Cursor (natural-language monitor
+  create/manage), 22 global probe locations with cross-region failure
+  confirmation. HTTP/HTTPS only (DNS/TLS/connect/TTFB/download timing breakdown),
+  SaaS-only (not self-hostable). Free ≤50 monitors (100 early), 60s intervals,
+  30-day retention, no card; paid tiers planned (30s intervals, longer retention,
+  response-time alerts). Alerting via webhooks / browser push / RSS / MCP queries
+  — **no email**. Surfaced 2026-07-21 (Show HN 48919840, 3 pts / 0 comments,
+  author `luciandan`). Significance: first rival built MCP-FIRST (not a bolt-on
+  MCP endpoint like Tickstem/Uptime.com/exit1.dev) — confirms MCP is now contested
+  table-stakes. SolidPing's edge holds on 32 check types (vs HTTP-only), OSS
+  self-host (vs SaaS-only + hosted MCP), and built-in on-call. Watch: paid pricing
+  and whether it adds non-HTTP check types.

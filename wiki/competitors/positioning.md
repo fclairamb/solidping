@@ -107,7 +107,7 @@ targets:
 2. **"Sub-minute checks, free. No paid tier required."**
    → anyone evaluating Hyperping Essentials or Better Stack's "30-second checks."
 3. **"Uptime Kuma's big sibling — same single binary, plus distributed workers,
-   on-call rotations, status pages, 39 check types."**
+   on-call rotations, status pages, 38 check types."**
    → Kuma users feeling the limits (one node, no on-call, fewer protocols).
 4. **"Heartbeat + active checks in one tool."**
    → anyone running Healthchecks.io alongside a separate active-check tool.
@@ -124,6 +124,11 @@ targets:
    *Caveat (2026-07-12): exit1.dev now advertises an MCP server too — "AI-native"
    is no longer unique. Narrow the claim to "self-hosted MCP, your data never
    leaves your infra."*
+   *Caveat (2026-07-21): UptimeMonitoring.com (Monitive) launched MCP-FIRST —
+   the whole product is "create/manage monitors by asking Claude/ChatGPT/Cursor."
+   MCP is now contested table-stakes, not a differentiator. Hold the line on
+   "self-hosted MCP" AND pair it with the real moat (32 check types vs their
+   HTTP-only, OSS self-host vs SaaS-only, built-in on-call).*
 10. **"Freshping shut down. Land somewhere you own."**
    → Freshping (Freshworks) closed 2026-03-06; its free-tier users are actively
    looking for a home. Lead with self-host (nothing to shut down on you) + a free
