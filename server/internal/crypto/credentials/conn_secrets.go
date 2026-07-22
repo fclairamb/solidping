@@ -36,6 +36,10 @@ var connectionSecretFields = map[models.ConnectionType][]string{
 	// The API server URL and CA cert stay public (endpoint URLs are not secret
 	// under the DB-theft-only threat model — same as webhook URLs above).
 	models.ConnectionTypeKubernetes: {"token", "kubeconfig"},
+	// Twilio: only the account auth token is secret. The account SID, from /
+	// messaging-service identifiers and recipient numbers stay public so the
+	// dashboard can render them on the edit form.
+	models.ConnectionTypeTwilio: {"auth_token"},
 }
 
 // ConnectionSecretFields returns the secret keys for a connection type.

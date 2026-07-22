@@ -25,6 +25,7 @@ const (
 	ConnectionTypeFreebox    ConnectionType = "freebox"
 	ConnectionTypeWebPush    ConnectionType = "webpush"
 	ConnectionTypeKubernetes ConnectionType = "kubernetes"
+	ConnectionTypeTwilio     ConnectionType = "twilio"
 )
 
 // Capabilities describes what roles an integration type can play. The two
@@ -343,4 +344,52 @@ func KubernetesPrivateSettingsFromMap(decrypted map[string]any) *KubernetesPriva
 	}
 
 	return priv
+}
+
+// TwilioSettings is the public (queryable) side of a Twilio connection's
+// Settings JSONB. The matching secret — the account auth token — lives
+// encrypted in SettingsPrivate under the "auth_token" key (see
+// connectionSecretFields). Exactly one of FromNumber / MessagingServiceSID is
+// set for SMS; VoiceFromNumber (optional) enables voice calls; ToNumbers are
+// shared recipients for direct-channel (registry-path) sends.
+//
+//nolint:tagliatelle // JSON keys match the Twilio settings wire format (snake_case).
+type TwilioSettings struct {
+	AccountSID          string   `json:"account_sid"`
+	AuthToken           string   `json:"auth_token,omitempty"`
+	FromNumber          string   `json:"from_number,omitempty"`
+	MessagingServiceSID string   `json:"messaging_service_sid,omitempty"`
+	VoiceFromNumber     string   `json:"voice_from_number,omitempty"`
+	ToNumbers           []string `json:"to_numbers,omitempty"`
+}
+
+// ToJSONMap converts TwilioSettings to JSONMap for storage.
+func (ts *TwilioSettings) ToJSONMap() (JSONMap, error) {
+	data, err := json.Marshal(ts)
+	if err != nil {
+		return nil, err
+	}
+
+	var m JSONMap
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+
+	return m, nil
+}
+
+// TwilioSettingsFromJSONMap parses TwilioSettings from a JSONMap. The map is
+// expected to be the decrypt-and-merged Settings (auth_token present).
+func TwilioSettingsFromJSONMap(m JSONMap) (*TwilioSettings, error) {
+	data, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+
+	var ts TwilioSettings
+	if err := json.Unmarshal(data, &ts); err != nil {
+		return nil, err
+	}
+
+	return &ts, nil
 }

@@ -27,6 +27,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
+	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/notifications"
 	"github.com/fclairamb/solidping/server/internal/webpush"
@@ -61,6 +62,9 @@ var (
 	// requested for an integration whose type cannot send notifications
 	// (e.g. a data source like Freebox).
 	ErrIntegrationNotNotifiable = errors.New("integration type cannot send notifications")
+	// ErrInvalidSettings is returned when a connection's type-specific settings
+	// fail validation (e.g. a malformed Twilio account SID or phone number).
+	ErrInvalidSettings = errors.New("invalid connection settings")
 )
 
 // Signing-secret lifecycle constants (Standard Webhooks). The secret format is
@@ -380,10 +384,19 @@ func (s *Service) CreateIntegration(
 		models.ConnectionTypeGoogleChat, models.ConnectionTypeMattermost,
 		models.ConnectionTypeNtfy, models.ConnectionTypeOpsgenie,
 		models.ConnectionTypePushover, models.ConnectionTypeFreebox,
-		models.ConnectionTypeWebPush, models.ConnectionTypeKubernetes:
+		models.ConnectionTypeWebPush, models.ConnectionTypeKubernetes,
+		models.ConnectionTypeTwilio:
 		// Valid types
 	default:
 		return nil, ErrInvalidConnectionType
+	}
+
+	// Twilio requires well-formed credentials/numbers up front — a bad SID or
+	// non-E.164 number silently no-ops at send time otherwise.
+	if connType == models.ConnectionTypeTwilio {
+		if err := validateTwilioSettings(req.Settings); err != nil {
+			return nil, err
+		}
 	}
 
 	// Slack channels can only be created by the OAuth install flow (which calls
@@ -441,6 +454,48 @@ func (s *Service) CreateIntegration(
 	return resp, nil
 }
 
+// validateTwilioSettings enforces the Twilio connection's settings invariants:
+// an AC… account SID, a non-empty auth token, exactly one of from_number /
+// messaging_service_sid, and E.164 for every configured number. Called against
+// the effective (post-PATCH-merge) settings so a partial update is validated
+// as a whole.
+func validateTwilioSettings(settings models.JSONMap) error {
+	ts, err := models.TwilioSettingsFromJSONMap(settings)
+	if err != nil {
+		return fmt.Errorf("%w: malformed twilio settings", ErrInvalidSettings)
+	}
+
+	if !twilio.ValidAccountSID(ts.AccountSID) {
+		return fmt.Errorf("%w: account_sid must be a Twilio Account SID (AC…)", ErrInvalidSettings)
+	}
+
+	if strings.TrimSpace(ts.AuthToken) == "" {
+		return fmt.Errorf("%w: auth_token is required", ErrInvalidSettings)
+	}
+
+	hasFrom := ts.FromNumber != ""
+	hasMSS := ts.MessagingServiceSID != ""
+	if hasFrom == hasMSS {
+		return fmt.Errorf("%w: exactly one of from_number or messaging_service_sid is required", ErrInvalidSettings)
+	}
+
+	if hasFrom && !twilio.ValidE164(ts.FromNumber) {
+		return fmt.Errorf("%w: from_number must be E.164 (e.g. +15551234567)", ErrInvalidSettings)
+	}
+
+	if ts.VoiceFromNumber != "" && !twilio.ValidE164(ts.VoiceFromNumber) {
+		return fmt.Errorf("%w: voice_from_number must be E.164", ErrInvalidSettings)
+	}
+
+	for _, n := range ts.ToNumbers {
+		if !twilio.ValidE164(n) {
+			return fmt.Errorf("%w: to_numbers entry %q must be E.164", ErrInvalidSettings, n)
+		}
+	}
+
+	return nil
+}
+
 // UpdateIntegration updates a connection.
 func (s *Service) UpdateIntegration(
 	ctx context.Context, orgSlug, connectionUID string, req UpdateIntegrationRequest,
@@ -485,6 +540,14 @@ func (s *Service) UpdateIntegration(
 
 		secrets := credentials.ConnectionSecretFields(conn.Type)
 		merged := credentials.MergePatch(existing, req.Settings, secrets)
+
+		// Validate the merged (post-PATCH) settings so a partial update can't
+		// leave a Twilio connection in an unsendable state.
+		if conn.Type == models.ConnectionTypeTwilio {
+			if err := validateTwilioSettings(models.JSONMap(merged)); err != nil {
+				return nil, err
+			}
+		}
 
 		if encErr := s.applySettingsEncryption(ctx, conn, merged); encErr != nil {
 			return nil, encErr
