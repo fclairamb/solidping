@@ -34,3 +34,16 @@ create unique index status_pages_custom_domain_idx
 alter table user_contacts add column verify_code_hash text; -- SHA-256 hex of the pending 6-digit code; NULL when none pending.
 alter table user_contacts add column verify_expires_at text; -- Pending code expiry (issue + 10 min).
 alter table user_contacts add column verify_attempts integer not null default 0; -- Failed confirm attempts; 5 invalidates.
+
+-- ---------------------------------------------------------------------------
+-- Monthly SMS/voice usage counters (spec 2026-07-22-02)
+-- ---------------------------------------------------------------------------
+-- See the postgres twin. period_start is text here (cross-database convention);
+-- the reserve-then-send conditional upsert keeps a burst within the cap.
+create table org_usage_counters (
+  organization_uid text not null,
+  kind text not null,
+  period_start text not null,
+  count integer not null default 0,
+  primary key (organization_uid, kind, period_start)
+);

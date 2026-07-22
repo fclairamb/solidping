@@ -56,6 +56,11 @@ type Service struct {
 	// immediately. Keyed by org UID.
 	limitersMu sync.Mutex
 	limiters   map[string]*tokenBucket
+
+	// Per-org hourly runaway buckets for SMS/voice, independent of the monthly
+	// entitlement cap. Keyed by "orgUID:kind".
+	runawayMu      sync.Mutex
+	runawayBuckets map[string]*hourlyBucket
 }
 
 // NewService builds an entitlements service with the given defaults.
@@ -69,11 +74,12 @@ func NewService(
 	dbService db.Service, defaults Entitlements, staleAfter time.Duration,
 ) *Service {
 	return &Service{
-		db:         dbService,
-		defaults:   defaults,
-		staleAfter: staleAfter,
-		now:        time.Now,
-		limiters:   make(map[string]*tokenBucket),
+		db:             dbService,
+		defaults:       defaults,
+		staleAfter:     staleAfter,
+		now:            time.Now,
+		limiters:       make(map[string]*tokenBucket),
+		runawayBuckets: make(map[string]*hourlyBucket),
 	}
 }
 
@@ -353,6 +359,12 @@ func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	}
 	if limits.MaxCustomDomains != nil {
 		out.Limits.MaxCustomDomains = limits.MaxCustomDomains
+	}
+	if limits.MaxSmsPerMonth != nil {
+		out.Limits.MaxSmsPerMonth = limits.MaxSmsPerMonth
+	}
+	if limits.MaxCallsPerMonth != nil {
+		out.Limits.MaxCallsPerMonth = limits.MaxCallsPerMonth
 	}
 
 	return out

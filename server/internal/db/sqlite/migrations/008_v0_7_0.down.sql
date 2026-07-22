@@ -2,6 +2,9 @@
 -- Reverse order: later-appended feature blocks are torn down before the
 -- earlier ones they were stacked on top of.
 
+-- reverse monthly SMS/voice usage counters (spec 2026-07-22-02)
+drop table if exists org_usage_counters;
+
 -- reverse phone contact verification (spec 2026-07-22-02)
 alter table user_contacts drop column verify_attempts;
 alter table user_contacts drop column verify_expires_at;

@@ -658,6 +658,19 @@ type Service interface {
 	// how they joined. Used by the entitlements service to enforce
 	// MaxUsers.
 	CountMembersForOrg(ctx context.Context, orgUID string) (int, error)
+
+	// ReserveMonthlyUsage atomically claims one unit of the (orgUID, kind,
+	// periodStart) monthly counter provided the current count is below limit.
+	// It returns true when a unit was reserved (the counter was incremented),
+	// false when the monthly cap is already reached. Callers must gate limit<=0
+	// themselves. periodStart is an ISO date string (first day of the month).
+	ReserveMonthlyUsage(
+		ctx context.Context, orgUID, kind, periodStart string, limit int,
+	) (bool, error)
+
+	// GetMonthlyUsage returns the current count for (orgUID, kind, periodStart),
+	// or 0 when no row exists.
+	GetMonthlyUsage(ctx context.Context, orgUID, kind, periodStart string) (int, error)
 	// ListOrgCheckRates returns (enabled, period) for all non-deleted,
 	// non-internal checks of the given org. Used to compute usage stats
 	// (count + aggregate checks-per-minute) and to enforce MaxChecks.

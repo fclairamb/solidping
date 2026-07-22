@@ -95,6 +95,10 @@ func (d *EscalationStepJobDefinition) CreateJobRun(config json.RawMessage) (jobd
 // EscalationStepJobRun executes one rung of an escalation policy.
 type EscalationStepJobRun struct {
 	config EscalationStepJobConfig
+	// sentPhones dedupes phone deliveries within a single job run, keyed by
+	// "kind:number" — so a user matched via both a user target and all_admins
+	// is texted/called at most once per channel per step.
+	sentPhones map[string]bool
 }
 
 // Run loads the incident, exits if it has been acked/snoozed/resolved
@@ -648,15 +652,74 @@ func (r *EscalationStepJobRun) pagePhone(
 	ackToken := r.buildPhoneAckToken(jctx, incident, contact.Value)
 
 	sent := 0
-	if wantSMS && r.sendPhoneSMS(ctx, jctx, log, incident, route, conn, settings, baseURL, orgSlug, ackToken) {
+	if wantSMS && r.reservePhoneChannel(ctx, jctx, log, incident, contact.Value, models.UsageCounterKindSMS) &&
+		r.sendPhoneSMS(ctx, jctx, log, incident, route, conn, settings, baseURL, orgSlug, ackToken) {
 		sent++
 	}
 
-	if wantVoice && r.placePhoneCall(ctx, jctx, log, incident, route, conn, settings, baseURL, ackToken) {
+	if wantVoice && r.reservePhoneChannel(ctx, jctx, log, incident, contact.Value, models.UsageCounterKindVoice) &&
+		r.placePhoneCall(ctx, jctx, log, incident, route, conn, settings, baseURL, ackToken) {
 		sent++
 	}
 
 	return sent
+}
+
+// reservePhoneChannel enforces per-run dedup and the SMS/voice quota + runaway
+// guard before a send. Returns true when the send may proceed. A quota denial
+// records a skipped audit row but never fails the step.
+func (r *EscalationStepJobRun) reservePhoneChannel(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, phone, kind string,
+) bool {
+	key := kind + ":" + phone
+	if r.sentPhones[key] {
+		// Same number+channel already handled in this job run (e.g. user matched
+		// via both `user` and `all_admins`).
+		return false
+	}
+
+	if jctx.Services != nil && jctx.Services.Entitlements != nil {
+		var err error
+		if kind == models.UsageCounterKindVoice {
+			err = jctx.Services.Entitlements.ReserveCall(ctx, incident.OrganizationUID)
+		} else {
+			err = jctx.Services.Entitlements.ReserveSMS(ctx, incident.OrganizationUID)
+		}
+
+		if err != nil {
+			log.InfoContext(ctx, "phone channel quota reached; skipping send",
+				"kind", kind, "orgUID", incident.OrganizationUID, "error", err)
+			r.auditPhoneSkip(ctx, jctx, log, incident, kind+"_quota_exhausted")
+
+			return false
+		}
+	}
+
+	if r.sentPhones == nil {
+		r.sentPhones = make(map[string]bool)
+	}
+	r.sentPhones[key] = true
+
+	return true
+}
+
+// auditPhoneSkip records a skipped incident_notifications row for a quota-denied
+// SMS/voice send.
+func (r *EscalationStepJobRun) auditPhoneSkip(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, reason string,
+) {
+	stepUID := r.config.StepUID
+	repeatIndex := r.config.RepeatIndex
+	n := models.NewSkippedIncidentNotification(
+		incident.OrganizationUID, incident.UID, string(models.EventTypeIncidentEscalated),
+		models.IncidentNotificationSourceEscalationUser, reason,
+		&stepUID, &repeatIndex,
+	)
+	if auditErr := jctx.DBService.CreateIncidentNotification(ctx, n); auditErr != nil {
+		log.WarnContext(ctx, "failed to create quota-skip audit row", "error", auditErr)
+	}
 }
 
 // orgSlugFor resolves the org slug for building user-facing ack URLs. A

@@ -55,3 +55,19 @@ comment on column user_contacts.verify_expires_at is
   'Expiry of the in-flight verification code (issue + 10 minutes).';
 comment on column user_contacts.verify_attempts is
   'Failed confirm attempts for the in-flight code; at 5 the code is invalidated.';
+
+-- ---------------------------------------------------------------------------
+-- Monthly SMS/voice usage counters (spec 2026-07-22-02)
+-- ---------------------------------------------------------------------------
+-- Persistent per-org, per-kind, per-month counter. The reserve-then-send
+-- conditional upsert (INSERT … ON CONFLICT DO UPDATE SET count = count + 1
+-- WHERE count < ? RETURNING count) atomically claims one unit before a send so
+-- a burst can never exceed the monthly cap. period_start is the first day of
+-- the UTC month.
+create table org_usage_counters (
+  organization_uid varchar(36) not null,
+  kind varchar(32) not null,
+  period_start date not null,
+  count integer not null default 0,
+  primary key (organization_uid, kind, period_start)
+);

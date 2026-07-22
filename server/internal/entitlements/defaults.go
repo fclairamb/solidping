@@ -74,6 +74,11 @@ const (
 	// defaultMaxCustomDomainsSaaS is 0: the Free plan ships no custom domains;
 	// billing raises it per paid plan. Self-hosted stays unlimited (nil).
 	defaultMaxCustomDomainsSaaS = 0
+	// defaultMaxSmsPerMonthSaaS / defaultMaxCallsPerMonthSaaS are 0: the Free
+	// plan ships no SMS/voice; billing raises them per paid plan. Self-hosted
+	// stays unlimited (nil) — bring-your-own Twilio.
+	defaultMaxSmsPerMonthSaaS   = 0
+	defaultMaxCallsPerMonthSaaS = 0
 )
 
 // Display identity shown on the usage page when a row has none of its
@@ -108,6 +113,8 @@ func DefaultsFor(mode string) Entitlements {
 				MaxUsers:           Int(defaultMaxUsersSaaS),
 				MaxDeportedAgents:  Int(defaultMaxDeportedAgentsSaaS),
 				MaxCustomDomains:   Int(defaultMaxCustomDomainsSaaS),
+				MaxSmsPerMonth:     Int(defaultMaxSmsPerMonthSaaS),
+				MaxCallsPerMonth:   Int(defaultMaxCallsPerMonthSaaS),
 			},
 			Source:       models.EntitlementSourceDefault,
 			DisplayName:  strPtr(displayNameSaaS),

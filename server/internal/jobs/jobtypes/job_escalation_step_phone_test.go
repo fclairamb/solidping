@@ -17,6 +17,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
@@ -310,6 +311,33 @@ func TestDispatch_MissingProviderDegradesToSkip(t *testing.T) {
 
 	r.Equal(0, sent)
 	r.Equal(0, fake.smsCount())
+}
+
+// TestDispatch_SMSQuotaExhaustedSkips proves an exhausted monthly SMS cap skips
+// the send and records a quota-skip audit row, without failing the step.
+//
+//nolint:paralleltest // mutates the package-level newTwilioClient seam.
+func TestDispatch_SMSQuotaExhaustedSkips(t *testing.T) {
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, true, "")
+	fake, srv := newFakeTwilio(t)
+	useFakeTwilio(t, srv)
+
+	// Wire an entitlements service capped at 0 SMS/month.
+	entSvc := entitlements.NewService(env.db, entitlements.DefaultsFor(config.DeploymentModeSelfHosted), 0)
+	r.NoError(entSvc.Set(ctx, env.org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{MaxSmsPerMonth: entitlements.Int(0)},
+		Source: models.EntitlementSourceAdmin,
+	}, "tester", "no sms"))
+	env.jctx.Services.Entitlements = entSvc
+
+	run := newRun()
+	sent := run.dispatchRoute(ctx, env.jctx, slog.Default(), env.incident, verifiedPhoneRoute(env.org.UID), map[string]bool{"sms": true})
+
+	r.Equal(0, sent, "quota-exhausted SMS must not count as sent")
+	r.Equal(0, fake.smsCount(), "no SMS is dispatched when the quota is exhausted")
 }
 
 // TestSeverityHelpers pins the person-target token semantics that guarantee
