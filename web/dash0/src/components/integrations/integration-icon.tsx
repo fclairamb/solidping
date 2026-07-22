@@ -7,6 +7,7 @@ import {
   MessageCircle,
   MessageSquare,
   MessagesSquare,
+  Phone,
   Router,
   Webhook,
 } from "lucide-react";
@@ -30,6 +31,7 @@ const ICONS: Record<ConnectionType, typeof Webhook> = {
   freebox: Router,
   webpush: BellRing,
   kubernetes: Boxes,
+  twilio: Phone,
 };
 
 export function IntegrationIcon({ type, className }: IntegrationIconProps) {
@@ -67,6 +69,8 @@ export function integrationLabel(type: ConnectionType): string {
       return "Browser push";
     case "kubernetes":
       return "Kubernetes";
+    case "twilio":
+      return "Twilio (SMS / Voice)";
     default:
       return type;
   }

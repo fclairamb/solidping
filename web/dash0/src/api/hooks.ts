@@ -3169,7 +3169,8 @@ export type ConnectionType =
   | "pushover"
   | "freebox"
   | "webpush"
-  | "kubernetes";
+  | "kubernetes"
+  | "twilio";
 
 // Capabilities mirror the backend capability registry
 // (server/internal/db/models/integration.go `CapabilitiesFor`). The two flags
@@ -3197,6 +3198,7 @@ export const CAPABILITIES: Record<ConnectionType, IntegrationCapabilities> = {
   freebox: SOURCE,
   webpush: NOTIFY,
   kubernetes: SOURCE,
+  twilio: NOTIFY,
 };
 
 /** Whether an integration type can receive notifications (act as a channel). */
@@ -3957,6 +3959,32 @@ export function useDeleteNotificationContact(org: string) {
       apiFetch<void>(`/api/v1/orgs/${org}/users/me/notification-contacts/${contactUid}`, {
         method: "DELETE",
       }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
+    },
+  });
+}
+
+/** Issues (and sends) a verification code for a phone notification contact. */
+export function useVerifyContact(org: string) {
+  return useMutation({
+    mutationFn: (contactUid: string) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/users/me/notification-contacts/${contactUid}/verify`,
+        { method: "POST" },
+      ),
+  });
+}
+
+/** Confirms a phone notification contact with the emailed/texted code. */
+export function useConfirmVerifyContact(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ contactUid, code }: { contactUid: string; code: string }) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/users/me/notification-contacts/${contactUid}/verify/confirm`,
+        { method: "POST", body: JSON.stringify({ code }) },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
     },

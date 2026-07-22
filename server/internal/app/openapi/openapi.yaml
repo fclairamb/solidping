@@ -2042,6 +2042,72 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/users/me/notification-contacts/{contactUid}/verify:
+    post:
+      tags: [Notifications]
+      summary: Send a verification code to a phone contact
+      description: >
+        Issues a 6-digit code (10-minute expiry, rate-limited to 3/hour per
+        contact) and sends it via the organization's default Twilio connection.
+        Only phone contacts can be verified.
+      operationId: verifyMyNotificationContact
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ContactUidPath"
+      responses:
+        "204":
+          description: Code sent
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: No SMS provider configured for this organization
+        "429":
+          description: Verification code requested too recently
+
+  /api/v1/orgs/{org}/users/me/notification-contacts/{contactUid}/verify/confirm:
+    post:
+      tags: [Notifications]
+      summary: Confirm a phone contact with its verification code
+      description: >
+        Constant-time compares the submitted code; after 5 failed attempts the
+        code is invalidated and a new one must be requested. Success stamps the
+        contact verified.
+      operationId: confirmMyNotificationContact
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ContactUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  description: The 6-digit verification code
+                  example: "123456"
+      responses:
+        "204":
+          description: Contact verified
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          description: Too many incorrect attempts; request a new code
+
   # Channel APIs (notification channels / integrations)
   /api/v1/orgs/{org}/channels:
     get:
@@ -9438,6 +9504,14 @@ components:
           type: integer
           nullable: true
           description: Aggregate check dispatch rate per minute (null = unlimited)
+        maxSmsPerMonth:
+          type: integer
+          nullable: true
+          description: Outbound SMS per UTC month (null = unlimited)
+        maxCallsPerMonth:
+          type: integer
+          nullable: true
+          description: Outbound voice calls per UTC month (null = unlimited)
 
     EntitlementsUsage:
       type: object

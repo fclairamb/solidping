@@ -77,6 +77,17 @@
     "pushoverToken": "Token de la app",
     "opsgenieKey": "Clave API",
     "opsgenieTeam": "Equipo (opcional)",
+    "twilioAccountSid": "SID de la cuenta",
+    "twilioAuthToken": "Token de autenticación",
+    "twilioSenderHint": "Proporciona exactamente un remitente: un número de origen o un SID de servicio de mensajería.",
+    "twilioFromNumber": "Número de origen (E.164)",
+    "twilioMessagingServiceSid": "SID del servicio de mensajería",
+    "twilioVoiceFrom": "Número de origen de voz (opcional)",
+    "twilioVoiceHint": "Déjalo vacío para desactivar las llamadas de voz.",
+    "twilioToNumbers": "Números de destinatarios compartidos (opcional)",
+    "twilioInvalidNumber": "No es un número E.164 válido",
+    "twilioRemoveNumber": "Eliminar {{n}}",
+    "twilioToHint": "Los envíos de canal directo (difusión por comprobación, prueba) envían SMS a estos números.",
     "slackOauthHint": "Los canales de Slack se configuran a través de la instalación OAuth. El bot completará el espacio de trabajo y el nombre del canal al finalizar.",
     "testNeedsSave": "Guarda tus cambios primero — la prueba usa los ajustes guardados."
   },
@@ -111,6 +122,7 @@
     "ntfy": "Notificaciones push vía ntfy.sh",
     "opsgenie": "Avisar a guardias vía Opsgenie",
     "pushover": "Notificaciones push móviles vía Pushover",
+    "twilio": "Enviar SMS y realizar llamadas de voz mediante Twilio",
     "webpush": "Recibir alertas como notificaciones del navegador en sus dispositivos suscritos",
     "kubernetes": "Monitorizar la salud de réplicas de cargas Kubernetes (Deployments, ReplicaSets)"
   }
