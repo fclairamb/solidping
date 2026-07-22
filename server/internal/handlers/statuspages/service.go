@@ -16,6 +16,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/domainverify"
+	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
 
@@ -78,14 +80,28 @@ func validateHistoryPeriod(period *string) error {
 type Service struct {
 	db  db.Service
 	cfg *config.Config
+	// ent gates MaxCustomDomains when setting a new custom domain. nil disables
+	// the quota check (e.g. the MCP handler, which never sets domains).
+	ent *entitlements.Service
+	// verifier runs the custom-domain DNS checks. Injectable for tests.
+	verifier *domainverify.Verifier
+	// verifyLimiter throttles the synchronous verify-now endpoint per org.
+	verifyLimiter *verifyRateLimiter
 }
 
 // NewService creates a new status pages service. cfg may be nil (e.g. the MCP
 // handler doesn't have an app config to hand) — the uptime-bar query's safety
 // cap then falls back to the documented retention defaults instead of the
-// org's actual configured values.
-func NewService(dbService db.Service, cfg *config.Config) *Service {
-	return &Service{db: dbService, cfg: cfg}
+// org's actual configured values. ent may be nil to disable custom-domain quota
+// enforcement (callers that never set domains).
+func NewService(dbService db.Service, cfg *config.Config, ent *entitlements.Service) *Service {
+	return &Service{
+		db:            dbService,
+		cfg:           cfg,
+		ent:           ent,
+		verifier:      domainverify.New(),
+		verifyLimiter: newVerifyRateLimiter(customDomainVerifyPerMinute, time.Minute),
+	}
 }
 
 // retentionHints returns the org's configured raw/hour retention (hours of
@@ -132,6 +148,12 @@ type StatusPageResponse struct {
 	Sections         []StatusPageSectionResponse  `json:"sections,omitempty"`
 	RecentUpdates    []StatusUpdatePublicResponse `json:"recentUpdates,omitempty"`
 	CreatedAt        *time.Time                   `json:"createdAt,omitempty"`
+	// Custom-domain fields are populated ONLY on the authenticated org
+	// endpoints (see enrichCustomDomain); the public ViewStatusPage path never
+	// sets them, so a custom domain and its challenge token never leak publicly.
+	CustomDomain        *string               `json:"customDomain,omitempty"`
+	CustomDomainStatus  string                `json:"customDomainStatus,omitempty"`
+	CustomDomainRecords []domainverify.Record `json:"customDomainRecords,omitempty"`
 }
 
 // StatusPageSectionResponse represents a section in API responses.
@@ -215,6 +237,10 @@ type CreateStatusPageRequest struct {
 	HistoryDays      *int    `json:"historyDays,omitempty"`
 	HistoryPeriod    *string `json:"historyPeriod,omitempty"`
 	Language         *string `json:"language,omitempty"`
+	// CustomDomain optionally sets a custom domain on the new page (a non-empty
+	// value generates a token; empty/nil means no domain). Verification still
+	// happens afterward via the verify endpoint.
+	CustomDomain *string `json:"customDomain,omitempty"`
 }
 
 // UpdateStatusPageRequest represents a request to update a status page.
@@ -230,6 +256,14 @@ type UpdateStatusPageRequest struct {
 	HistoryDays      *int    `json:"historyDays,omitempty"`
 	HistoryPeriod    *string `json:"historyPeriod,omitempty"`
 	Language         *string `json:"language,omitempty"`
+	// CustomDomain sets/changes/clears the page's custom domain. A non-empty
+	// value sets it (generating a fresh token); null or "" clears it. Whether
+	// the key was present at all is carried in CustomDomainSet (presence
+	// detection) so an omitted field leaves the domain untouched.
+	CustomDomain *string `json:"customDomain,omitempty"`
+	// CustomDomainSet is populated by the handler from the raw body, NOT from
+	// JSON — it distinguishes "customDomain omitted" from an explicit null/"".
+	CustomDomainSet bool `json:"-"`
 }
 
 // CreateSectionRequest represents a request to create a section.
@@ -285,6 +319,7 @@ func (s *Service) ListStatusPages(ctx context.Context, orgSlug string) ([]Status
 	responses := make([]StatusPageResponse, len(pages))
 	for i, page := range pages {
 		responses[i] = convertPageToResponse(page)
+		s.enrichCustomDomain(&responses[i], page)
 	}
 
 	return responses, nil
@@ -386,7 +421,25 @@ func (s *Service) CreateStatusPage(
 		return StatusPageResponse{}, errCreate
 	}
 
-	return convertPageToResponse(page), nil
+	// A custom domain supplied at create time is set as a second step (it needs
+	// the persisted UID for the conflict check and token write).
+	if req.CustomDomain != nil && strings.TrimSpace(*req.CustomDomain) != "" {
+		if errDomain := s.setCustomDomain(ctx, org.UID, page, strings.TrimSpace(*req.CustomDomain)); errDomain != nil {
+			return StatusPageResponse{}, errDomain
+		}
+
+		reloaded, errGet := s.db.GetStatusPage(ctx, org.UID, page.UID)
+		if errGet != nil {
+			return StatusPageResponse{}, errGet
+		}
+
+		page = reloaded
+	}
+
+	response := convertPageToResponse(page)
+	s.enrichCustomDomain(&response, page)
+
+	return response, nil
 }
 
 // GetStatusPage retrieves a single status page by UID or slug.
@@ -404,6 +457,7 @@ func (s *Service) GetStatusPage(
 	}
 
 	response := convertPageToResponse(page)
+	s.enrichCustomDomain(&response, page)
 
 	if opts.IncludeSections {
 		sections, err := s.loadSectionsWithResources(ctx, page.UID)
@@ -490,7 +544,23 @@ func (s *Service) UpdateStatusPage(
 		return StatusPageResponse{}, err
 	}
 
-	return convertPageToResponse(updated), nil
+	// Custom-domain set/clear is applied as a separate write (it has its own
+	// normalization, quota, conflict, and token semantics).
+	if errDomain := s.applyCustomDomainChange(ctx, org.UID, updated, req); errDomain != nil {
+		return StatusPageResponse{}, errDomain
+	}
+
+	if req.CustomDomainSet {
+		updated, err = s.db.GetStatusPage(ctx, org.UID, page.UID)
+		if err != nil {
+			return StatusPageResponse{}, err
+		}
+	}
+
+	response := convertPageToResponse(updated)
+	s.enrichCustomDomain(&response, updated)
+
+	return response, nil
 }
 
 // DeleteStatusPage soft-deletes a status page.

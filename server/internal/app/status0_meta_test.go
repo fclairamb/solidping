@@ -228,7 +228,7 @@ func setupStatus0MetaServer(t *testing.T) (context.Context, *Server) {
 	org := models.NewOrganization("acme", "Acme")
 	r.NoError(dbService.CreateOrganization(ctx, org))
 
-	svc := statuspages.NewService(dbService, &config.Config{})
+	svc := statuspages.NewService(dbService, &config.Config{}, nil)
 
 	// Enabled + public — the positive control (first page → org default too).
 	_, err = svc.CreateStatusPage(ctx, org.Slug, &statuspages.CreateStatusPageRequest{

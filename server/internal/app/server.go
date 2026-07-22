@@ -1114,7 +1114,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgStatusUpdates.DELETE("/:uid", statusUpdatesHandler.DeleteStatusUpdate)
 
 	// Status pages routes (authentication required)
-	statusPagesService := statuspages.NewService(s.dbService, s.config)
+	statusPagesService := statuspages.NewService(s.dbService, s.config, s.services.Entitlements)
 	// Retained on the server so serveStatus0Static can resolve pages for
 	// per-page Open Graph / Twitter Card metadata injection.
 	s.statusPagesService = statusPagesService
@@ -1125,6 +1125,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgStatusPages.GET("/:statusPageUid", statusPagesHandler.GetStatusPage)
 	orgStatusPages.PATCH("/:statusPageUid", statusPagesHandler.UpdateStatusPage)
 	orgStatusPages.DELETE("/:statusPageUid", statusPagesHandler.DeleteStatusPage)
+	// Custom-domain verify-now (authenticated): runs the DNS checks synchronously.
+	orgStatusPages.POST("/:statusPageUid/custom-domain/verify", statusPagesHandler.VerifyCustomDomain)
 	orgStatusPages.GET("/:statusPageUid/sections", statusPagesHandler.ListSections)
 	orgStatusPages.POST("/:statusPageUid/sections", statusPagesHandler.CreateSection)
 	orgStatusPages.POST("/:statusPageUid/sections/reorder", statusPagesHandler.ReorderSections)
@@ -1165,6 +1167,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	api.GET("/status-pages/:org/:slug", statusPagesHandler.ViewStatusPage)
 	// Public Atom/RSS feed of the status-update timeline.
 	api.GET("/status-pages/:org/:slug/feed.xml", statusSubscribersHandler.Feed)
+
+	// Edge-TLS "ask" endpoint (public, no auth): 204 when the queried domain is a
+	// verified+enabled+public custom domain, 404 otherwise. Contract for Caddy
+	// on_demand_tls / cert-manager gating on the SaaS edge.
+	api.GET("/public/custom-domains/allowed", statusPagesHandler.CustomDomainAllowed)
 
 	// Public status-page subscription endpoints (no authentication). The
 	// subscribe endpoint inherits the global per-IP rate limit on /api/v1/;
