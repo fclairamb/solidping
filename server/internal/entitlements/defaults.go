@@ -71,6 +71,9 @@ const (
 	// wiki/features/deported-agents.md). Self-hosted stays unlimited
 	// (nil) — no const needed, the field is simply left unset below.
 	defaultMaxDeportedAgentsSaaS = 1
+	// defaultMaxCustomDomainsSaaS is 0: the Free plan ships no custom domains;
+	// billing raises it per paid plan. Self-hosted stays unlimited (nil).
+	defaultMaxCustomDomainsSaaS = 0
 )
 
 // Display identity shown on the usage page when a row has none of its
@@ -104,6 +107,7 @@ func DefaultsFor(mode string) Entitlements {
 				MaxChecksPerMinute: Int(defaultMaxChecksPerMinuteSaaS),
 				MaxUsers:           Int(defaultMaxUsersSaaS),
 				MaxDeportedAgents:  Int(defaultMaxDeportedAgentsSaaS),
+				MaxCustomDomains:   Int(defaultMaxCustomDomainsSaaS),
 			},
 			Source:       models.EntitlementSourceDefault,
 			DisplayName:  strPtr(displayNameSaaS),

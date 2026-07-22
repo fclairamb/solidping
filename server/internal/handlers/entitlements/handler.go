@@ -314,6 +314,9 @@ func overlayLimits(dst *entcore.Limits, src entcore.Limits) {
 	if src.MaxDeportedAgents != nil {
 		dst.MaxDeportedAgents = src.MaxDeportedAgents
 	}
+	if src.MaxCustomDomains != nil {
+		dst.MaxCustomDomains = src.MaxCustomDomains
+	}
 }
 
 // lookupOrg resolves :org from the route into a model.

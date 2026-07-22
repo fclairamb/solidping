@@ -41,6 +41,10 @@ type EntitlementLimits struct {
 	// MaxDeportedAgents caps the org's active deported (private-location)
 	// agents across all private regions. nil = unlimited.
 	MaxDeportedAgents *int `json:"maxDeportedAgents,omitempty"`
+	// MaxCustomDomains caps the org's status pages served on a customer-owned
+	// domain. nil = unlimited (self-hosted default); SaaS defaults to 0 and
+	// billing raises it per plan.
+	MaxCustomDomains *int `json:"maxCustomDomains,omitempty"`
 }
 
 // ErrConflictingUserLimitKeys is returned when a payload sends both the
@@ -63,6 +67,7 @@ func (l *EntitlementLimits) UnmarshalJSON(data []byte) error {
 		MaxSSOUsers        *int `json:"maxSsoUsers"` // deprecated alias for maxUsers
 		MaxChecksPerMinute *int `json:"maxChecksPerMinute"`
 		MaxDeportedAgents  *int `json:"maxDeportedAgents"`
+		MaxCustomDomains   *int `json:"maxCustomDomains"`
 	}
 
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -78,6 +83,7 @@ func (l *EntitlementLimits) UnmarshalJSON(data []byte) error {
 	l.MaxChecks = wire.MaxChecks
 	l.MaxChecksPerMinute = wire.MaxChecksPerMinute
 	l.MaxDeportedAgents = wire.MaxDeportedAgents
+	l.MaxCustomDomains = wire.MaxCustomDomains
 	if wire.MaxUsers != nil {
 		l.MaxUsers = wire.MaxUsers
 	} else {
