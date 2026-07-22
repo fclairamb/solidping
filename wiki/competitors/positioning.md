@@ -124,6 +124,11 @@ targets:
    *Caveat (2026-07-12): exit1.dev now advertises an MCP server too — "AI-native"
    is no longer unique. Narrow the claim to "self-hosted MCP, your data never
    leaves your infra."*
+   *Caveat (2026-07-21): UptimeMonitoring.com (Monitive) launched MCP-FIRST —
+   the whole product is "create/manage monitors by asking Claude/ChatGPT/Cursor."
+   MCP is now contested table-stakes, not a differentiator. Hold the line on
+   "self-hosted MCP" AND pair it with the real moat (32 check types vs their
+   HTTP-only, OSS self-host vs SaaS-only, built-in on-call).*
 10. **"Freshping shut down. Land somewhere you own."**
    → Freshping (Freshworks) closed 2026-03-06; its free-tier users are actively
    looking for a home. Lead with self-host (nothing to shut down on you) + a free

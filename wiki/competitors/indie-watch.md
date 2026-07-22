@@ -257,3 +257,17 @@ projects, content-farm SEO, and paid templates. Not head-to-head rivals.
 - **Hesklo** (dev.to/expertblink) — indie "most flexible uptime monitoring tool,"
   escalation-flow hook. No homepage/pricing captured; SaaS-vs-OSS unknown. Zero
   engagement on launch. Escalation emphasis overlaps SolidPing's on-call.
+- **UptimeMonitoring.com** (uptimemonitoring.com, by Monitive) — MCP-FIRST SaaS,
+  "API-first uptime monitoring for deploy pipelines, developers, and AI agents."
+  Ships an MCP server for Claude/ChatGPT/Cursor (natural-language monitor
+  create/manage), 22 global probe locations with cross-region failure
+  confirmation. HTTP/HTTPS only (DNS/TLS/connect/TTFB/download timing breakdown),
+  SaaS-only (not self-hostable). Free ≤50 monitors (100 early), 60s intervals,
+  30-day retention, no card; paid tiers planned (30s intervals, longer retention,
+  response-time alerts). Alerting via webhooks / browser push / RSS / MCP queries
+  — **no email**. Surfaced 2026-07-21 (Show HN 48919840, 3 pts / 0 comments,
+  author `luciandan`). Significance: first rival built MCP-FIRST (not a bolt-on
+  MCP endpoint like Tickstem/Uptime.com/exit1.dev) — confirms MCP is now contested
+  table-stakes. SolidPing's edge holds on 32 check types (vs HTTP-only), OSS
+  self-host (vs SaaS-only + hosted MCP), and built-in on-call. Watch: paid pricing
+  and whether it adds non-HTTP check types.
