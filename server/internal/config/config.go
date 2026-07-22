@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"slices"
 	"sort"
@@ -335,6 +336,25 @@ func (c *Config) ShouldRunChecks() bool {
 	return c.Node.Role == NodeRoleAll || c.Node.Role == NodeRoleChecks
 }
 
+// CustomDomainCNAMETarget resolves the hostname customers point their
+// status-page CNAME at. It prefers the explicit Server.CustomDomainCNAMETarget
+// and otherwise derives it from the host of Server.BaseURL (port stripped).
+// Returns "" when neither is set — the resolver treats that as
+// "custom domains disabled".
+func (c *Config) CustomDomainCNAMETarget() string {
+	if t := strings.TrimSpace(c.Server.CustomDomainCNAMETarget); t != "" {
+		return strings.ToLower(strings.TrimSuffix(t, "."))
+	}
+
+	if parsed, err := url.Parse(c.Server.BaseURL); err == nil {
+		if host := parsed.Hostname(); host != "" {
+			return strings.ToLower(host)
+		}
+	}
+
+	return ""
+}
+
 // EmailConfig contains SMTP email configuration.
 type EmailConfig struct {
 	Host               string `koanf:"host"`               // SMTP server hostname
@@ -600,6 +620,12 @@ type ServerConfig struct {
 	// docs. Multi-word koanf key → read via applyServerEnv (SP_DOCS_HOST /
 	// SP_SERVER_DOCS_HOST), not the auto env loader.
 	DocsHost string `koanf:"docs_host"`
+	// CustomDomainCNAMETarget is the hostname customers point their status-page
+	// CNAME at (e.g. "cname.solidping.io"). Empty derives it from the host of
+	// BaseURL. Multi-word koanf key → read via applyServerEnv
+	// (SP_CUSTOM_DOMAIN_CNAME_TARGET / SP_SERVER_CUSTOM_DOMAIN_CNAME_TARGET), not
+	// the auto env loader. Resolve through Config.CustomDomainCNAMETarget().
+	CustomDomainCNAMETarget string `koanf:"custom_domain_cname_target"`
 	// Scheduling holds the cost-aware, plan-weighted check-scheduling knobs.
 	// Multi-word keys → read via applySchedulingEnv. See project_koanf_env_quirk.
 	Scheduling SchedulingConfig `koanf:"scheduling"`
@@ -1188,6 +1214,12 @@ func applyServerEnv(cfg *ServerConfig) {
 		cfg.DocsHost = v
 	} else if v := os.Getenv("SP_DOCS_HOST"); v != "" {
 		cfg.DocsHost = v
+	}
+
+	if v := os.Getenv("SP_SERVER_CUSTOM_DOMAIN_CNAME_TARGET"); v != "" {
+		cfg.CustomDomainCNAMETarget = v
+	} else if v := os.Getenv("SP_CUSTOM_DOMAIN_CNAME_TARGET"); v != "" {
+		cfg.CustomDomainCNAMETarget = v
 	}
 }
 

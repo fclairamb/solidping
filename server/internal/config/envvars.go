@@ -138,6 +138,8 @@ func manualReaderEnvVars() []string {
 		// applyServerEnv
 		"SP_SERVER_DOCS_HOST",
 		"SP_DOCS_HOST",
+		"SP_SERVER_CUSTOM_DOMAIN_CNAME_TARGET",
+		"SP_CUSTOM_DOMAIN_CNAME_TARGET",
 		// applySchedulingEnv
 		"SP_SCHEDULING_SLOW_THRESHOLD_MS",
 		"SP_SCHEDULING_CHECK_TIMEOUT_MS",
