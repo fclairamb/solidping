@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"database/sql"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -70,7 +69,7 @@ func TestGetStatusPageByCustomDomain_Postgres(t *testing.T) {
 	// Soft-deleted pages are excluded from lookup.
 	r.NoError(s.DeleteStatusPage(ctx, page.UID))
 	_, err = s.GetStatusPageByCustomDomain(ctx, domain)
-	r.True(errors.Is(err, sql.ErrNoRows))
+	r.ErrorIs(err, sql.ErrNoRows)
 }
 
 func mustCountPG(t *testing.T, s *Service, orgUID string) int {

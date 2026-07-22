@@ -2,7 +2,6 @@ package sqlite
 
 import (
 	"database/sql"
-	"errors"
 	"testing"
 	"time"
 
@@ -48,7 +47,7 @@ func TestGetStatusPageByCustomDomain(t *testing.T) {
 	// Soft-deleted pages are excluded.
 	r.NoError(s.DeleteStatusPage(ctx, page.UID))
 	_, err = s.GetStatusPageByCustomDomain(ctx, domain)
-	r.True(errors.Is(err, sql.ErrNoRows))
+	r.ErrorIs(err, sql.ErrNoRows)
 }
 
 func TestUpdateStatusPageCustomDomain_SetAndClear(t *testing.T) {
