@@ -3669,6 +3669,50 @@ func (s *Service) GetStatusPageByUidOrSlug(
 	return page, nil
 }
 
+// GetStatusPageByCustomDomain retrieves the single live status page bound to a
+// custom domain. The custom_domain column is globally unique among live rows,
+// so at most one row matches.
+func (s *Service) GetStatusPageByCustomDomain(ctx context.Context, domain string) (*models.StatusPage, error) {
+	page := new(models.StatusPage)
+
+	err := s.db.NewSelect().
+		Model(page).
+		Where("custom_domain = ?", domain).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return page, nil
+}
+
+// ListStatusPagesWithCustomDomain lists every live status page (all orgs) with
+// a custom domain set — the periodic re-verify job's work list.
+func (s *Service) ListStatusPagesWithCustomDomain(ctx context.Context) ([]*models.StatusPage, error) {
+	var pages []*models.StatusPage
+
+	err := s.db.NewSelect().
+		Model(&pages).
+		Where("custom_domain IS NOT NULL").
+		Where("deleted_at IS NULL").
+		Order("created_at ASC").
+		Scan(ctx)
+
+	return pages, err
+}
+
+// CountStatusPagesWithCustomDomain counts an org's live pages with a custom
+// domain set.
+func (s *Service) CountStatusPagesWithCustomDomain(ctx context.Context, orgUID string) (int, error) {
+	return s.db.NewSelect().
+		Model((*models.StatusPage)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("custom_domain IS NOT NULL").
+		Where("deleted_at IS NULL").
+		Count(ctx)
+}
+
 // GetDefaultStatusPage retrieves the default status page for an organization.
 func (s *Service) GetDefaultStatusPage(ctx context.Context, orgUID string) (*models.StatusPage, error) {
 	page := new(models.StatusPage)
@@ -3753,6 +3797,27 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 	}
 
 	_, err := query.Exec(ctx)
+
+	return err
+}
+
+// UpdateStatusPageCustomDomain overwrites every custom-domain column in one
+// write. All lifecycle transitions (set, clear, verify-now, re-verify) go
+// through here, so nil pointers write SQL NULL verbatim.
+func (s *Service) UpdateStatusPageCustomDomain(
+	ctx context.Context, uid string, update *models.StatusPageCustomDomainUpdate,
+) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.StatusPage)(nil)).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Set("custom_domain = ?", update.Domain).
+		Set("custom_domain_token = ?", update.Token).
+		Set("custom_domain_verified_at = ?", update.VerifiedAt).
+		Set("custom_domain_checked_at = ?", update.CheckedAt).
+		Set("custom_domain_failures = ?", update.Failures).
+		Set("updated_at = ?", time.Now()).
+		Exec(ctx)
 
 	return err
 }

@@ -554,9 +554,21 @@ type Service interface {
 	GetStatusPage(ctx context.Context, orgUID, uid string) (*models.StatusPage, error)
 	GetStatusPageBySlug(ctx context.Context, orgUID, slug string) (*models.StatusPage, error)
 	GetStatusPageByUidOrSlug(ctx context.Context, orgUID, identifier string) (*models.StatusPage, error)
+	// GetStatusPageByCustomDomain resolves the single live page bound to a
+	// custom domain (the domain column is globally unique among live rows).
+	GetStatusPageByCustomDomain(ctx context.Context, domain string) (*models.StatusPage, error)
 	GetDefaultStatusPage(ctx context.Context, orgUID string) (*models.StatusPage, error)
 	ListStatusPages(ctx context.Context, orgUID string) ([]*models.StatusPage, error)
+	// ListStatusPagesWithCustomDomain lists every live page (across all orgs)
+	// that has a custom domain set — the input to the periodic re-verify job.
+	ListStatusPagesWithCustomDomain(ctx context.Context) ([]*models.StatusPage, error)
+	// CountStatusPagesWithCustomDomain counts an org's live pages with a custom
+	// domain set — the usage number enforced against MaxCustomDomains.
+	CountStatusPagesWithCustomDomain(ctx context.Context, orgUID string) (int, error)
 	UpdateStatusPage(ctx context.Context, uid string, update *models.StatusPageUpdate) error
+	// UpdateStatusPageCustomDomain overwrites all custom-domain columns in one
+	// write (set/clear/verify/re-verify all go through here).
+	UpdateStatusPageCustomDomain(ctx context.Context, uid string, update *models.StatusPageCustomDomainUpdate) error
 	DeleteStatusPage(ctx context.Context, uid string) error
 
 	// StatusPageSection operations
