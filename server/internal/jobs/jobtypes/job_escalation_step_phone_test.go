@@ -343,6 +343,134 @@ func TestDispatch_SMSQuotaExhaustedSkips(t *testing.T) {
 	r.Equal(0, fake.smsCount(), "no SMS is dispatched when the quota is exhausted")
 }
 
+// seedAdminWithPhoneRoute creates a user, makes them an org admin, and gives
+// them a verified phone contact + enabled route in the DB.
+func seedAdminWithPhoneRoute(t *testing.T, env *phoneTestEnv, number string) *models.User {
+	t.Helper()
+	ctx := context.Background()
+
+	user := models.NewUser("oncall@example.com")
+	require.NoError(t, env.db.CreateUser(ctx, user))
+	require.NoError(t, env.db.CreateOrganizationMember(ctx,
+		models.NewOrganizationMember(env.org.UID, user.UID, models.MemberRoleAdmin)))
+
+	now := time.Now()
+	contact := models.NewUserContact(user.UID, env.org.UID, models.UserContactTypePhone, number, "mobile")
+	contact.VerifiedAt = &now
+	require.NoError(t, env.db.UpsertUserContact(ctx, contact))
+
+	route := models.NewUserNotificationRoute(user.UID, env.org.UID, contact.UID, 0)
+	_, err := env.db.DB().NewInsert().Model(route).Exec(ctx)
+	require.NoError(t, err)
+
+	return user
+}
+
+// seedPolicyWithPhoneStep creates a severity with the given channels, a policy,
+// and a single step targeting the user. Returns the persisted step.
+func seedPolicyWithPhoneStep(
+	t *testing.T, env *phoneTestEnv, user *models.User, channels []string,
+) *models.EscalationPolicyStep {
+	t.Helper()
+	ctx := context.Background()
+
+	sev := models.NewSeverity(env.org.UID, "critical", "Critical", channels, false)
+	require.NoError(t, env.db.CreateSeverity(ctx, sev))
+
+	policy := models.NewEscalationPolicy(env.org.UID, "pol")
+	require.NoError(t, env.db.CreateEscalationPolicy(ctx, policy))
+
+	step := models.NewEscalationPolicyStep(policy.UID, 0, 0)
+	step.SeverityUID = &sev.UID
+	target := models.NewEscalationPolicyTarget(step.UID, models.EscalationTargetUser, &user.UID, 0)
+	require.NoError(t, env.db.ReplaceEscalationPolicySteps(ctx, policy.UID,
+		[]*models.EscalationPolicyStep{step},
+		map[int][]*models.EscalationPolicyTarget{0: {target}}))
+
+	return step
+}
+
+// TestDispatch_DedupsSamePhoneAcrossTargets proves the coalescing invariant:
+// a user reachable via BOTH a `user` target and an `all_admins` target in one
+// escalation-step run is texted once and called once, not twice.
+//
+//nolint:paralleltest // mutates the package-level newTwilioClient seam.
+func TestDispatch_DedupsSamePhoneAcrossTargets(t *testing.T) {
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, true, "+15559990001") // voice enabled
+	fake, srv := newFakeTwilio(t)
+	useFakeTwilio(t, srv)
+
+	user := seedAdminWithPhoneRoute(t, env, "+15551230000")
+
+	targets := []*models.EscalationPolicyTarget{
+		{UID: "t-user", TargetType: models.EscalationTargetUser, TargetUID: &user.UID},
+		{UID: "t-admins", TargetType: models.EscalationTargetAllAdmins},
+	}
+
+	run := newRun()
+	run.fanOutWithSeverity(ctx, env.jctx, slog.Default(), env.incident, targets,
+		map[string]bool{"sms": true, "voice": true})
+
+	r.Equal(1, fake.smsCount(), "same number via user + all_admins must be texted exactly once")
+	r.Equal(1, fake.callCount(), "same number via user + all_admins must be called exactly once")
+}
+
+// TestRun_UnackedIncidentPagesPhone is the positive control for the ack guard:
+// through the real Run() an OPEN incident pages the on-call phone.
+//
+//nolint:paralleltest // mutates the package-level newTwilioClient seam.
+func TestRun_UnackedIncidentPagesPhone(t *testing.T) {
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, true, "+15559990001")
+	fake, srv := newFakeTwilio(t)
+	useFakeTwilio(t, srv)
+
+	user := seedAdminWithPhoneRoute(t, env, "+15551230000")
+	step := seedPolicyWithPhoneStep(t, env, user, []string{"sms", "voice"})
+
+	run := &EscalationStepJobRun{config: EscalationStepJobConfig{
+		IncidentUID: env.incident.UID, StepUID: step.UID,
+	}}
+	r.NoError(run.Run(ctx, env.jctx))
+
+	r.Equal(1, fake.smsCount(), "an open incident must page the phone via SMS")
+	r.Equal(1, fake.callCount(), "an open incident must page the phone via voice")
+}
+
+// TestRun_AckedIncidentSendsNothing proves the required dispatch semantic
+// through the real Run() entrypoint (not just dispatchRoute): an acknowledged
+// incident sends no SMS and places no call, even under a {sms, voice} severity.
+//
+//nolint:paralleltest // mutates the package-level newTwilioClient seam.
+func TestRun_AckedIncidentSendsNothing(t *testing.T) {
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, true, "+15559990001")
+	fake, srv := newFakeTwilio(t)
+	useFakeTwilio(t, srv)
+
+	user := seedAdminWithPhoneRoute(t, env, "+15551230000")
+	step := seedPolicyWithPhoneStep(t, env, user, []string{"sms", "voice"})
+
+	// Acknowledge the incident — the belt-and-braces guard in Run must skip it.
+	ackedAt := time.Now()
+	r.NoError(env.db.UpdateIncident(ctx, env.incident.UID, &models.IncidentUpdate{AcknowledgedAt: &ackedAt}))
+
+	run := &EscalationStepJobRun{config: EscalationStepJobConfig{
+		IncidentUID: env.incident.UID, StepUID: step.UID,
+	}}
+	r.NoError(run.Run(ctx, env.jctx))
+
+	r.Equal(0, fake.smsCount(), "an acknowledged incident must not send SMS")
+	r.Equal(0, fake.callCount(), "an acknowledged incident must not place a call")
+}
+
 // TestSeverityHelpers pins the person-target token semantics that guarantee
 // backward compatibility for the historical email/slack/webpush routes.
 func TestSeverityHelpers(t *testing.T) {
