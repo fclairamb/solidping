@@ -100,7 +100,7 @@ export function StatusPageCustomDomain({
   };
 
   return (
-    <Card>
+    <Card data-testid="status-page-custom-domain">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Globe className="h-4 w-4" />
@@ -114,6 +114,7 @@ export function StatusPageCustomDomain({
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input
               id="customDomain"
+              data-testid="custom-domain-input"
               value={domain}
               onChange={(e) => setDomain(e.target.value)}
               placeholder={t("customDomain.domainPlaceholder")}
@@ -124,6 +125,7 @@ export function StatusPageCustomDomain({
             />
             <Button
               type="button"
+              data-testid="custom-domain-save"
               onClick={handleSave}
               disabled={update.isPending || !dirty}
               className="shrink-0"
@@ -169,6 +171,7 @@ export function StatusPageCustomDomain({
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
+                  data-testid="custom-domain-verify"
                   variant="outline"
                   size="sm"
                   onClick={handleVerify}
@@ -219,7 +222,7 @@ export function StatusPageCustomDomain({
             </div>
 
             {records.length > 0 && (
-              <div className="space-y-2">
+              <div className="space-y-2" data-testid="custom-domain-records">
                 <p className="text-sm text-muted-foreground">
                   {t("customDomain.recordsIntro")}
                 </p>
