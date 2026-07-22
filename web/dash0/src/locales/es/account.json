@@ -87,5 +87,23 @@
       "disableTitle": "Disable two-factor authentication",
       "disableSubtitle": "Enter a current 6-digit code to confirm."
     }
+  },
+  "notifications": {
+    "verifyButton": "Verificar",
+    "verifiedBadge": "Verificado",
+    "unverifiedBadge": "Sin verificar — verifica para recibir alertas por SMS / voz",
+    "phoneAfterAddHint": "Después de añadirlo, verifica el número para empezar a recibir alertas por SMS / voz.",
+    "noProviderHint": "Aún no hay un proveedor de SMS configurado para esta organización. Puedes añadir el número, pero no recibirá alertas por SMS ni de voz hasta que un administrador configure Twilio.",
+    "verify": {
+      "dialogTitle": "Verificar número de teléfono",
+      "dialogDescription": "Enviaremos un código de 6 dígitos al {{phone}}. Introdúcelo a continuación para confirmar que este número puede recibir alertas por SMS y de voz.",
+      "sendCode": "Enviar código",
+      "resend": "Reenviar",
+      "confirm": "Confirmar",
+      "codeSent": "Código de verificación enviado",
+      "verified": "Número de teléfono verificado",
+      "sendFailed": "Error al enviar el código",
+      "incorrectCode": "Código incorrecto"
+    }
   }
 }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   Card,
@@ -98,6 +99,7 @@ function VerifyPhoneDialog({
   onOpenChange: (open: boolean) => void;
   onVerified: () => void;
 }) {
+  const { t } = useTranslation("account");
   const verify = useVerifyContact(org);
   const confirm = useConfirmVerifyContact(org);
   const [code, setCode] = useState("");
@@ -109,9 +111,9 @@ function VerifyPhoneDialog({
     try {
       await verify.mutateAsync(contactUid);
       setSent(true);
-      toast.success("Verification code sent");
+      toast.success(t("notifications.verify.codeSent"));
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to send code");
+      setError(err instanceof Error ? err.message : t("notifications.verify.sendFailed"));
     }
   };
 
@@ -120,13 +122,13 @@ function VerifyPhoneDialog({
     setError(null);
     try {
       await confirm.mutateAsync({ contactUid, code: code.trim() });
-      toast.success("Phone number verified");
+      toast.success(t("notifications.verify.verified"));
       onVerified();
       onOpenChange(false);
       setCode("");
       setSent(false);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Incorrect code");
+      setError(err instanceof Error ? err.message : t("notifications.verify.incorrectCode"));
     }
   };
 
@@ -134,10 +136,9 @@ function VerifyPhoneDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-testid="verify-phone-dialog">
         <DialogHeader>
-          <DialogTitle>Verify phone number</DialogTitle>
+          <DialogTitle>{t("notifications.verify.dialogTitle")}</DialogTitle>
           <DialogDescription>
-            We&apos;ll text a 6-digit code to {phone}. Enter it below to confirm
-            this number can receive SMS and voice alerts.
+            {t("notifications.verify.dialogDescription", { phone })}
           </DialogDescription>
         </DialogHeader>
 
@@ -159,7 +160,7 @@ function VerifyPhoneDialog({
             ) : (
               <Send className="h-4 w-4 mr-2" />
             )}
-            Send code
+            {t("notifications.verify.sendCode")}
           </Button>
         ) : (
           <form onSubmit={handleConfirm} className="space-y-3">
@@ -180,7 +181,7 @@ function VerifyPhoneDialog({
                 disabled={verify.isPending}
                 data-testid="verify-resend-code"
               >
-                Resend
+                {t("notifications.verify.resend")}
               </Button>
               <Button
                 type="submit"
@@ -190,7 +191,7 @@ function VerifyPhoneDialog({
                 {confirm.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  "Confirm"
+                  t("notifications.verify.confirm")
                 )}
               </Button>
             </DialogFooter>
@@ -210,6 +211,7 @@ function RouteRow({
   org: string;
   onTestSent: () => void;
 }) {
+  const { t } = useTranslation("account");
   const deleteContact = useDeleteNotificationContact(org);
   const patchRoute = usePatchNotificationRoute(org);
   const testRoute = useTestNotificationRoute(org);
@@ -272,7 +274,7 @@ function RouteRow({
             className="mt-1 text-xs text-green-600 border-green-400"
             data-testid={`phone-verified-${route.contact.uid}`}
           >
-            <ShieldCheck className="h-3 w-3 mr-1" /> Verified
+            <ShieldCheck className="h-3 w-3 mr-1" /> {t("notifications.verifiedBadge")}
           </Badge>
         )}
         {isPhone && !isVerified && (
@@ -280,7 +282,7 @@ function RouteRow({
             variant="outline"
             className="mt-1 text-xs text-yellow-600 border-yellow-400"
           >
-            Unverified — verify to receive SMS / voice alerts
+            {t("notifications.unverifiedBadge")}
           </Badge>
         )}
       </div>
@@ -292,7 +294,7 @@ function RouteRow({
             onClick={() => setVerifyOpen(true)}
             data-testid={`verify-phone-${route.contact.uid}`}
           >
-            Verify
+            {t("notifications.verifyButton")}
           </Button>
         )}
         {isPhone && (
@@ -408,6 +410,7 @@ function AddContactForm({
   smsAvailable: boolean;
   onSuccess: () => void;
 }) {
+  const { t } = useTranslation("account");
   const [type, setType] = useState<"email" | "phone">("email");
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -481,17 +484,14 @@ function AddContactForm({
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              No SMS provider is configured for this organization yet. You can
-              add the number, but it won&apos;t receive SMS or voice alerts until
-              an admin sets up Twilio.
+              {t("notifications.noProviderHint")}
             </AlertDescription>
           </Alert>
         )}
 
         {type === "phone" && smsAvailable && (
           <p className="text-xs text-muted-foreground">
-            After adding, verify the number to start receiving SMS / voice
-            alerts.
+            {t("notifications.phoneAfterAddHint")}
           </p>
         )}
 
