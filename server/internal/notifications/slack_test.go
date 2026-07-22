@@ -957,6 +957,24 @@ func (m *mockDBService) UpdateStatusPage(_ context.Context, _ string, _ *models.
 	panic("not implemented")
 }
 
+func (m *mockDBService) UpdateStatusPageCustomDomain(
+	_ context.Context, _ string, _ *models.StatusPageCustomDomainUpdate,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetStatusPageByCustomDomain(_ context.Context, _ string) (*models.StatusPage, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListStatusPagesWithCustomDomain(_ context.Context) ([]*models.StatusPage, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CountStatusPagesWithCustomDomain(_ context.Context, _ string) (int, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) DeleteStatusPage(_ context.Context, _ string) error {
 	panic("not implemented")
 }
