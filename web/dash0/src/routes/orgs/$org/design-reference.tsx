@@ -42,6 +42,7 @@ import {
   CopyableCode,
   CopyableInline,
 } from "@/components/shared/copyable-code";
+import { DnsRecordRow } from "@/components/shared/dns-record-row";
 import { ErrorFallbackCard } from "@/components/shared/error-boundary";
 import { MaintenanceScheduleSummary } from "@/components/shared/maintenance-schedule-summary";
 import { JsonViewer } from "@/components/shared/json-viewer";
@@ -143,6 +144,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "data-display", label: "Data display" },
   { id: "copyable-code", label: "Copyable code" },
   { id: "copyable-inline", label: "Copyable inline" },
+  { id: "dns-record-row", label: "DNS record row" },
   { id: "collapsible-code", label: "Collapsible code" },
   { id: "collapsible-section", label: "Collapsible section" },
   { id: "stepper", label: "Stepper" },
@@ -179,6 +181,7 @@ function DesignReferencePage() {
       <DataDisplaySection />
       <CopyableCodeSection />
       <CopyableInlineSection />
+      <DnsRecordRowSection />
       <CollapsibleCodeSection />
       <CollapsibleSectionSection />
       <StepperSection />
@@ -1558,6 +1561,34 @@ function CopyableInlineSection() {
         </div>
         <CodeSnippet
           code={`import { CopyableInline } from "@/components/shared/copyable-code";\n\n// Form-field-style row (inline, default)\n<CopyableInline value={url} label="request URL" />\n\n// Bare button next to a caller-rendered value block\n<CopyableInline value={error} label="error" inline={false} size="md" />`}
+        />
+      </div>
+    </Section>
+  );
+}
+
+function DnsRecordRowSection() {
+  return (
+    <Section
+      id="dns-record-row"
+      title="DNS record row"
+      description="A single DNS record the user must create — a labeled Type / Name / Value grid with copy-to-clipboard buttons on the copyable values. Used by the status-page custom-domain section for the CNAME and TXT challenge records."
+    >
+      <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+        <div className="space-y-2">
+          <DnsRecordRow
+            record={{ type: "CNAME", name: "status.acme.com", value: "cname.solidping.io" }}
+          />
+          <DnsRecordRow
+            record={{
+              type: "TXT",
+              name: "_solidping-challenge.status.acme.com",
+              value: "sp-domain-verify=Xq7f…",
+            }}
+          />
+        </div>
+        <CodeSnippet
+          code={`import { DnsRecordRow } from "@/components/shared/dns-record-row";\n\n<DnsRecordRow record={{ type: "CNAME", name: "status.acme.com", value: "cname.solidping.io" }} />`}
         />
       </div>
     </Section>

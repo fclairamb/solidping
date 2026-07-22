@@ -1423,6 +1423,16 @@ export function useSignOutOtherSessions(org: string) {
 // vocabulary.
 export type StatusPagePeriod = "24h" | "7d" | "30d" | "90d";
 
+// DnsRecord is one DNS record a customer must create to activate a custom
+// domain (CNAME for routing, TXT for ownership).
+export interface DnsRecord {
+  type: string;
+  name: string;
+  value: string;
+}
+
+export type CustomDomainStatus = "unverified" | "verified";
+
 export interface StatusPage {
   uid: string;
   name: string;
@@ -1435,6 +1445,10 @@ export interface StatusPage {
   showResponseTime: boolean;
   historyDays: number;
   historyPeriod: StatusPagePeriod;
+  // Custom-domain fields are only present on the authenticated org endpoints.
+  customDomain?: string;
+  customDomainStatus?: CustomDomainStatus;
+  customDomainRecords?: DnsRecord[];
   sections?: StatusPageSection[];
   createdAt?: string;
 }
@@ -1472,6 +1486,7 @@ export interface CreateStatusPageRequest {
   showResponseTime?: boolean;
   historyDays?: number;
   historyPeriod?: StatusPagePeriod;
+  customDomain?: string;
 }
 
 export interface UpdateStatusPageRequest {
@@ -1485,6 +1500,9 @@ export interface UpdateStatusPageRequest {
   showResponseTime?: boolean;
   historyDays?: number;
   historyPeriod?: StatusPagePeriod;
+  // null clears the custom domain; a non-empty string sets it; omit to leave
+  // it unchanged.
+  customDomain?: string | null;
 }
 
 export interface CreateSectionRequest {
@@ -1581,6 +1599,24 @@ export function useDeleteStatusPage(org: string) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["statusPages", org] });
+    },
+  });
+}
+
+// useVerifyStatusPageDomain runs the synchronous DNS verification for a status
+// page's custom domain and returns the updated page.
+export function useVerifyStatusPageDomain(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<StatusPage>(
+        `/api/v1/orgs/${org}/status-pages/${uid}/custom-domain/verify`,
+        { method: "POST" }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusPages", org] });
+      queryClient.invalidateQueries({ queryKey: ["statusPage", org, uid] });
     },
   });
 }
