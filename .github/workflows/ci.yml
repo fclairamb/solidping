@@ -282,18 +282,16 @@ jobs:
         working-directory: .
         run: chmod +x solidping
 
+      # --wait blocks until the container's own healthcheck (defined in
+      # docker-compose.yml) reports healthy. A hand-rolled `pg_isready` loop
+      # starting immediately after `up -d` can race the official postgres
+      # image's first-start behavior (initdb runs a short-lived temporary
+      # instance before the real one starts) and false-positive against that
+      # temporary instance, which then resets the connection mid-migration.
+      # The healthcheck's 5s interval clears that window before its first probe.
       - name: Start PostgreSQL
         working-directory: .
-        run: docker compose up -d postgres
-
-      - name: Wait for PostgreSQL
-        working-directory: .
-        run: |
-          for i in $(seq 1 30); do
-            docker compose exec -T postgres pg_isready -U postgres && exit 0
-            sleep 1
-          done
-          echo "PostgreSQL failed to become ready" && exit 1
+        run: docker compose up -d --wait postgres
 
       - name: Start solidping server
         working-directory: .
