@@ -145,3 +145,81 @@ would not compact the stranded window.
 `make build-backend lint-back test` (iterate with scoped
 `go build`/`golangci-lint`/`go test` on `internal/jobs/...` and `internal/db/...`
 first).
+
+## Diagnosis
+
+Investigated the live k8xp dev deployment (kubectl context `k8xp`, namespace
+`solidping-dev`) on 2026-07-23.
+
+### What was reachable
+
+- `kubectl` cluster access works. The org in the incident (`stonaltech`) is
+  `organization_uid=3c9d374e-e655-431d-880c-5c161777b75c`.
+- The aggregation job runs on the **main** `solidping` deployment (the
+  `checks-us1`/`checks-eu2` worker deployments only execute checks).
+
+### Confirmed root cause — boundary-millisecond fetch exclusion
+
+The current main pod (started 2026-07-22) still logs, on essentially every
+aggregation cycle:
+
+```
+msg="Found data to aggregate" check_uid=0c7e3fd6-144e-4021-b060-682b13e3e49e
+    region=… period_start=2026-07-18T03:59:59.999Z source_period=raw target_period=hour
+msg="No aggregation work found"
+```
+
+A **raw** row with `period_start = 2026-07-18T03:59:59.999Z` (org `stonaltech`)
+is still present 4.5 days later and is re-discovered on every run but never
+compacted. "Found data to aggregate" immediately followed by "No aggregation
+work found" — with no "Aggregating results", no rollup, and no "Skipping
+marker-only" — can only be the empty step-3 fetch path
+(`job_aggregation.go` `len(resultsResp.Results) == 0 → return false`).
+
+Mechanism (code-confirmed): `findAggregatableResults` selects the newest
+eligible raw row and returns its `period_start` (here `HH:59:59.999`).
+`calculatePeriodBoundaries` then computes the target hour bucket as
+`start = HH:00:00.000`, `end = start + 1h - 1ms = HH:59:59.999`. The step-3
+targeted fetch filters `PeriodEndBefore = end` → `period_start < HH:59:59.999`
+(strict). The discovered row sits **exactly** on `HH:59:59.999`, so it is
+excluded from its own bucket's fetch → empty result set → `return false` → the
+row is never rolled up and is re-discovered forever. Any raw row landing in the
+final millisecond `[HH:59:59.999, HH+1:00:00.000)` of its hour is a permanent
+stranding trap; once it becomes the newest-eligible island it is discovered on
+every run yet never consumed. This is independent of transactionality and is
+the "second bug" the Open Questions anticipated. Fixed here (Plan §B) by
+bounding the fetch with the exclusive next-bucket start.
+
+### Deploy/restart timeline (plausible, not the confirmed cause)
+
+Main-deployment ReplicaSet creation times bracket the incident: rollouts at
+2026-07-17 10:18, **2026-07-18 06:24**, and 2026-07-19 19:56 UTC — so the
+aggregation-running pod was restarted near the incident, consistent with the
+spec's "deploy is a plausible mid-flight kill" note. But with the default 24h
+raw retention the 2026-07-18 03:00–04:05 buckets only become due for rollup
+~2026-07-19 03:00–04:05 UTC, and no rollout landed exactly in that window, so a
+deploy-mid-compaction is **not** the confirmed mechanism for this stranded row.
+
+### What could not be inspected (honest gaps)
+
+- Aggregation-job logs from the actual incident/compaction window
+  (2026-07-18/19 03:00–04:05 UTC) are gone: the current pods started 2026-07-22,
+  and `kubectl logs` only covers a pod's lifetime. No in-cluster log-aggregation
+  query path was available in this environment.
+- Direct DB inspection of the exact `period_type` rows for check `de01b3ed`
+  (raw vs hour, per region; whether a rollup+raw **hybrid** exists) was blocked:
+  the results DB is external (no in-namespace Postgres service), and the app
+  container is distroless (no shell, no `psql`), so no read path was reachable
+  without out-of-band credentials.
+- No `"Aggregation error"` or `"Aggregation fetched rows but deleted none"`
+  lines were observed in the current pod (count 0) — but that only covers
+  since 2026-07-22, not the incident window.
+
+Conclusion: the **confirmed** cause of the observed stranding is the
+boundary-millisecond fetch exclusion (Plan §B), directly evidenced in live logs.
+The spec's non-transactional-compaction hypothesis remains a **real, separate
+structural weakness** (crash between upsert and delete → rollup+raw hybrid) that
+Plan §A eliminates; whether check `de01b3ed`'s specific hole is also a hybrid
+could not be confirmed without DB access. Both fixes are implemented; root-cause
+attribution for `de01b3ed` specifically should be double-checked out-of-band by
+someone with DB access once the fixes deploy.
