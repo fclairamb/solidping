@@ -195,3 +195,26 @@ type ListResultsResponse struct {
 	NextCursor string    // Encoded cursor for next page (empty if no more results)
 	HasMore    bool      // Whether there are more results
 }
+
+// AggregateResultsFunc computes the single rollup row for one bucket from its
+// source rows and returns the UIDs of the source rows to delete. It runs inside
+// CompactResults' transaction and must be pure (no DB access). Returning a nil
+// rollup or an empty sourceUIDs signals "nothing measurable to compact" — the
+// sources are left in place and the transaction commits without writing.
+type AggregateResultsFunc func(sources []*Result) (rollup *Result, sourceUIDs []string, err error)
+
+// CompactResultsOutcome reports what CompactResults did inside its transaction.
+type CompactResultsOutcome struct {
+	// Fetched is the number of source rows read for the bucket.
+	Fetched int
+	// SourceCount is the number of measurable source rows the aggregate function
+	// selected for deletion (its returned sourceUIDs). Zero for a marker-only
+	// bucket.
+	SourceCount int
+	// Compacted is true when the rollup row was upserted and the source rows
+	// deleted (the whole transaction committed). False when there was nothing to
+	// compact (no fetched rows, or a marker-only bucket).
+	Compacted bool
+	// DeletedCount is the number of source rows actually deleted.
+	DeletedCount int64
+}

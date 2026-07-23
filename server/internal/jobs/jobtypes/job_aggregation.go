@@ -167,84 +167,84 @@ func (r *AggregationJobRun) aggregatePeriod(
 		"source_period", sourcePeriod,
 		"target_period", targetPeriod)
 
-	// 2. Calculate period boundaries for the target period
+	// 2. Calculate period boundaries for the target period.
 	periodStart, periodEnd, err := calculatePeriodBoundaries(periodStart, targetPeriod)
 	if err != nil {
 		return false, err
 	}
 
-	// 3. Fetch all source results for this check-region-period
-	// TODO: Wrap in transaction for atomicity
+	// 3. Bound the source fetch by the exclusive next-bucket start
+	// (periodEnd + 1ms), NOT the inclusive display end (periodEnd itself). The
+	// fetch filters period_start < fetchEnd; using periodEnd (e.g. HH:59:59.999)
+	// strictly excludes a raw row whose period_start lands exactly on that final
+	// millisecond, so work-discovery would re-find that row forever while the
+	// targeted fetch returned nothing — stranding it un-compacted (spec
+	// 2026-07-22-03 diagnosis). The next bucket's fetch begins at fetchEnd, so
+	// no row is ever fetched by two buckets.
+	fetchEnd := periodEnd.Add(time.Millisecond)
+
 	filter := models.ListResultsFilter{
 		OrganizationUID:  orgUID,
 		CheckUIDs:        []string{checkUID},
 		PeriodTypes:      []string{sourcePeriod},
 		PeriodStartAfter: &periodStart,
-		PeriodEndBefore:  &periodEnd,
+		PeriodEndBefore:  &fetchEnd,
 	}
 	if region != nil {
 		filter.Regions = []string{*region}
 	}
 
-	resultsResp, err := jctx.DBService.ListResults(ctx, &filter)
+	// 4. Compact the bucket transactionally: fetch → aggregate (in Go) → upsert
+	// rollup → delete the measurable source rows, committing or rolling back as
+	// one unit so a mid-flight failure can never leave a rollup+raw hybrid (spec
+	// 2026-07-22-03). The aggregate closure runs inside the transaction and skips
+	// lifecycle-marker rows (created, running) via measurableSourceUIDs: those
+	// contribute nothing to the aggregate (see processRawResult) and are
+	// intentionally preserved (permalink preservation), so they are never among
+	// the deleted UIDs. A bucket whose only rows are markers yields no source
+	// UIDs; CompactResults then writes nothing and reports Compacted=false.
+	outcome, err := jctx.DBService.CompactResults(ctx, &filter,
+		func(sources []*models.Result) (*models.Result, []string, error) {
+			sourceUIDs := measurableSourceUIDs(sources)
+			if len(sourceUIDs) == 0 {
+				return nil, nil, nil
+			}
+
+			// Idempotent upsert on the bucket key replaces any existing row for
+			// (org, check, coalesce(region,''), period_type, period_start), so a
+			// re-aggregation yields exactly one row, never a NULL-region duplicate
+			// (spec 2026-07-11-16 §3).
+			return aggregateResults(sources, targetPeriod, periodStart, periodEnd), sourceUIDs, nil
+		})
 	if err != nil {
-		return false, fmt.Errorf("failed to list results: %w", err)
+		return false, fmt.Errorf("failed to compact results: %w", err)
 	}
 
-	if len(resultsResp.Results) == 0 {
-		return false, nil // Nothing to aggregate
+	if outcome.Fetched == 0 {
+		return false, nil // Nothing to aggregate.
 	}
 
-	// 4. Collect UIDs of the measurable source rows, skipping lifecycle-marker
-	// rows (created, running). They already contribute nothing to the
-	// aggregate's stats (see processRawResult), so keeping them changes no
-	// rollup numbers — it just preserves the one raw row that records e.g.
-	// "this check was created here" instead of letting its permalink morph
-	// into a misleading aggregation fallback (see GetResult).
-	sourceUIDs := measurableSourceUIDs(resultsResp.Results)
-
-	// Progress guard (spec 2026-07-11-16 §2): a bucket whose only rows are
-	// lifecycle markers has nothing to roll up. Inserting a degenerate
-	// total_checks=0 rollup and returning aggregated=true would make Run
-	// reschedule at delay=0 and re-process this same bucket forever, duplicating
-	// hour rows and jobs unbounded (the poison-pill loop). Discovery (§1)
-	// already excludes such buckets; this is defense in depth for any future
-	// discovery regression. "Work done" now requires real progress.
-	if len(sourceUIDs) == 0 {
+	// Progress guard (spec 2026-07-11-16 §2): a marker-only bucket has nothing to
+	// roll up. CompactResults left the markers in place (Compacted=false);
+	// reporting work done here would make Run reschedule at delay=0 and
+	// re-process this same bucket forever (the poison-pill loop). "Work done" now
+	// requires a committed rollup.
+	if !outcome.Compacted {
 		log.WarnContext(ctx, "Skipping marker-only aggregation bucket (no measurable rows)",
 			"check_uid", checkUID, "region", region, "period_start", periodStart,
-			"fetched", len(resultsResp.Results))
+			"fetched", outcome.Fetched)
 
 		return false, nil
 	}
 
-	log.InfoContext(ctx, "Aggregating results", "count", len(resultsResp.Results))
-
-	// 5. Aggregate in Go (calculation happens here!)
-	aggregated := aggregateResults(resultsResp.Results, targetPeriod, periodStart, periodEnd)
-
-	// 6. Upsert the aggregated result idempotently: it replaces any existing row
-	// for the same bucket key (org, check, coalesce(region,''), period_type,
-	// period_start), so a re-aggregation of the same bucket yields exactly one
-	// row instead of a NULL-region duplicate (spec 2026-07-11-16 §3).
-	if upsertErr := jctx.DBService.UpsertAggregatedResult(ctx, aggregated); upsertErr != nil {
-		return false, fmt.Errorf("failed to upsert aggregated result: %w", upsertErr)
-	}
-
-	// 7. Delete the measurable source rows by their UIDs.
-	deletedCount, err := jctx.DBService.DeleteResults(ctx, orgUID, sourceUIDs)
-	if err != nil {
-		return false, fmt.Errorf("failed to delete source results: %w", err)
-	}
-
-	if deletedCount == 0 {
+	if outcome.DeletedCount == 0 {
 		log.WarnContext(ctx, "Aggregation fetched rows but deleted none",
 			"check_uid", checkUID, "region", region, "period_start", periodStart,
-			"source_count", len(resultsResp.Results))
+			"source_count", outcome.Fetched)
 	}
 
-	log.InfoContext(ctx, "Deleted source results", "count", deletedCount)
-	log.InfoContext(ctx, "Aggregation complete", "source_count", len(resultsResp.Results), "deleted_count", deletedCount)
+	log.InfoContext(ctx, "Aggregation complete",
+		"source_count", outcome.Fetched, "deleted_count", outcome.DeletedCount)
 
 	return true, nil
 }

@@ -72,6 +72,12 @@ type Config struct {
 type Service struct {
 	db      *bun.DB
 	dataDir string
+
+	// compactFailpoint, when non-nil, is invoked inside CompactResults after the
+	// rollup upsert and before the source delete. It exists only so same-package
+	// tests can prove the transaction rolls the upsert back when a later step
+	// fails; production never sets it.
+	compactFailpoint func(context.Context) error
 }
 
 // Compile-time assertion that Service implements db.Service.
@@ -1778,21 +1784,30 @@ func (s *Service) CreateResult(ctx context.Context, result *models.Result) error
 // 2026-07-11-16.
 func (s *Service) UpsertAggregatedResult(ctx context.Context, result *models.Result) error {
 	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		if _, err := tx.NewDelete().
-			Model((*models.Result)(nil)).
-			Where("organization_uid = ?", result.OrganizationUID).
-			Where("check_uid = ?", result.CheckUID).
-			Where("period_type = ?", result.PeriodType).
-			Where("period_start = ?", result.PeriodStart).
-			Where("COALESCE(region, '') = COALESCE(?, '')", result.Region).
-			Exec(ctx); err != nil {
-			return err
-		}
-
-		_, err := tx.NewInsert().Model(result).Exec(ctx)
-
-		return err
+		return upsertAggregatedResultTx(ctx, tx, result)
 	})
+}
+
+// upsertAggregatedResultTx replaces any existing aggregated row for the same
+// bucket key (organization_uid, check_uid, coalesce(region,”), period_type,
+// period_start) with result, using the given transaction. Shared by
+// UpsertAggregatedResult and CompactResults so both stay idempotent on the
+// bucket key even when region is NULL (spec 2026-07-11-16).
+func upsertAggregatedResultTx(ctx context.Context, tx bun.Tx, result *models.Result) error {
+	if _, err := tx.NewDelete().
+		Model((*models.Result)(nil)).
+		Where("organization_uid = ?", result.OrganizationUID).
+		Where("check_uid = ?", result.CheckUID).
+		Where("period_type = ?", result.PeriodType).
+		Where("period_start = ?", result.PeriodStart).
+		Where("COALESCE(region, '') = COALESCE(?, '')", result.Region).
+		Exec(ctx); err != nil {
+		return err
+	}
+
+	_, err := tx.NewInsert().Model(result).Exec(ctx)
+
+	return err
 }
 
 func (s *Service) SaveResultWithStatusTracking(ctx context.Context, result *models.Result) error {
@@ -1834,8 +1849,24 @@ func (s *Service) ListResults(
 ) (*models.ListResultsResponse, error) {
 	var results []*models.Result
 
-	query := s.db.NewSelect().
-		Model(&results).
+	query := applyResultsFilter(s.db.NewSelect().Model(&results), filter)
+
+	if err := query.Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	// For now, we don't calculate total count as it's expensive
+	// It can be added later as an optional feature
+	return &models.ListResultsResponse{
+		Results: results,
+		Total:   0,
+	}, nil
+}
+
+// applyResultsFilter narrows a results SELECT by filter. Shared by ListResults
+// and CompactResults so both read exactly the same rows for a bucket.
+func applyResultsFilter(query *bun.SelectQuery, filter *models.ListResultsFilter) *bun.SelectQuery {
+	query = query.
 		Where("organization_uid = ?", filter.OrganizationUID).
 		Order("period_start DESC").
 		Order("uid DESC")
@@ -1899,17 +1930,7 @@ func (s *Service) ListResults(
 		query = query.Limit(filter.Limit)
 	}
 
-	err := query.Scan(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// For now, we don't calculate total count as it's expensive
-	// It can be added later as an optional feature
-	return &models.ListResultsResponse{
-		Results: results,
-		Total:   0,
-	}, nil
+	return query
 }
 
 // GetResultNeighbors returns the next-older and next-newer UIDs relative to
@@ -1990,6 +2011,81 @@ func (s *Service) DeleteResults(ctx context.Context, orgUID string, resultUIDs [
 	}
 
 	return result.RowsAffected()
+}
+
+// CompactResults implements db.Service — see that interface for the full
+// contract. Fetch → aggregate (Go) → upsert rollup → delete sources all run in
+// one transaction, so any failure rolls the whole thing back and the bucket
+// stays fully raw.
+func (s *Service) CompactResults(
+	ctx context.Context, filter *models.ListResultsFilter, aggregate models.AggregateResultsFunc,
+) (models.CompactResultsOutcome, error) {
+	var outcome models.CompactResultsOutcome
+
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		// 1. Read the source rows for this bucket inside the transaction, using
+		// exactly the same filter as ListResults.
+		var sources []*models.Result
+		if scanErr := applyResultsFilter(tx.NewSelect().Model(&sources), filter).Scan(ctx); scanErr != nil {
+			return scanErr
+		}
+
+		outcome = models.CompactResultsOutcome{Fetched: len(sources)}
+		if len(sources) == 0 {
+			return nil // Nothing to compact.
+		}
+
+		// 2. Compute the rollup and the source UIDs to delete (pure Go).
+		rollup, sourceUIDs, aggErr := aggregate(sources)
+		if aggErr != nil {
+			return aggErr
+		}
+
+		outcome.SourceCount = len(sourceUIDs)
+
+		// A marker-only bucket (no measurable rows) has nothing to roll up: leave
+		// the sources in place and commit without writing.
+		if rollup == nil || len(sourceUIDs) == 0 {
+			return nil
+		}
+
+		// 3. Upsert the rollup idempotently on the bucket key.
+		if upErr := upsertAggregatedResultTx(ctx, tx, rollup); upErr != nil {
+			return upErr
+		}
+
+		// Test-only: prove the transaction rolls the upsert back on a later error.
+		if s.compactFailpoint != nil {
+			if fpErr := s.compactFailpoint(ctx); fpErr != nil {
+				return fpErr
+			}
+		}
+
+		// 4. Delete exactly the measurable source rows read in this transaction.
+		res, delErr := tx.NewDelete().
+			Model((*models.Result)(nil)).
+			Where("organization_uid = ?", filter.OrganizationUID).
+			Where("uid IN (?)", bun.List(sourceUIDs)).
+			Exec(ctx)
+		if delErr != nil {
+			return delErr
+		}
+
+		deleted, raErr := res.RowsAffected()
+		if raErr != nil {
+			return raErr
+		}
+
+		outcome.DeletedCount = deleted
+		outcome.Compacted = true
+
+		return nil
+	})
+	if err != nil {
+		return models.CompactResultsOutcome{}, err
+	}
+
+	return outcome, nil
 }
 
 func (s *Service) GetLastResultForChecks(

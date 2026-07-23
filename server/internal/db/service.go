@@ -245,6 +245,17 @@ type Service interface {
 	) (map[string]*models.Result, error)
 	GetLastStatusChangeForChecks(ctx context.Context, checkUIDs []string) (map[string]*models.LastStatusChange, error)
 	DeleteResults(ctx context.Context, orgUID string, resultUIDs []string) (int64, error)
+	// CompactResults atomically compacts one source bucket into a single
+	// aggregated row inside one transaction: it fetches the source rows matching
+	// filter, computes the rollup via aggregate (pure Go), upserts the rollup
+	// idempotently on the bucket key, and deletes exactly the source UIDs
+	// aggregate selected. On ANY error the whole transaction rolls back, so the
+	// bucket stays fully raw and a later run retries cleanly — never a rollup+raw
+	// hybrid (spec 2026-07-22-03). A marker-only bucket (aggregate returns no
+	// sourceUIDs) commits without writing and reports Compacted=false.
+	CompactResults(
+		ctx context.Context, filter *models.ListResultsFilter, aggregate models.AggregateResultsFunc,
+	) (models.CompactResultsOutcome, error)
 	// SaveResultWithStatusTracking atomically clears old last_for_status for the check+status
 	// combination and inserts a new result with last_for_status = true.
 	SaveResultWithStatusTracking(ctx context.Context, result *models.Result) error

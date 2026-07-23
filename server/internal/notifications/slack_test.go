@@ -308,6 +308,12 @@ func (m *mockDBService) DeleteResults(_ context.Context, _ string, _ []string) (
 	panic("not implemented")
 }
 
+func (m *mockDBService) CompactResults(
+	_ context.Context, _ *models.ListResultsFilter, _ models.AggregateResultsFunc,
+) (models.CompactResultsOutcome, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CreateWorker(_ context.Context, _ *models.Worker) error {
 	panic("not implemented")
 }
