@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"mime"
 	"net"
@@ -159,6 +160,7 @@ type Server struct {
 	realtimeHub           *realtime.Hub           // Live hint stream fan-out (nil when realtime disabled)
 	statusPagesService    *statuspages.Service    // Public status-page lookups for status0 OG-metadata injection
 	customDomainCache     *customDomainCache      // host -> status-page resolution cache for custom-domain routing
+	status0FS             fs.FS                   // overridden in tests; nil means use the real embedded status0Files
 	cancelCtx             context.CancelFunc
 	workersWg             sync.WaitGroup // Tracks workers
 }
@@ -1849,6 +1851,16 @@ func (s *Server) serveStatus0Root(writer http.ResponseWriter, req *http.Request)
 	return s.serveStatus0Static(writer, req)
 }
 
+// status0FSOrDefault returns the status0 filesystem, falling back to the real
+// embedded status0Files when s.status0FS is unset (the normal, non-test case).
+func (s *Server) status0FSOrDefault() fs.FS {
+	if s.status0FS != nil {
+		return s.status0FS
+	}
+
+	return status0Files
+}
+
 // serveStatus0Static serves static files from the embedded status0res filesystem.
 func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Request) error {
 	reqPath := strings.TrimPrefix(req.URL.Path, "/status0")
@@ -1861,13 +1873,13 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	maxAgeSeconds := 31536000 // 1 year for assets
 	servingIndexFallback := false
 
-	data, err := status0Files.ReadFile(filePath)
+	data, err := fs.ReadFile(s.status0FSOrDefault(), filePath)
 	if err != nil {
 		maxAgeSeconds = 60
 		servingIndexFallback = true
 		filePath = path.Join("status0res", "index.html")
 
-		data, err = status0Files.ReadFile(filePath)
+		data, err = fs.ReadFile(s.status0FSOrDefault(), filePath)
 		if err != nil {
 			slog.ErrorContext(req.Context(), "Error reading status0 file", "error", err)
 			http.Error(writer, "File not found", http.StatusNotFound)

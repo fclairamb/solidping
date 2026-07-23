@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
@@ -249,7 +250,7 @@ func isCustomHostForbidden(reqPath string) bool {
 func (s *Server) serveStatus0IndexForCustomHost(
 	writer http.ResponseWriter, req *http.Request, page *resolvedCustomDomain,
 ) {
-	data, err := status0Files.ReadFile(path.Join("status0res", "index.html"))
+	data, err := fs.ReadFile(s.status0FSOrDefault(), path.Join("status0res", "index.html"))
 	if err != nil {
 		http.Error(writer, "File not found", http.StatusNotFound)
 

@@ -4,12 +4,26 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"testing/fstest"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 )
+
+// newTestStatus0FS returns a minimal but real HTML shell with a </head>
+// anchor, so injectStatus0Meta has something to splice into. CI substitutes a
+// one-line "placeholder" file for the real (gitignored) status0res/index.html
+// when running backend-only jobs, which has no </head> at all — using that
+// real path here would make the sp-page assertions below environment-dependent.
+func newTestStatus0FS() fstest.MapFS {
+	return fstest.MapFS{
+		"status0res/index.html": &fstest.MapFile{
+			Data: []byte("<!doctype html><html><head><title>x</title></head><body></body></html>"),
+		},
+	}
+}
 
 func TestHostOnly(t *testing.T) {
 	t.Parallel()
@@ -87,6 +101,7 @@ func newCustomHostTestServer(t *testing.T) *Server {
 		config:            cfg,
 		router:            router,
 		customDomainCache: newCustomDomainCache(customDomainCacheTTL),
+		status0FS:         newTestStatus0FS(),
 	}
 
 	// status.acme.com resolves to a servable page; unknown.example.com is
