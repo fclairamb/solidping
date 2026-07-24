@@ -19,6 +19,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/activation"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkheartbeat"
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
@@ -82,6 +83,9 @@ var (
 	ErrCheckNotFound = errors.New("check not found")
 	// ErrInvalidCheckType is returned when an unsupported check type is provided.
 	ErrInvalidCheckType = errors.New("invalid check type")
+	// ErrNotHeartbeatCheck is returned when a heartbeat-only operation (e.g.
+	// rotate-token) is attempted on a check of a different type.
+	ErrNotHeartbeatCheck = errors.New("check is not a heartbeat type")
 	// ErrNoAgentsToSealTo is returned when a check targeting ONLY private
 	// region(s) carries secrets but no active agent exists to seal them to
 	// (spec 2026-07-16-02, Decision 4). The write is refused rather than
@@ -1648,6 +1652,48 @@ func (s *Service) UpdateCheck(
 	}
 
 	return response, nil
+}
+
+// RotateHeartbeatToken mints a fresh heartbeat ping token for a heartbeat
+// check and persists it, invalidating every previously issued ping URL
+// immediately (no grace period: heartbeat pings are frequent and the operator
+// updates the sender right after rotating, unlike webhook signing secrets
+// which keep a 24h grace window for slower-moving receivers). The token is
+// public-by-design (see checkheartbeat/secret_fields.go) so this is a plain
+// config-column write, not a secret-envelope rotation.
+func (s *Service) RotateHeartbeatToken(ctx context.Context, orgSlug, identifier string) (CheckResponse, error) {
+	// Get organization by slug
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return CheckResponse{}, ErrOrganizationNotFound
+	}
+
+	// Resolve check by UID or slug (auto-detected)
+	check, err := s.db.GetCheckByUidOrSlug(ctx, org.UID, identifier)
+	if err != nil || check == nil {
+		return CheckResponse{}, ErrCheckNotFound
+	}
+
+	if checkerdef.CheckType(check.Type) != checkerdef.CheckTypeHeartbeat {
+		return CheckResponse{}, ErrNotHeartbeatCheck
+	}
+
+	newToken, err := checkheartbeat.GenerateToken()
+	if err != nil {
+		return CheckResponse{}, fmt.Errorf("failed to generate heartbeat token: %w", err)
+	}
+
+	newConfig := models.JSONMap{}
+	for k, v := range check.Config {
+		newConfig[k] = v
+	}
+	newConfig["token"] = newToken
+
+	if err := s.db.UpdateCheck(ctx, check.UID, &models.CheckUpdate{Config: &newConfig}); err != nil {
+		return CheckResponse{}, fmt.Errorf("failed to update check: %w", err)
+	}
+
+	return s.GetCheck(ctx, orgSlug, check.UID, GetCheckOptions{})
 }
 
 // UpsertCheck creates or updates a check by slug (idempotent operation).

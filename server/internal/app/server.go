@@ -707,6 +707,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecks.PATCH("/:checkUid", checksHandler.UpdateCheck)
 	orgChecks.DELETE("/:checkUid", checksHandler.DeleteCheck)
 	orgChecks.POST("/:checkUid/clone", checksHandler.CloneCheck)
+	// Heartbeat-only: mints a fresh ping token, invalidating every existing
+	// ping URL immediately (400 for non-heartbeat checks).
+	orgChecks.POST("/:checkUid/rotate-token", checksHandler.RotateHeartbeatToken)
 
 	// Network discovery routes (authentication + org access required)
 	discoverySvc := discovery.NewService(
