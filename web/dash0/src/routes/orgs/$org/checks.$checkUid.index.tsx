@@ -23,6 +23,7 @@ import {
   useCloneCheck,
   useDeleteCheck,
   useUpdateCheck,
+  useRotateHeartbeatToken,
   useResults,
   useAllResults,
   useIncidents,
@@ -58,6 +59,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Table,
@@ -306,16 +308,66 @@ function HeartbeatEndpoint({ org, check }: { org: string; check: { slug?: string
   const identifier = check.slug || check.uid;
   const heartbeatUrl = `${window.location.origin}/api/v1/heartbeat/${org}/${identifier}?token=${token}`;
   const curlCommand = `curl "${heartbeatUrl}"`;
+  const rotateToken = useRotateHeartbeatToken(org, check.uid);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success(t("detail.toast.copied"));
   };
 
+  const handleRegenerate = async () => {
+    try {
+      await rotateToken.mutateAsync();
+      toast.success(t("endpoints.heartbeat.regenerated"));
+    } catch {
+      toast.error(t("endpoints.heartbeat.regenerateFailed"));
+    }
+  };
+
   return (
     <div>
-      <div className="text-sm font-medium text-muted-foreground mb-2">
-        {t("endpoints.heartbeat.title")}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="text-sm font-medium text-muted-foreground">
+          {t("endpoints.heartbeat.title")}
+        </div>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              data-testid="heartbeat-regenerate-token"
+            >
+              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              {t("endpoints.heartbeat.regenerate")}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t("endpoints.heartbeat.regenerateTitle")}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("endpoints.heartbeat.regenerateDescription")}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleRegenerate}
+                disabled={rotateToken.isPending}
+                data-testid="heartbeat-regenerate-confirm"
+              >
+                {rotateToken.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {t("endpoints.heartbeat.regenerating")}
+                  </>
+                ) : (
+                  t("endpoints.heartbeat.regenerateConfirm")
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
       <div className="space-y-3">
         <div className="bg-muted rounded-md p-3 text-sm font-mono break-all flex items-start gap-2">

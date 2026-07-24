@@ -444,6 +444,27 @@ export function useCloneCheck(org: string) {
   });
 }
 
+/** Regenerates a heartbeat check's ping token (heartbeat checks only — the
+ *  backend 400s otherwise). Invalidates every previously issued ping URL
+ *  immediately, unlike webhook signing-secret rotation which keeps a grace
+ *  window: heartbeat pings are frequent and the operator is expected to
+ *  update the sender right away. Returns the updated check. */
+export function useRotateHeartbeatToken(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<Check>(`/api/v1/orgs/${org}/checks/${uid}/rotate-token`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["check", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
+    },
+  });
+}
+
 export function useDeleteCheck(org: string) {
   const queryClient = useQueryClient();
 

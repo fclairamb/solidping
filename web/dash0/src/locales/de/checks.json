@@ -449,7 +449,14 @@
     "heartbeat": {
       "title": "Heartbeat-Endpunkt",
       "curl": "Beispiel-Curl-Befehl:",
-      "callerNote": "User-Agent, Quell-IP und HTTP-Methode jedes Pings werden erfasst und auf der Detailseite des jeweiligen Ergebnisses angezeigt."
+      "callerNote": "User-Agent, Quell-IP und HTTP-Methode jedes Pings werden erfasst und auf der Detailseite des jeweiligen Ergebnisses angezeigt.",
+      "regenerate": "Erneuern",
+      "regenerateTitle": "Ping-Token erneuern?",
+      "regenerateDescription": "Dadurch wird die aktuelle Ping-URL sofort ungültig — alles, was noch dorthin sendet, schlägt sofort fehl. Aktualisiere deinen Heartbeat-Sender direkt nach der Bestätigung mit der neuen URL.",
+      "regenerateConfirm": "Token erneuern",
+      "regenerating": "Wird erneuert…",
+      "regenerated": "Ping-Token erneuert",
+      "regenerateFailed": "Ping-Token konnte nicht erneuert werden"
     },
     "email": {
       "title": "E-Mail-Endpunkt",
