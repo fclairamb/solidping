@@ -6975,7 +6975,9 @@ components:
           description: Diagnostic output (with=output)
         availabilityPct:
           type: number
-          description: Availability percentage for aggregated periods (with=availabilityPct)
+          description: >
+            Availability percentage for aggregated periods, derived from
+            successfulChecks / totalChecks × 100 (with=availabilityPct).
 
     GetOrgResultResponse:
       description: >

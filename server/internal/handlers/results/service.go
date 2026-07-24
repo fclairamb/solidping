@@ -330,8 +330,17 @@ func (s *Service) applyDetailFields(resp *ResultResponse, result *models.Result,
 }
 
 func (s *Service) applyAggregationFields(resp *ResultResponse, result *models.Result, withSet map[string]bool) {
-	if withSet["availabilitypct"] && result.AvailabilityPct != nil {
-		resp.AvailabilityPct = result.AvailabilityPct
+	// availability_pct is no longer stored; derive it from the count columns at
+	// serialization time (successful_checks / total_checks × 100), null when
+	// total_checks == 0 — matching the availability and badges handlers.
+	if withSet["availabilitypct"] && result.TotalChecks != nil && *result.TotalChecks > 0 {
+		successful := 0
+		if result.SuccessfulChecks != nil {
+			successful = *result.SuccessfulChecks
+		}
+
+		pct := float64(successful) * 100.0 / float64(*result.TotalChecks)
+		resp.AvailabilityPct = &pct
 	}
 
 	if withSet["totalchecks"] && result.TotalChecks != nil {

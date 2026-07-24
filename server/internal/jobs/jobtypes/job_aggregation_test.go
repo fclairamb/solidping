@@ -249,10 +249,8 @@ func TestAggregateResults_RawData(t *testing.T) {
 
 	require.NotNil(t, compacted.SuccessfulChecks)
 	assert.Equal(t, 2, *compacted.SuccessfulChecks)
-
-	require.NotNil(t, compacted.AvailabilityPct)
-	expectedAvailability := float64(2) * 100.0 / float64(3) // 66.67%
-	assert.InDelta(t, expectedAvailability, *compacted.AvailabilityPct, 0.01)
+	// availability_pct is no longer stored; it derives from the counts above
+	// (2/3 = 66.67%) at read time.
 
 	// Rollup rows no longer copy the last raw output blob (storage trim): the
 	// hour row's output is left empty like day/month rows.
@@ -288,13 +286,12 @@ func TestAggregateResults_DurationAvgWeighted(t *testing.T) {
 		dAvg := avg
 		tc := total
 		sc := total
-		avail := 100.0
 
 		return &models.Result{
 			UID: uuid.Must(uuid.NewV7()).String(), OrganizationUID: orgUID, CheckUID: checkUID,
 			Region: &region, PeriodType: "hour", Status: &statusUp,
 			Duration: &avg, DurationMin: &dMin, DurationMax: &dMax, DurationP95: &dP95, DurationAvg: &dAvg,
-			TotalChecks: &tc, SuccessfulChecks: &sc, AvailabilityPct: &avail,
+			TotalChecks: &tc, SuccessfulChecks: &sc,
 			PeriodStart: start, Output: models.JSONMap{},
 		}
 	}
@@ -331,13 +328,12 @@ func TestAggregateResults_DurationAvgNilWhenNoDurations(t *testing.T) {
 		dMin := float32(0)
 		tc := total
 		sc := total
-		avail := 100.0
 
 		return &models.Result{
 			UID: uuid.Must(uuid.NewV7()).String(), OrganizationUID: orgUID, CheckUID: checkUID,
 			Region: &region, PeriodType: "hour", Status: &statusUp,
 			DurationMin: &dMin, DurationAvg: nil,
-			TotalChecks: &tc, SuccessfulChecks: &sc, AvailabilityPct: &avail,
+			TotalChecks: &tc, SuccessfulChecks: &sc,
 			PeriodStart: start, Output: models.JSONMap{},
 		}
 	}
@@ -516,11 +512,8 @@ func TestAggregateResults_ExcludesNonDataStatuses(t *testing.T) {
 
 	require.NotNil(t, compacted.SuccessfulChecks)
 	assert.Equal(t, 2, *compacted.SuccessfulChecks)
-
-	// Availability = 2/3 = 66.67%
-	require.NotNil(t, compacted.AvailabilityPct)
-	expectedAvailability := float64(2) * 100.0 / float64(3)
-	assert.InDelta(t, expectedAvailability, *compacted.AvailabilityPct, 0.01)
+	// Availability (2/3 = 66.67%) is derived from these counts at read time and
+	// is no longer stored on the row.
 }
 
 func TestAggregateMetrics_Min(t *testing.T) {

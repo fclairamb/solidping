@@ -118,10 +118,11 @@ type Result struct {
 	Metrics   JSONMap  `bun:"metrics,type:jsonb,nullzero"`
 	Output    JSONMap  `bun:"output,type:jsonb,nullzero"`
 
-	// Aggregated fields (period_type = 'hour', 'day', 'month', 'year')
+	// Aggregated fields (period_type = 'hour', 'day', 'month', 'year').
+	// availability_pct is intentionally absent: it is derived at read time from
+	// successful_checks / total_checks rather than stored (spec 2026-07-24-02).
 	TotalChecks      *int     `bun:"total_checks"`
 	SuccessfulChecks *int     `bun:"successful_checks"`
-	AvailabilityPct  *float64 `bun:"availability_pct"`
 	DurationMin      *float32 `bun:"duration_min"`
 	DurationMax      *float32 `bun:"duration_max"`
 	DurationP95      *float32 `bun:"duration_p95"`

@@ -552,10 +552,10 @@ func aggregateResults(
 		}
 	}
 
-	// Calculate final metrics
-	avgDuration, p95Duration, availabilityPct := calculateFinalMetrics(
-		state.isRawData, state.durations, state.totalDuration, state.totalChecks,
-		state.successCount, state.availabilitySum, results,
+	// Calculate final metrics. Availability is no longer stored — it is derived
+	// at read time from successful_checks / total_checks.
+	avgDuration, p95Duration := calculateFinalMetrics(
+		state.isRawData, state.durations, state.totalDuration, results,
 	)
 
 	// Calculate dominant status (most frequent, ties broken by higher status number)
@@ -569,7 +569,7 @@ func aggregateResults(
 
 	// Build and return aggregated result
 	return buildAggregatedResult(results, targetPeriodType, periodStart, periodEnd, state,
-		avgDuration, p95Duration, availabilityPct, dominantStatus, durationAvg)
+		avgDuration, p95Duration, dominantStatus, durationAvg)
 }
 
 // resolveDurationAvg returns the duration_avg to persist for the aggregated row.
@@ -980,7 +980,6 @@ func processAggregatedResult(
 	statusCounts := state.statusCounts
 	totalChecks := &state.totalChecks
 	successCount := &state.successCount
-	availabilitySum := &state.availabilitySum
 
 	if result.Duration != nil {
 		*totalDuration += *result.Duration
@@ -1024,24 +1023,20 @@ func processAggregatedResult(
 	if result.SuccessfulChecks != nil {
 		*successCount += *result.SuccessfulChecks
 	}
-	if result.AvailabilityPct != nil {
-		*availabilitySum += *result.AvailabilityPct
-	}
 }
 
 // aggregationState holds the state during result aggregation.
 type aggregationState struct {
-	isRawData       bool
-	totalDuration   float32
-	minDuration     float32
-	maxDuration     float32
-	maxStatus       int
-	statusCounts    map[int]int // Track count of each status for dominant calculation
-	successCount    int
-	totalChecks     int
-	durations       []float32
-	workerUIDs      map[string]bool
-	availabilitySum float64
+	isRawData     bool
+	totalDuration float32
+	minDuration   float32
+	maxDuration   float32
+	maxStatus     int
+	statusCounts  map[int]int // Track count of each status for dominant calculation
+	successCount  int
+	totalChecks   int
+	durations     []float32
+	workerUIDs    map[string]bool
 
 	// durationAvg tracks the total_checks-weighted average duration across
 	// children for hour/day/month rollups. For raw data the average is computed
@@ -1139,7 +1134,6 @@ func buildAggregatedResult(
 	periodStart, periodEnd time.Time,
 	state *aggregationState,
 	avgDuration, p95Duration float32,
-	availabilityPct float64,
 	dominantStatus int,
 	durationAvg *float32,
 ) *models.Result {
@@ -1175,7 +1169,9 @@ func buildAggregatedResult(
 		DurationAvg:      durationAvg,
 		TotalChecks:      &totalChecksInt,
 		SuccessfulChecks: &successfulChecksInt,
-		AvailabilityPct:  &availabilityPct,
+		// availability_pct is intentionally not stored: it is derived at read time
+		// from successful_checks / total_checks (handlers/results, availability,
+		// badges).
 		// Output is intentionally left nil: rollup rows no longer copy the last
 		// raw output blob (it lives 7× longer on an hour row than on the raw
 		// rows). Recent-detail views read raw rows for output. Day/month rows
@@ -1191,22 +1187,20 @@ func calculateFinalMetrics(
 	isRawData bool,
 	durations []float32,
 	totalDuration float32,
-	totalChecks, successCount int,
-	availabilitySum float64,
 	results []*models.Result,
-) (float32, float32, float64) {
+) (float32, float32) {
 	if isRawData {
-		return calculateRawMetrics(durations, totalDuration, totalChecks, successCount)
+		return calculateRawMetrics(durations, totalDuration)
 	}
-	return calculateAggregatedMetrics(totalDuration, availabilitySum, results)
+	return calculateAggregatedMetrics(totalDuration, results)
 }
 
-// calculateRawMetrics computes metrics from raw data.
+// calculateRawMetrics computes duration metrics from raw data. Availability is
+// no longer computed here — it is derived at read time from the count columns.
 func calculateRawMetrics(
-	durations []float32, totalDuration float32, totalChecks, successCount int,
-) (float32, float32, float64) {
+	durations []float32, totalDuration float32,
+) (float32, float32) {
 	var avgDuration, p95Duration float32
-	var availabilityPct float64
 
 	if len(durations) > 0 {
 		avgDuration = totalDuration / float32(len(durations))
@@ -1220,23 +1214,17 @@ func calculateRawMetrics(
 		p95Duration = durations[p95Index]
 	}
 
-	if totalChecks > 0 {
-		availabilityPct = float64(successCount) * 100.0 / float64(totalChecks)
-	}
-
-	return avgDuration, p95Duration, availabilityPct
+	return avgDuration, p95Duration
 }
 
-// calculateAggregatedMetrics computes metrics from aggregated data.
+// calculateAggregatedMetrics computes duration metrics from aggregated data.
 func calculateAggregatedMetrics(
-	totalDuration float32, availabilitySum float64, results []*models.Result,
-) (float32, float32, float64) {
+	totalDuration float32, results []*models.Result,
+) (float32, float32) {
 	var avgDuration, p95Duration float32
-	var availabilityPct float64
 
 	if len(results) > 0 {
 		avgDuration = totalDuration / float32(len(results))
-		availabilityPct = availabilitySum / float64(len(results))
 	}
 
 	// For p95, we approximate by averaging the p95 values
@@ -1252,5 +1240,5 @@ func calculateAggregatedMetrics(
 		p95Duration = p95Sum / float32(p95Count)
 	}
 
-	return avgDuration, p95Duration, availabilityPct
+	return avgDuration, p95Duration
 }
