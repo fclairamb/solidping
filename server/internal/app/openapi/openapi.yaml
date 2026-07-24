@@ -1062,6 +1062,37 @@ paths:
         "422":
           $ref: "#/components/responses/ValidationError"
 
+  /api/v1/orgs/{org}/checks/{checkUid}/rotate-token:
+    post:
+      tags: [Checks]
+      summary: Rotate a heartbeat check's ping token
+      description: >-
+        Mints a fresh ping token for a heartbeat check (heartbeat checks
+        only) and persists it, invalidating every previously issued ping URL
+        immediately — unlike webhook signing-secret rotation, there is no
+        grace period, since heartbeat pings are frequent and the operator is
+        expected to update the sender right away. Returns 400 for
+        non-heartbeat checks.
+      operationId: rotateHeartbeatToken
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+      responses:
+        "200":
+          description: Token rotated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Check"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/dependencies:
     get:
       tags: [Checks]
