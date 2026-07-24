@@ -1172,7 +1172,6 @@ func buildAggregatedResult(
 
 	totalChecksInt := state.totalChecks
 	successfulChecksInt := state.successCount
-	lastForStatus := true
 
 	return &models.Result{
 		UID:              uuid.Must(uuid.NewV7()).String(),
@@ -1194,7 +1193,6 @@ func buildAggregatedResult(
 		AvailabilityPct:  &availabilityPct,
 		Output:           state.lastOutput,
 		Metrics:          aggregatedMetrics,
-		LastForStatus:    &lastForStatus,
 		CreatedAt:        time.Now(),
 	}
 }

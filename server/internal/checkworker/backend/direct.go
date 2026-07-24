@@ -206,7 +206,6 @@ func (b *DirectBackend) SubmitResult(
 
 	status := req.Status
 	duration := req.Duration
-	lastForStatus := true
 	result := &models.Result{
 		UID:             resultUID.String(),
 		OrganizationUID: job.OrganizationUID,
@@ -220,7 +219,6 @@ func (b *DirectBackend) SubmitResult(
 		Metrics:         models.JSONMap(req.Metrics),
 		Output:          models.JSONMap(req.Output),
 		CreatedAt:       time.Now(),
-		LastForStatus:   &lastForStatus,
 	}
 
 	saveStart := time.Now()

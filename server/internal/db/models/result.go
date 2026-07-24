@@ -112,12 +112,11 @@ type Result struct {
 	Region          *string    `bun:"region"`
 
 	// Raw result fields (period_type = 'raw')
-	WorkerUID     *string  `bun:"worker_uid"`
-	Status        *int     `bun:"status"`
-	Duration      *float32 `bun:"duration"`
-	Metrics       JSONMap  `bun:"metrics,type:jsonb,nullzero"`
-	Output        JSONMap  `bun:"output,type:jsonb,nullzero"`
-	LastForStatus *bool    `bun:"last_for_status"`
+	WorkerUID *string  `bun:"worker_uid"`
+	Status    *int     `bun:"status"`
+	Duration  *float32 `bun:"duration"`
+	Metrics   JSONMap  `bun:"metrics,type:jsonb,nullzero"`
+	Output    JSONMap  `bun:"output,type:jsonb,nullzero"`
 
 	// Aggregated fields (period_type = 'hour', 'day', 'month', 'year')
 	TotalChecks      *int     `bun:"total_checks"`

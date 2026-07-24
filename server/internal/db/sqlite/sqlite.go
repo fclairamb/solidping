@@ -1115,7 +1115,6 @@ func (s *Service) CreateCheck(ctx context.Context, check *models.Check) error {
 
 		// Create initial result to mark check creation
 		initialStatus := int(models.ResultStatusCreated)
-		lastForStatus := true
 		initialResult := models.Result{
 			UID:             uuid.Must(uuid.NewV7()).String(),
 			OrganizationUID: check.OrganizationUID,
@@ -1126,7 +1125,6 @@ func (s *Service) CreateCheck(ctx context.Context, check *models.Check) error {
 			Metrics:         make(models.JSONMap),
 			Output:          models.JSONMap{"message": "Check created"},
 			CreatedAt:       time.Now(),
-			LastForStatus:   &lastForStatus,
 		}
 		if _, err := tx.NewInsert().Model(&initialResult).Exec(ctx); err != nil {
 			return err
@@ -1811,23 +1809,9 @@ func upsertAggregatedResultTx(ctx context.Context, tx bun.Tx, result *models.Res
 }
 
 func (s *Service) SaveResultWithStatusTracking(ctx context.Context, result *models.Result) error {
-	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		// Clear previous last_for_status for this check+status combination
-		_, err := tx.NewUpdate().
-			Model((*models.Result)(nil)).
-			Set("last_for_status = NULL").
-			Where("check_uid = ?", result.CheckUID).
-			Where("status = ?", result.Status).
-			Where("last_for_status = true").
-			Exec(ctx)
-		if err != nil {
-			return err
-		}
+	_, err := s.db.NewInsert().Model(result).Exec(ctx)
 
-		// Insert new result with last_for_status = true
-		_, err = tx.NewInsert().Model(result).Exec(ctx)
-		return err
-	})
+	return err
 }
 
 func (s *Service) GetResult(ctx context.Context, uid string) (*models.Result, error) {

@@ -256,8 +256,9 @@ type Service interface {
 	CompactResults(
 		ctx context.Context, filter *models.ListResultsFilter, aggregate models.AggregateResultsFunc,
 	) (models.CompactResultsOutcome, error)
-	// SaveResultWithStatusTracking atomically clears old last_for_status for the check+status
-	// combination and inserts a new result with last_for_status = true.
+	// SaveResultWithStatusTracking inserts a single new result row. (It formerly
+	// also maintained the now-removed last_for_status flag; the name is kept to
+	// avoid churn across its callers.)
 	SaveResultWithStatusTracking(ctx context.Context, result *models.Result) error
 
 	// Incident operations
