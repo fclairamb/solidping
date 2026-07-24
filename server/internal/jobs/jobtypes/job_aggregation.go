@@ -542,10 +542,9 @@ func aggregateResults(
 		if state.isRawData {
 			processRawResult(
 				result, &state.totalDuration, &state.durations, &state.minDuration, &state.maxDuration,
-				&state.maxStatus, state.statusCounts, &state.successCount, &state.totalChecks,
-				&state.lastPeriodStart, &state.lastOutput)
+				&state.maxStatus, state.statusCounts, &state.successCount, &state.totalChecks)
 		} else {
-			processAggregatedResult(result, state, &state.lastOutput)
+			processAggregatedResult(result, state)
 		}
 
 		if result.WorkerUID != nil {
@@ -934,8 +933,6 @@ func processRawResult(
 	maxStatus *int,
 	statusCounts map[int]int,
 	successCount, totalChecks *int,
-	lastPeriodStart *time.Time,
-	lastOutput *models.JSONMap,
 ) {
 	// Skip non-data statuses (initial, running) — they are lifecycle markers, not measurements
 	if result.Status != nil && models.ResultStatus(*result.Status).IsLifecycleMarker() {
@@ -969,19 +966,12 @@ func processRawResult(
 	}
 
 	*totalChecks++
-
-	// Track last output (by period_start)
-	if result.PeriodStart.After(*lastPeriodStart) {
-		*lastPeriodStart = result.PeriodStart
-		*lastOutput = result.Output
-	}
 }
 
 // processAggregatedResult processes a single aggregated result and updates aggregation state.
 func processAggregatedResult(
 	result *models.Result,
 	state *aggregationState,
-	lastOutput *models.JSONMap,
 ) {
 	totalDuration := &state.totalDuration
 	minDuration := &state.minDuration
@@ -1037,9 +1027,6 @@ func processAggregatedResult(
 	if result.AvailabilityPct != nil {
 		*availabilitySum += *result.AvailabilityPct
 	}
-
-	// For aggregated data, output is not meaningful
-	*lastOutput = make(models.JSONMap)
 }
 
 // aggregationState holds the state during result aggregation.
@@ -1053,8 +1040,6 @@ type aggregationState struct {
 	successCount    int
 	totalChecks     int
 	durations       []float32
-	lastOutput      models.JSONMap
-	lastPeriodStart time.Time
 	workerUIDs      map[string]bool
 	availabilitySum float64
 
@@ -1191,9 +1176,13 @@ func buildAggregatedResult(
 		TotalChecks:      &totalChecksInt,
 		SuccessfulChecks: &successfulChecksInt,
 		AvailabilityPct:  &availabilityPct,
-		Output:           state.lastOutput,
-		Metrics:          aggregatedMetrics,
-		CreatedAt:        time.Now(),
+		// Output is intentionally left nil: rollup rows no longer copy the last
+		// raw output blob (it lives 7× longer on an hour row than on the raw
+		// rows). Recent-detail views read raw rows for output. Day/month rows
+		// already carried no output; hour rows now match.
+		Output:    nil,
+		Metrics:   aggregatedMetrics,
+		CreatedAt: time.Now(),
 	}
 }
 

@@ -254,8 +254,9 @@ func TestAggregateResults_RawData(t *testing.T) {
 	expectedAvailability := float64(2) * 100.0 / float64(3) // 66.67%
 	assert.InDelta(t, expectedAvailability, *compacted.AvailabilityPct, 0.01)
 
-	// Verify last output is kept
-	assert.Equal(t, models.JSONMap{"msg": "error"}, compacted.Output)
+	// Rollup rows no longer copy the last raw output blob (storage trim): the
+	// hour row's output is left empty like day/month rows.
+	assert.Empty(t, compacted.Output)
 
 	// Verify worker UID (all same, so should be preserved)
 	require.NotNil(t, compacted.WorkerUID)
