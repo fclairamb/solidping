@@ -44,7 +44,8 @@ entry). Deltas since the 2026-05/06 capture:
   observability platform (Linux + Docker + ESP32/IoT metrics, managed Grafana
   built-in) — lower direct-uptime overlap now.
 - **Peekaping** stable at v0.0.46 (2026-04-10), ~1.1k★, MIT, ~14 monitor types /
-  20+ alert channels — momentum roughly flat.
+  20+ alert channels — momentum roughly flat. *(2026-07-26: still v0.0.46 — the
+  flat momentum is now a ~3.5-month release gap; see the per-vendor entry.)*
 - **OneUptime** pricing captured: Free / **Growth $22/mo** / **Scale $99/mo**
   (SSO) / Enterprise, plus PAYG **$1/active-monitor/mo**.
 - **Updu** confirmed live (single Go binary, ~19 monitor types, GitOps config).
@@ -78,6 +79,24 @@ workers + built-in on-call, none of which Peekaping matches yet; Peekaping's edg
 is 1.1k★ of momentum, a polished site/demo, and pluggable storage backends.
 *Watch:* whether it ships distributed probing or a hosted/paid tier. Surfaced
 2026-07-02 via @selfhosted_bot trending repost (bot-announced → intel, not a lead).
+
+**Update 2026-07-26 — release cadence has stalled.** Verified against the GitHub
+API on 2026-07-26:
+
+| Fact | Value |
+|---|---|
+| Last release | **0.0.46, 2026-04-10** (0.0.45 was 2025-12-21) |
+| Commits since | 2 chores on **2026-05-24** (`robots.txt`, `.tool-versions.template`) |
+| Last push (any branch) | 2026-05-24 |
+| Open issues | **90**, incl. unanswered bug reports (#272, zombie processes on Tang endpoints, open since 2026-06-03, 0 replies) |
+| Stars | 1,139 → **1,157** (still climbing) |
+
+So: ~3.5 months without a functional release, ~2 months without any commit, while
+inbound interest keeps growing. Caveats before anyone leans on this — it is a
+single-maintainer project, a quiet stretch is not a shutdown, and there are ~10
+open feature branches (`feat/incidents`, `feature/ha`, `feat/teams`, …) that may
+mean work is happening off the default branch without being pushed. Re-verify the
+release feed before treating this as durable.
 
 ### OneUptime — https://oneuptime.com
 Open-source observability platform (uptime + APM + status pages + incident mgmt +
@@ -271,3 +290,14 @@ projects, content-farm SEO, and paid templates. Not head-to-head rivals.
   table-stakes. SolidPing's edge holds on 32 check types (vs HTTP-only), OSS
   self-host (vs SaaS-only + hosted MCP), and built-in on-call. Watch: paid pricing
   and whether it adds non-HTTP check types.
+- **Watchpost** (github.com/brod-dev/watchpost) — "Tiny self-hosted uptime monitor
+  — one Go binary, live dashboard, no database." Notable only because it reuses
+  SolidPing's own single-binary hook; there is no product behind it. 0★, 0 forks,
+  no license, no homepage, created and last pushed 2026-07-11 (~14 minutes of
+  commits). Non-threat; recorded so the name is not re-triaged. Surfaced 2026-07-26.
+- **yoself** (codeberg.org/nykula/yoself) — drop-in `compose.yaml` service that
+  reads the Podman socket and publishes a container status page, configured by a
+  few env vars. Adjacent, not head-to-head: host-local container health only, no
+  external probing, no protocol breadth, no alert routing. Overlaps on the
+  "self-hosted status page" keyword alone. Surfaced 2026-07-26 via author
+  self-promo on lemmy.world /c/selfhosted.
