@@ -15,6 +15,7 @@ import (
 const (
 	portResultsProjection = 15462
 	portResultsMigration  = 15463
+	portResultsSavePath   = 15464
 )
 
 // newTier1ServicePG starts embedded Postgres and returns a ready Service,
@@ -165,4 +166,83 @@ func TestMigration009ResultsTrimUpDown_Postgres(t *testing.T) {
 	r.NotContains(cols, "last_for_status")
 	r.NotContains(cols, "availability_pct")
 	r.False(indexExists("idx_results_last_for_status"))
+}
+
+// TestSaveResultWithStatusTracking_SingleInsert_Postgres proves the result save
+// path is exactly one INSERT with no companion UPDATE (spec 2026-07-24-02 §1),
+// which is where half the write-side bloat of the raw tier came from.
+//
+// The proof is a statement-level BEFORE UPDATE trigger on `results` that raises:
+// it fires on any UPDATE statement against the table, even one matching zero
+// rows, so re-introducing the old flag-clearing UPDATE turns the save into an
+// error instead of a silently-passing test.
+//
+//nolint:paralleltest // embedded-postgres tests run sequentially in this package
+func TestSaveResultWithStatusTracking_SingleInsert_Postgres(t *testing.T) {
+	ctx := t.Context()
+	r := require.New(t)
+
+	s := newTier1ServicePG(t, portResultsSavePath)
+
+	org := models.NewOrganization("save-path-org-pg", "Save Path Org PG")
+	r.NoError(s.CreateOrganization(ctx, org))
+	check := models.NewCheck(org.UID, "save-path-check-pg", "http")
+	r.NoError(s.CreateCheck(ctx, check))
+
+	_, err := s.db.ExecContext(ctx, `
+		create function results_forbid_update() returns trigger as $$
+		begin
+			raise exception 'unexpected UPDATE on results';
+		end;
+		$$ language plpgsql;
+
+		create trigger results_no_update before update on results
+			for each statement execute function results_forbid_update();
+	`)
+	r.NoError(err)
+
+	base := time.Now().Add(time.Hour)
+
+	first := models.NewResult(org.UID, check.UID, models.ResultStatusDown, 10)
+	first.PeriodStart = base
+	r.NoError(s.SaveResultWithStatusTracking(ctx, first),
+		"the save path must be a plain INSERT (no UPDATE on results)")
+
+	// A second save with the *same* status is the case the old flag-clearing
+	// UPDATE targeted.
+	second := models.NewResult(org.UID, check.UID, models.ResultStatusDown, 20)
+	second.PeriodStart = base.Add(time.Minute)
+	r.NoError(s.SaveResultWithStatusTracking(ctx, second),
+		"a second same-status save must not rewrite its predecessor")
+
+	resp, err := s.ListResults(ctx, &models.ListResultsFilter{
+		OrganizationUID: org.UID,
+		CheckUIDs:       []string{check.UID},
+		PeriodTypes:     []string{models.PeriodTypeRaw},
+		Statuses:        []int{int(models.ResultStatusDown)},
+		Limit:           10,
+	})
+	r.NoError(err)
+	r.Len(resp.Results, 2, "both saved results must persist")
+
+	byUID := make(map[string]*models.Result, len(resp.Results))
+	for _, row := range resp.Results {
+		byUID[row.UID] = row
+	}
+
+	stored := byUID[first.UID]
+	r.NotNil(stored, "the first result must still be there")
+	r.NotNil(stored.Status)
+	r.Equal(int(models.ResultStatusDown), *stored.Status)
+	r.NotNil(stored.Duration)
+	r.InDelta(10, *stored.Duration, 0.001)
+	r.NotNil(byUID[second.UID], "the second result must be there too")
+
+	// Positive control: the guard really does fire on an UPDATE against results,
+	// so the two clean saves above are evidence and not a no-op.
+	_, err = s.db.ExecContext(ctx, "update results set status = status where uid = ?", first.UID)
+	r.Error(err, "the UPDATE guard must fire — otherwise this test proves nothing")
+
+	_, err = s.db.ExecContext(ctx, "drop trigger results_no_update on results")
+	r.NoError(err)
 }
