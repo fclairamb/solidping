@@ -669,7 +669,6 @@ func setupBadgesMultiTierData(ctx context.Context, t *testing.T, ts *TestServer)
 	// Hour-aggregated result: 10 total, 8 up, avg 120ms — also in yesterday's day bucket.
 	total := 10
 	successful := 8
-	availPct := 80.0
 	avgDur := float32(120.0)
 	dayBucketEnd := yesterday.Add(24 * time.Hour)
 	hourResult := &models.Result{
@@ -682,7 +681,6 @@ func setupBadgesMultiTierData(ctx context.Context, t *testing.T, ts *TestServer)
 		PeriodEnd:        &dayBucketEnd,
 		TotalChecks:      &total,
 		SuccessfulChecks: &successful,
-		AvailabilityPct:  &availPct,
 		DurationAvg:      &avgDur,
 		CreatedAt:        now,
 	}

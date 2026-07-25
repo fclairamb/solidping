@@ -151,7 +151,6 @@ func aggResult(
 	uid string, start time.Time, end *time.Time, periodType string,
 	total, successful int, region string,
 ) *models.Result {
-	availPct := float64(successful) / float64(total) * 100
 	reg := region
 
 	return &models.Result{
@@ -164,7 +163,6 @@ func aggResult(
 		PeriodEnd:        end,
 		TotalChecks:      &total,
 		SuccessfulChecks: &successful,
-		AvailabilityPct:  &availPct,
 		CreatedAt:        time.Now().UTC(),
 	}
 }

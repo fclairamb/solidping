@@ -148,7 +148,6 @@ func pgAgg(
 	orgUID, checkUID, region, periodType string,
 	start, end time.Time, total, successful int,
 ) *models.Result {
-	availPct := float64(successful) / float64(total) * 100
 	reg := region
 	e := end
 
@@ -162,7 +161,6 @@ func pgAgg(
 		PeriodEnd:        &e,
 		TotalChecks:      &total,
 		SuccessfulChecks: &successful,
-		AvailabilityPct:  &availPct,
 		CreatedAt:        time.Now().UTC(),
 	}
 }
