@@ -1833,7 +1833,16 @@ func (s *Service) ListResults(
 ) (*models.ListResultsResponse, error) {
 	var results []*models.Result
 
-	query := applyResultsFilter(s.db.NewSelect().Model(&results), filter)
+	query := s.db.NewSelect().Model(&results)
+
+	// Count-only readers opt out of the two JSON blob columns entirely (spec
+	// 2026-07-24-02 §5): they are by far the widest part of a results row and
+	// nothing in those code paths reads them.
+	if filter.SkipBlobs {
+		query = query.ExcludeColumn("metrics", "output")
+	}
+
+	query = applyResultsFilter(query, filter)
 
 	if err := query.Scan(ctx); err != nil {
 		return nil, err

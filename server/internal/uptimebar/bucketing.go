@@ -248,6 +248,9 @@ func BucketAvailability(
 		PeriodTypes:      []string{models.PeriodTypeRaw, models.PeriodTypeHour, models.PeriodTypeDay},
 		PeriodStartAfter: &start,
 		Limit:            limit,
+		// Buckets are built from status/counts only, so the metrics/output blobs
+		// are dead weight on a query bounded by safetyRowCap (spec 2026-07-24-02 §5).
+		SkipBlobs: true,
 	}
 
 	resp, err := db.ListResults(ctx, filter)

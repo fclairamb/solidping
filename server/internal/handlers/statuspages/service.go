@@ -1176,6 +1176,9 @@ func (s *Service) fetchRecentResults(
 		OrganizationUID: orgUID,
 		CheckUIDs:       checkUIDs,
 		Limit:           responseTimeLimit * len(checkUIDs),
+		// The response-time chart plots duration/status only, so the
+		// metrics/output blobs never reach the page (spec 2026-07-24-02 §5).
+		SkipBlobs: true,
 	}
 
 	recentResp, err := s.db.ListResults(ctx, recentFilter)

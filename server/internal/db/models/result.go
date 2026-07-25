@@ -186,6 +186,15 @@ type ListResultsFilter struct {
 
 	// Include check info (for joining with checks table to get slug/name)
 	IncludeCheckInfo bool // Optional: whether to join with checks table
+
+	// SkipBlobs, when true, drops the two JSON blob columns (`metrics`,
+	// `output`) from the SELECT projection: the scanned rows come back with
+	// Metrics and Output nil regardless of what is stored. Only for consumers
+	// that need status/counts/duration and never render a blob (uptime bars,
+	// badges, status-page recent results) — it trims per-request I/O on the
+	// largest table in the system (spec 2026-07-24-02 §5). Default (false)
+	// keeps the full row, so every other reader is unaffected.
+	SkipBlobs bool
 }
 
 // ListResultsResponse wraps results with pagination info.
