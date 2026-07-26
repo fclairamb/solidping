@@ -753,6 +753,51 @@ type Service interface {
 	// SetAppSetting creates or updates a key/value pair (upsert).
 	SetAppSetting(ctx context.Context, key, value string) error
 
+	// --- TLS asset storage (spec 2026-07-26-01) ---
+	//
+	// Backing store for the certmagic.Storage implementation in
+	// internal/tlsedge: ACME account keys, certificates, PRIVATE KEYS, OCSP
+	// staples and distributed-challenge tokens. Keys are certmagic's own
+	// path-like namespace (slash-separated, no leading/trailing slash).
+	//
+	// SECURITY: values contain private keys. Only internal/tlsedge may call
+	// these; never surface them through an API, export, or debug endpoint.
+
+	// TLSStorageStore upserts an asset and refreshes its modification time.
+	TLSStorageStore(ctx context.Context, key string, value []byte) error
+
+	// TLSStorageLoad returns the stored bytes, or sql.ErrNoRows (wrapped) when
+	// the key does not exist.
+	TLSStorageLoad(ctx context.Context, key string) ([]byte, error)
+
+	// TLSStorageDelete removes the key and every key nested under it
+	// ("<key>/..."). Deleting a missing key is not an error.
+	TLSStorageDelete(ctx context.Context, key string) error
+
+	// TLSStorageExists reports whether the key exists as a stored value.
+	TLSStorageExists(ctx context.Context, key string) (bool, error)
+
+	// TLSStorageList returns value-free metadata for the key itself and every
+	// key nested under it, sorted by key. An empty prefix lists everything.
+	TLSStorageList(ctx context.Context, prefix string) ([]models.TLSStorageKeyInfo, error)
+
+	// TLSStorageStat returns metadata for one key, or sql.ErrNoRows (wrapped)
+	// when it does not exist.
+	TLSStorageStat(ctx context.Context, key string) (models.TLSStorageKeyInfo, error)
+
+	// TLSStorageAcquireLock atomically claims the named lock for owner until
+	// expiresAt, succeeding when the lock is free or its current lease has
+	// expired. Returns false (not an error) when a live holder owns it.
+	TLSStorageAcquireLock(ctx context.Context, key, owner string, expiresAt time.Time) (bool, error)
+
+	// TLSStorageRefreshLock extends the lease of a lock this owner still holds.
+	// Returns false when the lock was lost, so the caller stops refreshing.
+	TLSStorageRefreshLock(ctx context.Context, key, owner string, expiresAt time.Time) (bool, error)
+
+	// TLSStorageReleaseLock drops a lock this owner holds. A no-op when the
+	// lock is already gone or was taken over.
+	TLSStorageReleaseLock(ctx context.Context, key, owner string) error
+
 	// --- EmailSuppressions (spec 2026-07-05-10, D4) ---
 
 	// CreateEmailSuppression inserts a new suppression row.

@@ -1969,6 +1969,49 @@ func (m *mockDBService) SetAppSetting(_ context.Context, _, _ string) error {
 	panic("not implemented")
 }
 
+// TLS asset storage (spec 2026-07-26-01) — never exercised by notification
+// tests; present only to satisfy db.Service.
+
+func (m *mockDBService) TLSStorageStore(_ context.Context, _ string, _ []byte) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) TLSStorageLoad(_ context.Context, _ string) ([]byte, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) TLSStorageDelete(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) TLSStorageExists(_ context.Context, _ string) (bool, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) TLSStorageList(_ context.Context, _ string) ([]models.TLSStorageKeyInfo, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) TLSStorageStat(_ context.Context, _ string) (models.TLSStorageKeyInfo, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) TLSStorageAcquireLock(
+	_ context.Context, _, _ string, _ time.Time,
+) (bool, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) TLSStorageRefreshLock(
+	_ context.Context, _, _ string, _ time.Time,
+) (bool, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) TLSStorageReleaseLock(_ context.Context, _, _ string) error {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CreateEmailSuppression(_ context.Context, _ *models.EmailSuppression) error {
 	panic("not implemented")
 }
