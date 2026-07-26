@@ -148,6 +148,33 @@ test.describe("Slack destination picker", () => {
 });
 
 test.describe("Notification Channels", () => {
+  test("create a Twilio channel via the form", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    await deleteAllConnections(page, token);
+
+    await page.goto("orgs/test/integrations/new?type=twilio");
+    await page.waitForLoadState("networkidle");
+
+    // The Twilio-specific panel renders.
+    await expect(page.getByTestId("twilio-panel")).toBeVisible();
+
+    await page
+      .getByTestId("twilio-account-sid")
+      .fill("AC00000000000000000000000000000001");
+    await page.locator("#ch-twilio-token").fill("test-auth-token");
+    await page.getByTestId("twilio-from-number").fill("+15551239999");
+
+    await page.getByRole("button", { name: /create integration/i }).click();
+
+    // On success the app navigates to the new integration's detail page.
+    await page.waitForURL((url) =>
+      /\/orgs\/test\/integrations\/[0-9a-f-]{36}$/.test(url.pathname),
+    );
+
+    await deleteAllConnections(page, token);
+  });
+
   test("create webhook channel, bind to check, unbind, delete", async ({
     authenticatedPage,
   }) => {

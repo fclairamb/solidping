@@ -151,6 +151,82 @@ func TestMigrationResultDurationAvg(t *testing.T) {
 	assert.Contains(t, colNames, "duration_avg", "duration_avg column must exist after migration 031")
 }
 
+// TestMigration009ResultsTrimUpDown proves migration 009_v0_8_0 drops the two
+// dead results columns and their partial index, that its down migration
+// restores all three, and that re-applying up drops them again (spec
+// 2026-07-24-02). Both directions run the real embedded migration files.
+func TestMigration009ResultsTrimUpDown(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	svc, err := New(ctx, Config{InMemory: true})
+	r.NoError(err)
+	t.Cleanup(func() { _ = svc.Close() })
+
+	// Initialize runs every embedded migration, 009 included.
+	r.NoError(svc.Initialize(ctx))
+
+	resultsColumns := func() []string {
+		type columnInfo struct {
+			Name string `bun:"name"`
+		}
+		var columns []columnInfo
+		r.NoError(svc.db.NewRaw("SELECT name FROM pragma_table_info('results')").Scan(ctx, &columns))
+
+		names := make([]string, 0, len(columns))
+		for _, c := range columns {
+			names = append(names, c.Name)
+		}
+
+		return names
+	}
+
+	indexExists := func(name string) bool {
+		var count int
+		r.NoError(svc.db.NewRaw(
+			"SELECT count(*) FROM sqlite_master WHERE type='index' AND name=?", name,
+		).Scan(ctx, &count))
+
+		return count == 1
+	}
+
+	execMigration := func(file string) {
+		content, readErr := migrationsFS.ReadFile(file)
+		r.NoError(readErr)
+		_, execErr := svc.db.ExecContext(ctx, string(content))
+		r.NoError(execErr, "%s must apply cleanly", file)
+	}
+
+	// Up: both columns and the partial index are gone, the rest of the table
+	// survives.
+	cols := resultsColumns()
+	r.NotContains(cols, "last_for_status", "009 up must drop results.last_for_status")
+	r.NotContains(cols, "availability_pct", "009 up must drop results.availability_pct")
+	r.False(indexExists("idx_results_last_for_status"), "009 up must drop the partial index")
+	r.Contains(cols, "total_checks", "009 must not touch the other aggregate columns")
+	r.Contains(cols, "successful_checks", "009 must not touch the other aggregate columns")
+	r.Contains(cols, "output", "009 must not touch the blob columns")
+	r.Contains(cols, "metrics", "009 must not touch the blob columns")
+
+	// Down: both columns and the index come back.
+	execMigration("migrations/009_v0_8_0.down.sql")
+
+	cols = resultsColumns()
+	r.Contains(cols, "last_for_status", "009 down must restore results.last_for_status")
+	r.Contains(cols, "availability_pct", "009 down must restore results.availability_pct")
+	r.True(indexExists("idx_results_last_for_status"), "009 down must restore the partial index")
+
+	// Up again: the round trip is repeatable.
+	execMigration("migrations/009_v0_8_0.up.sql")
+
+	cols = resultsColumns()
+	r.NotContains(cols, "last_for_status")
+	r.NotContains(cols, "availability_pct")
+	r.False(indexExists("idx_results_last_for_status"))
+}
+
 // TestMigrationDiscoveredChecks verifies the v0.2.0 migration replaces
 // discovered_hosts with discovered_checks: the host table is gone, the check
 // table and its identity index exist.

@@ -252,6 +252,9 @@ func TestBucketAvailability_MultiCheckSingleQuery(t *testing.T) {
 		lister.gotFilter.PeriodTypes,
 		"the union query spans raw+hour+day",
 	)
+	r.True(lister.gotFilter.SkipBlobs,
+		"buckets are built from status/counts, so the metrics/output blobs must be "+
+			"projected away (spec 2026-07-24-02)")
 }
 
 // TestBucketAvailability_NoChecks is a defensive guard for the empty-page case.

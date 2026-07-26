@@ -50,9 +50,10 @@ func TestAggregateAvailabilityUpAndWarningIsHundredPctDegraded(t *testing.T) {
 
 	agg := aggregateResults(results, models.PeriodTypeHour, periodStart, periodEnd)
 
-	r.NotNil(agg.AvailabilityPct)
-	r.InDelta(100.0, *agg.AvailabilityPct, 0.001,
-		"Up + Warning must yield 100%% availability (warning counts as up)")
+	// Availability (100%: warning counts as up) is derived at read time from
+	// successful_checks / total_checks, both stored on the row.
+	r.NotNil(agg.TotalChecks)
+	r.Equal(3, *agg.TotalChecks, "all three are countable")
 	r.NotNil(agg.SuccessfulChecks)
 	r.Equal(3, *agg.SuccessfulChecks, "all three count as successful")
 	r.NotNil(agg.Status)

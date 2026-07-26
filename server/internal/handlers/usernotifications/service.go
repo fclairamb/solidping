@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/webpush"
@@ -75,11 +76,26 @@ type PatchRouteRequest struct {
 // Service provides business logic for the usernotifications domain.
 type Service struct {
 	db db.Service
+	// creds decrypts the org's Twilio auth token when sending a phone
+	// verification code. May be nil in tests that don't exercise phone verify.
+	creds credentials.Service
+	// clock is injectable for deterministic verification-code expiry in tests.
+	clock func() time.Time
 }
 
-// NewService builds a service.
-func NewService(dbService db.Service) *Service {
-	return &Service{db: dbService}
+// NewService builds a service. creds may be nil when the phone verification
+// flow is not exercised (e.g. unit tests of the route/contact CRUD paths).
+func NewService(dbService db.Service, creds credentials.Service) *Service {
+	return &Service{db: dbService, creds: creds, clock: time.Now}
+}
+
+// now returns the service clock, defaulting to time.Now when unset.
+func (s *Service) now() time.Time {
+	if s.clock != nil {
+		return s.clock()
+	}
+
+	return time.Now()
 }
 
 // resolveOrgUID maps an org slug to its UID.

@@ -53,6 +53,10 @@ func WindowAvailability(
 		// so this bounds the upper edge of the window to [start, end).
 		PeriodEndBefore: &endUTC,
 		Limit:           windowQueryLimit,
+		// Availability is computed from status/counts only — never from the
+		// metrics/output blobs — and this query can pull thousands of rows per
+		// request, so skip them entirely (spec 2026-07-24-02 §5).
+		SkipBlobs: true,
 	}
 
 	resp, err := db.ListResults(ctx, filter)

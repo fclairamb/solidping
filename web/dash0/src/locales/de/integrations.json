@@ -77,6 +77,17 @@
     "pushoverToken": "App-Token",
     "opsgenieKey": "API-Schlüssel",
     "opsgenieTeam": "Team (optional)",
+    "twilioAccountSid": "Account-SID",
+    "twilioAuthToken": "Auth-Token",
+    "twilioSenderHint": "Geben Sie genau einen Absender an: eine Absendernummer oder eine Messaging-Service-SID.",
+    "twilioFromNumber": "Absendernummer (E.164)",
+    "twilioMessagingServiceSid": "Messaging-Service-SID",
+    "twilioVoiceFrom": "Sprachanruf-Absendernummer (optional)",
+    "twilioVoiceHint": "Leer lassen, um Sprachanrufe zu deaktivieren.",
+    "twilioToNumbers": "Gemeinsame Empfängernummern (optional)",
+    "twilioInvalidNumber": "Keine gültige E.164-Nummer",
+    "twilioRemoveNumber": "{{n}} entfernen",
+    "twilioToHint": "Direktkanal-Sendungen (Broadcast pro Check, Test) senden SMS an diese Nummern.",
     "slackOauthHint": "Slack-Kanäle werden über die Slack-OAuth-Installation konfiguriert. Der Bot füllt Workspace- und Kanalnamen nach Abschluss.",
     "testNeedsSave": "Speichern Sie zuerst Ihre Änderungen — der Test verwendet die gespeicherten Einstellungen."
   },
@@ -111,6 +122,7 @@
     "ntfy": "Push-Benachrichtigungen über ntfy.sh",
     "opsgenie": "Bereitschaftsdienst über Opsgenie alarmieren",
     "pushover": "Mobile Push-Benachrichtigungen über Pushover",
+    "twilio": "SMS senden und Sprachanrufe über Twilio tätigen",
     "webpush": "Browser-Benachrichtigungen auf abonnierten Geräten empfangen",
     "kubernetes": "Replikat-Gesundheit von Kubernetes-Workloads überwachen (Deployments, ReplicaSets)"
   }

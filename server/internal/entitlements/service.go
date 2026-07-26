@@ -56,6 +56,30 @@ type Service struct {
 	// immediately. Keyed by org UID.
 	limitersMu sync.Mutex
 	limiters   map[string]*tokenBucket
+
+	// Per-org hourly runaway buckets for SMS/voice, independent of the monthly
+	// entitlement cap. Keyed by "orgUID:kind".
+	runawayMu      sync.Mutex
+	runawayBuckets map[string]*hourlyBucket
+	// Runaway caps (per org per hour), config-overridable via WithRunawayCaps.
+	smsRunawayPerHour  int
+	callRunawayPerHour int
+}
+
+// Option customizes a Service at construction.
+type Option func(*Service)
+
+// WithRunawayCaps overrides the per-org hourly SMS/voice runaway caps. A
+// non-positive value leaves the default in place.
+func WithRunawayCaps(smsPerHour, callsPerHour int) Option {
+	return func(s *Service) {
+		if smsPerHour > 0 {
+			s.smsRunawayPerHour = smsPerHour
+		}
+		if callsPerHour > 0 {
+			s.callRunawayPerHour = callsPerHour
+		}
+	}
 }
 
 // NewService builds an entitlements service with the given defaults.
@@ -66,15 +90,24 @@ type Service struct {
 //
 //nolint:gocritic // defaults held by value intentionally; passing by pointer would invite mutation
 func NewService(
-	dbService db.Service, defaults Entitlements, staleAfter time.Duration,
+	dbService db.Service, defaults Entitlements, staleAfter time.Duration, opts ...Option,
 ) *Service {
-	return &Service{
-		db:         dbService,
-		defaults:   defaults,
-		staleAfter: staleAfter,
-		now:        time.Now,
-		limiters:   make(map[string]*tokenBucket),
+	svc := &Service{
+		db:                 dbService,
+		defaults:           defaults,
+		staleAfter:         staleAfter,
+		now:                time.Now,
+		limiters:           make(map[string]*tokenBucket),
+		runawayBuckets:     make(map[string]*hourlyBucket),
+		smsRunawayPerHour:  defaultSMSRunawayPerHour,
+		callRunawayPerHour: defaultCallRunawayPerHour,
 	}
+
+	for _, opt := range opts {
+		opt(svc)
+	}
+
+	return svc
 }
 
 // Resolve merges the stored row with defaults. Falls back to defaults
@@ -350,6 +383,15 @@ func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	}
 	if limits.MaxDeportedAgents != nil {
 		out.Limits.MaxDeportedAgents = limits.MaxDeportedAgents
+	}
+	if limits.MaxCustomDomains != nil {
+		out.Limits.MaxCustomDomains = limits.MaxCustomDomains
+	}
+	if limits.MaxSmsPerMonth != nil {
+		out.Limits.MaxSmsPerMonth = limits.MaxSmsPerMonth
+	}
+	if limits.MaxCallsPerMonth != nil {
+		out.Limits.MaxCallsPerMonth = limits.MaxCallsPerMonth
 	}
 
 	return out

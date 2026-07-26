@@ -148,3 +148,42 @@ func TestEntitlementsPayload_ScanMaxDeportedAgents(t *testing.T) {
 	r.True(ok)
 	r.Contains(s, `"maxDeportedAgents":9`)
 }
+
+// TestEntitlementLimits_MonthlyMessagingDecodes verifies the new SMS/voice
+// monthly caps decode through the strict UnmarshalJSON.
+func TestEntitlementLimits_MonthlyMessagingDecodes(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	var l EntitlementLimits
+	r.NoError(json.Unmarshal([]byte(`{"maxSmsPerMonth":500,"maxCallsPerMonth":50}`), &l))
+	r.NotNil(l.MaxSmsPerMonth)
+	r.Equal(500, *l.MaxSmsPerMonth)
+	r.NotNil(l.MaxCallsPerMonth)
+	r.Equal(50, *l.MaxCallsPerMonth)
+}
+
+// TestEntitlementLimits_MonthlyMessagingAbsentIsNil verifies absent keys stay
+// nil (= unlimited).
+func TestEntitlementLimits_MonthlyMessagingAbsentIsNil(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	var l EntitlementLimits
+	r.NoError(json.Unmarshal([]byte(`{"maxChecks":10}`), &l))
+	r.Nil(l.MaxSmsPerMonth)
+	r.Nil(l.MaxCallsPerMonth)
+}
+
+// TestEntitlementLimits_MonthlyMessagingRoundTrip verifies Marshal uses the
+// documented wire keys.
+func TestEntitlementLimits_MonthlyMessagingRoundTrip(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	sms, calls := 100, 20
+	data, err := json.Marshal(EntitlementLimits{MaxSmsPerMonth: &sms, MaxCallsPerMonth: &calls})
+	r.NoError(err)
+	r.Contains(string(data), `"maxSmsPerMonth":100`)
+	r.Contains(string(data), `"maxCallsPerMonth":20`)
+}

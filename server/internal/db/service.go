@@ -245,8 +245,20 @@ type Service interface {
 	) (map[string]*models.Result, error)
 	GetLastStatusChangeForChecks(ctx context.Context, checkUIDs []string) (map[string]*models.LastStatusChange, error)
 	DeleteResults(ctx context.Context, orgUID string, resultUIDs []string) (int64, error)
-	// SaveResultWithStatusTracking atomically clears old last_for_status for the check+status
-	// combination and inserts a new result with last_for_status = true.
+	// CompactResults atomically compacts one source bucket into a single
+	// aggregated row inside one transaction: it fetches the source rows matching
+	// filter, computes the rollup via aggregate (pure Go), upserts the rollup
+	// idempotently on the bucket key, and deletes exactly the source UIDs
+	// aggregate selected. On ANY error the whole transaction rolls back, so the
+	// bucket stays fully raw and a later run retries cleanly — never a rollup+raw
+	// hybrid (spec 2026-07-22-03). A marker-only bucket (aggregate returns no
+	// sourceUIDs) commits without writing and reports Compacted=false.
+	CompactResults(
+		ctx context.Context, filter *models.ListResultsFilter, aggregate models.AggregateResultsFunc,
+	) (models.CompactResultsOutcome, error)
+	// SaveResultWithStatusTracking inserts a single new result row. (It formerly
+	// also maintained the now-removed last_for_status flag; the name is kept to
+	// avoid churn across its callers.)
 	SaveResultWithStatusTracking(ctx context.Context, result *models.Result) error
 
 	// Incident operations
@@ -373,6 +385,12 @@ type Service interface {
 		details *models.DeliveryDetails,
 	) error
 	CancelIncidentNotificationsForIncident(ctx context.Context, incidentUID string, canceledAt time.Time) (int64, error)
+	// UpdateIncidentNotificationDeliveryByMessageID sets delivery_details on the
+	// notification row whose message_id matches within the org. No-op (no error)
+	// when nothing matches. Used by the Twilio delivery-status callback.
+	UpdateIncidentNotificationDeliveryByMessageID(
+		ctx context.Context, orgUID, messageID string, details *models.DeliveryDetails,
+	) error
 	ListIncidentNotifications(
 		ctx context.Context, orgUID string, f ListIncidentNotificationsFilter,
 	) ([]*models.IncidentNotificationRow, error)
@@ -554,9 +572,21 @@ type Service interface {
 	GetStatusPage(ctx context.Context, orgUID, uid string) (*models.StatusPage, error)
 	GetStatusPageBySlug(ctx context.Context, orgUID, slug string) (*models.StatusPage, error)
 	GetStatusPageByUidOrSlug(ctx context.Context, orgUID, identifier string) (*models.StatusPage, error)
+	// GetStatusPageByCustomDomain resolves the single live page bound to a
+	// custom domain (the domain column is globally unique among live rows).
+	GetStatusPageByCustomDomain(ctx context.Context, domain string) (*models.StatusPage, error)
 	GetDefaultStatusPage(ctx context.Context, orgUID string) (*models.StatusPage, error)
 	ListStatusPages(ctx context.Context, orgUID string) ([]*models.StatusPage, error)
+	// ListStatusPagesWithCustomDomain lists every live page (across all orgs)
+	// that has a custom domain set — the input to the periodic re-verify job.
+	ListStatusPagesWithCustomDomain(ctx context.Context) ([]*models.StatusPage, error)
+	// CountStatusPagesWithCustomDomain counts an org's live pages with a custom
+	// domain set — the usage number enforced against MaxCustomDomains.
+	CountStatusPagesWithCustomDomain(ctx context.Context, orgUID string) (int, error)
 	UpdateStatusPage(ctx context.Context, uid string, update *models.StatusPageUpdate) error
+	// UpdateStatusPageCustomDomain overwrites all custom-domain columns in one
+	// write (set/clear/verify/re-verify all go through here).
+	UpdateStatusPageCustomDomain(ctx context.Context, uid string, update *models.StatusPageCustomDomainUpdate) error
 	DeleteStatusPage(ctx context.Context, uid string) error
 
 	// StatusPageSection operations
@@ -640,6 +670,19 @@ type Service interface {
 	// how they joined. Used by the entitlements service to enforce
 	// MaxUsers.
 	CountMembersForOrg(ctx context.Context, orgUID string) (int, error)
+
+	// ReserveMonthlyUsage atomically claims one unit of the (orgUID, kind,
+	// periodStart) monthly counter provided the current count is below limit.
+	// It returns true when a unit was reserved (the counter was incremented),
+	// false when the monthly cap is already reached. Callers must gate limit<=0
+	// themselves. periodStart is an ISO date string (first day of the month).
+	ReserveMonthlyUsage(
+		ctx context.Context, orgUID, kind, periodStart string, limit int,
+	) (bool, error)
+
+	// GetMonthlyUsage returns the current count for (orgUID, kind, periodStart),
+	// or 0 when no row exists.
+	GetMonthlyUsage(ctx context.Context, orgUID, kind, periodStart string) (int, error)
 	// ListOrgCheckRates returns (enabled, period) for all non-deleted,
 	// non-internal checks of the given org. Used to compute usage stats
 	// (count + aggregate checks-per-minute) and to enforce MaxChecks.
@@ -672,6 +715,20 @@ type Service interface {
 	// UpsertUserContact creates or restores a contact. On conflict (same user+org+type+value)
 	// it undeletes the row and updates the label.
 	UpsertUserContact(ctx context.Context, c *models.UserContact) error
+
+	// GetUserContact returns a single non-deleted contact by UID.
+	GetUserContact(ctx context.Context, uid string) (*models.UserContact, error)
+
+	// SetUserContactVerifyState writes the in-flight verification columns
+	// (code hash, expiry, attempt count). nil codeHash/expiresAt clears the
+	// pending code while preserving the attempt count.
+	SetUserContactVerifyState(
+		ctx context.Context, uid string, codeHash *string, expiresAt *time.Time, attempts int,
+	) error
+
+	// MarkUserContactVerified stamps verified_at and clears the pending
+	// verification columns.
+	MarkUserContactVerified(ctx context.Context, uid string, at time.Time) error
 
 	// DeleteUserContact soft-deletes a contact by UID.
 	DeleteUserContact(ctx context.Context, uid string) error

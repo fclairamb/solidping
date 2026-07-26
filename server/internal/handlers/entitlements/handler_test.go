@@ -199,6 +199,35 @@ func TestPutAcceptsMaxDeportedAgents(t *testing.T) {
 	r.Equal(3, *body.Limits.MaxDeportedAgents)
 }
 
+// TestPutAcceptsMonthlyMessagingLimits round-trips the SMS/voice monthly caps
+// through the real PUT handler and reads them back via GET.
+func TestPutAcceptsMonthlyMessagingLimits(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	h := newEntHandlerSetup(t)
+
+	rec := h.do(t, http.MethodPut, h.path(), map[string]any{
+		"source": string(models.EntitlementSourceAdmin),
+		"limits": map[string]any{"maxSmsPerMonth": 500, "maxCallsPerMonth": 50},
+	})
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+	getRec := h.do(t, http.MethodGet, h.path(), nil)
+	r.Equal(http.StatusOK, getRec.Code)
+
+	var body struct {
+		Limits struct {
+			MaxSmsPerMonth   *int `json:"maxSmsPerMonth"`
+			MaxCallsPerMonth *int `json:"maxCallsPerMonth"`
+		} `json:"limits"`
+	}
+	r.NoError(json.Unmarshal(getRec.Body.Bytes(), &body))
+	r.NotNil(body.Limits.MaxSmsPerMonth)
+	r.Equal(500, *body.Limits.MaxSmsPerMonth)
+	r.NotNil(body.Limits.MaxCallsPerMonth)
+	r.Equal(50, *body.Limits.MaxCallsPerMonth)
+}
+
 // putMaxUsers PUTs a limits body and returns the recorder. rawLimits is the
 // raw limits object so tests can send the deprecated alias or both keys.
 func (h *entHandlerSetup) putLimits(t *testing.T, rawLimits map[string]any) *httptest.ResponseRecorder {

@@ -153,6 +153,12 @@ type Service struct {
 	embedded *embeddedpg.Instance
 	reset    bool   // Reset database before migrations
 	runMode  string // Run mode (test, demo, etc.)
+
+	// compactFailpoint, when non-nil, is invoked inside CompactResults after the
+	// rollup upsert and before the source delete. It exists only so same-package
+	// tests can prove the transaction rolls the upsert back when a later step
+	// fails; production never sets it.
+	compactFailpoint func(context.Context) error
 }
 
 // roleConnLimitHeadroomWarning is logged once at startup when the configured
@@ -1146,7 +1152,6 @@ func (s *Service) CreateCheck(ctx context.Context, check *models.Check) error {
 
 		// Create initial result to mark check creation
 		initialStatus := int(models.ResultStatusCreated)
-		lastForStatus := true
 		initialResult := models.Result{
 			UID:             uuid.Must(uuid.NewV7()).String(),
 			OrganizationUID: check.OrganizationUID,
@@ -1157,7 +1162,6 @@ func (s *Service) CreateCheck(ctx context.Context, check *models.Check) error {
 			Metrics:         make(models.JSONMap),
 			Output:          models.JSONMap{"message": "Check created"},
 			CreatedAt:       time.Now(),
-			LastForStatus:   &lastForStatus,
 		}
 		if _, err := tx.NewInsert().Model(&initialResult).Exec(ctx); err != nil {
 			return err
@@ -1822,41 +1826,36 @@ func (s *Service) CreateResult(ctx context.Context, result *models.Result) error
 // 2026-07-11-16.
 func (s *Service) UpsertAggregatedResult(ctx context.Context, result *models.Result) error {
 	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		if _, err := tx.NewDelete().
-			Model((*models.Result)(nil)).
-			Where("organization_uid = ?", result.OrganizationUID).
-			Where("check_uid = ?", result.CheckUID).
-			Where("period_type = ?", result.PeriodType).
-			Where("period_start = ?", result.PeriodStart).
-			Where("COALESCE(region, '') = COALESCE(?, '')", result.Region).
-			Exec(ctx); err != nil {
-			return err
-		}
-
-		_, err := tx.NewInsert().Model(result).Exec(ctx)
-
-		return err
+		return upsertAggregatedResultTx(ctx, tx, result)
 	})
 }
 
-func (s *Service) SaveResultWithStatusTracking(ctx context.Context, result *models.Result) error {
-	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		// Clear previous last_for_status for this check+status combination
-		_, err := tx.NewUpdate().
-			Model((*models.Result)(nil)).
-			Set("last_for_status = NULL").
-			Where("check_uid = ?", result.CheckUID).
-			Where("status = ?", result.Status).
-			Where("last_for_status = true").
-			Exec(ctx)
-		if err != nil {
-			return err
-		}
-
-		// Insert new result with last_for_status = true
-		_, err = tx.NewInsert().Model(result).Exec(ctx)
+// upsertAggregatedResultTx replaces any existing aggregated row for the same
+// bucket key (organization_uid, check_uid, coalesce(region,”), period_type,
+// period_start) with result, using the given transaction. Shared by
+// UpsertAggregatedResult and CompactResults so both stay idempotent on the
+// bucket key even when region is NULL (spec 2026-07-11-16).
+func upsertAggregatedResultTx(ctx context.Context, tx bun.Tx, result *models.Result) error {
+	if _, err := tx.NewDelete().
+		Model((*models.Result)(nil)).
+		Where("organization_uid = ?", result.OrganizationUID).
+		Where("check_uid = ?", result.CheckUID).
+		Where("period_type = ?", result.PeriodType).
+		Where("period_start = ?", result.PeriodStart).
+		Where("COALESCE(region, '') = COALESCE(?, '')", result.Region).
+		Exec(ctx); err != nil {
 		return err
-	})
+	}
+
+	_, err := tx.NewInsert().Model(result).Exec(ctx)
+
+	return err
+}
+
+func (s *Service) SaveResultWithStatusTracking(ctx context.Context, result *models.Result) error {
+	_, err := s.db.NewInsert().Model(result).Exec(ctx)
+
+	return err
 }
 
 func (s *Service) GetResult(ctx context.Context, uid string) (*models.Result, error) {
@@ -1878,8 +1877,33 @@ func (s *Service) ListResults(
 ) (*models.ListResultsResponse, error) {
 	var results []*models.Result
 
-	query := s.db.NewSelect().
-		Model(&results).
+	query := s.db.NewSelect().Model(&results)
+
+	// Count-only readers opt out of the two JSON blob columns entirely (spec
+	// 2026-07-24-02 §5): they are by far the widest part of a results row and
+	// nothing in those code paths reads them.
+	if filter.SkipBlobs {
+		query = query.ExcludeColumn("metrics", "output")
+	}
+
+	query = applyResultsFilter(query, filter)
+
+	if err := query.Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	// For now, we don't calculate total count as it's expensive
+	// It can be added later as an optional feature
+	return &models.ListResultsResponse{
+		Results: results,
+		Total:   0,
+	}, nil
+}
+
+// applyResultsFilter narrows a results SELECT by filter. Shared by ListResults
+// and CompactResults so both read exactly the same rows for a bucket.
+func applyResultsFilter(query *bun.SelectQuery, filter *models.ListResultsFilter) *bun.SelectQuery {
+	query = query.
 		Where("organization_uid = ?", filter.OrganizationUID).
 		Order("period_start DESC").
 		Order("uid DESC")
@@ -1944,17 +1968,7 @@ func (s *Service) ListResults(
 		query = query.Limit(filter.Limit)
 	}
 
-	err := query.Scan(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// For now, we don't calculate total count as it's expensive
-	// It can be added later as an optional feature
-	return &models.ListResultsResponse{
-		Results: results,
-		Total:   0,
-	}, nil
+	return query
 }
 
 // GetResultNeighbors returns the next-older and next-newer UIDs relative to
@@ -2035,6 +2049,81 @@ func (s *Service) DeleteResults(ctx context.Context, orgUID string, resultUIDs [
 	}
 
 	return result.RowsAffected()
+}
+
+// CompactResults implements db.Service — see that interface for the full
+// contract. Fetch → aggregate (Go) → upsert rollup → delete sources all run in
+// one transaction, so any failure rolls the whole thing back and the bucket
+// stays fully raw.
+func (s *Service) CompactResults(
+	ctx context.Context, filter *models.ListResultsFilter, aggregate models.AggregateResultsFunc,
+) (models.CompactResultsOutcome, error) {
+	var outcome models.CompactResultsOutcome
+
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		// 1. Read the source rows for this bucket inside the transaction, using
+		// exactly the same filter as ListResults.
+		var sources []*models.Result
+		if scanErr := applyResultsFilter(tx.NewSelect().Model(&sources), filter).Scan(ctx); scanErr != nil {
+			return scanErr
+		}
+
+		outcome = models.CompactResultsOutcome{Fetched: len(sources)}
+		if len(sources) == 0 {
+			return nil // Nothing to compact.
+		}
+
+		// 2. Compute the rollup and the source UIDs to delete (pure Go).
+		rollup, sourceUIDs, aggErr := aggregate(sources)
+		if aggErr != nil {
+			return aggErr
+		}
+
+		outcome.SourceCount = len(sourceUIDs)
+
+		// A marker-only bucket (no measurable rows) has nothing to roll up: leave
+		// the sources in place and commit without writing.
+		if rollup == nil || len(sourceUIDs) == 0 {
+			return nil
+		}
+
+		// 3. Upsert the rollup idempotently on the bucket key.
+		if upErr := upsertAggregatedResultTx(ctx, tx, rollup); upErr != nil {
+			return upErr
+		}
+
+		// Test-only: prove the transaction rolls the upsert back on a later error.
+		if s.compactFailpoint != nil {
+			if fpErr := s.compactFailpoint(ctx); fpErr != nil {
+				return fpErr
+			}
+		}
+
+		// 4. Delete exactly the measurable source rows read in this transaction.
+		res, delErr := tx.NewDelete().
+			Model((*models.Result)(nil)).
+			Where("organization_uid = ?", filter.OrganizationUID).
+			Where("uid IN (?)", bun.List(sourceUIDs)).
+			Exec(ctx)
+		if delErr != nil {
+			return delErr
+		}
+
+		deleted, raErr := res.RowsAffected()
+		if raErr != nil {
+			return raErr
+		}
+
+		outcome.DeletedCount = deleted
+		outcome.Compacted = true
+
+		return nil
+	})
+	if err != nil {
+		return models.CompactResultsOutcome{}, err
+	}
+
+	return outcome, nil
 }
 
 func (s *Service) GetLastResultForChecks(
@@ -3669,6 +3758,50 @@ func (s *Service) GetStatusPageByUidOrSlug(
 	return page, nil
 }
 
+// GetStatusPageByCustomDomain retrieves the single live status page bound to a
+// custom domain. The custom_domain column is globally unique among live rows,
+// so at most one row matches.
+func (s *Service) GetStatusPageByCustomDomain(ctx context.Context, domain string) (*models.StatusPage, error) {
+	page := new(models.StatusPage)
+
+	err := s.db.NewSelect().
+		Model(page).
+		Where("custom_domain = ?", domain).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return page, nil
+}
+
+// ListStatusPagesWithCustomDomain lists every live status page (all orgs) with
+// a custom domain set — the periodic re-verify job's work list.
+func (s *Service) ListStatusPagesWithCustomDomain(ctx context.Context) ([]*models.StatusPage, error) {
+	var pages []*models.StatusPage
+
+	err := s.db.NewSelect().
+		Model(&pages).
+		Where("custom_domain IS NOT NULL").
+		Where("deleted_at IS NULL").
+		Order("created_at ASC").
+		Scan(ctx)
+
+	return pages, err
+}
+
+// CountStatusPagesWithCustomDomain counts an org's live pages with a custom
+// domain set.
+func (s *Service) CountStatusPagesWithCustomDomain(ctx context.Context, orgUID string) (int, error) {
+	return s.db.NewSelect().
+		Model((*models.StatusPage)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("custom_domain IS NOT NULL").
+		Where("deleted_at IS NULL").
+		Count(ctx)
+}
+
 // GetDefaultStatusPage retrieves the default status page for an organization.
 func (s *Service) GetDefaultStatusPage(ctx context.Context, orgUID string) (*models.StatusPage, error) {
 	page := new(models.StatusPage)
@@ -3753,6 +3886,27 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 	}
 
 	_, err := query.Exec(ctx)
+
+	return err
+}
+
+// UpdateStatusPageCustomDomain overwrites every custom-domain column in one
+// write. All lifecycle transitions (set, clear, verify-now, re-verify) go
+// through here, so nil pointers write SQL NULL verbatim.
+func (s *Service) UpdateStatusPageCustomDomain(
+	ctx context.Context, uid string, update *models.StatusPageCustomDomainUpdate,
+) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.StatusPage)(nil)).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Set("custom_domain = ?", update.Domain).
+		Set("custom_domain_token = ?", update.Token).
+		Set("custom_domain_verified_at = ?", update.VerifiedAt).
+		Set("custom_domain_checked_at = ?", update.CheckedAt).
+		Set("custom_domain_failures = ?", update.Failures).
+		Set("updated_at = ?", time.Now()).
+		Exec(ctx)
 
 	return err
 }

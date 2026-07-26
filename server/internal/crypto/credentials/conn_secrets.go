@@ -12,6 +12,7 @@ import "github.com/fclairamb/solidping/server/internal/db/models"
 // Common secret-key constants.
 const (
 	providerKeyClientSecret = "client_secret"
+	secretKeyAuthToken      = "auth_token"
 )
 
 // connectionSecretFields enumerates the secret JSON keys for each
@@ -26,9 +27,9 @@ const (
 //nolint:gochecknoglobals // registry of secret-key declarations; treated as a constant lookup table
 var connectionSecretFields = map[models.ConnectionType][]string{
 	models.ConnectionTypeSlack:    {"access_token"},
-	models.ConnectionTypeWebhook:  {"auth_token", "signingSecret", "signingSecretPrevious"},
+	models.ConnectionTypeWebhook:  {secretKeyAuthToken, "signingSecret", "signingSecretPrevious"},
 	models.ConnectionTypeEmail:    {"smtp_password"},
-	models.ConnectionTypeNtfy:     {"auth_token"},
+	models.ConnectionTypeNtfy:     {secretKeyAuthToken},
 	models.ConnectionTypeOpsgenie: {"api_key"},
 	models.ConnectionTypePushover: {"user_key", "api_token"},
 	models.ConnectionTypeFreebox:  {"appToken"},
@@ -36,6 +37,10 @@ var connectionSecretFields = map[models.ConnectionType][]string{
 	// The API server URL and CA cert stay public (endpoint URLs are not secret
 	// under the DB-theft-only threat model — same as webhook URLs above).
 	models.ConnectionTypeKubernetes: {"token", "kubeconfig"},
+	// Twilio: only the account auth token is secret. The account SID, from /
+	// messaging-service identifiers and recipient numbers stay public so the
+	// dashboard can render them on the edit form.
+	models.ConnectionTypeTwilio: {secretKeyAuthToken},
 }
 
 // ConnectionSecretFields returns the secret keys for a connection type.

@@ -27,6 +27,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
+	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/notifications"
 	"github.com/fclairamb/solidping/server/internal/webpush"
@@ -61,6 +62,9 @@ var (
 	// requested for an integration whose type cannot send notifications
 	// (e.g. a data source like Freebox).
 	ErrIntegrationNotNotifiable = errors.New("integration type cannot send notifications")
+	// ErrInvalidSettings is returned when a connection's type-specific settings
+	// fail validation (e.g. a malformed Twilio account SID or phone number).
+	ErrInvalidSettings = errors.New("invalid connection settings")
 )
 
 // Signing-secret lifecycle constants (Standard Webhooks). The secret format is
@@ -372,18 +376,10 @@ func (s *Service) CreateIntegration(
 		return nil, err
 	}
 
-	// Validate connection type
+	// Validate connection type + per-type settings.
 	connType := models.ConnectionType(req.Type)
-	switch connType {
-	case models.ConnectionTypeSlack, models.ConnectionTypeDiscord,
-		models.ConnectionTypeWebhook, models.ConnectionTypeEmail,
-		models.ConnectionTypeGoogleChat, models.ConnectionTypeMattermost,
-		models.ConnectionTypeNtfy, models.ConnectionTypeOpsgenie,
-		models.ConnectionTypePushover, models.ConnectionTypeFreebox,
-		models.ConnectionTypeWebPush, models.ConnectionTypeKubernetes:
-		// Valid types
-	default:
-		return nil, ErrInvalidConnectionType
+	if err := validateConnectionType(connType, req.Settings); err != nil {
+		return nil, err
 	}
 
 	// Slack channels can only be created by the OAuth install flow (which calls
@@ -441,6 +437,82 @@ func (s *Service) CreateIntegration(
 	return resp, nil
 }
 
+// validConnectionTypes is the set of accepted connection types.
+//
+//nolint:gochecknoglobals // constant lookup set.
+var validConnectionTypes = map[models.ConnectionType]bool{
+	models.ConnectionTypeSlack:      true,
+	models.ConnectionTypeDiscord:    true,
+	models.ConnectionTypeWebhook:    true,
+	models.ConnectionTypeEmail:      true,
+	models.ConnectionTypeGoogleChat: true,
+	models.ConnectionTypeMattermost: true,
+	models.ConnectionTypeNtfy:       true,
+	models.ConnectionTypeOpsgenie:   true,
+	models.ConnectionTypePushover:   true,
+	models.ConnectionTypeFreebox:    true,
+	models.ConnectionTypeWebPush:    true,
+	models.ConnectionTypeKubernetes: true,
+	models.ConnectionTypeTwilio:     true,
+}
+
+// validateConnectionType checks the type is known and, for types with per-type
+// settings invariants (Twilio), validates those too.
+func validateConnectionType(connType models.ConnectionType, settings models.JSONMap) error {
+	if !validConnectionTypes[connType] {
+		return ErrInvalidConnectionType
+	}
+
+	if connType == models.ConnectionTypeTwilio {
+		// A bad SID or non-E.164 number silently no-ops at send time otherwise.
+		return validateTwilioSettings(settings)
+	}
+
+	return nil
+}
+
+// validateTwilioSettings enforces the Twilio connection's settings invariants:
+// an AC… account SID, a non-empty auth token, exactly one of from_number /
+// messaging_service_sid, and E.164 for every configured number. Called against
+// the effective (post-PATCH-merge) settings so a partial update is validated
+// as a whole.
+func validateTwilioSettings(settings models.JSONMap) error {
+	parsed, err := models.TwilioSettingsFromJSONMap(settings)
+	if err != nil {
+		return fmt.Errorf("%w: malformed twilio settings", ErrInvalidSettings)
+	}
+
+	if !twilio.ValidAccountSID(parsed.AccountSID) {
+		return fmt.Errorf("%w: account_sid must be a Twilio Account SID (AC…)", ErrInvalidSettings)
+	}
+
+	if strings.TrimSpace(parsed.AuthToken) == "" {
+		return fmt.Errorf("%w: auth_token is required", ErrInvalidSettings)
+	}
+
+	hasFrom := parsed.FromNumber != ""
+	hasMSS := parsed.MessagingServiceSID != ""
+	if hasFrom == hasMSS {
+		return fmt.Errorf("%w: exactly one of from_number or messaging_service_sid is required", ErrInvalidSettings)
+	}
+
+	if hasFrom && !twilio.ValidE164(parsed.FromNumber) {
+		return fmt.Errorf("%w: from_number must be E.164 (e.g. +15551234567)", ErrInvalidSettings)
+	}
+
+	if parsed.VoiceFromNumber != "" && !twilio.ValidE164(parsed.VoiceFromNumber) {
+		return fmt.Errorf("%w: voice_from_number must be E.164", ErrInvalidSettings)
+	}
+
+	for _, n := range parsed.ToNumbers {
+		if !twilio.ValidE164(n) {
+			return fmt.Errorf("%w: to_numbers entry %q must be E.164", ErrInvalidSettings, n)
+		}
+	}
+
+	return nil
+}
+
 // UpdateIntegration updates a connection.
 func (s *Service) UpdateIntegration(
 	ctx context.Context, orgSlug, connectionUID string, req UpdateIntegrationRequest,
@@ -475,26 +547,9 @@ func (s *Service) UpdateIntegration(
 	}
 
 	if req.Settings != nil {
-		// PATCH-merge: secret keys absent from the incoming map are
-		// preserved from the existing config_private; explicit null/empty
-		// clears them. Non-secret keys follow replace-wholesale semantics.
-		existing, decErr := s.loadDecryptedSettings(ctx, conn)
-		if decErr != nil {
-			return nil, decErr
+		if setErr := s.applyUpdateSettings(ctx, conn, req.Settings, update); setErr != nil {
+			return nil, setErr
 		}
-
-		secrets := credentials.ConnectionSecretFields(conn.Type)
-		merged := credentials.MergePatch(existing, req.Settings, secrets)
-
-		if encErr := s.applySettingsEncryption(ctx, conn, merged); encErr != nil {
-			return nil, encErr
-		}
-
-		settings := conn.Settings
-		update.Settings = &settings
-		update.SettingsPrivate = conn.SettingsPrivate
-		update.SettingsPrivateKeys = conn.SettingsPrivateKeys
-		update.ClearSettingsPrivate = conn.SettingsPrivate == nil
 	}
 
 	if updateErr := s.db.UpdateChannel(ctx, connectionUID, update); updateErr != nil {
@@ -508,6 +563,42 @@ func (s *Service) UpdateIntegration(
 	}
 
 	return toResponse(conn, true), nil
+}
+
+// applyUpdateSettings PATCH-merges the incoming settings over the existing
+// (decrypted) settings, validates per-type invariants, re-encrypts, and writes
+// the resulting public/private split onto update. Secret keys absent from the
+// incoming map are preserved; explicit null/empty clears them.
+func (s *Service) applyUpdateSettings(
+	ctx context.Context, conn *models.Integration, reqSettings models.JSONMap, update *models.IntegrationUpdate,
+) error {
+	existing, err := s.loadDecryptedSettings(ctx, conn)
+	if err != nil {
+		return err
+	}
+
+	secrets := credentials.ConnectionSecretFields(conn.Type)
+	merged := credentials.MergePatch(existing, reqSettings, secrets)
+
+	// Validate the merged (post-PATCH) settings so a partial update can't leave
+	// a Twilio connection in an unsendable state.
+	if conn.Type == models.ConnectionTypeTwilio {
+		if vErr := validateTwilioSettings(models.JSONMap(merged)); vErr != nil {
+			return vErr
+		}
+	}
+
+	if encErr := s.applySettingsEncryption(ctx, conn, merged); encErr != nil {
+		return encErr
+	}
+
+	settings := conn.Settings
+	update.Settings = &settings
+	update.SettingsPrivate = conn.SettingsPrivate
+	update.SettingsPrivateKeys = conn.SettingsPrivateKeys
+	update.ClearSettingsPrivate = conn.SettingsPrivate == nil
+
+	return nil
 }
 
 // applySettingsEncryption splits Settings into public/private using the

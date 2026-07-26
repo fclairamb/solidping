@@ -542,6 +542,9 @@ func (s *Service) fetchResults(
 			CheckUIDs:        []string{checkUID},
 			PeriodTypes:      []string{"raw"},
 			PeriodStartAfter: &startTime,
+			// Badges render status, availability and duration only — never the
+			// metrics/output blobs (spec 2026-07-24-02 §5).
+			SkipBlobs: true,
 		}
 
 		res, err := s.dbSvc.ListResults(ctx, filter)
@@ -558,6 +561,7 @@ func (s *Service) fetchResults(
 		CheckUIDs:       []string{checkUID},
 		PeriodTypes:     []string{"raw"},
 		Limit:           1,
+		SkipBlobs:       true,
 	}
 
 	res, err := s.dbSvc.ListResults(ctx, filter)

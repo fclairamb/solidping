@@ -153,6 +153,76 @@ func (h *Handler) DeleteContact(writer http.ResponseWriter, req *http.Request) e
 	return nil
 }
 
+// VerifyContact handles POST /api/v1/orgs/:org/users/me/notification-contacts/:contactUid/verify.
+// It issues and sends a fresh verification code for a phone contact.
+func (h *Handler) VerifyContact(writer http.ResponseWriter, req *http.Request) error {
+	user, ok := userFromContext(req)
+	if !ok {
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Not authenticated")
+	}
+
+	contactUID := httpx.Param(req, "contactUid")
+
+	if err := h.svc.VerifyContact(req.Context(), httpx.Param(req, "org"), user, contactUID); err != nil {
+		return h.handleVerifyError(writer, err)
+	}
+
+	writer.WriteHeader(http.StatusNoContent)
+
+	return nil
+}
+
+// ConfirmVerify handles POST /api/v1/orgs/:org/users/me/notification-contacts/:contactUid/verify/confirm.
+func (h *Handler) ConfirmVerify(writer http.ResponseWriter, req *http.Request) error {
+	user, ok := userFromContext(req)
+	if !ok {
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Not authenticated")
+	}
+
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid JSON")
+	}
+
+	if body.Code == "" {
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "code is required")
+	}
+
+	contactUID := httpx.Param(req, "contactUid")
+
+	if err := h.svc.ConfirmVerify(req.Context(), httpx.Param(req, "org"), user, contactUID, body.Code); err != nil {
+		return h.handleVerifyError(writer, err)
+	}
+
+	writer.WriteHeader(http.StatusNoContent)
+
+	return nil
+}
+
+// handleVerifyError maps verification-flow errors to HTTP responses.
+func (h *Handler) handleVerifyError(writer http.ResponseWriter, err error) error {
+	switch {
+	case errors.Is(err, ErrContactNotFound):
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Notification contact not found")
+	case errors.Is(err, ErrOrgNotFound):
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
+	case errors.Is(err, ErrNoProvider):
+		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, err.Error())
+	case errors.Is(err, ErrResendTooSoon), errors.Is(err, ErrTooManyAttempts):
+		return h.WriteError(writer, http.StatusTooManyRequests, base.ErrorCodeValidationError, err.Error())
+	case errors.Is(err, ErrNotAPhoneContact),
+		errors.Is(err, ErrAlreadyVerified),
+		errors.Is(err, ErrNoPendingCode),
+		errors.Is(err, ErrCodeExpired),
+		errors.Is(err, ErrCodeMismatch):
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
+	default:
+		return h.WriteInternalError(writer, err)
+	}
+}
+
 // TestRoute handles POST /api/v1/orgs/:org/users/me/notification-routes/:routeUid/test.
 func (h *Handler) TestRoute(writer http.ResponseWriter, req *http.Request) error {
 	user, ok := userFromContext(req)

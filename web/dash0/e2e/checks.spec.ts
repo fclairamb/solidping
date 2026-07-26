@@ -319,6 +319,56 @@ test.describe("Checks", () => {
     });
   });
 
+  test("should regenerate the heartbeat ping token from the check detail page", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Create a heartbeat check
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    await page.getByTestId("check-type-select").click();
+    await page.getByRole("option", { name: /Heartbeat/i }).click();
+
+    const checkName = `E2E Regenerate Token ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-submit-button").click();
+
+    // Wait for check detail page
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
+    await expect(page.getByText("Heartbeat Endpoint")).toBeVisible();
+
+    // Capture the ping URL (and its token) before regenerating.
+    const heartbeatUrlElement = page.locator(".font-mono.break-all span").first();
+    const urlBefore = await heartbeatUrlElement.textContent();
+    expect(urlBefore).toContain("token=");
+
+    // Open the regenerate confirmation and confirm.
+    await page.getByTestId("heartbeat-regenerate-token").click();
+    await expect(page.getByTestId("heartbeat-regenerate-confirm")).toBeVisible();
+    await page.getByTestId("heartbeat-regenerate-confirm").click();
+
+    // The displayed ping URL updates to carry the new token.
+    await expect(async () => {
+      const urlAfter = await heartbeatUrlElement.textContent();
+      expect(urlAfter).toContain("token=");
+      expect(urlAfter).not.toBe(urlBefore);
+    }).toPass({ timeout: 10000 });
+
+    await page.screenshot({
+      path: "test-results/screenshots/checks-heartbeat-token-regenerated.png",
+      fullPage: true,
+    });
+  });
+
   test("should persist flapping parameters after editing", async ({
     authenticatedPage,
   }) => {

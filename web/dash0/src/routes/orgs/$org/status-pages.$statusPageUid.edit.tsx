@@ -5,6 +5,7 @@ import { useStatusPage, useUpdateStatusPage } from "@/api/hooks";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { StatusPageForm } from "@/components/shared/status-page-form";
+import { StatusPageCustomDomain } from "@/components/shared/status-page-custom-domain";
 import { StatusPageSubscribers } from "@/components/shared/status-page-subscribers";
 
 export const Route = createFileRoute(
@@ -78,6 +79,8 @@ function StatusPageEditPage() {
           });
         }}
       />
+
+      <StatusPageCustomDomain org={org} page={page} />
 
       <StatusPageSubscribers org={org} statusPageUid={page.uid} />
     </div>

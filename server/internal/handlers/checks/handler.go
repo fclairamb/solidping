@@ -326,6 +326,39 @@ func (h *Handler) UpdateCheck(writer http.ResponseWriter, req *http.Request) err
 	return h.WriteJSON(writer, http.StatusOK, check)
 }
 
+// RotateHeartbeatToken handles regenerating the ping token of a heartbeat
+// check. Every previously issued ping URL stops working immediately (see
+// Service.RotateHeartbeatToken for why there's no grace period). 400 for
+// non-heartbeat checks, 404 for unknown checks.
+func (h *Handler) RotateHeartbeatToken(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	identifier := httpx.Param(req, "checkUid")
+
+	check, err := h.svc.RotateHeartbeatToken(req.Context(), orgSlug, identifier)
+	if err != nil {
+		return h.handleRotateHeartbeatTokenError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, check)
+}
+
+// handleRotateHeartbeatTokenError handles errors from RotateHeartbeatToken.
+func (h *Handler) handleRotateHeartbeatTokenError(writer http.ResponseWriter, err error) error {
+	switch {
+	case errors.Is(err, ErrOrganizationNotFound):
+		return h.WriteErrorErr(
+			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+	case errors.Is(err, ErrCheckNotFound):
+		return h.WriteErrorErr(
+			writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+	case errors.Is(err, ErrNotHeartbeatCheck):
+		return h.WriteErrorErr(
+			writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Check is not a heartbeat check", err)
+	default:
+		return h.WriteInternalError(writer, err)
+	}
+}
+
 // UpsertCheck handles creating or updating a check by slug (idempotent operation).
 func (h *Handler) UpsertCheck(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := httpx.Param(req, "org")

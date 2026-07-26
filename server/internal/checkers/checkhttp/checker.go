@@ -382,9 +382,6 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			return &checkerdef.Result{
 				Status:   checkerdef.StatusDown,
 				Duration: duration,
-				Metrics: map[string]any{
-					checkerdef.OutputKeyDurationMs: float64(duration.Microseconds()) / 1000.0,
-				},
 				Output: map[string]any{
 					checkerdef.OutputKeyError:      fmt.Sprintf("Expected string %q not found in response body", cfg.BodyExpect),
 					checkerdef.OutputKeyURL:        cfg.URL,
@@ -400,9 +397,6 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			return &checkerdef.Result{
 				Status:   checkerdef.StatusDown,
 				Duration: duration,
-				Metrics: map[string]any{
-					checkerdef.OutputKeyDurationMs: float64(duration.Microseconds()) / 1000.0,
-				},
 				Output: map[string]any{
 					checkerdef.OutputKeyError:      fmt.Sprintf("Rejected string %q found in response body", cfg.BodyReject),
 					checkerdef.OutputKeyURL:        cfg.URL,
@@ -418,9 +412,6 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			return &checkerdef.Result{
 				Status:   checkerdef.StatusDown,
 				Duration: duration,
-				Metrics: map[string]any{
-					checkerdef.OutputKeyDurationMs: float64(duration.Microseconds()) / 1000.0,
-				},
 				Output: map[string]any{
 					checkerdef.OutputKeyError:      fmt.Sprintf("Expected pattern %q not found in response body", cfg.BodyPattern),
 					checkerdef.OutputKeyURL:        cfg.URL,
@@ -436,9 +427,6 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			return &checkerdef.Result{
 				Status:   checkerdef.StatusDown,
 				Duration: duration,
-				Metrics: map[string]any{
-					checkerdef.OutputKeyDurationMs: float64(duration.Microseconds()) / 1000.0,
-				},
 				Output: map[string]any{
 					checkerdef.OutputKeyError:      fmt.Sprintf("Rejected pattern %q found in response body", cfg.BodyPatternReject),
 					checkerdef.OutputKeyURL:        cfg.URL,
@@ -457,9 +445,6 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 				return &checkerdef.Result{
 					Status:   checkerdef.StatusDown,
 					Duration: duration,
-					Metrics: map[string]any{
-						checkerdef.OutputKeyDurationMs: float64(duration.Microseconds()) / 1000.0,
-					},
 					Output: map[string]any{
 						checkerdef.OutputKeyError:      fmt.Sprintf("Required header %q not found in response", headerName),
 						checkerdef.OutputKeyURL:        cfg.URL,
@@ -476,9 +461,6 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 				return &checkerdef.Result{
 					Status:   checkerdef.StatusDown,
 					Duration: duration,
-					Metrics: map[string]any{
-						checkerdef.OutputKeyDurationMs: float64(duration.Microseconds()) / 1000.0,
-					},
 					Output: map[string]any{
 						checkerdef.OutputKeyError:      errMsg,
 						checkerdef.OutputKeyURL:        cfg.URL,
@@ -497,9 +479,6 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			return &checkerdef.Result{
 				Status:   checkerdef.StatusDown,
 				Duration: duration,
-				Metrics: map[string]any{
-					checkerdef.OutputKeyDurationMs: float64(duration.Microseconds()) / 1000.0,
-				},
 				Output: map[string]any{
 					checkerdef.OutputKeyError:      "response body is not valid JSON for assertion evaluation",
 					checkerdef.OutputKeyURL:        cfg.URL,
@@ -514,9 +493,6 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			return &checkerdef.Result{
 				Status:   checkerdef.StatusDown,
 				Duration: duration,
-				Metrics: map[string]any{
-					checkerdef.OutputKeyDurationMs: float64(duration.Microseconds()) / 1000.0,
-				},
 				Output: map[string]any{
 					checkerdef.OutputKeyError:      "JSON assertion failed",
 					checkerdef.OutputKeyURL:        cfg.URL,
@@ -545,9 +521,6 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	return &checkerdef.Result{
 		Status:   status,
 		Duration: duration,
-		Metrics: map[string]any{
-			checkerdef.OutputKeyDurationMs: float64(duration.Microseconds()) / 1000.0,
-		},
 		Output: map[string]any{
 			checkerdef.OutputKeyURL:        cfg.URL,
 			checkerdef.OutputKeyStatusCode: resp.StatusCode,

@@ -118,5 +118,23 @@
     "signOutOthersSuccess": "Signed out {{count}} other session",
     "signOutOthersSuccess_other": "Signed out {{count}} other sessions",
     "failedSignOutOthers": "Failed to sign out other sessions"
+  },
+  "notifications": {
+    "verifyButton": "Verify",
+    "verifiedBadge": "Verified",
+    "unverifiedBadge": "Unverified — verify to receive SMS / voice alerts",
+    "phoneAfterAddHint": "After adding, verify the number to start receiving SMS / voice alerts.",
+    "noProviderHint": "No SMS provider is configured for this organization yet. You can add the number, but it won't receive SMS or voice alerts until an admin sets up Twilio.",
+    "verify": {
+      "dialogTitle": "Verify phone number",
+      "dialogDescription": "We'll text a 6-digit code to {{phone}}. Enter it below to confirm this number can receive SMS and voice alerts.",
+      "sendCode": "Send code",
+      "resend": "Resend",
+      "confirm": "Confirm",
+      "codeSent": "Verification code sent",
+      "verified": "Phone number verified",
+      "sendFailed": "Failed to send code",
+      "incorrectCode": "Incorrect code"
+    }
   }
 }

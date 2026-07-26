@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"mime"
 	"net"
@@ -82,6 +83,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
+	"github.com/fclairamb/solidping/server/internal/handlers/twiliocb"
 	"github.com/fclairamb/solidping/server/internal/handlers/unsubscribe"
 	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
 	webpushhandler "github.com/fclairamb/solidping/server/internal/handlers/webpush"
@@ -157,6 +159,8 @@ type Server struct {
 	rateLimiter           *middleware.RateLimiter // For the /api/mgmt/limits introspection handler
 	realtimeHub           *realtime.Hub           // Live hint stream fan-out (nil when realtime disabled)
 	statusPagesService    *statuspages.Service    // Public status-page lookups for status0 OG-metadata injection
+	customDomainCache     *customDomainCache      // host -> status-page resolution cache for custom-domain routing
+	status0FS             fs.FS                   // overridden in tests; nil means use the real embedded status0Files
 	cancelCtx             context.CancelFunc
 	workersWg             sync.WaitGroup // Tracks workers
 }
@@ -332,6 +336,9 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// parameters.
 	entitlementsService := entitlementsapi.NewService(
 		dbService, entitlementsapi.DefaultsFor(cfg.Deployment.Mode), 0,
+		entitlementsapi.WithRunawayCaps(
+			cfg.Entitlements.SMSRunawayPerHour, cfg.Entitlements.CallRunawayPerHour,
+		),
 	)
 	svcList.Entitlements = entitlementsService
 
@@ -364,12 +371,13 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 
 	server := &Server{
-		dbService:   dbService,
-		jobSvc:      jobService,
-		services:    svcList,
-		config:      cfg,
-		authService: authService,
-		profilerSrv: profiler.New(&cfg.Profiler),
+		dbService:         dbService,
+		jobSvc:            jobService,
+		services:          svcList,
+		config:            cfg,
+		authService:       authService,
+		profilerSrv:       profiler.New(&cfg.Profiler),
+		customDomainCache: newCustomDomainCache(customDomainCacheTTL),
 	}
 
 	return server, nil
@@ -699,6 +707,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecks.PATCH("/:checkUid", checksHandler.UpdateCheck)
 	orgChecks.DELETE("/:checkUid", checksHandler.DeleteCheck)
 	orgChecks.POST("/:checkUid/clone", checksHandler.CloneCheck)
+	// Heartbeat-only: mints a fresh ping token, invalidating every existing
+	// ping URL immediately (400 for non-heartbeat checks).
+	orgChecks.POST("/:checkUid/rotate-token", checksHandler.RotateHeartbeatToken)
 
 	// Network discovery routes (authentication + org access required)
 	discoverySvc := discovery.NewService(
@@ -926,7 +937,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgEscalation.DELETE("/:uid", escalationHandler.DeletePolicy)
 
 	// User notification routes (authentication required)
-	userNotifService := usernotifications.NewService(s.dbService)
+	userNotifService := usernotifications.NewService(s.dbService, s.services.Credentials)
 	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender)
 	slackAdapter := usernotifications.NewSlackDMSenderAdapter()
 	userNotifHandler := usernotifications.NewHandler(
@@ -938,6 +949,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgUserNotif.PATCH("/notification-routes/:routeUid", userNotifHandler.PatchRoute)
 	orgUserNotif.DELETE("/notification-contacts/:contactUid", userNotifHandler.DeleteContact)
 	orgUserNotif.POST("/notification-routes/:routeUid/test", userNotifHandler.TestRoute)
+	orgUserNotif.POST("/notification-contacts/:contactUid/verify", userNotifHandler.VerifyContact)
+	orgUserNotif.POST("/notification-contacts/:contactUid/verify/confirm", userNotifHandler.ConfirmVerify)
 
 	// Events routes (authentication required)
 	eventsService := events.NewService(s.dbService)
@@ -1114,7 +1127,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgStatusUpdates.DELETE("/:uid", statusUpdatesHandler.DeleteStatusUpdate)
 
 	// Status pages routes (authentication required)
-	statusPagesService := statuspages.NewService(s.dbService, s.config)
+	statusPagesService := statuspages.NewService(s.dbService, s.config, s.services.Entitlements)
 	// Retained on the server so serveStatus0Static can resolve pages for
 	// per-page Open Graph / Twitter Card metadata injection.
 	s.statusPagesService = statusPagesService
@@ -1125,6 +1138,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgStatusPages.GET("/:statusPageUid", statusPagesHandler.GetStatusPage)
 	orgStatusPages.PATCH("/:statusPageUid", statusPagesHandler.UpdateStatusPage)
 	orgStatusPages.DELETE("/:statusPageUid", statusPagesHandler.DeleteStatusPage)
+	// Custom-domain verify-now (authenticated): runs the DNS checks synchronously.
+	orgStatusPages.POST("/:statusPageUid/custom-domain/verify", statusPagesHandler.VerifyCustomDomain)
 	orgStatusPages.GET("/:statusPageUid/sections", statusPagesHandler.ListSections)
 	orgStatusPages.POST("/:statusPageUid/sections", statusPagesHandler.CreateSection)
 	orgStatusPages.POST("/:statusPageUid/sections/reorder", statusPagesHandler.ReorderSections)
@@ -1166,6 +1181,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Public Atom/RSS feed of the status-update timeline.
 	api.GET("/status-pages/:org/:slug/feed.xml", statusSubscribersHandler.Feed)
 
+	// Edge-TLS "ask" endpoint (public, no auth): 204 when the queried domain is a
+	// verified+enabled+public custom domain, 404 otherwise. Contract for Caddy
+	// on_demand_tls / cert-manager gating on the SaaS edge.
+	api.GET("/public/custom-domains/allowed", statusPagesHandler.CustomDomainAllowed)
+
 	// Public status-page subscription endpoints (no authentication). The
 	// subscribe endpoint inherits the global per-IP rate limit on /api/v1/;
 	// double opt-in is the primary anti-abuse control. Confirm/unsubscribe are
@@ -1195,6 +1215,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	slackIntegration.POST("/events", slackHandler.VerifyMiddleware(slackHandler.HandleEvents))
 	slackIntegration.POST("/command", slackHandler.VerifyMiddleware(slackHandler.HandleCommand))
 	slackIntegration.POST("/interaction", slackHandler.VerifyMiddleware(slackHandler.HandleInteraction))
+
+	// Twilio inbound callbacks (voice TwiML + DTMF ack + delivery status).
+	// No org auth — authenticity is the per-request X-Twilio-Signature check in
+	// VerifyMiddleware, which resolves the connection from the `cid` query param.
+	twilioHandler := twiliocb.NewHandler(s.dbService, s.services.Credentials, s.config, incidentsService)
+	twilioIntegration := api.NewGroup("/integrations/twilio")
+	twilioIntegration.POST("/voice", twilioHandler.VerifyMiddleware(twilioHandler.HandleVoice))
+	twilioIntegration.POST("/voice/gather", twilioHandler.VerifyMiddleware(twilioHandler.HandleGather))
+	twilioIntegration.POST("/status", twilioHandler.VerifyMiddleware(twilioHandler.HandleStatus))
 
 	// Slack destinations picker (authenticated, org-scoped)
 	slackOrgRoutes := orgGroup("/orgs/:org/channels/:uid/slack")
@@ -1825,6 +1854,16 @@ func (s *Server) serveStatus0Root(writer http.ResponseWriter, req *http.Request)
 	return s.serveStatus0Static(writer, req)
 }
 
+// status0FSOrDefault returns the status0 filesystem, falling back to the real
+// embedded status0Files when s.status0FS is unset (the normal, non-test case).
+func (s *Server) status0FSOrDefault() fs.FS {
+	if s.status0FS != nil {
+		return s.status0FS
+	}
+
+	return status0Files
+}
+
 // serveStatus0Static serves static files from the embedded status0res filesystem.
 func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Request) error {
 	reqPath := strings.TrimPrefix(req.URL.Path, "/status0")
@@ -1837,13 +1876,13 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	maxAgeSeconds := 31536000 // 1 year for assets
 	servingIndexFallback := false
 
-	data, err := status0Files.ReadFile(filePath)
+	data, err := fs.ReadFile(s.status0FSOrDefault(), filePath)
 	if err != nil {
 		maxAgeSeconds = 60
 		servingIndexFallback = true
 		filePath = path.Join("status0res", "index.html")
 
-		data, err = status0Files.ReadFile(filePath)
+		data, err = fs.ReadFile(s.status0FSOrDefault(), filePath)
 		if err != nil {
 			slog.ErrorContext(req.Context(), "Error reading status0 file", "error", err)
 			http.Error(writer, "File not found", http.StatusNotFound)
@@ -1858,7 +1897,7 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	// the generic head (no page-existence leak).
 	if servingIndexFallback {
 		if meta, ok := s.status0MetaForPath(req, reqPath); ok {
-			data = []byte(injectStatus0Meta(string(data), meta))
+			data = []byte(injectStatus0Meta(string(data), &meta))
 		}
 	}
 
@@ -1999,7 +2038,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 		srv := &http.Server{
 			Addr:              s.config.Server.Listen,
-			Handler:           s.handlerWithDocsHost(),
+			Handler:           s.handlerWithCustomDomains(s.handlerWithDocsHost()),
 			ReadHeaderTimeout: readHeaderTimeout,
 		}
 

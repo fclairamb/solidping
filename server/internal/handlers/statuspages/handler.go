@@ -4,11 +4,14 @@ package statuspages
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	entitlementshandler "github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
@@ -18,6 +21,7 @@ const slugValidationMsg = "Slug must start with a lowercase letter, be 3-40 char
 const (
 	fieldSlug          = "slug"
 	fieldBody          = "body"
+	fieldCustomDomain  = "customDomain"
 	fieldHistoryPeriod = "historyPeriod"
 	respKeyData        = "data"
 	msgInvalidJSON     = "Invalid JSON format"
@@ -102,11 +106,26 @@ func (h *Handler) UpdateStatusPage(writer http.ResponseWriter, req *http.Request
 	orgSlug := httpx.Param(req, "org")
 	identifier := httpx.Param(req, "statusPageUid")
 
-	var updateReq UpdateStatusPageRequest
-	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
+	body, readErr := io.ReadAll(req.Body)
+	if readErr != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
 			{Name: fieldBody, Message: msgInvalidJSON},
 		})
+	}
+
+	var updateReq UpdateStatusPageRequest
+	if err := json.Unmarshal(body, &updateReq); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	// Presence detection: a `customDomain` key that is present (even as null or
+	// "") means "change the domain"; an omitted key leaves it untouched. A plain
+	// *string cannot tell those apart, so probe the raw object.
+	var presence map[string]json.RawMessage
+	if err := json.Unmarshal(body, &presence); err == nil {
+		_, updateReq.CustomDomainSet = presence["customDomain"]
 	}
 
 	page, err := h.svc.UpdateStatusPage(req.Context(), orgSlug, identifier, &updateReq)
@@ -115,6 +134,38 @@ func (h *Handler) UpdateStatusPage(writer http.ResponseWriter, req *http.Request
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, page)
+}
+
+// VerifyCustomDomain runs the DNS verification for a status page's custom domain
+// synchronously and returns the updated (authenticated) page.
+func (h *Handler) VerifyCustomDomain(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	identifier := httpx.Param(req, "statusPageUid")
+
+	page, err := h.svc.VerifyCustomDomain(req.Context(), orgSlug, identifier)
+	if err != nil {
+		return h.handleVerifyError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, page)
+}
+
+// CustomDomainAllowed is the public edge-TLS "ask" endpoint. It answers 204 when
+// the queried domain currently resolves to a verified, enabled, public page and
+// 404 otherwise — no body, so it leaks nothing beyond the boolean the TLS edge
+// (Caddy on_demand_tls / cert-manager) needs.
+func (h *Handler) CustomDomainAllowed(writer http.ResponseWriter, req *http.Request) error {
+	domain := req.URL.Query().Get("domain")
+
+	if h.svc.CustomDomainServable(req.Context(), domain) {
+		writer.WriteHeader(http.StatusNoContent)
+
+		return nil
+	}
+
+	writer.WriteHeader(http.StatusNotFound)
+
+	return nil
 }
 
 // DeleteStatusPage handles deleting a status page.
@@ -413,7 +464,59 @@ func (h *Handler) handlePageError(writer http.ResponseWriter, err error) error {
 	}
 }
 
+// mapCustomDomainError maps the custom-domain-specific service errors to HTTP.
+// Returns handled=false when err is not a custom-domain error so the caller can
+// fall through to its own switch.
+func (h *Handler) mapCustomDomainError(writer http.ResponseWriter, err error) (bool, error) {
+	switch {
+	case errors.Is(err, entcore.ErrEntitlementExceeded):
+		var qe *entcore.QuotaError
+		if !errors.As(err, &qe) {
+			return true, h.WriteInternalError(writer, err)
+		}
+
+		body := entitlementshandler.FormatQuotaError(qe)
+		body["code"] = string(base.ErrorCodeQuotaExceeded)
+
+		return true, h.WriteJSON(writer, http.StatusPaymentRequired, body)
+	case errors.Is(err, ErrCustomDomainInvalid):
+		return true, h.WriteValidationError(writer, "Invalid custom domain", []base.ValidationErrorField{
+			{Name: fieldCustomDomain, Message: err.Error()},
+		})
+	case errors.Is(err, ErrCustomDomainSelfShadow):
+		return true, h.WriteValidationError(writer, "Invalid custom domain", []base.ValidationErrorField{
+			{Name: fieldCustomDomain, Message: "This domain shadows one of the installation's own hostnames"},
+		})
+	case errors.Is(err, ErrCustomDomainTaken):
+		return true, h.WriteErrorErr(
+			writer, http.StatusConflict, base.ErrorCodeConflict, "Custom domain already in use", err)
+	case errors.Is(err, ErrCustomDomainNotSet):
+		return true, h.WriteValidationError(writer, "No custom domain configured", []base.ValidationErrorField{
+			{Name: fieldCustomDomain, Message: "Set a custom domain before verifying it"},
+		})
+	case errors.Is(err, ErrCustomDomainRateLimited):
+		return true, h.WriteErrorErr(
+			writer, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
+			"Too many verification attempts, please retry shortly", err)
+	default:
+		return false, nil
+	}
+}
+
+// handleVerifyError maps errors from the verify-now endpoint.
+func (h *Handler) handleVerifyError(writer http.ResponseWriter, err error) error {
+	if handled, result := h.mapCustomDomainError(writer, err); handled {
+		return result
+	}
+
+	return h.handlePageError(writer, err)
+}
+
 func (h *Handler) handleCreatePageError(writer http.ResponseWriter, err error) error {
+	if handled, result := h.mapCustomDomainError(writer, err); handled {
+		return result
+	}
+
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
@@ -436,6 +539,10 @@ func (h *Handler) handleCreatePageError(writer http.ResponseWriter, err error) e
 }
 
 func (h *Handler) handleUpdatePageError(writer http.ResponseWriter, err error) error {
+	if handled, result := h.mapCustomDomainError(writer, err); handled {
+		return result
+	}
+
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(

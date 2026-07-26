@@ -18,13 +18,17 @@ Time-series check execution results (raw and aggregated).
 | worker_uid | uuid | FK to workers (raw only) |
 | status | smallint | Lifecycle order: 1=created, 2=running, 3=up, 4=down, 5=timeout, 6=error, 7=degraded, 8=warning |
 | duration | real | Execution duration in milliseconds |
-| metrics | jsonb | Numerical metrics |
-| output | jsonb | Diagnostic output |
-| last_for_status | boolean | Most recent per check+status |
+| metrics | jsonb | Numerical metrics (NULL for HTTP raw rows — response time lives in `duration`) |
+| output | jsonb | Diagnostic output (raw rows only; rollups leave it NULL) |
 | total_checks | integer | Total count (aggregated) |
 | successful_checks | integer | Success count (aggregated) |
-| availability_pct | double | Uptime percentage (aggregated) |
 | duration_min/max/avg/p95 | real | Duration stats (aggregated) |
+
+Availability % is **not stored**: it is derived at read time as
+`successful_checks / total_checks × 100` (null when `total_checks = 0`). The
+`last_for_status` and `availability_pct` columns were dropped in migration
+`009_v0_8_0` (spec 2026-07-24-02) — the former was write-only and cost an extra
+UPDATE per insert, the latter was redundant with the two counts.
 
 **Foreign Keys**:
 - `organization_uid` → organizations(uid)

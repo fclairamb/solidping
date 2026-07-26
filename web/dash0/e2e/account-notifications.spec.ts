@@ -229,6 +229,81 @@ test.describe("Account Notifications", () => {
     expect(testPostReceived).toBe(true);
   });
 
+  test("should verify an unverified phone contact via the code flow (mocked)", async ({
+    authenticatedPage: page,
+  }) => {
+    const contactUid = "contact-phone-1";
+
+    // Return one unverified phone route.
+    await page.route("**/notification-routes**", async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: [
+              {
+                uid: "route-phone-1",
+                enabled: true,
+                position: 1,
+                contact: {
+                  uid: contactUid,
+                  type: "phone",
+                  value: "+15551230000",
+                  label: "mobile",
+                },
+                createdAt: new Date().toISOString(),
+              },
+            ],
+          }),
+        });
+
+        return;
+      }
+
+      await route.continue();
+    });
+
+    let confirmReceived = false;
+    // Confirm endpoint (more specific — register first).
+    await page.route(/\/verify\/confirm$/, async (route) => {
+      if (route.request().method() === "POST") {
+        confirmReceived = true;
+        await route.fulfill({ status: 204, body: "" });
+
+        return;
+      }
+      await route.continue();
+    });
+
+    let verifyReceived = false;
+    await page.route(/\/verify$/, async (route) => {
+      if (route.request().method() === "POST") {
+        verifyReceived = true;
+        await route.fulfill({ status: 204, body: "" });
+
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("orgs/test/account/notifications");
+    await page.waitForLoadState("networkidle");
+
+    // Open the verify dialog for the unverified phone.
+    await page.getByTestId(`verify-phone-${contactUid}`).click();
+    await expect(page.getByTestId("verify-phone-dialog")).toBeVisible();
+
+    // Send the code.
+    await page.getByTestId("verify-send-code").click();
+    await expect.poll(() => verifyReceived).toBe(true);
+
+    // Enter the code and confirm.
+    await page.getByTestId("verify-code-input").fill("123456");
+    await page.getByTestId("verify-confirm").click();
+    await expect.poll(() => confirmReceived).toBe(true);
+  });
+
   test("should toggle enabled on email route", async ({
     authenticatedPage: page,
   }) => {

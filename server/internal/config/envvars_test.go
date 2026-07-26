@@ -78,6 +78,8 @@ func TestManualReaderEnvVarsBind(t *testing.T) {
 	t.Setenv("SP_DOCS_HOST", "docs.example.test")
 	t.Setenv("SP_JOBS_REAPER_INTERVAL", "3m")
 	t.Setenv("SP_REALTIME_MAX_CONNECTIONS", "1234")
+	t.Setenv("SP_ENTITLEMENTS_SMS_RUNAWAY_PER_HOUR", "42")
+	t.Setenv("SP_ENTITLEMENTS_CALL_RUNAWAY_PER_HOUR", "7")
 
 	r := require.New(t)
 	cfg, err := Load()
@@ -86,4 +88,6 @@ func TestManualReaderEnvVarsBind(t *testing.T) {
 	r.Equal("docs.example.test", cfg.Server.DocsHost)
 	r.Equal(3*60, int(cfg.Jobs.ReaperInterval.Seconds()))
 	r.Equal(1234, cfg.Realtime.MaxConnections)
+	r.Equal(42, cfg.Entitlements.SMSRunawayPerHour)
+	r.Equal(7, cfg.Entitlements.CallRunawayPerHour)
 }

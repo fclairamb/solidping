@@ -183,4 +183,7 @@ func TestWindowAvailability_Filter(t *testing.T) {
 	r.NotNil(lister.gotFilter.PeriodEndBefore)
 	r.True(lister.gotFilter.PeriodStartAfter.Equal(start))
 	r.True(lister.gotFilter.PeriodEndBefore.Equal(now))
+	r.True(lister.gotFilter.SkipBlobs,
+		"availability is computed from status/counts, so the metrics/output blobs "+
+			"must be projected away (spec 2026-07-24-02)")
 }

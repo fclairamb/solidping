@@ -29,6 +29,9 @@ type Usage struct {
 	// Agents is the org's count of active (non-revoked, non-deleted) deported
 	// agents across all private regions. Enforced against MaxDeportedAgents.
 	Agents int `json:"agents"`
+	// CustomDomains is the org's count of live status pages with a custom
+	// domain set. Enforced against MaxCustomDomains.
+	CustomDomains int `json:"customDomains"`
 }
 
 // Usage computes the org's current resource consumption. Non-internal
@@ -65,8 +68,14 @@ func (s *Service) Usage(ctx context.Context, orgUID string) (Usage, error) {
 		return Usage{}, fmt.Errorf("count agents: %w", err)
 	}
 
+	customDomains, err := s.db.CountStatusPagesWithCustomDomain(ctx, orgUID)
+	if err != nil {
+		return Usage{}, fmt.Errorf("count custom domains: %w", err)
+	}
+
 	return Usage{
-		Checks: len(rates), ChecksPerMinute: perMin, SSOUsers: members, Agents: agentCount,
+		Checks: len(rates), ChecksPerMinute: perMin, SSOUsers: members,
+		Agents: agentCount, CustomDomains: customDomains,
 	}, nil
 }
 
@@ -123,6 +132,44 @@ func (s *Service) AgentCreateAllowed(ctx context.Context, orgUID string) error {
 	if count >= limit {
 		return &QuotaError{
 			LimitName:    "MaxDeportedAgents",
+			Limit:        limit,
+			CurrentUsage: count,
+		}
+	}
+
+	return nil
+}
+
+// CustomDomainAllowed returns ErrEntitlementExceeded (wrapped in QuotaError)
+// when setting another custom domain would breach the org's MaxCustomDomains
+// cap. nil cap = unlimited. Counts live status pages in the org that already
+// have a custom domain set. Called only when setting a NEW non-null domain on a
+// page that did not previously have one.
+//
+// Race window: the count and the caller's write are not atomic, mirroring
+// CheckCreateAllowed. A tight race may slip one extra domain past the cap;
+// acceptable for a soft quota guard (the global unique index still arbitrates
+// ownership).
+func (s *Service) CustomDomainAllowed(ctx context.Context, orgUID string) error {
+	resolved, err := s.Resolve(ctx, orgUID)
+	if err != nil {
+		return fmt.Errorf("resolve entitlements: %w", err)
+	}
+
+	if resolved.Limits.MaxCustomDomains == nil {
+		return nil
+	}
+
+	limit := *resolved.Limits.MaxCustomDomains
+
+	count, err := s.db.CountStatusPagesWithCustomDomain(ctx, orgUID)
+	if err != nil {
+		return fmt.Errorf("count custom domains: %w", err)
+	}
+
+	if count >= limit {
+		return &QuotaError{
+			LimitName:    "MaxCustomDomains",
 			Limit:        limit,
 			CurrentUsage: count,
 		}
