@@ -3,10 +3,13 @@ package tlsedge
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -78,6 +81,10 @@ type Options struct {
 	// the same top-level chain the plain listener uses, so custom-host routing
 	// (status page + allowlisted API only) applies unchanged.
 	Handler http.Handler
+	// TrustedRoots optionally overrides the roots used to talk to the ACME CA.
+	// Production leaves it nil (the system pool); it exists for a private or
+	// test CA such as Pebble.
+	TrustedRoots *x509.CertPool
 	// Logger is used for issuance/serving diagnostics. Defaults to slog.Default.
 	Logger *slog.Logger
 }
@@ -166,10 +173,19 @@ func (e *Edge) buildCertmagic() {
 	e.magic = certmagic.New(e.cache, template)
 
 	issuerTemplate := certmagic.ACMEIssuer{
-		CA:     strings.TrimSpace(e.opts.ACME.CAURL),
-		Email:  strings.TrimSpace(e.opts.ACME.Email),
-		Agreed: true,
-		Logger: zapLogger,
+		CA:           strings.TrimSpace(e.opts.ACME.CAURL),
+		Email:        strings.TrimSpace(e.opts.ACME.Email),
+		Agreed:       true,
+		Logger:       zapLogger,
+		TrustedRoots: e.opts.TrustedRoots,
+		// Point certmagic's built-in challenge solvers at the ports THIS edge
+		// binds. They then always find the address in use and defer to our own
+		// handlers (the :80 challenge handler and the :443 TLS config) instead
+		// of trying to bind privileged ports we may not own — which is what
+		// happens when the listen addresses are remapped (container port
+		// forwarding, non-root deployment, tests).
+		AltHTTPPort:    portFromListenAddr(e.opts.ACME.ListenHTTP),
+		AltTLSALPNPort: portFromListenAddr(e.opts.ACME.ListenHTTPS),
 	}
 
 	e.issuer = certmagic.NewACMEIssuer(e.magic, issuerTemplate)
@@ -417,6 +433,23 @@ func (e *Edge) hasCertificate(ctx context.Context, host string) bool {
 	}
 
 	return false
+}
+
+// portFromListenAddr extracts the numeric port from a ":port" / "host:port"
+// listen address. It returns 0 (certmagic's default) when the address has no
+// parseable port.
+func portFromListenAddr(addr string) int {
+	_, portStr, err := net.SplitHostPort(strings.TrimSpace(addr))
+	if err != nil {
+		return 0
+	}
+
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return 0
+	}
+
+	return port
 }
 
 // normalizeHost lowercases a hostname and strips a trailing dot and any port.
