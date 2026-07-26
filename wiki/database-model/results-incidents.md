@@ -27,7 +27,7 @@ Time-series check execution results (raw and aggregated).
 Availability % is **not stored**: it is derived at read time as
 `successful_checks / total_checks × 100` (null when `total_checks = 0`). The
 `last_for_status` and `availability_pct` columns were dropped in migration
-`009_v0_8_0` (spec 2026-07-24-02) — the former was write-only and cost an extra
+`008_v0_7_0` (spec 2026-07-24-02) — the former was write-only and cost an extra
 UPDATE per insert, the latter was redundant with the two counts.
 
 **Foreign Keys**:

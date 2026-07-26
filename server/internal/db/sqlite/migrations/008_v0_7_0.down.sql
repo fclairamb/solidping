@@ -2,6 +2,14 @@
 -- Reverse order: later-appended feature blocks are torn down before the
 -- earlier ones they were stacked on top of.
 
+-- reverse results table tier-1 storage trim (spec 2026-07-24-02)
+-- No backfill: availability_pct is recomputable from successful_checks /
+-- total_checks, and last_for_status is repopulated by the next result insert.
+alter table results add column last_for_status integer;
+alter table results add column availability_pct real;
+
+create index idx_results_last_for_status on results (check_uid, status) where last_for_status = 1;
+
 -- reverse monthly SMS/voice usage counters (spec 2026-07-22-02)
 drop table if exists org_usage_counters;
 

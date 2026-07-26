@@ -105,17 +105,35 @@ func TestListResults_SkipBlobsProjection_Postgres(t *testing.T) {
 	r.InDelta(123, *trimmed.Duration, 0.001)
 }
 
-// TestMigration009ResultsTrimUpDown_Postgres proves migration 009_v0_8_0 drops
-// results.last_for_status (+ its partial index) and results.availability_pct on
-// Postgres, that its down migration restores all three, and that re-applying up
-// drops them again (spec 2026-07-24-02).
+// resultsTrimDownSQL and resultsTrimUpSQL are the results-trim block of
+// 008_v0_7_0 (spec 2026-07-24-02), lifted out of the consolidated migration
+// file so this test can round-trip just that block — re-executing the whole
+// file would fail on the other, non-idempotent blocks it now shares the file
+// with.
+const (
+	resultsTrimDownSQL = `
+alter table results add column last_for_status boolean;
+alter table results add column availability_pct double precision;
+create index idx_results_last_for_status on results (check_uid, status) where last_for_status = true;
+`
+	resultsTrimUpSQL = `
+drop index if exists idx_results_last_for_status;
+alter table results drop column last_for_status;
+alter table results drop column availability_pct;
+`
+)
+
+// TestMigrationResultsTrimUpDown_Postgres proves the results-trim block of
+// migration 008_v0_7_0 drops results.last_for_status (+ its partial index)
+// and results.availability_pct on Postgres, that its down migration restores
+// all three, and that re-applying up drops them again (spec 2026-07-24-02).
 //
 //nolint:paralleltest // embedded-postgres tests run sequentially in this package
-func TestMigration009ResultsTrimUpDown_Postgres(t *testing.T) {
+func TestMigrationResultsTrimUpDown_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	// Initialize (inside the helper) runs every embedded migration, 009 included.
+	// Initialize (inside the helper) runs every embedded migration, 008 included.
 	s := newTier1ServicePG(t, portResultsMigration)
 
 	resultsColumns := func() []string {
@@ -137,30 +155,28 @@ func TestMigration009ResultsTrimUpDown_Postgres(t *testing.T) {
 		return count == 1
 	}
 
-	execMigration := func(file string) {
-		content, readErr := migrationsFS.ReadFile(file)
-		r.NoError(readErr)
-		_, execErr := s.db.ExecContext(ctx, string(content))
-		r.NoError(execErr, "%s must apply cleanly", file)
+	execSQL := func(sql string) {
+		_, execErr := s.db.ExecContext(ctx, sql)
+		r.NoError(execErr, "%s must apply cleanly", sql)
 	}
 
 	cols := resultsColumns()
-	r.NotContains(cols, "last_for_status", "009 up must drop results.last_for_status")
-	r.NotContains(cols, "availability_pct", "009 up must drop results.availability_pct")
-	r.False(indexExists("idx_results_last_for_status"), "009 up must drop the partial index")
-	r.Contains(cols, "total_checks", "009 must not touch the other aggregate columns")
-	r.Contains(cols, "successful_checks", "009 must not touch the other aggregate columns")
-	r.Contains(cols, "metrics", "009 must not touch the blob columns")
-	r.Contains(cols, "output", "009 must not touch the blob columns")
+	r.NotContains(cols, "last_for_status", "up must drop results.last_for_status")
+	r.NotContains(cols, "availability_pct", "up must drop results.availability_pct")
+	r.False(indexExists("idx_results_last_for_status"), "up must drop the partial index")
+	r.Contains(cols, "total_checks", "must not touch the other aggregate columns")
+	r.Contains(cols, "successful_checks", "must not touch the other aggregate columns")
+	r.Contains(cols, "metrics", "must not touch the blob columns")
+	r.Contains(cols, "output", "must not touch the blob columns")
 
-	execMigration("migrations/009_v0_8_0.down.sql")
+	execSQL(resultsTrimDownSQL)
 
 	cols = resultsColumns()
-	r.Contains(cols, "last_for_status", "009 down must restore results.last_for_status")
-	r.Contains(cols, "availability_pct", "009 down must restore results.availability_pct")
-	r.True(indexExists("idx_results_last_for_status"), "009 down must restore the partial index")
+	r.Contains(cols, "last_for_status", "down must restore results.last_for_status")
+	r.Contains(cols, "availability_pct", "down must restore results.availability_pct")
+	r.True(indexExists("idx_results_last_for_status"), "down must restore the partial index")
 
-	execMigration("migrations/009_v0_8_0.up.sql")
+	execSQL(resultsTrimUpSQL)
 
 	cols = resultsColumns()
 	r.NotContains(cols, "last_for_status")
