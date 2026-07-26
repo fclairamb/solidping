@@ -301,3 +301,35 @@ projects, content-farm SEO, and paid templates. Not head-to-head rivals.
   external probing, no protocol breadth, no alert routing. Overlaps on the
   "self-hosted status page" keyword alone. Surfaced 2026-07-26 via author
   self-promo on lemmy.world /c/selfhosted.
+- **UpWatch** (upwatch.online) — indie SaaS, "built for indie hackers." HTTP GET
+  probes only, with retries and SSRF protection. Free £0 (5 monitors / 15-min
+  interval / email), Pro £10/mo (50 monitors / 5 min / Slack + Discord),
+  Business £30/mo (unlimited / 1 min / Telegram + webhooks / **triple-probe
+  consensus**). Public status page on every tier; the "dedicated" status page it
+  advertises (status.upwatch.online) is a hosted **Uptime Kuma** instance.
+  Surfaced 2026-07-27 (HN 49062533, 1 pt / 0 comments, author `snookiebaby`).
+  Non-threat on capability — HTTP-only, SaaS-only, coarse free interval — but it
+  is the **third product in five weeks** to headline multi-probe consensus
+  (Vigilmon 2026-06-28, UptimeMonitoring.com 2026-07-21, UpWatch now). Read that
+  as: "we confirm from several vantage points" is commodity copy in 2026, and the
+  defensible half of SolidPing's distributed-worker story is that the probes run
+  *inside the customer's own network*, self-hosted.
+- **Temps** (temps.sh · github.com/gotempsh/temps, Rust, Apache-2.0, **563★**,
+  created 2025-10, pushed daily) — self-hosted all-in-one PaaS: "Open-source
+  alternative to Vercel + Sentry + PostHog + Pingdom." Git-push deploys,
+  analytics, session replay, error tracking, managed Postgres/Redis/S3,
+  transactional email — **and uptime monitoring**, listed in its README
+  comparison table as replacing "Better Uptime / Pingdom ($20+/mo)" at $0.
+  What it actually ships is *platform-internal* monitoring: deploy failures,
+  runtime crashes, certificate expiry and backup health for apps deployed on
+  Temps. No external synthetic probing, no vantage points off the host, no
+  protocol breadth — the monitor shares fate with the machine it watches, so a
+  host-level outage takes the alerting down with it. That shared-fate argument is
+  the honest counter, and it generalises to every bundled built-in
+  (Coolify/Dokploy/Zoraxy).
+  `track: false` as a monitoring product, but this is the largest **bundler** in
+  the registry (563★ vs Moneat's 82★), and bundling is the real threat model for
+  the self-hoster segment: nobody installs a second tool for something their
+  platform claims to already do. Flip to `track: true` if Temps ships genuine
+  off-host probing or starts ranking for "uptime monitoring" queries.
+  Surfaced 2026-07-27 via its own PR #446.
