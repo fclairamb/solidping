@@ -17,9 +17,9 @@ import (
 // released/transferred domain within a day (3 failures × 6h).
 const customDomainVerifyInterval = 6 * time.Hour
 
-// customDomainReverifyMaxFailures is the consecutive TXT-check failure count at
-// which a domain's verification is cleared (takeover protection). Kept in step
-// with the handler-side customDomainMaxFailures.
+// customDomainReverifyMaxFailures is the consecutive CNAME-check failure count
+// at which a domain's verification is cleared (takeover protection). Kept in
+// step with the handler-side customDomainMaxFailures.
 const customDomainReverifyMaxFailures = 3
 
 // CustomDomainVerifyJobDefinition is the factory for the custom-domain
@@ -51,8 +51,10 @@ type CustomDomainVerifyJobRun struct {
 	verifier *domainverify.Verifier
 }
 
-// Run re-runs the ownership (TXT) check for every page with a custom domain,
-// then reschedules itself.
+// Run re-runs the CNAME check for every page with a custom domain, then
+// reschedules itself. The check is mode-aware: in token mode a page whose
+// CNAME has been repointed at the plain shared target fails, which is exactly
+// the dangling-CNAME takeover the mode exists to stop.
 func (r *CustomDomainVerifyJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 	log := jctx.Logger
 
@@ -84,7 +86,7 @@ func (r *CustomDomainVerifyJobRun) Run(ctx context.Context, jctx *jobdef.JobCont
 	return nil
 }
 
-// reverifyOne re-runs the TXT check for one page and stamps the outcome.
+// reverifyOne re-runs the CNAME check for one page and stamps the outcome.
 // Returns whether the check passed.
 func (r *CustomDomainVerifyJobRun) reverifyOne(
 	ctx context.Context, jctx *jobdef.JobContext, page *models.StatusPage,
@@ -98,15 +100,17 @@ func (r *CustomDomainVerifyJobRun) reverifyOne(
 		token = *page.CustomDomainToken
 	}
 
-	ok, _ := r.verifier.CheckTXT(ctx, *page.CustomDomain, token)
+	cnameTarget, mode := customDomainVerifySettings(jctx)
+	ok := r.verifier.Verify(ctx, *page.CustomDomain, token, cnameTarget, mode)
 
 	now := time.Now()
 	update := &models.StatusPageCustomDomainUpdate{
 		Domain:    page.CustomDomain,
 		Token:     page.CustomDomainToken,
 		CheckedAt: &now,
-		// Default: keep the existing verification state (the sweep never
-		// promotes an unverified page — that requires the full CNAME check too).
+		// Default: keep the existing verification state. The sweep never
+		// PROMOTES an unverified page — an operator has to click Verify — it
+		// only ever demotes one that stopped resolving.
 		VerifiedAt: page.CustomDomainVerifiedAt,
 	}
 
@@ -128,6 +132,18 @@ func (r *CustomDomainVerifyJobRun) reverifyOne(
 	}
 
 	return ok
+}
+
+// customDomainVerifySettings resolves the installation CNAME target and the
+// verification mode from the job context's app config. A job context without a
+// config (unit tests, degraded startup) yields an empty target, which makes
+// every check fail closed rather than silently verifying against nothing.
+func customDomainVerifySettings(jctx *jobdef.JobContext) (string, domainverify.Mode) {
+	if jctx == nil || jctx.AppConfig == nil {
+		return "", domainverify.ModeShared
+	}
+
+	return jctx.AppConfig.CustomDomainCNAMETarget(), jctx.AppConfig.CustomDomainCNAMEMode()
 }
 
 func (r *CustomDomainVerifyJobRun) rescheduleSelf(ctx context.Context, jctx *jobdef.JobContext) {

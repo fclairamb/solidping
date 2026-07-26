@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
-	"encoding/base64"
+	"encoding/base32"
 	"errors"
 	"fmt"
 	"net/url"
@@ -20,8 +20,15 @@ import (
 const (
 	// customDomainVerifyPerMinute caps synchronous verify-now calls per org.
 	customDomainVerifyPerMinute = 10
-	// customDomainTokenBytes is the entropy of the DNS-challenge token.
-	customDomainTokenBytes = 32
+	// customDomainTokenBytes is the entropy of the CNAME token. 8 bytes → 13
+	// base32 characters; with customDomainTokenPrefix the token is 15 chars,
+	// well inside the 63-char DNS label cap it has to live in as the leading
+	// label of "<token>.cname.<target>" in token mode.
+	customDomainTokenBytes = 8
+	// customDomainTokenPrefix guarantees the token starts with a letter. Some
+	// DNS providers reject a label beginning with a digit, and base32's
+	// alphabet includes 2-7.
+	customDomainTokenPrefix = "sp"
 )
 
 // Custom-domain errors. Mapped to HTTP by the handler.
@@ -42,15 +49,26 @@ var (
 	ErrCustomDomainRateLimited = errors.New("custom domain verification rate limit exceeded")
 )
 
-// generateCustomDomainToken returns a URL-safe, unguessable challenge token
-// (crypto/rand, base64url), mirroring statussubscribers.generateToken.
+// generateCustomDomainToken returns an unguessable, DNS-label-safe token
+// (crypto/rand, lowercase base32, letter-leading). In token mode the token IS
+// the leading label of the CNAME target the customer publishes, so it must be
+// short and label-legal; in shared mode it is unused but still generated so a
+// deployment can flip modes without re-provisioning pages.
+//
+// Migration note: pre-v0.8.0 tokens are 43-char base64url and may contain
+// characters illegal in a DNS label. They are never rewritten in place — a page
+// picks up a modern token the next time its domain is set (see setCustomDomain),
+// and domainverify.TokenHost returns "" for a token it cannot use, which fails
+// closed instead of publishing a malformed record.
 func generateCustomDomainToken() (string, error) {
 	buf := make([]byte, customDomainTokenBytes)
 	if _, err := rand.Read(buf); err != nil {
 		return "", fmt.Errorf("generate custom domain token: %w", err)
 	}
 
-	return base64.RawURLEncoding.EncodeToString(buf), nil
+	encoded := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(buf)
+
+	return customDomainTokenPrefix + strings.ToLower(encoded), nil
 }
 
 // cnameTarget resolves the installation's CNAME target from config.
@@ -60,6 +78,16 @@ func (s *Service) cnameTarget() string {
 	}
 
 	return s.cfg.CustomDomainCNAMETarget()
+}
+
+// cnameMode resolves the configured CNAME verification mode, defaulting to
+// shared when no config is attached (the MCP handler).
+func (s *Service) cnameMode() domainverify.Mode {
+	if s.cfg == nil {
+		return domainverify.ModeShared
+	}
+
+	return s.cfg.CustomDomainCNAMEMode()
 }
 
 // reservedHosts are the instance's own hostnames a custom domain must not
@@ -123,7 +151,14 @@ func (s *Service) enrichCustomDomain(resp *StatusPageResponse, page *models.Stat
 		token = *page.CustomDomainToken
 	}
 
-	resp.CustomDomainRecords = domainverify.Records(*page.CustomDomain, token, s.cnameTarget())
+	resp.CustomDomainRecords = domainverify.Records(*page.CustomDomain, token, s.cnameTarget(), s.cnameMode())
+
+	// Certificate state is only meaningful once the domain is verified and
+	// in-server ACME is running; without a provider the field stays empty and
+	// the dashboard simply does not render the chip.
+	if s.certStatus != nil && page.CustomDomainVerifiedAt != nil {
+		resp.CustomDomainCertStatus = s.certStatus.CertStatus(*page.CustomDomain)
+	}
 }
 
 // applyCustomDomainChange resolves the custom-domain intent from an update
@@ -247,7 +282,7 @@ func (s *Service) VerifyCustomDomain(
 		token = *page.CustomDomainToken
 	}
 
-	verified := s.verifier.Verify(ctx, *page.CustomDomain, token, s.cnameTarget())
+	verified := s.verifier.Verify(ctx, *page.CustomDomain, token, s.cnameTarget(), s.cnameMode())
 
 	now := time.Now()
 	update := &models.StatusPageCustomDomainUpdate{

@@ -18,6 +18,8 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/providers/structs"
 	"github.com/knadh/koanf/v2"
+
+	"github.com/fclairamb/solidping/server/internal/domainverify"
 )
 
 // Node role constants.
@@ -102,6 +104,17 @@ var (
 	ErrInvalidLaneThresholds = errors.New(
 		"scheduling lane thresholds must satisfy 0 <= lane_fast_threshold_ms < lane_slow_threshold_ms",
 	)
+	// ErrInvalidCNAMEMode is returned when server.custom_domain_cname_mode is
+	// not one of "shared" / "token". Failing fast matters: silently falling back
+	// to "shared" would drop the token-mode takeover protection.
+	ErrInvalidCNAMEMode = errors.New("custom domain CNAME mode must be 'shared' or 'token'")
+	// ErrACMEEmailRequired is returned when acme.enabled is true without an
+	// account contact address — Let's Encrypt requires one for expiry notices.
+	ErrACMEEmailRequired = errors.New("acme.email is required when acme.enabled is true")
+	// ErrACMEListenRequired is returned when ACME is enabled but one of its
+	// listen addresses was blanked out; both listeners are mandatory (HTTP-01
+	// needs :80, TLS-ALPN-01 and serving need :443).
+	ErrACMEListenRequired = errors.New("acme.listen_http and acme.listen_https are required when acme.enabled is true")
 )
 
 // Supported password-hashing algorithm identifiers.
@@ -270,9 +283,40 @@ type Config struct {
 	Deployment   DeploymentConfig     `koanf:"deployment"`
 	WebPush      WebPushConfig        `koanf:"webpush"`
 	Entitlements EntitlementsConfig   `koanf:"entitlements"`
+	ACME         ACMEConfig           `koanf:"acme"`
 	RunMode      string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
 	UserAgent    string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
 	LogLevel     slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
+}
+
+// ACMEConfig turns on in-server TLS: certmagic obtains and renews Let's Encrypt
+// certificates on demand for the instance's own hosts and for verified custom
+// domains, storing them in the database (tls_storage) so a cluster shares them
+// and a restart never re-issues. Off by default — with acme.enabled false the
+// server behaves exactly as before and TLS stays with an external proxy (the
+// GET /api/v1/public/custom-domains/allowed contract is unaffected either way).
+//
+// Every key except enabled/email contains an underscore, which koanf's env
+// loader would turn into a dot (acme.ca.url), so those are read by hand in
+// applyACMEEnv. See project_koanf_env_quirk.
+type ACMEConfig struct {
+	// Enabled is the master switch (SP_ACME_ENABLED). false = zero behavior
+	// change: no extra listeners, no CA traffic, no storage writes.
+	Enabled bool `koanf:"enabled"`
+	// Email is the ACME account contact (SP_ACME_EMAIL). Required when enabled.
+	Email string `koanf:"email"`
+	// CAURL is the ACME directory URL (SP_ACME_CA_URL). Empty uses certmagic's
+	// default (Let's Encrypt production); override for LE staging or a Pebble
+	// test CA.
+	CAURL string `koanf:"ca_url"`
+	// ListenHTTP is the challenge + redirect listener (SP_ACME_LISTEN_HTTP,
+	// default ":80"). It serves /.well-known/acme-challenge/ and 308-redirects
+	// everything else to https.
+	ListenHTTP string `koanf:"listen_http"`
+	// ListenHTTPS is the TLS listener (SP_ACME_LISTEN_HTTPS, default ":443").
+	// Requests flow into the same handler chain as the plain listener, so
+	// custom-host routing applies unchanged.
+	ListenHTTPS string `koanf:"listen_https"`
 }
 
 // DeploymentConfig picks per-org entitlement defaults. SP_DEPLOYMENT_MODE
@@ -366,6 +410,16 @@ func (c *Config) CustomDomainCNAMETarget() string {
 	}
 
 	return ""
+}
+
+// CustomDomainCNAMEMode resolves the configured CNAME verification mode,
+// falling back to domainverify.ModeShared for an empty or unrecognized value
+// (Validate rejects unrecognized values at startup, so a bad value never
+// reaches here in a live server).
+func (c *Config) CustomDomainCNAMEMode() domainverify.Mode {
+	mode, _ := domainverify.ParseMode(c.Server.CustomDomainCNAMEMode)
+
+	return mode
 }
 
 // EmailConfig contains SMTP email configuration.
@@ -639,6 +693,15 @@ type ServerConfig struct {
 	// (SP_CUSTOM_DOMAIN_CNAME_TARGET / SP_SERVER_CUSTOM_DOMAIN_CNAME_TARGET), not
 	// the auto env loader. Resolve through Config.CustomDomainCNAMETarget().
 	CustomDomainCNAMETarget string `koanf:"custom_domain_cname_target"`
+	// CustomDomainCNAMEMode selects how a customer's single CNAME is verified:
+	// "shared" (default) points at CustomDomainCNAMETarget directly, "token"
+	// points at the page-specific "<token>.cname.<target>" host and therefore
+	// survives a dangling-CNAME takeover attempt. Token mode requires a
+	// wildcard A/AAAA (or ALIAS — never a CNAME) record for
+	// "*.cname.<target>". Multi-word koanf key → read via applyServerEnv
+	// (SP_CUSTOM_DOMAIN_CNAME_MODE / SP_SERVER_CUSTOM_DOMAIN_CNAME_MODE).
+	// Resolve through Config.CustomDomainCNAMEMode().
+	CustomDomainCNAMEMode string `koanf:"custom_domain_cname_mode"`
 	// Scheduling holds the cost-aware, plan-weighted check-scheduling knobs.
 	// Multi-word keys → read via applySchedulingEnv. See project_koanf_env_quirk.
 	Scheduling SchedulingConfig `koanf:"scheduling"`
@@ -787,6 +850,16 @@ func Load() (*Config, error) {
 				FastLaneReserved:    5,
 			},
 			RateLimiting: DefaultRateLimitConfig(),
+			// One CNAME, pointing at the plain instance target. See
+			// ServerConfig.CustomDomainCNAMEMode for the token-mode trade-off.
+			CustomDomainCNAMEMode: string(domainverify.ModeShared),
+		},
+		// In-server ACME is opt-in; the listen addresses are pre-filled so
+		// enabling it is a one-flag change on a host with :80/:443 free.
+		ACME: ACMEConfig{
+			Enabled:     false,
+			ListenHTTP:  ":80",
+			ListenHTTPS: ":443",
 		},
 		Database: DatabaseConfig{
 			Type:            DatabaseTypeSQLite,
@@ -986,6 +1059,7 @@ func Load() (*Config, error) {
 	applyJobsEnv(&cfg.Jobs)
 	applyServerEnv(&cfg.Server)
 	applySchedulingEnv(&cfg.Server.Scheduling)
+	applyACMEEnv(&cfg.ACME)
 	applyProfilerEnv(&cfg.Profiler)
 	applyRuntimeEnv(&cfg.Runtime)
 	applyRealtimeEnv(&cfg.Realtime)
@@ -1248,6 +1322,30 @@ func applyServerEnv(cfg *ServerConfig) {
 	} else if v := os.Getenv("SP_CUSTOM_DOMAIN_CNAME_TARGET"); v != "" {
 		cfg.CustomDomainCNAMETarget = v
 	}
+
+	if v := os.Getenv("SP_SERVER_CUSTOM_DOMAIN_CNAME_MODE"); v != "" {
+		cfg.CustomDomainCNAMEMode = v
+	} else if v := os.Getenv("SP_CUSTOM_DOMAIN_CNAME_MODE"); v != "" {
+		cfg.CustomDomainCNAMEMode = v
+	}
+}
+
+// applyACMEEnv reads the multi-word SP_ACME_* keys koanf's env loader cannot
+// bind (it collapses underscores to dots, so acme.ca_url would become
+// acme.ca.url). acme.enabled and acme.email are single-word and are bound by
+// the auto loader. See project_koanf_env_quirk.
+func applyACMEEnv(cfg *ACMEConfig) {
+	if v := os.Getenv("SP_ACME_CA_URL"); v != "" {
+		cfg.CAURL = v
+	}
+
+	if v := os.Getenv("SP_ACME_LISTEN_HTTP"); v != "" {
+		cfg.ListenHTTP = v
+	}
+
+	if v := os.Getenv("SP_ACME_LISTEN_HTTPS"); v != "" {
+		cfg.ListenHTTPS = v
+	}
 }
 
 // applySchedulingEnv reads the multi-word SP_SCHEDULING_* knobs koanf's env
@@ -1484,6 +1582,34 @@ func (c *Config) Validate() error {
 
 	if err := validateLaneThresholds(&c.Server.Scheduling); err != nil {
 		return err
+	}
+
+	if _, ok := domainverify.ParseMode(c.Server.CustomDomainCNAMEMode); !ok {
+		return fmt.Errorf("%w, got '%s'", ErrInvalidCNAMEMode, c.Server.CustomDomainCNAMEMode)
+	}
+
+	if err := validateACMEConfig(&c.ACME); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateACMEConfig fails fast when in-server TLS is switched on without the
+// inputs it cannot invent: Let's Encrypt refuses an account with no contact
+// address, and both listeners are mandatory (HTTP-01 needs the :80 listener,
+// TLS-ALPN-01 and actually serving need the :443 one).
+func validateACMEConfig(cfg *ACMEConfig) error {
+	if !cfg.Enabled {
+		return nil
+	}
+
+	if strings.TrimSpace(cfg.Email) == "" {
+		return ErrACMEEmailRequired
+	}
+
+	if strings.TrimSpace(cfg.ListenHTTP) == "" || strings.TrimSpace(cfg.ListenHTTPS) == "" {
+		return ErrACMEListenRequired
 	}
 
 	return nil

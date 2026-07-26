@@ -87,6 +87,26 @@ type Service struct {
 	verifier *domainverify.Verifier
 	// verifyLimiter throttles the synchronous verify-now endpoint per org.
 	verifyLimiter *verifyRateLimiter
+	// certStatus reports the in-server-ACME certificate state for a custom
+	// domain. nil when in-server TLS is off (self-hosted behind an external
+	// proxy, or acme.enabled = false), in which case the response simply omits
+	// customDomainCertStatus.
+	certStatus CertStatusProvider
+}
+
+// CertStatusProvider reports the TLS certificate state of a custom domain so
+// the dashboard can explain why HTTPS is not live yet. Implemented by
+// internal/tlsedge; injected via Service.SetCertStatusProvider to keep this
+// package free of a certmagic dependency.
+type CertStatusProvider interface {
+	// CertStatus returns "issued", "error" or "none" for a (normalized) domain.
+	CertStatus(domain string) string
+}
+
+// SetCertStatusProvider wires the in-server ACME edge into the custom-domain
+// responses. Safe to skip entirely — a nil provider just omits the field.
+func (s *Service) SetCertStatusProvider(provider CertStatusProvider) {
+	s.certStatus = provider
 }
 
 // NewService creates a new status pages service. cfg may be nil (e.g. the MCP
@@ -154,6 +174,11 @@ type StatusPageResponse struct {
 	CustomDomain        *string               `json:"customDomain,omitempty"`
 	CustomDomainStatus  string                `json:"customDomainStatus,omitempty"`
 	CustomDomainRecords []domainverify.Record `json:"customDomainRecords,omitempty"`
+	// CustomDomainCertStatus is the in-server-ACME certificate state:
+	// "none" (nothing issued yet), "issued", or "error" (last issuance
+	// attempt failed — see the server log for the reason). Empty when
+	// in-server TLS is disabled or the domain is not verified yet.
+	CustomDomainCertStatus string `json:"customDomainCertStatus,omitempty"`
 }
 
 // StatusPageSectionResponse represents a section in API responses.

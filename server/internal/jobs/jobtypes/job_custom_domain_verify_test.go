@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
@@ -29,10 +30,15 @@ func newCustomDomainVerifyContext(t *testing.T) (*jobdef.JobContext, db.Service)
 
 	jobSvc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 
+	appCfg := &config.Config{}
+	appCfg.Server.BaseURL = "https://solidping.io"
+	appCfg.Server.CustomDomainCNAMETarget = "cname.solidping.io"
+
 	jctx := &jobdef.JobContext{
 		Services:  &services.Registry{Jobs: jobSvc},
 		DB:        dbSvc.DB(),
 		DBService: dbSvc,
+		AppConfig: appCfg,
 		Logger:    slog.Default(),
 	}
 
@@ -49,7 +55,7 @@ func seedCustomDomainPage(
 	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
 
 	page := models.NewStatusPage(org.UID, "Acme", "main")
-	token := "tok-" + domain
+	token := customDomainTestToken
 	page.CustomDomain = &domain
 	page.CustomDomainToken = &token
 	page.CustomDomainVerifiedAt = verified
@@ -59,17 +65,21 @@ func seedCustomDomainPage(
 	return page
 }
 
-// stubVerifier returns a verifier whose TXT lookup passes iff pass is true.
-func stubVerifier(pass bool, domain string) *domainverify.Verifier {
+// customDomainTestToken is the per-page token seeded on every fixture page. It
+// is DNS-label shaped so token-mode host construction succeeds.
+const customDomainTestToken = "sptesttoken"
+
+// stubVerifier returns a verifier whose CNAME lookup answers the shared target
+// iff pass is true (and something else otherwise).
+func stubVerifier(pass bool, _ string) *domainverify.Verifier {
 	return &domainverify.Verifier{
-		LookupTXT: func(_ context.Context, _ string) ([]string, error) {
+		LookupCNAME: func(_ context.Context, _ string) (string, error) {
 			if pass {
-				return []string{domainverify.TXTValuePrefix + "tok-" + domain}, nil
+				return "cname.solidping.io.", nil
 			}
 
-			return []string{"sp-domain-verify=wrong"}, nil
+			return "elsewhere.example.net.", nil
 		},
-		LookupCNAME: func(_ context.Context, _ string) (string, error) { return "", nil },
 	}
 }
 
@@ -146,4 +156,71 @@ func TestCustomDomainVerifyJob_Reschedules(t *testing.T) {
 		Count(ctx)
 	r.NoError(err)
 	r.Positive(count, "job reschedules itself")
+}
+
+// TestCustomDomainVerifyJob_TokenModeDemotesSharedTargetCNAME is the takeover
+// scenario the re-verify sweep exists for: the installation runs token mode and
+// a page's CNAME has been repointed at the plain shared target (or is a leftover
+// dangling record). Three sweeps must clear the verification.
+func TestCustomDomainVerifyJob_TokenModeDemotesSharedTargetCNAME(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	jctx, dbSvc := newCustomDomainVerifyContext(t)
+	jctx.AppConfig.Server.CustomDomainCNAMEMode = string(domainverify.ModeToken)
+
+	verified := time.Now().Add(-time.Hour)
+	page := seedCustomDomainPage(t, dbSvc, "taken.acme.com", &verified, 2)
+
+	// The CNAME answers the SHARED target — valid in shared mode, invalid here.
+	run := &CustomDomainVerifyJobRun{verifier: stubVerifier(true, "taken.acme.com")}
+	r.NoError(run.Run(ctx, jctx))
+
+	updated, err := dbSvc.GetStatusPage(ctx, page.OrganizationUID, page.UID)
+	r.NoError(err)
+	r.Equal(3, updated.CustomDomainFailures)
+	r.Nil(updated.CustomDomainVerifiedAt, "shared target must not keep a token-mode page verified")
+}
+
+// TestCustomDomainVerifyJob_NeverPromotes locks the rule that the sweep only
+// ever demotes: an unverified page that now passes the CNAME check stays
+// unverified until an operator clicks Verify.
+func TestCustomDomainVerifyJob_NeverPromotes(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	jctx, dbSvc := newCustomDomainVerifyContext(t)
+	page := seedCustomDomainPage(t, dbSvc, "fresh.acme.com", nil, 0)
+
+	run := &CustomDomainVerifyJobRun{verifier: stubVerifier(true, "fresh.acme.com")}
+	r.NoError(run.Run(ctx, jctx))
+
+	updated, err := dbSvc.GetStatusPage(ctx, page.OrganizationUID, page.UID)
+	r.NoError(err)
+	r.Nil(updated.CustomDomainVerifiedAt, "the sweep never promotes")
+	r.Equal(0, updated.CustomDomainFailures)
+	r.NotNil(updated.CustomDomainCheckedAt)
+}
+
+// TestCustomDomainVerifyJob_NoConfigFailsClosed proves a job context with no
+// app config cannot accidentally verify anything.
+func TestCustomDomainVerifyJob_NoConfigFailsClosed(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	jctx, dbSvc := newCustomDomainVerifyContext(t)
+	jctx.AppConfig = nil
+
+	verified := time.Now().Add(-time.Hour)
+	page := seedCustomDomainPage(t, dbSvc, "noconf.acme.com", &verified, 0)
+
+	run := &CustomDomainVerifyJobRun{verifier: stubVerifier(true, "noconf.acme.com")}
+	r.NoError(run.Run(ctx, jctx))
+
+	updated, err := dbSvc.GetStatusPage(ctx, page.OrganizationUID, page.UID)
+	r.NoError(err)
+	r.Equal(1, updated.CustomDomainFailures, "no CNAME target configured → check fails")
 }

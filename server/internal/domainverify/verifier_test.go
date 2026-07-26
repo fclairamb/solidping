@@ -3,6 +3,7 @@ package domainverify
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -53,38 +54,21 @@ func TestNormalize(t *testing.T) {
 	}
 }
 
-func TestRecords(t *testing.T) {
+func TestParseMode(t *testing.T) {
 	t.Parallel()
-	r := require.New(t)
-
-	records := Records("status.acme.com", "tok123", "cname.solidping.io")
-	r.Len(records, 2)
-	r.Equal("CNAME", records[0].Type)
-	r.Equal("status.acme.com", records[0].Name)
-	r.Equal("cname.solidping.io", records[0].Value)
-	r.Equal("TXT", records[1].Type)
-	r.Equal("_solidping-challenge.status.acme.com", records[1].Name)
-	r.Equal("sp-domain-verify=tok123", records[1].Value)
-}
-
-func TestCheckTXT(t *testing.T) {
-	t.Parallel()
-
-	errLookup := errTestLookup
 
 	tests := []struct {
-		name    string
-		records []string
-		lookErr error
-		wantOK  bool
-		wantErr bool
+		name   string
+		in     string
+		want   Mode
+		wantOK bool
 	}{
-		{name: "match", records: []string{"sp-domain-verify=tok123"}, wantOK: true},
-		{name: "match among many", records: []string{"other=1", "sp-domain-verify=tok123"}, wantOK: true},
-		{name: "match with whitespace", records: []string{"  sp-domain-verify=tok123 "}, wantOK: true},
-		{name: "wrong token", records: []string{"sp-domain-verify=nope"}, wantOK: false},
-		{name: "missing record", records: []string{}, wantOK: false},
-		{name: "lookup error", lookErr: errLookup, wantOK: false, wantErr: true},
+		{name: "empty defaults to shared", in: "", want: ModeShared, wantOK: true},
+		{name: "shared", in: "shared", want: ModeShared, wantOK: true},
+		{name: "token", in: "token", want: ModeToken, wantOK: true},
+		{name: "uppercase token", in: "TOKEN", want: ModeToken, wantOK: true},
+		{name: "padded", in: "  token  ", want: ModeToken, wantOK: true},
+		{name: "unknown rejected", in: "wildcard", want: ModeShared, wantOK: false},
 	}
 
 	for _, tc := range tests {
@@ -92,43 +76,75 @@ func TestCheckTXT(t *testing.T) {
 			t.Parallel()
 			r := require.New(t)
 
-			v := &Verifier{
-				LookupTXT: func(_ context.Context, name string) ([]string, error) {
-					r.Equal("_solidping-challenge.status.acme.com", name)
-
-					return tc.records, tc.lookErr
-				},
-				LookupCNAME: func(_ context.Context, _ string) (string, error) { return "", nil },
-			}
-
-			ok, err := v.CheckTXT(context.Background(), "status.acme.com", "tok123")
+			got, ok := ParseMode(tc.in)
+			r.Equal(tc.want, got)
 			r.Equal(tc.wantOK, ok)
-			if tc.wantErr {
-				r.Error(err)
-			} else {
-				r.NoError(err)
+			r.True(got.Valid())
+		})
+	}
+}
+
+func TestTokenHost(t *testing.T) {
+	t.Parallel()
+
+	longToken := strings.Repeat("a", maxLabelLen+1)
+
+	tests := []struct {
+		name   string
+		token  string
+		target string
+		want   string
+	}{
+		{name: "nominal", token: "spabc123", target: "solidping.io", want: "spabc123.cname.solidping.io"},
+		{name: "uppercase normalized", token: "SPABC", target: "SolidPing.IO", want: "spabc.cname.solidping.io"},
+		{name: "trailing dot target", token: "spabc", target: "solidping.io.", want: "spabc.cname.solidping.io"},
+		{name: "empty token", token: "", target: "solidping.io", want: ""},
+		{name: "empty target", token: "spabc", target: "", want: ""},
+		{name: "token too long", token: longToken, target: "solidping.io", want: ""},
+		{name: "token with dot", token: "sp.abc", target: "solidping.io", want: ""},
+		{name: "token with underscore", token: "sp_abc", target: "solidping.io", want: ""},
+		{name: "token leading hyphen", token: "-spabc", target: "solidping.io", want: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			got := TokenHost(tc.token, tc.target)
+			r.Equal(tc.want, got)
+
+			if got != "" {
+				// The built host must stay a legal hostname overall.
+				r.LessOrEqual(len(got), maxDomainLen)
+				for _, label := range strings.Split(got, ".") {
+					r.LessOrEqual(len(label), maxLabelLen)
+					r.NotEmpty(label)
+				}
 			}
 		})
 	}
 }
 
-func TestCheckCNAME(t *testing.T) {
+func TestExpectedTarget(t *testing.T) {
 	t.Parallel()
 
-	errLookup := errTestLookup
-
 	tests := []struct {
-		name    string
-		cname   string
-		lookErr error
-		wantOK  bool
-		wantErr bool
+		name   string
+		mode   Mode
+		token  string
+		target string
+		want   string
 	}{
-		{name: "exact", cname: "cname.solidping.io", wantOK: true},
-		{name: "trailing dot", cname: "cname.solidping.io.", wantOK: true},
-		{name: "case insensitive", cname: "CNAME.SolidPing.io", wantOK: true},
-		{name: "wrong target", cname: "elsewhere.example.com", wantOK: false},
-		{name: "lookup error", lookErr: errLookup, wantOK: false, wantErr: true},
+		{name: "shared ignores token", mode: ModeShared, token: "spabc", target: "solidping.io", want: "solidping.io"},
+		{name: "shared without token", mode: ModeShared, token: "", target: "solidping.io", want: "solidping.io"},
+		{name: "shared without target", mode: ModeShared, token: "spabc", target: "", want: ""},
+		{
+			name: "token builds per-page host", mode: ModeToken, token: "spabc",
+			target: "solidping.io", want: "spabc.cname.solidping.io",
+		},
+		{name: "token without token", mode: ModeToken, token: "", target: "solidping.io", want: ""},
+		{name: "token without target", mode: ModeToken, token: "spabc", target: "", want: ""},
 	}
 
 	for _, tc := range tests {
@@ -136,38 +152,149 @@ func TestCheckCNAME(t *testing.T) {
 			t.Parallel()
 			r := require.New(t)
 
+			r.Equal(tc.want, ExpectedTarget(tc.mode, tc.token, tc.target))
+		})
+	}
+}
+
+// TestRecordsIsSingleCNAME is the regression guard for the v0.8.0 contract: a
+// customer must create exactly ONE record, and it is never a TXT challenge.
+func TestRecordsIsSingleCNAME(t *testing.T) {
+	t.Parallel()
+
+	t.Run("shared", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		records := Records("status.acme.com", "spabc", "cname.solidping.io", ModeShared)
+		r.Len(records, 1)
+		r.Equal("CNAME", records[0].Type)
+		r.Equal("status.acme.com", records[0].Name)
+		r.Equal("cname.solidping.io", records[0].Value)
+	})
+
+	t.Run("token", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		records := Records("status.acme.com", "spabc", "solidping.io", ModeToken)
+		r.Len(records, 1)
+		r.Equal("CNAME", records[0].Type)
+		r.Equal("status.acme.com", records[0].Name)
+		r.Equal("spabc.cname.solidping.io", records[0].Value)
+	})
+
+	t.Run("no target yields no records", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		r.Empty(Records("status.acme.com", "spabc", "", ModeShared))
+		r.Empty(Records("status.acme.com", "", "cname.solidping.io", ModeToken))
+	})
+}
+
+func TestCheckCNAME(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		cname    string
+		expected string
+		lookErr  error
+		wantOK   bool
+		wantErr  bool
+	}{
+		{name: "exact", cname: "cname.solidping.io", expected: "cname.solidping.io", wantOK: true},
+		{name: "trailing dot in answer", cname: "cname.solidping.io.", expected: "cname.solidping.io", wantOK: true},
+		{name: "trailing dot in expected", cname: "cname.solidping.io", expected: "cname.solidping.io.", wantOK: true},
+		{name: "case insensitive", cname: "CNAME.SolidPing.io", expected: "cname.solidping.io", wantOK: true},
+		{name: "wrong target", cname: "elsewhere.example.com", expected: "cname.solidping.io", wantOK: false},
+		// LookupCNAME returns the CANONICAL name of the chain: a customer host
+		// chained through an intermediate still reports the final name, so a
+		// wildcard CNAME under the token host would be invisible. This asserts
+		// the canonical answer is what we compare.
+		{name: "canonical of a chain", cname: "final.elsewhere.net", expected: "cname.solidping.io", wantOK: false},
+		{name: "empty expected never matches", cname: "cname.solidping.io", expected: "", wantOK: false},
+		{name: "nxdomain", expected: "cname.solidping.io", lookErr: errTestLookup, wantOK: false, wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			called := false
 			v := &Verifier{
-				LookupTXT: func(_ context.Context, _ string) ([]string, error) { return nil, nil },
 				LookupCNAME: func(_ context.Context, host string) (string, error) {
+					called = true
 					r.Equal("status.acme.com", host)
 
 					return tc.cname, tc.lookErr
 				},
 			}
 
-			ok, err := v.CheckCNAME(context.Background(), "status.acme.com", "cname.solidping.io")
+			ok, err := v.CheckCNAME(t.Context(), "status.acme.com", tc.expected)
 			r.Equal(tc.wantOK, ok)
+
 			if tc.wantErr {
 				r.Error(err)
 			} else {
 				r.NoError(err)
 			}
+
+			// An empty expected target must short-circuit before any DNS query.
+			if tc.expected == "" {
+				r.False(called)
+			}
 		})
 	}
 }
 
-func TestVerify(t *testing.T) {
+func TestVerifyModeMatrix(t *testing.T) {
 	t.Parallel()
 
+	const (
+		target    = "solidping.io"
+		token     = "spabc123"
+		tokenHost = "spabc123.cname.solidping.io"
+	)
+
 	tests := []struct {
-		name  string
-		txt   []string
-		cname string
-		want  bool
+		name    string
+		mode    Mode
+		token   string
+		target  string
+		cname   string
+		lookErr error
+		want    bool
 	}{
-		{name: "both pass", txt: []string{"sp-domain-verify=tok"}, cname: "cname.solidping.io", want: true},
-		{name: "txt fail", txt: []string{"sp-domain-verify=bad"}, cname: "cname.solidping.io", want: false},
-		{name: "cname fail", txt: []string{"sp-domain-verify=tok"}, cname: "other.example.com", want: false},
+		{name: "shared: exact target", mode: ModeShared, token: token, target: target, cname: target, want: true},
+		{
+			name: "shared: token host does not verify", mode: ModeShared, token: token,
+			target: target, cname: tokenHost, want: false,
+		},
+		{
+			name: "shared: wrong target", mode: ModeShared, token: token, target: target,
+			cname: "other.example.com", want: false,
+		},
+		{
+			name: "shared: nxdomain", mode: ModeShared, token: token, target: target,
+			lookErr: errTestLookup, want: false,
+		},
+		{name: "token: token host", mode: ModeToken, token: token, target: target, cname: tokenHost, want: true},
+		// The no-dual-accept rule: the shared target must NOT verify in token
+		// mode, otherwise the takeover protection is nullified.
+		{
+			name: "token: shared target rejected", mode: ModeToken, token: token,
+			target: target, cname: target, want: false,
+		},
+		{
+			name: "token: another page's token rejected", mode: ModeToken, token: token,
+			target: target, cname: "spother.cname.solidping.io", want: false,
+		},
+		{name: "token: missing token", mode: ModeToken, token: "", target: target, cname: target, want: false},
+		{name: "token: nxdomain", mode: ModeToken, token: token, target: target, lookErr: errTestLookup, want: false},
+		{name: "no configured target", mode: ModeShared, token: token, target: "", cname: target, want: false},
 	}
 
 	for _, tc := range tests {
@@ -176,11 +303,26 @@ func TestVerify(t *testing.T) {
 			r := require.New(t)
 
 			v := &Verifier{
-				LookupTXT:   func(_ context.Context, _ string) ([]string, error) { return tc.txt, nil },
-				LookupCNAME: func(_ context.Context, _ string) (string, error) { return tc.cname, nil },
+				LookupCNAME: func(_ context.Context, _ string) (string, error) {
+					return tc.cname, tc.lookErr
+				},
 			}
 
-			r.Equal(tc.want, v.Verify(context.Background(), "status.acme.com", "tok", "cname.solidping.io"))
+			got := v.Verify(t.Context(), "status.acme.com", tc.token, tc.target, tc.mode)
+			r.Equal(tc.want, got)
 		})
+	}
+}
+
+// TestNoTXTSurfaceRemains is a compile-time-ish guard: the TXT challenge API is
+// gone, so nothing in the package may still emit a TXT record.
+func TestNoTXTSurfaceRemains(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	for _, mode := range []Mode{ModeShared, ModeToken} {
+		for _, rec := range Records("status.acme.com", "spabc", "cname.solidping.io", mode) {
+			r.NotEqual("TXT", rec.Type)
+		}
 	}
 }

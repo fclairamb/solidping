@@ -144,6 +144,12 @@ func manualReaderEnvVars() []string {
 		"SP_DOCS_HOST",
 		"SP_SERVER_CUSTOM_DOMAIN_CNAME_TARGET",
 		"SP_CUSTOM_DOMAIN_CNAME_TARGET",
+		"SP_SERVER_CUSTOM_DOMAIN_CNAME_MODE",
+		"SP_CUSTOM_DOMAIN_CNAME_MODE",
+		// applyACMEEnv (acme.enabled / acme.email are koanf-reachable)
+		"SP_ACME_CA_URL",
+		"SP_ACME_LISTEN_HTTP",
+		"SP_ACME_LISTEN_HTTPS",
 		// applySchedulingEnv
 		"SP_SCHEDULING_SLOW_THRESHOLD_MS",
 		"SP_SCHEDULING_CHECK_TIMEOUT_MS",
