@@ -106,6 +106,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
+	"github.com/fclairamb/solidping/server/internal/tlsedge"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 	"github.com/fclairamb/solidping/server/internal/version"
@@ -160,6 +161,7 @@ type Server struct {
 	realtimeHub           *realtime.Hub           // Live hint stream fan-out (nil when realtime disabled)
 	statusPagesService    *statuspages.Service    // Public status-page lookups for status0 OG-metadata injection
 	customDomainCache     *customDomainCache      // host -> status-page resolution cache for custom-domain routing
+	tlsEdge               *tlsedge.Edge           // in-server ACME/TLS listeners (nil unless acme.enabled)
 	status0FS             fs.FS                   // overridden in tests; nil means use the real embedded status0Files
 	cancelCtx             context.CancelFunc
 	workersWg             sync.WaitGroup // Tracks workers
@@ -1955,9 +1957,78 @@ func (s *Server) runStartupJob(ctx context.Context) error {
 	return nil
 }
 
+// serveHTTP runs the plain HTTP listener (and, when acme.enabled, the in-server
+// TLS listeners) until ctx is canceled or the listener fails, then drains them.
+// It is the body of Start's API-role branch, extracted so Start stays readable.
+func (s *Server) serveHTTP(ctx context.Context) error {
+	slog.InfoContext(ctx, "Starting HTTP server", "listen", s.config.Server.Listen)
+
+	const readHeaderTimeout = 10 * time.Second
+
+	topHandler := s.handlerWithCustomDomains(s.handlerWithDocsHost())
+
+	srv := &http.Server{
+		Addr:              s.config.Server.Listen,
+		Handler:           topHandler,
+		ReadHeaderTimeout: readHeaderTimeout,
+	}
+
+	// In-server TLS (opt-in): two extra listeners feeding the SAME handler
+	// chain, so custom-host routing applies unchanged over HTTPS.
+	if err := s.startTLSEdge(ctx, topHandler); err != nil {
+		return err
+	}
+
+	// Start HTTP server in a goroutine
+	serverErr := make(chan error, 1)
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.ErrorContext(ctx, "HTTP server error", "error", err)
+			serverErr <- err
+		}
+	}()
+
+	// Wait for shutdown signal or server error
+	select {
+	case <-ctx.Done():
+		// Graceful shutdown initiated
+		slog.InfoContext(ctx, "Shutting down server", "timeout", s.config.Server.ShutdownTimeout)
+	case err := <-serverErr:
+		// Server failed to start or encountered an error
+		return err
+	}
+
+	// Close the realtime hub first: it terminates every held-open realtime
+	// WebSocket connection so srv.Shutdown (which waits for active
+	// connections) can drain instead of hanging until the shutdown timeout.
+	if s.realtimeHub != nil {
+		s.realtimeHub.Close()
+	}
+
+	// Shutdown HTTP server first to stop accepting new requests.
+	// Using a fresh context for the shutdown timeout after main ctx is canceled.
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), s.config.Server.ShutdownTimeout)
+	defer shutdownCancel()
+
+	//nolint:contextcheck // shutdownCtx intentionally separate for timeout management
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		//nolint:contextcheck // shutdownCtx intentionally separate for timeout management
+		slog.ErrorContext(shutdownCtx, "HTTP server shutdown error", "error", err)
+	}
+
+	if s.tlsEdge != nil {
+		//nolint:contextcheck // shutdownCtx intentionally separate for timeout management
+		if err := s.tlsEdge.Shutdown(shutdownCtx); err != nil {
+			//nolint:contextcheck // shutdownCtx intentionally separate for timeout management
+			slog.ErrorContext(shutdownCtx, "TLS edge shutdown error", "error", err)
+		}
+	}
+
+	return nil
+}
+
 // Start starts the HTTP server and blocks until shutdown.
-//
-//nolint:funlen,cyclop // Server startup requires multiple conditional component initialization
 func (s *Server) Start(ctx context.Context) error {
 	// Start profiler server (no-op if disabled)
 	if err := s.profilerSrv.Start(ctx); err != nil {
@@ -2032,52 +2103,8 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Start HTTP server only if role allows
 	if s.config.ShouldRunAPI() {
-		slog.InfoContext(ctx, "Starting HTTP server", "listen", s.config.Server.Listen)
-
-		const readHeaderTimeout = 10 * time.Second
-
-		srv := &http.Server{
-			Addr:              s.config.Server.Listen,
-			Handler:           s.handlerWithCustomDomains(s.handlerWithDocsHost()),
-			ReadHeaderTimeout: readHeaderTimeout,
-		}
-
-		// Start HTTP server in a goroutine
-		serverErr := make(chan error, 1)
-		go func() {
-			if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				slog.ErrorContext(ctx, "HTTP server error", "error", err)
-				serverErr <- err
-			}
-		}()
-
-		// Wait for shutdown signal or server error
-		select {
-		case <-ctx.Done():
-			// Graceful shutdown initiated
-			slog.InfoContext(ctx, "Shutting down server", "timeout", s.config.Server.ShutdownTimeout)
-		case err := <-serverErr:
-			// Server failed to start or encountered an error
+		if err := s.serveHTTP(ctx); err != nil {
 			return err
-		}
-
-		// Close the realtime hub first: it terminates every held-open
-		// realtime WebSocket connection so srv.Shutdown (which waits for
-		// active connections) can drain instead of hanging until the
-		// shutdown timeout.
-		if s.realtimeHub != nil {
-			s.realtimeHub.Close()
-		}
-
-		// Shutdown HTTP server first to stop accepting new requests
-		// Using fresh context for shutdown timeout after main ctx is canceled
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), s.config.Server.ShutdownTimeout)
-		defer shutdownCancel()
-
-		//nolint:contextcheck // shutdownCtx intentionally separate for timeout management
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			//nolint:contextcheck // shutdownCtx intentionally separate for timeout management
-			slog.ErrorContext(shutdownCtx, "HTTP server shutdown error", "error", err)
 		}
 	} else {
 		slog.InfoContext(ctx, "Skipping HTTP server", "role", s.config.Node.Role)
