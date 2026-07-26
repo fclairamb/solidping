@@ -1445,7 +1445,8 @@ export function useSignOutOtherSessions(org: string) {
 export type StatusPagePeriod = "24h" | "7d" | "30d" | "90d";
 
 // DnsRecord is one DNS record a customer must create to activate a custom
-// domain (CNAME for routing, TXT for ownership).
+// domain. Since v0.8.0 the API returns exactly one: the routing CNAME (the TXT
+// ownership challenge was removed).
 export interface DnsRecord {
   type: string;
   name: string;
@@ -1453,6 +1454,11 @@ export interface DnsRecord {
 }
 
 export type CustomDomainStatus = "unverified" | "verified";
+
+// CustomDomainCertStatus is the in-server-ACME certificate state for a verified
+// custom domain. Absent when in-server TLS is disabled (TLS handled by an
+// external proxy) or the domain is not verified yet.
+export type CustomDomainCertStatus = "none" | "issued" | "error";
 
 export interface StatusPage {
   uid: string;
@@ -1469,6 +1475,7 @@ export interface StatusPage {
   // Custom-domain fields are only present on the authenticated org endpoints.
   customDomain?: string;
   customDomainStatus?: CustomDomainStatus;
+  customDomainCertStatus?: CustomDomainCertStatus;
   customDomainRecords?: DnsRecord[];
   sections?: StatusPageSection[];
   createdAt?: string;

@@ -1572,7 +1572,7 @@ function DnsRecordRowSection() {
     <Section
       id="dns-record-row"
       title="DNS record row"
-      description="A single DNS record the user must create — a labeled Type / Name / Value grid with copy-to-clipboard buttons on the copyable values. Used by the status-page custom-domain section for the CNAME and TXT challenge records."
+      description="A single DNS record the user must create — a labeled Type / Name / Value grid with copy-to-clipboard buttons on the copyable values. Used by the status-page custom-domain section, which since v0.8.0 asks for exactly one record: the routing CNAME (shared mode below, or the per-page token target in token mode)."
     >
       <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
         <div className="space-y-2">
@@ -1581,9 +1581,9 @@ function DnsRecordRowSection() {
           />
           <DnsRecordRow
             record={{
-              type: "TXT",
-              name: "_solidping-challenge.status.acme.com",
-              value: "sp-domain-verify=Xq7f…",
+              type: "CNAME",
+              name: "status.acme.com",
+              value: "spq7f3k2m9x4t.cname.solidping.io",
             }}
           />
         </div>

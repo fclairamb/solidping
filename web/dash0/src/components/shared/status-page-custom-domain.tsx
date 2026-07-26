@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
-import { CheckCircle2, Globe, Loader2, Trash2 } from "lucide-react";
+import {
+  CheckCircle2,
+  Globe,
+  Loader2,
+  Lock,
+  ShieldAlert,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   useUpdateStatusPage,
@@ -52,6 +59,9 @@ export function StatusPageCustomDomain({
   const isVerified = page.customDomainStatus === "verified";
   const records = page.customDomainRecords ?? [];
   const dirty = domain.trim() !== currentDomain;
+  // Only present when the server terminates TLS itself (acme.enabled). With an
+  // external TLS proxy the field is absent and no chip is rendered.
+  const certStatus = page.customDomainCertStatus;
 
   const handleSave = async () => {
     setQuotaBlocked(false);
@@ -166,6 +176,35 @@ export function StatusPageCustomDomain({
                     {t("customDomain.unverified")}
                   </Badge>
                 )}
+                {certStatus === "issued" && (
+                  <Badge
+                    variant="success"
+                    className="gap-1"
+                    data-testid="custom-domain-cert-status"
+                  >
+                    <Lock className="h-3 w-3" />
+                    {t("customDomain.certIssued")}
+                  </Badge>
+                )}
+                {certStatus === "error" && (
+                  <Badge
+                    variant="destructive"
+                    className="gap-1"
+                    data-testid="custom-domain-cert-status"
+                  >
+                    <ShieldAlert className="h-3 w-3" />
+                    {t("customDomain.certError")}
+                  </Badge>
+                )}
+                {certStatus === "none" && (
+                  <Badge
+                    variant="secondary"
+                    className="gap-1"
+                    data-testid="custom-domain-cert-status"
+                  >
+                    {t("customDomain.certPending")}
+                  </Badge>
+                )}
                 <span className="font-mono text-sm">{currentDomain}</span>
               </div>
               <div className="flex items-center gap-2">
@@ -220,6 +259,12 @@ export function StatusPageCustomDomain({
                 </AlertDialog>
               </div>
             </div>
+
+            {isVerified && certStatus === "none" && (
+              <p className="text-xs text-muted-foreground">
+                {t("customDomain.certPendingHint")}
+              </p>
+            )}
 
             {records.length > 0 && (
               <div className="space-y-2" data-testid="custom-domain-records">
