@@ -99,10 +99,22 @@ Generalize deported agents into two kinds — keep the wire protocol
 
 - Route agent-submitted results through the same cost/delay EWMA and
   scheduler-lane updates the direct path performs, so shared regions served
-  by system agents keep fair scheduling. Locate the direct-path accounting in
-  `DirectBackend.SubmitResult` / `checkworker/worker.go` and hoist it into
-  the shared server-side path (`handlers/workers/service.go:SubmitResult`)
-  so both backends hit it.
+  by system agents keep fair scheduling. Today the worker computes the new
+  EWMAs, effective deadline, and lane in `buildSubmitRequest`
+  (`server/internal/checkworker/worker.go:1213`) and only `DirectBackend`
+  persists them; the WS `result` frame drops the `Sched` block entirely and
+  the server-side `SubmitResult` (`handlers/workers/service.go:141-152`)
+  just releases the lease.
+- Hoist the computation into the shared server-side path
+  (`handlers/workers/service.go:SubmitResult`) so both backends hit it. The
+  cost sample is derivable from the submitted result (duration, timeout
+  status). For the delay sample, **the agent transmits `execStart`** (the
+  wall-clock probe start) in the WS `result` frame; the server computes the
+  delay sample from it exactly as `delaySampleMs` does today
+  (`worker.go:1259`, floored at 0). Accept agent clock skew on this number:
+  the delay EWMA is telemetry-only and never steers claim order or lanes
+  (spec 2026-07-01-02 D4), so a skewed sample cannot affect scheduling —
+  the floor-at-0 already absorbs backwards clocks.
 
 ### 5. Fleet hygiene
 
@@ -149,9 +161,6 @@ Generalize deported agents into two kinds — keep the wire protocol
   slugs, no migration of checks' region sets, no customer-visible churn.
   (Update the `deploy/fly/` README accordingly: it maps fly region codes →
   the *existing* SolidPing region slugs.)
-
-### Open questions
-
-- EWMA hoisting may reveal that some accounting depends on in-process state
-  of the worker loop; if so, scope item 4 down to what the server can
-  compute from the submitted result alone and note the residual gap.
+- **EWMA inputs travel with the result**: the WS `result` frame carries
+  `execStart` so the server-side hoisted accounting (item 4) can compute the
+  delay sample; no server-side approximation of probe start time.
