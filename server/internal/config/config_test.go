@@ -591,30 +591,36 @@ func TestValidateCustomDomainTLSConfig(t *testing.T) {
 		{
 			name: "acme enabled with everything set",
 			mode: "shared",
-			acme: ACMEConfig{Enabled: true, Email: email, ListenHTTP: ":80", ListenHTTPS: ":443"},
+			acme: ACMEConfig{
+				Enabled: true, Email: email,
+				ListenHTTP: DefaultACMEListenHTTP, ListenHTTPS: DefaultACMEListenHTTPS,
+			},
 		},
 		{
 			name:    "acme enabled without an email rejected",
 			mode:    "shared",
-			acme:    ACMEConfig{Enabled: true, ListenHTTP: ":80", ListenHTTPS: ":443"},
+			acme:    ACMEConfig{Enabled: true, ListenHTTP: DefaultACMEListenHTTP, ListenHTTPS: DefaultACMEListenHTTPS},
 			wantErr: ErrACMEEmailRequired,
 		},
 		{
-			name:    "acme enabled with a blank email rejected",
-			mode:    "shared",
-			acme:    ACMEConfig{Enabled: true, Email: "   ", ListenHTTP: ":80", ListenHTTPS: ":443"},
+			name: "acme enabled with a blank email rejected",
+			mode: "shared",
+			acme: ACMEConfig{
+				Enabled: true, Email: "   ",
+				ListenHTTP: DefaultACMEListenHTTP, ListenHTTPS: DefaultACMEListenHTTPS,
+			},
 			wantErr: ErrACMEEmailRequired,
 		},
 		{
 			name:    "acme enabled without the http listener rejected",
 			mode:    "shared",
-			acme:    ACMEConfig{Enabled: true, Email: email, ListenHTTPS: ":443"},
+			acme:    ACMEConfig{Enabled: true, Email: email, ListenHTTPS: DefaultACMEListenHTTPS},
 			wantErr: ErrACMEListenRequired,
 		},
 		{
 			name:    "acme enabled without the https listener rejected",
 			mode:    "shared",
-			acme:    ACMEConfig{Enabled: true, Email: email, ListenHTTP: ":80"},
+			acme:    ACMEConfig{Enabled: true, Email: email, ListenHTTP: DefaultACMEListenHTTP},
 			wantErr: ErrACMEListenRequired,
 		},
 		{

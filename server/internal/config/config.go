@@ -319,6 +319,17 @@ type ACMEConfig struct {
 	ListenHTTPS string `koanf:"listen_https"`
 }
 
+// Default listen addresses for in-server ACME. Remap them when the process
+// cannot bind privileged ports and something forwards to it instead.
+const (
+	// DefaultACMEListenHTTP is where the HTTP-01 challenge + redirect listener
+	// binds; a CA always starts HTTP-01 validation on port 80.
+	DefaultACMEListenHTTP = ":80"
+	// DefaultACMEListenHTTPS is where the TLS listener binds; a CA always starts
+	// TLS-ALPN-01 validation on port 443.
+	DefaultACMEListenHTTPS = ":443"
+)
+
 // DeploymentConfig picks per-org entitlement defaults. SP_DEPLOYMENT_MODE
 // drives Mode; "self-hosted" (default) caps SSO membership at 30,
 // "saas" caps aggregate check executions at 6/min. Validation is at
@@ -858,8 +869,8 @@ func Load() (*Config, error) {
 		// enabling it is a one-flag change on a host with :80/:443 free.
 		ACME: ACMEConfig{
 			Enabled:     false,
-			ListenHTTP:  ":80",
-			ListenHTTPS: ":443",
+			ListenHTTP:  DefaultACMEListenHTTP,
+			ListenHTTPS: DefaultACMEListenHTTPS,
 		},
 		Database: DatabaseConfig{
 			Type:            DatabaseTypeSQLite,

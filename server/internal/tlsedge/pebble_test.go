@@ -269,8 +269,10 @@ func containerHostAddress(ctx context.Context, cli *client.Client, containerID s
 		return nil, fmt.Errorf("inspect container: %w", err)
 	}
 
-	if ip := net.ParseIP(inspected.NetworkSettings.Gateway); ip != nil {
-		return ip, nil
+	for _, network := range inspected.NetworkSettings.Networks {
+		if ip := net.ParseIP(network.Gateway); ip != nil {
+			return ip, nil
+		}
 	}
 
 	return nil, errNoHostRoute
@@ -317,7 +319,7 @@ type testDNS struct {
 // answers on BOTH UDP and TCP on that port: Pebble's resolver client uses TCP,
 // while ordinary clients use UDP, and a port that only answers one of them
 // looks like "connection refused" rather than a DNS failure.
-func startTestDNS(t *testing.T) *testDNS {
+func startTestDNS(ctx context.Context, t *testing.T) *testDNS {
 	t.Helper()
 
 	packetConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
@@ -333,7 +335,9 @@ func startTestDNS(t *testing.T) *testDNS {
 	resolver := &testDNS{port: strconv.Itoa(addr.Port)}
 	handler := dns.HandlerFunc(resolver.handle)
 
-	streamListener, err := net.Listen("tcp", ":"+resolver.port)
+	var listenConfig net.ListenConfig
+
+	streamListener, err := listenConfig.Listen(ctx, "tcp", ":"+resolver.port)
 	if err != nil {
 		_ = packetConn.Close()
 		t.Skipf("cannot bind the DNS port for TCP: %v", err)

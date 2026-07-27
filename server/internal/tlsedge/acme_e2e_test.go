@@ -60,7 +60,7 @@ func TestACMEEndToEndWithPebble(t *testing.T) {
 	httpsPort, err := freePort(ctx)
 	r.NoError(err)
 
-	resolver := startTestDNS(t)
+	resolver := startTestDNS(ctx, t)
 	ca := startPebble(ctx, t, resolver, httpPort, httpsPort)
 
 	store, dbSvc := newTestStorage(t)
