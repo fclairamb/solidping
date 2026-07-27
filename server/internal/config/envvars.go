@@ -89,6 +89,14 @@ func envNameForKoanfPath(path string) (string, bool) {
 // Keep this in sync with the apply*Env helpers and the bare os.Getenv reads in
 // config.Load — TestManualReaderEnvVarsBind spot-checks that these names bind.
 func manualReaderEnvVars() []string {
+	return append(manualReaderServerEnvVars(), manualReaderPlatformEnvVars()...)
+}
+
+// manualReaderServerEnvVars covers Load's own bare reads and the helpers that
+// configure request serving: rate limiting, password hashing, jobs, realtime,
+// agents, auth, the server hosts (docs / custom-domain CNAME), in-server ACME
+// and check scheduling.
+func manualReaderServerEnvVars() []string {
 	return []string{
 		// Bare reads in Load itself.
 		"SP_REDIRECTS",
@@ -160,6 +168,14 @@ func manualReaderEnvVars() []string {
 		"SP_SCHEDULING_LANE_SLOW_THRESHOLD_MS",
 		"SP_SCHEDULING_LANE_FAST_THRESHOLD_MS",
 		"SP_SCHEDULING_FAST_LANE_RESERVED",
+	}
+}
+
+// manualReaderPlatformEnvVars covers the helpers that configure the process
+// platform rather than request handling: profiler, database pool, Go runtime,
+// file storage and web push.
+func manualReaderPlatformEnvVars() []string {
+	return []string{
 		// applyProfilerEnv
 		"SP_PROFILER_BLOCK_RATE",
 		"SP_PROFILER_MUTEX_FRACTION",

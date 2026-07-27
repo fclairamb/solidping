@@ -1584,15 +1584,22 @@ func (c *Config) Validate() error {
 		return err
 	}
 
-	if _, ok := domainverify.ParseMode(c.Server.CustomDomainCNAMEMode); !ok {
-		return fmt.Errorf("%w, got '%s'", ErrInvalidCNAMEMode, c.Server.CustomDomainCNAMEMode)
-	}
-
-	if err := validateACMEConfig(&c.ACME); err != nil {
+	if err := validateCustomDomainTLSConfig(&c.Server, &c.ACME); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// validateCustomDomainTLSConfig validates everything custom-domain serving
+// depends on: the CNAME verification mode and, when in-server TLS is enabled,
+// the ACME block.
+func validateCustomDomainTLSConfig(server *ServerConfig, acme *ACMEConfig) error {
+	if _, ok := domainverify.ParseMode(server.CustomDomainCNAMEMode); !ok {
+		return fmt.Errorf("%w, got '%s'", ErrInvalidCNAMEMode, server.CustomDomainCNAMEMode)
+	}
+
+	return validateACMEConfig(acme)
 }
 
 // validateACMEConfig fails fast when in-server TLS is switched on without the

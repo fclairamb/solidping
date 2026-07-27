@@ -1583,7 +1583,7 @@ function DnsRecordRowSection() {
             record={{
               type: "CNAME",
               name: "status.acme.com",
-              value: "spq7f3k2m9x4t.cname.solidping.io",
+              value: "spq7f3k2m6x4t7b.cname.solidping.io",
             }}
           />
         </div>
