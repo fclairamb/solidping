@@ -36,6 +36,22 @@ SolidPing is configured primarily through environment variables. All environment
 | `SP_SHUTDOWN_TIMEOUT` | `30s` | Graceful shutdown timeout |
 | `PORT` | - | Alternative to `SP_SERVER_LISTEN` (for PaaS compatibility) |
 
+### Custom Domains & TLS
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_CUSTOM_DOMAIN_CNAME_TARGET` | host of `base_url` | Hostname customers point their status-page `CNAME` at |
+| `SP_CUSTOM_DOMAIN_CNAME_MODE` | `shared` | `shared` (plain target) or `token` (per-page `<token>.cname.<target>`) |
+| `SP_ACME_ENABLED` | `false` | Terminate TLS in-server with Let's Encrypt certificates obtained on demand |
+| `SP_ACME_EMAIL` | - | ACME account contact — **required** when `SP_ACME_ENABLED=true` |
+| `SP_ACME_CA_URL` | Let's Encrypt prod | ACME directory URL (point at LE staging while testing) |
+| `SP_ACME_LISTEN_HTTP` | `:80` | HTTP-01 challenge listener; redirects everything else to HTTPS |
+| `SP_ACME_LISTEN_HTTPS` | `:443` | TLS listener, feeding the normal routing |
+
+Enabling `SP_ACME_ENABLED` makes the process bind two extra ports and removes
+the need for a TLS-terminating reverse proxy. Leave it off to keep TLS at your
+own edge. See [Custom Domains](/features/custom-domains) for the full setup.
+
 ### Distributed Workers
 
 | Variable | Default | Description |

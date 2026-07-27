@@ -3375,8 +3375,11 @@ paths:
       tags: [StatusPages]
       summary: Verify a status page's custom domain
       description: >-
-        Runs the DNS ownership (TXT) and routing (CNAME) checks synchronously
-        and stamps the result. Rate-limited per organization.
+        Resolves the domain's CNAME and compares it against the expected target
+        for the configured mode (server.custom_domain_cname_mode: "shared" uses
+        the installation target, "token" uses the page-specific
+        "<token>.cname.<target>" host — there is no dual-accept). Stamps the
+        result. Rate-limited per organization.
       operationId: verifyStatusPageCustomDomain
       security:
         - bearerAuth: []
@@ -3406,7 +3409,9 @@ paths:
       description: >-
         Returns 204 when the queried domain currently resolves to a verified,
         enabled, public status page, and 404 otherwise. No body. This is the
-        contract for Caddy on_demand_tls / cert-manager gating on the SaaS edge.
+        contract for Caddy on_demand_tls / cert-manager gating on an external
+        TLS edge; it is unchanged by, and independent of, the server's own
+        in-server ACME support (config acme.enabled).
       operationId: customDomainAllowed
       parameters:
         - name: domain
@@ -7574,11 +7579,25 @@ components:
           enum: [unverified, verified]
           description: >-
             Custom-domain verification state. Authenticated endpoints only.
+        customDomainCertStatus:
+          type: string
+          enum: [none, issued, error]
+          description: >-
+            TLS certificate state for the custom domain when the server
+            terminates TLS itself (config acme.enabled). "none" = nothing issued
+            yet (issuance is on-demand, on the first HTTPS request), "issued" =
+            a certificate is in storage, "error" = the last issuance attempt
+            failed (see the server log). Omitted when in-server TLS is disabled
+            or the domain is not verified yet. Authenticated endpoints only.
         customDomainRecords:
           type: array
           description: >-
-            The DNS records the customer must create (CNAME for routing, TXT for
-            ownership). Authenticated endpoints only.
+            The DNS records the customer must create. Since v0.8.0 this is
+            exactly ONE entry: the routing CNAME. Its value is the installation
+            CNAME target in "shared" mode, or the page-specific
+            "<token>.cname.<target>" host in "token" mode
+            (server.custom_domain_cname_mode). The TXT ownership challenge was
+            removed. Authenticated endpoints only.
           items:
             $ref: "#/components/schemas/DnsRecord"
         sections:
@@ -7599,7 +7618,7 @@ components:
       properties:
         type:
           type: string
-          description: DNS record type (CNAME or TXT)
+          description: DNS record type. Always "CNAME" since v0.8.0.
         name:
           type: string
           description: Fully-qualified record name to create
