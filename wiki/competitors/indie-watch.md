@@ -98,6 +98,40 @@ open feature branches (`feat/incidents`, `feature/ha`, `feat/teams`, …) that m
 mean work is happening off the default branch without being pushed. Re-verify the
 release feed before treating this as durable.
 
+### Kuvasz — https://kuvasz-uptime.dev  ·  github.com/kuvasz-uptime/kuvasz
+Self-hosted OSS uptime **and SSL** monitor, Kotlin, AGPL-3.0, **571★** / 34 forks,
+created 2020-07 and still shipping (v4.0.1 2026-06-17, **v4.1.0 2026-07-14**, repo
+pushed the day it was surfaced). A mature rival the listening pipeline had simply
+never surfaced before 2026-07-28 — it predates most of this page.
+**Ships:** HTTP monitoring (adjustable intervals, custom headers, keyword matching,
+expected status codes, response-time thresholds); daily SSL-certificate expiry
+checks; push/"cron" heartbeat monitors; ICMP ping monitors — **4 check types**.
+Per-monitor notification routing across email / Slack / Discord / Telegram /
+PagerDuty / custom webhooks. Public **and private** brandable status pages,
+maintenance windows, full REST API, monitors declared as YAML (IaC), **Prometheus
+and OTLP** metric exporters, official Home Assistant integration, live demo.
+**Ships an MCP server** (built in since v4.0.0; experimental, disabled by default):
+query monitor status, view incidents, create/toggle monitors from Claude, Cursor,
+or any MCP client.
+**Significance — this is the entry that changes a positioning line.** On 2026-07-21
+(UptimeMonitoring.com) the "AI-native" claim was narrowed to *self-hosted* MCP on
+the reasoning that every MCP-shipping rival was SaaS. Kuvasz is a 571★ AGPL
+self-hosted monitor with an MCP server, so the qualifier no longer separates us:
+MCP belongs in the feature list, not in the positioning. Same arc as multi-probe
+consensus (UpWatch, 2026-07-27) — two candidate differentiators commoditised in
+five weeks.
+**Where SolidPing holds:** 38 check types vs 4; distributed multi-region workers
+and private/deported locations (Kuvasz probes only from the single node it runs
+on — no cross-region confirmation); built-in on-call schedules and multi-step
+escalation (Kuvasz hands off to PagerDuty).
+**Parity worth noticing:** config-as-code. Kuvasz puts YAML-declared monitors on
+its homepage; SolidPing has YAML export/import/apply via API + CLI and says so
+almost nowhere. Kuvasz is genuinely ahead only on OTLP export (we expose
+Prometheus) and the Home Assistant integration.
+*Watch:* multi-node / remote probing (would close our last structural gap), and
+the MCP server leaving experimental. Surfaced 2026-07-28 via @selfhosted_bot
+Mastodon repost (bot-announced → intel, not a lead).
+
 ### OneUptime — https://oneuptime.com
 Open-source observability platform (uptime + APM + status pages + incident mgmt +
 on-call), both SaaS and self-hostable. Likely the closest **functional** rival:
@@ -287,7 +321,7 @@ projects, content-farm SEO, and paid templates. Not head-to-head rivals.
   — **no email**. Surfaced 2026-07-21 (Show HN 48919840, 3 pts / 0 comments,
   author `luciandan`). Significance: first rival built MCP-FIRST (not a bolt-on
   MCP endpoint like Tickstem/Uptime.com/exit1.dev) — confirms MCP is now contested
-  table-stakes. SolidPing's edge holds on 32 check types (vs HTTP-only), OSS
+  table-stakes. SolidPing's edge holds on 38 check types (vs HTTP-only), OSS
   self-host (vs SaaS-only + hosted MCP), and built-in on-call. Watch: paid pricing
   and whether it adds non-HTTP check types.
 - **Watchpost** (github.com/brod-dev/watchpost) — "Tiny self-hosted uptime monitor
@@ -333,3 +367,15 @@ projects, content-farm SEO, and paid templates. Not head-to-head rivals.
   platform claims to already do. Flip to `track: true` if Temps ships genuine
   off-host probing or starts ranking for "uptime monitoring" queries.
   Surfaced 2026-07-27 via its own PR #446.
+- **Tindra** (tindra.dev, @blendbyte) — EU/German self-hosted Sentry alternative
+  bundling "errors, performance, uptime and cron monitoring in a single Go binary
+  + Postgres", self-host or vendor-hosted in the EU. Pitch is anti-Sentry
+  operational weight: "Sentry's self-hosted docker-compose.yml defines 71 services
+  by default. We wanted one." Surfaced 2026-07-28 (mastodon.social self-promo).
+  Traction unverified — no public repo found, licence unstated, homepage is
+  JS-rendered and was not extracted. Second **bundler** in two days (after Temps)
+  and the second entrant in three days to reuse the "one Go binary" hook (after
+  Watchpost): monitoring keeps arriving as a feature of something else. The
+  shared-fate counter that applies to Temps applies to its uptime half too if the
+  monitor runs beside the app it watches. Re-check for a repo, licence and pricing;
+  flip to `track: true` only on external probing plus real traction.
