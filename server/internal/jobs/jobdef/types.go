@@ -61,4 +61,11 @@ const (
 	// failures (domain release/takeover protection). Global, self-rescheduling
 	// every 6h (spec 2026-07-22-01).
 	JobTypeCustomDomainVerify JobType = "custom_domain_verify"
+	// JobTypeAgentGC retires platform-operated ("system") agents that stopped
+	// reporting: a fly.io fleet enrolls on boot with a per-machine keypair, so
+	// every machine replacement leaves a dead agent row (and its workers row)
+	// behind. It also prunes consumed reconnect nonces. Org agents are
+	// user-managed and never touched. Global, self-rescheduling every 6h
+	// (spec 2026-07-27-01).
+	JobTypeAgentGC JobType = "agent_gc"
 )

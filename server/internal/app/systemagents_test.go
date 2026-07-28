@@ -13,9 +13,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
-// seededRegions is the region catalog the seeding tests validate against.
-const seededRegions = `[{"slug": "eu-west-1", "name": "EU"}, {"slug": "us-east-1", "name": "US"}]`
-
 // newSystemAgentSeedServer builds a minimal Server over in-memory SQLite with a
 // known region catalog — SeedSystemAgentEnrollmentTokens only touches dbService.
 func newSystemAgentSeedServer(ctx context.Context, t *testing.T) *Server {

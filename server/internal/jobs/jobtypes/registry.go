@@ -29,6 +29,7 @@ var jobDefinitionFactories = map[jobdef.JobType]func() jobdef.JobDefinition{
 	jobdef.JobTypeStuckJobReaper:      func() jobdef.JobDefinition { return &StuckJobReaperJobDefinition{} },
 	jobdef.JobTypeJobsCleanup:         func() jobdef.JobDefinition { return &JobsCleanupJobDefinition{} },
 	jobdef.JobTypeCustomDomainVerify:  func() jobdef.JobDefinition { return &CustomDomainVerifyJobDefinition{} },
+	jobdef.JobTypeAgentGC:             func() jobdef.JobDefinition { return &AgentGCJobDefinition{} },
 }
 
 // GetJobDefinition retrieves a job definition by type.
