@@ -101,8 +101,12 @@ type Handler struct {
 	// org-agent path, which stays zero-decrypt.
 	creds   credentials.Service
 	regions *regions.Service
-	reseal  ResealFunc
-	logger  *slog.Logger
+	// nonces is the reconnect-replay guard. It is the SHARED (database-backed)
+	// one in production — see agentcrypto.NonceGuard for why a per-process
+	// cache is not sound once the API tier or the agent fleet scales out.
+	nonces agentcrypto.NonceGuard
+	reseal ResealFunc
+	logger *slog.Logger
 }
 
 // NewHandler creates the agent WebSocket handler.
@@ -125,9 +129,18 @@ func NewHandler(
 		events:       events,
 		creds:        creds,
 		regions:      regions.NewService(dbService),
+		nonces:       agentcrypto.NewStoredNonceGuard(dbService, db.ErrAgentNonceReplayed),
 		reseal:       reseal,
 		logger:       slog.Default().With("component", "agent_ws"),
 	}
+}
+
+// SetNonceGuard swaps the reconnect-replay guard. It exists for tests and for
+// embeddings with no `agent_nonces` table, which can install
+// agentcrypto.NewNonceCache() — sound only with a single API replica. Production
+// must keep the shared store NewHandler installs.
+func (h *Handler) SetNonceGuard(guard agentcrypto.NonceGuard) {
+	h.nonces = guard
 }
 
 // Serve authenticates (before the upgrade), upgrades, and runs the agent
@@ -348,10 +361,10 @@ func (h *Handler) serveReconnect(
 	// fleet reconnects through a load balancer and a per-process cache would
 	// let a captured signature be replayed against a different replica. Fails
 	// CLOSED — a store error rejects the reconnect, which the agent retries.
-	if nonceErr := h.dbService.CheckAndStoreAgentNonce(
+	if nonceErr := h.nonces.CheckAndStore(
 		ctx, agent.UID, nonce, time.Now(), nonceRetention,
 	); nonceErr != nil {
-		if !errors.Is(nonceErr, db.ErrAgentNonceReplayed) {
+		if !errors.Is(nonceErr, agentcrypto.ErrReplayedNonce) {
 			h.logger.ErrorContext(ctx, "agent nonce store failed", "error", nonceErr, "agent", agent.UID)
 		}
 
