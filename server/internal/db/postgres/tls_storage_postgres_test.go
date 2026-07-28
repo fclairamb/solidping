@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 )
 
 // portTLSStorage is distinct from every other _postgres_test.go embedded port
@@ -17,7 +18,7 @@ const portTLSStorage = 15463
 
 // TestTLSStorage_Postgres proves the certmagic-backing key-value store behaves
 // identically on a REAL Postgres backend: byte-exact binary round-trips through
-// bytea, key-range prefix listing and subtree delete, and the conditional
+// bytea, collation-proof prefix listing and subtree delete, and the conditional
 // lock upsert under genuine concurrency (the property SQLite's single-writer
 // tests cannot prove). Self-skips under -short and on any embedded-startup
 // error.
@@ -70,35 +71,177 @@ func TestTLSStorage_Postgres(t *testing.T) {
 	r.NoError(err)
 	r.True(exists)
 
-	// Prefix listing and subtree delete.
-	siblings := []string{
+	testTLSStoragePrefixPostgres(ctx, t, s)
+	testTLSStorageLocksPostgres(ctx, t, s)
+	testTLSStoragePrefixCollationPostgres(ctx, t, s)
+}
+
+// tlsStoragePrefixFixture returns the keys a prefix check seeds: the subtree of
+// "certificates" (the bare key plus everything nested under it) and the
+// neighbors that must stay OUT of it. The neighbors straddle the '/' (0x2F)
+// boundary on both sides — '-' is 0x2D, '0' is 0x30, 'X' is 0x58 — and include
+// a shorter "certificate/…" key, so the assertions pin both edges of the match
+// instead of only proving that something came back.
+func tlsStoragePrefixFixture() ([]string, []string) {
+	return []string{
+			"certificates",
+			"certificates/acme-v02/other.acme.com/other.acme.com.crt",
+			"certificates/acme-v02/status.acme.com/status.acme.com.crt",
+			"certificates/acme-v02/status.acme.com/status.acme.com.key",
+		}, []string{
+			"certificate/acme-v02/status.acme.com/status.acme.com.crt",
+			"certificates-backup/acme-v02/status.acme.com/status.acme.com.crt",
+			"certificates0/acme-v02/status.acme.com/status.acme.com.crt",
+			"certificatesX/acme-v02/status.acme.com/status.acme.com.crt",
+		}
+}
+
+// tlsStorageSeedPrefixFixture empties the table and re-seeds the fixture, so a
+// prefix check asserts on an exact key set rather than on counts.
+func tlsStorageSeedPrefixFixture(ctx context.Context, t *testing.T, s *Service) {
+	t.Helper()
+	r := require.New(t)
+
+	_, err := s.db.NewRaw("DELETE FROM tls_storage").Exec(ctx)
+	r.NoError(err)
+
+	subtree, neighbors := tlsStoragePrefixFixture()
+	for _, key := range append(append([]string{}, subtree...), neighbors...) {
+		r.NoError(s.TLSStorageStore(ctx, key, []byte(key)))
+	}
+}
+
+// tlsStorageListKeys is List reduced to the keys it reports.
+func tlsStorageListKeys(ctx context.Context, t *testing.T, s *Service, prefix string) []string {
+	t.Helper()
+
+	infos, err := s.TLSStorageList(ctx, prefix)
+	require.NoError(t, err)
+
+	keys := make([]string, len(infos))
+	for i := range infos {
+		keys[i] = infos[i].Key
+	}
+
+	return keys
+}
+
+// testTLSStoragePrefixPostgres asserts the prefix contract of List/Delete on
+// real Postgres: the bare key and its whole subtree are in, every neighbor
+// straddling the '/' boundary is out, and a prefix delete takes the subtree
+// with it and nothing else.
+func testTLSStoragePrefixPostgres(ctx context.Context, t *testing.T, s *Service) {
+	t.Helper()
+	r := require.New(t)
+
+	tlsStorageSeedPrefixFixture(ctx, t, s)
+
+	subtree, neighbors := tlsStoragePrefixFixture()
+
+	r.ElementsMatch(subtree, tlsStorageListKeys(ctx, t, s, "certificates"),
+		"a prefix listing must return the bare key plus its subtree, and no boundary neighbor")
+
+	r.ElementsMatch([]string{
 		"certificates/acme-v02/status.acme.com/status.acme.com.crt",
-		"certificates/acme-v02/other.acme.com/other.acme.com.crt",
-		"certificates-backup/acme-v02/status.acme.com/status.acme.com.crt",
-	}
-	for _, sibling := range siblings {
-		r.NoError(s.TLSStorageStore(ctx, sibling, []byte(sibling)))
-	}
-
-	under, err := s.TLSStorageList(ctx, "certificates")
-	r.NoError(err)
-	r.Len(under, 3, "the certificates-backup neighbor must not be included")
-
-	nested, err := s.TLSStorageList(ctx, "certificates/acme-v02/status.acme.com")
-	r.NoError(err)
-	r.Len(nested, 2)
+		"certificates/acme-v02/status.acme.com/status.acme.com.key",
+	}, tlsStorageListKeys(ctx, t, s, "certificates/acme-v02/status.acme.com"))
 
 	r.NoError(s.TLSStorageDelete(ctx, "certificates/acme-v02/status.acme.com"))
 
-	under, err = s.TLSStorageList(ctx, "certificates")
-	r.NoError(err)
-	r.Len(under, 1)
+	r.ElementsMatch([]string{
+		"certificates",
+		"certificates/acme-v02/other.acme.com/other.acme.com.crt",
+	}, tlsStorageListKeys(ctx, t, s, "certificates"),
+		"a prefix delete must remove the whole subtree it names")
 
-	backupAlive, err := s.TLSStorageExists(ctx, "certificates-backup/acme-v02/status.acme.com/status.acme.com.crt")
-	r.NoError(err)
-	r.True(backupAlive)
+	for _, neighbor := range neighbors {
+		alive, err := s.TLSStorageExists(ctx, neighbor)
+		r.NoError(err)
+		r.True(alive, "a prefix delete must not reach the boundary neighbor %q", neighbor)
+	}
+}
 
-	testTLSStorageLocksPostgres(ctx, t, s)
+// testTLSStoragePrefixCollationPostgres re-runs the prefix contract with the
+// key column forced to a collation that primary-ignores punctuation.
+//
+// THIS IS THE REGRESSION GUARD FOR THE COLLATION BUG. The prefix queries used
+// to be a half-open range (key >= 'certificates/' AND key < 'certificates0').
+// Postgres' < / >= on text honor the collation, and glibc's en_US.utf8 — the
+// default of the official postgres image and of most distro installs — ignores
+// '/' at the primary level, so 'certificates0' sorts BELOW
+// 'certificates/acme-v02/…' and the range matched ZERO rows: List returned
+// nothing (the custom-domain certificate chip stayed "none" forever) and prefix
+// Delete left the subtree, private keys included, behind. Nothing caught it
+// because the embedded server here uses macOS' libc collation, which is
+// byte-ordered, so the range looked correct locally. ICU's "shifted" variable
+// weighting reproduces glibc's behavior exactly and is available on any
+// ICU-enabled build, so the check no longer depends on the machine's locale.
+func testTLSStoragePrefixCollationPostgres(ctx context.Context, t *testing.T, s *Service) {
+	t.Helper()
+	r := require.New(t)
+
+	collation := tlsStorageHazardCollation(ctx, t, s)
+	if collation == "" {
+		t.Log("no punctuation-ignoring collation available: skipping the collation regression guard")
+
+		return
+	}
+
+	const alter = "ALTER TABLE tls_storage ALTER COLUMN key TYPE text COLLATE ?"
+
+	_, err := s.db.NewRaw(alter, bun.Ident(collation)).Exec(ctx)
+	r.NoError(err)
+
+	testTLSStoragePrefixPostgres(ctx, t, s)
+
+	_, err = s.db.NewRaw(alter, bun.Ident("default")).Exec(ctx)
+	r.NoError(err)
+}
+
+// tlsStorageHazardCollation returns the name of a collation under which the
+// abandoned key-range form is provably wrong — one where 'certificates/a'
+// sorts ABOVE the range's exclusive upper bound 'certificates0'. It creates an
+// ICU collation with shifted variable weighting (glibc's en_US.utf8 behavior),
+// falling back to any installed collation that shows the same ordering, and
+// returns "" when the server can offer neither.
+func tlsStorageHazardCollation(ctx context.Context, t *testing.T, s *Service) string {
+	t.Helper()
+
+	const icuName = "tls_storage_punct_ignoring"
+
+	_, err := s.db.NewRaw(
+		"CREATE COLLATION IF NOT EXISTS " + icuName +
+			" (provider = icu, locale = 'en-u-ka-shifted', deterministic = true)").Exec(ctx)
+	if err != nil {
+		t.Logf("ICU collation unavailable (%v), falling back to the installed collations", err)
+	}
+
+	var installed []string
+	if scanErr := s.db.NewRaw(`SELECT collname FROM pg_collation
+WHERE collname NOT IN ('C', 'POSIX', 'ucs_basic')
+  AND collencoding IN (-1, pg_char_to_encoding(current_setting('server_encoding')))
+ORDER BY collname LIMIT 200`).Scan(ctx, &installed); scanErr != nil {
+		t.Logf("could not list collations: %v", scanErr)
+	}
+
+	candidates := make([]string, 0, 1+len(installed))
+	candidates = append(candidates, icuName)
+	candidates = append(candidates, installed...)
+
+	for _, name := range candidates {
+		var hazard bool
+
+		query := `SELECT ('certificates/a' COLLATE ?) > 'certificates0'`
+		if scanErr := s.db.NewRaw(query, bun.Ident(name)).Scan(ctx, &hazard); scanErr != nil {
+			continue
+		}
+
+		if hazard {
+			return name
+		}
+	}
+
+	return ""
 }
 
 // testTLSStorageLocksPostgres exercises the Locker contract on real Postgres:
