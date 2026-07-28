@@ -308,6 +308,12 @@ func (m *mockDBService) DeleteResults(_ context.Context, _ string, _ []string) (
 	panic("not implemented")
 }
 
+func (m *mockDBService) CompactResults(
+	_ context.Context, _ *models.ListResultsFilter, _ models.AggregateResultsFunc,
+) (models.CompactResultsOutcome, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CreateWorker(_ context.Context, _ *models.Worker) error {
 	panic("not implemented")
 }
@@ -957,6 +963,24 @@ func (m *mockDBService) UpdateStatusPage(_ context.Context, _ string, _ *models.
 	panic("not implemented")
 }
 
+func (m *mockDBService) UpdateStatusPageCustomDomain(
+	_ context.Context, _ string, _ *models.StatusPageCustomDomainUpdate,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetStatusPageByCustomDomain(_ context.Context, _ string) (*models.StatusPage, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListStatusPagesWithCustomDomain(_ context.Context) ([]*models.StatusPage, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CountStatusPagesWithCustomDomain(_ context.Context, _ string) (int, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) DeleteStatusPage(_ context.Context, _ string) error {
 	panic("not implemented")
 }
@@ -1251,6 +1275,16 @@ func (m *mockDBService) CountMembersForOrg(_ context.Context, _ string) (int, er
 	return 0, nil
 }
 
+func (m *mockDBService) ReserveMonthlyUsage(
+	_ context.Context, _, _, _ string, _ int,
+) (bool, error) {
+	return true, nil
+}
+
+func (m *mockDBService) GetMonthlyUsage(_ context.Context, _, _, _ string) (int, error) {
+	return 0, nil
+}
+
 func (m *mockDBService) ListOrgCheckRates(_ context.Context, _ string) ([]models.CheckRate, error) {
 	return nil, nil
 }
@@ -1283,6 +1317,12 @@ func (m *mockDBService) CancelIncidentNotificationsForIncident(
 	_ context.Context, _ string, _ time.Time,
 ) (int64, error) {
 	return 0, nil
+}
+
+func (m *mockDBService) UpdateIncidentNotificationDeliveryByMessageID(
+	_ context.Context, _, _ string, _ *models.DeliveryDetails,
+) error {
+	return nil
 }
 
 func (m *mockDBService) ListIncidentNotifications(
@@ -1802,6 +1842,20 @@ func (m *mockDBService) UpsertUserContact(_ context.Context, _ *models.UserConta
 }
 
 func (m *mockDBService) DeleteUserContact(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) GetUserContact(_ context.Context, _ string) (*models.UserContact, error) {
+	return nil, nil //nolint:nilnil // test stub
+}
+
+func (m *mockDBService) SetUserContactVerifyState(
+	_ context.Context, _ string, _ *string, _ *time.Time, _ int,
+) error {
+	return nil
+}
+
+func (m *mockDBService) MarkUserContactVerified(_ context.Context, _ string, _ time.Time) error {
 	return nil
 }
 

@@ -177,7 +177,6 @@ func (s *Service) ReceiveHeartbeat(
 
 	status := int(checkerStatus)
 	durationMs := float32(0)
-	lastForStatus := true
 
 	result := &models.Result{
 		UID:             resultUID.String(),
@@ -190,7 +189,6 @@ func (s *Service) ReceiveHeartbeat(
 		Metrics:         make(models.JSONMap),
 		Output:          buildHeartbeatOutput(outputMessage, userAgent, remoteAddr, httpMethod, callerData),
 		CreatedAt:       time.Now(),
-		LastForStatus:   &lastForStatus,
 	}
 
 	if err := s.db.SaveResultWithStatusTracking(ctx, result); err != nil {

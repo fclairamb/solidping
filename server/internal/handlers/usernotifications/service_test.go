@@ -30,7 +30,7 @@ func setupUserNotificationsService(t *testing.T) (*Service, *models.Organization
 	member := models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleAdmin)
 	require.NoError(t, dbSvc.CreateOrganizationMember(ctx, member))
 
-	svc := NewService(dbSvc)
+	svc := NewService(dbSvc, nil)
 
 	return svc, org, user
 }

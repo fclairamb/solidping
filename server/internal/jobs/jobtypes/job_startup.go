@@ -76,7 +76,13 @@ func (r *StartupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 	// Ensure stuck-job reaper exists (global, not per-org). Running it at
 	// startup gives an immediate first sweep after a deploy — exactly when
 	// orphaned 'running' jobs appear.
-	return r.ensureStuckJobReaperJob(ctx, jctx)
+	if err := r.ensureStuckJobReaperJob(ctx, jctx); err != nil {
+		return err
+	}
+
+	// Ensure the custom-domain re-verification job exists (global). It
+	// self-reschedules every 6h; this seeds the first run.
+	return r.ensureCustomDomainVerifyJob(ctx, jctx)
 }
 
 // ensureDefaultOrganization creates a default organization if none exists.
@@ -435,6 +441,31 @@ func (r *StartupJobRun) ensureStuckJobReaperJob(ctx context.Context, jctx *jobde
 		log.InfoContext(ctx, "Failed to create stuck-job reaper job (non-fatal)", "error", err)
 	} else {
 		log.InfoContext(ctx, "Ensured stuck-job reaper exists")
+	}
+
+	return nil
+}
+
+// ensureCustomDomainVerifyJob provisions the global custom-domain re-verify
+// job. It reschedules itself every 6h; this just ensures the first one exists.
+// CreateJob dedupes on type+config+org+pending, so a restart won't stack a
+// duplicate.
+func (r *StartupJobRun) ensureCustomDomainVerifyJob(ctx context.Context, jctx *jobdef.JobContext) error {
+	log := jctx.Logger
+
+	if jctx.Services == nil || jctx.Services.Jobs == nil {
+		log.InfoContext(ctx, "Skipping custom-domain verify provisioning (services not available)")
+
+		return nil
+	}
+
+	log.InfoContext(ctx, "Ensuring custom-domain verify job exists")
+
+	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeCustomDomainVerify), nil, nil)
+	if err != nil {
+		log.InfoContext(ctx, "Failed to create custom-domain verify job (non-fatal)", "error", err)
+	} else {
+		log.InfoContext(ctx, "Ensured custom-domain verify job exists")
 	}
 
 	return nil

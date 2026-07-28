@@ -83,6 +83,27 @@ func (s *Service) MarkIncidentNotificationSentByJob(
 	return nil
 }
 
+// UpdateIncidentNotificationDeliveryByMessageID sets delivery_details on the
+// notification row whose message_id matches within the org.
+func (s *Service) UpdateIncidentNotificationDeliveryByMessageID(
+	ctx context.Context, orgUID, messageID string, details *models.DeliveryDetails,
+) error {
+	if messageID == "" || details == nil {
+		return nil
+	}
+
+	_, err := s.db.NewUpdate().
+		TableExpr("incident_notifications").
+		Set("delivery_details = ?", details).
+		Where("organization_uid = ? AND message_id = ?", orgUID, messageID).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("update incident notification delivery by message id: %w", err)
+	}
+
+	return nil
+}
+
 // MarkIncidentNotificationFailedByJob updates the audit row matching job_uid.
 // When retryable is true the row stays at pending so a retry can update it;
 // when false the row transitions to failed.

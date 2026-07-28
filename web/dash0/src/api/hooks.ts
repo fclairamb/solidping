@@ -444,6 +444,27 @@ export function useCloneCheck(org: string) {
   });
 }
 
+/** Regenerates a heartbeat check's ping token (heartbeat checks only — the
+ *  backend 400s otherwise). Invalidates every previously issued ping URL
+ *  immediately, unlike webhook signing-secret rotation which keeps a grace
+ *  window: heartbeat pings are frequent and the operator is expected to
+ *  update the sender right away. Returns the updated check. */
+export function useRotateHeartbeatToken(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<Check>(`/api/v1/orgs/${org}/checks/${uid}/rotate-token`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["check", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
+    },
+  });
+}
+
 export function useDeleteCheck(org: string) {
   const queryClient = useQueryClient();
 
@@ -1423,6 +1444,16 @@ export function useSignOutOtherSessions(org: string) {
 // vocabulary.
 export type StatusPagePeriod = "24h" | "7d" | "30d" | "90d";
 
+// DnsRecord is one DNS record a customer must create to activate a custom
+// domain (CNAME for routing, TXT for ownership).
+export interface DnsRecord {
+  type: string;
+  name: string;
+  value: string;
+}
+
+export type CustomDomainStatus = "unverified" | "verified";
+
 export interface StatusPage {
   uid: string;
   name: string;
@@ -1435,6 +1466,10 @@ export interface StatusPage {
   showResponseTime: boolean;
   historyDays: number;
   historyPeriod: StatusPagePeriod;
+  // Custom-domain fields are only present on the authenticated org endpoints.
+  customDomain?: string;
+  customDomainStatus?: CustomDomainStatus;
+  customDomainRecords?: DnsRecord[];
   sections?: StatusPageSection[];
   createdAt?: string;
 }
@@ -1472,6 +1507,7 @@ export interface CreateStatusPageRequest {
   showResponseTime?: boolean;
   historyDays?: number;
   historyPeriod?: StatusPagePeriod;
+  customDomain?: string;
 }
 
 export interface UpdateStatusPageRequest {
@@ -1485,6 +1521,9 @@ export interface UpdateStatusPageRequest {
   showResponseTime?: boolean;
   historyDays?: number;
   historyPeriod?: StatusPagePeriod;
+  // null clears the custom domain; a non-empty string sets it; omit to leave
+  // it unchanged.
+  customDomain?: string | null;
 }
 
 export interface CreateSectionRequest {
@@ -1581,6 +1620,24 @@ export function useDeleteStatusPage(org: string) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["statusPages", org] });
+    },
+  });
+}
+
+// useVerifyStatusPageDomain runs the synchronous DNS verification for a status
+// page's custom domain and returns the updated page.
+export function useVerifyStatusPageDomain(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<StatusPage>(
+        `/api/v1/orgs/${org}/status-pages/${uid}/custom-domain/verify`,
+        { method: "POST" }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusPages", org] });
+      queryClient.invalidateQueries({ queryKey: ["statusPage", org, uid] });
     },
   });
 }
@@ -3133,7 +3190,8 @@ export type ConnectionType =
   | "pushover"
   | "freebox"
   | "webpush"
-  | "kubernetes";
+  | "kubernetes"
+  | "twilio";
 
 // Capabilities mirror the backend capability registry
 // (server/internal/db/models/integration.go `CapabilitiesFor`). The two flags
@@ -3161,6 +3219,7 @@ export const CAPABILITIES: Record<ConnectionType, IntegrationCapabilities> = {
   freebox: SOURCE,
   webpush: NOTIFY,
   kubernetes: SOURCE,
+  twilio: NOTIFY,
 };
 
 /** Whether an integration type can receive notifications (act as a channel). */
@@ -3921,6 +3980,32 @@ export function useDeleteNotificationContact(org: string) {
       apiFetch<void>(`/api/v1/orgs/${org}/users/me/notification-contacts/${contactUid}`, {
         method: "DELETE",
       }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
+    },
+  });
+}
+
+/** Issues (and sends) a verification code for a phone notification contact. */
+export function useVerifyContact(org: string) {
+  return useMutation({
+    mutationFn: (contactUid: string) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/users/me/notification-contacts/${contactUid}/verify`,
+        { method: "POST" },
+      ),
+  });
+}
+
+/** Confirms a phone notification contact with the emailed/texted code. */
+export function useConfirmVerifyContact(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ contactUid, code }: { contactUid: string; code: string }) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/users/me/notification-contacts/${contactUid}/verify/confirm`,
+        { method: "POST", body: JSON.stringify({ code }) },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
     },

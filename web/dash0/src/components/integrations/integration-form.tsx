@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { RecipientsInput } from "@/components/shared/recipients-input";
+import { TokenChipsInput } from "@/components/shared/token-chips-input";
 import { isValidEmail } from "@/lib/email";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -449,6 +450,10 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
             />
           </div>
         </div>
+      );
+    case "twilio":
+      return (
+        <TwilioPanel settings={settings} update={update} />
       );
     case "slack":
       return (
@@ -1491,6 +1496,116 @@ function SecretPanel({
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />
+    </div>
+  );
+}
+
+/** E.164 phone-number check (leading +, non-zero first digit, 7–15 digits). */
+function isE164(value: string): boolean {
+  return /^\+[1-9]\d{6,14}$/.test(value.trim());
+}
+
+function TwilioPanel({
+  settings,
+  update,
+}: {
+  settings: Record<string, unknown>;
+  update: (key: string, value: unknown) => void;
+}) {
+  const { t } = useTranslation("integrations");
+  const toNumbers = (settings.to_numbers as string[] | undefined) ?? [];
+
+  return (
+    <div className="space-y-3" data-testid="twilio-panel">
+      <div className="space-y-2">
+        <Label htmlFor="ch-twilio-sid">
+          {t("form.twilioAccountSid", "Account SID")}
+        </Label>
+        <Input
+          id="ch-twilio-sid"
+          data-testid="twilio-account-sid"
+          placeholder="AC…"
+          value={(settings.account_sid as string) || ""}
+          onChange={(e) => update("account_sid", e.target.value)}
+        />
+      </div>
+
+      <SecretPanel
+        id="ch-twilio-token"
+        label={t("form.twilioAuthToken", "Auth token")}
+        value={(settings.auth_token as string) || ""}
+        onChange={(v) => update("auth_token", v)}
+      />
+
+      <p className="text-xs text-muted-foreground">
+        {t(
+          "form.twilioSenderHint",
+          "Provide exactly one sender: a from-number or a Messaging Service SID.",
+        )}
+      </p>
+
+      <div className="space-y-2">
+        <Label htmlFor="ch-twilio-from">
+          {t("form.twilioFromNumber", "From number (E.164)")}
+        </Label>
+        <Input
+          id="ch-twilio-from"
+          data-testid="twilio-from-number"
+          placeholder="+15551234567"
+          value={(settings.from_number as string) || ""}
+          onChange={(e) => update("from_number", e.target.value)}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="ch-twilio-mss">
+          {t("form.twilioMessagingServiceSid", "Messaging Service SID")}
+        </Label>
+        <Input
+          id="ch-twilio-mss"
+          placeholder="MG…"
+          value={(settings.messaging_service_sid as string) || ""}
+          onChange={(e) => update("messaging_service_sid", e.target.value)}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="ch-twilio-voice-from">
+          {t("form.twilioVoiceFrom", "Voice from-number (optional)")}
+        </Label>
+        <Input
+          id="ch-twilio-voice-from"
+          placeholder="+15551234567"
+          value={(settings.voice_from_number as string) || ""}
+          onChange={(e) => update("voice_from_number", e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          {t("form.twilioVoiceHint", "Leave empty to disable voice calls.")}
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="ch-twilio-to">
+          {t("form.twilioToNumbers", "Shared recipient numbers (optional)")}
+        </Label>
+        <TokenChipsInput
+          id="ch-twilio-to"
+          data-testid="twilio-to-numbers"
+          value={toNumbers}
+          onChange={(next) => update("to_numbers", next)}
+          validate={isE164}
+          normalize={(v) => v.trim()}
+          placeholder="+15551234567"
+          invalidTitle={t("form.twilioInvalidNumber", "Not a valid E.164 number")}
+          getRemoveLabel={(n) => t("form.twilioRemoveNumber", "Remove {{n}}", { n })}
+        />
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "form.twilioToHint",
+            "Direct-channel sends (per-check broadcast, test) text these numbers.",
+          )}
+        </p>
+      </div>
     </div>
   );
 }

@@ -116,7 +116,7 @@ func NewHandler(
 		// nil cfg: the MCP surface has no app config to hand; the uptime-bar
 		// safety cap this feeds falls back to the documented retention
 		// defaults (see statuspages.Service.retentionHints).
-		statusPagesSvc: statuspages.NewService(dbService, nil),
+		statusPagesSvc: statuspages.NewService(dbService, nil, nil),
 		maintenanceSvc: maintenancewindows.NewService(dbService),
 		// nil registry/config: the MCP surface manages integrations but does
 		// not dispatch test notifications, which is the only path needing them.

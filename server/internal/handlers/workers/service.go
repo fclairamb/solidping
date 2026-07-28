@@ -99,7 +99,6 @@ func (s *Service) SubmitResult(
 		)
 	}
 
-	lastForStatus := true
 	result := &models.Result{
 		UID:             resultUID.String(),
 		OrganizationUID: job.OrganizationUID,
@@ -113,7 +112,6 @@ func (s *Service) SubmitResult(
 		Metrics:         models.JSONMap(req.Metrics),
 		Output:          models.JSONMap(req.Output),
 		CreatedAt:       time.Now(),
-		LastForStatus:   &lastForStatus,
 	}
 
 	// 3. Save with status tracking.

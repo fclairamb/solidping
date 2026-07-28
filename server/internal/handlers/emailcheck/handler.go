@@ -229,7 +229,6 @@ func (h *Handler) recordResult(ctx context.Context, check *models.Check, email *
 	checkerStatus := toCheckerStatus(status)
 	statusInt := int(checkerStatus)
 	durationMs := float32(0)
-	lastForStatus := true
 
 	from := ""
 	if len(email.From) > 0 {
@@ -261,7 +260,6 @@ func (h *Handler) recordResult(ctx context.Context, check *models.Check, email *
 		Metrics:         make(models.JSONMap),
 		Output:          output,
 		CreatedAt:       now,
-		LastForStatus:   &lastForStatus,
 	}
 
 	if err := h.db.SaveResultWithStatusTracking(ctx, result); err != nil {

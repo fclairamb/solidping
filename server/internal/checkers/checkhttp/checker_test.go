@@ -1006,11 +1006,11 @@ func TestHTTPChecker_Execute(t *testing.T) {
 				tt.checkOutput(t, result.Output)
 			}
 
-			// Verify metrics for successful checks
+			// HTTP results no longer duplicate duration into metrics (storage
+			// trim, spec 2026-07-24-02): the response time lives in the dedicated
+			// Duration field, so Metrics is left nil on every path.
 			if result.Status == checkerdef.StatusUp || result.Status == checkerdef.StatusDown {
-				if result.Metrics == nil {
-					t.Error("HTTPChecker.Execute() metrics should not be nil")
-				}
+				require.Nil(t, result.Metrics, "HTTP checker must not populate metrics (duration lives in Duration)")
 			}
 		})
 	}

@@ -449,7 +449,14 @@
     "heartbeat": {
       "title": "Endpoint de heartbeat",
       "curl": "Comando curl de ejemplo:",
-      "callerNote": "El User-Agent, la IP de origen y el método HTTP de cada ping se registran y se muestran en la página de detalle de ese resultado."
+      "callerNote": "El User-Agent, la IP de origen y el método HTTP de cada ping se registran y se muestran en la página de detalle de ese resultado.",
+      "regenerate": "Regenerar",
+      "regenerateTitle": "¿Regenerar el token de ping?",
+      "regenerateDescription": "Esto invalida de inmediato la URL de ping actual: cualquier cosa que siga enviando a ella empezará a fallar de inmediato. Actualiza tu emisor de heartbeat con la nueva URL justo después de confirmar.",
+      "regenerateConfirm": "Regenerar token",
+      "regenerating": "Regenerando…",
+      "regenerated": "Token de ping regenerado",
+      "regenerateFailed": "No se pudo regenerar el token de ping"
     },
     "email": {
       "title": "Endpoint de correo",

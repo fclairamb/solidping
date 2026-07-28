@@ -49,6 +49,7 @@ const ALL_TYPES: ConnectionType[] = [
   "ntfy",
   "opsgenie",
   "pushover",
+  "twilio",
   "freebox",
   "webpush",
   "kubernetes",

@@ -37,6 +37,8 @@ func GetSender(connType models.ConnectionType) (Sender, bool) {
 		return &PushoverSender{}, true
 	case models.ConnectionTypeWebPush:
 		return &WebPushSender{}, true
+	case models.ConnectionTypeTwilio:
+		return &TwilioSender{}, true
 	default:
 		return nil, false
 	}

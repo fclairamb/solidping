@@ -32,7 +32,7 @@ func (c *HeartbeatChecker) Validate(spec *checkerdef.CheckSpec) error {
 
 	// Auto-generate token if not present
 	if _, ok := spec.Config["token"].(string); !ok || spec.Config["token"] == "" {
-		token, err := generateToken()
+		token, err := GenerateToken()
 		if err != nil {
 			return checkerdef.NewConfigError("token", "failed to generate token")
 		}
@@ -57,8 +57,10 @@ func (c *HeartbeatChecker) Execute(_ context.Context, _ checkerdef.Config) (*che
 	return nil, ErrNotExecutable
 }
 
-// generateToken generates a random hex token.
-func generateToken() (string, error) {
+// GenerateToken generates a random hex token. Exported so callers outside
+// this package (the checks service's rotate-token endpoint) can mint a fresh
+// token without duplicating the generation logic.
+func GenerateToken() (string, error) {
 	b := make([]byte, tokenLength)
 	if _, err := rand.Read(b); err != nil {
 		return "", err

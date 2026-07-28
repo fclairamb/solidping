@@ -41,6 +41,15 @@ type EntitlementLimits struct {
 	// MaxDeportedAgents caps the org's active deported (private-location)
 	// agents across all private regions. nil = unlimited.
 	MaxDeportedAgents *int `json:"maxDeportedAgents,omitempty"`
+	// MaxCustomDomains caps the org's status pages served on a customer-owned
+	// domain. nil = unlimited (self-hosted default); SaaS defaults to 0 and
+	// billing raises it per plan.
+	MaxCustomDomains *int `json:"maxCustomDomains,omitempty"`
+	// MaxSmsPerMonth / MaxCallsPerMonth cap the org's outbound SMS and voice
+	// calls per UTC calendar month. nil = unlimited (self-hosted default,
+	// bring-your-own Twilio); SaaS defaults to 0 and billing raises it per plan.
+	MaxSmsPerMonth   *int `json:"maxSmsPerMonth,omitempty"`
+	MaxCallsPerMonth *int `json:"maxCallsPerMonth,omitempty"`
 }
 
 // ErrConflictingUserLimitKeys is returned when a payload sends both the
@@ -63,6 +72,9 @@ func (l *EntitlementLimits) UnmarshalJSON(data []byte) error {
 		MaxSSOUsers        *int `json:"maxSsoUsers"` // deprecated alias for maxUsers
 		MaxChecksPerMinute *int `json:"maxChecksPerMinute"`
 		MaxDeportedAgents  *int `json:"maxDeportedAgents"`
+		MaxCustomDomains   *int `json:"maxCustomDomains"`
+		MaxSmsPerMonth     *int `json:"maxSmsPerMonth"`
+		MaxCallsPerMonth   *int `json:"maxCallsPerMonth"`
 	}
 
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -78,6 +90,9 @@ func (l *EntitlementLimits) UnmarshalJSON(data []byte) error {
 	l.MaxChecks = wire.MaxChecks
 	l.MaxChecksPerMinute = wire.MaxChecksPerMinute
 	l.MaxDeportedAgents = wire.MaxDeportedAgents
+	l.MaxCustomDomains = wire.MaxCustomDomains
+	l.MaxSmsPerMonth = wire.MaxSmsPerMonth
+	l.MaxCallsPerMonth = wire.MaxCallsPerMonth
 	if wire.MaxUsers != nil {
 		l.MaxUsers = wire.MaxUsers
 	} else {

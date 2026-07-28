@@ -30,7 +30,7 @@ func setupStatusPagesTest(t *testing.T) (context.Context, *Service, *models.Orga
 	org := models.NewOrganization("acme", "Acme")
 	require.NoError(t, dbService.CreateOrganization(ctx, org))
 
-	return ctx, NewService(dbService, &config.Config{}), org
+	return ctx, NewService(dbService, &config.Config{}, nil), org
 }
 
 // TestBuildAvailabilityData_UTCBucketing pins that daily buckets are keyed by

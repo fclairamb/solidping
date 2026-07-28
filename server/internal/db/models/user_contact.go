@@ -30,6 +30,12 @@ type UserContact struct {
 	Value           string     `bun:"value,notnull"`
 	Label           string     `bun:"label,notnull"`
 	VerifiedAt      *time.Time `bun:"verified_at"`
+	// Verification state for contact types that require a code round-trip
+	// (phone). VerifyCodeHash is the SHA-256 hex of the in-flight 6-digit
+	// code; nil when no verification is pending or after a successful confirm.
+	VerifyCodeHash  *string    `bun:"verify_code_hash"`
+	VerifyExpiresAt *time.Time `bun:"verify_expires_at"`
+	VerifyAttempts  int        `bun:"verify_attempts,notnull,default:0"`
 	CreatedAt       time.Time  `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt       time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
 	DeletedAt       *time.Time `bun:"deleted_at,soft_delete"`

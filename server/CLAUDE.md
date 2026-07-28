@@ -148,12 +148,11 @@ Raw-only fields (period_type = 'raw'):
 - `worker_uid` - Worker that executed the check
 - `status` - 1=created, 2=running, 3=up, 4=down, 5=timeout, 6=error
 - `duration` (float32) - Response time
-- `metrics` (jsonb) - Per-execution metrics
+- `metrics` (jsonb) - Per-execution metrics (the HTTP checker leaves this NULL — response time lives in `duration`)
 - `output` (jsonb) - Detailed results and error messages
-- `last_for_status` - True if this is the latest result that produced the check's current status
 
 Aggregated-only fields (period_type ∈ 'hour', 'day', 'month'):
-- `total_checks`, `successful_checks`, `availability_pct` - Uptime stats over the bucket
+- `total_checks`, `successful_checks` - Uptime stats over the bucket; availability % is derived at read time (`successful_checks / total_checks × 100`, null when `total_checks = 0`), never stored
 - `duration_min`, `duration_max`, `duration_p95` - Response-time stats
 - `metrics` - Aggregated by suffix convention (`_min`, `_max`, `_avg`, `_pct`, `_rte`, `_sum`, `_cnt`, `_val`); see `server/internal/jobs/jobtypes/job_aggregation.go`
 

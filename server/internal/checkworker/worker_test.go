@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bun"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -583,248 +582,6 @@ func TestExpressHandleEvent(t *testing.T) {
 	})
 }
 
-//nolint:paralleltest // Test uses shared database state
-func TestLastForStatus(t *testing.T) {
-	runner, dbSvc, ctx := setupTestRunner(t)
-	defer func() { _ = dbSvc.Close() }()
-
-	// Create organization and worker
-	org := models.NewOrganization("test-org", "")
-	err := dbSvc.CreateOrganization(ctx, org)
-	require.NoError(t, err)
-
-	worker := models.NewWorker("test-worker", "Test Worker")
-	_, err = dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
-	require.NoError(t, err)
-	runner.setWorker(worker)
-
-	// Create a check
-	check := models.NewCheck(org.UID, "test-check", "http")
-	err = dbSvc.CreateCheck(ctx, check)
-	require.NoError(t, err)
-
-	// Get the check job
-	checkJob := new(models.CheckJob)
-	err = dbSvc.DB().NewSelect().
-		Model(checkJob).
-		Where("check_uid = ?", check.UID).
-		Scan(ctx)
-	require.NoError(t, err)
-
-	// Helper to get all results for this check (excluding initial "created" result)
-	getResults := func() []*models.Result {
-		var results []*models.Result
-		err := dbSvc.DB().NewSelect().
-			Model(&results).
-			Where("check_uid = ?", check.UID).
-			Where("status != ?", int(models.ResultStatusCreated)).
-			Order("created_at ASC").
-			Scan(ctx)
-		require.NoError(t, err)
-		return results
-	}
-
-	// Helper to get results with last_for_status = true (excluding initial "created" result)
-	getLastForStatusResults := func() []*models.Result {
-		var results []*models.Result
-		err := dbSvc.DB().NewSelect().
-			Model(&results).
-			Where("check_uid = ?", check.UID).
-			Where("last_for_status = ?", true).
-			Where("status != ?", int(models.ResultStatusCreated)).
-			Order("created_at ASC").
-			Scan(ctx)
-		require.NoError(t, err)
-		return results
-	}
-
-	t.Run("FirstResultHasLastForStatus", func(t *testing.T) {
-		// Insert first result with status up
-		resultUID1, _ := uuid.NewV7()
-		status1 := int(models.ResultStatusUp)
-		duration1 := float32(100.0)
-		lastForStatus := true
-		result1 := models.Result{
-			UID:             resultUID1.String(),
-			OrganizationUID: org.UID,
-			CheckUID:        check.UID,
-			PeriodType:      "raw",
-			PeriodStart:     time.Now(),
-			WorkerUID:       &worker.UID,
-			Status:          &status1,
-			Duration:        &duration1,
-			Metrics:         make(models.JSONMap),
-			Output:          make(models.JSONMap),
-			CreatedAt:       time.Now(),
-			LastForStatus:   &lastForStatus,
-		}
-
-		err := dbSvc.DB().RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-			// Clear previous last_for_status
-			_, err := tx.NewUpdate().
-				Model((*models.Result)(nil)).
-				Set("last_for_status = NULL").
-				Where("check_uid = ?", check.UID).
-				Where("status = ?", status1).
-				Where("last_for_status = true").
-				Exec(ctx)
-			if err != nil {
-				return err
-			}
-
-			// Insert new result
-			_, err = tx.NewInsert().Model(&result1).Exec(ctx)
-			return err
-		})
-		require.NoError(t, err)
-
-		// Verify result has last_for_status = true
-		results := getResults()
-		require.Len(t, results, 1)
-		require.NotNil(t, results[0].LastForStatus)
-		assert.True(t, *results[0].LastForStatus)
-
-		lastResults := getLastForStatusResults()
-		require.Len(t, lastResults, 1)
-		assert.Equal(t, result1.UID, lastResults[0].UID)
-	})
-
-	t.Run("SecondResultWithSameStatusClearsPrevious", func(t *testing.T) {
-		time.Sleep(10 * time.Millisecond) // Ensure different created_at
-
-		// Insert second result with same status up
-		resultUID2, _ := uuid.NewV7()
-		status2 := int(models.ResultStatusUp)
-		duration2 := float32(150.0)
-		lastForStatus := true
-		result2 := models.Result{
-			UID:             resultUID2.String(),
-			OrganizationUID: org.UID,
-			CheckUID:        check.UID,
-			PeriodType:      "raw",
-			PeriodStart:     time.Now(),
-			WorkerUID:       &worker.UID,
-			Status:          &status2,
-			Duration:        &duration2,
-			Metrics:         make(models.JSONMap),
-			Output:          make(models.JSONMap),
-			CreatedAt:       time.Now(),
-			LastForStatus:   &lastForStatus,
-		}
-
-		err := dbSvc.DB().RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-			// Clear previous last_for_status
-			_, err := tx.NewUpdate().
-				Model((*models.Result)(nil)).
-				Set("last_for_status = NULL").
-				Where("check_uid = ?", check.UID).
-				Where("status = ?", status2).
-				Where("last_for_status = true").
-				Exec(ctx)
-			if err != nil {
-				return err
-			}
-
-			// Insert new result
-			_, err = tx.NewInsert().Model(&result2).Exec(ctx)
-			return err
-		})
-		require.NoError(t, err)
-
-		// Verify we have 2 results total
-		results := getResults()
-		require.Len(t, results, 2)
-
-		// Verify only the second result has last_for_status = true
-		lastResults := getLastForStatusResults()
-		require.Len(t, lastResults, 1, "only one result should have last_for_status=true for status up")
-		assert.Equal(t, result2.UID, lastResults[0].UID)
-
-		// Verify first result no longer has last_for_status = true
-		firstResult := new(models.Result)
-		err = dbSvc.DB().NewSelect().
-			Model(firstResult).
-			Where("uid = ?", results[0].UID).
-			Scan(ctx)
-		require.NoError(t, err)
-		assert.Nil(t, firstResult.LastForStatus, "first result should have last_for_status=NULL")
-	})
-
-	t.Run("DifferentStatusCanHaveOwnLastForStatus", func(t *testing.T) {
-		time.Sleep(10 * time.Millisecond) // Ensure different created_at
-
-		// Insert result with status down
-		resultUID3, _ := uuid.NewV7()
-		status3 := int(models.ResultStatusDown)
-		duration3 := float32(0.0)
-		lastForStatus := true
-		result3 := models.Result{
-			UID:             resultUID3.String(),
-			OrganizationUID: org.UID,
-			CheckUID:        check.UID,
-			PeriodType:      "raw",
-			PeriodStart:     time.Now(),
-			WorkerUID:       &worker.UID,
-			Status:          &status3,
-			Duration:        &duration3,
-			Metrics:         make(models.JSONMap),
-			Output:          make(models.JSONMap),
-			CreatedAt:       time.Now(),
-			LastForStatus:   &lastForStatus,
-		}
-
-		err := dbSvc.DB().RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-			// Clear previous last_for_status for status down
-			_, err := tx.NewUpdate().
-				Model((*models.Result)(nil)).
-				Set("last_for_status = NULL").
-				Where("check_uid = ?", check.UID).
-				Where("status = ?", status3).
-				Where("last_for_status = true").
-				Exec(ctx)
-			if err != nil {
-				return err
-			}
-
-			// Insert new result
-			_, err = tx.NewInsert().Model(&result3).Exec(ctx)
-			return err
-		})
-		require.NoError(t, err)
-
-		// Verify we have 3 results total
-		results := getResults()
-		require.Len(t, results, 3)
-
-		// Verify we have 2 last_for_status results (one for status up, one for status down)
-		lastResults := getLastForStatusResults()
-		require.Len(t, lastResults, 2, "should have 2 results with last_for_status=true (one per status)")
-
-		// Verify status up still has its last result
-		var statusUpResults []*models.Result
-		err = dbSvc.DB().NewSelect().
-			Model(&statusUpResults).
-			Where("check_uid = ?", check.UID).
-			Where("status = ?", int(models.ResultStatusUp)).
-			Where("last_for_status = ?", true).
-			Scan(ctx)
-		require.NoError(t, err)
-		require.Len(t, statusUpResults, 1)
-
-		// Verify status down has its last result
-		var status2Results []*models.Result
-		err = dbSvc.DB().NewSelect().
-			Model(&status2Results).
-			Where("check_uid = ?", check.UID).
-			Where("status = ?", int(models.ResultStatusDown)).
-			Where("last_for_status = ?", true).
-			Scan(ctx)
-		require.NoError(t, err)
-		require.Len(t, status2Results, 1)
-		assert.Equal(t, result3.UID, status2Results[0].UID)
-	})
-}
-
 // TestSaveResultFallsBackToWorkerRegion covers the fix for spec
 // 2026-07-07-04: a check job with no explicit region (checkJob.Region == nil,
 // i.e. no regions[] configured on the check — the common single-worker/
@@ -1020,7 +777,6 @@ func TestExecuteHeartbeatJob_RunningStatus(t *testing.T) {
 		resultUID, _ := uuid.NewV7()
 		statusRunning := int(models.ResultStatusRunning)
 		durationZero := float32(0)
-		lastForStatus := true
 		result := models.Result{
 			UID:             resultUID.String(),
 			OrganizationUID: org.UID,
@@ -1032,7 +788,6 @@ func TestExecuteHeartbeatJob_RunningStatus(t *testing.T) {
 			Metrics:         make(models.JSONMap),
 			Output:          models.JSONMap{"message": "Run started"},
 			CreatedAt:       time.Now(),
-			LastForStatus:   &lastForStatus,
 		}
 		_, err := dbSvc.DB().NewInsert().Model(&result).Exec(ctx)
 		require.NoError(t, err)
@@ -1077,7 +832,6 @@ func TestExecuteHeartbeatJob_RunningStatus(t *testing.T) {
 		resultUID, _ := uuid.NewV7()
 		statusRunning := int(models.ResultStatusRunning)
 		durationZero := float32(0)
-		lastForStatus := true
 		result := models.Result{
 			UID:             resultUID.String(),
 			OrganizationUID: org.UID,
@@ -1089,7 +843,6 @@ func TestExecuteHeartbeatJob_RunningStatus(t *testing.T) {
 			Metrics:         make(models.JSONMap),
 			Output:          models.JSONMap{"message": "Run started"},
 			CreatedAt:       time.Now().Add(-5 * time.Minute),
-			LastForStatus:   &lastForStatus,
 		}
 		_, err = dbSvc.DB().NewInsert().Model(&result).Exec(ctx)
 		require.NoError(t, err)

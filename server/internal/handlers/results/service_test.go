@@ -274,6 +274,10 @@ func float32Ptr(f float32) *float32 {
 	return &f
 }
 
+func float64Ptr(f float64) *float64 {
+	return &f
+}
+
 func TestApplyDurationFields(t *testing.T) {
 	t.Parallel()
 
@@ -399,6 +403,111 @@ func TestConvertResultToResponse_DurationAvgP95(t *testing.T) {
 	respNotRequested := s.convertResultToResponse(aggregated, []string{})
 	r.Nil(respNotRequested.DurationAvgMs)
 	r.Nil(respNotRequested.DurationP95Ms)
+}
+
+// TestApplyAggregationFields_DerivedAvailabilityPct pins the read-time
+// derivation that replaced the dropped results.availability_pct column (spec
+// 2026-07-24-02 §4): availabilityPct is successfulChecks / totalChecks × 100,
+// and is absent (JSON null / omitted) whenever totalChecks is 0 or NULL —
+// never 0%, which would read as "totally down".
+func TestApplyAggregationFields_DerivedAvailabilityPct(t *testing.T) {
+	t.Parallel()
+
+	s := &Service{}
+
+	tests := []struct {
+		name        string
+		result      *models.Result
+		with        []string
+		wantPct     *float64
+		wantTotal   *int
+		wantSuccess *int
+	}{
+		{
+			name: "derives from the two counts",
+			result: &models.Result{
+				TotalChecks: intPtr(200), SuccessfulChecks: intPtr(199),
+			},
+			with:        []string{"availabilityPct", "totalChecks", "successfulChecks"},
+			wantPct:     float64Ptr(99.5),
+			wantTotal:   intPtr(200),
+			wantSuccess: intPtr(199),
+		},
+		{
+			name: "a perfect bucket is 100",
+			result: &models.Result{
+				TotalChecks: intPtr(60), SuccessfulChecks: intPtr(60),
+			},
+			with:    []string{"availabilityPct"},
+			wantPct: float64Ptr(100),
+		},
+		{
+			name: "a fully failed bucket is 0, not null",
+			result: &models.Result{
+				TotalChecks: intPtr(12), SuccessfulChecks: intPtr(0),
+			},
+			with:    []string{"availabilityPct"},
+			wantPct: float64Ptr(0),
+		},
+		{
+			name: "totalChecks == 0 yields null, not a division by zero",
+			result: &models.Result{
+				TotalChecks: intPtr(0), SuccessfulChecks: intPtr(0),
+			},
+			with:    []string{"availabilityPct"},
+			wantPct: nil,
+		},
+		{
+			name:    "a raw row (nil counts) yields null",
+			result:  &models.Result{TotalChecks: nil, SuccessfulChecks: nil},
+			with:    []string{"availabilityPct"},
+			wantPct: nil,
+		},
+		{
+			name: "a nil successfulChecks with a positive total counts as zero successes",
+			result: &models.Result{
+				TotalChecks: intPtr(4), SuccessfulChecks: nil,
+			},
+			with:    []string{"availabilityPct"},
+			wantPct: float64Ptr(0),
+		},
+		{
+			name: "not requested stays absent",
+			result: &models.Result{
+				TotalChecks: intPtr(10), SuccessfulChecks: intPtr(10),
+			},
+			with:    []string{},
+			wantPct: nil,
+		},
+		{
+			name: "case-insensitive with token",
+			result: &models.Result{
+				TotalChecks: intPtr(10), SuccessfulChecks: intPtr(5),
+			},
+			with:    []string{"AVAILABILITYPCT"},
+			wantPct: float64Ptr(50),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			resp := &ResultResponse{}
+			s.applyAggregationFields(resp, tc.result, buildWithSet(tc.with))
+
+			if tc.wantPct == nil {
+				r.Nil(resp.AvailabilityPct)
+			} else {
+				r.NotNil(resp.AvailabilityPct)
+				r.InDelta(*tc.wantPct, *resp.AvailabilityPct, 0.0001)
+			}
+
+			r.Equal(tc.wantTotal, resp.TotalChecks)
+			r.Equal(tc.wantSuccess, resp.SuccessfulChecks)
+		})
+	}
 }
 
 func TestNeedsCheckInfo(t *testing.T) {

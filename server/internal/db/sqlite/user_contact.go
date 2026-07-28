@@ -109,6 +109,63 @@ func (s *Service) DeleteUserContact(ctx context.Context, uid string) error {
 	return nil
 }
 
+// GetUserContact returns a single non-deleted contact by UID.
+func (s *Service) GetUserContact(ctx context.Context, uid string) (*models.UserContact, error) {
+	var contact models.UserContact
+
+	err := s.db.NewSelect().
+		Model(&contact).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Limit(1).
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get user contact: %w", err)
+	}
+
+	return &contact, nil
+}
+
+// SetUserContactVerifyState writes the in-flight verification columns
+// (code hash, expiry, attempt count) on a contact. Passing nil codeHash /
+// expiresAt clears the pending code while preserving the attempt count.
+func (s *Service) SetUserContactVerifyState(
+	ctx context.Context, uid string, codeHash *string, expiresAt *time.Time, attempts int,
+) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.UserContact)(nil)).
+		Where("uid = ?", uid).
+		Set("verify_code_hash = ?", codeHash).
+		Set("verify_expires_at = ?", expiresAt).
+		Set("verify_attempts = ?", attempts).
+		Set("updated_at = ?", time.Now()).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("set user contact verify state: %w", err)
+	}
+
+	return nil
+}
+
+// MarkUserContactVerified stamps verified_at and clears the pending
+// verification columns.
+func (s *Service) MarkUserContactVerified(ctx context.Context, uid string, verifiedAt time.Time) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.UserContact)(nil)).
+		Where("uid = ?", uid).
+		Set("verified_at = ?", verifiedAt).
+		Set("verify_code_hash = NULL").
+		Set("verify_expires_at = NULL").
+		Set("verify_attempts = 0").
+		Set("updated_at = ?", verifiedAt).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("mark user contact verified: %w", err)
+	}
+
+	return nil
+}
+
 // SetRouteEnabled toggles the enabled flag on a route.
 func (s *Service) SetRouteEnabled(ctx context.Context, routeUID string, enabled bool) error {
 	_, err := s.db.NewUpdate().

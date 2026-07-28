@@ -6,15 +6,31 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/incidentlinks"
 	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
+	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
+	"github.com/fclairamb/solidping/server/internal/integrations/twilioconn"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/webpush"
 )
+
+// phoneAckTokenTTL bounds the SMS/voice ack magic-link lifetime (mirrors the
+// email ack TTL: 7 days from incident start).
+const phoneAckTokenTTL = 7 * 24 * time.Hour
+
+// newTwilioClient is the client constructor seam used by the phone dispatch
+// path. Overridden in tests to target an httptest fake without hitting Twilio.
+//
+//nolint:gochecknoglobals // test seam for the outbound Twilio client.
+var newTwilioClient = twilio.NewClient
 
 // Escalation step errors.
 var (
@@ -79,6 +95,10 @@ func (d *EscalationStepJobDefinition) CreateJobRun(config json.RawMessage) (jobd
 // EscalationStepJobRun executes one rung of an escalation policy.
 type EscalationStepJobRun struct {
 	config EscalationStepJobConfig
+	// sentPhones dedupes phone deliveries within a single job run, keyed by
+	// "kind:number" — so a user matched via both a user target and all_admins
+	// is texted/called at most once per channel per step.
+	sentPhones map[string]bool
 }
 
 // Run loads the incident, exits if it has been acked/snoozed/resolved
@@ -199,31 +219,31 @@ func (r *EscalationStepJobRun) fanOutWithSeverity(
 				stats.Skipped++
 			}
 		case models.EscalationTargetUser:
-			if filter != nil && !filter["email"] {
-				log.InfoContext(ctx, "severity skipped user target — email not in channel-set",
+			if !severityAllowsPersonTargets(filter) {
+				log.InfoContext(ctx, "severity skipped user target — no person channel in set",
 					"targetUID", target.TargetUID)
 				stats.Skipped++
 
 				continue
 			}
-			stats.DirectEmails += r.pageUser(ctx, jctx, log, incident, target.TargetUID)
+			stats.DirectEmails += r.pageUser(ctx, jctx, log, incident, target.TargetUID, filter)
 		case models.EscalationTargetSchedule:
-			if filter != nil && !filter["email"] {
-				log.InfoContext(ctx, "severity skipped schedule target — email not in channel-set",
+			if !severityAllowsPersonTargets(filter) {
+				log.InfoContext(ctx, "severity skipped schedule target — no person channel in set",
 					"targetUID", target.TargetUID)
 				stats.Skipped++
 
 				continue
 			}
-			stats.DirectEmails += r.pageSchedule(ctx, jctx, log, incident, target.TargetUID)
+			stats.DirectEmails += r.pageSchedule(ctx, jctx, log, incident, target.TargetUID, filter)
 		case models.EscalationTargetAllAdmins:
-			if filter != nil && !filter["email"] {
-				log.InfoContext(ctx, "severity skipped all-admins target — email not in channel-set")
+			if !severityAllowsPersonTargets(filter) {
+				log.InfoContext(ctx, "severity skipped all-admins target — no person channel in set")
 				stats.Skipped++
 
 				continue
 			}
-			stats.DirectEmails += r.pageAllAdmins(ctx, jctx, log, incident)
+			stats.DirectEmails += r.pageAllAdmins(ctx, jctx, log, incident, filter)
 		}
 	}
 
@@ -259,7 +279,8 @@ func (r *EscalationStepJobRun) resolveSeverityChannels(
 // connectionPassesSeverityFilter checks whether a connection target's
 // underlying channel type is permitted by the severity. Returns true
 // when the filter is nil (no severity in play) or when the connection's
-// type is in the allowed set.
+// type is in the allowed set. A twilio connection has no severity token of
+// its own, so it passes when the severity requests SMS or voice.
 func (r *EscalationStepJobRun) connectionPassesSeverityFilter(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	target *models.EscalationPolicyTarget, filter map[string]bool,
@@ -277,6 +298,20 @@ func (r *EscalationStepJobRun) connectionPassesSeverityFilter(
 
 		return false
 	}
+
+	// Twilio's type string ("twilio") is not a severity token; it delivers
+	// SMS/voice, so it passes when either of those is requested.
+	if conn.Type == models.ConnectionTypeTwilio {
+		if filter[channelTokenSMS] || filter[channelTokenVoice] {
+			return true
+		}
+
+		log.InfoContext(ctx, "severity skipped twilio connection — neither sms nor voice in set",
+			"connectionUID", *target.TargetUID)
+
+		return false
+	}
+
 	if !filter[string(conn.Type)] {
 		log.InfoContext(ctx, "severity skipped connection target — channel type not in set",
 			"connectionUID", *target.TargetUID, "channelType", string(conn.Type))
@@ -285,6 +320,63 @@ func (r *EscalationStepJobRun) connectionPassesSeverityFilter(
 	}
 
 	return true
+}
+
+// Severity channel tokens (the strings stored in a severity's channels[]).
+const (
+	channelTokenEmail        = "email"
+	channelTokenSMS          = "sms"
+	channelTokenVoice        = "voice"
+	channelTokenPush         = "push"
+	channelTokenCriticalPush = "critical_push"
+)
+
+// severityAllowsPersonTargets reports whether a severity permits paging
+// person-type targets (user / schedule / all_admins) at all. A nil filter (no
+// severity) allows everything; otherwise any person-deliverable token opens the
+// gate, and per-route filtering below narrows to specific contact types.
+func severityAllowsPersonTargets(filter map[string]bool) bool {
+	if filter == nil {
+		return true
+	}
+
+	for _, tok := range []string{
+		channelTokenEmail, channelTokenSMS, channelTokenVoice,
+		channelTokenPush, channelTokenCriticalPush,
+	} {
+		if filter[tok] {
+			return true
+		}
+	}
+
+	return false
+}
+
+// severityAllowsEmail reports whether an email (or Slack DM, which historically
+// rides the email token) delivery is permitted.
+func severityAllowsEmail(filter map[string]bool) bool {
+	return filter == nil || filter[channelTokenEmail]
+}
+
+// severityAllowsWebPush reports whether a web-push delivery is permitted:
+// nil (everything), the historical email-compat token, or an explicit push token.
+func severityAllowsWebPush(filter map[string]bool) bool {
+	return filter == nil || filter[channelTokenEmail] ||
+		filter[channelTokenPush] || filter[channelTokenCriticalPush]
+}
+
+// severityAllowsSMS reports whether an SMS to a phone contact is permitted:
+// nil (everything) or an explicit sms token.
+func severityAllowsSMS(filter map[string]bool) bool {
+	return filter == nil || filter[channelTokenSMS]
+}
+
+// severityAllowsVoice reports whether a voice call is permitted. Voice is only
+// ever placed on an explicit "voice" token — never on a nil filter — so a
+// severity-less escalation never surprises an on-call engineer with a phone
+// call.
+func severityAllowsVoice(filter map[string]bool) bool {
+	return filter[channelTokenVoice]
 }
 
 // enqueueNotificationFor queues a notification job for the
@@ -345,7 +437,7 @@ func (r *EscalationStepJobRun) enqueueNotificationFor(
 // have not visited Account → Notifications yet).
 func (r *EscalationStepJobRun) pageUser(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
-	incident *models.Incident, userUID *string,
+	incident *models.Incident, userUID *string, filter map[string]bool,
 ) int {
 	if userUID == nil {
 		log.WarnContext(ctx, "pageUser: nil userUID")
@@ -355,7 +447,13 @@ func (r *EscalationStepJobRun) pageUser(
 
 	routes, err := jctx.DBService.ListUserContactsWithRoutes(ctx, *userUID, incident.OrganizationUID)
 	if err != nil || len(routes) == 0 {
-		// Fallback: no routes in DB yet — email directly as V1 did.
+		// Fallback: no routes in DB yet — email directly as V1 did, but only
+		// when the severity permits email (a sms/voice-only severity must not
+		// silently fall back to email).
+		if !severityAllowsEmail(filter) {
+			return 0
+		}
+
 		user, userErr := jctx.DBService.GetUser(ctx, *userUID)
 		if userErr != nil {
 			log.WarnContext(ctx, "escalation user target not found",
@@ -376,16 +474,17 @@ func (r *EscalationStepJobRun) pageUser(
 			continue
 		}
 
-		sent += r.dispatchRoute(ctx, jctx, log, incident, route)
+		sent += r.dispatchRoute(ctx, jctx, log, incident, route, filter)
 	}
 
 	return sent
 }
 
-// dispatchRoute dispatches a single notification route.
+// dispatchRoute dispatches a single notification route, honoring the severity
+// channel filter per contact type (nil filter = deliver via every route).
 func (r *EscalationStepJobRun) dispatchRoute(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
-	incident *models.Incident, route *models.UserNotificationRoute,
+	incident *models.Incident, route *models.UserNotificationRoute, filter map[string]bool,
 ) int {
 	if route.Contact == nil {
 		log.WarnContext(ctx, "dispatchRoute: route has no contact loaded",
@@ -396,12 +495,20 @@ func (r *EscalationStepJobRun) dispatchRoute(
 
 	switch route.Contact.Type {
 	case models.UserContactTypeEmail:
+		if !severityAllowsEmail(filter) {
+			return 0
+		}
+
 		return r.sendEscalationEmail(
 			ctx, jctx, log, incident,
 			route.Contact.Value, route.UserUID,
 			models.IncidentNotificationSourceEscalationUser,
 		)
 	case models.UserContactTypeSlackUser:
+		if !severityAllowsEmail(filter) {
+			// Slack DMs historically ride the email token.
+			return 0
+		}
 		slackConn, connErr := jctx.DBService.GetSlackChannelForOrg(ctx, incident.OrganizationUID)
 		if connErr != nil {
 			log.WarnContext(ctx, "slack channel not found for org; skipping route",
@@ -436,14 +543,13 @@ func (r *EscalationStepJobRun) dispatchRoute(
 
 		return 1
 	case models.UserContactTypeWebPush:
+		if !severityAllowsWebPush(filter) {
+			return 0
+		}
+
 		return r.sendWebPush(ctx, jctx, log, incident, route)
 	case models.UserContactTypePhone:
-		log.WarnContext(ctx, "SMS provider not configured; skipping route",
-			"contactUID", route.Contact.UID,
-			"userUID", route.UserUID,
-			"orgUID", incident.OrganizationUID)
-
-		return 0
+		return r.pagePhone(ctx, jctx, log, incident, route, filter)
 	default:
 		log.WarnContext(ctx, "unknown contact type; skipping route",
 			"type", route.Contact.Type,
@@ -509,6 +615,287 @@ func (r *EscalationStepJobRun) sendWebPush(
 	return 1
 }
 
+// pagePhone delivers to a per-user verified phone contact: an SMS when the
+// severity requests it, and/or a voice call when the severity requests voice
+// and the connection has a voice_from_number. An unverified number is never
+// contacted, and a missing provider degrades to today's info-log skip.
+func (r *EscalationStepJobRun) pagePhone(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, route *models.UserNotificationRoute, filter map[string]bool,
+) int {
+	contact := route.Contact
+
+	if contact.VerifiedAt == nil {
+		log.InfoContext(ctx, "phone contact not verified; skipping route",
+			"contactUID", contact.UID, "userUID", route.UserUID)
+
+		return 0
+	}
+
+	wantSMS := severityAllowsSMS(filter)
+	wantVoice := severityAllowsVoice(filter)
+	if !wantSMS && !wantVoice {
+		return 0
+	}
+
+	var creds credentials.Service
+	if jctx.Services != nil {
+		creds = jctx.Services.Credentials
+	}
+
+	conn, settings, err := twilioconn.ResolveDefault(ctx, jctx.DBService, creds, incident.OrganizationUID)
+	if err != nil {
+		// No provider / undecryptable → keep today's info-log skip; never fail
+		// the escalation step over a missing SMS provider.
+		log.InfoContext(ctx, "no usable twilio connection; skipping phone route",
+			"contactUID", contact.UID, "orgUID", incident.OrganizationUID, "error", err)
+
+		return 0
+	}
+
+	// Voice needs a configured voice_from_number.
+	if wantVoice && settings.VoiceFromNumber == "" {
+		log.InfoContext(ctx, "voice requested but no voice_from_number configured; skipping call",
+			"connectionUID", conn.UID)
+		wantVoice = false
+	}
+
+	baseURL := appBaseURL(jctx)
+	orgSlug := r.orgSlugFor(ctx, jctx, log, incident.OrganizationUID)
+	ackToken := r.buildPhoneAckToken(jctx, incident, contact.Value)
+
+	sent := 0
+	if wantSMS && r.reservePhoneChannel(ctx, jctx, log, incident, contact.Value, models.UsageCounterKindSMS) &&
+		r.sendPhoneSMS(ctx, jctx, log, incident, route, conn, settings, baseURL, orgSlug, ackToken) {
+		sent++
+	}
+
+	if wantVoice && r.reservePhoneChannel(ctx, jctx, log, incident, contact.Value, models.UsageCounterKindVoice) &&
+		r.placePhoneCall(ctx, jctx, log, incident, route, conn, settings, baseURL, ackToken) {
+		sent++
+	}
+
+	return sent
+}
+
+// reservePhoneChannel enforces per-run dedup and the SMS/voice quota + runaway
+// guard before a send. Returns true when the send may proceed. A quota denial
+// records a skipped audit row but never fails the step.
+func (r *EscalationStepJobRun) reservePhoneChannel(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, phone, kind string,
+) bool {
+	key := kind + ":" + phone
+	if r.sentPhones[key] {
+		// Same number+channel already handled in this job run (e.g. user matched
+		// via both `user` and `all_admins`).
+		return false
+	}
+
+	if jctx.Services != nil && jctx.Services.Entitlements != nil {
+		var err error
+		if kind == models.UsageCounterKindVoice {
+			err = jctx.Services.Entitlements.ReserveCall(ctx, incident.OrganizationUID)
+		} else {
+			err = jctx.Services.Entitlements.ReserveSMS(ctx, incident.OrganizationUID)
+		}
+
+		if err != nil {
+			log.InfoContext(ctx, "phone channel quota reached; skipping send",
+				"kind", kind, "orgUID", incident.OrganizationUID, "error", err)
+			r.auditPhoneSkip(ctx, jctx, log, incident, kind+"_quota_exhausted")
+
+			return false
+		}
+	}
+
+	if r.sentPhones == nil {
+		r.sentPhones = make(map[string]bool)
+	}
+	r.sentPhones[key] = true
+
+	return true
+}
+
+// auditPhoneSkip records a skipped incident_notifications row for a quota-denied
+// SMS/voice send.
+func (r *EscalationStepJobRun) auditPhoneSkip(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, reason string,
+) {
+	stepUID := r.config.StepUID
+	repeatIndex := r.config.RepeatIndex
+	n := models.NewSkippedIncidentNotification(
+		incident.OrganizationUID, incident.UID, string(models.EventTypeIncidentEscalated),
+		models.IncidentNotificationSourceEscalationUser, reason,
+		&stepUID, &repeatIndex,
+	)
+	if auditErr := jctx.DBService.CreateIncidentNotification(ctx, n); auditErr != nil {
+		log.WarnContext(ctx, "failed to create quota-skip audit row", "error", auditErr)
+	}
+}
+
+// orgSlugFor resolves the org slug for building user-facing ack URLs. A
+// missing org is logged but not fatal (the SMS just ships without an ack link).
+func (r *EscalationStepJobRun) orgSlugFor(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, orgUID string,
+) string {
+	org, err := jctx.DBService.GetOrganization(ctx, orgUID)
+	if err != nil || org == nil {
+		log.WarnContext(ctx, "failed to load org slug for phone ack URL", "orgUid", orgUID, "error", err)
+
+		return ""
+	}
+
+	return org.Slug
+}
+
+// buildPhoneAckToken signs the shared magic-link ack token (incident + phone
+// number) reused by the SMS ack link and the voice TwiML flow.
+func (r *EscalationStepJobRun) buildPhoneAckToken(
+	jctx *jobdef.JobContext, incident *models.Incident, phone string,
+) string {
+	if jctx.AppConfig == nil {
+		return ""
+	}
+
+	secret := []byte(jctx.AppConfig.Auth.JWTSecret)
+	if len(secret) == 0 {
+		return ""
+	}
+
+	exp := incident.StartedAt.Add(phoneAckTokenTTL)
+
+	return incidentlinks.Sign(secret, incident.UID, phone, exp)
+}
+
+// phoneCheckName returns the incident's check name, falling back to the
+// incident UID when the check has been deleted.
+func (r *EscalationStepJobRun) phoneCheckName(
+	ctx context.Context, jctx *jobdef.JobContext, incident *models.Incident,
+) string {
+	check, err := jctx.DBService.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID)
+	if err == nil && check != nil && check.Name != nil && *check.Name != "" {
+		return *check.Name
+	}
+
+	return incident.UID
+}
+
+// twilioStatusCallbackURL builds the delivery-status callback URL for a send.
+func twilioStatusCallbackURL(baseURL, connUID string) string {
+	if baseURL == "" {
+		return ""
+	}
+
+	return strings.TrimRight(baseURL, "/") + "/api/v1/integrations/twilio/status?cid=" + url.QueryEscape(connUID)
+}
+
+// sendPhoneSMS sends one escalation SMS to the contact's number. Returns true
+// on success.
+func (r *EscalationStepJobRun) sendPhoneSMS(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, route *models.UserNotificationRoute,
+	conn *models.Integration, settings *models.TwilioSettings,
+	baseURL, orgSlug, ackToken string,
+) bool {
+	name := r.phoneCheckName(ctx, jctx, incident)
+	body := fmt.Sprintf("[SolidPing] %s: %s needs attention (escalated).", orgSlug, name)
+	if baseURL != "" && orgSlug != "" && ackToken != "" {
+		body += fmt.Sprintf(" Ack: %s/api/v1/orgs/%s/incidents/%s/ack?token=%s",
+			strings.TrimRight(baseURL, "/"), orgSlug, incident.UID, ackToken)
+	}
+
+	client := newTwilioClient(settings.AccountSID, settings.AuthToken)
+	res, err := client.SendSMS(ctx, &twilio.SendSMSParams{
+		To:                  route.Contact.Value,
+		From:                settings.FromNumber,
+		MessagingServiceSID: settings.MessagingServiceSID,
+		Body:                body,
+		StatusCallback:      twilioStatusCallbackURL(baseURL, conn.UID),
+	})
+	if err != nil {
+		log.WarnContext(ctx, "failed to send escalation SMS",
+			"contactUID", route.Contact.UID, "error", err)
+
+		return false
+	}
+
+	r.auditPhoneSend(ctx, jctx, log, incident, route.UserUID, "sms", messageSID(res))
+
+	return true
+}
+
+// placePhoneCall places one outbound voice call that fetches the ack TwiML.
+// Returns true on success.
+func (r *EscalationStepJobRun) placePhoneCall(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, route *models.UserNotificationRoute,
+	conn *models.Integration, settings *models.TwilioSettings,
+	baseURL, ackToken string,
+) bool {
+	if baseURL == "" {
+		log.WarnContext(ctx, "no app base URL configured; cannot place voice call",
+			"contactUID", route.Contact.UID)
+
+		return false
+	}
+
+	twimlURL := fmt.Sprintf("%s/api/v1/integrations/twilio/voice?cid=%s&iid=%s&token=%s",
+		strings.TrimRight(baseURL, "/"),
+		url.QueryEscape(conn.UID), url.QueryEscape(incident.UID), url.QueryEscape(ackToken))
+
+	client := newTwilioClient(settings.AccountSID, settings.AuthToken)
+	res, err := client.CreateCall(ctx, twilio.CreateCallParams{
+		To:             route.Contact.Value,
+		From:           settings.VoiceFromNumber,
+		TwiMLURL:       twimlURL,
+		StatusCallback: twilioStatusCallbackURL(baseURL, conn.UID),
+	})
+	if err != nil {
+		log.WarnContext(ctx, "failed to place escalation voice call",
+			"contactUID", route.Contact.UID, "error", err)
+
+		return false
+	}
+
+	r.auditPhoneSend(ctx, jctx, log, incident, route.UserUID, "voice", messageSID(res))
+
+	return true
+}
+
+// auditPhoneSend records a sent incident_notifications row for an SMS/voice
+// escalation delivery.
+func (r *EscalationStepJobRun) auditPhoneSend(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, userUID, channel, messageID string,
+) {
+	stepUID := r.config.StepUID
+	repeatIndex := r.config.RepeatIndex
+
+	n := models.NewIncidentNotificationForUser(
+		incident.OrganizationUID, incident.UID, string(models.EventTypeIncidentEscalated),
+		models.IncidentNotificationSourceEscalationUser, userUID, channel,
+		&stepUID, &repeatIndex,
+	)
+	if auditErr := jctx.DBService.CreateIncidentNotification(ctx, n); auditErr != nil {
+		log.WarnContext(ctx, "failed to create phone notification audit row", "error", auditErr)
+
+		return
+	}
+
+	_ = jctx.DBService.MarkIncidentNotificationSentByUID(ctx, n.UID, time.Now(), messageID)
+}
+
+// messageSID safely extracts the Twilio SID from a result.
+func messageSID(res *twilio.Result) string {
+	if res == nil {
+		return ""
+	}
+
+	return res.SID
+}
+
 // postSlackDM sends a DM to slackUserID using the org's Slack bot token.
 // The integrations/slack package has no internal dependencies so importing it
 // here is safe (no import cycle).
@@ -534,7 +921,7 @@ func postSlackDM(ctx context.Context, accessToken, slackUserID, text string) err
 // do not abort subsequent steps.
 func (r *EscalationStepJobRun) pageSchedule(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
-	incident *models.Incident, scheduleUID *string,
+	incident *models.Incident, scheduleUID *string, filter map[string]bool,
 ) int {
 	if scheduleUID == nil {
 		return 0
@@ -575,7 +962,12 @@ func (r *EscalationStepJobRun) pageSchedule(
 	// webpush (and any future contact type) is also paged.
 	routes, routesErr := jctx.DBService.ListUserContactsWithRoutes(ctx, user.UID, incident.OrganizationUID)
 	if routesErr != nil || len(routes) == 0 {
-		// Fallback: no routes — email directly.
+		// Fallback: no routes — email directly, but only when the severity
+		// permits email.
+		if !severityAllowsEmail(filter) {
+			return 0
+		}
+
 		return r.sendEscalationEmail(
 			ctx, jctx, log, incident, user.Email, user.UID, models.IncidentNotificationSourceEscalationSchedule,
 		)
@@ -587,11 +979,12 @@ func (r *EscalationStepJobRun) pageSchedule(
 			continue
 		}
 
-		sent += r.dispatchRoute(ctx, jctx, log, incident, route)
+		sent += r.dispatchRoute(ctx, jctx, log, incident, route, filter)
 	}
 
-	if sent == 0 {
-		// All routes were disabled or unknown — fall back to direct email.
+	if sent == 0 && severityAllowsEmail(filter) {
+		// All routes were disabled/unknown/filtered out — fall back to direct
+		// email, but only when the severity permits it.
 		sent = r.sendEscalationEmail(
 			ctx, jctx, log, incident, user.Email, user.UID, models.IncidentNotificationSourceEscalationSchedule,
 		)
@@ -603,7 +996,7 @@ func (r *EscalationStepJobRun) pageSchedule(
 // pageAllAdmins emails every admin member of the incident's org.
 func (r *EscalationStepJobRun) pageAllAdmins(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
-	incident *models.Incident,
+	incident *models.Incident, filter map[string]bool,
 ) int {
 	members, err := jctx.DBService.ListMembersByOrg(ctx, incident.OrganizationUID)
 	if err != nil {
@@ -614,46 +1007,11 @@ func (r *EscalationStepJobRun) pageAllAdmins(
 
 	count := 0
 	for _, member := range members {
-		if member.Role != models.MemberRoleAdmin {
+		if member.Role != models.MemberRoleAdmin || member.User == nil {
 			continue
 		}
 
-		if member.User == nil {
-			continue
-		}
-
-		// Walk all enabled notification routes for the admin user.
-		routes, routesErr := jctx.DBService.ListUserContactsWithRoutes(ctx, member.UserUID, incident.OrganizationUID)
-		if routesErr != nil || len(routes) == 0 {
-			// Fallback: email directly.
-			if member.User.Email != "" {
-				count += r.sendEscalationEmail(
-					ctx, jctx, log, incident, member.User.Email, member.UserUID,
-					models.IncidentNotificationSourceEscalationAllAdmins,
-				)
-			}
-
-			continue
-		}
-
-		routeSent := 0
-		for _, route := range routes {
-			if !route.Enabled {
-				continue
-			}
-
-			routeSent += r.dispatchRoute(ctx, jctx, log, incident, route)
-		}
-
-		if routeSent == 0 && member.User.Email != "" {
-			// All routes were disabled/unknown — fall back to direct email.
-			routeSent = r.sendEscalationEmail(
-				ctx, jctx, log, incident, member.User.Email, member.UserUID,
-				models.IncidentNotificationSourceEscalationAllAdmins,
-			)
-		}
-
-		count += routeSent
+		count += r.pageAdminMember(ctx, jctx, log, incident, member, filter)
 	}
 
 	if count == 0 {
@@ -671,6 +1029,48 @@ func (r *EscalationStepJobRun) pageAllAdmins(
 	}
 
 	return count
+}
+
+// pageAdminMember pages one admin member: walks their enabled routes (severity
+// filtered) and falls back to a direct email when no route delivered and the
+// severity permits email. Returns the number of pages produced.
+func (r *EscalationStepJobRun) pageAdminMember(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, member *models.OrganizationMember, filter map[string]bool,
+) int {
+	routes, routesErr := jctx.DBService.ListUserContactsWithRoutes(ctx, member.UserUID, incident.OrganizationUID)
+	if routesErr != nil || len(routes) == 0 {
+		return r.adminFallbackEmail(ctx, jctx, log, incident, member, filter)
+	}
+
+	sent := 0
+	for _, route := range routes {
+		if route.Enabled {
+			sent += r.dispatchRoute(ctx, jctx, log, incident, route, filter)
+		}
+	}
+
+	if sent == 0 {
+		return r.adminFallbackEmail(ctx, jctx, log, incident, member, filter)
+	}
+
+	return sent
+}
+
+// adminFallbackEmail sends a direct escalation email to an admin member when
+// the severity permits email and the member has an address.
+func (r *EscalationStepJobRun) adminFallbackEmail(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, member *models.OrganizationMember, filter map[string]bool,
+) int {
+	if member.User.Email == "" || !severityAllowsEmail(filter) {
+		return 0
+	}
+
+	return r.sendEscalationEmail(
+		ctx, jctx, log, incident, member.User.Email, member.UserUID,
+		models.IncidentNotificationSourceEscalationAllAdmins,
+	)
 }
 
 // sendEscalationEmail sends a minimal escalation email directly via the

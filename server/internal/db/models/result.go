@@ -112,17 +112,17 @@ type Result struct {
 	Region          *string    `bun:"region"`
 
 	// Raw result fields (period_type = 'raw')
-	WorkerUID     *string  `bun:"worker_uid"`
-	Status        *int     `bun:"status"`
-	Duration      *float32 `bun:"duration"`
-	Metrics       JSONMap  `bun:"metrics,type:jsonb,nullzero"`
-	Output        JSONMap  `bun:"output,type:jsonb,nullzero"`
-	LastForStatus *bool    `bun:"last_for_status"`
+	WorkerUID *string  `bun:"worker_uid"`
+	Status    *int     `bun:"status"`
+	Duration  *float32 `bun:"duration"`
+	Metrics   JSONMap  `bun:"metrics,type:jsonb,nullzero"`
+	Output    JSONMap  `bun:"output,type:jsonb,nullzero"`
 
-	// Aggregated fields (period_type = 'hour', 'day', 'month', 'year')
+	// Aggregated fields (period_type = 'hour', 'day', 'month', 'year').
+	// availability_pct is intentionally absent: it is derived at read time from
+	// successful_checks / total_checks rather than stored (spec 2026-07-24-02).
 	TotalChecks      *int     `bun:"total_checks"`
 	SuccessfulChecks *int     `bun:"successful_checks"`
-	AvailabilityPct  *float64 `bun:"availability_pct"`
 	DurationMin      *float32 `bun:"duration_min"`
 	DurationMax      *float32 `bun:"duration_max"`
 	DurationP95      *float32 `bun:"duration_p95"`
@@ -186,6 +186,15 @@ type ListResultsFilter struct {
 
 	// Include check info (for joining with checks table to get slug/name)
 	IncludeCheckInfo bool // Optional: whether to join with checks table
+
+	// SkipBlobs, when true, drops the two JSON blob columns (`metrics`,
+	// `output`) from the SELECT projection: the scanned rows come back with
+	// Metrics and Output nil regardless of what is stored. Only for consumers
+	// that need status/counts/duration and never render a blob (uptime bars,
+	// badges, status-page recent results) — it trims per-request I/O on the
+	// largest table in the system (spec 2026-07-24-02 §5). Default (false)
+	// keeps the full row, so every other reader is unaffected.
+	SkipBlobs bool
 }
 
 // ListResultsResponse wraps results with pagination info.
@@ -194,4 +203,27 @@ type ListResultsResponse struct {
 	Total      int64     // Total count of results (expensive, may be 0)
 	NextCursor string    // Encoded cursor for next page (empty if no more results)
 	HasMore    bool      // Whether there are more results
+}
+
+// AggregateResultsFunc computes the single rollup row for one bucket from its
+// source rows and returns the UIDs of the source rows to delete. It runs inside
+// CompactResults' transaction and must be pure (no DB access). Returning a nil
+// rollup or an empty sourceUIDs signals "nothing measurable to compact" — the
+// sources are left in place and the transaction commits without writing.
+type AggregateResultsFunc func(sources []*Result) (rollup *Result, sourceUIDs []string, err error)
+
+// CompactResultsOutcome reports what CompactResults did inside its transaction.
+type CompactResultsOutcome struct {
+	// Fetched is the number of source rows read for the bucket.
+	Fetched int
+	// SourceCount is the number of measurable source rows the aggregate function
+	// selected for deletion (its returned sourceUIDs). Zero for a marker-only
+	// bucket.
+	SourceCount int
+	// Compacted is true when the rollup row was upserted and the source rows
+	// deleted (the whole transaction committed). False when there was nothing to
+	// compact (no fetched rows, or a marker-only bucket).
+	Compacted bool
+	// DeletedCount is the number of source rows actually deleted.
+	DeletedCount int64
 }

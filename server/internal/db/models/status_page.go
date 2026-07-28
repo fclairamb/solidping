@@ -51,22 +51,38 @@ func PeriodFromDays(days int) StatusPagePeriod {
 
 // StatusPage represents a public status page for an organization.
 type StatusPage struct {
-	UID              string     `bun:"uid,pk,type:varchar(36)"`
-	OrganizationUID  string     `bun:"organization_uid,notnull"`
-	Name             string     `bun:"name,notnull"`
-	Slug             string     `bun:"slug,notnull"`
-	Description      *string    `bun:"description"`
-	Visibility       string     `bun:"visibility,notnull,default:'public'"`
-	IsDefault        bool       `bun:"is_default,notnull,default:false"`
-	Enabled          bool       `bun:"enabled,notnull,default:true"`
-	ShowAvailability bool       `bun:"show_availability,notnull,default:true"`
-	ShowResponseTime bool       `bun:"show_response_time,notnull,default:true"`
-	HistoryDays      int        `bun:"history_days,notnull,default:90"`
-	HistoryPeriod    string     `bun:"history_period,notnull,default:'90d'"`
-	Language         *string    `bun:"language"`
-	CreatedAt        time.Time  `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt        time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt        *time.Time `bun:"deleted_at"`
+	UID              string  `bun:"uid,pk,type:varchar(36)"`
+	OrganizationUID  string  `bun:"organization_uid,notnull"`
+	Name             string  `bun:"name,notnull"`
+	Slug             string  `bun:"slug,notnull"`
+	Description      *string `bun:"description"`
+	Visibility       string  `bun:"visibility,notnull,default:'public'"`
+	IsDefault        bool    `bun:"is_default,notnull,default:false"`
+	Enabled          bool    `bun:"enabled,notnull,default:true"`
+	ShowAvailability bool    `bun:"show_availability,notnull,default:true"`
+	ShowResponseTime bool    `bun:"show_response_time,notnull,default:true"`
+	HistoryDays      int     `bun:"history_days,notnull,default:90"`
+	HistoryPeriod    string  `bun:"history_period,notnull,default:'90d'"`
+	Language         *string `bun:"language"`
+	// CustomDomain is a customer-owned hostname (punycode/ASCII, lowercased)
+	// the page is served on. nil = none. Globally unique among live rows.
+	CustomDomain *string `bun:"custom_domain"`
+	// CustomDomainToken is the opaque base64url DNS-challenge token, set while a
+	// domain is configured. Never exposed on public endpoints.
+	CustomDomainToken *string `bun:"custom_domain_token"`
+	// CustomDomainVerifiedAt is when the domain last passed verification
+	// (TXT + CNAME). nil = unverified — only verified pages are served on the
+	// custom host.
+	CustomDomainVerifiedAt *time.Time `bun:"custom_domain_verified_at"`
+	// CustomDomainCheckedAt is when the periodic re-verification job last
+	// checked this domain.
+	CustomDomainCheckedAt *time.Time `bun:"custom_domain_checked_at"`
+	// CustomDomainFailures counts consecutive re-verification failures. At 3 the
+	// verification is cleared (domain release/takeover protection).
+	CustomDomainFailures int        `bun:"custom_domain_failures,notnull,default:0"`
+	CreatedAt            time.Time  `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt            time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
+	DeletedAt            *time.Time `bun:"deleted_at"`
 }
 
 // NewStatusPage creates a new status page with generated UID.
@@ -102,6 +118,20 @@ type StatusPageUpdate struct {
 	HistoryDays      *int
 	HistoryPeriod    *string
 	Language         *string
+}
+
+// StatusPageCustomDomainUpdate is the whole-lifecycle writer for a status
+// page's custom-domain columns. Every field is written verbatim (a full
+// overwrite of all five columns plus updated_at), so it expresses every
+// transition — set, clear, verify-now, and the periodic re-verify job — in one
+// shape. Domain/Token nil clears the columns to NULL; VerifiedAt/CheckedAt nil
+// clears those timestamps.
+type StatusPageCustomDomainUpdate struct {
+	Domain     *string
+	Token      *string
+	VerifiedAt *time.Time
+	CheckedAt  *time.Time
+	Failures   int
 }
 
 // StatusPageSection represents a section within a status page.

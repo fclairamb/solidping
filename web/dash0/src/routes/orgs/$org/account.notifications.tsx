@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   Card,
@@ -19,12 +20,21 @@ import {
   MessageSquare,
   MonitorSmartphone,
   Phone,
+  ShieldCheck,
   Trash2,
   Send,
   Loader2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { WebPushEnableButton } from "@/components/notifications/WebPushEnableButton";
 import { deriveDeviceLabel } from "@/lib/browser-detection";
 import {
@@ -33,6 +43,9 @@ import {
   useDeleteNotificationContact,
   usePatchNotificationRoute,
   useTestNotificationRoute,
+  useVerifyContact,
+  useConfirmVerifyContact,
+  useIntegrations,
   type NotificationRoute,
   type SlackSuggestion,
 } from "@/api/hooks";
@@ -71,6 +84,124 @@ function contactTypeLabel(type: string) {
   }
 }
 
+function VerifyPhoneDialog({
+  org,
+  contactUid,
+  phone,
+  open,
+  onOpenChange,
+  onVerified,
+}: {
+  org: string;
+  contactUid: string;
+  phone: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onVerified: () => void;
+}) {
+  const { t } = useTranslation("account");
+  const verify = useVerifyContact(org);
+  const confirm = useConfirmVerifyContact(org);
+  const [code, setCode] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+
+  const sendCode = async () => {
+    setError(null);
+    try {
+      await verify.mutateAsync(contactUid);
+      setSent(true);
+      toast.success(t("notifications.verify.codeSent"));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : t("notifications.verify.sendFailed"));
+    }
+  };
+
+  const handleConfirm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      await confirm.mutateAsync({ contactUid, code: code.trim() });
+      toast.success(t("notifications.verify.verified"));
+      onVerified();
+      onOpenChange(false);
+      setCode("");
+      setSent(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : t("notifications.verify.incorrectCode"));
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent data-testid="verify-phone-dialog">
+        <DialogHeader>
+          <DialogTitle>{t("notifications.verify.dialogTitle")}</DialogTitle>
+          <DialogDescription>
+            {t("notifications.verify.dialogDescription", { phone })}
+          </DialogDescription>
+        </DialogHeader>
+
+        {error && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {!sent ? (
+          <Button
+            onClick={sendCode}
+            disabled={verify.isPending}
+            data-testid="verify-send-code"
+          >
+            {verify.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Send className="h-4 w-4 mr-2" />
+            )}
+            {t("notifications.verify.sendCode")}
+          </Button>
+        ) : (
+          <form onSubmit={handleConfirm} className="space-y-3">
+            <Input
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="000000"
+              className="font-mono"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+              data-testid="verify-code-input"
+            />
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={sendCode}
+                disabled={verify.isPending}
+                data-testid="verify-resend-code"
+              >
+                {t("notifications.verify.resend")}
+              </Button>
+              <Button
+                type="submit"
+                disabled={confirm.isPending || code.length !== 6}
+                data-testid="verify-confirm"
+              >
+                {confirm.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  t("notifications.verify.confirm")
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function RouteRow({
   route,
   org,
@@ -80,11 +211,13 @@ function RouteRow({
   org: string;
   onTestSent: () => void;
 }) {
+  const { t } = useTranslation("account");
   const deleteContact = useDeleteNotificationContact(org);
   const patchRoute = usePatchNotificationRoute(org);
   const testRoute = useTestNotificationRoute(org);
 
   const [testPending, setTestPending] = useState(false);
+  const [verifyOpen, setVerifyOpen] = useState(false);
 
   const handleToggle = async (enabled: boolean) => {
     try {
@@ -119,6 +252,7 @@ function RouteRow({
   };
 
   const isPhone = route.contact.type === "phone";
+  const isVerified = !!route.contact.verifiedAt;
 
   return (
     <div className="flex items-center gap-3 py-3 border-b last:border-0">
@@ -134,13 +268,45 @@ function RouteRow({
             ? (route.contact.label || "Browser")
             : route.contact.value}
         </div>
-        {isPhone && (
-          <Badge variant="outline" className="mt-1 text-xs text-yellow-600 border-yellow-400">
-            SMS not available — requires an SMS provider configured by your admin
+        {isPhone && isVerified && (
+          <Badge
+            variant="outline"
+            className="mt-1 text-xs text-green-600 border-green-400"
+            data-testid={`phone-verified-${route.contact.uid}`}
+          >
+            <ShieldCheck className="h-3 w-3 mr-1" /> {t("notifications.verifiedBadge")}
+          </Badge>
+        )}
+        {isPhone && !isVerified && (
+          <Badge
+            variant="outline"
+            className="mt-1 text-xs text-yellow-600 border-yellow-400"
+          >
+            {t("notifications.unverifiedBadge")}
           </Badge>
         )}
       </div>
       <div className="flex items-center gap-2 flex-none">
+        {isPhone && !isVerified && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setVerifyOpen(true)}
+            data-testid={`verify-phone-${route.contact.uid}`}
+          >
+            {t("notifications.verifyButton")}
+          </Button>
+        )}
+        {isPhone && (
+          <VerifyPhoneDialog
+            org={org}
+            contactUid={route.contact.uid}
+            phone={route.contact.value}
+            open={verifyOpen}
+            onOpenChange={setVerifyOpen}
+            onVerified={onTestSent}
+          />
+        )}
         {!isPhone && (
           <Button
             variant="ghost"
@@ -237,11 +403,14 @@ function SlackBanner({
 
 function AddContactForm({
   org,
+  smsAvailable,
   onSuccess,
 }: {
   org: string;
+  smsAvailable: boolean;
   onSuccess: () => void;
 }) {
+  const { t } = useTranslation("account");
   const [type, setType] = useState<"email" | "phone">("email");
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -305,10 +474,26 @@ function AddContactForm({
             variant={type === "phone" ? "default" : "outline"}
             size="sm"
             onClick={() => setType("phone")}
+            data-testid="add-contact-type-phone"
           >
             <Phone className="h-3 w-3 mr-1" /> Phone
           </Button>
         </div>
+
+        {type === "phone" && !smsAvailable && (
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              {t("notifications.noProviderHint")}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {type === "phone" && smsAvailable && (
+          <p className="text-xs text-muted-foreground">
+            {t("notifications.phoneAfterAddHint")}
+          </p>
+        )}
 
         {error && (
           <Alert variant="destructive">
@@ -366,9 +551,14 @@ function NotificationsPage() {
   const [showAddForm, setShowAddForm] = useState(false);
 
   const { data, isLoading, isError, refetch } = useNotificationRoutes(org);
+  const { data: integrations } = useIntegrations(org);
 
   const routes = data?.data ?? [];
   const slackSuggestion = !dismissedSlack ? data?.slackSuggestion : undefined;
+  // SMS/voice is available once the org has an enabled Twilio integration.
+  const smsAvailable = (integrations ?? []).some(
+    (i) => i.type === "twilio" && i.enabled,
+  );
 
   if (isLoading) {
     return (
@@ -431,6 +621,7 @@ function NotificationsPage() {
           {showAddForm ? (
             <AddContactForm
               org={org}
+              smsAvailable={smsAvailable}
               onSuccess={() => setShowAddForm(false)}
             />
           ) : (

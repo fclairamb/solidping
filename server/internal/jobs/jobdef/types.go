@@ -56,4 +56,9 @@ const (
 	// (stage 2), so the jobs table stops growing unbounded. Global, self-
 	// rescheduling daily; its own terminal rows self-clean (spec 2026-07-11-17).
 	JobTypeJobsCleanup JobType = "jobs_cleanup"
+	// JobTypeCustomDomainVerify re-runs the ownership (TXT) check for every
+	// status page with a custom domain, clearing verification after repeated
+	// failures (domain release/takeover protection). Global, self-rescheduling
+	// every 6h (spec 2026-07-22-01).
+	JobTypeCustomDomainVerify JobType = "custom_domain_verify"
 )
