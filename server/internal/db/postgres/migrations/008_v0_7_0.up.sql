@@ -7,8 +7,9 @@
 -- Custom domains for status pages (spec 2026-07-22-01)
 -- ---------------------------------------------------------------------------
 -- A status page can be served on a customer-owned hostname
--- (e.g. status.acme.com), DNS-verified via a CNAME (routing) plus a TXT
--- challenge (ownership). One domain per page. The GLOBAL partial unique index
+-- (e.g. status.acme.com), DNS-verified with a SINGLE CNAME that carries both
+-- routing and ownership (see internal/domainverify: shared target, or a
+-- per-page "<token>.cname.<target>" in token mode). One domain per page. The GLOBAL partial unique index
 -- is the ownership-race anchor: it stops one org claiming another org's live
 -- domain, and a unique violation on write maps to 409 CONFLICT — mirroring
 -- status_pages_org_slug_idx from 001_v0_1_0.up.sql:694.
@@ -26,9 +27,9 @@ create unique index status_pages_custom_domain_idx
 comment on column status_pages.custom_domain is
   'Customer-owned hostname (punycode/ASCII, lowercased) the page is served on. NULL = none. Globally unique among live rows.';
 comment on column status_pages.custom_domain_token is
-  'Opaque DNS-challenge token (base64url). Set while a domain is configured; embedded in the _solidping-challenge TXT record as sp-domain-verify=<token>.';
+  'Opaque, DNS-label-safe token (lowercase base32). Set while a domain is configured; in token mode it is the leading label of the expected CNAME target, <token>.cname.<installation target>.';
 comment on column status_pages.custom_domain_verified_at is
-  'When the domain last passed verification (TXT + CNAME). NULL = unverified; only verified+enabled+public pages are served on the custom host.';
+  'When the domain last passed CNAME verification. NULL = unverified; only verified+enabled+public pages are served on the custom host.';
 comment on column status_pages.custom_domain_checked_at is
   'When the periodic re-verification job last checked this domain.';
 comment on column status_pages.custom_domain_failures is

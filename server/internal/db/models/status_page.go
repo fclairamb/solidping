@@ -67,12 +67,12 @@ type StatusPage struct {
 	// CustomDomain is a customer-owned hostname (punycode/ASCII, lowercased)
 	// the page is served on. nil = none. Globally unique among live rows.
 	CustomDomain *string `bun:"custom_domain"`
-	// CustomDomainToken is the opaque base64url DNS-challenge token, set while a
-	// domain is configured. Never exposed on public endpoints.
+	// CustomDomainToken is the opaque, DNS-label-safe token (lowercase base32),
+	// set while a domain is configured; in token mode it is the leading label of
+	// the expected CNAME target. Never exposed on public endpoints.
 	CustomDomainToken *string `bun:"custom_domain_token"`
-	// CustomDomainVerifiedAt is when the domain last passed verification
-	// (TXT + CNAME). nil = unverified — only verified pages are served on the
-	// custom host.
+	// CustomDomainVerifiedAt is when the domain last passed CNAME verification.
+	// nil = unverified — only verified pages are served on the custom host.
 	CustomDomainVerifiedAt *time.Time `bun:"custom_domain_verified_at"`
 	// CustomDomainCheckedAt is when the periodic re-verification job last
 	// checked this domain.

@@ -6,15 +6,15 @@
 -- ---------------------------------------------------------------------------
 -- Custom domains for status pages (spec 2026-07-22-01)
 -- ---------------------------------------------------------------------------
--- One customer-owned hostname per status page, DNS-verified (CNAME + TXT).
+-- One customer-owned hostname per status page, DNS-verified with a single CNAME.
 -- The GLOBAL partial unique index is the ownership-race anchor (unique
 -- violation on write -> 409 CONFLICT), mirroring status_pages_org_slug_idx.
 -- Timestamps are text (the cross-database convention used across these
 -- migrations); failures is a plain integer counter.
 
 alter table status_pages add column custom_domain text; -- Customer hostname (punycode/ASCII, lowercased). NULL = none.
-alter table status_pages add column custom_domain_token text; -- base64url DNS-challenge token; TXT value is sp-domain-verify=<token>.
-alter table status_pages add column custom_domain_verified_at text; -- Last passed verification (TXT+CNAME). NULL = unverified.
+alter table status_pages add column custom_domain_token text; -- DNS-label-safe token (lowercase base32); in token mode it is the leading label of the expected CNAME target.
+alter table status_pages add column custom_domain_verified_at text; -- Last passed CNAME verification. NULL = unverified.
 alter table status_pages add column custom_domain_checked_at text; -- Last periodic re-verification check.
 alter table status_pages add column custom_domain_failures integer not null default 0; -- Consecutive re-verify failures; 3 clears verification.
 
