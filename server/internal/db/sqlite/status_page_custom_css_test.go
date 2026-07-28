@@ -29,7 +29,12 @@ func TestStatusPageCustomCSS_RoundTrip(t *testing.T) {
 	r.NoError(err)
 	r.Nil(got.CustomCSS, "a fresh page has no custom CSS")
 
-	tests := []struct {
+	big := strings.Repeat("a", 64*1024)
+
+	// The steps run in order against ONE row — each asserts the state the
+	// previous one left behind (notably "untouched by nil"), so they are a
+	// sequence, not independent subtests.
+	steps := []struct {
 		name  string
 		write *string
 		want  *string
@@ -38,26 +43,23 @@ func TestStatusPageCustomCSS_RoundTrip(t *testing.T) {
 		{name: "replace", write: ptr(".dark { --background: #000; }"), want: ptr(".dark { --background: #000; }")},
 		{name: "untouched by nil", write: nil, want: ptr(".dark { --background: #000; }")},
 		{name: "cleared by empty string", write: ptr(""), want: nil},
-		{name: "large payload just under the API cap", write: ptr(strings.Repeat("a", 64*1024)), want: ptr(strings.Repeat("a", 64*1024))},
+		{name: "large payload just under the API cap", write: &big, want: &big},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			rr := require.New(t)
-			rr.NoError(s.UpdateStatusPage(ctx, page.UID, &models.StatusPageUpdate{CustomCSS: tc.write}))
+	for _, tc := range steps {
+		r.NoError(s.UpdateStatusPage(ctx, page.UID, &models.StatusPageUpdate{CustomCSS: tc.write}), tc.name)
 
-			after, getErr := s.GetStatusPage(ctx, org.UID, page.UID)
-			rr.NoError(getErr)
+		after, getErr := s.GetStatusPage(ctx, org.UID, page.UID)
+		r.NoError(getErr, tc.name)
 
-			if tc.want == nil {
-				rr.Nil(after.CustomCSS)
+		if tc.want == nil {
+			r.Nil(after.CustomCSS, tc.name)
 
-				return
-			}
+			continue
+		}
 
-			rr.NotNil(after.CustomCSS)
-			rr.Equal(*tc.want, *after.CustomCSS)
-		})
+		r.NotNil(after.CustomCSS, tc.name)
+		r.Equal(*tc.want, *after.CustomCSS, tc.name)
 	}
 }
 

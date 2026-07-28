@@ -52,7 +52,11 @@ func TestStatusPageCustomCSS_Postgres(t *testing.T) {
 	r.NoError(err)
 	r.Nil(got.CustomCSS, "a fresh page has no custom CSS")
 
-	tests := []struct {
+	big := strings.Repeat("a", 64*1024)
+
+	// Ordered steps against ONE row: "untouched by nil" asserts what the
+	// previous step left behind, so this is a sequence, not independent cases.
+	steps := []struct {
 		name  string
 		write *string
 		want  *string
@@ -60,30 +64,23 @@ func TestStatusPageCustomCSS_Postgres(t *testing.T) {
 		{name: "set", write: strPtr(":root { --brand: #ff0000; }"), want: strPtr(":root { --brand: #ff0000; }")},
 		{name: "untouched by nil", write: nil, want: strPtr(":root { --brand: #ff0000; }")},
 		{name: "cleared by empty string", write: strPtr(""), want: nil},
-		{
-			name:  "large payload just under the API cap",
-			write: strPtr(strings.Repeat("a", 64*1024)),
-			want:  strPtr(strings.Repeat("a", 64*1024)),
-		},
+		{name: "large payload just under the API cap", write: &big, want: &big},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			rr := require.New(t)
-			rr.NoError(s.UpdateStatusPage(ctx, page.UID, &models.StatusPageUpdate{CustomCSS: tc.write}))
+	for _, tc := range steps {
+		r.NoError(s.UpdateStatusPage(ctx, page.UID, &models.StatusPageUpdate{CustomCSS: tc.write}), tc.name)
 
-			after, getErr := s.GetStatusPage(ctx, org.UID, page.UID)
-			rr.NoError(getErr)
+		after, getErr := s.GetStatusPage(ctx, org.UID, page.UID)
+		r.NoError(getErr, tc.name)
 
-			if tc.want == nil {
-				rr.Nil(after.CustomCSS)
+		if tc.want == nil {
+			r.Nil(after.CustomCSS, tc.name)
 
-				return
-			}
+			continue
+		}
 
-			rr.NotNil(after.CustomCSS)
-			rr.Equal(*tc.want, *after.CustomCSS)
-		})
+		r.NotNil(after.CustomCSS, tc.name)
+		r.Equal(*tc.want, *after.CustomCSS, tc.name)
 	}
 
 	// The by-slug lookup status0 uses must carry the value too.
