@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/checkworker/backend"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
+	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -74,10 +75,10 @@ func newEnvWith(t *testing.T, entSvc *entitlements.Service) *env {
 	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, events, nil)
 
 	workersSvc := workers.NewService(
-		dbSvc, checkJobSvc, incidents.NewService(dbSvc, jobs, clock.Real{}, nil),
+		dbSvc, checkJobSvc, incidents.NewService(dbSvc, jobs, clock.Real{}, nil), scheduling.Params{},
 	)
 
-	handler := agentws.NewHandler(&config.Config{}, dbSvc, checkJobSvc, workersSvc, entSvc, events, nil)
+	handler := agentws.NewHandler(&config.Config{}, dbSvc, checkJobSvc, workersSvc, entSvc, events, nil, nil)
 
 	router := httpx.New()
 	router.GET("/api/v1/agent/ws", handler.Serve)
@@ -118,10 +119,10 @@ func newEnvWithAgentCap(t *testing.T, maxDeportedAgents int) *env {
 	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, events, nil)
 
 	workersSvc := workers.NewService(
-		dbSvc, checkJobSvc, incidents.NewService(dbSvc, jobs, clock.Real{}, nil),
+		dbSvc, checkJobSvc, incidents.NewService(dbSvc, jobs, clock.Real{}, nil), scheduling.Params{},
 	)
 
-	handler := agentws.NewHandler(&config.Config{}, dbSvc, checkJobSvc, workersSvc, entSvc, events, nil)
+	handler := agentws.NewHandler(&config.Config{}, dbSvc, checkJobSvc, workersSvc, entSvc, events, nil, nil)
 
 	router := httpx.New()
 	router.GET("/api/v1/agent/ws", handler.Serve)

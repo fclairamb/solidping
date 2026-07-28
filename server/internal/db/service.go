@@ -18,6 +18,11 @@ import (
 // it first.
 var ErrEnrollmentTokenInvalid = errors.New("enrollment token is invalid, expired, or already used")
 
+// ErrAgentNonceReplayed is returned by CheckAndStoreAgentNonce when a reconnect
+// nonce was already consumed inside the retention window — a replayed
+// signature, rejected cluster-wide rather than per API replica.
+var ErrAgentNonceReplayed = errors.New("agent reconnect nonce already used")
+
 // UsedEnrollmentTokenListWindow is how long a consumed enrollment token stays
 // visible in ListAgentEnrollmentTokens after use. The register-an-agent wizard
 // polls that list to learn its token's fate: without this window a token used
@@ -160,14 +165,36 @@ type Service interface {
 	ListAgentEnrollmentTokens(ctx context.Context, orgUID string) ([]*models.AgentEnrollmentToken, error)
 	// DeleteAgentEnrollmentToken soft-deletes an enrollment token (admin cancel).
 	DeleteAgentEnrollmentToken(ctx context.Context, orgUID, uid string) error
-	// GetAgentEnrollmentTokenByHash returns the live (unused, unexpired) token
-	// with the given hash, or ErrEnrollmentTokenInvalid. Non-consuming — used
-	// for the pre-upgrade WS handshake check; EnrollAgent does the atomic
-	// consume.
+	// GetAgentEnrollmentTokenByHash returns the live, still-usable token with the
+	// given hash, or ErrEnrollmentTokenInvalid. Kind-aware: an org token must be
+	// unused, a system token must have uses left. Non-consuming — used for the
+	// pre-upgrade WS handshake check; EnrollAgent does the atomic consume.
 	GetAgentEnrollmentTokenByHash(ctx context.Context, tokenHash string) (*models.AgentEnrollmentToken, error)
-	// EnrollAgent atomically consumes a valid enrollment token (single-use under
-	// concurrency) and creates the bound agent row, returning the new agent.
+	// EnrollAgent consumes a valid enrollment token and creates the bound agent
+	// row, returning the new agent. Org tokens are single-use under concurrency;
+	// system tokens are multi-use within their (optional) max_uses budget, so a
+	// whole platform fleet can enroll on boot with per-machine keypairs.
 	EnrollAgent(ctx context.Context, tokenHash, name, ed25519Pub, x25519Pub, fingerprint string) (*models.Agent, error)
+	// UpsertSystemAgentEnrollmentToken inserts or refreshes a seeded platform
+	// enrollment token (SP_SYSTEM_AGENT_ENROLLMENT_TOKENS), idempotently.
+	UpsertSystemAgentEnrollmentToken(ctx context.Context, token *models.AgentEnrollmentToken) error
+	// ListSystemAgentEnrollmentTokens returns every live platform token. Never
+	// exposed through the org-admin API.
+	ListSystemAgentEnrollmentTokens(ctx context.Context) ([]*models.AgentEnrollmentToken, error)
+	// RevokeSystemAgentEnrollmentTokensExcept soft-deletes live system tokens
+	// whose hash is not listed — removing a token from the environment revokes
+	// it on the next boot.
+	RevokeSystemAgentEnrollmentTokensExcept(ctx context.Context, keepHashes []string) (int64, error)
+	// ListStaleSystemAgents returns live system agents last seen before cutoff
+	// (never-connected rows are judged on enrolled_at). Org agents are excluded.
+	ListStaleSystemAgents(ctx context.Context, cutoff time.Time) ([]*models.Agent, error)
+	// RetireSystemAgent revokes and soft-deletes one system agent (agent_gc).
+	RetireSystemAgent(ctx context.Context, uid string) error
+	// CheckAndStoreAgentNonce records a reconnect nonce, returning
+	// ErrAgentNonceReplayed when it was already consumed within retain.
+	CheckAndStoreAgentNonce(ctx context.Context, agentUID, nonce string, now time.Time, retain time.Duration) error
+	// PruneAgentNonces deletes consumed nonces older than cutoff.
+	PruneAgentNonces(ctx context.Context, cutoff time.Time) (int64, error)
 	// GetAgent returns an agent by UID (any status).
 	GetAgent(ctx context.Context, uid string) (*models.Agent, error)
 	// ListAgents lists an org's agents (active and revoked, not deleted).

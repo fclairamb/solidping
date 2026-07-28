@@ -1,11 +1,22 @@
-// Package agentws implements the WebSocket transport for deported (org-scoped)
-// check agents (spec 2026-07-16-02). It is the ONLY transport an agent has:
-// outbound-only from the customer network, authenticated BEFORE the upgrade
-// (one-shot spe_ enrollment bearer on first connect; Ed25519 signed headers on
-// every reconnect), and surface-limited to exactly claim/result — no config
-// reads, no other entities, no org data. Claims are hard-scoped to the agent's
-// org and exact bound region; sealed credential blobs ship verbatim and are
-// never decrypted server-side on this path.
+// Package agentws implements the WebSocket transport for deported check agents
+// (spec 2026-07-16-02, generalized to platform-operated agents by
+// 2026-07-27-01). It is the ONLY transport an agent has: outbound-only from the
+// agent's network, authenticated BEFORE the upgrade (spe_ enrollment bearer on
+// first connect; Ed25519 signed headers on every reconnect), and
+// surface-limited to exactly claim/result — no config reads, no other entities,
+// no org data.
+//
+// Two agent kinds share every byte of this protocol:
+//
+//   - org agents (tenant-private): claims are hard-scoped to the agent's org
+//     AND exact private region; sealed credential blobs ship VERBATIM and are
+//     never decrypted server-side.
+//   - system agents (platform-operated, e.g. fly.io machines): claims are
+//     scoped to a shared cloud region across every org — the same scope the
+//     in-cluster worker claims with. Cloud checks have no sealed envelope, so
+//     the server opens the job's server-side envelope and re-seals it to the
+//     claiming agent's X25519 key AT CLAIM TIME, producing the very same
+//     `configSealed` wire field the agent already knows how to open.
 package agentws
 
 import (
@@ -25,6 +36,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
@@ -58,6 +70,10 @@ const (
 	pingInterval = 25 * time.Second
 	// claimMaxAhead is the claim-ahead window for agent claims.
 	claimMaxAhead = 5 * time.Minute
+	// nonceRetention is how long a consumed reconnect nonce stays remembered:
+	// twice the accepted clock skew, so a replay is impossible across the whole
+	// window a signature can be presented in.
+	nonceRetention = 2 * agentcrypto.DefaultClockSkew
 )
 
 // signed reconnect headers.
@@ -80,9 +96,13 @@ type Handler struct {
 	workersSvc   *workers.Service
 	entitlements *entitlements.Service
 	events       notifier.EventNotifier
-	nonces       *agentcrypto.NonceCache
-	reseal       ResealFunc
-	logger       *slog.Logger
+	// creds opens a cloud job's server-side credential envelope so it can be
+	// re-sealed to a claiming system agent (seal-at-claim). Never used on the
+	// org-agent path, which stays zero-decrypt.
+	creds   credentials.Service
+	regions *regions.Service
+	reseal  ResealFunc
+	logger  *slog.Logger
 }
 
 // NewHandler creates the agent WebSocket handler.
@@ -93,6 +113,7 @@ func NewHandler(
 	workersSvc *workers.Service,
 	entSvc *entitlements.Service,
 	events notifier.EventNotifier,
+	creds credentials.Service,
 	reseal ResealFunc,
 ) *Handler {
 	return &Handler{
@@ -102,7 +123,8 @@ func NewHandler(
 		workersSvc:   workersSvc,
 		entitlements: entSvc,
 		events:       events,
-		nonces:       agentcrypto.NewNonceCache(2 * agentcrypto.DefaultClockSkew),
+		creds:        creds,
+		regions:      regions.NewService(dbService),
 		reseal:       reseal,
 		logger:       slog.Default().With("component", "agent_ws"),
 	}
@@ -166,9 +188,11 @@ func (h *Handler) serveEnrollment(
 	}
 
 	// New recipient in the region: re-seal what the server can (mixed-mode
-	// checks) so the fresh agent can decrypt existing credentials.
-	if h.reseal != nil {
-		h.reseal(ctx, agent.OrganizationUID, agent.Region)
+	// checks) so the fresh agent can decrypt existing credentials. Only org
+	// agents have sealed-at-save credentials — a system agent gets its
+	// envelopes freshly sealed on every claim instead.
+	if h.reseal != nil && !agent.IsSystem() {
+		h.reseal(ctx, agent.OrgUID(), agent.Region)
 	}
 
 	h.runAgentConnection(ctx, conn, agent)
@@ -201,8 +225,13 @@ func (h *Handler) awaitEnroll(
 		return nil, errors.New("x25519PublicKey must be an age recipient (age1…)") //nolint:err113 // protocol diagnostic
 	}
 
-	if quotaErr := h.checkAgentQuota(ctx, conn, tokenHash, frame.ID); quotaErr != nil {
-		return nil, quotaErr
+	token, err := h.dbService.GetAgentEnrollmentTokenByHash(ctx, tokenHash)
+	if err != nil {
+		return nil, fmt.Errorf("lookup enrollment token: %w", err)
+	}
+
+	if enrollErr := h.validateEnrollmentScope(ctx, conn, token, frame.ID); enrollErr != nil {
+		return nil, enrollErr
 	}
 
 	name := frame.Name
@@ -238,26 +267,41 @@ func (h *Handler) awaitEnroll(
 	return agent, nil
 }
 
-// checkAgentQuota enforces MaxDeportedAgents BEFORE the enrollment token is
-// consumed: it looks the token up again (non-consuming, same call the
-// pre-upgrade check used) to learn the org, so a rejected enrollment leaves
-// the one-shot token usable for a retry after an upgrade or after deleting
-// another agent. Writes an `error` frame naming the quota breach (the
-// operator sees it in agent logs) before returning. A nil h.entitlements
-// (disabled in some tests) skips the guard entirely.
-func (h *Handler) checkAgentQuota(
-	ctx context.Context, conn *websocket.Conn, tokenHash, frameID string,
+// validateEnrollmentScope runs the per-kind admission checks BEFORE the token is
+// consumed, so a rejected enrollment leaves a one-shot org token usable for a
+// retry. Each rejection writes an `error` frame naming the cause (the operator
+// sees it in agent logs).
+//
+// A system token is checked against the cloud region catalog exactly like an
+// in-cluster worker's SP_REGION (server.go's ValidateWorkerRegion call): a
+// platform agent may only serve a defined, non-private region, so a stale or
+// mistyped seeded token can never mint an agent bound to nothing — or to
+// somebody's private location.
+//
+// An org token is checked against the MaxDeportedAgents quota. This is not the
+// correctness point (MintEnrollmentToken checks it too) but the enrollment-time
+// re-check. A nil h.entitlements (disabled in some tests) skips it.
+func (h *Handler) validateEnrollmentScope(
+	ctx context.Context, conn *websocket.Conn, token *models.AgentEnrollmentToken, frameID string,
 ) error {
+	if token.IsSystem() {
+		if regionErr := h.regions.ValidateWorkerRegion(ctx, token.Region); regionErr != nil {
+			_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{
+				Type: agentcrypto.MsgTypeError, ID: frameID,
+				Code: string(base.ErrorCodeValidationError), Title: regionErr.Error(),
+			})
+
+			return fmt.Errorf("system agent region: %w", regionErr)
+		}
+
+		return nil
+	}
+
 	if h.entitlements == nil {
 		return nil
 	}
 
-	token, err := h.dbService.GetAgentEnrollmentTokenByHash(ctx, tokenHash)
-	if err != nil {
-		return fmt.Errorf("lookup enrollment token: %w", err)
-	}
-
-	quotaErr := h.entitlements.AgentCreateAllowed(ctx, token.OrganizationUID)
+	quotaErr := h.entitlements.AgentCreateAllowed(ctx, token.OrgUID())
 	if quotaErr == nil {
 		return nil
 	}
@@ -299,7 +343,18 @@ func (h *Handler) serveReconnect(
 			"Request timestamp outside the accepted clock skew")
 	}
 
-	if nonceErr := h.nonces.CheckAndStore(agent.UID, nonce); nonceErr != nil {
+	// Cluster-wide replay guard (spec 2026-07-27-01): the nonce store lives in
+	// the database, not in this replica's memory, because a multi-machine fly
+	// fleet reconnects through a load balancer and a per-process cache would
+	// let a captured signature be replayed against a different replica. Fails
+	// CLOSED — a store error rejects the reconnect, which the agent retries.
+	if nonceErr := h.dbService.CheckAndStoreAgentNonce(
+		ctx, agent.UID, nonce, time.Now(), nonceRetention,
+	); nonceErr != nil {
+		if !errors.Is(nonceErr, db.ErrAgentNonceReplayed) {
+			h.logger.ErrorContext(ctx, "agent nonce store failed", "error", nonceErr, "agent", agent.UID)
+		}
+
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Nonce already used")
 	}
 
@@ -323,32 +378,31 @@ func (h *Handler) serveReconnect(
 }
 
 // ensureWorkerRow registers (idempotently, by deterministic slug) the workers
-// row that carries the agent's leases and result attribution. Its region stays
-// NULL — routing never goes through the workers row on the agent path; claims
-// are hard-scoped by ClaimJobsForAgent.
+// row that carries the agent's leases and result attribution. Routing never
+// goes through the workers row on the agent path — claims are hard-scoped by
+// ClaimJobsForAgent — so an org agent's region stays NULL (the workers.region
+// check constraint forbids the reserved `@` prefix anyway). A system agent
+// serves a real cloud region, so its row records it for fleet observability.
 func (h *Handler) ensureWorkerRow(ctx context.Context, agent *models.Agent) (string, error) {
-	slug := agentWorkerSlug(agent.UID)
+	slug := agentcrypto.WorkerSlug(agent.UID)
 
-	worker, err := h.dbService.RegisterOrUpdateWorker(ctx, &models.Worker{
+	row := &models.Worker{
 		UID:  agent.UID, // used only on first insert; RegisterOrUpdateWorker matches by slug afterwards
 		Slug: slug,
 		Name: "agent:" + agent.Name,
-	})
+	}
+
+	if agent.IsSystem() {
+		region := agent.Region
+		row.Region = &region
+	}
+
+	worker, err := h.dbService.RegisterOrUpdateWorker(ctx, row)
 	if err != nil {
 		return "", fmt.Errorf("register agent worker row: %w", err)
 	}
 
 	return worker.UID, nil
-}
-
-// agentWorkerSlug derives the deterministic workers.slug for an agent.
-func agentWorkerSlug(agentUID string) string {
-	compact := strings.ReplaceAll(agentUID, "-", "")
-	if len(compact) > 12 {
-		compact = compact[:12]
-	}
-
-	return "ag-" + strings.ToLower(compact)
 }
 
 // connState is the per-connection state threaded through the frame handlers.
@@ -501,8 +555,21 @@ func (h *Handler) handleFrame(
 	}
 }
 
-// handleClaim claims jobs hard-scoped to the agent's org and exact region,
-// applies the per-org execution rate limit, and dispatches the wire jobs.
+// agentClaimScope maps an enrolled agent to its claim scope: an org agent is
+// pinned to its organization AND its exact private region; a system agent is
+// scoped to its shared cloud region alone, across every org. The explicit
+// System flag is what makes the widening auditable — checkjobsvc rejects an
+// org-less scope that does not set it.
+func agentClaimScope(agent *models.Agent) checkjobsvc.AgentScope {
+	if agent.IsSystem() {
+		return checkjobsvc.AgentScope{Region: agent.Region, System: true}
+	}
+
+	return checkjobsvc.AgentScope{OrgUID: agent.OrgUID(), Region: agent.Region}
+}
+
+// handleClaim claims jobs hard-scoped by the agent's scope, applies the per-org
+// execution rate limit, and dispatches the wire jobs.
 func (h *Handler) handleClaim(
 	ctx context.Context, conn *websocket.Conn, state *connState, frame *agentcrypto.ClientFrame,
 ) {
@@ -516,7 +583,7 @@ func (h *Handler) handleClaim(
 	}
 
 	jobs, nextIn, err := h.checkJobSvc.ClaimJobsForAgent(
-		ctx, state.workerUID, state.agent.OrganizationUID, state.agent.Region,
+		ctx, state.workerUID, agentClaimScope(state.agent),
 		frame.CheckUID, maxJobs, claimMaxAhead,
 	)
 	if err != nil {
@@ -548,13 +615,26 @@ func (h *Handler) handleClaim(
 
 		wireJob := agentcrypto.ToAgentJob(job)
 
+		// Seal-at-claim (spec 2026-07-27-01): a cloud job's secrets live in the
+		// server-side envelope, which a system agent holds no key for. Open it
+		// here and re-seal to this agent's X25519 key so the wire carries the
+		// SAME sealed envelope the agent already knows how to open — never a
+		// plaintext config. Org agents keep the zero-decrypt path untouched.
+		if state.agent.IsSystem() {
+			if sealErr := h.sealJobForSystemAgent(ctx, state.agent, job, &wireJob); sealErr != nil {
+				h.dropUnsealableJob(ctx, state, job, sealErr)
+
+				continue
+			}
+		}
+
 		// A tunneled job (`tunnelCheckUid` in its config) needs its SSH check's
 		// sealed endpoint attached, snapshotted from the live row at claim time.
 		// If the block cannot be built the job is dropped from the batch and an
 		// explicit error result is recorded (decision 6) — never dispatched
 		// half-armed, never silently skipped.
 		if tunnelUID, tunneled := checkerdef.TunnelCheckUIDFrom(job.Config); tunneled {
-			tunnel, buildErr := h.buildTunnelBlock(ctx, job, tunnelUID)
+			tunnel, buildErr := h.buildTunnelBlock(ctx, state.agent, job, tunnelUID)
 			if buildErr != nil {
 				h.dropTunnelJob(ctx, state, job, buildErr)
 
@@ -593,7 +673,7 @@ func retryInMs(d time.Duration) int64 {
 // block cannot be built, which the caller turns into a dropped job + error
 // result.
 func (h *Handler) buildTunnelBlock(
-	ctx context.Context, job *models.CheckJob, tunnelUID string,
+	ctx context.Context, agent *models.Agent, job *models.CheckJob, tunnelUID string,
 ) (*agentcrypto.AgentJobTunnel, error) {
 	sshCheck, err := h.dbService.GetCheck(ctx, job.OrganizationUID, tunnelUID)
 	if err != nil || sshCheck == nil {
@@ -625,11 +705,107 @@ func (h *Handler) buildTunnelBlock(
 			tunnelUID, *job.Region)
 	}
 
-	return &agentcrypto.AgentJobTunnel{
+	block := &agentcrypto.AgentJobTunnel{
 		CheckUID:     sshCheck.UID,
 		Config:       map[string]any(sshCheck.Config),
 		ConfigSealed: sshCheck.ConfigSealed,
-	}, nil
+	}
+
+	// A system agent is not a recipient of any sealed-at-save envelope (cloud
+	// checks have none), so the bastion's credentials are re-sealed to it here
+	// exactly like the job's own — otherwise every tunneled cloud check would
+	// fail on a platform region with "not sealed for this agent".
+	if agent.IsSystem() {
+		sealed, sealErr := h.sealSecretsFor(ctx, agent, sshCheck.OrganizationUID, sshCheck.ConfigPrivate,
+			"ssh tunnel check", sshCheck.UID)
+		if sealErr != nil {
+			return nil, sealErr
+		}
+
+		block.ConfigSealed = sealed
+	}
+
+	return block, nil
+}
+
+// sealJobForSystemAgent replaces the wire job's sealed envelope with one this
+// system agent can actually open: the server-side envelope is decrypted here
+// (the server holds the master key for cloud checks) and re-sealed to the
+// agent's X25519 recipient. A job with no secrets ships with no envelope at all.
+//
+// The wire field is always overwritten, never merged: whatever `config_sealed`
+// the row happened to carry was addressed to some private region's agents and
+// is meaningless — and unopenable — here.
+func (h *Handler) sealJobForSystemAgent(
+	ctx context.Context, agent *models.Agent, job *models.CheckJob, wireJob *agentcrypto.AgentJob,
+) error {
+	sealed, err := h.sealSecretsFor(ctx, agent, job.OrganizationUID, job.ConfigPrivate, "check", job.CheckUID)
+	if err != nil {
+		return err
+	}
+
+	wireJob.ConfigSealed = sealed
+
+	return nil
+}
+
+// sealSecretsFor opens one server-side credential envelope and re-seals it to a
+// single agent's X25519 key. It returns nil (no envelope) when there are no
+// secrets to ship. Failures return the STATIC actionable reason — the cause,
+// which can carry cryptographic detail, is only logged.
+func (h *Handler) sealSecretsFor(
+	ctx context.Context, agent *models.Agent, orgUID string, envelope *string, kind, uid string,
+) (*string, error) {
+	secrets, outcome, openErr := checkjobsvc.OpenSecretsEnvelope(ctx, h.creds, orgUID, envelope)
+
+	switch outcome {
+	case checkjobsvc.SecretMergeNoop:
+		return nil, nil //nolint:nilnil // "no envelope to ship" is genuinely (nil, nil)
+	case checkjobsvc.SecretMergeMerged:
+		// fall through to sealing
+	case checkjobsvc.SecretMergeUnavailable:
+		h.logger.ErrorContext(ctx, "cannot seal credentials for system agent: no master key",
+			"kind", kind, "uid", uid, "agent", agent.UID)
+
+		return nil, checkjobsvc.ErrSecretsUnavailable
+	case checkjobsvc.SecretMergeFailed:
+		fallthrough
+	default:
+		h.logger.ErrorContext(ctx, "cannot seal credentials for system agent",
+			"error", openErr, "kind", kind, "uid", uid, "agent", agent.UID)
+
+		return nil, checkjobsvc.ErrSecretsUndecryptable
+	}
+
+	sealed, sealErr := credentials.SealForRecipients([]string{agent.X25519PublicKey}, secrets)
+	if sealErr != nil {
+		h.logger.ErrorContext(ctx, "failed to seal credentials for system agent",
+			"error", sealErr, "kind", kind, "uid", uid, "agent", agent.UID)
+
+		return nil, checkjobsvc.ErrSecretsUndecryptable
+	}
+
+	return &sealed, nil
+}
+
+// dropUnsealableJob applies the established never-dispatch-half-armed contract
+// to a job whose credentials could not be sealed for this agent: drop it from
+// the batch and record an explicit error result naming the fix (which also
+// releases the lease), instead of running the check without its credentials or
+// wedging it silently until lease expiry. Mirrors
+// DirectBackend.submitSecretsError.
+func (h *Handler) dropUnsealableJob(
+	ctx context.Context, state *connState, job *models.CheckJob, reason error,
+) {
+	if _, err := h.workersSvc.SubmitResult(ctx, &workers.SubmitResultRequest{
+		JobUID:    job.UID,
+		WorkerUID: state.workerUID,
+		Status:    int(models.ResultStatusError),
+		Output:    map[string]any{checkerdef.OutputKeyError: reason.Error()},
+	}); err != nil {
+		h.logger.ErrorContext(ctx, "failed to record credential sealing error",
+			"error", err, "job_uid", job.UID)
+	}
 }
 
 // dropTunnelJob records the decision-6 contract for a tunneled job whose tunnel
@@ -687,11 +863,12 @@ func (h *Handler) handleResult(
 		return
 	}
 
-	// The job must belong to this agent's org and exact region — an agent can
-	// never write results into someone else's scope.
+	// The job must be inside this agent's scope — an agent can never write
+	// results into someone else's. Both kinds require the EXACT region; an org
+	// agent additionally requires its own org, while a system agent's shared
+	// cloud region legitimately spans every org (the same jobs it may claim).
 	job, err := h.dbService.GetCheckJobByUID(ctx, frame.JobUID)
-	if err != nil || job.OrganizationUID != state.agent.OrganizationUID ||
-		job.Region == nil || *job.Region != state.agent.Region {
+	if err != nil || !agentOwnsJob(state.agent, job) {
 		_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{
 			Type: agentcrypto.MsgTypeError, ID: frame.ID,
 			Code: string(base.ErrorCodeForbidden), Title: "job is outside this agent's scope",
@@ -707,6 +884,13 @@ func (h *Handler) handleResult(
 		Duration:  frame.Duration,
 		Metrics:   frame.Metrics,
 		Output:    frame.Output,
+		// A result frame is by definition a probe outcome, so the server-side
+		// accounting folds its cost/delay samples into the job's EWMAs and lane
+		// (spec 2026-07-27-01 item 4). ExecStart is the agent's wall-clock probe
+		// start; nil on an agent predating the field, which then contributes no
+		// delay sample.
+		ExecStart: frame.ExecStart,
+		FromProbe: true,
 	})
 	if err != nil {
 		_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{
@@ -721,6 +905,20 @@ func (h *Handler) handleResult(
 	_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{
 		Type: agentcrypto.MsgTypeAck, ID: frame.ID, NextScheduledAt: &resp.NextScheduledAt,
 	})
+}
+
+// agentOwnsJob reports whether a job is inside an agent's scope, mirroring
+// exactly what agentClaimScope allows it to claim.
+func agentOwnsJob(agent *models.Agent, job *models.CheckJob) bool {
+	if job == nil || job.Region == nil || *job.Region != agent.Region {
+		return false
+	}
+
+	if agent.IsSystem() {
+		return true
+	}
+
+	return job.OrganizationUID == agent.OrgUID()
 }
 
 // validateResultFrame applies the untrusted-input checks on a result frame.

@@ -455,8 +455,11 @@ func (s *Service) RevokeAgent(ctx context.Context, orgSlug, uid string) error {
 		return err
 	}
 
+	// OrgUID() is "" for a platform-operated (system) agent, which therefore
+	// never matches: system agents are not org-admin material and are managed
+	// only by the platform (seeded tokens + the agent_gc job).
 	agent, err := s.db.GetAgent(ctx, uid)
-	if err != nil || agent.OrganizationUID != org.UID {
+	if err != nil || agent.OrgUID() != org.UID {
 		return fmt.Errorf("%w: %s", ErrAgentNotFound, uid)
 	}
 

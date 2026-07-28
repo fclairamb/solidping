@@ -31,6 +31,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkkubernetes"
 	"github.com/fclairamb/solidping/server/internal/checkworker"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
+	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/credmigrate"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
@@ -826,6 +827,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.dbService,
 		s.services.CheckJobs,
 		incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime),
+		scheduling.ParamsFromConfig(s.config.Server.Scheduling),
 	)
 	agentWSHandler := agentws.NewHandler(
 		s.config,
@@ -834,6 +836,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		agentWorkersSvc,
 		s.services.Entitlements,
 		s.services.EventNotifier,
+		s.services.Credentials,
 		agentsAdminSvc.ResealRegion,
 	)
 	api.GET("/agent/ws", agentWSHandler.Serve)

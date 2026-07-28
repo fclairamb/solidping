@@ -1154,7 +1154,7 @@ func TestClaimJobsNextEligibleHint(t *testing.T) {
 		setTestCheckJobPeriod(t, ctx, dbSvc, job.UID, 10*time.Second)
 
 		jobs, nextIn, err := svc.ClaimJobsForAgent(
-			ctx, worker.UID, org.UID, region, "", 10, 5*time.Minute,
+			ctx, worker.UID, checkjobsvc.AgentScope{OrgUID: org.UID, Region: region}, "", 10, 5*time.Minute,
 		)
 		require.NoError(t, err)
 		assert.Empty(t, jobs, "the job is outside its own 5s claim window")
@@ -1164,7 +1164,8 @@ func TestClaimJobsNextEligibleHint(t *testing.T) {
 		// The same claim for a different private region must see nothing —
 		// the hint is bounded by the agent's hard scope like the claim itself.
 		jobs, nextIn, err = svc.ClaimJobsForAgent(
-			ctx, worker.UID, org.UID, "@test-org/dc2", "", 10, 5*time.Minute,
+			ctx, worker.UID,
+			checkjobsvc.AgentScope{OrgUID: org.UID, Region: "@test-org/dc2"}, "", 10, 5*time.Minute,
 		)
 		require.NoError(t, err)
 		assert.Empty(t, jobs)

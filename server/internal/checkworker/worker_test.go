@@ -317,7 +317,11 @@ func TestCalculateNextScheduledAt_PhaseLocked(t *testing.T) {
 func TestDelaySampleMs(t *testing.T) {
 	t.Parallel()
 
-	w := &CheckWorker{} // delaySampleMs reads no receiver state
+	// The sample itself is pure math shared with the server-side accounting
+	// path (spec 2026-07-27-01), so it is exercised through scheduling.
+	delaySampleMs := func(job *models.CheckJob, execStart time.Time) float64 {
+		return scheduling.DelaySampleMs(job.ScheduledAt, job.EffectiveScheduledAt, execStart)
+	}
 	now := time.Now()
 
 	t.Run("OnTimeStartYieldsZero", func(t *testing.T) {
@@ -325,7 +329,7 @@ func TestDelaySampleMs(t *testing.T) {
 
 		scheduledAt := now
 		job := &models.CheckJob{ScheduledAt: &scheduledAt, EffectiveScheduledAt: &scheduledAt}
-		require.Zero(t, w.delaySampleMs(job, now), "a probe starting exactly on schedule has 0 delay")
+		require.Zero(t, delaySampleMs(job, now), "a probe starting exactly on schedule has 0 delay")
 	})
 
 	t.Run("EarlyStartFlooredAtZero", func(t *testing.T) {
@@ -333,7 +337,7 @@ func TestDelaySampleMs(t *testing.T) {
 
 		scheduledAt := now.Add(10 * time.Second)
 		job := &models.CheckJob{ScheduledAt: &scheduledAt}
-		require.Zero(t, w.delaySampleMs(job, now), "a probe starting before schedule is floored at 0")
+		require.Zero(t, delaySampleMs(job, now), "a probe starting before schedule is floored at 0")
 	})
 
 	t.Run("MeasuresAgainstScheduledAtNotEffective", func(t *testing.T) {
@@ -346,7 +350,7 @@ func TestDelaySampleMs(t *testing.T) {
 		scheduledAt := now.Add(-5 * time.Second)
 		effective := now.Add(15 * time.Second)
 		job := &models.CheckJob{ScheduledAt: &scheduledAt, EffectiveScheduledAt: &effective}
-		require.InDelta(t, 5000.0, w.delaySampleMs(job, now), 1.0,
+		require.InDelta(t, 5000.0, delaySampleMs(job, now), 1.0,
 			"delay must be measured against scheduled_at, not effective_scheduled_at")
 	})
 
@@ -355,7 +359,7 @@ func TestDelaySampleMs(t *testing.T) {
 
 		effective := now.Add(-3 * time.Second)
 		job := &models.CheckJob{ScheduledAt: nil, EffectiveScheduledAt: &effective}
-		require.InDelta(t, 3000.0, w.delaySampleMs(job, now), 1.0,
+		require.InDelta(t, 3000.0, delaySampleMs(job, now), 1.0,
 			"without a scheduled_at, the effective deadline is the fallback reference")
 	})
 
@@ -363,7 +367,7 @@ func TestDelaySampleMs(t *testing.T) {
 		t.Parallel()
 
 		job := &models.CheckJob{}
-		require.Zero(t, w.delaySampleMs(job, now))
+		require.Zero(t, delaySampleMs(job, now))
 	})
 }
 
