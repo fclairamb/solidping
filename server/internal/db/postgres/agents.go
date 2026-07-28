@@ -63,6 +63,9 @@ func (s *Service) DeleteAgentEnrollmentToken(ctx context.Context, orgUID, uid st
 }
 
 // GetAgentEnrollmentTokenByHash returns the live token with the given hash.
+// Kind-aware validity: an org token must still be unused (strictly one-shot),
+// while a system token stays valid for as long as its use budget allows
+// (max_uses NULL = unlimited) so a whole fly fleet can enroll on boot.
 func (s *Service) GetAgentEnrollmentTokenByHash(
 	ctx context.Context, tokenHash string,
 ) (*models.AgentEnrollmentToken, error) {
@@ -72,8 +75,8 @@ func (s *Service) GetAgentEnrollmentTokenByHash(
 		Model(&token).
 		Where("token_hash = ?", tokenHash).
 		Where("deleted_at IS NULL").
-		Where("used_at IS NULL").
 		Where("expires_at > ?", time.Now()).
+		WhereGroup(" AND ", enrollmentTokenUsableScope).
 		Scan(ctx)
 	if err != nil {
 		return nil, db.ErrEnrollmentTokenInvalid
@@ -82,10 +85,24 @@ func (s *Service) GetAgentEnrollmentTokenByHash(
 	return &token, nil
 }
 
-// EnrollAgent atomically consumes a valid enrollment token and creates the bound
-// agent row. The single-use guard is the conditional UPDATE (`used_at IS NULL`):
-// under a concurrent double-enroll only one UPDATE affects a row, the loser gets
-// zero rows and rolls back with ErrEnrollmentTokenInvalid.
+// enrollmentTokenUsableScope is the "this token may still enroll an agent"
+// predicate, shared by the non-consuming lookup and the enrollment transaction
+// so the two can never drift.
+func enrollmentTokenUsableScope(q *bun.SelectQuery) *bun.SelectQuery {
+	return q.
+		WhereOr("kind = ? AND used_at IS NULL", models.AgentKindOrg).
+		WhereOr("kind = ? AND (max_uses IS NULL OR use_count < max_uses)", models.AgentKindSystem)
+}
+
+// EnrollAgent consumes a valid enrollment token and creates the bound agent row.
+//
+// Org tokens keep their exact historical semantics: the single-use guard is the
+// conditional UPDATE (`used_at IS NULL`), so under a concurrent double-enroll
+// only one UPDATE affects a row and the loser rolls back with
+// ErrEnrollmentTokenInvalid. System tokens are multi-use: the same UPDATE
+// increments use_count under an `(max_uses IS NULL OR use_count < max_uses)`
+// guard, which is equally race-safe (the loser of a budget-exhausting race sees
+// zero rows) while letting every machine of a fleet enroll with its own keypair.
 func (s *Service) EnrollAgent(
 	ctx context.Context, tokenHash, name, ed25519Pub, x25519Pub, fingerprint string,
 ) (*models.Agent, error) {
@@ -100,22 +117,29 @@ func (s *Service) EnrollAgent(
 			Model(&token).
 			Where("token_hash = ?", tokenHash).
 			Where("deleted_at IS NULL").
-			Where("used_at IS NULL").
 			Where("expires_at > ?", now).
+			WhereGroup(" AND ", enrollmentTokenUsableScope).
 			Scan(ctx)
 		if err != nil {
 			return db.ErrEnrollmentTokenInvalid
 		}
 
-		newAgent := models.NewAgent(token.OrganizationUID, token.Region, name, ed25519Pub, x25519Pub, fingerprint)
+		newAgent := agentForToken(&token, name, ed25519Pub, x25519Pub, fingerprint)
 
-		res, err := tx.NewUpdate().
+		update := tx.NewUpdate().
 			Model((*models.AgentEnrollmentToken)(nil)).
 			Set("used_at = ?", now).
 			Set("used_by_agent_uid = ?", newAgent.UID).
-			Where("uid = ?", token.UID).
-			Where("used_at IS NULL").
-			Exec(ctx)
+			Set("use_count = use_count + 1").
+			Where("uid = ?", token.UID)
+
+		if token.IsSystem() {
+			update = update.Where("max_uses IS NULL OR use_count < max_uses")
+		} else {
+			update = update.Where("used_at IS NULL")
+		}
+
+		res, err := update.Exec(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to consume enrollment token: %w", err)
 		}
@@ -142,6 +166,18 @@ func (s *Service) EnrollAgent(
 	}
 
 	return agent, nil
+}
+
+// agentForToken builds the agent row a token enrolls: org-bound for an org
+// token, org-less (region-scoped) for a system token.
+func agentForToken(
+	token *models.AgentEnrollmentToken, name, ed25519Pub, x25519Pub, fingerprint string,
+) *models.Agent {
+	if token.IsSystem() {
+		return models.NewSystemAgent(token.Region, name, ed25519Pub, x25519Pub, fingerprint)
+	}
+
+	return models.NewAgent(token.OrgUID(), token.Region, name, ed25519Pub, x25519Pub, fingerprint)
 }
 
 // GetAgent returns an agent by UID.
@@ -232,6 +268,191 @@ func (s *Service) RevokeAgent(ctx context.Context, orgUID, uid string) error {
 	}
 
 	return nil
+}
+
+// UpsertSystemAgentEnrollmentToken inserts a seeded platform token, or refreshes
+// the existing row with that hash (expiry, region, use budget) and un-deletes it.
+// Idempotent: SP_SYSTEM_AGENT_ENROLLMENT_TOKENS is re-applied on every boot.
+func (s *Service) UpsertSystemAgentEnrollmentToken(
+	ctx context.Context, token *models.AgentEnrollmentToken,
+) error {
+	res, err := s.db.NewUpdate().
+		Model((*models.AgentEnrollmentToken)(nil)).
+		Set("region = ?", token.Region).
+		Set("expires_at = ?", token.ExpiresAt).
+		Set("max_uses = ?", token.MaxUses).
+		Set("deleted_at = NULL").
+		Where("token_hash = ?", token.TokenHash).
+		Where("kind = ?", models.AgentKindSystem).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to refresh system enrollment token: %w", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to read rows affected: %w", err)
+	}
+
+	if affected > 0 {
+		return nil
+	}
+
+	if _, err := s.db.NewInsert().Model(token).Exec(ctx); err != nil {
+		return fmt.Errorf("failed to create system enrollment token: %w", err)
+	}
+
+	return nil
+}
+
+// ListSystemAgentEnrollmentTokens returns every live platform token. Never
+// exposed on the org-admin API — system tokens are operator material.
+func (s *Service) ListSystemAgentEnrollmentTokens(
+	ctx context.Context,
+) ([]*models.AgentEnrollmentToken, error) {
+	var tokens []*models.AgentEnrollmentToken
+
+	err := s.db.NewSelect().
+		Model(&tokens).
+		Where("kind = ?", models.AgentKindSystem).
+		Where("deleted_at IS NULL").
+		Order("created_at DESC").
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list system enrollment tokens: %w", err)
+	}
+
+	return tokens, nil
+}
+
+// RevokeSystemAgentEnrollmentTokensExcept soft-deletes every live system token
+// whose hash is not in keepHashes. Dropping a token from the environment is the
+// revocation path: the next boot removes it. An empty keepHashes revokes all of
+// them.
+func (s *Service) RevokeSystemAgentEnrollmentTokensExcept(
+	ctx context.Context, keepHashes []string,
+) (int64, error) {
+	query := s.db.NewUpdate().
+		Model((*models.AgentEnrollmentToken)(nil)).
+		Set("deleted_at = ?", time.Now()).
+		Where("kind = ?", models.AgentKindSystem).
+		Where("deleted_at IS NULL")
+
+	if len(keepHashes) > 0 {
+		query = query.Where("token_hash NOT IN (?)", bun.In(keepHashes))
+	}
+
+	res, err := query.Exec(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to revoke system enrollment tokens: %w", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to read rows affected: %w", err)
+	}
+
+	return affected, nil
+}
+
+// ListStaleSystemAgents returns live system agents last seen before cutoff (an
+// agent that never connected is judged on enrolled_at). Org agents are
+// user-managed and deliberately excluded — see the agent_gc job.
+func (s *Service) ListStaleSystemAgents(ctx context.Context, cutoff time.Time) ([]*models.Agent, error) {
+	var agents []*models.Agent
+
+	err := s.db.NewSelect().
+		Model(&agents).
+		Where("kind = ?", models.AgentKindSystem).
+		Where("deleted_at IS NULL").
+		Where("(last_seen_at IS NOT NULL AND last_seen_at < ?) OR (last_seen_at IS NULL AND enrolled_at < ?)",
+			cutoff, cutoff).
+		Order("enrolled_at ASC").
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list stale system agents: %w", err)
+	}
+
+	return agents, nil
+}
+
+// RetireSystemAgent revokes and soft-deletes one system agent (enroll-on-boot
+// fleets churn rows; a retired machine's row must stop being a seal recipient
+// and stop cluttering the fleet list). Scoped to kind='system' so it can never
+// touch a customer-managed agent.
+func (s *Service) RetireSystemAgent(ctx context.Context, uid string) error {
+	now := time.Now()
+
+	_, err := s.db.NewUpdate().
+		Model((*models.Agent)(nil)).
+		Set("status = ?", models.AgentStatusRevoked).
+		Set("revoked_at = ?", now).
+		Set("deleted_at = ?", now).
+		Set("updated_at = ?", now).
+		Where("uid = ?", uid).
+		Where("kind = ?", models.AgentKindSystem).
+		Where("deleted_at IS NULL").
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to retire system agent: %w", err)
+	}
+
+	return nil
+}
+
+// CheckAndStoreAgentNonce records (agentUID, nonce) as consumed, returning
+// db.ErrAgentNonceReplayed when the pair was already seen inside the retention
+// window. This is the cluster-wide replay guard for reconnect signatures: the
+// stale rows of this agent are pruned first, then the insert either wins or
+// conflicts with a live row (which is exactly a replay).
+func (s *Service) CheckAndStoreAgentNonce(
+	ctx context.Context, agentUID, nonce string, now time.Time, retain time.Duration,
+) error {
+	if _, err := s.db.NewDelete().
+		Model((*models.AgentNonce)(nil)).
+		Where("agent_uid = ?", agentUID).
+		Where("seen_at < ?", now.Add(-retain)).
+		Exec(ctx); err != nil {
+		return fmt.Errorf("failed to prune agent nonces: %w", err)
+	}
+
+	res, err := s.db.NewInsert().
+		Model(&models.AgentNonce{AgentUID: agentUID, Nonce: nonce, SeenAt: now}).
+		On("CONFLICT (agent_uid, nonce) DO NOTHING").
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to store agent nonce: %w", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to read rows affected: %w", err)
+	}
+
+	if affected == 0 {
+		return db.ErrAgentNonceReplayed
+	}
+
+	return nil
+}
+
+// PruneAgentNonces deletes consumed nonces older than cutoff (the agent_gc job
+// sweeps rows left behind by agents that never reconnected).
+func (s *Service) PruneAgentNonces(ctx context.Context, cutoff time.Time) (int64, error) {
+	res, err := s.db.NewDelete().
+		Model((*models.AgentNonce)(nil)).
+		Where("seen_at < ?", cutoff).
+		Exec(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to prune agent nonces: %w", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to read rows affected: %w", err)
+	}
+
+	return affected, nil
 }
 
 // GetCheckJobByUID returns one check job by UID.

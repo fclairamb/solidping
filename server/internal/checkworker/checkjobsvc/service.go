@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -61,22 +62,25 @@ type Service interface {
 	) ([]*models.CheckJob, error)
 
 	// ClaimJobsForAgent atomically claims due jobs for a deported agent
-	// (spec 2026-07-16-02). Unlike ClaimJobs, the scope is HARD: only jobs of
-	// exactly the given organization AND exactly the given (private) region
-	// string are eligible — no prefix matching, no NULL-region fallback — so a
-	// compromised or misconfigured agent can never claim another org's or
-	// another region's work. checkUID, when non-empty, further pins the claim
-	// to one check (the agent express path). No lane split applies (a private
-	// location has one agent pool, not the server's fast/slow reservation);
-	// ordering stays cost-aware via effective_scheduled_at. The second return
-	// is the same next-eligible hint as ClaimJobs, computed over the agent's
-	// whole (org, region) scope regardless of any checkUID pin, so the agent's
-	// fetcher always learns when to come back.
+	// (spec 2026-07-16-02, generalized by 2026-07-27-01). The scope is HARD in
+	// both directions: the region always matches on exact equality — no prefix
+	// matching, no NULL-region fallback — and an org agent additionally matches
+	// exactly its own organization, so a compromised or misconfigured
+	// tenant-private agent can never claim another org's or another region's
+	// work. A system (platform-operated) agent serves a SHARED cloud region and
+	// therefore claims that region across all orgs, exactly like the in-cluster
+	// DirectBackend; see AgentScope, which fails closed on an ambiguous scope.
+	//
+	// checkUID, when non-empty, further pins the claim to one check (the agent
+	// express path). No lane split applies (an agent pool is not the server's
+	// fast/slow reservation); ordering stays cost-aware via
+	// effective_scheduled_at. The second return is the same next-eligible hint
+	// as ClaimJobs, computed over the agent's whole scope regardless of any
+	// checkUID pin, so the agent's fetcher always learns when to come back.
 	ClaimJobsForAgent(
 		ctx context.Context,
 		workerUID string,
-		orgUID string,
-		region string,
+		scope AgentScope,
 		checkUID string,
 		limit int,
 		maxAhead time.Duration,
@@ -281,18 +285,85 @@ func (s *serviceImpl) ClaimJobsForCheck(
 	return jobs, nil
 }
 
-// ClaimJobsForAgent claims due jobs hard-scoped to (orgUID, exact region).
+// AgentScope is the claim scope of one enrolled agent. It exists so the
+// widening a system agent needs (serving a shared cloud region across every
+// org) can never happen by accident: an org agent's scope carries its OrgUID,
+// and dropping the organization predicate requires System to be set explicitly.
+type AgentScope struct {
+	// OrgUID pins the claim to exactly one organization. It is empty ONLY for a
+	// system agent.
+	OrgUID string
+	// Region is matched on exact equality for both kinds — never a prefix,
+	// never a NULL-region fallback.
+	Region string
+	// System marks a platform-operated agent, whose scope is the region alone
+	// (the same scope the in-cluster DirectBackend claims with). Tenant-private
+	// agents leave it false.
+	System bool
+}
+
+// ErrInvalidAgentScope is returned when a claim scope is not a scope any agent
+// can legitimately have. It fails the claim closed rather than widening it.
+var ErrInvalidAgentScope = errors.New("invalid agent claim scope")
+
+// validate fails closed on every scope that is not one of the two legitimate
+// shapes: an org agent MUST carry an org, and a system agent must serve a real
+// (non-private) cloud region — a system scope pointed at an `@org/region` slug
+// would be a cross-tenant read, so it is rejected outright.
+func (s AgentScope) validate() error {
+	if s.Region == "" {
+		return fmt.Errorf("%w: empty region", ErrInvalidAgentScope)
+	}
+
+	if s.System {
+		if s.OrgUID != "" {
+			return fmt.Errorf("%w: a system agent has no organization", ErrInvalidAgentScope)
+		}
+
+		if strings.HasPrefix(s.Region, privateRegionPrefix) {
+			return fmt.Errorf("%w: system agents may not serve private region %q", ErrInvalidAgentScope, s.Region)
+		}
+
+		return nil
+	}
+
+	if s.OrgUID == "" {
+		return fmt.Errorf("%w: org agents must be scoped to an organization", ErrInvalidAgentScope)
+	}
+
+	return nil
+}
+
+// apply adds the scope's predicates to a check_jobs query. A system scope
+// deliberately omits the organization predicate — that IS the generalization.
+func (s AgentScope) apply(query *bun.SelectQuery) *bun.SelectQuery {
+	if !s.System {
+		query = query.Where("organization_uid = ?", s.OrgUID)
+	}
+
+	return query.Where("region = ?", s.Region)
+}
+
+// privateRegionPrefix mirrors regions.PrivateRegionPrefix. It is duplicated as a
+// single character rather than imported so this low-level claim package keeps
+// depending on nothing but models (regions pulls in the whole db service).
+const privateRegionPrefix = "@"
+
+// ClaimJobsForAgent claims due jobs hard-scoped by the agent's scope.
 // See the interface doc — this is the deported-agent claim path and its scope
 // is a security boundary, not a routing convenience.
 func (s *serviceImpl) ClaimJobsForAgent(
 	ctx context.Context,
 	workerUID string,
-	orgUID string,
-	region string,
+	scope AgentScope,
 	checkUID string,
 	limit int,
 	maxAhead time.Duration,
 ) ([]*models.CheckJob, time.Duration, error) {
+	if err := scope.validate(); err != nil {
+		return nil, 0, err
+	}
+
 	var jobs []*models.CheckJob
 	var nextIn time.Duration
 
@@ -307,11 +378,10 @@ func (s *serviceImpl) ClaimJobsForAgent(
 
 	// The hint deliberately ignores any checkUID pin: the agent's fetcher
 	// wants to know when ANY of its jobs becomes claimable, even when this
-	// particular claim was an express one pinned to a single check.
+	// particular claim was an express one pinned to a single check. It uses the
+	// same scope as the claim, so a system agent's hint spans orgs too.
 	agentScope := func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q.
-			Where("organization_uid = ?", orgUID).
-			Where("region = ?", region)
+		return scope.apply(q)
 	}
 
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -320,7 +390,7 @@ func (s *serviceImpl) ClaimJobsForAgent(
 
 		var selErr error
 		jobs, selErr = selectAvailableJobsForAgent(
-			ctx, tx, orgUID, region, checkUID, limit, maxAhead, coarseAhead, now, isPostgres,
+			ctx, tx, scope, checkUID, limit, maxAhead, coarseAhead, now, isPostgres,
 		)
 		if selErr != nil {
 			return selErr
@@ -354,16 +424,15 @@ func (s *serviceImpl) ClaimJobsForAgent(
 	return jobs, nextIn, nil
 }
 
-// selectAvailableJobsForAgent runs the agent claim's SELECT: hard-scoped to
-// exact org + exact region (never NULL-region, never a prefix match —
-// structurally the inverse of the cloud-worker path), optionally pinned to one
-// check, then narrowed by the same per-job claim-ahead clamp as the in-process
-// path (spec 2026-07-05-08 D3).
+// selectAvailableJobsForAgent runs the agent claim's SELECT: hard-scoped by the
+// agent's scope — always exact region (never NULL-region, never a prefix match,
+// structurally the inverse of the cloud-worker path), plus the exact org for a
+// tenant-private agent — optionally pinned to one check, then narrowed by the
+// same per-job claim-ahead clamp as the in-process path (spec 2026-07-05-08 D3).
 func selectAvailableJobsForAgent(
 	ctx context.Context,
 	tx bun.Tx,
-	orgUID string,
-	region string,
+	scope AgentScope,
 	checkUID string,
 	limit int,
 	maxAhead time.Duration,
@@ -373,10 +442,7 @@ func selectAvailableJobsForAgent(
 ) ([]*models.CheckJob, error) {
 	var jobs []*models.CheckJob
 
-	query := tx.NewSelect().
-		Model(&jobs).
-		Where("organization_uid = ?", orgUID).
-		Where("region = ?", region).
+	query := scope.apply(tx.NewSelect().Model(&jobs)).
 		Where("scheduled_at <= ?", now.Add(coarseAhead)).
 		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
 			return q.

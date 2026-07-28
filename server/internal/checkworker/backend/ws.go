@@ -318,14 +318,25 @@ func (b *WSBackend) SubmitResult(
 		defer b.unregisterTunnel(tunnelUID)
 	}
 
-	_, err := b.request(ctx, &agents.ClientFrame{
+	// execStart travels with the result so the SERVER can compute the delay
+	// sample for its hoisted accounting (spec 2026-07-27-01): the agent-side
+	// Sched block is deliberately not sent — the server recomputes the whole
+	// scheduling state from the result it just persisted.
+	frame := &agents.ClientFrame{
 		Type:     agents.MsgTypeResult,
 		JobUID:   job.UID,
 		Status:   req.Status,
 		Duration: req.Duration,
 		Metrics:  req.Metrics,
 		Output:   req.Output,
-	})
+	}
+
+	if !req.ExecStart.IsZero() {
+		execStart := req.ExecStart
+		frame.ExecStart = &execStart
+	}
+
+	_, err := b.request(ctx, frame)
 
 	return err
 }

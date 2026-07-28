@@ -23,16 +23,23 @@ const (
 	acmeE2EDenied = "unverified-e2e.example.com"
 )
 
-// TestACMEEndToEndWithPebble drives a REAL ACME issuance against Pebble and
-// asserts the four properties the spec requires of in-server TLS:
+// TestACMEEndToEndWithPebble drives a REAL ACME issuance against Pebble —
+// including real challenge validation over the network, back into this
+// process's own listeners (see the plumbing in pebble_test.go) — and asserts
+// the four properties the spec requires of in-server TLS:
 //
 //  1. a certificate is issued on the first TLS handshake (on-demand),
 //  2. it is persisted in tls_storage,
 //  3. the second handshake is served from what was persisted, with no
 //     re-issuance, and
-//  4. an unverified domain is denied — the handshake fails and NOTHING is
-//     written to storage, i.e. no CA traffic at all (the negative control that
-//     protects Let's Encrypt's failed-validation rate limit).
+//  4. an unverified domain is denied — the handshake fails, NOTHING is written
+//     to storage and the CA never even hears the name, i.e. no CA traffic at
+//     all (the negative control that protects Let's Encrypt's
+//     failed-validation rate limit).
+//
+// Because Pebble validates for real, issuance succeeding is itself proof that
+// the Edge's own solver wiring works: its :80 ACME challenge handler and/or the
+// "acme-tls/1" ALPN path on its :443 listener answered the CA.
 //
 // Skips when Docker is unavailable.
 //
@@ -45,11 +52,20 @@ func TestACMEEndToEndWithPebble(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	ca := startPebble(ctx, t)
+	// The CA has to be told which ports to validate against, and the Edge has to
+	// bind exactly those, so both are chosen up front.
+	httpPort, err := freePort(ctx)
+	r.NoError(err)
+
+	httpsPort, err := freePort(ctx)
+	r.NoError(err)
+
+	resolver := startTestDNS(ctx, t)
+	ca := startPebble(ctx, t, resolver, httpPort, httpsPort)
 
 	store, dbSvc := newTestStorage(t)
 
-	edge, httpsAddr := startTestEdge(ctx, t, dbSvc, ca)
+	edge, httpsAddr := startTestEdge(ctx, t, dbSvc, ca, httpPort, httpsPort)
 
 	// --- 1. First handshake issues on demand -------------------------------
 	state := handshake(ctx, t, httpsAddr, acmeE2EDomain)
@@ -58,6 +74,19 @@ func TestACMEEndToEndWithPebble(t *testing.T) {
 	leaf := state.PeerCertificates[0]
 	r.Contains(leaf.DNSNames, acmeE2EDomain)
 	r.NotEqual(leaf.Subject.String(), leaf.Issuer.String(), "the certificate must be CA-issued, not self-signed")
+
+	// The CA only issues after a challenge it validated over the network. Its
+	// log therefore proves the Edge's own solver answered: the authorization
+	// went through real validation attempts (dns-01 cannot succeed here — the
+	// test resolver serves no TXT records), and one of the Edge's two solvers
+	// completed it.
+	validationLog := ca.Logs(ctx, t)
+	r.Contains(validationLog, acmeE2EDomain,
+		"the CA must have done real work for the domain (validation is not short-circuited)")
+	r.Regexp(`Starting \d+ validations`, validationLog,
+		"the CA must have run real challenge validations")
+	r.Contains(validationLog, "set VALID by completed challenge",
+		"an Edge solver must have answered the CA's validation request")
 
 	// --- 2. It is persisted in tls_storage ---------------------------------
 	certKeys, err := store.List(ctx, "certificates", true)
@@ -120,28 +149,32 @@ func TestACMEEndToEndWithPebble(t *testing.T) {
 		r.NotContains(key, acmeE2EDenied)
 	}
 
+	// The CA is the authority on "no CA traffic": it never saw the name at all,
+	// so no order, no authorization and no failed validation were recorded
+	// against it.
+	r.NotContains(ca.Logs(ctx, t), acmeE2EDenied,
+		"a denied domain must never reach the CA")
+
 	r.Equal(CertStatusNone, edge.CertStatus(acmeE2EDenied))
 }
 
-// startTestEdge builds an Edge pointed at the Pebble CA, binds it on ephemeral
-// ports, and returns it with the HTTPS address to dial.
-func startTestEdge(ctx context.Context, t *testing.T, dbSvc db.Service, ca *pebbleCA) (*Edge, string) {
+// startTestEdge builds an Edge pointed at the Pebble CA, binds it on the given
+// ports, and returns it with the HTTPS address to dial. The listeners bind all
+// interfaces (not just loopback) because the CA validates from inside a
+// container and has to reach them.
+func startTestEdge(
+	ctx context.Context, t *testing.T, dbSvc db.Service, ca *pebbleCA, httpPort, httpsPort string,
+) (*Edge, string) {
 	t.Helper()
 	r := require.New(t)
-
-	httpPort, err := freePort(ctx)
-	r.NoError(err)
-
-	httpsPort, err := freePort(ctx)
-	r.NoError(err)
 
 	edge, err := New(&Options{
 		ACME: config.ACMEConfig{
 			Enabled:     true,
 			Email:       "acme-e2e@solidping.test",
 			CAURL:       ca.DirectoryURL,
-			ListenHTTP:  "127.0.0.1:" + httpPort,
-			ListenHTTPS: "127.0.0.1:" + httpsPort,
+			ListenHTTP:  "0.0.0.0:" + httpPort,
+			ListenHTTPS: "0.0.0.0:" + httpsPort,
 		},
 		DB: dbSvc,
 		// No reserved hosts: the ONLY allowed name comes from the

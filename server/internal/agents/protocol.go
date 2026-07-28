@@ -50,6 +50,13 @@ type ClientFrame struct {
 	Duration float32        `json:"duration,omitempty"`
 	Metrics  map[string]any `json:"metrics,omitempty"`
 	Output   map[string]any `json:"output,omitempty"`
+	// ExecStart is the agent's wall-clock instant the outbound probe began. It
+	// is the ONE scheduling input the server cannot derive from the result, and
+	// it feeds the server-side delay EWMA (spec 2026-07-27-01 Decisions).
+	// Optional on both sides: an older agent omits it and simply contributes no
+	// delay sample. Agent clock skew is harmless here — the delay EWMA is
+	// telemetry and never steers claim order or lanes.
+	ExecStart *time.Time `json:"execStart,omitempty"`
 }
 
 // AgentJob is the wire shape of one dispatched job: the public config plus the

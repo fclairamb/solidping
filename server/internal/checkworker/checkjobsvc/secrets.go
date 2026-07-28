@@ -67,32 +67,9 @@ func MergeJobSecrets(
 	creds credentials.Service,
 	job *models.CheckJob,
 ) (SecretMerge, error) {
-	if job.ConfigPrivate == nil || *job.ConfigPrivate == "" {
-		return SecretMergeNoop, nil
-	}
-
-	var private map[string]any
-
-	switch {
-	case credentials.IsPlaintextEnvelope(*job.ConfigPrivate):
-		// The no-master-key structural-separation envelope: openable with no
-		// key, so a worker with encryption disabled keeps executing checks whose
-		// secrets were split out of the public config.
-		p, err := credentials.OpenPlaintext(*job.ConfigPrivate)
-		if err != nil {
-			return SecretMergeFailed, fmt.Errorf("%w: %w", ErrSecretsUndecryptable, err)
-		}
-
-		private = p
-	case creds == nil || !creds.Enabled():
-		return SecretMergeUnavailable, ErrSecretsUnavailable
-	default:
-		p, err := creds.DecryptForOrg(ctx, job.OrganizationUID, *job.ConfigPrivate)
-		if err != nil {
-			return SecretMergeFailed, fmt.Errorf("%w: %w", ErrSecretsUndecryptable, err)
-		}
-
-		private = p
+	private, outcome, err := OpenJobSecrets(ctx, creds, job)
+	if outcome != SecretMergeMerged {
+		return outcome, err
 	}
 
 	job.Config = models.JSONMap(credentials.MergeConfig(job.Config, private))
@@ -104,4 +81,61 @@ func MergeJobSecrets(
 	job.Encrypted = false
 
 	return SecretMergeMerged, nil
+}
+
+// OpenJobSecrets decrypts a job's config_private envelope and RETURNS the
+// plaintext secret map without touching the job. It is the shared half of
+// MergeJobSecrets: the same envelope taxonomy (plaintext envelope / no key /
+// decrypt failure) for callers that must not merge the secrets into the config.
+//
+// The system-agent claim path (spec 2026-07-27-01) is exactly such a caller: it
+// re-seals these secrets to the claiming agent's X25519 key instead of shipping
+// them merged in the wire config, so the plaintext never leaves the server on
+// the agent transport. SecretMergeNoop means "no envelope, nothing to seal";
+// SecretMergeMerged means the returned map is the opened plaintext.
+//
+// Like MergeJobSecrets it never logs and never puts a config value in an error.
+func OpenJobSecrets(
+	ctx context.Context,
+	creds credentials.Service,
+	job *models.CheckJob,
+) (map[string]any, SecretMerge, error) {
+	return OpenSecretsEnvelope(ctx, creds, job.OrganizationUID, job.ConfigPrivate)
+}
+
+// OpenSecretsEnvelope is the envelope-opening primitive behind MergeJobSecrets
+// and OpenJobSecrets, taking the envelope and its owning org directly so a
+// caller holding a check row (not a job row) — e.g. the SSH-tunnel block a
+// system agent's claim must re-seal — reuses the exact same taxonomy.
+func OpenSecretsEnvelope(
+	ctx context.Context,
+	creds credentials.Service,
+	orgUID string,
+	envelope *string,
+) (map[string]any, SecretMerge, error) {
+	if envelope == nil || *envelope == "" {
+		return nil, SecretMergeNoop, nil
+	}
+
+	switch {
+	case credentials.IsPlaintextEnvelope(*envelope):
+		// The no-master-key structural-separation envelope: openable with no
+		// key, so a worker with encryption disabled keeps executing checks whose
+		// secrets were split out of the public config.
+		private, err := credentials.OpenPlaintext(*envelope)
+		if err != nil {
+			return nil, SecretMergeFailed, fmt.Errorf("%w: %w", ErrSecretsUndecryptable, err)
+		}
+
+		return private, SecretMergeMerged, nil
+	case creds == nil || !creds.Enabled():
+		return nil, SecretMergeUnavailable, ErrSecretsUnavailable
+	default:
+		private, err := creds.DecryptForOrg(ctx, orgUID, *envelope)
+		if err != nil {
+			return nil, SecretMergeFailed, fmt.Errorf("%w: %w", ErrSecretsUndecryptable, err)
+		}
+
+		return private, SecretMergeMerged, nil
+	}
 }

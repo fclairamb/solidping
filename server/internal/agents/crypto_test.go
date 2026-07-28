@@ -108,18 +108,3 @@ func TestKeyFingerprintStable(t *testing.T) {
 	r.Equal(fp1, fp2)
 	r.Len(fp1, 16) // 8 bytes hex
 }
-
-func TestNonceReplay(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	cache := agents.NewNonceCache(10 * time.Minute)
-
-	r.NoError(cache.CheckAndStore("agent-1", "n1"))
-	// Same agent+nonce -> replay.
-	r.ErrorIs(cache.CheckAndStore("agent-1", "n1"), agents.ErrReplayedNonce)
-	// Different nonce -> ok.
-	r.NoError(cache.CheckAndStore("agent-1", "n2"))
-	// Same nonce, different agent -> ok (keyed per agent).
-	r.NoError(cache.CheckAndStore("agent-2", "n1"))
-}

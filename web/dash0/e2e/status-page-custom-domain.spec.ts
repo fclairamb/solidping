@@ -1,4 +1,76 @@
-import { test, expect } from "./fixtures";
+import { test, expect, type Page } from "./fixtures";
+
+// One status-page GET response, rewritten so the custom-domain card renders a
+// verified domain in a chosen certificate state. The backend under test runs
+// with in-server ACME disabled (there is no CA in the E2E environment), so the
+// chip's three states can only be exercised by mocking the field the server
+// would otherwise compute — everything below the API boundary is the real UI.
+const MOCKED_DOMAIN = "status-cert-chip.example.com";
+
+async function mockCertStatus(
+  page: Page,
+  certStatus: "issued" | "error" | "none"
+) {
+  await page.route(
+    /\/api\/v1\/orgs\/[^/]+\/status-pages\/[^/?]+(\?|$)/,
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+
+      const response = await route.fetch();
+      let body: Record<string, unknown>;
+      try {
+        body = await response.json();
+      } catch {
+        await route.fulfill({ response });
+        return;
+      }
+
+      // Only a single status page carries the custom-domain fields; leave any
+      // other payload (collections, sub-resources) untouched.
+      if (!body || typeof body !== "object" || !("uid" in body)) {
+        await route.fulfill({ response });
+        return;
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...body,
+          customDomain: MOCKED_DOMAIN,
+          customDomainStatus: "verified",
+          customDomainCertStatus: certStatus,
+          customDomainRecords: [
+            {
+              type: "CNAME",
+              name: MOCKED_DOMAIN,
+              value: "solidping.example.com",
+            },
+          ],
+        }),
+      });
+    }
+  );
+}
+
+// openFirstStatusPageEditor navigates to the edit route of the first status
+// page in the list.
+async function openFirstStatusPageEditor(page: Page) {
+  await page.getByRole("link", { name: "Status Pages" }).click();
+  await page.waitForURL(/\/status-pages/);
+  await page.waitForLoadState("networkidle");
+
+  const editButton = page
+    .locator('[data-testid^="status-page-row-edit-"]')
+    .first();
+  await expect(editButton).toBeVisible({ timeout: 10000 });
+  await editButton.click();
+  await page.waitForURL(/\/status-pages\/[^/]+\/edit/);
+  await page.waitForLoadState("networkidle");
+}
 
 test.describe("Status page custom domain", () => {
   test("set a domain shows a single CNAME record and an unverified chip", async ({
@@ -96,5 +168,63 @@ test.describe("Status page custom domain", () => {
     await card.getByTestId("custom-domain-verify").click();
     await expect(card).toContainText(/Unverified/i, { timeout: 20000 });
     await expect(card.getByTestId("custom-domain-cert-status")).toHaveCount(0);
+  });
+
+  test("certificate chip renders the issued state", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await mockCertStatus(page, "issued");
+    await openFirstStatusPageEditor(page);
+
+    const card = page.getByTestId("status-page-custom-domain");
+    await expect(card).toBeVisible({ timeout: 10000 });
+    await expect(card).toContainText(MOCKED_DOMAIN);
+
+    const chip = card.getByTestId("custom-domain-cert-status");
+    await expect(chip).toBeVisible();
+    await expect(chip).toHaveText(/HTTPS active/i);
+    // Success styling, same token as the Verified chip next to it.
+    await expect(chip).toHaveClass(/bg-green-500/);
+
+    // Nothing is pending, so the "issued on first request" hint stays away.
+    await expect(card).not.toContainText(/first HTTPS request/i);
+  });
+
+  test("certificate chip renders the error state", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await mockCertStatus(page, "error");
+    await openFirstStatusPageEditor(page);
+
+    const card = page.getByTestId("status-page-custom-domain");
+    await expect(card).toBeVisible({ timeout: 10000 });
+
+    const chip = card.getByTestId("custom-domain-cert-status");
+    await expect(chip).toBeVisible();
+    await expect(chip).toHaveText(/HTTPS failed/i);
+    // A failure must read as destructive, not as a neutral chip.
+    await expect(chip).toHaveClass(/bg-destructive/);
+  });
+
+  test("certificate chip renders the pending state with its hint", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await mockCertStatus(page, "none");
+    await openFirstStatusPageEditor(page);
+
+    const card = page.getByTestId("status-page-custom-domain");
+    await expect(card).toBeVisible({ timeout: 10000 });
+
+    const chip = card.getByTestId("custom-domain-cert-status");
+    await expect(chip).toBeVisible();
+    await expect(chip).toHaveText(/HTTPS pending/i);
+    await expect(chip).toHaveClass(/bg-secondary/);
+
+    // A verified domain with nothing issued yet explains why: issuance is
+    // on-demand, on the first HTTPS request.
+    await expect(card).toContainText(/first HTTPS request/i);
   });
 });

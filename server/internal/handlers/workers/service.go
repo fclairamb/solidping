@@ -22,6 +22,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/activation"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
+	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
@@ -38,18 +39,26 @@ type Service struct {
 	db          db.Service
 	checkJobSvc checkjobsvc.Service
 	incidentSvc *incidents.Service
+	// schedParams drives the post-exec accounting this path performs on behalf
+	// of remote executors (see SubmitResult). The zero value is "every
+	// scheduling feature off", which reproduces flat FIFO behavior.
+	schedParams scheduling.Params
 }
 
-// NewService creates a new workers service.
+// NewService creates a new workers service. schedParams should come from
+// scheduling.ParamsFromConfig(cfg.Server.Scheduling) so remote results are
+// scored with exactly the knobs the in-process worker uses.
 func NewService(
 	dbService db.Service,
 	checkJobSvc checkjobsvc.Service,
 	incidentSvc *incidents.Service,
+	schedParams scheduling.Params,
 ) *Service {
 	return &Service{
 		db:          dbService,
 		checkJobSvc: checkJobSvc,
 		incidentSvc: incidentSvc,
+		schedParams: schedParams,
 	}
 }
 
@@ -68,6 +77,15 @@ type SubmitResultRequest struct {
 	Duration  float32        `json:"duration"`
 	Metrics   map[string]any `json:"metrics,omitempty"`
 	Output    map[string]any `json:"output,omitempty"`
+	// ExecStart is the executor's wall-clock probe start, used for the delay
+	// sample. nil contributes no delay sample (an agent predating the field).
+	ExecStart *time.Time `json:"execStart,omitempty"`
+	// FromProbe marks a result produced by an actual check execution, whose
+	// duration is therefore a real cost sample. Dispatch-time error results
+	// (undecryptable credentials, a tunnel that could not be assembled) leave it
+	// false: they never ran the probe, so folding their zero duration into the
+	// cost EWMA would make an expensive check look cheap and flip its lane.
+	FromProbe bool `json:"fromProbe,omitempty"`
 }
 
 // SubmitResultResponse is the output for SubmitResult.
@@ -137,12 +155,18 @@ func (s *Service) SubmitResult(
 			"Failed to process incidents", "error", incErr)
 	}
 
-	// 5. Release lease.
+	// 5. Release lease, folding in the post-exec scheduling state.
+	//
+	// This is the accounting parity point (spec 2026-07-27-01 item 4): results
+	// arriving over the agent transport used to release the lease and nothing
+	// else, so cost/delay EWMAs and lane classification only ever advanced for
+	// in-process workers. A shared cloud region served by platform agents would
+	// therefore have degraded to unweighted FIFO with every job pinned in the
+	// lane it was created in. The computation is the same scheduling.PostExec
+	// the in-process worker runs.
 	nextScheduledAt := calculateNextScheduledAt(&job)
 
-	if err := s.checkJobSvc.ReleaseLease(
-		ctx, job.UID, req.WorkerUID, nextScheduledAt,
-	); err != nil {
+	if err := s.releaseLease(ctx, &job, req, nextScheduledAt); err != nil {
 		return nil, fmt.Errorf(
 			"failed to release lease: %w", err,
 		)
@@ -151,6 +175,36 @@ func (s *Service) SubmitResult(
 	return &SubmitResultResponse{
 		NextScheduledAt: nextScheduledAt,
 	}, nil
+}
+
+// releaseLease releases the job's lease: with the recomputed scheduling state
+// for a real probe result, plain otherwise (a dispatch-time error never ran the
+// check, so it carries no cost or delay sample to fold in — the same rule
+// CheckWorker applies when it submits an error result without a Sched block).
+func (s *Service) releaseLease(
+	ctx context.Context, job *models.CheckJob, req *SubmitResultRequest, nextScheduledAt time.Time,
+) error {
+	if !req.FromProbe {
+		return s.checkJobSvc.ReleaseLease(ctx, job.UID, req.WorkerUID, nextScheduledAt)
+	}
+
+	state := s.schedParams.PostExec(scheduling.PostExecInput{
+		PrevCostEWMAMs:       job.CostEWMAMs,
+		PrevDelayEWMAMs:      job.DelayEWMAMs,
+		PrevLane:             job.Lane,
+		PlanWeight:           job.PlanWeight,
+		ScheduledAt:          job.ScheduledAt,
+		EffectiveScheduledAt: job.EffectiveScheduledAt,
+		DurationMs:           float64(req.Duration),
+		TimedOut:             req.Status == int(models.ResultStatusTimeout),
+		ExecStart:            req.ExecStart,
+		NextScheduledAt:      nextScheduledAt,
+	})
+
+	return s.checkJobSvc.ReleaseLeaseWithSchedulingState(
+		ctx, job.UID, req.WorkerUID, nextScheduledAt,
+		state.CostEWMAMs, state.DelayEWMAMs, state.EffectiveScheduledAt, state.Lane,
+	)
 }
 
 // calculateNextScheduledAt mirrors the logic from CheckWorker.

@@ -37,6 +37,11 @@ type SubmitResultRequest struct {
 	Region *string `json:"region,omitempty"`
 	// NextScheduledAt is the worker-computed next tick (phase-locked).
 	NextScheduledAt time.Time `json:"nextScheduledAt"`
+	// ExecStart is when the outbound probe actually began. The in-process path
+	// folds it into Sched itself; a remote transport ships it so the SERVER can
+	// compute the same delay sample (spec 2026-07-27-01). Zero on paths with no
+	// probe (error results, rate-limit deferral).
+	ExecStart time.Time `json:"execStart,omitempty"`
 	// Sched, when non-nil, releases the lease with the updated scheduling
 	// state; nil uses the plain release.
 	Sched *SchedulingState `json:"sched,omitempty"`

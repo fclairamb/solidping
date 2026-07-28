@@ -748,6 +748,42 @@ func (m *mockDBService) GetAgent(_ context.Context, _ string) (*models.Agent, er
 	panic("not implemented")
 }
 
+func (m *mockDBService) UpsertSystemAgentEnrollmentToken(
+	_ context.Context, _ *models.AgentEnrollmentToken,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListSystemAgentEnrollmentTokens(
+	_ context.Context,
+) ([]*models.AgentEnrollmentToken, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) RevokeSystemAgentEnrollmentTokensExcept(
+	_ context.Context, _ []string,
+) (int64, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListStaleSystemAgents(_ context.Context, _ time.Time) ([]*models.Agent, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) RetireSystemAgent(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CheckAndStoreAgentNonce(
+	_ context.Context, _, _ string, _ time.Time, _ time.Duration,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) PruneAgentNonces(_ context.Context, _ time.Time) (int64, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) ListAgents(_ context.Context, _ string) ([]*models.Agent, error) {
 	panic("not implemented")
 }
