@@ -42,6 +42,7 @@ type sysEnv struct {
 	*env
 	orgB    *models.Organization
 	creds   credentials.Service
+	events  notifier.EventNotifier
 	handler *agentws.Handler
 }
 
@@ -90,6 +91,7 @@ func newSysEnv(t *testing.T) *sysEnv {
 		env:     &env{t: t, dbSvc: dbSvc, server: server, org: orgA},
 		orgB:    orgB,
 		creds:   creds,
+		events:  events,
 		handler: handler,
 	}
 }
@@ -546,4 +548,52 @@ func TestInMemoryNonceGuardStillWorks(t *testing.T) {
 	r.NoError(cache.CheckAndStore(ctx, "agent-1", "n1", now.Add(2*retain), retain),
 		"outside the retention window the pair is forgettable")
 	r.Positive(cache.Len())
+}
+
+// TestJobsAvailableHintFansOutAcrossOrgs pins P3's "verified rather than
+// changed" claim: the express hint rides a GLOBAL `check.created` listen, so a
+// system agent is woken by a check created in an org it has no relationship
+// with — which is exactly the set of jobs it may now claim. Without this the
+// platform region would fall back to poll latency on every new check.
+func TestJobsAvailableHintFansOutAcrossOrgs(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newSysEnv(t)
+	ctx := t.Context()
+
+	conn, _, _ := e.enroll(e.mintSystemToken(systemRegion), "fly-machine-1")
+
+	// Drain the connection until the hint arrives (or the read times out).
+	hints := make(chan agentcrypto.ServerFrame, 4)
+
+	go func() {
+		for {
+			var frame agentcrypto.ServerFrame
+			if err := wsjson.Read(ctx, conn, &frame); err != nil {
+				close(hints)
+
+				return
+			}
+
+			if frame.Type == agentcrypto.MsgTypeJobsAvailable {
+				hints <- frame
+
+				return
+			}
+		}
+	}()
+
+	// A check created in the OTHER organization. The handler listens on the
+	// GLOBAL `check.created` topic (the checks service emits it; here the
+	// notifier stands in for it), with no org or region filter at all.
+	e.createCloudCheck(e.orgB, "globex-web", nil)
+	r.NoError(e.events.Notify(ctx, string(models.EventTypeCheckCreated), "{}"))
+
+	select {
+	case frame, ok := <-hints:
+		r.True(ok, "the connection closed before the hint arrived")
+		r.Equal(agentcrypto.MsgTypeJobsAvailable, frame.Type)
+	case <-time.After(5 * time.Second):
+		r.Fail("a system agent must be hinted about any org's new check in its region")
+	}
 }
