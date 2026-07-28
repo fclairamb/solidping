@@ -220,5 +220,21 @@ comment on table agent_nonces is
   'Cluster-wide replay guard for agent reconnect signatures. Rows live only for the clock-skew retention window and are pruned by the agent_gc job.';
 
 -- ---------------------------------------------------------------------------
+-- Per-status-page custom CSS (spec 2026-07-27-02)
+-- ---------------------------------------------------------------------------
+-- status0 paints everything from CSS custom properties (--brand, --background,
+-- --card, --border, the status colors, the .dark variant), so a single
+-- per-page stylesheet is the whole re-skinning surface: no component change,
+-- and a power-user escape hatch on top. Stored verbatim; the API caps it at
+-- 64 KB and rejects @import (which would chain third-party stylesheets).
+-- The value is served on the PUBLIC status-page responses — it is the public
+-- renderer that consumes it.
+
+alter table status_pages add column custom_css text;
+
+comment on column status_pages.custom_css is
+  'Operator-authored CSS injected into the public status page (status0) as a <style> text node. NULL = none. Capped at 64 KB, @import rejected at the API.';
+
+-- ---------------------------------------------------------------------------
 -- (append further v0.7.0 blocks below this line)
 -- ---------------------------------------------------------------------------

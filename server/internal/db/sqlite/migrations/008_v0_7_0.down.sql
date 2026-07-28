@@ -2,6 +2,9 @@
 -- Reverse order: later-appended feature blocks are torn down before the
 -- earlier ones they were stacked on top of.
 
+-- reverse per-status-page custom CSS (spec 2026-07-27-02)
+alter table status_pages drop column custom_css;
+
 -- reverse platform-operated "system agents" (spec 2026-07-27-01)
 -- System rows have no organization and cannot survive the NOT NULL restore, so
 -- the rebuild simply drops them.

@@ -178,5 +178,13 @@ create table agent_nonces (
 create index agent_nonces_seen_at_idx on agent_nonces (seen_at);
 
 -- ---------------------------------------------------------------------------
+-- Per-status-page custom CSS (spec 2026-07-27-02)
+-- ---------------------------------------------------------------------------
+-- See the postgres twin for rationale. Stored verbatim; the API caps the value
+-- at 64 KB and rejects @import.
+
+alter table status_pages add column custom_css text; -- Operator-authored CSS injected into the public status page as a <style> text node. NULL = none.
+
+-- ---------------------------------------------------------------------------
 -- (append further v0.7.0 blocks below this line)
 -- ---------------------------------------------------------------------------

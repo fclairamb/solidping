@@ -64,6 +64,12 @@ type StatusPage struct {
 	HistoryDays      int     `bun:"history_days,notnull,default:90"`
 	HistoryPeriod    string  `bun:"history_period,notnull,default:'90d'"`
 	Language         *string `bun:"language"`
+	// CustomCSS is operator-authored CSS injected into the public status page
+	// as a <style> text node (never dangerouslySetInnerHTML). nil = none.
+	// Capped at 64 KB and @import-free by API validation; unlike the
+	// custom-domain columns it IS exposed on public responses, since the
+	// public renderer is its only consumer.
+	CustomCSS *string `bun:"custom_css"`
 	// CustomDomain is a customer-owned hostname (punycode/ASCII, lowercased)
 	// the page is served on. nil = none. Globally unique among live rows.
 	CustomDomain *string `bun:"custom_domain"`
@@ -118,6 +124,10 @@ type StatusPageUpdate struct {
 	HistoryDays      *int
 	HistoryPeriod    *string
 	Language         *string
+	// CustomCSS updates the page's custom stylesheet. A pointer to the empty
+	// string clears the column (the appearance editor's "empty textarea"), a
+	// nil pointer leaves it untouched.
+	CustomCSS *string
 }
 
 // StatusPageCustomDomainUpdate is the whole-lifecycle writer for a status

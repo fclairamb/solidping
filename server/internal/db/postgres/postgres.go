@@ -3885,6 +3885,17 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 		query = query.Set("language = ?", *update.Language)
 	}
 
+	if update.CustomCSS != nil {
+		// An empty stylesheet is stored as NULL, not '': the appearance editor
+		// clears the field by submitting an empty textarea, and "no custom CSS"
+		// must read back as nil so status0 renders no <style> element at all.
+		if *update.CustomCSS == "" {
+			query = query.Set("custom_css = NULL")
+		} else {
+			query = query.Set("custom_css = ?", *update.CustomCSS)
+		}
+	}
+
 	_, err := query.Exec(ctx)
 
 	return err
