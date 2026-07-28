@@ -1472,6 +1472,10 @@ export interface StatusPage {
   showResponseTime: boolean;
   historyDays: number;
   historyPeriod: StatusPagePeriod;
+  // Operator-authored stylesheet applied to the PUBLIC status page (status0).
+  // Never applied to dash0's own chrome — only inside the appearance preview
+  // iframe, which loads the real status0 renderer.
+  customCss?: string;
   // Custom-domain fields are only present on the authenticated org endpoints.
   customDomain?: string;
   customDomainStatus?: CustomDomainStatus;
@@ -1514,6 +1518,7 @@ export interface CreateStatusPageRequest {
   showResponseTime?: boolean;
   historyDays?: number;
   historyPeriod?: StatusPagePeriod;
+  customCss?: string;
   customDomain?: string;
 }
 
@@ -1528,6 +1533,8 @@ export interface UpdateStatusPageRequest {
   showResponseTime?: boolean;
   historyDays?: number;
   historyPeriod?: StatusPagePeriod;
+  // An empty string clears the custom stylesheet; omit to leave it unchanged.
+  customCss?: string;
   // null clears the custom domain; a non-empty string sets it; omit to leave
   // it unchanged.
   customDomain?: string | null;

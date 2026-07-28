@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Eye,
   ExternalLink,
+  Palette,
   Pencil,
   Plus,
   Trash2,
@@ -864,6 +865,29 @@ function StatusPageDetailPage() {
             </TooltipTrigger>
             <TooltipContent className="sm:hidden">
               {t("statusPages:detail.view")}
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Link
+                to="/orgs/$org/status-pages/$statusPageUid/appearance"
+                params={{ org, statusPageUid }}
+              >
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-label={t("statusPages:appearance.title")}
+                  data-testid="status-page-appearance-nav"
+                >
+                  <Palette className="sm:mr-2 h-4 w-4" />
+                  <span className="hidden sm:inline">
+                    {t("statusPages:appearance.title")}
+                  </span>
+                </Button>
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent className="sm:hidden">
+              {t("statusPages:appearance.title")}
             </TooltipContent>
           </Tooltip>
           <Tooltip>

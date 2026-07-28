@@ -111,6 +111,7 @@ import { Route as OrgsOrgDiscoveryJobUidIndexRouteImport } from './routes/orgs/$
 import { Route as OrgsOrgChecksCheckUidIndexRouteImport } from './routes/orgs/$org/checks.$checkUid.index'
 import { Route as OrgsOrgStatusUpdatesUpdateUidEditRouteImport } from './routes/orgs/$org/status-updates.$updateUid.edit'
 import { Route as OrgsOrgStatusPagesStatusPageUidEditRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.edit'
+import { Route as OrgsOrgStatusPagesStatusPageUidAppearanceRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.appearance'
 import { Route as OrgsOrgOrganizationPrivateLocationsRegisterRouteImport } from './routes/orgs/$org/organization.private-locations.register'
 import { Route as OrgsOrgOnCallUidEditRouteImport } from './routes/orgs/$org/on-call.$uid.edit'
 import { Route as OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRouteImport } from './routes/orgs/$org/maintenance-windows.$maintenanceWindowUid.edit'
@@ -664,6 +665,12 @@ const OrgsOrgStatusPagesStatusPageUidEditRoute =
     path: '/edit',
     getParentRoute: () => OrgsOrgStatusPagesStatusPageUidRoute,
   } as any)
+const OrgsOrgStatusPagesStatusPageUidAppearanceRoute =
+  OrgsOrgStatusPagesStatusPageUidAppearanceRouteImport.update({
+    id: '/appearance',
+    path: '/appearance',
+    getParentRoute: () => OrgsOrgStatusPagesStatusPageUidRoute,
+  } as any)
 const OrgsOrgOrganizationPrivateLocationsRegisterRoute =
   OrgsOrgOrganizationPrivateLocationsRegisterRouteImport.update({
     id: '/register',
@@ -813,6 +820,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
   '/orgs/$org/on-call/$uid/edit': typeof OrgsOrgOnCallUidEditRoute
   '/orgs/$org/organization/private-locations/register': typeof OrgsOrgOrganizationPrivateLocationsRegisterRoute
+  '/orgs/$org/status-pages/$statusPageUid/appearance': typeof OrgsOrgStatusPagesStatusPageUidAppearanceRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
@@ -904,6 +912,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
   '/orgs/$org/on-call/$uid/edit': typeof OrgsOrgOnCallUidEditRoute
   '/orgs/$org/organization/private-locations/register': typeof OrgsOrgOrganizationPrivateLocationsRegisterRoute
+  '/orgs/$org/status-pages/$statusPageUid/appearance': typeof OrgsOrgStatusPagesStatusPageUidAppearanceRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidIndexRoute
@@ -1017,6 +1026,7 @@ export interface FileRoutesById {
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
   '/orgs/$org/on-call/$uid/edit': typeof OrgsOrgOnCallUidEditRoute
   '/orgs/$org/organization/private-locations/register': typeof OrgsOrgOrganizationPrivateLocationsRegisterRoute
+  '/orgs/$org/status-pages/$statusPageUid/appearance': typeof OrgsOrgStatusPagesStatusPageUidAppearanceRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
@@ -1131,6 +1141,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
     | '/orgs/$org/on-call/$uid/edit'
     | '/orgs/$org/organization/private-locations/register'
+    | '/orgs/$org/status-pages/$statusPageUid/appearance'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
     | '/orgs/$org/checks/$checkUid/'
@@ -1222,6 +1233,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
     | '/orgs/$org/on-call/$uid/edit'
     | '/orgs/$org/organization/private-locations/register'
+    | '/orgs/$org/status-pages/$statusPageUid/appearance'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
     | '/orgs/$org/checks/$checkUid'
@@ -1334,6 +1346,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
     | '/orgs/$org/on-call/$uid/edit'
     | '/orgs/$org/organization/private-locations/register'
+    | '/orgs/$org/status-pages/$statusPageUid/appearance'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
     | '/orgs/$org/checks/$checkUid/'
@@ -2075,6 +2088,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgStatusPagesStatusPageUidEditRouteImport
       parentRoute: typeof OrgsOrgStatusPagesStatusPageUidRoute
     }
+    '/orgs/$org/status-pages/$statusPageUid/appearance': {
+      id: '/orgs/$org/status-pages/$statusPageUid/appearance'
+      path: '/appearance'
+      fullPath: '/orgs/$org/status-pages/$statusPageUid/appearance'
+      preLoaderRoute: typeof OrgsOrgStatusPagesStatusPageUidAppearanceRouteImport
+      parentRoute: typeof OrgsOrgStatusPagesStatusPageUidRoute
+    }
     '/orgs/$org/organization/private-locations/register': {
       id: '/orgs/$org/organization/private-locations/register'
       path: '/register'
@@ -2440,12 +2460,15 @@ const OrgsOrgServerRouteWithChildren = OrgsOrgServerRoute._addFileChildren(
 )
 
 interface OrgsOrgStatusPagesStatusPageUidRouteChildren {
+  OrgsOrgStatusPagesStatusPageUidAppearanceRoute: typeof OrgsOrgStatusPagesStatusPageUidAppearanceRoute
   OrgsOrgStatusPagesStatusPageUidEditRoute: typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   OrgsOrgStatusPagesStatusPageUidIndexRoute: typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
 }
 
 const OrgsOrgStatusPagesStatusPageUidRouteChildren: OrgsOrgStatusPagesStatusPageUidRouteChildren =
   {
+    OrgsOrgStatusPagesStatusPageUidAppearanceRoute:
+      OrgsOrgStatusPagesStatusPageUidAppearanceRoute,
     OrgsOrgStatusPagesStatusPageUidEditRoute:
       OrgsOrgStatusPagesStatusPageUidEditRoute,
     OrgsOrgStatusPagesStatusPageUidIndexRoute:

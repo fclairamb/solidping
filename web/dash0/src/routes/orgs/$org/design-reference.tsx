@@ -123,6 +123,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { CodeTextarea } from "@/components/ui/code-textarea";
 import { UptimeStrip } from "@/components/ui/uptime-strip";
 import { useDebounce } from "@/lib/use-debounce";
 import { slugify } from "@/lib/utils";
@@ -1141,6 +1142,24 @@ function FormsSection() {
             </div>
           }
           importLine={`import { Textarea } from "@/components/ui/textarea";`}
+        />
+
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-sm space-y-2">
+              <Label htmlFor="dr-code-textarea">Code textarea</Label>
+              <CodeTextarea
+                id="dr-code-textarea"
+                rows={4}
+                placeholder={":root {\n  --brand: #ff5500;\n}"}
+              />
+              <p className="text-xs text-muted-foreground">
+                Monospace, with spell-check / autocorrect / autocapitalize off.
+                Use for CSS, JSON and other code input.
+              </p>
+            </div>
+          }
+          importLine={`import { CodeTextarea } from "@/components/ui/code-textarea";`}
         />
 
         <ExampleRow
