@@ -597,3 +597,39 @@ func TestJobsAvailableHintFansOutAcrossOrgs(t *testing.T) {
 		r.Fail("a system agent must be hinted about any org's new check in its region")
 	}
 }
+
+// TestUnsealableCloudJobIsDroppedWithErrorResult applies the established
+// never-dispatch-half-armed contract to seal-at-claim: a cloud job whose
+// server-side envelope cannot be opened is dropped from the batch AND recorded
+// as an explicit error result (which releases the lease), instead of running
+// the check without its credentials or wedging it until lease expiry.
+func TestUnsealableCloudJobIsDroppedWithErrorResult(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newSysEnv(t)
+	ctx := t.Context()
+
+	healthy := e.createCloudCheck(e.org, "healthy", nil)
+
+	// A check whose config_private is not a decryptable envelope at all.
+	broken := models.NewCheck(e.org.UID, "broken", "http")
+	broken.Config = models.JSONMap{"url": "https://example.com"}
+	broken.Regions = []string{systemRegion}
+	garbage := `{"v":1,"alg":"aes-256-gcm","ct":"bm90LWFuLWVudmVsb3Bl"}`
+	broken.ConfigPrivate = &garbage
+	r.NoError(e.dbSvc.CreateCheck(ctx, broken))
+
+	conn, _, _ := e.enroll(e.mintSystemToken(systemRegion), "fly-machine-1")
+
+	jobsResp := roundTrip(t, conn, agentcrypto.ClientFrame{Type: agentcrypto.MsgTypeClaim, ID: "c1", MaxJobs: 10})
+	r.Len(jobsResp.Jobs, 1, "the unsealable job must be dropped from the batch")
+	r.Equal(healthy.UID, jobsResp.Jobs[0].CheckUID)
+
+	// The dropped job produced an explicit error result naming the failure.
+	results, err := e.dbSvc.GetLastResultForChecks(ctx, e.org.UID, []string{broken.UID})
+	r.NoError(err)
+	got, ok := results[broken.UID]
+	r.True(ok, "the dropped job must record an error result, not vanish")
+	r.Equal(int(models.ResultStatusError), *got.Status)
+	r.NotEmpty(got.Output)
+}
