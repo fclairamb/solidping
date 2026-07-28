@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+
+* **status pages (appearance):** status pages can now be visually customized — a new dash0 route (`/orgs/:org/status-pages/:uid/appearance`) pairs a monospace CSS editor with a live preview `iframe` that renders through the actual production status0 page, updated via a 300ms-debounced, origin-checked `postMessage` (no server round-trip). `customCss` is exposed end-to-end (DB column, storage services, API DTOs, CLI `--custom-css`/`--custom-css-file`, MCP tools), capped at 64 KB with `@import` rejected (external `url()` stays allowed), and rendered on the public page as a React text child so a stray `</style>` can't break out. Documented with the full CSS variables theming API (`--brand`, `--background`, `--foreground`, status colors, `.dark`, …) and covered by Playwright E2E.
+* **custom domains + TLS:** custom domains are now single-CNAME with automatic HTTPS — mode-aware verification (`shared`/`token`), a new DB-backed `tls_storage` layer (migration `009_v0_8_0`), and an in-server ACME edge (`certmagic`, Let's Encrypt, on-demand gate on `:80`/`:443`) that issues, persists and reuses certificates without an external TLS proxy; dash0 shows a certificate-status chip on the custom-domain field. The external-proxy path is kept as an alternative rather than removed.
+* **private locations (system agents):** cloud/platform workers are generalized into platform-operated "system agents" alongside the existing customer-managed deported agents. Enrollment tokens for platform agents are reconciled declaratively from `SP_SYSTEM_AGENT_ENROLLMENT_TOKENS` (not mintable through the org-admin routes — dropping the fly secret is the revocation path), a new self-rescheduling `agent_gc` job retires silent `kind=system` agents after a configurable window (default 7 days) and prunes consumed reconnect nonces, and server-side EWMA cost/delay accounting is now persisted for results submitted over the agent transport, matching the in-process worker's behavior. Adds a fly.io deploy reference (`deploy/fly/`) and an ops runbook.
+
+### Bug Fixes
+
+* **custom domains (TLS storage, Postgres):** prefix-based lookups in the Postgres TLS store (`TLSStorageList`, and the prefix branch of `TLSStorageDelete`) used a half-open key range (`key >= 'certificates/' AND key < 'certificates0'`) that only matches under the `C` collation — every common non-C collation (including glibc `en_US.utf8`, the default on the official postgres image and most distro installs) primary-ignores `/`, so the range silently matched nothing. On an affected database this meant `customDomainCertStatus` stayed `"none"` forever even after a successful ACME issuance, and a prefix delete could leave certificate private keys behind undeleted. Fixed by switching to a collation-independent `LIKE 'prefix%' ESCAPE '\'` match (the SQLite store is unaffected and intentionally keeps its range comparison — see its code comment).
+
 ## [0.6.2](https://github.com/fclairamb/solidping/compare/v0.6.1...v0.6.2) (2026-07-21)
 
 
