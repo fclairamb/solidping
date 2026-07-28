@@ -340,20 +340,20 @@ type PostExecState struct {
 // agent-reported ExecStart cannot distort scheduling — a clock-skewed sample
 // only moves a number nothing reads back, and the floor at 0 absorbs backwards
 // clocks.
-func (p Params) PostExec(in PostExecInput) PostExecState {
-	cost := UpdateEWMA(in.PrevCostEWMAMs, p.CostSampleMs(in.DurationMs, in.TimedOut))
+func (p Params) PostExec(input *PostExecInput) PostExecState {
+	cost := UpdateEWMA(input.PrevCostEWMAMs, p.CostSampleMs(input.DurationMs, input.TimedOut))
 
-	delay := in.PrevDelayEWMAMs
-	if in.ExecStart != nil {
-		delay = UpdateEWMA(in.PrevDelayEWMAMs,
-			DelaySampleMs(in.ScheduledAt, in.EffectiveScheduledAt, *in.ExecStart))
+	delay := input.PrevDelayEWMAMs
+	if input.ExecStart != nil {
+		delay = UpdateEWMA(input.PrevDelayEWMAMs,
+			DelaySampleMs(input.ScheduledAt, input.EffectiveScheduledAt, *input.ExecStart))
 	}
 
 	return PostExecState{
 		CostEWMAMs:           cost,
 		DelayEWMAMs:          delay,
-		EffectiveScheduledAt: p.EffectiveScheduledAt(in.NextScheduledAt, cost, in.PlanWeight),
-		Lane:                 ClassifyLane(in.PrevLane, cost, p),
+		EffectiveScheduledAt: p.EffectiveScheduledAt(input.NextScheduledAt, cost, input.PlanWeight),
+		Lane:                 ClassifyLane(input.PrevLane, cost, p),
 	}
 }
 

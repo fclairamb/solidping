@@ -188,7 +188,7 @@ func (s *Service) releaseLease(
 		return s.checkJobSvc.ReleaseLease(ctx, job.UID, req.WorkerUID, nextScheduledAt)
 	}
 
-	state := s.schedParams.PostExec(scheduling.PostExecInput{
+	state := s.schedParams.PostExec(&scheduling.PostExecInput{
 		PrevCostEWMAMs:       job.CostEWMAMs,
 		PrevDelayEWMAMs:      job.DelayEWMAMs,
 		PrevLane:             job.Lane,

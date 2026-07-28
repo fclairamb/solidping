@@ -380,9 +380,7 @@ func (s *serviceImpl) ClaimJobsForAgent(
 	// wants to know when ANY of its jobs becomes claimable, even when this
 	// particular claim was an express one pinned to a single check. It uses the
 	// same scope as the claim, so a system agent's hint spans orgs too.
-	agentScope := func(q *bun.SelectQuery) *bun.SelectQuery {
-		return scope.apply(q)
-	}
+	agentScope := scope.apply
 
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		jobs = nil

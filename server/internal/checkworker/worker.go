@@ -1184,7 +1184,7 @@ func (r *CheckWorker) buildSubmitRequest(
 	execStart time.Time,
 ) *backend.SubmitResultRequest {
 	nextScheduledAt := r.calculateNextScheduledAt(checkJob)
-	state := r.schedParams.PostExec(scheduling.PostExecInput{
+	state := r.schedParams.PostExec(&scheduling.PostExecInput{
 		PrevCostEWMAMs:       checkJob.CostEWMAMs,
 		PrevDelayEWMAMs:      checkJob.DelayEWMAMs,
 		PrevLane:             checkJob.Lane,
