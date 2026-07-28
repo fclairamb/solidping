@@ -354,7 +354,7 @@ Open bug: [`2026-07-20-02-private-locations-token-dialog-dirty-rendering`](../..
 | Region rules | `server/internal/regions/regions.go` |
 | Sealing | `server/internal/crypto/credentials/sealing.go` |
 | Models | `server/internal/db/models/agent.go` |
-| Migrations | `server/internal/db/{postgres,sqlite}/migrations/006_v0_5_0.up.sql`, `009_v0_8_0.up.sql` |
+| Migrations | `server/internal/db/{postgres,sqlite}/migrations/006_v0_5_0.up.sql`, `008_v0_7_0.up.sql` |
 | Fly deploy reference | `deploy/fly/` |
 | Dashboard | `web/dash0/src/routes/orgs/$org/organization.private-locations*.tsx` |
 | E2E | `web/dash0/e2e/private-locations.spec.ts`, `deported-agent-wizard.spec.ts` |

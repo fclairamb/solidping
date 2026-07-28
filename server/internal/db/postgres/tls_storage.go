@@ -22,7 +22,7 @@ import (
 // BELOW real keys such as 'certificates/ca/example.com', so the range matches
 // ZERO rows and List/Delete silently do nothing. LIKE compares
 // character-by-character regardless of collation, and it is what the
-// text_pattern_ops index in migration 009_v0_8_0 was created to serve.
+// text_pattern_ops index in migration 008_v0_7_0 was created to serve.
 //
 // The SQLite twin (internal/db/sqlite/tls_storage.go) deliberately keeps the
 // key range: SQLite compares TEXT with the byte-exact BINARY collation, and its
