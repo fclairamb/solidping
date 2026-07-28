@@ -93,6 +93,19 @@ fly secrets set -a solidping-agent-cdg \
 fly deploy -c fly.cdg.toml
 ```
 
+> ⚠️ **The auto-stop trap.** `fly.toml` here deliberately declares **no service
+> block**, because the agent has no listener — and that is precisely what keeps
+> fly's auto-stop away from these machines (`auto_stop_machines` /
+> `min_machines_running` are only valid *inside* a service block; fly.toml has
+> no app-level equivalent, which is why they cannot appear as active top-level
+> keys). If anyone ever adds an `[http_service]` — a health endpoint, metrics,
+> anything — they **must** set `auto_stop_machines = "off"`,
+> `auto_start_machines = false` and `min_machines_running = 1` in it. Fly's
+> default is to stop idle machines, and a stopped platform agent is a region
+> that silently stops probing: no error surfaces, the region's checks simply
+> stop being claimed. The `[[restart]] policy = "always"` block is the active
+> always-on counterpart.
+
 ### The secret set
 
 | Variable | Where | Value |

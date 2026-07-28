@@ -8,6 +8,25 @@
 # outbound-only WebSocket to the API, no database, no inbound port, no HTTP
 # server. It exists so SolidPing can run its OWN cloud check workers outside the
 # cluster without exposing PostgreSQL to fly (spec 2026-07-27-01).
+#
+# =============================================================================
+# !! AUTO-STOP MUST STAY OFF. A STOPPED AGENT IS A REGION THAT GOES DARK. !!
+# =============================================================================
+# Fly only stops machines that sit behind its proxy, and `auto_stop_machines` /
+# `min_machines_running` are ONLY valid inside a service block — fly.toml has no
+# app-level equivalent, so they cannot be written as active top-level keys here.
+# This app therefore guarantees "always on" the only two ways the format allows:
+#
+#   1. it declares NO service at all (see the end of this file), so fly's
+#      autostop machinery has nothing to act on; and
+#   2. `[[restart]] policy = "always"` below, which is an ACTIVE directive that
+#      brings a machine back after any exit.
+#
+# If anyone ever adds an [http_service] (a health endpoint, metrics, anything),
+# they MUST carry the settings spelled out at the end of this file, or fly's
+# DEFAULT auto-stop kicks in, the region's machines scale to zero, and the
+# region silently stops probing — with no alert, because the checks simply stop
+# being claimed. Read the block at the end of this file before adding a service.
 
 app = "solidping-agent-cdg"
 primary_region = "cdg"
@@ -39,19 +58,29 @@ primary_region = "cdg"
   memory = "512mb"
   cpus = 1
 
+# ACTIVE always-on directive: a machine that exits for any reason comes back.
+# Together with "no service declared" (below) this is what keeps the region
+# staffed 24/7.
 [[restart]]
   policy = "always"
 
-# NOTE — auto-stop. Fly only ever stops machines that sit behind its proxy, and
-# this app deliberately declares NO service: the agent has no listener at all.
-# Its machines therefore always run, which is the requirement (a stopped agent
-# is a region that silently stops probing). If a future health endpoint makes an
-# [http_service] block desirable, it MUST carry:
+# -----------------------------------------------------------------------------
+# NO SERVICE IS DECLARED — ON PURPOSE.
+# -----------------------------------------------------------------------------
+# The agent has no listener: it dials out and nothing ever dials in. With no
+# service block, fly's proxy owns none of these machines and auto-stop can never
+# apply to them, which is exactly the "auto-stop disabled, min_machines_running
+# >= 1" requirement of spec 2026-07-27-01 expressed in the only way the format
+# permits at app level.
+#
+# If a future change genuinely needs an inbound port, the service block is NOT
+# optional-config — it MUST be written exactly like this:
 #
 #   [http_service]
 #     internal_port = 8080
-#     auto_stop_machines = "off"
+#     auto_stop_machines = "off"    # never "stop" / "suspend" / true
 #     auto_start_machines = false
-#     min_machines_running = 1
+#     min_machines_running = 1      # >= 1; per-region staffing, never 0
 #
-# Never leave fly's default auto-stop on for an agent app.
+# Omitting `auto_stop_machines` inherits fly's default (stop when idle), which
+# for an agent app means the region goes dark without any error surfacing.
