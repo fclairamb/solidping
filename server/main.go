@@ -295,8 +295,9 @@ func runAgentMode(ctx context.Context, cfg *config.Config) error {
 }
 
 // seedStartupData runs the env/deployment-driven seeds after migrations: the
-// SaaS entitlements parameters, the named-regions parameter, and the first-party
-// CLI OAuth client. Each is idempotent and a no-op when its inputs are absent.
+// SaaS entitlements parameters, the named-regions parameter, the platform
+// (system) agent enrollment tokens, and the first-party CLI OAuth client. Each
+// is idempotent and a no-op when its inputs are absent.
 func seedStartupData(ctx context.Context, server *app.Server) error {
 	// In SaaS mode, seed the entitlements system parameters (service token +
 	// upgrade URL template) from env so the billing service can authenticate
@@ -311,6 +312,16 @@ func seedStartupData(ctx context.Context, server *app.Server) error {
 	// raw "default" slug). No-op when unset.
 	if err := server.SeedRegionsFromEnv(ctx); err != nil {
 		slog.ErrorContext(ctx, "Failed to seed regions parameter", "error", err)
+		return err
+	}
+
+	// Reconcile the platform (kind='system') agent enrollment tokens from
+	// SP_SYSTEM_AGENT_ENROLLMENT_TOKENS so SolidPing-operated check workers
+	// running outside the cluster (fly.io) can enroll on boot. Must run AFTER
+	// the regions seed: each token's region is validated against the `regions`
+	// parameter. No-op when the variable is unset.
+	if err := server.SeedSystemAgentEnrollmentTokens(ctx); err != nil {
+		slog.ErrorContext(ctx, "Failed to seed system agent enrollment tokens", "error", err)
 		return err
 	}
 
