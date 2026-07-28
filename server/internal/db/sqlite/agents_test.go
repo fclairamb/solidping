@@ -56,7 +56,9 @@ func TestEnrollAgentSingleUse(t *testing.T) {
 
 	agent, err := svc.EnrollAgent(ctx, hash, "agent-1", "ed-pub", "age1recipient", "fp1")
 	r.NoError(err)
-	r.Equal(orgUID, agent.OrganizationUID)
+	r.Equal(orgUID, agent.OrgUID())
+	r.Equal(models.AgentKindOrg, agent.Kind, "an org token enrolls an org agent")
+	r.False(agent.IsSystem())
 	r.Equal(region, agent.Region)
 	r.Equal(models.AgentStatusActive, agent.Status)
 
@@ -238,4 +240,175 @@ func TestListActiveAgentsByRegionIsExactScoped(t *testing.T) {
 	other, err := svc.ListActiveAgentsByRegion(ctx, uuid.New().String(), dc1)
 	r.NoError(err)
 	r.Empty(other)
+}
+
+// systemTestRegion is the shared cloud region the platform-agent fixtures use.
+const systemTestRegion = "eu-west-1"
+
+// mintSystemToken seeds a platform (kind='system') enrollment token bound to
+// systemTestRegion, returning its hash. maxUses nil = unlimited.
+func mintSystemToken(t *testing.T, svc *Service, maxUses *int) string {
+	t.Helper()
+
+	_, hash, err := agents.GenerateEnrollmentToken()
+	require.NoError(t, err)
+
+	require.NoError(t, svc.UpsertSystemAgentEnrollmentToken(t.Context(),
+		models.NewSystemAgentEnrollmentToken(systemTestRegion, hash, time.Now().Add(time.Hour), maxUses)))
+
+	return hash
+}
+
+// TestEnrollAgentSystemTokenIsMultiUse is the kind-aware half of enrollment: an
+// org token is consumed atomically (asserted above), while a platform token
+// stays usable so every machine of a fly fleet can enroll on boot with its OWN
+// keypair — no private key is ever shared between machines.
+func TestEnrollAgentSystemTokenIsMultiUse(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, _ := newAgentTestService(t)
+	ctx := t.Context()
+
+	hash := mintSystemToken(t, svc, nil)
+
+	first, err := svc.EnrollAgent(ctx, hash, "fly-1", "ed1", "age1a", "fp1")
+	r.NoError(err)
+	r.True(first.IsSystem())
+	r.Nil(first.OrganizationUID, "a system agent has no owning organization")
+	r.Equal(systemTestRegion, first.Region)
+
+	second, err := svc.EnrollAgent(ctx, hash, "fly-2", "ed2", "age1b", "fp2")
+	r.NoError(err, "a platform token must survive its first use")
+	r.NotEqual(first.UID, second.UID)
+
+	token, err := svc.GetAgentEnrollmentTokenByHash(ctx, hash)
+	r.NoError(err)
+	r.Equal(2, token.UseCount)
+	r.True(token.HasUsesLeft())
+	r.Equal(second.UID, *token.UsedByAgentUID, "used_by records the LATEST enrollment")
+}
+
+// TestEnrollAgentSystemTokenRespectsMaxUses: the multi-use budget is real. Once
+// exhausted the token stops resolving at all, so enrollment is refused before
+// any agent row is created.
+func TestEnrollAgentSystemTokenRespectsMaxUses(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, _ := newAgentTestService(t)
+	ctx := t.Context()
+
+	budget := 2
+	hash := mintSystemToken(t, svc, &budget)
+
+	_, err := svc.EnrollAgent(ctx, hash, "fly-1", "ed1", "age1a", "fp1")
+	r.NoError(err)
+	_, err = svc.EnrollAgent(ctx, hash, "fly-2", "ed2", "age1b", "fp2")
+	r.NoError(err)
+
+	_, err = svc.EnrollAgent(ctx, hash, "fly-3", "ed3", "age1c", "fp3")
+	r.ErrorIs(err, db.ErrEnrollmentTokenInvalid)
+
+	_, err = svc.GetAgentEnrollmentTokenByHash(ctx, hash)
+	r.ErrorIs(err, db.ErrEnrollmentTokenInvalid)
+}
+
+// TestSystemAgentsAreInvisibleToOrgAdmin: the org-admin surfaces stay
+// org-filtered, so a platform agent (or its token) never leaks into a
+// customer's private-locations UI.
+func TestSystemAgentsAreInvisibleToOrgAdmin(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, orgUID := newAgentTestService(t)
+	ctx := t.Context()
+
+	sysHash := mintSystemToken(t, svc, nil)
+	_, err := svc.EnrollAgent(ctx, sysHash, "fly-1", "ed1", "age1a", "fp1")
+	r.NoError(err)
+
+	orgHash := mintToken(t, svc, orgUID, "@agt-org/dc1", time.Now().Add(time.Hour))
+	orgAgent, err := svc.EnrollAgent(ctx, orgHash, "dc1", "ed2", "age1b", "fp2")
+	r.NoError(err)
+
+	listed, err := svc.ListAgents(ctx, orgUID)
+	r.NoError(err)
+	r.Len(listed, 1)
+	r.Equal(orgAgent.UID, listed[0].UID)
+
+	tokens, err := svc.ListAgentEnrollmentTokens(ctx, orgUID)
+	r.NoError(err)
+	for _, token := range tokens {
+		r.False(token.IsSystem(), "system tokens must never surface on the org-admin API")
+	}
+
+	sysTokens, err := svc.ListSystemAgentEnrollmentTokens(ctx)
+	r.NoError(err)
+	r.Len(sysTokens, 1)
+}
+
+// TestListStaleSystemAgentsExcludesOrgAgents backs the agent_gc selectivity at
+// the query level: the GC candidate set is platform agents only, however long a
+// customer's agent has been offline.
+func TestListStaleSystemAgentsExcludesOrgAgents(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, orgUID := newAgentTestService(t)
+	ctx := t.Context()
+
+	sysHash := mintSystemToken(t, svc, nil)
+	sysAgent, err := svc.EnrollAgent(ctx, sysHash, "fly-1", "ed1", "age1a", "fp1")
+	r.NoError(err)
+
+	orgHash := mintToken(t, svc, orgUID, "@agt-org/dc1", time.Now().Add(time.Hour))
+	orgAgent, err := svc.EnrollAgent(ctx, orgHash, "dc1", "ed2", "age1b", "fp2")
+	r.NoError(err)
+
+	// Both went silent a month ago.
+	longAgo := time.Now().Add(-30 * 24 * time.Hour)
+	r.NoError(svc.UpdateAgentLastSeen(ctx, sysAgent.UID, longAgo))
+	r.NoError(svc.UpdateAgentLastSeen(ctx, orgAgent.UID, longAgo))
+
+	stale, err := svc.ListStaleSystemAgents(ctx, time.Now().Add(-7*24*time.Hour))
+	r.NoError(err)
+	r.Len(stale, 1)
+	r.Equal(sysAgent.UID, stale[0].UID)
+
+	// Retiring is likewise scoped to kind='system'.
+	r.NoError(svc.RetireSystemAgent(ctx, sysAgent.UID))
+	r.NoError(svc.RetireSystemAgent(ctx, orgAgent.UID))
+
+	survivors, err := svc.ListAgents(ctx, orgUID)
+	r.NoError(err)
+	r.Len(survivors, 1, "RetireSystemAgent must never touch a customer's agent")
+}
+
+// TestAgentNonceStoreIsAReplayGuard covers the shared store's contract: a
+// consumed (agent, nonce) pair is refused inside the window, forgotten outside
+// it, and prunable.
+func TestAgentNonceStoreIsAReplayGuard(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, _ := newAgentTestService(t)
+	ctx := t.Context()
+
+	now := time.Now()
+	retain := 10 * time.Minute
+
+	r.NoError(svc.CheckAndStoreAgentNonce(ctx, "agent-1", "n1", now, retain))
+	r.ErrorIs(svc.CheckAndStoreAgentNonce(ctx, "agent-1", "n1", now, retain), db.ErrAgentNonceReplayed)
+	r.NoError(svc.CheckAndStoreAgentNonce(ctx, "agent-1", "n2", now, retain))
+	r.NoError(svc.CheckAndStoreAgentNonce(ctx, "agent-2", "n1", now, retain),
+		"the guard is keyed per agent")
+
+	// Past the retention window the pair is forgotten (the per-agent prune runs
+	// before the insert).
+	r.NoError(svc.CheckAndStoreAgentNonce(ctx, "agent-1", "n1", now.Add(2*retain), retain))
+
+	pruned, err := svc.PruneAgentNonces(ctx, now.Add(3*retain))
+	r.NoError(err)
+	r.Positive(pruned)
 }

@@ -339,7 +339,7 @@ func (s *Service) RevokeSystemAgentEnrollmentTokensExcept(
 		Where("deleted_at IS NULL")
 
 	if len(keepHashes) > 0 {
-		query = query.Where("token_hash NOT IN (?)", bun.In(keepHashes))
+		query = query.Where("token_hash NOT IN (?)", bun.List(keepHashes))
 	}
 
 	res, err := query.Exec(ctx)
