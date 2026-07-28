@@ -1,0 +1,57 @@
+# SolidPing platform ("system") check agent on fly.io — ONE app per region.
+#
+# This is a TEMPLATE: copy it to fly.<region>.toml, set `app` and
+# `primary_region`, then `fly deploy -c fly.<region>.toml`. See README.md for the
+# fly-region-code -> SolidPing-region-slug mapping and the secret set.
+#
+# The machine runs the SAME SolidPing binary the cluster runs, in agent mode:
+# outbound-only WebSocket to the API, no database, no inbound port, no HTTP
+# server. It exists so SolidPing can run its OWN cloud check workers outside the
+# cluster without exposing PostgreSQL to fly (spec 2026-07-27-01).
+
+app = "solidping-agent-cdg"
+primary_region = "cdg"
+
+[build]
+  # The published multi-arch server image; agent mode is a runtime role, not a
+  # separate artifact. Pin a released tag in production.
+  image = "ghcr.io/fclairamb/solidping:latest"
+
+[env]
+  # The role switch. Everything else about the process follows from it.
+  SP_NODE_ROLE = "agent"
+  # Each machine names itself after its fly machine ID, so the agents list maps
+  # 1:1 onto `fly machine list` and a replaced machine is obvious.
+  # (Set at runtime from FLY_MACHINE_ID — see the ENTRYPOINT note in README.md.)
+  SP_AGENT_KEYS_FILE = "/data/agent-keys.json"
+  LOG_LEVEL = "info"
+
+# Per-machine identity. The keypair is generated on first boot and persisted
+# here, so a restart reuses its agent row instead of enrolling a new one. The
+# volume is per-machine by construction on fly, which is exactly right: the
+# private key must NEVER be shared between machines.
+[[mounts]]
+  source = "agent_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  cpus = 1
+
+[[restart]]
+  policy = "always"
+
+# NOTE — auto-stop. Fly only ever stops machines that sit behind its proxy, and
+# this app deliberately declares NO service: the agent has no listener at all.
+# Its machines therefore always run, which is the requirement (a stopped agent
+# is a region that silently stops probing). If a future health endpoint makes an
+# [http_service] block desirable, it MUST carry:
+#
+#   [http_service]
+#     internal_port = 8080
+#     auto_stop_machines = "off"
+#     auto_start_machines = false
+#     min_machines_running = 1
+#
+# Never leave fly's default auto-stop on for an agent app.

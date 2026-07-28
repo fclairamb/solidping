@@ -21,7 +21,7 @@ User-facing docs: [`web/docs/docs/features/private-locations.md`](../../web/docs
 |---|---|
 | **Artifact** | The same SolidPing binary/container, run with `SP_NODE_ROLE=agent` |
 | **Transport** | Outbound-only WebSocket to `GET /api/v1/agent/ws` |
-| **Enrollment** | One-shot token `spe_<64 hex>`, bound to (org, region), SHA-256 stored |
+| **Enrollment** | One-shot token `spe_<64 hex>`, bound to (org, region), SHA-256 stored — *system agents use a multi-use token bound to a cloud region, see below* |
 | **Steady-state auth** | Ed25519-signed request headers — no bearer credential exists after enrollment |
 | **Secrets** | age/X25519-sealed to the agents of the region; server cannot decrypt private-only checks |
 | **HA** | N agents per region, all recipients of the sealed envelope |
@@ -144,7 +144,7 @@ No separate binary. Same container, different role:
 |---|---|---|
 | `SP_NODE_ROLE=agent` | — | Enables agent mode |
 | `SP_AGENT_SERVER_URL` | — | **Required** — fails fast without it |
-| `SP_AGENT_ENROLLMENT_TOKEN` | — | One-shot `spe_…`, first run only |
+| `SP_AGENT_ENROLLMENT_TOKEN` | — | `spe_…`; one-shot for an org agent (first run only), multi-use for a platform one |
 | `SP_AGENT_KEYS_FILE` | `/data/agent-keys.json` (falls back to `./agent-keys.json`) | Identity persistence |
 | `SP_AGENT_KEYS` | — | Base64 identity JSON; wins over the file (Kubernetes secret) |
 | `SP_AGENT_NAME` | hostname | Display name |
@@ -165,6 +165,88 @@ re-enrolling if it leaks.
 - **Dashboard**: `/orgs/$org/organization/private-locations`, with a guided
   `/register` wizard.
 - **CLI**: none yet — the `sp` CLI has no agent or private-location commands.
+- **Platform (system) agents have none of the above.** Their tokens come from
+  the API deployment's `SP_SYSTEM_AGENT_ENROLLMENT_TOKENS`, and their rows never
+  surface on the org-admin API. See *System agents* below.
+
+---
+
+## System agents (platform regions)
+
+Shipped by spec
+[`2026-07-27-01`](../../specs/todos/2026-07-27-01-fly-io-system-agents.md).
+
+An agent now carries a **kind**:
+
+| | `org` | `system` |
+|---|---|---|
+| Who runs it | the customer, in their network | SolidPing, e.g. a fly.io machine |
+| Owning org | exactly one (`organization_uid` NOT NULL) | **none** (`organization_uid` NULL) |
+| Region | private, `@<org>/<region>` | a **shared cloud region slug** |
+| Claim scope | that org **and** that exact region | that exact region, **across every org** |
+| Enrollment token | org admin mints it, strictly **one-shot** | env-seeded, **multi-use** and revocable |
+| Credentials | sealed at *save* to the region's agents; server cannot read them | sealed at *claim* to the claiming agent |
+
+The point: the deported-agent transport (outbound WebSocket, Ed25519 reconnects,
+pull-based claiming, zero DB access) is exactly what SolidPing needs to run its
+**own** cloud workers outside the cluster, instead of exposing PostgreSQL to a
+fly machine across a continent. The wire protocol
+(`server/internal/agents/protocol.go`) is unchanged apart from one added,
+optional field (`execStart`, below) — a system agent speaks byte-identical
+frames.
+
+**Regions do not change.** System agents serve the *existing* cloud region
+slugs, so fly is a drop-in replacement per region: no `fly-*` slugs, no
+migration of any check's region set, nothing customer-visible. System agents do
+not appear on the org-admin API at all (`ListAgents` / `ListAgentEnrollmentTokens`
+stay org-filtered).
+
+**Minting is env-seeded only.** `SP_SYSTEM_AGENT_ENROLLMENT_TOKENS` holds
+comma-separated `region=spe_…` pairs, reconciled at boot by
+`server/internal/app/systemagents.go` (each region validated with
+`regions.ValidateWorkerRegion`). Removing an entry soft-deletes its token —
+deleting the deployment secret is the revocation path. There is no `/api/mgmt`
+endpoint and no org-admin route.
+
+**Multi-use tokens, per-machine keys.** Fly secrets are app-wide, so a fleet
+cannot carry one private key per machine in the environment. Instead every
+machine generates its own keypair on boot and enrolls with the shared token; the
+token's `use_count` is bounded only by an optional `max_uses`. Org tokens are
+untouched — still atomically single-use.
+
+**Seal at claim.** A cloud check's secrets live in the server-side envelope
+(`config_private`), which the agent holds no key for. For a system agent the
+server opens it and re-seals it to the agent's X25519 recipient at claim time,
+shipping it in the same `configSealed` field — one wire format, no
+plaintext-config branch, defense-in-depth beyond TLS. The same re-seal applies
+to a tunneled job's SSH block. An envelope that cannot be opened drops the job
+and records an explicit error result (the established decision-6 contract).
+
+**Accounting parity.** The post-exec math (cost/delay EWMAs, effective deadline,
+hysteresis lane) lives once in `scheduling.Params.PostExec`. The in-process
+worker computes and persists it through `DirectBackend`; the shared server-side
+`workers.Service.SubmitResult` now computes the same thing for results arriving
+over the agent transport, so a region staffed by platform agents keeps fair
+scheduling instead of degrading to unweighted FIFO. The agent transmits
+`execStart` in the `result` frame for the delay sample; a result without it
+folds cost and lane but leaves the delay EWMA alone. Agent clock skew is
+harmless — the delay EWMA is telemetry and never steers claim order or lanes,
+and the sample is floored at 0.
+
+**Fleet hygiene.** Enroll-on-boot churns rows, so the global `agent_gc` job
+(6 h, self-rescheduling) retires `kind='system'` agents unheard-from past a
+configurable window (default 7 days), soft-deletes their `workers` rows, and
+prunes consumed reconnect nonces. Org agents are user-managed and never touched.
+
+**Shared nonce store.** The reconnect-replay guard moved from per-instance
+memory to the `agent_nonces` table (`agents.NonceGuard` is the seam;
+`agents.NonceCache` remains the in-memory, single-replica/no-DB implementation).
+A multi-machine fleet reconnecting through a load balancer would otherwise let a
+captured signature be replayed against a different replica. Fails closed.
+
+Deploy reference: [`deploy/fly/`](../../deploy/fly/README.md) — `fly.toml`
+template, the fly-region-code → SolidPing-slug mapping, the secret set, and the
+multi-machine story.
 
 ---
 
@@ -212,9 +294,9 @@ secrets. Surveyed 2026-07-20; see [sources](#sources).
 
 **Where we're behind**
 
-1. **Nonce replay protection is per-instance** (in-memory). On multi-replica
-   deployments a captured handshake is replayable against another replica inside
-   the ±5 min window. Needs a shared nonce store.
+1. ~~**Nonce replay protection is per-instance**~~ — **closed** by spec
+   `2026-07-27-01`: the guard is the shared `agent_nonces` table, so a captured
+   handshake is refused by every replica.
 2. **No standby/failover story** comparable to Site24x7's designated standby
    poller and poller groups, and no documented sizing formula like Datadog's.
 3. **No CLI**, and no agent auto-update — Checkly and Datadog both ship Helm
@@ -234,13 +316,19 @@ your vendor being able to read the database password it uses to get there."
 Tracked honestly rather than in `TODO` comments — there are none in the agent
 packages.
 
-1. Per-instance nonce cache (above).
+1. ~~Per-instance nonce cache~~ — **closed** (spec `2026-07-27-01`): shared
+   `agent_nonces` table behind `agents.NonceGuard`, fail-closed.
 2. `jobs-available` hints are per-instance — latency only, poll covers
    correctness.
 3. Revocation is not retroactive.
-4. Agent-path jobs do not update cost/delay EWMAs or scheduler lanes;
-   `ReleaseLease` re-anchors on ack.
-5. Out of scope so far, no spec yet: client-side (browser) sealing, **peer
+4. ~~Agent-path jobs do not update cost/delay EWMAs or scheduler lanes~~ —
+   **closed** (spec `2026-07-27-01`): `workers.Service.SubmitResult` runs the
+   shared `scheduling.Params.PostExec` and releases the lease with the recomputed
+   state, using the `execStart` the agent now sends.
+5. System agents have no management surface: they are listed nowhere and are
+   reaped only by the `agent_gc` job. A `mgmt` read view is deliberately out of
+   scope so far.
+6. Out of scope so far, no spec yet: client-side (browser) sealing, **peer
    re-wrap** (asking an online agent to add a recipient to a sealed-only blob),
    agent auto-update.
 
@@ -258,10 +346,16 @@ Open bug: [`2026-07-20-02-private-locations-token-dialog-dirty-rendering`](../..
 | WebSocket server | `server/internal/handlers/agentws/handler.go` |
 | Admin API | `server/internal/handlers/agents/` |
 | Agent-side client | `server/internal/checkworker/backend/ws.go` |
+| Claim scope (`AgentScope`) | `server/internal/checkworker/checkjobsvc/service.go` |
+| Shared submit path / accounting | `server/internal/handlers/workers/service.go` |
+| Post-exec math | `server/internal/checkworker/scheduling/scheduling.go` (`PostExec`) |
+| System-token seeding | `server/internal/app/systemagents.go` |
+| Fleet GC | `server/internal/jobs/jobtypes/job_agent_gc.go` |
 | Region rules | `server/internal/regions/regions.go` |
 | Sealing | `server/internal/crypto/credentials/sealing.go` |
 | Models | `server/internal/db/models/agent.go` |
-| Migrations | `server/internal/db/{postgres,sqlite}/migrations/006_v0_5_0.up.sql` |
+| Migrations | `server/internal/db/{postgres,sqlite}/migrations/006_v0_5_0.up.sql`, `009_v0_8_0.up.sql` |
+| Fly deploy reference | `deploy/fly/` |
 | Dashboard | `web/dash0/src/routes/orgs/$org/organization.private-locations*.tsx` |
 | E2E | `web/dash0/e2e/private-locations.spec.ts`, `deported-agent-wizard.spec.ts` |
 
