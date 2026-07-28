@@ -19,6 +19,7 @@ import { LanguageSwitcher } from "./language-switcher";
 import { StatusUpdatesTimeline } from "./status-updates-timeline";
 import { SubscribeWidget } from "./subscribe-widget";
 import { statusStyle } from "@/lib/status-style";
+import { usePreviewCss } from "@/lib/preview-css";
 
 function getStatusColor(status: string) {
   return statusStyle(status).color;
@@ -181,9 +182,18 @@ export function StatusPageView({
   const overallStatus = getOverallStatus(sections);
   const { data: versionInfo } = useVersion();
   const feedUrl = `/api/v1/status-pages/${org}/${page.slug}/feed.xml`;
+  // Outside preview mode this is just page.customCss; with ?preview=1 the
+  // dash0 appearance editor can drive it live over postMessage.
+  const customCss = usePreviewCss(page.customCss);
 
   return (
     <div className="min-h-screen">
+      {/* Operator-authored theme override. Rendered as a React TEXT CHILD, so
+          React escapes it and a "</style>" in the payload cannot break out of
+          the element — never dangerouslySetInnerHTML here. It sits first in
+          the tree and arrives in the same payload as the content, so the page
+          paints already themed (no flash of default styling). */}
+      {customCss ? <style>{customCss}</style> : null}
       {/* Brand bar — white surface with a brand-pink logo. The brand
           color is confined to the logo so the page reads as one
           continuous document; the status banner below uses status

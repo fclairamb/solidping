@@ -83,6 +83,12 @@ export interface StatusPage {
   historyDays: number;
   historyPeriod: "24h" | "7d" | "30d" | "90d";
   language?: string;
+  /**
+   * Operator-authored stylesheet, rendered by StatusPageView as a <style> text
+   * child. Unlike the custom-domain fields it IS served on the public
+   * endpoint — this page is its only consumer.
+   */
+  customCss?: string;
   sections?: StatusPageSection[];
   recentUpdates?: StatusUpdatePublicResponse[];
   createdAt?: string;
