@@ -7567,6 +7567,15 @@ components:
           description: History window (24h, 7d, 30d, 90d)
         language:
           type: string
+        customCss:
+          type: string
+          nullable: true
+          description: >-
+            Operator-authored CSS the public status page injects as a <style>
+            text node, overriding its CSS custom properties (--brand,
+            --background, --card, --border, the status colors, .dark). Unlike
+            the custom-domain fields this IS returned on the public view — the
+            public renderer is its consumer. Max 64 KB, @import rejected.
         customDomain:
           type: string
           nullable: true
@@ -7658,6 +7667,12 @@ components:
           type: string
         language:
           type: string
+        customCss:
+          type: string
+          description: >-
+            Optional custom stylesheet for the public page. Max 64 KB;
+            @import is rejected (VALIDATION_ERROR). External url() references
+            are allowed.
         customDomain:
           type: string
           description: >-
@@ -7690,6 +7705,12 @@ components:
           type: string
         language:
           type: string
+        customCss:
+          type: string
+          description: >-
+            Set/replace the custom stylesheet, or clear it with an empty
+            string. Omit the field to leave it unchanged. Max 64 KB; @import
+            is rejected (VALIDATION_ERROR).
         customDomain:
           type: string
           nullable: true

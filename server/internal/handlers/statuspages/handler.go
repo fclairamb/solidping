@@ -23,10 +23,32 @@ const (
 	fieldBody          = "body"
 	fieldCustomDomain  = "customDomain"
 	fieldHistoryPeriod = "historyPeriod"
+	fieldCustomCSS     = "customCss"
 	respKeyData        = "data"
 	msgInvalidJSON     = "Invalid JSON format"
 	historyPeriodMsg   = "History period must be one of: 24h, 7d, 30d, 90d"
+	customCSSSizeMsg   = "Custom CSS must be at most 64 KB"
+	customCSSImportMsg = "Custom CSS must not contain @import — inline the rules instead " +
+		"(external url() references are allowed)"
 )
+
+// mapCustomCSSError maps the customCss validation errors to a VALIDATION_ERROR
+// response. Returns handled=false when err is not one of them so the caller can
+// fall through to its own switch.
+func (h *Handler) mapCustomCSSError(writer http.ResponseWriter, err error) (bool, error) {
+	switch {
+	case errors.Is(err, ErrCustomCSSTooLarge):
+		return true, h.WriteValidationError(writer, "Custom CSS is too large", []base.ValidationErrorField{
+			{Name: fieldCustomCSS, Message: customCSSSizeMsg},
+		})
+	case errors.Is(err, ErrCustomCSSImport):
+		return true, h.WriteValidationError(writer, "Custom CSS contains @import", []base.ValidationErrorField{
+			{Name: fieldCustomCSS, Message: customCSSImportMsg},
+		})
+	default:
+		return false, nil
+	}
+}
 
 // Handler provides HTTP handlers for status page management endpoints.
 type Handler struct {
@@ -517,6 +539,10 @@ func (h *Handler) handleCreatePageError(writer http.ResponseWriter, err error) e
 		return result
 	}
 
+	if handled, result := h.mapCustomCSSError(writer, err); handled {
+		return result
+	}
+
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
@@ -540,6 +566,10 @@ func (h *Handler) handleCreatePageError(writer http.ResponseWriter, err error) e
 
 func (h *Handler) handleUpdatePageError(writer http.ResponseWriter, err error) error {
 	if handled, result := h.mapCustomDomainError(writer, err); handled {
+		return result
+	}
+
+	if handled, result := h.mapCustomCSSError(writer, err); handled {
 		return result
 	}
 

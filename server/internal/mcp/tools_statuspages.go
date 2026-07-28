@@ -19,6 +19,7 @@ const (
 	propShowResponseTime  = "showResponseTime"
 	propHistoryDays       = "historyDays"
 	propLanguage          = "language"
+	propCustomCSS         = "customCss"
 	propCheckUID          = "checkUid"
 )
 
@@ -84,6 +85,11 @@ func createStatusPageDef() ToolDefinition {
 			propShowResponseTime: boolProp("Display response-time charts on the public page."),
 			propHistoryDays:      intProp("Days of history to show on the page (default 90)."),
 			propLanguage:         stringProp("Language code, e.g. \"en\" or \"fr\"."),
+			propCustomCSS: stringProp(
+				"Custom CSS injected into the public page as a <style> element. Overrides the theme's CSS " +
+					"custom properties (--brand, --background, --foreground, --card, --border, the status " +
+					"colors, and the .dark variant). Max 64 KB; @import is rejected.",
+			),
 		}, []string{schemaKeyName, schemaKeySlug}),
 	}
 }
@@ -114,6 +120,12 @@ func (h *Handler) toolCreateStatusPage(ctx context.Context, orgSlug string, args
 	if v := getStringArg(args, propLanguage); v != "" {
 		req.Language = &v
 	}
+	// Presence-based, not emptiness-based: an explicit "" is a legitimate
+	// "no stylesheet" on create and a clear on update.
+	if _, ok := args[propCustomCSS]; ok {
+		v := getStringArg(args, propCustomCSS)
+		req.CustomCSS = &v
+	}
 	page, err := h.statusPagesSvc.CreateStatusPage(ctx, orgSlug, req)
 	if err != nil {
 		return errorResult(err.Error())
@@ -137,6 +149,10 @@ func updateStatusPageDef() ToolDefinition {
 			propShowResponseTime: boolProp("Toggle response-time charts on the public page."),
 			propHistoryDays:      intProp("Days of history to show on the page (default 90)."),
 			propLanguage:         stringProp("Language code, e.g. \"en\" or \"fr\"."),
+			propCustomCSS: stringProp(
+				"Custom CSS injected into the public page as a <style> element (see create_status_page). " +
+					"Max 64 KB; @import is rejected. Pass an empty string to clear it.",
+			),
 		}, []string{propIdentifier}),
 	}
 }
@@ -178,6 +194,10 @@ func buildUpdateStatusPageRequest(args map[string]any) *statuspages.UpdateStatus
 	}
 	if v := getStringArg(args, propLanguage); v != "" {
 		req.Language = &v
+	}
+	if _, ok := args[propCustomCSS]; ok {
+		v := getStringArg(args, propCustomCSS)
+		req.CustomCSS = &v
 	}
 	return req
 }

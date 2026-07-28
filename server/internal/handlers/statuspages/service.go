@@ -44,7 +44,44 @@ var (
 	// does not exactly match the section's current resources (missing,
 	// extra, or duplicate UIDs).
 	ErrReorderUIDsMismatch = errors.New("reorder uids do not match the section's resources")
+	// ErrCustomCSSTooLarge is returned when customCss exceeds MaxCustomCSSBytes.
+	ErrCustomCSSTooLarge = errors.New("custom css is too large")
+	// ErrCustomCSSImport is returned when customCss contains an @import rule.
+	ErrCustomCSSImport = errors.New("custom css must not contain @import")
 )
+
+// MaxCustomCSSBytes caps a status page's custom stylesheet. 64 KB is far more
+// than a re-theme needs (the whole status0 variable set is a few hundred
+// bytes) while keeping the value cheap to store and to ship on every public
+// page render.
+const MaxCustomCSSBytes = 64 * 1024
+
+// validateCustomCSS enforces the two write-side rules on a custom stylesheet:
+// a 64 KB cap, and no @import — which would let the page chain arbitrary
+// third-party stylesheets (and, through them, fetch-on-render URLs) beyond
+// what the operator actually reviewed. External url() references (web fonts,
+// background images) stay deliberately allowed: the page admin is trusted for
+// their own public page, and blocking them would make the feature useless.
+// A nil pointer (field omitted) is valid.
+func validateCustomCSS(css *string) error {
+	if css == nil {
+		return nil
+	}
+
+	if len(*css) > MaxCustomCSSBytes {
+		return ErrCustomCSSTooLarge
+	}
+
+	// Case-insensitive, position-independent: "@IMPORT", a mid-file
+	// "\n  @import", and an in-comment one are all rejected. Being stricter
+	// than the CSS grammar is intentional — there is no legitimate reason for
+	// the substring to appear in a status-page theme.
+	if strings.Contains(strings.ToLower(*css), "@import") {
+		return ErrCustomCSSImport
+	}
+
+	return nil
+}
 
 func validateSlug(slug string) error {
 	if slug == "" {
@@ -153,21 +190,25 @@ type StatusUpdatePublicResponse struct {
 
 // StatusPageResponse represents a status page in API responses.
 type StatusPageResponse struct {
-	UID              string                       `json:"uid"`
-	Name             string                       `json:"name"`
-	Slug             string                       `json:"slug"`
-	Description      *string                      `json:"description,omitempty"`
-	Visibility       string                       `json:"visibility"`
-	IsDefault        bool                         `json:"isDefault"`
-	Enabled          bool                         `json:"enabled"`
-	ShowAvailability bool                         `json:"showAvailability"`
-	ShowResponseTime bool                         `json:"showResponseTime"`
-	HistoryDays      int                          `json:"historyDays"`
-	HistoryPeriod    string                       `json:"historyPeriod"`
-	Language         *string                      `json:"language,omitempty"`
-	Sections         []StatusPageSectionResponse  `json:"sections,omitempty"`
-	RecentUpdates    []StatusUpdatePublicResponse `json:"recentUpdates,omitempty"`
-	CreatedAt        *time.Time                   `json:"createdAt,omitempty"`
+	UID              string  `json:"uid"`
+	Name             string  `json:"name"`
+	Slug             string  `json:"slug"`
+	Description      *string `json:"description,omitempty"`
+	Visibility       string  `json:"visibility"`
+	IsDefault        bool    `json:"isDefault"`
+	Enabled          bool    `json:"enabled"`
+	ShowAvailability bool    `json:"showAvailability"`
+	ShowResponseTime bool    `json:"showResponseTime"`
+	HistoryDays      int     `json:"historyDays"`
+	HistoryPeriod    string  `json:"historyPeriod"`
+	Language         *string `json:"language,omitempty"`
+	// CustomCSS is the operator-authored stylesheet the public page injects as
+	// a <style> text node. Unlike the custom-domain fields below it is set on
+	// the PUBLIC responses too — status0 is its only consumer.
+	CustomCSS     *string                      `json:"customCss,omitempty"`
+	Sections      []StatusPageSectionResponse  `json:"sections,omitempty"`
+	RecentUpdates []StatusUpdatePublicResponse `json:"recentUpdates,omitempty"`
+	CreatedAt     *time.Time                   `json:"createdAt,omitempty"`
 	// Custom-domain fields are populated ONLY on the authenticated org
 	// endpoints (see enrichCustomDomain); the public ViewStatusPage path never
 	// sets them, so a custom domain and its challenge token never leak publicly.
@@ -262,6 +303,9 @@ type CreateStatusPageRequest struct {
 	HistoryDays      *int    `json:"historyDays,omitempty"`
 	HistoryPeriod    *string `json:"historyPeriod,omitempty"`
 	Language         *string `json:"language,omitempty"`
+	// CustomCSS optionally sets the page's custom stylesheet at create time.
+	// Max 64 KB, no @import (see validateCustomCSS).
+	CustomCSS *string `json:"customCss,omitempty"`
 	// CustomDomain optionally sets a custom domain on the new page (a non-empty
 	// value generates a token; empty/nil means no domain). Verification still
 	// happens afterward via the verify endpoint.
@@ -281,6 +325,10 @@ type UpdateStatusPageRequest struct {
 	HistoryDays      *int    `json:"historyDays,omitempty"`
 	HistoryPeriod    *string `json:"historyPeriod,omitempty"`
 	Language         *string `json:"language,omitempty"`
+	// CustomCSS sets, replaces or clears the page's custom stylesheet: an empty
+	// string clears the column, an omitted field leaves it untouched. Max
+	// 64 KB, no @import (see validateCustomCSS).
+	CustomCSS *string `json:"customCss,omitempty"`
 	// CustomDomain sets/changes/clears the page's custom domain. A non-empty
 	// value sets it (generating a fresh token); null or "" clears it. Whether
 	// the key was present at all is carried in CustomDomainSet (presence
@@ -382,6 +430,12 @@ func applyCreateFields(page *models.StatusPage, req *CreateStatusPageRequest) {
 	if req.Language != nil {
 		page.Language = req.Language
 	}
+
+	// An empty stylesheet is "no stylesheet": leave the column NULL rather than
+	// storing '', matching the update path's clear semantics.
+	if req.CustomCSS != nil && *req.CustomCSS != "" {
+		page.CustomCSS = req.CustomCSS
+	}
 }
 
 // daysForPeriod returns a back-compat history_days count for a period enum.
@@ -417,6 +471,10 @@ func (s *Service) CreateStatusPage(
 
 	if errPeriod := validateHistoryPeriod(req.HistoryPeriod); errPeriod != nil {
 		return StatusPageResponse{}, errPeriod
+	}
+
+	if errCSS := validateCustomCSS(req.CustomCSS); errCSS != nil {
+		return StatusPageResponse{}, errCSS
 	}
 
 	// Check slug conflict
@@ -535,6 +593,10 @@ func (s *Service) UpdateStatusPage(
 		return StatusPageResponse{}, errPeriod
 	}
 
+	if errCSS := validateCustomCSS(req.CustomCSS); errCSS != nil {
+		return StatusPageResponse{}, errCSS
+	}
+
 	// Handle default toggle
 	if req.IsDefault != nil && *req.IsDefault && !page.IsDefault {
 		if errClear := s.clearDefaultStatusPage(ctx, org.UID); errClear != nil {
@@ -554,6 +616,7 @@ func (s *Service) UpdateStatusPage(
 		HistoryDays:      req.HistoryDays,
 		HistoryPeriod:    req.HistoryPeriod,
 		Language:         req.Language,
+		CustomCSS:        req.CustomCSS,
 	}
 
 	// The period enum is the source of truth; keep history_days in sync for
@@ -1591,6 +1654,7 @@ func convertPageToResponse(page *models.StatusPage) StatusPageResponse {
 		HistoryDays:      page.HistoryDays,
 		HistoryPeriod:    string(pagePeriod(page)),
 		Language:         page.Language,
+		CustomCSS:        page.CustomCSS,
 		CreatedAt:        &page.CreatedAt,
 	}
 }

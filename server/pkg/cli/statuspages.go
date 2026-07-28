@@ -25,6 +25,8 @@ const (
 
 	flagVisibility       = "visibility"
 	flagLanguage         = "language"
+	flagCustomCSS        = "custom-css"
+	flagCustomCSSFile    = "custom-css-file"
 	flagHistoryPeriod    = "history-period"
 	flagHistoryDays      = "history-days"
 	flagShowAvailability = "show-availability"
@@ -160,6 +162,35 @@ func renderStatusPage(page *client.StatusPage) {
 	output.PrintMessage(os.Stdout, "Default:     "+strconv.FormatBool(page.IsDefault))
 	output.PrintMessage(os.Stdout, "Enabled:     "+strconv.FormatBool(page.Enabled))
 	output.PrintMessage(os.Stdout, "History:     "+page.HistoryPeriod)
+
+	if page.CustomCss != nil && *page.CustomCss != "" {
+		// The stylesheet can be up to 64 KB — print its size, not its body.
+		output.PrintMessage(os.Stdout, "Custom CSS:  "+strconv.Itoa(len(*page.CustomCss))+" bytes")
+	}
+}
+
+// customCSSFlag resolves the mutually-exclusive --custom-css / --custom-css-file
+// pair into the request field. --custom-css-file reads the stylesheet from disk
+// (the realistic authoring workflow); --custom-css takes it inline, and an
+// explicit empty string clears the field on update. Neither flag set -> nil, so
+// the field is omitted and the stored stylesheet is left untouched.
+func customCSSFlag(cmd *cli.Command) (*string, error) {
+	if cmd.IsSet(flagCustomCSSFile) {
+		if cmd.IsSet(flagCustomCSS) {
+			return nil, cli.Exit("Error: --custom-css and --custom-css-file are mutually exclusive", 5)
+		}
+
+		data, err := os.ReadFile(cmd.String(flagCustomCSSFile))
+		if err != nil {
+			return nil, cli.Exit("Error: cannot read custom CSS file: "+err.Error(), 5)
+		}
+
+		css := string(data)
+
+		return &css, nil
+	}
+
+	return optString(cmd, flagCustomCSS), nil
 }
 
 // --- Status page CRUD ---
@@ -228,12 +259,18 @@ func statusPagesCreateAction(ctx context.Context, cmd *cli.Command) error {
 		return cli.Exit("Error: --name and --slug are required", 5)
 	}
 
+	customCSS, err := customCSSFlag(cmd)
+	if err != nil {
+		return err
+	}
+
 	body := client.CreateStatusPageJSONRequestBody{
 		Name:             name,
 		Slug:             slug,
 		Description:      optString(cmd, flagDescription),
 		Visibility:       optString(cmd, flagVisibility),
 		Language:         optString(cmd, flagLanguage),
+		CustomCss:        customCSS,
 		HistoryPeriod:    optString(cmd, flagHistoryPeriod),
 		HistoryDays:      optInt(cmd, flagHistoryDays),
 		ShowAvailability: boolPair(cmd, flagShowAvailability, flagHideAvailability),
@@ -318,12 +355,18 @@ func statusPagesUpdateAction(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
+	customCSS, err := customCSSFlag(cmd)
+	if err != nil {
+		return err
+	}
+
 	body := client.UpdateStatusPageJSONRequestBody{
 		Name:             optString(cmd, flagName),
 		Slug:             optString(cmd, keySlug),
 		Description:      optString(cmd, flagDescription),
 		Visibility:       optString(cmd, flagVisibility),
 		Language:         optString(cmd, flagLanguage),
+		CustomCss:        customCSS,
 		HistoryPeriod:    optString(cmd, flagHistoryPeriod),
 		HistoryDays:      optInt(cmd, flagHistoryDays),
 		IsDefault:        boolPair(cmd, flagDefault, flagNoDefault),
