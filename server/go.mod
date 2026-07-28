@@ -18,7 +18,7 @@ require (
 	github.com/crewjam/saml v0.5.1
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/docker/go-units v0.5.0
-	github.com/dop251/goja v0.0.0-20260721123636-c65cf2f023c8
+	github.com/dop251/goja v0.0.0-20260723142020-b4aef50fa347
 	github.com/dreamscached/minequery/v2 v2.5.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/fergusstrange/embedded-postgres v1.34.0
