@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -13,34 +14,39 @@ import (
 // TLS asset storage (spec 2026-07-26-01) — the database side of the
 // certmagic.Storage implementation in internal/tlsedge.
 //
-// Prefix queries use a half-open key RANGE (key >= prefix AND key < prefix⁺)
-// rather than LIKE 'prefix%'. The range is index-friendly on both engines and,
-// unlike LIKE, needs no escaping of % / _ that a CA-derived issuer key might
-// one day contain.
+// Prefix queries use LIKE 'prefix%' ESCAPE '\', NOT a half-open key range
+// (key >= prefix AND key < prefix⁺). Postgres' < / >= on text honor the
+// database COLLATION, and every common non-C collation (en_US.utf8 — the
+// default of the official postgres image and of most distro installs) treats
+// '/' as primary-ignorable: the range's upper bound 'certificates0' then sorts
+// BELOW real keys such as 'certificates/ca/example.com', so the range matches
+// ZERO rows and List/Delete silently do nothing. LIKE compares
+// character-by-character regardless of collation, and it is what the
+// text_pattern_ops index in migration 009_v0_8_0 was created to serve.
+//
+// The SQLite twin (internal/db/sqlite/tls_storage.go) deliberately keeps the
+// key range: SQLite compares TEXT with the byte-exact BINARY collation, and its
+// LIKE is ASCII-case-insensitive by default — which would wrongly conflate keys
+// differing only in case (certmagic embeds ACME account e-mails in keys).
 //
 // SECURITY: these rows hold ACME account keys and certificate PRIVATE KEYS.
 // Only internal/tlsedge may call these methods; never expose them via an API,
 // export, or debug surface.
 
-// tlsStoragePrefixEnd returns the exclusive upper bound of the key range that
-// starts with prefix, or ok=false when no bound exists (an empty prefix, which
-// means "every key").
-func tlsStoragePrefixEnd(prefix string) (string, bool) {
-	if prefix == "" {
-		return "", false
-	}
+// tlsStoragePrefixLike returns the LIKE pattern matching every key that starts
+// with prefix. LIKE metacharacters the prefix itself may contain (% _ \ — a
+// CA-derived issuer path could grow one) are escaped with a backslash, so the
+// pattern must always be used with ESCAPE '\'.
+func tlsStoragePrefixLike(prefix string) string {
+	escaper := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
-	buf := []byte(prefix)
-	for i := len(buf) - 1; i >= 0; i-- {
-		if buf[i] < 0xFF {
-			buf[i]++
-
-			return string(buf[:i+1]), true
-		}
-	}
-
-	return "", false
+	return escaper.Replace(prefix) + "%"
 }
+
+// tlsStorageKeyLikeExpr is the WHERE fragment every prefix query uses; its
+// single placeholder takes a tlsStoragePrefixLike pattern. Postgres runs with
+// standard_conforming_strings on, so '\' here is one literal backslash.
+const tlsStorageKeyLikeExpr = `key LIKE ? ESCAPE '\'`
 
 // TLSStorageStore upserts an asset, refreshing its modification time.
 func (s *Service) TLSStorageStore(ctx context.Context, key string, value []byte) error {
@@ -80,11 +86,10 @@ func (s *Service) TLSStorageLoad(ctx context.Context, key string) ([]byte, error
 // every key nested under it ("<key>/..."). Deleting a missing key is not an
 // error — certmagic only requires that the key be gone afterwards.
 func (s *Service) TLSStorageDelete(ctx context.Context, key string) error {
-	query := s.db.NewDelete().Model((*models.TLSStorageEntry)(nil)).Where("key = ?", key)
-
-	if end, ok := tlsStoragePrefixEnd(key + "/"); ok {
-		query = query.WhereOr("key >= ? AND key < ?", key+"/", end)
-	}
+	query := s.db.NewDelete().
+		Model((*models.TLSStorageEntry)(nil)).
+		Where("key = ?", key).
+		WhereOr(tlsStorageKeyLikeExpr, tlsStoragePrefixLike(key+"/"))
 
 	if _, err := query.Exec(ctx); err != nil {
 		return fmt.Errorf("tls storage delete %q: %w", key, err)
@@ -121,11 +126,9 @@ func (s *Service) TLSStorageList(ctx context.Context, prefix string) ([]models.T
 		Order("key")
 
 	if prefix != "" {
-		if end, ok := tlsStoragePrefixEnd(prefix + "/"); ok {
-			query = query.Where("key = ? OR (key >= ? AND key < ?)", prefix, prefix+"/", end)
-		} else {
-			query = query.Where("key = ?", prefix)
-		}
+		query = query.
+			Where("key = ?", prefix).
+			WhereOr(tlsStorageKeyLikeExpr, tlsStoragePrefixLike(prefix+"/"))
 	}
 
 	if err := query.Scan(ctx, &rows); err != nil {

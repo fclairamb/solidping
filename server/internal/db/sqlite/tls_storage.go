@@ -11,14 +11,19 @@ import (
 )
 
 // TLS asset storage (spec 2026-07-26-01) — the database side of the
-// certmagic.Storage implementation in internal/tlsedge. Kept byte-for-byte in
-// step with the PostgreSQL twin (internal/db/postgres/tls_storage.go); the
-// conditional upsert and the key-range scans are portable across both engines.
+// certmagic.Storage implementation in internal/tlsedge. Kept in step with the
+// PostgreSQL twin (internal/db/postgres/tls_storage.go); the conditional upsert
+// is portable across both engines.
 //
-// Prefix queries use a half-open key RANGE (key >= prefix AND key < prefix⁺)
-// rather than LIKE 'prefix%'. The range is index-friendly on both engines and,
-// unlike LIKE, needs no escaping of % / _ that a CA-derived issuer key might
-// one day contain.
+// Prefix queries here use a half-open key RANGE (key >= prefix AND key <
+// prefix⁺) rather than the LIKE 'prefix%' the PostgreSQL twin uses. This is a
+// deliberate divergence, not drift: SQLite compares TEXT with the byte-exact
+// BINARY collation, so the range is exactly right (and index-friendly), whereas
+// SQLite's LIKE is ASCII-case-insensitive by default and would conflate keys
+// differing only in case — certmagic embeds ACME account e-mails in keys. On
+// Postgres the reverse holds: < / >= there honor the database collation, and
+// every common non-C collation primary-ignores '/', which makes the range match
+// zero rows (see the twin's header).
 //
 // SECURITY: these rows hold ACME account keys and certificate PRIVATE KEYS.
 // Only internal/tlsedge may call these methods; never expose them via an API,
