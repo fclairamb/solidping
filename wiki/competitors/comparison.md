@@ -18,7 +18,7 @@ Comprehensive comparison of uptime monitoring services for the SolidPing project
 
 > **Closest self-hosted analogue**: [Maintenant](maintenant.md) (kOlapsis) — self-hosted Go single-binary like SolidPing, with deep Docker/Kubernetes container observability, HTTP/TCP/SSL/heartbeat checks, an MCP server for AI assistants, and an AGPL-3.0 open-core (Community/Pro/Enterprise) model. SQLite-only, ~17 MB RAM, four core probe types, and no built-in auth (reverse-proxy gated). Not in the tables below (kept SaaS-first), but its container monitoring and Docker-label config are the standout features worth studying.
 
-> **Where SolidPing stands today (counts refreshed 2026-07-22)**: 38 check types (39 registered internally, including a non-customer-facing sleep/keepalive type — broadest of any tool surveyed either way), 10 native notification channels, multi-region distributed workers with per-region check periods, private locations (deported agents the server cannot decrypt secrets for), status pages with availability, subscriber notifications, and maintenance windows, **adaptive incident resolution + group-incident correlation + ack/snooze/manual-resolve**, **on-call schedules + multi-step escalation policies**, **credentials encryption at rest** (envelope encryption with out-of-band master key), configuration as code (YAML export/import/apply via API + CLI), labels with autocomplete + filtering, 2FA, MCP/AI integration, browser monitoring (chromedp), Prometheus metrics, dual PostgreSQL/SQLite backend, single-binary self-hosting. See "SolidPing Competitive Position" below for the full ✅/❌ inventory.
+> **Where SolidPing stands today (counts refreshed 2026-07-28)**: 38 check types (39 registered internally, including a non-customer-facing sleep/keepalive type — broadest of any tool surveyed either way), 11 native notification channels (incl. Twilio SMS + voice wakeup calls), multi-region distributed workers with per-region check periods, private locations (deported agents the server cannot decrypt secrets for), status pages with availability, subscriber notifications, maintenance windows, custom CSS, and custom domains (single CNAME + automatic Let's Encrypt TLS), **adaptive incident resolution + group-incident correlation + ack/snooze/manual-resolve**, **on-call schedules + multi-step escalation policies**, **credentials encryption at rest** (envelope encryption with out-of-band master key), configuration as code (YAML export/import/apply via API + CLI), labels with autocomplete + filtering, 2FA, MCP/AI integration, browser monitoring (chromedp), Prometheus metrics, dual PostgreSQL/SQLite backend, single-binary self-hosting. See "SolidPing Competitive Position" below for the full ✅/❌ inventory.
 
 > **Design ideas worth borrowing**: distilled in [../research/alerting-patterns.md](../research/alerting-patterns.md) — synthesizes findings from the deep-dive research on BetterStack ([betterstack/](betterstack/)) and Hyperping ([hyperping/](hyperping/)) into actionable input for future specs.
 
@@ -467,7 +467,7 @@ Based on competitive analysis, prioritize these features:
 12. ✅ Database monitoring (Postgres, MySQL, MSSQL, Oracle, MongoDB, Redis)
 13. ✅ Message-queue monitoring (Kafka, RabbitMQ, MQTT)
 14. ✅ Docker container, SNMP, A2S/Minecraft game server, custom JS check, browser (Rod) monitoring
-15. ✅ Multiple notification channels — 10 native: Slack (OAuth + threads + Marketplace install), Discord (OAuth + webhook), Email, Webhooks, Google Chat, Mattermost, Ntfy, Opsgenie, Pushover, Web Push
+15. ✅ Multiple notification channels — 11 native: Slack (OAuth + threads + Marketplace install), Discord (OAuth + webhook), Email, Webhooks, Google Chat, Mattermost, Ntfy, Opsgenie, Pushover, Web Push, Twilio (SMS + outbound voice wakeup calls)
 16. ✅ Public status pages with sections, resources, availability metrics, locale-aware date formatting
 17. ✅ Multi-location checking (distributed workers + multi-region)
 18. ✅ Monitor grouping (check groups + group-incident correlation)
@@ -493,22 +493,27 @@ Based on competitive analysis, prioritize these features:
 38. ✅ Status-page subscriber notifications — end users subscribe to a status page and are emailed on published status updates/incidents (wired end-to-end, not just a subscription list)
 39. ✅ Configuration as Code — declarative YAML export/import/apply via `POST /orgs/:org/checks/apply` and the `sp` CLI (`export`/`import`/`apply`)
 40. ✅ Per-org check-execution rate limiting + cost/plan-weighted scheduler fairness — a token-bucket `maxChecksPerMinute` entitlement plus scheduler-level de-prioritization of slow checks under contention; addresses "one tenant can't DoS the shared workers" via a different mechanism than the original proportional-fair-period-scaling design
+41. ✅ SMS / voice-call wakeup escalations via Twilio — severity-gated (`critical` unlocks `sms`/`voice`), with magic-link acknowledge from the message
+42. ✅ Status-page custom domains (single CNAME + automatic ACME/Let's Encrypt TLS via in-server TLS edge) and custom CSS theming with live-preview editor
 
-**Tier 2 - High-Impact Gaps** (not yet implemented, multiple competitors offer these):
+**Tier 2 - High-Impact Gaps** (not yet implemented, multiple competitors offer these — prioritized in `../roadmap.md`):
 1. ❌ Telegram, Microsoft Teams, PagerDuty notification channels — specs ready in `specs/ideas/2026-03-22-telegram-notifications.md` and `specs/ideas/2026-03-22-notification-channels.md`
-2. ❌ Screenshot capture on HTTP failure (BetterStack, Checkly) — research done, Rod chosen, spec ready in `specs/ideas/2026-01-05-screenshots.md`
+2. ❌ Auto-published incidents on status pages — automatic incidents never reach the public page; status updates are hand-authored. Architectural answer: the outage-vs-incident split (`specs/backlog/2026/05/2026-05-08-04-outage-vs-incident-split.md`), which also unlocks manual incident creation (no `POST /incidents` today) and postmortems
 3. ❌ Importers from BetterStack / UptimeRobot / Uptime Kuma (spec stub in `specs/ideas/2025-12-28-importers.md` — lowers switching friction)
-4. ⚠️ Terraform provider (Gatus, Checkly, BetterStack) — lives in a separate `terraform-provider-solidping` repo per a "done" spec; this repo only has an API-completeness audit (`../terraform-provider-api-audit.md`), so its actual shipped/published state isn't verifiable from here
+4. ❌ Screenshot capture on HTTP failure (BetterStack, Checkly) — research done, Rod chosen, spec ready in `specs/ideas/2026-01-05-screenshots.md`; former blocker (S3-compatible object storage) has shipped
+5. ❌ Status-page branding & trust — logo/favicon upload (logo + "powered by" footer are hardcoded in status0), white-label entitlement, password-protected pages (`visibility: private` just 404s the public endpoint), webhook/Slack subscriptions (email + Atom feed only today)
+6. ❌ SLO targets / error budgets / scheduled uptime reports — no SLO concept anywhere, although per-period aggregation (min/max/avg/p95) + timezone-aware availability data already exist
+7. ⚠️ Terraform provider (Gatus, Checkly, BetterStack) — lives in a separate `terraform-provider-solidping` repo per a "done" spec; this repo only has an API-completeness audit (`../terraform-provider-api-audit.md`), so its actual shipped/published state isn't verifiable from here
 
 **Tier 3 - Competitive Differentiators** (nice to have):
 1. ❌ Page speed / Core Web Vitals monitoring (Pingdom, StatusCake)
 2. ❌ Real User Monitoring / RUM (Pingdom, Site24x7)
 3. ❌ Traceroute/MTR diagnostics on failure (BetterStack)
-4. ❌ Mobile applications (UptimeRobot, Pingdom) or installable PWA
+4. ⚠️ Mobile applications (UptimeRobot, Pingdom) — installable PWA + Web Push shipped; no native apps
 5. ❌ GitHub/GitLab issue integration (Gatus)
-6. ❌ SMS / Voice escalations (every major SaaS via Twilio)
-7. ❌ Heartbeat enhancements — `/start` endpoint, exit codes, log attachment (Healthchecks.io)
-8. ❌ Automatic application discovery — suggest healthcheck endpoints from URL (spec in `specs/ideas/2025-12-28-automatic-app-discovery.md` — no competitor has this)
+6. ✅ SMS / Voice escalations — shipped 2026-07 via Twilio (severity-gated, magic-link ack; see Tier 1 #41)
+7. ⚠️ Heartbeat enhancements — bearer auth, JSON body, caller metadata shipped; `/start` endpoint, exit codes, log attachment still open (Healthchecks.io)
+8. ⚠️ Automatic discovery — network/Docker/Kubernetes/Freebox scanning with promote-to-check shipped; the URL→healthcheck-endpoint suggestion idea (`specs/ideas/2025-12-28-automatic-app-discovery.md`) remains open
 9. ❌ AIOps / anomaly detection on response-time series (Site24x7, Datadog)
 10. ❌ Subchecks (parent HTTP check auto-spawns SSL/domain-expiration sub-checks — spec stub in `specs/ideas/2026-01-01-subchecks.md`)
 
@@ -534,6 +539,8 @@ Based on competitive analysis, prioritize these features:
 | Slack OAuth + threaded incident messages + Marketplace direct install | BetterStack (SaaS only) |
 | Labels with autocomplete + filtering + check clone + check templates | Partial in BetterStack (tags); no self-hosted match |
 | Private locations (deported agents) where the server **cannot decrypt** check secrets | None — Checkly / Datadog / New Relic / Grafana / Site24x7 all have vendor-readable secrets; SolarWinds forbids secrets on private probes. See [features/deported-agents.md](../features/deported-agents.md#competitive-position) |
+| SMS + voice-call wakeup with magic-link ack in self-hosted | None — SaaS-only elsewhere (BetterStack, Pingdom, UptimeRobot paid tiers) |
+| Status-page custom domains with automatic in-server ACME TLS in self-hosted | Statuspage / Instatus (SaaS only); self-hosted rivals need a reverse proxy |
 
 ### Pricing Strategy Recommendation
 
@@ -593,6 +600,6 @@ Based on competitive analysis, prioritize these features:
 4. Skip Pingdom's mistakes (no false positives, no complex pricing)
 5. Offer optional SaaS with pricing that undercuts UptimeRobot
 
-**Today (2026-07-22)**: SolidPing covers parity on (1), (2), and most protocol/feature breadth, and has overtaken BetterStack on (3) for self-hosted incident management — group-incident correlation, on-call schedules, multi-step escalation policies, ack/snooze/manual-resolve, credentials encryption, status-page subscriber notifications, and configuration-as-code (YAML export/import/apply) are all in. Remaining items are: Telegram/Teams/PagerDuty channels, screenshots, importers, and a published Terraform provider (unverified from this repo).
+**Today (2026-07-28)**: SolidPing covers parity on (1), (2), and most protocol/feature breadth, and has overtaken BetterStack on (3) for self-hosted incident management — group-incident correlation, on-call schedules, multi-step escalation policies, ack/snooze/manual-resolve, SMS/voice wakeup, credentials encryption, status-page subscriber notifications, custom domains with automatic TLS, and configuration-as-code (YAML export/import/apply) are all in. Remaining items are: Telegram/Teams/PagerDuty channels, auto-published incidents on status pages (outage-vs-incident split), importers, screenshots, status-page branding/white-label, SLO/SLA reporting, and a published Terraform provider (unverified from this repo). Prioritization lives in `../roadmap.md`.
 
 **Result**: Best of all worlds — self-hosted freedom with optional affordable SaaS.

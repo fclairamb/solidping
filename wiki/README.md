@@ -2,7 +2,7 @@
 
 ## Roadmap
 
-- [roadmap.md](roadmap.md) — Feature roadmap and priorities — **stale (May 2026 snapshot)**; counts corrected 2026-07-20 but priorities still need a rewrite, see the banner at the top of the file
+- [roadmap.md](roadmap.md) — Feature roadmap and priorities (rewritten 2026-07-28: adoption blockers → product completeness → enterprise maturity, plus explicit non-priorities)
 
 ## Architecture & Design
 
