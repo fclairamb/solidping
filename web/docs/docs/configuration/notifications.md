@@ -12,6 +12,8 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 | Channel | Status | Configuration |
 |---------|--------|---------------|
 | Slack | Available | OAuth integration |
+| Microsoft Teams (bot) | Available | Azure Bot / Bot Framework (two-way) |
+| Microsoft Teams (webhook) | Available | Teams Workflow webhook (one-way) |
 | Discord | Available | Webhook |
 | Email | Available | SMTP |
 | Webhooks | Available | HTTP POST |
@@ -161,6 +163,116 @@ Slack notifications include:
 - Status change (Up → Down, Down → Up)
 - Error details (for failures)
 - Direct link to the check in SolidPing
+
+## Microsoft Teams
+
+There are **two** Teams integrations, and they are independent — pick either, or
+use both:
+
+| Integration type | What it does | What it needs |
+|---|---|---|
+| `msteams` | One-way: posts Adaptive Cards into a channel | A Teams Workflow URL. No server configuration, works behind a firewall. |
+| `msteams-bot` | Two-way: alerts **plus** `@SolidPing` commands, and incident cards that update in place | An Entra ID app + Azure Bot, and a **publicly reachable HTTPS endpoint**. |
+
+### Microsoft Teams (webhook) — the zero-infra option
+
+1. In Teams, open **Workflows** → "Post to a channel when a webhook request is
+   received"
+2. Finish the wizard and copy the workflow URL it gives you
+3. Paste it into a `msteams` integration in SolidPing
+
+The legacy "Incoming Webhook" Office 365 connector is retired by Microsoft and
+will not work.
+
+### Microsoft Teams (bot) — the Slack-grade option
+
+:::warning Public HTTPS endpoint required
+The Bot Framework has **no Socket-Mode equivalent**: Microsoft's servers push
+activities to your instance, they never dial out from it. Your SolidPing
+instance must therefore be reachable from the public internet over HTTPS at:
+
+```
+https://<your-base-url>/api/v1/integrations/msteams/messages
+```
+
+A self-hosted instance behind a firewall or on a private network **cannot use
+the Teams bot**. Use the `msteams` webhook integration instead — it only makes
+outbound requests.
+:::
+
+#### 1. Register the Entra app and Azure Bot
+
+1. In the [Azure portal](https://portal.azure.com), create an **Azure Bot**
+   resource (multi-tenant for a shared deployment, single-tenant for your own).
+2. Note the **Microsoft App ID** and create a **client secret**.
+3. Set the bot's **messaging endpoint** to
+   `https://<your-base-url>/api/v1/integrations/msteams/messages`.
+4. Enable the **Microsoft Teams** channel on the bot.
+
+#### 2. Configure SolidPing
+
+```bash
+SP_MSTEAMS_ENABLED=true
+SP_MSTEAMS_APP_ID=00000000-0000-0000-0000-000000000000
+SP_MSTEAMS_APP_SECRET=your-client-secret
+# Optional: restrict inbound activities to a single Microsoft 365 tenant.
+SP_MSTEAMS_TENANT_ID=11111111-1111-1111-1111-111111111111
+```
+
+```yaml
+msteams:
+  enabled: true
+  app_id: 00000000-0000-0000-0000-000000000000
+  app_secret: your-client-secret
+  tenant_id: ""   # empty = multi-tenant
+```
+
+`msteams.enabled` defaults to **false** — the bot stays off until you turn it
+on, precisely because of the public-endpoint requirement above.
+
+#### 3. Install the app in Teams
+
+1. In SolidPing, create a **Microsoft Teams (bot)** integration and open it.
+2. Click **Download Teams app package** — the zip is generated with your
+   instance's app ID and URL already filled in, so nothing has to be edited.
+3. In Teams: **Apps → Manage your apps → Upload a custom app**, pick the zip,
+   and add SolidPing to a team.
+4. Paste your **Microsoft 365 tenant ID** into the integration's setup page.
+   If you install the app first, SolidPing replies in the channel with the exact
+   tenant ID to paste.
+
+Every channel you add the bot to becomes a selectable notification destination;
+the first one becomes the default.
+
+Publishing to the Teams store is out of scope — custom app upload
+("sideloading") is the supported path, which your Teams admin may need to allow
+in the Teams admin center.
+
+#### What the bot can do
+
+- Posts an Adaptive Card when an incident opens, **updates that same card** when
+  the incident escalates or resolves, and replies under it so a channel shows
+  one incident as one grouped conversation.
+- Answers `@SolidPing` commands in a channel:
+  - `@SolidPing help`
+  - `@SolidPing checks add <url>` / `checks list` / `checks rm <slug>`
+  - `@SolidPing results -check <slug>`
+  - `@SolidPing incidents list [-check <slug>]`
+  - `@SolidPing config default-channel` — makes the current channel the default
+    notification target (Teams has no cross-team channel reference, so the
+    command is scoped to the team it is issued in)
+- Stops routing when the app is removed from the tenant, and resumes on
+  reinstall without losing the org's notification wiring.
+
+Personal-scope direct messages are not supported yet.
+
+#### Security
+
+Every inbound activity is authenticated: the Bot Connector JWT is verified
+against Microsoft's published JWKS, and the issuer, audience (your app ID),
+validity window and `serviceurl` claim are all checked before anything is
+acted on. When `msteams.tenant_id` is set, activities from any other tenant are
+rejected outright.
 
 ## Discord
 
