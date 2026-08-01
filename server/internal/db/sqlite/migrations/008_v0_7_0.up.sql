@@ -186,5 +186,47 @@ create index agent_nonces_seen_at_idx on agent_nonces (seen_at);
 alter table status_pages add column custom_css text; -- Operator-authored CSS injected into the public status page as a <style> text node. NULL = none.
 
 -- ---------------------------------------------------------------------------
+-- Status page resources can target a check GROUP (spec 2026-08-01-03)
+-- ---------------------------------------------------------------------------
+-- See the postgres twin for the full rationale. SQLite has no ALTER COLUMN, so
+-- dropping the NOT NULL on check_uid means rebuilding the table with the
+-- established *_new pattern (same as the agents rebuild above). The XOR check
+-- constraint and the two partial unique indexes mirror
+-- maintenance_window_checks.
+
+create table status_page_resources_new (
+  uid             text primary key,
+  section_uid     text not null references status_page_sections(uid) on delete cascade, -- Parent section
+  check_uid       text references checks(uid) on delete cascade, -- Individual check to display; NULL when targeting a group
+  check_group_uid text references check_groups(uid) on delete cascade, -- Check group shown as one aggregated component; NULL when targeting a check
+  public_name     text, -- Override display name. NULL uses the check/group name
+  explanation     text, -- Optional description visible on the public status page
+  position        integer not null default 0, -- Display order within the section (lower = higher)
+  created_at      text not null default (datetime('now')),
+  updated_at      text not null default (datetime('now')),
+  check ((check_uid is not null and check_group_uid is null)
+      or (check_uid is null and check_group_uid is not null))
+);
+
+insert into status_page_resources_new (
+  uid, section_uid, check_uid, check_group_uid, public_name, explanation, position, created_at, updated_at
+)
+select
+  uid, section_uid, check_uid, null, public_name, explanation, position, created_at, updated_at
+from status_page_resources;
+
+drop table status_page_resources;
+alter table status_page_resources_new rename to status_page_resources;
+
+create unique index status_page_resources_section_check_idx
+  on status_page_resources (section_uid, check_uid) where check_uid is not null;
+create unique index status_page_resources_section_group_idx
+  on status_page_resources (section_uid, check_group_uid) where check_group_uid is not null;
+create index status_page_resources_check_idx
+  on status_page_resources (check_uid) where check_uid is not null;
+create index status_page_resources_group_idx
+  on status_page_resources (check_group_uid) where check_group_uid is not null;
+
+-- ---------------------------------------------------------------------------
 -- (append further v0.7.0 blocks below this line)
 -- ---------------------------------------------------------------------------

@@ -236,5 +236,51 @@ comment on column status_pages.custom_css is
   'Operator-authored CSS injected into the public status page (status0) as a <style> text node. NULL = none. Capped at 64 KB, @import rejected at the API.';
 
 -- ---------------------------------------------------------------------------
+-- Status page resources can target a check GROUP (spec 2026-08-01-03)
+-- ---------------------------------------------------------------------------
+-- A status page resource used to be exactly one check (check_uid NOT NULL), so
+-- a host probed by four checks (tcp + http + tls + rdp) had to publish all four
+-- — leaking the internal probe topology — or publish one arbitrary check.
+--
+-- A resource may now target a check GROUP instead, rendered as ONE public
+-- component (rolled-up status, weighted-average availability across members,
+-- maintenance from a group- OR member-targeted window). Members are never
+-- listed publicly.
+--
+-- The shape deliberately mirrors maintenance_window_checks
+-- (001_v0_1_0.up.sql:827): two nullable target columns plus an XOR check
+-- constraint, and one partial unique index per target kind. on delete cascade
+-- matches the existing check_uid FK exactly — note both checks and check groups
+-- are SOFT-deleted in practice, so the cascade is only a hard-delete backstop;
+-- the live behavior for a soft-deleted target is identical for both kinds (the
+-- resource row survives and simply renders without live info).
+
+alter table status_page_resources alter column check_uid drop not null;
+alter table status_page_resources
+  add column check_group_uid uuid references check_groups(uid) on delete cascade;
+
+alter table status_page_resources add constraint status_page_resources_target_check
+  check ((check_uid is not null and check_group_uid is null)
+      or (check_uid is null and check_group_uid is not null));
+
+-- The section+check uniqueness must become partial: every group resource has a
+-- NULL check_uid, and while Postgres already treats NULLs as distinct, the
+-- partial form states the intent and keeps the two target kinds symmetric.
+drop index if exists status_page_resources_section_check_idx;
+create unique index status_page_resources_section_check_idx
+  on status_page_resources (section_uid, check_uid) where check_uid is not null;
+create unique index status_page_resources_section_group_idx
+  on status_page_resources (section_uid, check_group_uid) where check_group_uid is not null;
+create index status_page_resources_group_idx
+  on status_page_resources (check_group_uid) where check_group_uid is not null;
+
+comment on table status_page_resources is
+  'Checks or check groups displayed within a status page section. Exactly one of check_uid or check_group_uid is set.';
+comment on column status_page_resources.check_uid is
+  'Individual check to display. NULL when the resource targets a group.';
+comment on column status_page_resources.check_group_uid is
+  'Check group to display as one aggregated public component. NULL when the resource targets an individual check.';
+
+-- ---------------------------------------------------------------------------
 -- (append further v0.7.0 blocks below this line)
 -- ---------------------------------------------------------------------------

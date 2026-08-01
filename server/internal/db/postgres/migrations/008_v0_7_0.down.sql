@@ -2,6 +2,22 @@
 -- Reverse order: later-appended feature blocks are torn down before the
 -- earlier ones they were stacked on top of.
 
+-- reverse status page group resources (spec 2026-08-01-03)
+-- Group-targeting resources cannot survive the NOT NULL restore on check_uid,
+-- so they are dropped along with the column.
+alter table status_page_resources drop constraint if exists status_page_resources_target_check;
+delete from status_page_resources where check_group_uid is not null;
+drop index if exists status_page_resources_group_idx;
+drop index if exists status_page_resources_section_group_idx;
+alter table status_page_resources drop column if exists check_group_uid;
+drop index if exists status_page_resources_section_check_idx;
+create unique index status_page_resources_section_check_idx
+  on status_page_resources (section_uid, check_uid);
+alter table status_page_resources alter column check_uid set not null;
+
+comment on table status_page_resources is 'Checks displayed within a status page section.';
+comment on column status_page_resources.check_uid is 'Check to display.';
+
 -- reverse per-status-page custom CSS (spec 2026-07-27-02)
 alter table status_pages drop column custom_css;
 
