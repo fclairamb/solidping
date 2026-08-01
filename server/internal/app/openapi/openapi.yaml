@@ -835,11 +835,15 @@ paths:
           description: >-
             Opt-in ordering. "group" orders by group sortOrder ascending with
             ungrouped checks last, then created_at descending within a bucket —
-            matching the dashboard's display order. Omitted keeps the default
-            created_at descending ordering. Any other value is a validation error.
+            matching the dashboard's display order. "targetHost" orders by the
+            derived targetHost ascending (case-insensitive), checks with no
+            targetHost last, then name ascending as a tiebreaker — lets a
+            by-host view paginate consistently server-side. Omitted keeps the
+            default created_at descending ordering. Any other value is a
+            validation error.
           schema:
             type: string
-            enum: ["group"]
+            enum: ["group", "targetHost"]
       responses:
         "200":
           description: List of checks
@@ -6294,6 +6298,17 @@ components:
           enum: [http, tcp, icmp, dns, ssl, domain]
         config:
           type: object
+        targetHost:
+          type: string
+          nullable: true
+          readOnly: true
+          description: >-
+            Derived, read-time-only host this check probes: the config's
+            `host` field when present, else the hostname parsed from `url`,
+            else `target`; null when none apply (e.g. heartbeat/email passive
+            checks). Not stored — renaming a host in a check's config moves it
+            to a different value on the next read. Use `?sort=targetHost` on
+            the list endpoint to order checks by it.
         enabled:
           type: boolean
         internal:
