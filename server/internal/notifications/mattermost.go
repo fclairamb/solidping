@@ -82,7 +82,10 @@ func (s *MattermostSender) Send(ctx context.Context, _ *jobdef.JobContext, paylo
 }
 
 type mattermostSettings struct {
-	WebhookURL string `json:"webhook_url"`
+	// WebhookURL uses snake_case to match the dashboard form field
+	// (integration-form.tsx's UrlPanel writes "webhook_url") and Discord's
+	// DiscordSettings, not the Mattermost incoming-webhook API's own casing.
+	WebhookURL string `json:"webhook_url"` //nolint:tagliatelle // matches dashboard form key
 	Channel    string `json:"channel"`
 	Username   string `json:"username"`
 	IconURL    string `json:"icon_url"` //nolint:tagliatelle // aligned with the outgoing Mattermost payload field

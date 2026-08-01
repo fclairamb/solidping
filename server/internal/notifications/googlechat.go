@@ -67,7 +67,10 @@ func (s *GoogleChatSender) Send(ctx context.Context, _ *jobdef.JobContext, paylo
 }
 
 type googleChatSettings struct {
-	WebhookURL       string `json:"webhook_url"`
+	// WebhookURL uses snake_case to match the dashboard form field
+	// (integration-form.tsx's UrlPanel writes "webhook_url") and Discord's
+	// DiscordSettings, not the Google Chat API's own casing.
+	WebhookURL       string `json:"webhook_url"` //nolint:tagliatelle // matches dashboard form key
 	ThreadKeyEnabled bool   `json:"threadKeyEnabled"`
 }
 

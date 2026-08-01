@@ -77,15 +77,15 @@ func googleChatCheck() *models.Check {
 	return &models.Check{UID: "chk-1", Name: &name, Type: "http"}
 }
 
-func googleChatPayload(event string, settings models.JSONMap) *Payload {
+func googleChatPayload(settings models.JSONMap) *Payload {
 	return &Payload{
-		EventType: event,
+		EventType: eventTypeIncidentCreated,
 		Incident: &models.Incident{
 			UID:          "018e4a2b-incident",
 			StartedAt:    time.Now().Add(-5 * time.Minute),
 			FailureCount: 3,
 			RelapseCount: 2,
-			Details:      models.JSONMap{"failure_reason": "connection refused"},
+			Details:      models.JSONMap{"failure_reason": "unexpected status code 503"},
 		},
 		Check:   googleChatCheck(),
 		OrgSlug: "acme",
@@ -107,7 +107,7 @@ func TestGoogleChatSettings_DashboardFormShapedKey(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	payload := googleChatPayload(eventTypeIncidentCreated, models.JSONMap{
+	payload := googleChatPayload(models.JSONMap{
 		"webhook_url": "https://chat.googleapis.com/v1/spaces/AAA/messages?key=k&token=t",
 	})
 
@@ -125,7 +125,7 @@ func TestGoogleChatSettings_LegacyWebhookUrlKey(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	payload := googleChatPayload(eventTypeIncidentCreated, models.JSONMap{
+	payload := googleChatPayload(models.JSONMap{
 		"webhookUrl": "https://chat.googleapis.com/v1/spaces/BBB/messages?key=k&token=t",
 	})
 
@@ -143,7 +143,7 @@ func TestGoogleChatSettings_SnakeCaseTakesPrecedence(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	payload := googleChatPayload(eventTypeIncidentCreated, models.JSONMap{
+	payload := googleChatPayload(models.JSONMap{
 		"webhook_url": "https://chat.googleapis.com/v1/spaces/CANONICAL/messages",
 		"webhookUrl":  "https://chat.googleapis.com/v1/spaces/LEGACY/messages",
 	})
@@ -159,7 +159,7 @@ func TestGoogleChatSettings_MissingURLErrors(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	payload := googleChatPayload(eventTypeIncidentCreated, models.JSONMap{})
+	payload := googleChatPayload(models.JSONMap{})
 
 	sender := &GoogleChatSender{}
 
@@ -175,7 +175,7 @@ func TestGoogleChatSender_SendPostsExpectedPayload(t *testing.T) {
 	// Real Google Chat webhook URLs always carry a query string
 	// (?key=...&token=...), which is what lets buildURL append
 	// "&threadKey=..." safely; mimic that shape here.
-	payload := googleChatPayload(eventTypeIncidentCreated, models.JSONMap{
+	payload := googleChatPayload(models.JSONMap{
 		"webhook_url": url + "?key=k&token=t",
 	})
 
@@ -200,7 +200,7 @@ func TestGoogleChatSender_NonSuccessStatusErrors(t *testing.T) {
 
 	_, url := newGoogleChatFake(t, http.StatusInternalServerError)
 	sender := &GoogleChatSender{}
-	payload := googleChatPayload(eventTypeIncidentCreated, models.JSONMap{"webhook_url": url + "?key=k&token=t"})
+	payload := googleChatPayload(models.JSONMap{"webhook_url": url + "?key=k&token=t"})
 
 	err := sender.Send(context.Background(), &jobdef.JobContext{}, payload)
 	r.ErrorIs(err, errGoogleChatWebhookFailed)

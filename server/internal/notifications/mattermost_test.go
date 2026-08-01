@@ -64,15 +64,15 @@ func mattermostCheck() *models.Check {
 	return &models.Check{UID: "chk-1", Name: &name, Type: "http"}
 }
 
-func mattermostPayload(event string, settings models.JSONMap) *Payload {
+func mattermostPayload(settings models.JSONMap) *Payload {
 	return &Payload{
-		EventType: event,
+		EventType: eventTypeIncidentCreated,
 		Incident: &models.Incident{
 			UID:          "018e4a2b-incident",
 			StartedAt:    time.Now().Add(-5 * time.Minute),
 			FailureCount: 3,
 			RelapseCount: 2,
-			Details:      models.JSONMap{"failure_reason": "connection refused"},
+			Details:      models.JSONMap{"failure_reason": "unexpected status code 503"},
 		},
 		Check:   mattermostCheck(),
 		OrgSlug: "acme",
@@ -94,7 +94,7 @@ func TestMattermostSettings_DashboardFormShapedKey(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	payload := mattermostPayload(eventTypeIncidentCreated, models.JSONMap{
+	payload := mattermostPayload(models.JSONMap{
 		"webhook_url": "https://mattermost.example.com/hooks/abc123",
 	})
 
@@ -112,7 +112,7 @@ func TestMattermostSettings_LegacyWebhookUrlKey(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	payload := mattermostPayload(eventTypeIncidentCreated, models.JSONMap{
+	payload := mattermostPayload(models.JSONMap{
 		"webhookUrl": "https://mattermost.example.com/hooks/legacy456",
 	})
 
@@ -129,7 +129,7 @@ func TestMattermostSettings_SnakeCaseTakesPrecedence(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	payload := mattermostPayload(eventTypeIncidentCreated, models.JSONMap{
+	payload := mattermostPayload(models.JSONMap{
 		"webhook_url": "https://mattermost.example.com/hooks/canonical",
 		"webhookUrl":  "https://mattermost.example.com/hooks/legacy",
 	})
@@ -145,7 +145,7 @@ func TestMattermostSettings_MissingURLErrors(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	payload := mattermostPayload(eventTypeIncidentCreated, models.JSONMap{})
+	payload := mattermostPayload(models.JSONMap{})
 
 	sender := &MattermostSender{}
 
@@ -160,7 +160,7 @@ func TestMattermostSettings_IconURLKey(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	payload := mattermostPayload(eventTypeIncidentCreated, models.JSONMap{
+	payload := mattermostPayload(models.JSONMap{
 		"webhook_url": "https://mattermost.example.com/hooks/abc123",
 		"icon_url":    "https://example.com/icon.png",
 	})
@@ -177,7 +177,7 @@ func TestMattermostSender_SendPostsExpectedPayload(t *testing.T) {
 	r := require.New(t)
 
 	fake, url := newMattermostFake(t, http.StatusOK)
-	payload := mattermostPayload(eventTypeIncidentCreated, models.JSONMap{
+	payload := mattermostPayload(models.JSONMap{
 		"webhook_url": url,
 		"channel":     "#alerts",
 		"username":    "SolidPing Bot",
@@ -203,7 +203,7 @@ func TestMattermostSender_NonSuccessStatusErrors(t *testing.T) {
 
 	_, url := newMattermostFake(t, http.StatusInternalServerError)
 	sender := &MattermostSender{}
-	payload := mattermostPayload(eventTypeIncidentCreated, models.JSONMap{"webhook_url": url})
+	payload := mattermostPayload(models.JSONMap{"webhook_url": url})
 
 	err := sender.Send(context.Background(), &jobdef.JobContext{}, payload)
 	r.ErrorIs(err, errMattermostWebhookFailed)
