@@ -493,4 +493,171 @@ test.describe("Check Groups", () => {
     // Clean up
     await deleteGroupViaApi(page, token, group.uid);
   });
+
+  test("should create a check group with an explicit slug", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await navigateToChecks(page);
+
+    await page.getByTestId("new-group-button").click();
+    const dialog = page.getByRole("dialog", { name: "New Group" });
+    await expect(dialog).toBeVisible();
+
+    const ts = Date.now();
+    const groupName = `E2E Explicit Slug ${ts}`;
+    const explicitSlug = `e2e-explicit-slug-${ts}`;
+    await page.getByTestId("new-group-name-input").fill(groupName);
+
+    // The slug auto-fills from the name; overwrite it with our own value.
+    const slugInput = page.getByTestId("new-group-slug-input");
+    await expect(slugInput).not.toHaveValue("");
+    await slugInput.fill(explicitSlug);
+
+    await page.getByTestId("new-group-submit").click();
+    await expect(dialog).not.toBeVisible({ timeout: 10000 });
+    await expect(
+      page.getByTestId("group-name").getByText(groupName)
+    ).toBeVisible({ timeout: 10000 });
+
+    // The group must be reachable by the slug we typed, not an auto-derived one.
+    const token = await getAuthToken(page);
+    const resp = await page.request.get(
+      `${API_BASE}/api/v1/orgs/test/check-groups/${explicitSlug}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    expect(resp.status()).toBe(200);
+    const body = await resp.json();
+    expect(body.name).toBe(groupName);
+
+    // Clean up
+    await deleteGroupViaApi(page, token, body.uid);
+  });
+
+  test("should edit a check group's slug and make it reachable by the new slug", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    const token = await getAuthToken(page);
+    const ts = Date.now();
+    const originalSlug = `e2e-slug-orig-${ts}`;
+    const newSlug = `e2e-slug-new-${ts}`;
+    const createResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/check-groups`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { name: `E2E Slug Edit ${ts}`, slug: originalSlug },
+      }
+    );
+    expect(createResp.status()).toBe(201);
+    const group = await createResp.json();
+
+    await page.goto(`/dash0/orgs/test/check-groups/${group.uid}/edit`, {
+      waitUntil: "networkidle",
+    });
+
+    const slugInput = page.getByTestId("group-edit-slug-input");
+    await expect(slugInput).toHaveValue(originalSlug, { timeout: 10000 });
+    await slugInput.fill(newSlug);
+    await page.getByTestId("group-edit-submit").click();
+
+    // Saving navigates back to the checks list.
+    await page.waitForURL(/\/checks$/, { timeout: 10000 });
+
+    // The group is now reachable by the new slug...
+    const byNewSlug = await page.request.get(
+      `${API_BASE}/api/v1/orgs/test/check-groups/${newSlug}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    expect(byNewSlug.status()).toBe(200);
+
+    // ...and the old slug stops resolving.
+    const byOldSlug = await page.request.get(
+      `${API_BASE}/api/v1/orgs/test/check-groups/${originalSlug}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    expect(byOldSlug.status()).toBe(404);
+
+    // Clean up
+    await deleteGroupViaApi(page, token, group.uid);
+  });
+
+  test("should show an inline error for a duplicate slug on the edit page", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    const token = await getAuthToken(page);
+    const ts = Date.now();
+    const groupA = await createGroupViaApi(page, token, `E2E DupSlugA ${ts}`);
+    const groupB = await createGroupViaApi(page, token, `E2E DupSlugB ${ts}`);
+
+    await page.goto(`/dash0/orgs/test/check-groups/${groupB.uid}/edit`, {
+      waitUntil: "networkidle",
+    });
+
+    const slugInput = page.getByTestId("group-edit-slug-input");
+    await expect(slugInput).toHaveValue(groupB.slug, { timeout: 10000 });
+    await slugInput.fill(groupA.slug);
+    await page.getByTestId("group-edit-submit").click();
+
+    // The failure must surface inline on the field, not just as a toast, and
+    // the page must NOT navigate away (a toast-only failure would still let
+    // the "successful" submit redirect back to the list).
+    await expect(page.getByTestId("group-edit-slug-error")).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page).toHaveURL(/\/edit$/);
+
+    // The group must still be reachable by its original slug — the update
+    // was rejected, not silently applied.
+    const stillOriginal = await page.request.get(
+      `${API_BASE}/api/v1/orgs/test/check-groups/${groupB.slug}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    expect(stillOriginal.status()).toBe(200);
+
+    // Clean up
+    await deleteGroupViaApi(page, token, groupA.uid);
+    await deleteGroupViaApi(page, token, groupB.uid);
+  });
+
+  test("should leave a check group's slug untouched when only its name is edited", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    const token = await getAuthToken(page);
+    const ts = Date.now();
+    const originalName = `E2E NameOnly ${ts}`;
+    const group = await createGroupViaApi(page, token, originalName);
+
+    await page.goto(`/dash0/orgs/test/check-groups/${group.uid}/edit`, {
+      waitUntil: "networkidle",
+    });
+
+    const nameInput = page.getByTestId("group-edit-name-input");
+    await expect(nameInput).toHaveValue(originalName, { timeout: 10000 });
+    const newName = `E2E NameOnly Renamed ${ts}`;
+    await nameInput.clear();
+    await nameInput.fill(newName);
+
+    // Deliberately do not touch the slug field.
+    await page.getByTestId("group-edit-submit").click();
+    await page.waitForURL(/\/checks$/, { timeout: 10000 });
+
+    const resp = await page.request.get(
+      `${API_BASE}/api/v1/orgs/test/check-groups/${group.slug}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    expect(resp.status()).toBe(200);
+    const updated = await resp.json();
+    expect(updated.name).toBe(newName);
+    expect(updated.slug).toBe(group.slug);
+
+    // Clean up
+    await deleteGroupViaApi(page, token, group.uid);
+  });
 });
