@@ -121,3 +121,44 @@ comment in main.tsx.
 - Structured branding controls (logo upload field, color pickers) — still a
   possible follow-up, per spec 2026-07-27-02.
 - Any backend or API change.
+
+## Implementation Plan
+
+1. **`sp-*` hooks + logo markup (status0).**
+   - `logo.tsx`: add `sp-logo` to the wrapper span; drop the inline
+     `style={{width,height}}` from the `<img>` (an inline declaration cannot be
+     overridden by operator CSS without `!important`) and replace it with a
+     `--sp-logo-size` custom property set inline on the wrapper plus low-specificity
+     rules in `index.css` (`.sp-logo { min-height: var(--sp-logo-size) }`,
+     `.sp-logo img { width/height: var(--sp-logo-size); object-fit: contain }`).
+     The operator's `<style>` block sits later in document order, so an equal
+     specificity rule (`.sp-logo img { … }`) wins — both `content: url()` and the
+     `display:none` + background fallback become writable, and the wrapper keeps a
+     non-zero box when the img is hidden.
+   - `status-page-view.tsx`: `sp-logo` (via `<Logo className>`), `sp-page-name`,
+     `sp-footer`, `sp-powered-by`, `sp-version`, each with an
+     "documented theming API — do not rename" comment.
+2. **Starter template** in `status-pages.$statusPageUid.appearance.tsx`: append an
+   "Element hooks" block with commented `sp-*` examples (replace logo two ways,
+   hide version).
+3. **Docs**: `web/docs/docs/features/status-pages.md` — "Element hooks" table plus
+   the logo-replacement and hide-version snippets.
+4. **removeChild E2E** — new `web/status0/e2e/translate-resilience.spec.ts`:
+   faithful Chrome-translate simulation (move each text node into nested
+   `<font style="vertical-align: inherit">`), then drive the re-render paths
+   (language switch, forced refetch through visibility/focus + query invalidation
+   by waiting on the poll), asserting: no `pageerror`, no "Something went wrong!",
+   content still present, `<html lang>` follows the switcher. Includes positive
+   controls so the assertions are not vacuous: the mutation is verified to have
+   detached text nodes from their React parents, and the `pageerror` harness is
+   verified to catch a deliberately thrown uncaught error.
+5. **Hardening if the test crashes** — preferred: `translate="no"` on the
+   *dynamic* status text (status badges, availability %, version), which is the
+   text React rewrites/removes on every poll; leave operator content
+   (page/section/resource names, description) translatable. Documented next to the
+   existing comment in `main.tsx`.
+6. **dash0 appearance E2E**: extra case applying `.sp-version { display: none }`
+   plus a `.sp-logo img` override, asserting on the public page that the version
+   line is hidden and the logo swap landed.
+7. QA: `make build-status0`, `make build-dash0`, both `bun run lint`, and actually
+   run the two Playwright specs against a running server.
