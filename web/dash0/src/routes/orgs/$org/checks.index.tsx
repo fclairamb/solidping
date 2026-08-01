@@ -119,6 +119,86 @@ export const Route = createFileRoute("/orgs/$org/checks/")({
   }),
 });
 
+// Manual collapse/expand choices for check-group sections, persisted per org
+// so a toggle survives a reload. One JSON map per org: { [groupUid]: boolean }.
+// Mirrors the try/catch-guarded localStorage pattern used elsewhere in dash0
+// (dashboard-page.tsx's FirstResultCelebration, lib/last-auth-method.ts) —
+// localStorage can throw in private-browsing mode or when disabled.
+function collapsedGroupsStorageKey(org: string): string {
+  return `solidping_collapsed_groups_${org}`;
+}
+
+function readCollapsedGroups(org: string): Record<string, boolean> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(collapsedGroupsStorageKey(org));
+    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeCollapsedGroup(org: string, groupUid: string, collapsed: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    const map = readCollapsedGroups(org);
+    map[groupUid] = collapsed;
+    window.localStorage.setItem(collapsedGroupsStorageKey(org), JSON.stringify(map));
+  } catch {
+    // Ignore — private mode / storage disabled / quota exceeded. The toggle
+    // still works for this session, it just won't survive a reload.
+  }
+}
+
+// Severity order for the group header's compact member summary — failures
+// first (the thing you came to see), the healthy count last.
+const MEMBER_SUMMARY_ORDER = [
+  "down",
+  "degraded",
+  "warning",
+  "validating",
+  "created",
+  "up",
+] as const;
+
+// Renders memberStatusCounts as a compact, localized summary: "3/3 up" when
+// every counted member is up (exactly the collapse-eligible case), otherwise
+// severity-ordered parts like "1 down · 3 up". Returns null when there are no
+// counted (enabled) members at all.
+function formatMemberSummary(
+  counts: Record<string, number> | undefined,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string | null {
+  if (!counts) return null;
+  const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
+  if (total === 0) return null;
+
+  const upCount = counts.up ?? 0;
+  if (upCount === total) {
+    return t("checks:groupSummary.allUp", { count: total });
+  }
+
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const status of MEMBER_SUMMARY_ORDER) {
+    const count = counts[status] ?? 0;
+    if (count <= 0) continue;
+    seen.add(status);
+    parts.push(
+      t("checks:groupSummary.part", {
+        count,
+        label: t(`checks:groupSummary.${status}`, status),
+      }),
+    );
+  }
+  // Any status outside the known order (future wire values) still counts.
+  for (const [status, count] of Object.entries(counts)) {
+    if (seen.has(status) || count <= 0) continue;
+    parts.push(t("checks:groupSummary.part", { count, label: status }));
+  }
+  return parts.join(" · ");
+}
+
 function CheckRow({
   check,
   org,
@@ -362,30 +442,79 @@ function CheckGroupSection({
   escalationPolicyByUid: Map<string, EscalationPolicy>;
 }) {
   const { t } = useTranslation("checks");
-  const [collapsed, setCollapsed] = useState(false);
 
-  // Expand when searching
-  useEffect(() => {
-    if (search) setCollapsed(false);
-  }, [search]);
+  // Manual toggles win over the status-based default and persist per org,
+  // keyed by group uid (see readCollapsedGroups/writeCollapsedGroup above).
+  // `null` means "no manual choice yet" — fall back to the default.
+  const [manualOverride, setManualOverride] = useState<boolean | null>(() => {
+    const stored = readCollapsedGroups(org)[group.uid];
+    return stored === undefined ? null : stored;
+  });
+  // Groups whose rollup status is "up" start collapsed — anything else
+  // (down/degraded/warning/validating/created) starts expanded so the
+  // failure that brought the user here is immediately visible.
+  const defaultCollapsed = group.status === "up";
+  // Searching always force-expands (without touching the persisted choice)
+  // so matches are never hidden behind a collapsed section.
+  const collapsed = search ? false : (manualOverride ?? defaultCollapsed);
+
+  const toggleCollapsed = () => {
+    const next = !collapsed;
+    setManualOverride(next);
+    writeCollapsedGroup(org, group.uid, next);
+  };
 
   const escalationPolicy = group.escalationPolicyUid
     ? escalationPolicyByUid.get(group.escalationPolicyUid)
     : undefined;
+  const memberSummary = formatMemberSummary(group.memberStatusCounts, t);
 
   return (
     <div className="border rounded-lg" data-testid="group-section">
       <div
-        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/50"
-        onClick={() => setCollapsed(!collapsed)}
+        className="flex items-center justify-between gap-2 px-4 py-3 cursor-pointer hover:bg-muted/50 flex-wrap"
+        onClick={toggleCollapsed}
+        role="button"
+        tabIndex={0}
+        aria-expanded={!collapsed}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggleCollapsed();
+          }
+        }}
+        data-testid="group-header"
       >
-        <div className="flex items-center gap-2">
-          {collapsed ? (
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          ) : (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className="inline-flex shrink-0"
+                data-testid="group-collapse-toggle"
+              >
+                {collapsed ? (
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {collapsed ? t("menu.expandGroup") : t("menu.collapseGroup")}
+            </TooltipContent>
+          </Tooltip>
+          <span className="font-semibold truncate" data-testid="group-name">{group.name}</span>
+          <span data-testid="group-status-badge">
+            <StatusBadge status={group.status} />
+          </span>
+          {memberSummary && (
+            <span
+              className="text-xs text-muted-foreground whitespace-nowrap"
+              data-testid="group-member-summary"
+            >
+              {memberSummary}
+            </span>
           )}
-          <span className="font-semibold" data-testid="group-name">{group.name}</span>
           <Badge variant="secondary" className="text-xs">
             {group.checkCount}
           </Badge>
