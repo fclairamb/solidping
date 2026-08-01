@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -278,4 +279,43 @@ func TestConvertEndpointUnknownOrganization(t *testing.T) {
 	harness.router.ServeHTTP(rec, req)
 
 	r.Equal(http.StatusNotFound, rec.Code)
+}
+
+// TestConvertEndpointNeverLogsTheBetterStackToken captures everything written
+// to the default slog logger for the duration of a Better Stack conversion
+// (both the happy path and the 401 path) and asserts the credential appears
+// nowhere in it. The positive control guards the guard: if the capture were
+// wired up wrong the test would pass vacuously.
+//
+//nolint:paralleltest // swaps the process-wide slog default logger
+func TestConvertEndpointNeverLogsTheBetterStackToken(t *testing.T) {
+	r := require.New(t)
+
+	var buf bytes.Buffer
+
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	// Positive control: the capture really does see log output.
+	slog.Info("importer log capture control", "sentinel", "log-capture-works")
+	r.Contains(buf.String(), "log-capture-works")
+
+	srv := newBetterStackServer(t)
+	harness := newConvertHarness(t, srv.URL)
+	r.Equal(http.StatusOK, harness.post(t, "betterstack", false, betterStackBody(t, "")).Code)
+
+	// …and the failure path, which is the one that formats an error message.
+	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"errors":"unauthorized ` + req.Header.Get("Authorization") + `"}`))
+	}))
+	t.Cleanup(failing.Close)
+
+	failHarness := newConvertHarness(t, failing.URL)
+	r.Equal(http.StatusBadRequest, failHarness.post(t, "betterstack", true, betterStackBody(t, "")).Code)
+
+	r.NotContains(buf.String(), testToken)
+	r.NotContains(buf.String(), "Bearer ")
 }
