@@ -26,6 +26,7 @@ const (
 	ConnectionTypeWebPush    ConnectionType = "webpush"
 	ConnectionTypeKubernetes ConnectionType = "kubernetes"
 	ConnectionTypeTwilio     ConnectionType = "twilio"
+	ConnectionTypeMSTeams    ConnectionType = "msteams"
 )
 
 // Capabilities describes what roles an integration type can play. The two
@@ -44,7 +45,7 @@ type Capabilities struct {
 
 // CapabilitiesFor returns the capabilities of an integration connection type.
 // Every notification sink (slack, discord, webhook, email, googlechat,
-// mattermost, ntfy, opsgenie, pushover) is CanNotify; freebox is a data source
+// mattermost, msteams, ntfy, opsgenie, pushover) is CanNotify; freebox is a data source
 // (CanSource) and cannot receive notifications. The default branch
 // intentionally covers every current notification-sink type, so only data
 // sources need an explicit case.
@@ -202,6 +203,48 @@ func DiscordSettingsFromJSONMap(m JSONMap) (*DiscordSettings, error) {
 	}
 
 	return &ds, nil
+}
+
+// MSTeamsSettings represents Microsoft Teams-specific settings stored in the
+// Settings JSONB. WebhookURL is the Teams Workflow ("When a Teams webhook
+// request is received") URL — the legacy Office 365 Connector format is not
+// supported. Uses webhook_url (matching Discord, see DiscordSettings above)
+// end-to-end on both the frontend form and this Go struct tag; unlike
+// googlechat/mattermost, there is no key mismatch here by design.
+//
+//nolint:tagliatelle // JSON tag matches Discord's webhook field naming convention
+type MSTeamsSettings struct {
+	WebhookURL string `json:"webhook_url"`
+}
+
+// ToJSONMap converts MSTeamsSettings to JSONMap for storage.
+func (ms *MSTeamsSettings) ToJSONMap() (JSONMap, error) {
+	data, err := json.Marshal(ms)
+	if err != nil {
+		return nil, err
+	}
+
+	var m JSONMap
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+
+	return m, nil
+}
+
+// MSTeamsSettingsFromJSONMap parses MSTeamsSettings from a JSONMap.
+func MSTeamsSettingsFromJSONMap(m JSONMap) (*MSTeamsSettings, error) {
+	data, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+
+	var ms MSTeamsSettings
+	if err := json.Unmarshal(data, &ms); err != nil {
+		return nil, err
+	}
+
+	return &ms, nil
 }
 
 // Freebox pairing status values that live in FreeboxSettings.Status. They are
