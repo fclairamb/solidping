@@ -27,8 +27,10 @@ export const Route = createFileRoute(
 
 /**
  * Starter template offered when the page has no stylesheet yet. It is a
- * commented listing of the theming API — every custom property status0 reads —
- * so the editor itself is the documentation.
+ * commented listing of the theming API — every custom property status0 reads,
+ * plus the stable `sp-*` element hooks — so the editor itself is the
+ * documentation. Keep it in sync with
+ * web/docs/docs/features/status-pages.md ("Custom CSS").
  */
 const STARTER_TEMPLATE = `/* Status page theme — every rule below is optional.
    These are the CSS custom properties the public page reads.
@@ -67,6 +69,39 @@ const STARTER_TEMPLATE = `/* Status page theme — every rule below is optional.
   --card-foreground: #e2e8f0;
   --border: #24314a;
 }
+
+/* ---------------------------------------------------------------
+   Element hooks — stable class names on the public page:
+
+     .sp-logo        header logo (the <img> lives inside it)
+     .sp-page-name   status page name next to the logo
+     .sp-footer      footer container
+     .sp-powered-by  "Powered by SolidPing" link
+     .sp-version     version line
+   --------------------------------------------------------------- */
+
+/* Replace the logo with your own image (Chromium / Safari): */
+/*
+.sp-logo img {
+  content: url("https://cdn.example.com/logo.svg");
+}
+*/
+
+/* Same, works everywhere: hide the <img> and paint the wrapper. */
+/*
+.sp-logo img { display: none; }
+.sp-logo {
+  background: url("https://cdn.example.com/logo.svg") center / contain no-repeat;
+  width: 120px;
+  height: 32px;
+}
+*/
+
+/* Hide the version line (and, if you want, the SolidPing credit). */
+/*
+.sp-version { display: none; }
+.sp-powered-by { display: none; }
+*/
 
 /* Anything else is fair game too — plain CSS against the live page.
    @import is not allowed; external url() (fonts, images) is. */

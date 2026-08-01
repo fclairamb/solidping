@@ -135,6 +135,72 @@ Rules placed inside a `.dark { … }` block apply to visitors whose browser or O
 requests dark mode; rules in `:root { … }` apply to light mode. You are not
 limited to variables — any CSS you write is applied to the live page.
 
+### Element hooks
+
+Variables re-theme the page; the `sp-*` classes let you retarget individual
+elements — replace the logo, hide the version, white-label the footer. They are
+a **stable, supported API**: unlike the utility classes you may see in the
+generated markup, these will not change under you.
+
+| Class | Element |
+|-------|---------|
+| `sp-logo` | Header logo wrapper (the `<img>` sits inside it) |
+| `sp-page-name` | Status page name shown next to the logo |
+| `sp-footer` | Footer container |
+| `sp-powered-by` | "Powered by SolidPing" outbound link |
+| `sp-version` | Version line (`v1.2.3`) |
+
+#### Replacing the logo
+
+The logo is a plain `<img>` inside `.sp-logo`, and its size comes from CSS (not
+from an inline style), so both of these work without any upload:
+
+```css
+/* Simplest — swap the image the <img> paints (Chrome, Edge, Safari). */
+.sp-logo img {
+  content: url("https://cdn.example.com/logo.svg");
+}
+```
+
+```css
+/* Widest browser support — hide the <img>, paint the wrapper instead. */
+.sp-logo img {
+  display: none;
+}
+
+.sp-logo {
+  background: url("https://cdn.example.com/logo.svg") center / contain no-repeat;
+  width: 120px;
+  height: 32px;
+}
+```
+
+A non-square logo also just needs its own box:
+
+```css
+.sp-logo img {
+  content: url("https://cdn.example.com/wordmark.svg");
+  width: 140px;
+  height: 32px;
+}
+```
+
+The image must be reachable over HTTPS from your own host or CDN — `url()` is
+allowed, `@import` is not.
+
+#### Hiding the version and the credit
+
+```css
+.sp-version {
+  display: none;
+}
+
+/* Fully white-label footer */
+.sp-powered-by {
+  display: none;
+}
+```
+
 ### Example
 
 ```css
