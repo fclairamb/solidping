@@ -4308,7 +4308,8 @@ func (s *Service) GetCheckGroupStatusCounts(
 
 	counts := make(map[string]map[models.CheckStatus]int)
 
-	for _, r := range rows {
+	for i := range rows {
+		r := &rows[i]
 		if counts[r.CheckGroupUID] == nil {
 			counts[r.CheckGroupUID] = make(map[models.CheckStatus]int)
 		}
