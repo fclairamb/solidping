@@ -187,7 +187,7 @@ function formatMemberSummary(
     parts.push(
       t("checks:groupSummary.part", {
         count,
-        label: t(`checks:groupSummary.${status}`, status),
+        label: t(`checks:groupSummary.${status}`, { defaultValue: status }),
       }),
     );
   }
