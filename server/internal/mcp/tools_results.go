@@ -41,7 +41,7 @@ func listResultsDef() ToolDefinition {
 			"The response includes effectiveFilter so you can see exactly what " +
 			"filter actually ran.",
 		InputSchema: objectSchema(map[string]any{
-			"checkUid": stringProp(
+			propCheckUID: stringProp(
 				"Comma-separated check UIDs or slugs to filter by, e.g. \"api-prod,db-prod\".",
 			),
 			"checkType": stringProp(

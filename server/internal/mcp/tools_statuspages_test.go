@@ -106,7 +106,24 @@ func TestStatusPageRequiredArgs(t *testing.T) {
 			name:        "create_status_page_resource rejects missing args",
 			tool:        handler.toolCreateStatusPageResource,
 			args:        map[string]any{},
-			errContains: "pageIdentifier, sectionIdentifier, and checkUid are required",
+			errContains: "pageIdentifier and sectionIdentifier are required",
+		},
+		{
+			// A resource targets exactly one of a check or a check group
+			// (spec 2026-08-01-03); neither is as invalid as both.
+			name:        "create_status_page_resource rejects a missing target",
+			tool:        handler.toolCreateStatusPageResource,
+			args:        map[string]any{"pageIdentifier": "public", "sectionIdentifier": "core"},
+			errContains: "exactly one of checkUid or checkGroupUid is required",
+		},
+		{
+			name: "create_status_page_resource rejects both targets",
+			tool: handler.toolCreateStatusPageResource,
+			args: map[string]any{
+				"pageIdentifier": "public", "sectionIdentifier": "core",
+				propCheckUID: "api", propCheckGroupUID: "web-frontend",
+			},
+			errContains: "exactly one of checkUid or checkGroupUid is required",
 		},
 		{
 			name:        "update_status_page_resource rejects missing args",

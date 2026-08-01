@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, ChevronDown, X } from "lucide-react";
 
@@ -59,9 +59,12 @@ export function CheckGroupPicker({
     });
   }, [groups, excludeUids, query]);
 
-  useEffect(() => {
-    setActiveIndex(0);
-  }, [query, filtered.length]);
+  // The highlighted row is clamped at render rather than reset from an effect:
+  // the list can shrink under the cursor (a keystroke narrows it, or the groups
+  // query refetches), and resetting in an effect would re-render a second time
+  // for every keystroke. Typing also resets it directly in the change handler,
+  // which is where the state actually belongs.
+  const active = Math.min(activeIndex, Math.max(filtered.length - 1, 0));
 
   const triggerLabel =
     selectedLabel ??
@@ -119,7 +122,10 @@ export function CheckGroupPicker({
           <Input
             ref={inputRef}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setActiveIndex(0);
+            }}
             placeholder={t("statusPages:resources.searchGroups")}
             className="h-8"
             onKeyDown={(e) => {
@@ -129,9 +135,9 @@ export function CheckGroupPicker({
               } else if (e.key === "ArrowUp") {
                 e.preventDefault();
                 setActiveIndex((i) => Math.max(i - 1, 0));
-              } else if (e.key === "Enter" && filtered[activeIndex]) {
+              } else if (e.key === "Enter" && filtered[active]) {
                 e.preventDefault();
-                const g = filtered[activeIndex];
+                const g = filtered[active];
                 select(g.uid, g);
               } else if (e.key === "Escape") {
                 e.preventDefault();
@@ -154,7 +160,7 @@ export function CheckGroupPicker({
                 onMouseEnter={() => setActiveIndex(idx)}
                 className={cn(
                   "flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-left text-sm",
-                  idx === activeIndex && "bg-accent text-accent-foreground",
+                  idx === active && "bg-accent text-accent-foreground",
                 )}
                 data-testid={`check-group-picker-option-${g.slug}`}
               >
