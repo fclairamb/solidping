@@ -8707,7 +8707,7 @@ components:
     # Check group schemas
     CheckGroup:
       type: object
-      required: [uid, name, slug, sortOrder, checkCount, createdAt, updatedAt]
+      required: [uid, name, slug, sortOrder, checkCount, status, createdAt, updatedAt]
       properties:
         uid:
           type: string
@@ -8722,6 +8722,27 @@ components:
           type: integer
         checkCount:
           type: integer
+        status:
+          type: string
+          enum: [created, up, down, validating, degraded, warning]
+          description: >-
+            Derived, read-time rollup of the group's enabled member checks:
+            "down" if all considered members are down, "degraded" if some
+            (not all) are down, "warning" if none are down but at least one
+            is warning, "validating" if none are down/warning but at least
+            one is validating, "up" if at least one is up, otherwise
+            "created" (no considered members, or only just-created ones).
+            Never stored — recomputed on every read.
+        memberStatusCounts:
+          type: object
+          additionalProperties:
+            type: integer
+          description: >-
+            Count of enabled member checks per status (wire status name ->
+            count), omitting statuses with zero members.
+          example:
+            up: 3
+            down: 1
         escalationPolicyUid:
           type: string
           format: uuid

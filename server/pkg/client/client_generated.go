@@ -65,6 +65,16 @@ const (
 	CheckTypeTcp    CheckType = "tcp"
 )
 
+// Defines values for CheckGroupStatus.
+const (
+	CheckGroupStatusCreated    CheckGroupStatus = "created"
+	CheckGroupStatusDegraded   CheckGroupStatus = "degraded"
+	CheckGroupStatusDown       CheckGroupStatus = "down"
+	CheckGroupStatusUp         CheckGroupStatus = "up"
+	CheckGroupStatusValidating CheckGroupStatus = "validating"
+	CheckGroupStatusWarning    CheckGroupStatus = "warning"
+)
+
 // Defines values for CheckJobViewState.
 const (
 	CheckJobViewStateCrashLooping CheckJobViewState = "crashLooping"
@@ -637,12 +647,21 @@ type CheckGroup struct {
 
 	// EscalationPolicyUid Group-level escalation policy that member checks inherit when they have no policy of their own. Null = no group policy.
 	EscalationPolicyUid *openapi_types.UUID `json:"escalationPolicyUid"`
-	Name                string              `json:"name"`
-	Slug                string              `json:"slug"`
-	SortOrder           int                 `json:"sortOrder"`
-	Uid                 openapi_types.UUID  `json:"uid"`
-	UpdatedAt           time.Time           `json:"updatedAt"`
+
+	// MemberStatusCounts Count of enabled member checks per status (wire status name -> count), omitting statuses with zero members.
+	MemberStatusCounts *map[string]int `json:"memberStatusCounts,omitempty"`
+	Name               string          `json:"name"`
+	Slug               string          `json:"slug"`
+	SortOrder          int             `json:"sortOrder"`
+
+	// Status Derived, read-time rollup of the group's enabled member checks: "down" if all considered members are down, "degraded" if some (not all) are down, "warning" if none are down but at least one is warning, "validating" if none are down/warning but at least one is validating, "up" if at least one is up, otherwise "created" (no considered members, or only just-created ones). Never stored — recomputed on every read.
+	Status    CheckGroupStatus   `json:"status"`
+	Uid       openapi_types.UUID `json:"uid"`
+	UpdatedAt time.Time          `json:"updatedAt"`
 }
+
+// CheckGroupStatus Derived, read-time rollup of the group's enabled member checks: "down" if all considered members are down, "degraded" if some (not all) are down, "warning" if none are down but at least one is warning, "validating" if none are down/warning but at least one is validating, "up" if at least one is up, otherwise "created" (no considered members, or only just-created ones). Never stored — recomputed on every read.
+type CheckGroupStatus string
 
 // CheckGroupListResponse defines model for CheckGroupListResponse.
 type CheckGroupListResponse struct {
