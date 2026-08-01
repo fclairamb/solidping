@@ -12,6 +12,8 @@ import {
   Bot,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Copy,
   Eye,
   Info,
@@ -999,6 +1001,42 @@ function ButtonsBadgesSection() {
             </>
           }
           importLine={`import { StatusDot } from "@/components/shared/status-dot";\n\n<StatusDot\n  status={check.status ?? check.lastResult?.status}\n  enabled={check.enabled}\n  title={check.enabled === false ? t("checks:detail.disabled") : undefined}\n/>`}
+        />
+
+        <h3 className="text-sm font-medium">Check group status header</h3>
+        <p className="text-sm text-muted-foreground">
+          The checks index (
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">checks.index.tsx</code>
+          ) buckets checks by <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">checkGroupUid</code> into
+          collapsible sections. The header always reuses the same{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">StatusBadge</code> as check rows — no
+          new colors — next to a compact member summary derived from the group's{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">memberStatusCounts</code>: the "N/N up"
+          form when every counted member is up (the collapse-eligible case), otherwise
+          severity-ordered parts like "1 down · 3 up". A group defaults to collapsed only
+          when its rollup status is <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">up</code>; any
+          manual toggle overrides the default and persists per org in localStorage.
+        </p>
+        <ExampleRow
+          preview={
+            <>
+              <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                <span className="font-semibold">prod-eu-west</span>
+                <StatusBadge status="up" />
+                <span className="text-xs text-muted-foreground">4/4 up</span>
+                <Badge variant="secondary" className="text-xs">4</Badge>
+              </div>
+              <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                <span className="font-semibold">prod-us-east</span>
+                <StatusBadge status="degraded" />
+                <span className="text-xs text-muted-foreground">1 down · 3 up</span>
+                <Badge variant="secondary" className="text-xs">4</Badge>
+              </div>
+            </>
+          }
+          importLine={`import { StatusBadge } from "@/components/shared/status-badge";\n\n<StatusBadge status={group.status} />\n<span className="text-xs text-muted-foreground">{formatMemberSummary(group.memberStatusCounts, t)}</span>`}
         />
 
         <h3 className="text-sm font-medium">Live connection status dot</h3>
