@@ -27,6 +27,11 @@ const (
 	ConnectionTypeKubernetes ConnectionType = "kubernetes"
 	ConnectionTypeTwilio     ConnectionType = "twilio"
 	ConnectionTypeMSTeams    ConnectionType = "msteams"
+	// ConnectionTypeMSTeamsBot is the two-way Microsoft Teams bot integration
+	// (Azure Bot / Bot Framework). It is deliberately distinct from
+	// ConnectionTypeMSTeams, which stays as the zero-infra, one-way Teams
+	// Workflow webhook: the two coexist and an org may use either or both.
+	ConnectionTypeMSTeamsBot ConnectionType = "msteams-bot"
 )
 
 // Capabilities describes what roles an integration type can play. The two
@@ -245,6 +250,98 @@ func MSTeamsSettingsFromJSONMap(m JSONMap) (*MSTeamsSettings, error) {
 	}
 
 	return &ms, nil
+}
+
+// MSTeamsDestination is a single captured Bot Framework conversation
+// reference — the Teams equivalent of a Slack channel in the destinations
+// picker. `ID` is the Bot Framework conversation id (for a channel-scoped
+// install this is the channel's thread id), `ServiceURL` is the regional Bot
+// Connector base URL that conversation must be addressed through, and
+// `TeamID` / `TeamName` carry the owning team so the dashboard can group
+// channels per team.
+//
+//nolint:tagliatelle // snake_case matches the settings JSONB convention (see SlackSettings)
+type MSTeamsDestination struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	TeamID     string `json:"team_id,omitempty"`
+	TeamName   string `json:"team_name,omitempty"`
+	ServiceURL string `json:"service_url,omitempty"`
+	// Type is "channel" today. Personal-scope DMs are phase 2 and would add
+	// "personal" here without changing the shape.
+	Type string `json:"type,omitempty"`
+}
+
+// MSTeamsBotSettings represents the settings JSONB of a `msteams-bot`
+// connection. It is the Teams analogue of SlackSettings: TenantID replaces
+// TeamID as the workspace identity, and Destinations holds the conversation
+// references captured when the bot was added to a team/channel (Teams has no
+// "list all channels" API for a bot, so destinations are accumulated from
+// install/conversationUpdate activities rather than fetched on demand).
+//
+// No credential lives here: the Entra app id/secret are instance-level system
+// config (SaaS: SolidPing's multi-tenant app; self-hosted: the operator's own),
+// so a stolen settings blob grants nothing. `app_secret` is still registered in
+// credentials.ConnectionSecretFields as defense in depth for any future
+// per-connection override.
+//
+//nolint:tagliatelle // snake_case matches the settings JSONB convention (see SlackSettings)
+type MSTeamsBotSettings struct {
+	TenantID   string `json:"tenant_id"`
+	TenantName string `json:"tenant_name,omitempty"`
+	// BotID is the bot's own Bot Framework user id inside this tenant
+	// (`28:<app-id>`), used to recognise "the member added is us".
+	BotID string `json:"bot_id,omitempty"`
+	// AppID records which Entra app performed the install, so a credential
+	// rotation that changes the app id is visible rather than silent.
+	AppID string `json:"app_id,omitempty"`
+	// ServiceURL is the tenant's regional Bot Connector base URL, captured at
+	// install and refreshed on every inbound activity.
+	ServiceURL string `json:"service_url,omitempty"`
+	// ChannelID / ChannelName / TeamID are the default notification
+	// destination — the Teams counterpart of SlackSettings.ChannelID.
+	ChannelID   string `json:"channel_id,omitempty"`
+	ChannelName string `json:"channel_name,omitempty"`
+	TeamID      string `json:"team_id,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
+
+	InstalledByUserID string `json:"installed_by_user_id,omitempty"`
+	// UninstalledAt is set (RFC3339) when the tenant removes the app. The row
+	// is kept so the dashboard can render "uninstalled — reinstall to resume"
+	// instead of the integration silently vanishing.
+	UninstalledAt string `json:"uninstalled_at,omitempty"`
+
+	Destinations []MSTeamsDestination `json:"destinations,omitempty"`
+}
+
+// ToJSONMap converts MSTeamsBotSettings to JSONMap for storage.
+func (s *MSTeamsBotSettings) ToJSONMap() (JSONMap, error) {
+	data, err := json.Marshal(s)
+	if err != nil {
+		return nil, err
+	}
+
+	var m JSONMap
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+
+	return m, nil
+}
+
+// MSTeamsBotSettingsFromJSONMap parses MSTeamsBotSettings from a JSONMap.
+func MSTeamsBotSettingsFromJSONMap(m JSONMap) (*MSTeamsBotSettings, error) {
+	data, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+
+	var s MSTeamsBotSettings
+	if err := json.Unmarshal(data, &s); err != nil {
+		return nil, err
+	}
+
+	return &s, nil
 }
 
 // Freebox pairing status values that live in FreeboxSettings.Status. They are

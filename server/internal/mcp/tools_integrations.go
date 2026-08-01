@@ -14,8 +14,9 @@ func listIntegrationsDef() ToolDefinition {
 			"before attaching them to a check.",
 		InputSchema: objectSchema(map[string]any{
 			schemaKeyType: stringProp(
-				"Filter by integration type. Allowed: slack, webhook, email, msteams. " +
-					"Example: \"slack\".",
+				"Filter by integration type. Allowed: slack, webhook, email, msteams, " +
+					"msteams-bot. Example: \"slack\". (\"msteams\" is the one-way Teams " +
+					"Workflow webhook; \"msteams-bot\" is the two-way Teams bot.)",
 			),
 		}, nil),
 	}
@@ -44,7 +45,8 @@ func createIntegrationDef() ToolDefinition {
 		InputSchema: objectSchema(map[string]any{
 			schemaKeyType: stringProp(
 				"Integration type. Allowed: webhook, email, msteams. Example: \"webhook\". " +
-					"(\"slack\" is rejected here — see settings below.)",
+					"(\"slack\" is rejected here — see settings below. \"msteams-bot\" likewise: " +
+					"it is created by installing the Teams app, not through this tool.)",
 			),
 			schemaKeyName:    stringProp("Display name shown in the UI, e.g. \"Engineering Slack\"."),
 			schemaKeyEnabled: boolProp("Whether the integration is active. Default true."),

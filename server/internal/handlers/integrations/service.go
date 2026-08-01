@@ -448,6 +448,7 @@ var validConnectionTypes = map[models.ConnectionType]bool{
 	models.ConnectionTypeGoogleChat: true,
 	models.ConnectionTypeMattermost: true,
 	models.ConnectionTypeMSTeams:    true,
+	models.ConnectionTypeMSTeamsBot: true,
 	models.ConnectionTypeNtfy:       true,
 	models.ConnectionTypeOpsgenie:   true,
 	models.ConnectionTypePushover:   true,

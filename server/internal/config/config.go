@@ -259,6 +259,7 @@ type Config struct {
 	Encryption   EncryptionConfig     `koanf:"encryption"`
 	Email        EmailConfig          `koanf:"email"`
 	Slack        SlackConfig          `koanf:"slack"`
+	MSTeams      MSTeamsConfig        `koanf:"msteams"`
 	Google       GoogleOAuthConfig    `koanf:"google"`
 	GitHub       GitHubOAuthConfig    `koanf:"github"`
 	Microsoft    MicrosoftOAuthConfig `koanf:"microsoft"`
@@ -573,6 +574,28 @@ type SlackConfig struct {
 	// configuration level — Slack delivers to exactly one transport.
 	SocketModeEnabled bool   `koanf:"socket_mode_enabled"`
 	AppToken          string `koanf:"app_token"` // xapp-... App-Level Token used for Socket Mode connection
+}
+
+// MSTeamsConfig contains the Microsoft Teams **bot** (Azure Bot / Bot
+// Framework) integration configuration — the two-way `msteams-bot` connection
+// type. It has nothing to do with the one-way `msteams` Workflow webhook,
+// which needs no instance-level credential at all.
+//
+// Mirrors SlackConfig. Default Enabled:false — unlike Slack Socket Mode, Bot
+// Framework has no outbound-dialing transport, so Microsoft must be able to
+// reach this instance's messaging endpoint over public HTTPS. A self-hosted
+// instance behind a firewall cannot use the bot, which is why it stays off
+// until an operator explicitly turns it on.
+//
+// SaaS: one multi-tenant Entra app owned by SolidPing; TenantID stays empty so
+// any installing tenant is accepted and the per-org connection is keyed by the
+// tenant id captured at install. Self-hosted single-tenant: set TenantID to
+// pin the allow-list to the operator's own tenant.
+type MSTeamsConfig struct {
+	Enabled   bool   `koanf:"enabled"`
+	AppID     string `koanf:"app_id"`
+	AppSecret string `koanf:"app_secret"`
+	TenantID  string `koanf:"tenant_id"`
 }
 
 // JobWorkerConfig contains job worker configuration.
@@ -932,6 +955,7 @@ func Load() (*Config, error) {
 		GitLab:    GitLabOAuthConfig{Enabled: false},
 		Microsoft: MicrosoftOAuthConfig{Enabled: false},
 		Slack:     SlackConfig{Enabled: false},
+		MSTeams:   MSTeamsConfig{Enabled: false},
 		Discord:   DiscordOAuthConfig{Enabled: false},
 		OIDC:      OIDCOAuthConfig{Enabled: false},
 		SAML:      SAMLConfig{Enabled: false},
