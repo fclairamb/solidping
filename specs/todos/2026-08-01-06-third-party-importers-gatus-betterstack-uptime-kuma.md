@@ -155,3 +155,78 @@ migration searches.
 - **Unmappable source items never block the import**: import what maps,
   surface the rest as warnings (consistent with existing per-check error
   handling).
+
+## Implementation Plan
+
+### Package placement (import-cycle note)
+
+`ConversionResult.Document` is a `*checks.ExportDocument`, so the converter
+package **imports** `handlers/checks` and therefore `handlers/checks` can never
+import it. The convert **handler** lives in the same new package
+(`server/internal/handlers/checks/importers/`) since it needs both the
+converters and `*checks.Service`; routes are wired in `internal/app/server.go`
+next to the existing export/import/apply routes, under the same admin group.
+
+### Steps (one commit each)
+
+1. **Shared framework** — `importers/converter.go`:
+   `Converter` interface (`Source()`, `Convert([]byte) (*ConversionResult, error)`),
+   `ConversionResult{Document, Warnings}`, `ConversionWarning{Item, Field, Message}`,
+   a source registry, and shared helpers: `slugify` (mirrors
+   `checks.sanitizeSlug` rules: `^[a-z][a-z0-9-]{2,49}$`), a slug deduper with
+   numeric suffixes, seconds→duration-string, and a warning collector.
+   Package doc + `mapping.md` table.
+2. **Gatus converter** — `importers/gatus.go`. YAML `endpoints[]`. Type from URL
+   scheme (`http(s)`→http, `tcp`/`tls`/`starttls`→tcp, `icmp`/`ping`→icmp,
+   `ssh`→ssh, `udp`/`sctp`→udp, `ws(s)`/`websocket`→websocket, `dns:` block→dns).
+   Conditions → http config (`[STATUS] ==` → `expected_status`,
+   `[BODY] ==` → `body_expect`, `pat(...)` → `body_pattern`,
+   `[BODY].x <op> v` → `json_path_assertions`, `has(...)` → `exists`,
+   `[CERTIFICATE_EXPIRATION]` → an extra `ssl` check,
+   `[DOMAIN_EXPIRATION]` → an extra `domain` check). `interval`→period,
+   `group`→group, `enabled`→enabled, `client.timeout`→timeout. Unmappable
+   conditions (`[RESPONSE_TIME]`, `[IP]`, …), `alerts`, `external-endpoints`,
+   `client.insecure` → warnings, check still imported.
+3. **Uptime Kuma converter** — `importers/uptimekuma.go`. Backup JSON
+   `monitorList`. Types: http / keyword (+`body_expect`, invert→`body_reject`) /
+   json-query (`json_path_assertions`) / port→tcp / ping→icmp / dns / docker /
+   grpc-keyword→grpc / mqtt / postgres→postgresql / mysql / redis / sqlserver→mssql /
+   mongodb / push→heartbeat / steam→a2s / real-browser→browser; `group` monitors
+   become check groups via `parent`. `interval`→period,
+   `maxretries`×`retryInterval`→`confirmationPeriodSeconds` (the spec's
+   `incidentThreshold` was renamed to `confirmationPeriodSeconds` in the current
+   `ExportCheck`), `active`→enabled, `accepted_statuscodes`→`expected_status_codes`.
+   Notifications, `ignoreTls`, unsupported types (gamedig, radius,
+   tailscale-ping) → warnings. Kuma 2.x has no JSON backup → documented.
+4. **Better Stack converter + API client** — `importers/betterstack.go`.
+   Body `{"token": "...", "baseUrl": "..."}`; the token is read into a local
+   variable, used only for the `Authorization` header, and never stored,
+   logged, or echoed in an error. Paginated `GET /api/v2/monitors` **and**
+   `GET /api/v2/heartbeats` (follow `pagination.next`, bounded page count).
+   `monitor_type`→type, `check_frequency`→period, `request_headers`→headers,
+   `required_keyword`→`body_expect`/`body_reject`, `expected_status_codes`,
+   `paused`→`enabled:false`. `auth_username`/`auth_password`,
+   `verify_ssl:false`, `follow_redirects:false` → warnings (credentials are
+   deliberately NOT imported). Heartbeats → `heartbeat` checks
+   (`period`→period, `grace`→`confirmationPeriodSeconds`) plus a warning that
+   the push URLs change and cron jobs must be repointed.
+5. **Endpoint wiring** — `importers/handler.go`:
+   `POST /api/v1/orgs/:org/checks/import/convert?source=…&dryRun=…`. Converts,
+   then feeds the resulting document straight into the existing
+   `checks.Service.ApplyChecks` (Prune off). `doc.Organization` is set to the
+   source name so the managed-label scope is per-source and re-imports are
+   idempotent. Response = the apply/dry-run shape plus `source`, `converted`
+   and a `warnings` array (apply's own string warnings are folded in).
+   Registered on the existing admin-only `orgChecksAdmin` group.
+6. **dash0 UI** — source picker on the checks list Import flow (SolidPing
+   JSON/YAML = current behavior, plus the 3 sources), file upload + textarea
+   paste for Gatus/Kuma, a token field for Better Stack with "not stored" copy,
+   feeding the **existing** preview dialog which now also renders conversion
+   warnings. i18n keys in all four locales. Design-reference primitives only.
+7. **Docs** — `web/docs/docs/features/migrate-from-{gatus,better-stack,uptime-kuma}.md`
+   with where to find the export/token and what does not map.
+8. **Tests** — golden-file fixtures per source under `importers/testdata/`
+   (`-update` flag to regenerate), one endpoint integration test per source
+   (convert → dryRun → apply → checks exist → re-import idempotent),
+   Better Stack pagination / 401 / network-failure / token-never-leaked tests,
+   plus a Playwright E2E for the source picker → paste → preview → apply flow.
