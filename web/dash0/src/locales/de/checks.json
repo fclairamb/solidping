@@ -22,6 +22,16 @@
     "degraded": "Beeinträchtigt",
     "unknown": "Unbekannt"
   },
+  "groupSummary": {
+    "allUp": "{{count}}/{{count}} aktiv",
+    "part": "{{count}} {{label}}",
+    "up": "aktiv",
+    "down": "ausgefallen",
+    "warning": "Warnung",
+    "degraded": "beeinträchtigt",
+    "validating": "wird geprüft",
+    "created": "ausstehend"
+  },
   "table": {
     "name": "Name",
     "type": "Typ",
@@ -37,7 +47,9 @@
     "delete": "Löschen",
     "moveUp": "Nach oben",
     "moveDown": "Nach unten",
-    "deleteGroup": "Gruppe löschen"
+    "deleteGroup": "Gruppe löschen",
+    "expandGroup": "Gruppe erweitern",
+    "collapseGroup": "Gruppe einklappen"
   },
   "dialog": {
     "deleteTitle": "Prüfung löschen",

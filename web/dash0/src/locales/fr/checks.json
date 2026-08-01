@@ -22,6 +22,16 @@
     "degraded": "Dégradé",
     "unknown": "Inconnu"
   },
+  "groupSummary": {
+    "allUp": "{{count}}/{{count}} opérationnels",
+    "part": "{{count}} {{label}}",
+    "up": "opérationnels",
+    "down": "en panne",
+    "warning": "avertissement",
+    "degraded": "dégradés",
+    "validating": "en validation",
+    "created": "en attente"
+  },
   "table": {
     "name": "Nom",
     "type": "Type",
@@ -37,7 +47,9 @@
     "delete": "Supprimer",
     "moveUp": "Monter",
     "moveDown": "Descendre",
-    "deleteGroup": "Supprimer le groupe"
+    "deleteGroup": "Supprimer le groupe",
+    "expandGroup": "Déplier le groupe",
+    "collapseGroup": "Replier le groupe"
   },
   "dialog": {
     "deleteTitle": "Supprimer le contrôle",

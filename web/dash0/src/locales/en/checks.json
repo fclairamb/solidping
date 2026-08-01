@@ -22,6 +22,16 @@
     "degraded": "Degraded",
     "unknown": "Unknown"
   },
+  "groupSummary": {
+    "allUp": "{{count}}/{{count}} up",
+    "part": "{{count}} {{label}}",
+    "up": "up",
+    "down": "down",
+    "warning": "warning",
+    "degraded": "degraded",
+    "validating": "validating",
+    "created": "pending"
+  },
   "table": {
     "name": "Name",
     "type": "Type",
@@ -37,7 +47,9 @@
     "delete": "Delete",
     "moveUp": "Move Up",
     "moveDown": "Move Down",
-    "deleteGroup": "Delete Group"
+    "deleteGroup": "Delete Group",
+    "expandGroup": "Expand group",
+    "collapseGroup": "Collapse group"
   },
   "dialog": {
     "deleteTitle": "Delete Check",

@@ -22,6 +22,16 @@
     "degraded": "Degradado",
     "unknown": "Desconocido"
   },
+  "groupSummary": {
+    "allUp": "{{count}}/{{count}} activos",
+    "part": "{{count}} {{label}}",
+    "up": "activos",
+    "down": "caídos",
+    "warning": "advertencia",
+    "degraded": "degradados",
+    "validating": "validando",
+    "created": "pendientes"
+  },
   "table": {
     "name": "Nombre",
     "type": "Tipo",
@@ -37,7 +47,9 @@
     "delete": "Eliminar",
     "moveUp": "Mover arriba",
     "moveDown": "Mover abajo",
-    "deleteGroup": "Eliminar grupo"
+    "deleteGroup": "Eliminar grupo",
+    "expandGroup": "Expandir grupo",
+    "collapseGroup": "Contraer grupo"
   },
   "dialog": {
     "deleteTitle": "Eliminar comprobación",
