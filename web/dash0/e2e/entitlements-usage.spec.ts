@@ -48,7 +48,7 @@ test.describe("Entitlements usage", () => {
     await resetEntitlements(authenticatedPage, token);
   });
 
-  test("usage page renders four limit/usage rows", async ({
+  test("usage page renders five limit/usage rows", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -59,18 +59,47 @@ test.describe("Entitlements usage", () => {
     await page.goto("orgs/test/organization/usage");
     await page.waitForLoadState("networkidle");
 
-    // Heading + the four rows (Checks, Checks per minute, Users, Private
-    // location agents).
+    // Heading + the five rows (Checks, Checks per minute, Users, Private
+    // location agents, Custom domains).
     await expect(
       page.getByRole("heading", { name: /usage/i }),
     ).toBeVisible();
-    await expect(page.getByTestId(/^usage-row-/)).toHaveCount(4);
+    await expect(page.getByTestId(/^usage-row-/)).toHaveCount(5);
     await expect(
       page.getByTestId("usage-row-Private location agents"),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("usage-row-Custom domains"),
     ).toBeVisible();
 
     // With null limits, each row shows the "Unlimited" label.
     await expect(page.getByText(/unlimited/i).first()).toBeVisible();
+  });
+
+  test("a maxCustomDomains cap of 0 renders as 0 / 0, not Unlimited", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    // Free-tier semantics: the cap is 0, not absent — it must render as a
+    // real "0 / 0" saturated row, never fall through to the unlimited label.
+    const resp = await page.request.patch(
+      `${API_BASE}/api/v1/orgs/test/entitlements`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { limits: { maxCustomDomains: 0 } },
+      },
+    );
+    expect(resp.ok()).toBeTruthy();
+
+    await page.goto("orgs/test/organization/usage");
+    await page.waitForLoadState("networkidle");
+
+    const row = page.getByTestId("usage-row-Custom domains");
+    await expect(row).toBeVisible();
+    await expect(row).toContainText("0 / 0");
+    await expect(row).not.toContainText(/unlimited/i);
   });
 
   test("creating a check over the maxChecks cap returns 402 QUOTA_EXCEEDED", async ({
