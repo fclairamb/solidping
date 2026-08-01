@@ -40,7 +40,11 @@ export interface ResourceAvailabilityData {
 
 export interface StatusPageResource {
   uid: string;
-  checkUid: string;
+  // Exactly one of checkUid / checkGroupUid is set. A group resource renders as
+  // ONE component here — same shape as a check resource (name, status,
+  // availability series, maintenance flag) — and never exposes its members.
+  checkUid?: string;
+  checkGroupUid?: string;
   publicName?: string;
   explanation?: string;
   position: number;
