@@ -233,7 +233,7 @@
     {
       "item": "unsupported transport",
       "field": "url",
-      "message": "endpoint skipped: url scheme \"sctp\" has no SolidPing check type"
+      "message": "endpoint skipped: url scheme has no SolidPing check type: \"sctp\""
     },
     {
       "item": "back-end-ssl",

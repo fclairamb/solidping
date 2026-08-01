@@ -36,6 +36,26 @@ const (
 	SourceUptimeKuma = "uptime-kuma"
 )
 
+// Config keys shared by several converters. Extracted so the same literal is
+// not repeated across the three source mappings.
+const (
+	cfgKeyHost    = "host"
+	cfgKeyPort    = "port"
+	cfgKeyURL     = "url"
+	cfgKeyTimeout = "timeout"
+)
+
+// Source-tool type/scheme tokens that several converters share.
+const (
+	srcTCP       = "tcp"
+	srcPing      = "ping"
+	srcKeyword   = "keyword"
+	srcMongoDB   = "mongodb"
+	srcPortType  = "port"
+	srcRedis     = "redis"
+	srcSQLServer = "sqlserver"
+)
+
 // ErrUnknownSource is returned when the requested source has no converter.
 var ErrUnknownSource = errors.New("unknown import source")
 
@@ -77,8 +97,8 @@ type warnings struct {
 	list []ConversionWarning
 }
 
-// add records an item-scoped warning.
-func (w *warnings) add(item, field, format string, args ...any) {
+// addf records an item-scoped warning.
+func (w *warnings) addf(item, field, format string, args ...any) {
 	w.list = append(w.list, ConversionWarning{
 		Item:    item,
 		Field:   field,
@@ -86,9 +106,9 @@ func (w *warnings) add(item, field, format string, args ...any) {
 	})
 }
 
-// addDoc records a document-level warning (no source item).
-func (w *warnings) addDoc(format string, args ...any) {
-	w.add("", "", format, args...)
+// addDocf records a document-level warning (no source item).
+func (w *warnings) addDocf(format string, args ...any) {
+	w.addf("", "", format, args...)
 }
 
 // result returns the accumulated warnings, never nil, so the JSON response
@@ -196,20 +216,20 @@ func secondsToPeriod(seconds int) string {
 
 // durationToPeriod renders a duration in the compact form the export format
 // uses. time.Duration.String() would produce "1m0s"; this trims the noise.
-func durationToPeriod(d time.Duration) string {
-	if d <= 0 {
+func durationToPeriod(duration time.Duration) string {
+	if duration <= 0 {
 		return ""
 	}
 
 	switch {
-	case d%time.Hour == 0:
-		return strconv.FormatInt(int64(d/time.Hour), 10) + "h"
-	case d%time.Minute == 0:
-		return strconv.FormatInt(int64(d/time.Minute), 10) + "m"
-	case d%time.Second == 0:
-		return strconv.FormatInt(int64(d/time.Second), 10) + "s"
+	case duration%time.Hour == 0:
+		return strconv.FormatInt(int64(duration/time.Hour), 10) + "h"
+	case duration%time.Minute == 0:
+		return strconv.FormatInt(int64(duration/time.Minute), 10) + "m"
+	case duration%time.Second == 0:
+		return strconv.FormatInt(int64(duration/time.Second), 10) + "s"
 	default:
-		return d.String()
+		return duration.String()
 	}
 }
 
@@ -261,7 +281,7 @@ func normalizeChecks(doc *checks.ExportDocument, warn *warnings) {
 			replacement = minPeriod
 		}
 
-		warn.add(check.Name, "period",
+		warn.addf(check.Name, "period",
 			"period %q is below the minimum for %s checks; raised to %s",
 			check.Period, check.Type, durationToPeriod(replacement))
 
@@ -271,7 +291,7 @@ func normalizeChecks(doc *checks.ExportDocument, warn *warnings) {
 
 // assertionConfig renders a JSONPath assertion tree as the plain map the http
 // checker's config validation expects (it rejects a typed struct value).
-func assertionConfig(node checkhttp.AssertionNode) map[string]any {
+func assertionConfig(node *checkhttp.AssertionNode) map[string]any {
 	encoded, err := json.Marshal(node)
 	if err != nil {
 		return nil

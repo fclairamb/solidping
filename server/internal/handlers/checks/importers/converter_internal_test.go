@@ -69,8 +69,8 @@ func TestSecondsToPeriod(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	r.Equal("", secondsToPeriod(0))
-	r.Equal("", secondsToPeriod(-5))
+	r.Empty(secondsToPeriod(0))
+	r.Empty(secondsToPeriod(-5))
 	r.Equal("30s", secondsToPeriod(30))
 	r.Equal("5m", secondsToPeriod(300))
 	r.Equal("1h", secondsToPeriod(3600))
@@ -81,7 +81,7 @@ func TestDurationToPeriod(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	r.Equal("", durationToPeriod(0))
+	r.Empty(durationToPeriod(0))
 	r.Equal("45s", durationToPeriod(45*time.Second))
 	r.Equal("2m", durationToPeriod(2*time.Minute))
 	r.Equal("3h", durationToPeriod(3*time.Hour))

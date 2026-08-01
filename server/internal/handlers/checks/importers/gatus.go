@@ -1,6 +1,7 @@
 package importers
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -27,6 +28,8 @@ type GatusConverter struct{}
 func (c *GatusConverter) Source() string { return SourceGatus }
 
 // gatusConfig is the subset of a Gatus config file we read.
+//
+//nolint:tagliatelle // field names are Gatus's kebab-case, not ours
 type gatusConfig struct {
 	Endpoints         []gatusEndpoint `yaml:"endpoints"`
 	ExternalEndpoints []struct {
@@ -36,6 +39,8 @@ type gatusConfig struct {
 }
 
 // gatusEndpoint mirrors one entry of the Gatus `endpoints:` list.
+//
+//nolint:tagliatelle // field names are Gatus's kebab-case, not ours
 type gatusEndpoint struct {
 	Enabled    *bool             `yaml:"enabled"`
 	Name       string            `yaml:"name"`
@@ -92,6 +97,9 @@ const (
 	gatusDefaultHTTPMethod  = "GET"
 	gatusDefaultIntervalStr = "60s"
 	hoursPerDay             = 24
+	// maxExtraChecksPerEndpoint is the number of extra checks a single endpoint
+	// can spawn (an ssl check and a domain check).
+	maxExtraChecksPerEndpoint = 2
 )
 
 // Convert implements Converter. Parse failures on the document as a whole are
@@ -112,7 +120,7 @@ func (c *GatusConverter) Convert(input []byte) (*ConversionResult, error) {
 	slugs := newSlugSet()
 
 	if len(cfg.ExternalEndpoints) > 0 {
-		warn.addDoc("%d external-endpoint(s) were not imported: Gatus push endpoints have no "+
+		warn.addDocf("%d external-endpoint(s) were not imported: Gatus push endpoints have no "+
 			"direct equivalent — recreate them as SolidPing heartbeat checks",
 			len(cfg.ExternalEndpoints))
 	}
@@ -135,18 +143,18 @@ func (c *GatusConverter) Convert(input []byte) (*ConversionResult, error) {
 // endpoint can yield extra checks when it carries certificate/domain expiration
 // conditions, which SolidPing models as dedicated ssl/domain checks.
 //
-//nolint:cyclop,funlen // one linear pass over an endpoint's fields
+//nolint:cyclop,funlen,exhaustive // one linear pass; the default arm rejects unmapped types
 func (c *GatusConverter) convertEndpoint(
-	ep *gatusEndpoint, slugs *slugSet, warn *warnings,
+	endpoint *gatusEndpoint, slugs *slugSet, warn *warnings,
 ) []checks.ExportCheck {
-	name := ep.Name
+	name := endpoint.Name
 	if name == "" {
-		name = ep.URL
+		name = endpoint.URL
 	}
 
-	checkType, target, err := gatusCheckType(ep)
+	checkType, target, err := gatusCheckType(endpoint)
 	if err != nil {
-		warn.add(name, "url", "endpoint skipped: %s", err.Error())
+		warn.addf(name, "url", "endpoint skipped: %s", err.Error())
 
 		return nil
 	}
@@ -155,66 +163,67 @@ func (c *GatusConverter) convertEndpoint(
 		Name:    name,
 		Slug:    slugs.unique(name),
 		Type:    string(checkType),
-		Group:   ep.Group,
-		Enabled: ep.Enabled == nil || *ep.Enabled,
-		Period:  gatusInterval(ep, name, warn),
+		Group:   endpoint.Group,
+		Enabled: endpoint.Enabled == nil || *endpoint.Enabled,
+		Period:  gatusInterval(endpoint, name, warn),
 		Config:  map[string]any{},
 	}
 
-	timeout := gatusClientTimeout(ep, name, warn)
+	timeout := gatusClientTimeout(endpoint, name, warn)
 
 	switch checkType {
 	case checkerdef.CheckTypeHTTP:
-		base.Config = gatusHTTPConfig(ep, timeout)
+		base.Config = gatusHTTPConfig(endpoint, timeout)
 	case checkerdef.CheckTypeDNS:
-		base.Config = gatusDNSConfig(ep, target, timeout)
+		base.Config = gatusDNSConfig(endpoint, target, timeout)
 	case checkerdef.CheckTypeTCP:
-		base.Config = map[string]any{"host": target.host, "port": target.port}
+		base.Config = map[string]any{cfgKeyHost: target.host, cfgKeyPort: target.port}
 		if target.tls {
 			base.Config["tls"] = true
 		}
 	case checkerdef.CheckTypeUDP:
-		base.Config = map[string]any{"host": target.host, "port": target.port}
+		base.Config = map[string]any{cfgKeyHost: target.host, cfgKeyPort: target.port}
 	case checkerdef.CheckTypeICMP:
-		base.Config = map[string]any{"host": target.host}
+		base.Config = map[string]any{cfgKeyHost: target.host}
 	case checkerdef.CheckTypeSSH:
-		base.Config = gatusSSHConfig(ep, target, name, warn)
+		base.Config = gatusSSHConfig(endpoint, target, name, warn)
 	case checkerdef.CheckTypeWebSocket:
-		base.Config = map[string]any{"url": ep.URL}
+		base.Config = map[string]any{cfgKeyURL: endpoint.URL}
 	default:
-		warn.add(name, "url", "endpoint skipped: unsupported target type %q", checkType)
+		warn.addf(name, "url", "endpoint skipped: unsupported target type %q", checkType)
 
 		return nil
 	}
 
 	if timeout != "" {
-		if _, taken := base.Config["timeout"]; !taken {
-			base.Config["timeout"] = timeout
+		if _, taken := base.Config[cfgKeyTimeout]; !taken {
+			base.Config[cfgKeyTimeout] = timeout
 		}
 	}
 
-	out := []checks.ExportCheck{base}
+	out := make([]checks.ExportCheck, 0, 1+maxExtraChecksPerEndpoint)
+	out = append(out, base)
 
-	extra := c.applyConditions(ep, &out[0], checkType, target, slugs, warn)
+	extra := c.applyConditions(endpoint, &out[0], checkType, target, slugs, warn)
 	out = append(out, extra...)
 
-	if len(ep.Alerts) > 0 {
-		warn.add(name, "alerts",
+	if len(endpoint.Alerts) > 0 {
+		warn.addf(name, "alerts",
 			"alerting/notification bindings are not imported — configure SolidPing integrations instead")
 	}
 
-	if ep.Client != nil && ep.Client.Insecure != nil && *ep.Client.Insecure {
-		warn.add(name, "client.insecure",
+	if endpoint.Client != nil && endpoint.Client.Insecure != nil && *endpoint.Client.Insecure {
+		warn.addf(name, "client.insecure",
 			"skipping TLS verification is not supported by the SolidPing %s checker", checkType)
 	}
 
-	if ep.Client != nil && ep.Client.IgnoreRedirect != nil && *ep.Client.IgnoreRedirect {
-		warn.add(name, "client.ignore-redirect",
+	if endpoint.Client != nil && endpoint.Client.IgnoreRedirect != nil && *endpoint.Client.IgnoreRedirect {
+		warn.addf(name, "client.ignore-redirect",
 			"redirect handling is not configurable on SolidPing http checks (redirects are followed)")
 	}
 
-	if ep.Client != nil && ep.Client.DNSResolver != "" && checkType != checkerdef.CheckTypeDNS {
-		warn.add(name, "client.dns-resolver",
+	if endpoint.Client != nil && endpoint.Client.DNSResolver != "" && checkType != checkerdef.CheckTypeDNS {
+		warn.addf(name, "client.dns-resolver",
 			"a custom DNS resolver is only supported on SolidPing dns checks")
 	}
 
@@ -231,20 +240,18 @@ type gatusTarget struct {
 // gatusCheckType decides the SolidPing check type for an endpoint and parses
 // its target. A `dns:` block always wins: for DNS endpoints Gatus uses `url` as
 // the resolver address, not as the monitored target.
-//
-//nolint:cyclop // a scheme switch, flat by nature
-func gatusCheckType(ep *gatusEndpoint) (checkerdef.CheckType, gatusTarget, error) {
-	if ep.DNS != nil {
-		return checkerdef.CheckTypeDNS, gatusTarget{host: ep.URL}, nil
+func gatusCheckType(endpoint *gatusEndpoint) (checkerdef.CheckType, gatusTarget, error) {
+	if endpoint.DNS != nil {
+		return checkerdef.CheckTypeDNS, gatusTarget{host: endpoint.URL}, nil
 	}
 
-	if ep.URL == "" {
+	if endpoint.URL == "" {
 		return "", gatusTarget{}, errNoURL
 	}
 
-	parsed, err := url.Parse(ep.URL)
+	parsed, err := url.Parse(endpoint.URL)
 	if err != nil {
-		return "", gatusTarget{}, fmt.Errorf("cannot parse url %q: %w", ep.URL, err)
+		return "", gatusTarget{}, fmt.Errorf("cannot parse url %q: %w", endpoint.URL, err)
 	}
 
 	scheme := strings.ToLower(parsed.Scheme)
@@ -253,32 +260,38 @@ func gatusCheckType(ep *gatusEndpoint) (checkerdef.CheckType, gatusTarget, error
 		return checkerdef.CheckTypeHTTP, gatusTarget{host: parsed.Hostname()}, nil
 	case "ws", "wss", "websocket":
 		return checkerdef.CheckTypeWebSocket, gatusTarget{host: parsed.Hostname()}, nil
-	case "tcp", "tls", "starttls":
+	case srcTCP, "tls", "starttls":
 		target := gatusHostPort(parsed)
-		target.tls = scheme != "tcp"
+		target.tls = scheme != srcTCP
 
 		return checkerdef.CheckTypeTCP, target, nil
 	case "udp":
 		return checkerdef.CheckTypeUDP, gatusHostPort(parsed), nil
-	case "icmp", "ping":
+	case "icmp", srcPing:
 		return checkerdef.CheckTypeICMP, gatusTarget{host: parsed.Hostname()}, nil
 	case "ssh":
 		return checkerdef.CheckTypeSSH, gatusHostPort(parsed), nil
 	case "sctp":
 		return "", gatusTarget{}, errUnsupportedScheme("sctp")
 	case "":
-		return "", gatusTarget{}, fmt.Errorf("url %q has no scheme", ep.URL)
+		return "", gatusTarget{}, fmt.Errorf("%w: %q", errNoScheme, endpoint.URL)
 	default:
 		return "", gatusTarget{}, errUnsupportedScheme(scheme)
 	}
 }
 
-// errNoURL reports an endpoint with neither a url nor a dns block.
-var errNoURL = fmt.Errorf("endpoint has no url and no dns block")
+var (
+	// errNoURL reports an endpoint with neither a url nor a dns block.
+	errNoURL = errors.New("endpoint has no url and no dns block")
+	// errNoScheme reports a url we cannot classify because it has no scheme.
+	errNoScheme = errors.New("url has no scheme")
+	// errUnmappableScheme reports a url scheme with no SolidPing check type.
+	errUnmappableScheme = errors.New("url scheme has no SolidPing check type")
+)
 
 // errUnsupportedScheme builds the "no SolidPing counterpart" error for a scheme.
 func errUnsupportedScheme(scheme string) error {
-	return fmt.Errorf("url scheme %q has no SolidPing check type", scheme)
+	return fmt.Errorf("%w: %q", errUnmappableScheme, scheme)
 }
 
 // gatusHostPort splits host:port out of a parsed URL.
@@ -305,56 +318,56 @@ func gatusHostPort(parsed *url.URL) gatusTarget {
 }
 
 // gatusInterval maps the endpoint interval onto the check period.
-func gatusInterval(ep *gatusEndpoint, name string, warn *warnings) string {
-	raw := ep.Interval
+func gatusInterval(endpoint *gatusEndpoint, name string, warn *warnings) string {
+	raw := endpoint.Interval
 	if raw == "" {
 		raw = gatusDefaultIntervalStr
 	}
 
-	d, err := time.ParseDuration(raw)
+	duration, err := time.ParseDuration(raw)
 	if err != nil {
-		warn.add(name, "interval", "unparseable interval %q, falling back to 1m", raw)
+		warn.addf(name, "interval", "unparseable interval %q, falling back to 1m", raw)
 
 		return "1m"
 	}
 
-	return durationToPeriod(d)
+	return durationToPeriod(duration)
 }
 
 // gatusClientTimeout maps client.timeout onto the checker timeout string.
-func gatusClientTimeout(ep *gatusEndpoint, name string, warn *warnings) string {
-	if ep.Client == nil || ep.Client.Timeout == "" {
+func gatusClientTimeout(endpoint *gatusEndpoint, name string, warn *warnings) string {
+	if endpoint.Client == nil || endpoint.Client.Timeout == "" {
 		return ""
 	}
 
-	d, err := time.ParseDuration(ep.Client.Timeout)
+	duration, err := time.ParseDuration(endpoint.Client.Timeout)
 	if err != nil {
-		warn.add(name, "client.timeout", "unparseable timeout %q, using the checker default", ep.Client.Timeout)
+		warn.addf(name, "client.timeout", "unparseable timeout %q, using the checker default", endpoint.Client.Timeout)
 
 		return ""
 	}
 
-	return durationToPeriod(d)
+	return durationToPeriod(duration)
 }
 
 // gatusHTTPConfig builds the http checker config from the endpoint request bits.
-func gatusHTTPConfig(ep *gatusEndpoint, timeout string) map[string]any {
-	cfg := map[string]any{"url": ep.URL}
+func gatusHTTPConfig(endpoint *gatusEndpoint, timeout string) map[string]any {
+	cfg := map[string]any{cfgKeyURL: endpoint.URL}
 
-	method := ep.Method
+	method := endpoint.Method
 	if method == "" {
 		method = gatusDefaultHTTPMethod
 	}
 
 	cfg["method"] = strings.ToUpper(method)
 
-	if ep.Body != "" {
-		cfg["body"] = ep.Body
+	if endpoint.Body != "" {
+		cfg["body"] = endpoint.Body
 	}
 
-	if len(ep.Headers) > 0 {
-		headers := make(map[string]any, len(ep.Headers))
-		for k, v := range ep.Headers {
+	if len(endpoint.Headers) > 0 {
+		headers := make(map[string]any, len(endpoint.Headers))
+		for k, v := range endpoint.Headers {
 			headers[k] = v
 		}
 
@@ -362,7 +375,7 @@ func gatusHTTPConfig(ep *gatusEndpoint, timeout string) map[string]any {
 	}
 
 	if timeout != "" {
-		cfg["timeout"] = timeout
+		cfg[cfgKeyTimeout] = timeout
 	}
 
 	return cfg
@@ -370,11 +383,11 @@ func gatusHTTPConfig(ep *gatusEndpoint, timeout string) map[string]any {
 
 // gatusDNSConfig builds the dns checker config. Gatus puts the monitored name
 // in dns.query-name and the resolver in url.
-func gatusDNSConfig(ep *gatusEndpoint, target gatusTarget, timeout string) map[string]any {
-	cfg := map[string]any{"host": ep.DNS.QueryName}
+func gatusDNSConfig(endpoint *gatusEndpoint, target gatusTarget, timeout string) map[string]any {
+	cfg := map[string]any{cfgKeyHost: endpoint.DNS.QueryName}
 
-	if ep.DNS.QueryType != "" {
-		cfg["record_type"] = strings.ToUpper(ep.DNS.QueryType)
+	if endpoint.DNS.QueryType != "" {
+		cfg["record_type"] = strings.ToUpper(endpoint.DNS.QueryType)
 	}
 
 	if resolver := withDefaultPort(strings.TrimPrefix(target.host, "dns://"), dnsDefaultPort); resolver != "" {
@@ -382,7 +395,7 @@ func gatusDNSConfig(ep *gatusEndpoint, target gatusTarget, timeout string) map[s
 	}
 
 	if timeout != "" {
-		cfg["timeout"] = timeout
+		cfg[cfgKeyTimeout] = timeout
 	}
 
 	return cfg
@@ -390,16 +403,16 @@ func gatusDNSConfig(ep *gatusEndpoint, target gatusTarget, timeout string) map[s
 
 // gatusSSHConfig builds the ssh checker config. Gatus stores the credential in
 // a dedicated ssh block; the password is deliberately NOT imported.
-func gatusSSHConfig(ep *gatusEndpoint, target gatusTarget, name string, warn *warnings) map[string]any {
-	cfg := map[string]any{"host": target.host}
+func gatusSSHConfig(endpoint *gatusEndpoint, target gatusTarget, name string, warn *warnings) map[string]any {
+	cfg := map[string]any{cfgKeyHost: target.host}
 	if target.port != 0 {
-		cfg["port"] = target.port
+		cfg[cfgKeyPort] = target.port
 	}
 
-	if ep.SSH != nil && (ep.SSH.Username != "" || ep.SSH.Password != "") {
+	if endpoint.SSH != nil && (endpoint.SSH.Username != "" || endpoint.SSH.Password != "") {
 		// The credential is deliberately dropped, and a username without a
 		// password or key fails checker validation — so neither half is kept.
-		warn.add(name, "ssh",
+		warn.addf(name, "ssh",
 			"the SSH credentials were not imported — re-enter the username and password/key on the check")
 	}
 
@@ -409,9 +422,9 @@ func gatusSSHConfig(ep *gatusEndpoint, target gatusTarget, name string, warn *wa
 // applyConditions folds the endpoint conditions into the check config and
 // returns any additional checks they imply (ssl / domain expiration).
 //
-//nolint:cyclop,funlen,gocognit // one dispatch per Gatus placeholder
+//nolint:cyclop // one dispatch per Gatus placeholder
 func (c *GatusConverter) applyConditions(
-	ep *gatusEndpoint, check *checks.ExportCheck, checkType checkerdef.CheckType,
+	endpoint *gatusEndpoint, check *checks.ExportCheck, checkType checkerdef.CheckType,
 	target gatusTarget, slugs *slugSet, warn *warnings,
 ) []checks.ExportCheck {
 	var (
@@ -421,10 +434,10 @@ func (c *GatusConverter) applyConditions(
 
 	name := check.Name
 
-	for _, raw := range ep.Conditions {
+	for _, raw := range endpoint.Conditions {
 		cond, ok := parseGatusCondition(raw)
 		if !ok {
-			warn.add(name, "conditions", "condition %q could not be parsed and was dropped", raw)
+			warn.addf(name, "conditions", "condition %q could not be parsed and was dropped", raw)
 
 			continue
 		}
@@ -434,7 +447,7 @@ func (c *GatusConverter) applyConditions(
 			// Connectivity is implicit in every SolidPing check.
 		case cond.left == gatusPlaceholderRcode:
 			if checkType != checkerdef.CheckTypeDNS {
-				warn.add(name, "conditions", "condition %q only applies to DNS endpoints and was dropped", raw)
+				warn.addf(name, "conditions", "condition %q only applies to DNS endpoints and was dropped", raw)
 			}
 		case cond.left == gatusPlaceholderStatus:
 			applyGatusStatusCondition(cond, check, raw, warn)
@@ -449,18 +462,18 @@ func (c *GatusConverter) applyConditions(
 				extra = append(extra, extraCheck)
 			}
 		case gatusLenRe.MatchString(cond.left):
-			warn.add(name, "conditions", "condition %q uses len(), which has no SolidPing equivalent", raw)
+			warn.addf(name, "conditions", "condition %q uses len(), which has no SolidPing equivalent", raw)
 		case gatusHasRe.MatchString(cond.left):
 			if node, made := gatusHasAssertion(cond); made {
 				assertions = append(assertions, node)
 			} else {
-				warn.add(name, "conditions", "condition %q could not be mapped", raw)
+				warn.addf(name, "conditions", "condition %q could not be mapped", raw)
 			}
 		case cond.left == gatusPlaceholderBody:
 			applyGatusBodyCondition(cond, check, checkType, raw, warn)
 		case strings.HasPrefix(cond.left, gatusPlaceholderBody):
 			if checkType != checkerdef.CheckTypeHTTP {
-				warn.add(name, "conditions", "condition %q only applies to HTTP endpoints and was dropped", raw)
+				warn.addf(name, "conditions", "condition %q only applies to HTTP endpoints and was dropped", raw)
 
 				continue
 			}
@@ -468,15 +481,16 @@ func (c *GatusConverter) applyConditions(
 			if node, made := gatusBodyPathAssertion(cond); made {
 				assertions = append(assertions, node)
 			} else {
-				warn.add(name, "conditions", "condition %q uses an operator with no SolidPing equivalent", raw)
+				warn.addf(name, "conditions", "condition %q uses an operator with no SolidPing equivalent", raw)
 			}
 		default:
-			warn.add(name, "conditions", "condition %q has no SolidPing equivalent and was dropped", raw)
+			warn.addf(name, "conditions", "condition %q has no SolidPing equivalent and was dropped", raw)
 		}
 	}
 
 	if len(assertions) > 0 {
-		check.Config["json_path_assertions"] = assertionConfig(gatusAssertionRoot(assertions))
+		root := gatusAssertionRoot(assertions)
+		check.Config["json_path_assertions"] = assertionConfig(&root)
 	}
 
 	return extra
@@ -502,7 +516,7 @@ func parseGatusCondition(raw string) (gatusCondition, bool) {
 // applyGatusStatusCondition maps a [STATUS] condition onto the http config.
 func applyGatusStatusCondition(cond gatusCondition, check *checks.ExportCheck, raw string, warn *warnings) {
 	if cond.operator != "==" {
-		warn.add(check.Name, "conditions",
+		warn.addf(check.Name, "conditions",
 			"condition %q uses a range operator; SolidPing expects explicit codes or NXX wildcards", raw)
 
 		return
@@ -546,7 +560,7 @@ func applyGatusBodyCondition(
 	}
 
 	if checkType != checkerdef.CheckTypeHTTP {
-		warn.add(check.Name, "conditions", "condition %q only applies to HTTP endpoints and was dropped", raw)
+		warn.addf(check.Name, "conditions", "condition %q only applies to HTTP endpoints and was dropped", raw)
 
 		return
 	}
@@ -574,8 +588,8 @@ func applyGatusBodyCondition(
 // gatusHasAssertion turns `has([BODY].path) == true|false` into an
 // exists / not_exists JSONPath assertion.
 func gatusHasAssertion(cond gatusCondition) (checkhttp.AssertionNode, bool) {
-	m := gatusHasRe.FindStringSubmatch(cond.left)
-	if m == nil {
+	match := gatusHasRe.FindStringSubmatch(cond.left)
+	if match == nil {
 		return checkhttp.AssertionNode{}, false
 	}
 
@@ -586,7 +600,7 @@ func gatusHasAssertion(cond gatusCondition) (checkhttp.AssertionNode, bool) {
 
 	return checkhttp.AssertionNode{
 		Type:     checkhttp.NodeTypeAssertion,
-		Path:     gatusJSONPath(m[1]),
+		Path:     gatusJSONPath(match[1]),
 		Operator: operator,
 	}, true
 }
@@ -659,21 +673,21 @@ func gatusJSONPath(suffix string) string {
 
 // gatusGlobToRegex converts a Gatus pat() glob into an anchored regex.
 func gatusGlobToRegex(glob string) string {
-	var sb strings.Builder
+	var builder strings.Builder
 
-	sb.WriteString("^")
+	builder.WriteString("^")
 
 	for i, part := range strings.Split(glob, "*") {
 		if i > 0 {
-			sb.WriteString(".*")
+			builder.WriteString(".*")
 		}
 
-		sb.WriteString(regexp.QuoteMeta(part))
+		builder.WriteString(regexp.QuoteMeta(part))
 	}
 
-	sb.WriteString("$")
+	builder.WriteString("$")
 
-	return sb.String()
+	return builder.String()
 }
 
 // gatusExpiryCheck builds the extra ssl / domain check implied by a
@@ -683,27 +697,27 @@ func gatusExpiryCheck(
 	target gatusTarget, slugs *slugSet, raw string, warn *warnings,
 ) (checks.ExportCheck, bool) {
 	if target.host == "" {
-		warn.add(parent.Name, "conditions", "condition %q was dropped: the endpoint has no resolvable host", raw)
+		warn.addf(parent.Name, "conditions", "condition %q was dropped: the endpoint has no resolvable host", raw)
 
 		return checks.ExportCheck{}, false
 	}
 
 	days := gatusExpiryDays(cond.value)
 	if days <= 0 {
-		warn.add(parent.Name, "conditions", "condition %q has an unparseable threshold and was dropped", raw)
+		warn.addf(parent.Name, "conditions", "condition %q has an unparseable threshold and was dropped", raw)
 
 		return checks.ExportCheck{}, false
 	}
 
 	suffix := "-ssl"
-	cfg := map[string]any{"host": target.host, "criticalDays": days, "warningDays": days}
+	cfg := map[string]any{cfgKeyHost: target.host, "criticalDays": days, "warningDays": days}
 
 	if checkType == checkerdef.CheckTypeDomain {
 		suffix = "-domain"
 		cfg = map[string]any{"domain": target.host, "thresholdDays": days}
 	}
 
-	warn.add(parent.Name, "conditions",
+	warn.addf(parent.Name, "conditions",
 		"condition %q was split out into a dedicated %s check", raw, checkType)
 
 	return checks.ExportCheck{
@@ -719,13 +733,13 @@ func gatusExpiryCheck(
 
 // gatusExpiryDays converts a Gatus expiration threshold ("48h", "720h") to days.
 func gatusExpiryDays(value string) int {
-	d, err := time.ParseDuration(value)
+	duration, err := time.ParseDuration(value)
 	if err != nil {
 		return 0
 	}
 
-	days := int(d.Hours() / hoursPerDay)
-	if days == 0 && d > 0 {
+	days := int(duration.Hours() / hoursPerDay)
+	if days == 0 && duration > 0 {
 		days = 1
 	}
 

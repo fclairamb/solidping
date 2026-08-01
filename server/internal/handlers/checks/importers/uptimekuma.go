@@ -122,7 +122,7 @@ func (c *UptimeKumaConverter) Convert(input []byte) (*ConversionResult, error) {
 		}
 
 		if len(monitor.NotificationIDList) > 0 && !notified {
-			warn.addDoc("notification bindings are not imported — configure SolidPing integrations instead")
+			warn.addDocf("notification bindings are not imported — configure SolidPing integrations instead")
 
 			notified = true
 		}
@@ -191,17 +191,17 @@ func (c *UptimeKumaConverter) convertMonitor(
 	var ok bool
 
 	switch monitor.Type {
-	case "http", "keyword", "json-query":
+	case "http", srcKeyword, "json-query":
 		check.Type = string(checkerdef.CheckTypeHTTP)
 		check.Config = c.httpConfig(monitor, timeout, warn)
 		ok = true
-	case "port":
+	case srcPortType:
 		check.Type = string(checkerdef.CheckTypeTCP)
 		check.Config = kumaHostPort(monitor, timeout)
 		ok = true
-	case "ping":
+	case srcPing:
 		check.Type = string(checkerdef.CheckTypeICMP)
-		check.Config = map[string]any{"host": monitor.Hostname}
+		check.Config = map[string]any{cfgKeyHost: monitor.Hostname}
 		ok = true
 	case "dns":
 		check.Type = string(checkerdef.CheckTypeDNS)
@@ -211,7 +211,7 @@ func (c *UptimeKumaConverter) convertMonitor(
 		check.Type = string(checkerdef.CheckTypeDocker)
 		check.Config = map[string]any{"containerName": monitor.DockerContainer}
 
-		warn.add(name, "docker_host", "the Docker host is not imported — the check defaults to the "+
+		warn.addf(name, "docker_host", "the Docker host is not imported — the check defaults to the "+
 			"worker's local Docker socket; set a custom host on the check if needed")
 
 		ok = true
@@ -219,7 +219,7 @@ func (c *UptimeKumaConverter) convertMonitor(
 		check.Type = string(checkerdef.CheckTypeHeartbeat)
 		check.Config = map[string]any{}
 
-		warn.add(name, "type", "push monitor imported as a SolidPing heartbeat check — "+
+		warn.addf(name, "type", "push monitor imported as a SolidPing heartbeat check — "+
 			"the ping URL changes, repoint the job that pushes to it after the import")
 
 		ok = true
@@ -231,7 +231,7 @@ func (c *UptimeKumaConverter) convertMonitor(
 		check.Type = string(checkerdef.CheckTypeMQTT)
 		check.Config = kumaMQTTConfig(monitor, timeout, name, warn)
 		ok = true
-	case "postgres", "mysql", "redis", "sqlserver", "mongodb":
+	case "postgres", "mysql", srcRedis, srcSQLServer, srcMongoDB:
 		check.Type = kumaDatabaseCheckType(monitor.Type)
 		check.Config, ok = kumaDatabaseConfig(monitor, timeout, name, warn)
 	case "steam":
@@ -240,10 +240,10 @@ func (c *UptimeKumaConverter) convertMonitor(
 		ok = true
 	case "real-browser":
 		check.Type = string(checkerdef.CheckTypeBrowser)
-		check.Config = map[string]any{"url": monitor.URL}
+		check.Config = map[string]any{cfgKeyURL: monitor.URL}
 		ok = true
 	default:
-		warn.add(name, "type", "monitor skipped: Uptime Kuma type %q has no SolidPing counterpart", monitor.Type)
+		warn.addf(name, "type", "monitor skipped: Uptime Kuma type %q has no SolidPing counterpart", monitor.Type)
 	}
 
 	if !ok {
@@ -258,20 +258,20 @@ func (c *UptimeKumaConverter) convertMonitor(
 // warnUnmapped reports monitor-level settings with no SolidPing counterpart.
 func (c *UptimeKumaConverter) warnUnmapped(monitor *kumaMonitor, name string, warn *warnings) {
 	if monitor.IgnoreTLS {
-		warn.add(name, "ignoreTls", "ignoring TLS errors is not supported — the check verifies certificates")
+		warn.addf(name, "ignoreTls", "ignoring TLS errors is not supported — the check verifies certificates")
 	}
 
 	if monitor.UpsideDown {
-		warn.add(name, "upsideDown", "upside-down mode has no SolidPing equivalent; the check reports normally")
+		warn.addf(name, "upsideDown", "upside-down mode has no SolidPing equivalent; the check reports normally")
 	}
 
 	if monitor.AuthMethod != "" && monitor.AuthMethod != "none" {
-		warn.add(name, "authMethod",
+		warn.addf(name, "authMethod",
 			"authentication credentials are not imported — re-enter them on the check")
 	}
 
 	if len(monitor.Tags) > 0 {
-		warn.add(name, "tags", "Uptime Kuma tags are not imported — add SolidPing labels manually")
+		warn.addf(name, "tags", "Uptime Kuma tags are not imported — add SolidPing labels manually")
 	}
 }
 
@@ -299,7 +299,7 @@ func kumaConfirmationSeconds(monitor *kumaMonitor) int {
 // httpConfig builds the http checker config for http / keyword / json-query
 // monitors.
 func (c *UptimeKumaConverter) httpConfig(monitor *kumaMonitor, timeout string, warn *warnings) map[string]any {
-	cfg := map[string]any{"url": monitor.URL}
+	cfg := map[string]any{cfgKeyURL: monitor.URL}
 
 	if monitor.Method != "" {
 		cfg["method"] = strings.ToUpper(monitor.Method)
@@ -314,7 +314,7 @@ func (c *UptimeKumaConverter) httpConfig(monitor *kumaMonitor, timeout string, w
 	}
 
 	if timeout != "" {
-		cfg["timeout"] = timeout
+		cfg[cfgKeyTimeout] = timeout
 	}
 
 	if codes := kumaStatusCodes(monitor, warn); len(codes) > 0 {
@@ -322,7 +322,7 @@ func (c *UptimeKumaConverter) httpConfig(monitor *kumaMonitor, timeout string, w
 	}
 
 	switch monitor.Type {
-	case "keyword":
+	case srcKeyword:
 		if monitor.InvertKeyword {
 			cfg["body_reject"] = monitor.Keyword
 		} else {
@@ -330,7 +330,7 @@ func (c *UptimeKumaConverter) httpConfig(monitor *kumaMonitor, timeout string, w
 		}
 	case "json-query":
 		if monitor.JSONPath != "" {
-			cfg["json_path_assertions"] = assertionConfig(checkhttp.AssertionNode{
+			cfg["json_path_assertions"] = assertionConfig(&checkhttp.AssertionNode{
 				Type:     checkhttp.NodeTypeAssertion,
 				Path:     kumaJSONPath(monitor.JSONPath),
 				Operator: "eq",
@@ -351,7 +351,7 @@ func kumaHeaders(monitor *kumaMonitor, warn *warnings) map[string]any {
 
 	var decoded map[string]any
 	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
-		warn.add(monitor.Name, "headers", "the headers field is not valid JSON and was dropped")
+		warn.addf(monitor.Name, "headers", "the headers field is not valid JSON and was dropped")
 
 		return nil
 	}
@@ -382,7 +382,7 @@ func kumaStatusCodes(monitor *kumaMonitor, warn *warnings) []any {
 			continue
 		}
 
-		warn.add(monitor.Name, "accepted_statuscodes",
+		warn.addf(monitor.Name, "accepted_statuscodes",
 			"accepted status range %q has no SolidPing equivalent and was dropped", trimmed)
 	}
 
@@ -393,13 +393,13 @@ func kumaStatusCodes(monitor *kumaMonitor, warn *warnings) []any {
 
 // kumaHostPort builds a host/port config from a Kuma monitor.
 func kumaHostPort(monitor *kumaMonitor, timeout string) map[string]any {
-	cfg := map[string]any{"host": monitor.Hostname}
+	cfg := map[string]any{cfgKeyHost: monitor.Hostname}
 	if monitor.Port != nil && *monitor.Port > 0 {
-		cfg["port"] = *monitor.Port
+		cfg[cfgKeyPort] = *monitor.Port
 	}
 
 	if timeout != "" {
-		cfg["timeout"] = timeout
+		cfg[cfgKeyTimeout] = timeout
 	}
 
 	return cfg
@@ -407,7 +407,7 @@ func kumaHostPort(monitor *kumaMonitor, timeout string) map[string]any {
 
 // kumaDNSConfig builds the dns checker config.
 func kumaDNSConfig(monitor *kumaMonitor) map[string]any {
-	cfg := map[string]any{"host": monitor.Hostname}
+	cfg := map[string]any{cfgKeyHost: monitor.Hostname}
 
 	if resolver := withDefaultPort(monitor.DNSResolveServer, dnsDefaultPort); resolver != "" {
 		cfg["nameserver"] = resolver
@@ -425,10 +425,10 @@ func kumaGRPCConfig(monitor *kumaMonitor, timeout string) map[string]any {
 	cfg := map[string]any{}
 
 	host, port := splitHostPort(monitor.GRPCUrl)
-	cfg["host"] = host
+	cfg[cfgKeyHost] = host
 
 	if port > 0 {
-		cfg["port"] = port
+		cfg[cfgKeyPort] = port
 	}
 
 	if monitor.GRPCServiceName != "" {
@@ -447,7 +447,7 @@ func kumaGRPCConfig(monitor *kumaMonitor, timeout string) map[string]any {
 	}
 
 	if timeout != "" {
-		cfg["timeout"] = timeout
+		cfg[cfgKeyTimeout] = timeout
 	}
 
 	return cfg
@@ -455,9 +455,9 @@ func kumaGRPCConfig(monitor *kumaMonitor, timeout string) map[string]any {
 
 // kumaMQTTConfig builds the mqtt checker config.
 func kumaMQTTConfig(monitor *kumaMonitor, timeout, name string, warn *warnings) map[string]any {
-	cfg := map[string]any{"host": monitor.Hostname}
+	cfg := map[string]any{cfgKeyHost: monitor.Hostname}
 	if monitor.Port != nil && *monitor.Port > 0 {
-		cfg["port"] = *monitor.Port
+		cfg[cfgKeyPort] = *monitor.Port
 	}
 
 	if monitor.MQTTTopic != "" {
@@ -469,16 +469,16 @@ func kumaMQTTConfig(monitor *kumaMonitor, timeout, name string, warn *warnings) 
 	}
 
 	if monitor.MQTTPassword != "" {
-		warn.add(name, "mqttPassword", "the MQTT password was not imported — re-enter it on the check")
+		warn.addf(name, "mqttPassword", "the MQTT password was not imported — re-enter it on the check")
 	}
 
 	if monitor.MQTTSuccessMessage != "" {
-		warn.add(name, "mqttSuccessMessage",
+		warn.addf(name, "mqttSuccessMessage",
 			"matching an expected MQTT payload is not supported; the check verifies broker connectivity")
 	}
 
 	if timeout != "" {
-		cfg["timeout"] = timeout
+		cfg[cfgKeyTimeout] = timeout
 	}
 
 	return cfg
@@ -491,11 +491,11 @@ func kumaDatabaseCheckType(kumaType string) string {
 		return string(checkerdef.CheckTypePostgreSQL)
 	case "mysql":
 		return string(checkerdef.CheckTypeMySQL)
-	case "redis":
+	case srcRedis:
 		return string(checkerdef.CheckTypeRedis)
-	case "sqlserver":
+	case srcSQLServer:
 		return string(checkerdef.CheckTypeMSSQL)
-	case "mongodb":
+	case srcMongoDB:
 		return string(checkerdef.CheckTypeMongoDB)
 	default:
 		return ""
@@ -505,77 +505,89 @@ func kumaDatabaseCheckType(kumaType string) string {
 // kumaDatabaseConfig turns a Kuma database connection string into a checker
 // config. Passwords are deliberately dropped (and reported) rather than
 // carried over into the imported config.
-//
-//nolint:cyclop // one branch per connection-string dialect
 func kumaDatabaseConfig(
 	monitor *kumaMonitor, timeout, name string, warn *warnings,
 ) (map[string]any, bool) {
 	conn := strings.TrimSpace(monitor.DatabaseConnectionString)
 	if conn == "" {
-		warn.add(name, "databaseConnectionString", "monitor skipped: the connection string is empty")
+		warn.addf(name, "databaseConnectionString", "monitor skipped: the connection string is empty")
 
 		return nil, false
 	}
 
-	cfg := map[string]any{}
+	var (
+		cfg    map[string]any
+		parsed bool
+	)
 
-	if monitor.Type == "sqlserver" {
-		if !kumaParseSQLServerConn(conn, cfg) {
-			warn.add(name, "databaseConnectionString", "monitor skipped: the connection string could not be parsed")
-
-			return nil, false
-		}
+	if monitor.Type == srcSQLServer {
+		cfg, parsed = kumaParseSQLServerConn(conn)
 	} else {
-		parsed, err := url.Parse(conn)
-		if err != nil || parsed.Hostname() == "" {
-			warn.add(name, "databaseConnectionString", "monitor skipped: the connection string could not be parsed")
+		cfg, parsed = kumaParseURLConn(conn, monitor.Type)
+	}
 
-			return nil, false
-		}
+	if !parsed {
+		warn.addf(name, "databaseConnectionString", "monitor skipped: the connection string could not be parsed")
 
-		cfg["host"] = parsed.Hostname()
-
-		if portStr := parsed.Port(); portStr != "" {
-			if port, convErr := strconv.Atoi(portStr); convErr == nil {
-				cfg["port"] = port
-			}
-		}
-
-		if parsed.User != nil && parsed.User.Username() != "" {
-			cfg["username"] = parsed.User.Username()
-		}
-
-		if db := strings.TrimPrefix(parsed.Path, "/"); db != "" {
-			if monitor.Type == "redis" {
-				if idx, convErr := strconv.Atoi(db); convErr == nil {
-					cfg["database"] = idx
-				}
-			} else {
-				cfg["database"] = db
-			}
-		}
+		return nil, false
 	}
 
 	if _, hasPassword := passwordOf(conn); hasPassword {
-		warn.add(name, "databaseConnectionString",
+		warn.addf(name, "databaseConnectionString",
 			"the database password was not imported — re-enter the credential on the check")
 	}
 
-	if monitor.DatabaseQuery != "" && monitor.Type != "redis" && monitor.Type != "mongodb" {
+	if monitor.DatabaseQuery != "" && monitor.Type != srcRedis && monitor.Type != srcMongoDB {
 		cfg["query"] = monitor.DatabaseQuery
 	} else if monitor.DatabaseQuery != "" {
-		warn.add(name, "databaseQuery", "custom queries are not supported by the SolidPing %s checker", monitor.Type)
+		warn.addf(name, "databaseQuery", "custom queries are not supported by the SolidPing %s checker", monitor.Type)
 	}
 
 	if timeout != "" {
-		cfg["timeout"] = timeout
+		cfg[cfgKeyTimeout] = timeout
+	}
+
+	return cfg, true
+}
+
+// kumaParseURLConn parses a URL-style connection string
+// (postgres://user:pass@host:port/db). The password is deliberately ignored.
+func kumaParseURLConn(conn, monitorType string) (map[string]any, bool) {
+	parsed, err := url.Parse(conn)
+	if err != nil || parsed.Hostname() == "" {
+		return nil, false
+	}
+
+	cfg := map[string]any{cfgKeyHost: parsed.Hostname()}
+
+	if portStr := parsed.Port(); portStr != "" {
+		if port, convErr := strconv.Atoi(portStr); convErr == nil {
+			cfg[cfgKeyPort] = port
+		}
+	}
+
+	if parsed.User != nil && parsed.User.Username() != "" {
+		cfg["username"] = parsed.User.Username()
+	}
+
+	if database := strings.TrimPrefix(parsed.Path, "/"); database != "" {
+		if monitorType == srcRedis {
+			// Redis addresses a numeric database index, not a name.
+			if idx, convErr := strconv.Atoi(database); convErr == nil {
+				cfg["database"] = idx
+			}
+		} else {
+			cfg["database"] = database
+		}
 	}
 
 	return cfg, true
 }
 
 // kumaParseSQLServerConn parses an ADO-style "Key=Value;" connection string.
-func kumaParseSQLServerConn(conn string, cfg map[string]any) bool {
+func kumaParseSQLServerConn(conn string) (map[string]any, bool) {
+	cfg := map[string]any{}
+
 	for _, part := range strings.Split(conn, ";") {
 		key, value, found := strings.Cut(part, "=")
 		if !found {
@@ -588,10 +600,10 @@ func kumaParseSQLServerConn(conn string, cfg map[string]any) bool {
 		switch key {
 		case "server", "data source", "address":
 			host, port := splitHostPortComma(value)
-			cfg["host"] = host
+			cfg[cfgKeyHost] = host
 
 			if port > 0 {
-				cfg["port"] = port
+				cfg[cfgKeyPort] = port
 			}
 		case "database", "initial catalog":
 			cfg["database"] = value
@@ -600,9 +612,11 @@ func kumaParseSQLServerConn(conn string, cfg map[string]any) bool {
 		}
 	}
 
-	_, ok := cfg["host"]
+	if _, ok := cfg[cfgKeyHost]; !ok {
+		return nil, false
+	}
 
-	return ok
+	return cfg, true
 }
 
 // passwordOf reports whether a connection string carries a password.

@@ -86,11 +86,12 @@ func (s *betterStackServer) auths() []string {
 	return append([]string(nil), s.authHeaders...)
 }
 
-// betterStackBody builds the request payload for the converter.
-func betterStackBody(t *testing.T, token, baseURL string) []byte {
+// betterStackBody builds the request payload for the converter, always with the
+// fake token every test asserts is never leaked.
+func betterStackBody(t *testing.T, baseURL string) []byte {
 	t.Helper()
 
-	body, err := json.Marshal(map[string]string{"token": token, "baseUrl": baseURL})
+	body, err := json.Marshal(map[string]string{"token": testToken, "baseUrl": baseURL})
 	require.NoError(t, err)
 
 	return body
@@ -104,7 +105,7 @@ func TestBetterStackConverterGolden(t *testing.T) {
 	conv := importers.NewBetterStackConverter(importers.BetterStackOptions{BaseURL: srv.URL})
 	r.Equal("betterstack", conv.Source())
 
-	result, err := conv.Convert(betterStackBody(t, testToken, ""))
+	result, err := conv.Convert(betterStackBody(t, ""))
 	r.NoError(err)
 
 	assertGolden(t, "betterstack", result)
@@ -117,7 +118,7 @@ func TestBetterStackConverterFollowsPaginationAndFetchesHeartbeats(t *testing.T)
 	srv := newBetterStackServer(t)
 	conv := importers.NewBetterStackConverter(importers.BetterStackOptions{BaseURL: srv.URL})
 
-	result, err := conv.Convert(betterStackBody(t, testToken, ""))
+	result, err := conv.Convert(betterStackBody(t, ""))
 	r.NoError(err)
 
 	// Page 1, page 2 (via the pagination cursor), then heartbeats.
@@ -153,7 +154,6 @@ func TestBetterStackConverterFollowsPaginationAndFetchesHeartbeats(t *testing.T)
 	r.True(warningMentions(result.Warnings, "repoint every"), "heartbeat URL change must be surfaced")
 }
 
-//nolint:funlen // one assertion block per Better Stack monitor type
 func TestBetterStackConverterMapsMonitorTypes(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -161,7 +161,7 @@ func TestBetterStackConverterMapsMonitorTypes(t *testing.T) {
 	srv := newBetterStackServer(t)
 	conv := importers.NewBetterStackConverter(importers.BetterStackOptions{BaseURL: srv.URL})
 
-	result, err := conv.Convert(betterStackBody(t, testToken, ""))
+	result, err := conv.Convert(betterStackBody(t, ""))
 	r.NoError(err)
 
 	doc := result.Document
@@ -223,7 +223,7 @@ func TestBetterStackConverterNeverLeaksTheToken(t *testing.T) {
 	srv := newBetterStackServer(t)
 	conv := importers.NewBetterStackConverter(importers.BetterStackOptions{BaseURL: srv.URL})
 
-	result, err := conv.Convert(betterStackBody(t, testToken, ""))
+	result, err := conv.Convert(betterStackBody(t, ""))
 	r.NoError(err)
 
 	// The token appears nowhere in the converted document or its warnings.
@@ -250,7 +250,7 @@ func TestBetterStackConverterUnauthorizedIsCleanAndTokenFree(t *testing.T) {
 
 	conv := importers.NewBetterStackConverter(importers.BetterStackOptions{BaseURL: srv.URL})
 
-	_, err := conv.Convert(betterStackBody(t, testToken, ""))
+	_, err := conv.Convert(betterStackBody(t, ""))
 	r.Error(err)
 	r.ErrorIs(err, importers.ErrBetterStackUnauthorized)
 	r.NotContains(err.Error(), testToken)
@@ -267,7 +267,7 @@ func TestBetterStackConverterNetworkFailureIsCleanAndTokenFree(t *testing.T) {
 
 	conv := importers.NewBetterStackConverter(importers.BetterStackOptions{BaseURL: baseURL})
 
-	_, err := conv.Convert(betterStackBody(t, testToken, ""))
+	_, err := conv.Convert(betterStackBody(t, ""))
 	r.Error(err)
 	r.ErrorIs(err, importers.ErrBetterStackUnreachable)
 	r.NotContains(err.Error(), testToken)
@@ -285,7 +285,7 @@ func TestBetterStackConverterServerErrorDoesNotEchoBody(t *testing.T) {
 
 	conv := importers.NewBetterStackConverter(importers.BetterStackOptions{BaseURL: srv.URL})
 
-	_, err := conv.Convert(betterStackBody(t, testToken, ""))
+	_, err := conv.Convert(betterStackBody(t, ""))
 	r.ErrorIs(err, importers.ErrBetterStackAPI)
 	r.NotContains(err.Error(), testToken)
 	r.NotContains(err.Error(), "boom")
@@ -302,7 +302,7 @@ func TestBetterStackConverterRejectsCrossHostPagination(t *testing.T) {
 
 	conv := importers.NewBetterStackConverter(importers.BetterStackOptions{BaseURL: srv.URL})
 
-	_, err := conv.Convert(betterStackBody(t, testToken, ""))
+	_, err := conv.Convert(betterStackBody(t, ""))
 	r.ErrorIs(err, importers.ErrBetterStackAPI)
 	r.Contains(err.Error(), "different host")
 }
@@ -331,7 +331,7 @@ func TestBetterStackConverterEmptyAccount(t *testing.T) {
 
 	conv := importers.NewBetterStackConverter(importers.BetterStackOptions{BaseURL: srv.URL})
 
-	_, err := conv.Convert(betterStackBody(t, testToken, ""))
+	_, err := conv.Convert(betterStackBody(t, ""))
 	r.ErrorIs(err, importers.ErrEmptyInput)
 }
 
@@ -344,7 +344,7 @@ func TestBetterStackConverterHonorsRequestBaseURL(t *testing.T) {
 	// Constructed against the production default, redirected by the request body.
 	conv := importers.NewBetterStackConverter(importers.BetterStackOptions{})
 
-	result, err := conv.Convert(betterStackBody(t, testToken, srv.URL))
+	result, err := conv.Convert(betterStackBody(t, srv.URL))
 	r.NoError(err)
 	r.NotEmpty(result.Document.Checks)
 }

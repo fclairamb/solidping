@@ -30,7 +30,7 @@ var (
 	// ErrBetterStackTokenRequired is returned when the request body carries no token.
 	ErrBetterStackTokenRequired = errors.New("a Better Stack API token is required")
 	// ErrBetterStackUnauthorized is returned when Better Stack rejects the token.
-	ErrBetterStackUnauthorized = errors.New("Better Stack rejected the API token")
+	ErrBetterStackUnauthorized = errors.New("the Better Stack API rejected the token")
 	// ErrBetterStackAPI is returned for any other non-success API response.
 	ErrBetterStackAPI = errors.New("the Better Stack API returned an error")
 	// ErrBetterStackUnreachable is returned when the API could not be reached.
@@ -186,7 +186,7 @@ func (c *BetterStackConverter) ConvertContext(ctx context.Context, input []byte)
 	}
 
 	if len(heartbeats) > 0 {
-		warn.addDoc("%d heartbeat(s) were imported: SolidPing issues its own ping URLs, so repoint every "+
+		warn.addDocf("%d heartbeat(s) were imported: SolidPing issues its own ping URLs, so repoint every "+
 			"cron job or agent at the new URL after the import", len(heartbeats))
 	}
 
@@ -215,7 +215,7 @@ func (c *BetterStackConverter) fetchAll(
 		}
 
 		var decoded betterStackPage
-		if err := json.Unmarshal(body, &decoded); err != nil {
+		if decodeErr := json.Unmarshal(body, &decoded); decodeErr != nil {
 			return nil, fmt.Errorf("%w: unreadable response for %s", ErrBetterStackAPI, path)
 		}
 
@@ -292,19 +292,15 @@ func (c *BetterStackConverter) get(ctx context.Context, token, endpoint string) 
 	return body, nil
 }
 
-// betterStackSecretHeaderNames are header names whose values are stored in the
-// encrypted secretHeaders map rather than in the public config.
-var betterStackSecretHeaderNames = []string{"authorization", "cookie", "token", "secret", "key", "password"}
-
 // convertBetterStackMonitor maps one monitor onto a check.
 //
-//nolint:cyclop,funlen // one dispatch per Better Stack monitor type
+//nolint:funlen // one dispatch per Better Stack monitor type
 func convertBetterStackMonitor(
 	item *betterStackItem, slugs *slugSet, warn *warnings,
 ) (checks.ExportCheck, bool) {
 	var monitor betterStackMonitor
 	if err := json.Unmarshal(item.Attributes, &monitor); err != nil {
-		warn.add("monitor "+item.ID, "", "monitor skipped: its attributes could not be decoded")
+		warn.addf("monitor "+item.ID, "", "monitor skipped: its attributes could not be decoded")
 
 		return checks.ExportCheck{}, false
 	}
@@ -327,13 +323,13 @@ func convertBetterStackMonitor(
 	timeout := secondsToPeriod(monitor.RequestTimeout)
 
 	switch monitor.MonitorType {
-	case "status", "expected_status_code", "keyword", "keyword_absence":
+	case "status", "expected_status_code", srcKeyword, "keyword_absence":
 		check.Type = string(checkerdef.CheckTypeHTTP)
 		check.Config = betterStackHTTPConfig(&monitor, timeout, name, warn)
-	case "ping":
+	case srcPing:
 		check.Type = string(checkerdef.CheckTypeICMP)
-		check.Config = map[string]any{"host": host}
-	case "tcp":
+		check.Config = map[string]any{cfgKeyHost: host}
+	case srcTCP:
 		check.Type = string(checkerdef.CheckTypeTCP)
 		check.Config = betterStackHostPort(host, port, timeout)
 	case "udp":
@@ -350,9 +346,9 @@ func convertBetterStackMonitor(
 		check.Config = betterStackHostPort(host, port, timeout)
 	case "dns":
 		check.Type = string(checkerdef.CheckTypeDNS)
-		check.Config = map[string]any{"host": host}
+		check.Config = map[string]any{cfgKeyHost: host}
 	default:
-		warn.add(name, "monitor_type",
+		warn.addf(name, "monitor_type",
 			"monitor skipped: Better Stack type %q has no SolidPing counterpart", monitor.MonitorType)
 
 		return checks.ExportCheck{}, false
@@ -366,31 +362,31 @@ func convertBetterStackMonitor(
 // betterStackWarnUnmapped reports monitor settings with no SolidPing counterpart.
 func betterStackWarnUnmapped(monitor *betterStackMonitor, name string, warn *warnings) {
 	if monitor.VerifySSL != nil && !*monitor.VerifySSL {
-		warn.add(name, "verify_ssl", "skipping TLS verification is not supported — the check verifies certificates")
+		warn.addf(name, "verify_ssl", "skipping TLS verification is not supported — the check verifies certificates")
 	}
 
 	if monitor.FollowRedirects != nil && !*monitor.FollowRedirects {
-		warn.add(name, "follow_redirects",
+		warn.addf(name, "follow_redirects",
 			"redirect handling is not configurable on SolidPing http checks (redirects are followed)")
 	}
 
 	if monitor.AuthUsername != "" || monitor.AuthPassword != "" {
-		warn.add(name, "auth_password",
+		warn.addf(name, "auth_password",
 			"basic-auth credentials are not imported — re-enter them on the check")
 	}
 
 	if monitor.MonitorGroupID != nil {
-		warn.add(name, "monitor_group_id",
+		warn.addf(name, "monitor_group_id",
 			"Better Stack monitor groups are not imported — assign a SolidPing check group manually")
 	}
 
 	if monitor.SSLExpiration != nil {
-		warn.add(name, "ssl_expiration",
+		warn.addf(name, "ssl_expiration",
 			"certificate expiry is a dedicated ssl check in SolidPing — add one for this host")
 	}
 
 	if monitor.DomainExpiration != nil {
-		warn.add(name, "domain_expiration",
+		warn.addf(name, "domain_expiration",
 			"domain expiry is a dedicated domain check in SolidPing — add one for this host")
 	}
 }
@@ -399,7 +395,7 @@ func betterStackWarnUnmapped(monitor *betterStackMonitor, name string, warn *war
 func betterStackHTTPConfig(
 	monitor *betterStackMonitor, timeout, name string, warn *warnings,
 ) map[string]any {
-	cfg := map[string]any{"url": monitor.URL}
+	cfg := map[string]any{cfgKeyURL: monitor.URL}
 
 	if monitor.HTTPMethod != "" {
 		cfg["method"] = strings.ToUpper(monitor.HTTPMethod)
@@ -410,7 +406,7 @@ func betterStackHTTPConfig(
 	}
 
 	if timeout != "" {
-		cfg["timeout"] = timeout
+		cfg[cfgKeyTimeout] = timeout
 	}
 
 	if len(monitor.ExpectedStatusCodes) > 0 {
@@ -433,7 +429,8 @@ func betterStackHTTPConfig(
 	headers := map[string]any{}
 	secretHeaders := map[string]any{}
 
-	for _, header := range monitor.RequestHeaders {
+	for i := range monitor.RequestHeaders {
+		header := &monitor.RequestHeaders[i]
 		if header.Name == "" {
 			continue
 		}
@@ -454,7 +451,7 @@ func betterStackHTTPConfig(
 	if len(secretHeaders) > 0 {
 		cfg["secretHeaders"] = secretHeaders
 
-		warn.add(name, "request_headers",
+		warn.addf(name, "request_headers",
 			"%d credential-bearing header(s) were imported into the encrypted secretHeaders field",
 			len(secretHeaders))
 	}
@@ -464,8 +461,12 @@ func betterStackHTTPConfig(
 
 // betterStackIsSecretHeader reports whether a header name looks credential-bearing.
 func betterStackIsSecretHeader(name string) bool {
+	// Header names whose values belong in the encrypted secretHeaders map
+	// rather than in the queryable public config.
+	secretNames := []string{"authorization", "cookie", "token", "secret", "key", "password"}
+
 	lower := strings.ToLower(name)
-	for _, needle := range betterStackSecretHeaderNames {
+	for _, needle := range secretNames {
 		if strings.Contains(lower, needle) {
 			return true
 		}
@@ -476,13 +477,13 @@ func betterStackIsSecretHeader(name string) bool {
 
 // betterStackHostPort builds a host/port config.
 func betterStackHostPort(host string, port int, timeout string) map[string]any {
-	cfg := map[string]any{"host": host}
+	cfg := map[string]any{cfgKeyHost: host}
 	if port > 0 {
-		cfg["port"] = port
+		cfg[cfgKeyPort] = port
 	}
 
 	if timeout != "" {
-		cfg["timeout"] = timeout
+		cfg[cfgKeyTimeout] = timeout
 	}
 
 	return cfg
@@ -533,7 +534,7 @@ func convertBetterStackHeartbeat(
 ) (checks.ExportCheck, bool) {
 	var heartbeat betterStackHeartbeat
 	if err := json.Unmarshal(item.Attributes, &heartbeat); err != nil {
-		warn.add("heartbeat "+item.ID, "", "heartbeat skipped: its attributes could not be decoded")
+		warn.addf("heartbeat "+item.ID, "", "heartbeat skipped: its attributes could not be decoded")
 
 		return checks.ExportCheck{}, false
 	}

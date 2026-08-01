@@ -3,6 +3,7 @@ package importers_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -178,7 +179,7 @@ func TestConvertEndpointBetterStackRoundTrip(t *testing.T) {
 	srv := newBetterStackServer(t)
 	harness := newConvertHarness(t, srv.URL)
 
-	body := betterStackBody(t, testToken, "")
+	body := betterStackBody(t, "")
 	result := runSourceRoundTrip(t, harness, "betterstack", body)
 
 	r.Equal("betterstack", result.Manifest)
@@ -190,10 +191,7 @@ func TestConvertEndpointBetterStackRoundTrip(t *testing.T) {
 	// The token is nowhere in the persisted check set.
 	list, _, err := harness.dbSvc.ListChecks(t.Context(), harness.org.UID, &models.ListChecksFilter{})
 	r.NoError(err)
-
-	encoded, err := json.Marshal(list)
-	r.NoError(err)
-	r.NotContains(string(encoded), testToken)
+	r.NotContains(fmt.Sprintf("%+v", list), testToken)
 }
 
 func TestConvertEndpointRejectsUnknownSource(t *testing.T) {
@@ -226,7 +224,7 @@ func TestConvertEndpointBetterStackBadTokenIsAValidationError(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	harness := newConvertHarness(t, srv.URL)
-	rec := harness.post(t, "betterstack", true, betterStackBody(t, testToken, ""))
+	rec := harness.post(t, "betterstack", true, betterStackBody(t, ""))
 
 	r.Equal(http.StatusBadRequest, rec.Code)
 
@@ -246,7 +244,7 @@ func TestConvertEndpointBetterStackUnreachableIsAValidationError(t *testing.T) {
 	srv.Close()
 
 	harness := newConvertHarness(t, baseURL)
-	rec := harness.post(t, "betterstack", true, betterStackBody(t, testToken, ""))
+	rec := harness.post(t, "betterstack", true, betterStackBody(t, ""))
 
 	r.Equal(http.StatusBadRequest, rec.Code)
 

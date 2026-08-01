@@ -99,8 +99,6 @@ func (h *Handler) converterFor(source string) (Converter, error) {
 // straight through the existing ApplyChecks path — there is no second import
 // pipeline. Nothing about the request is persisted beyond the resulting checks;
 // in particular the Better Stack API token is never stored or logged.
-//
-//nolint:cyclop // a linear parse → convert → apply flow with error translation
 func (h *Handler) ConvertAndApply(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := httpx.Param(req, "org")
 	source := req.URL.Query().Get("source")

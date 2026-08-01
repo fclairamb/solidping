@@ -21,7 +21,6 @@ func TestUptimeKumaConverterGolden(t *testing.T) {
 	assertGolden(t, "uptime-kuma", result)
 }
 
-//nolint:funlen // one assertion block per Kuma monitor type
 func TestUptimeKumaConverterMapsEveryType(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

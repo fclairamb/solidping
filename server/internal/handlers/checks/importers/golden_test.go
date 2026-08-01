@@ -2,7 +2,6 @@ package importers_test
 
 import (
 	"encoding/json"
-	"flag"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,9 +12,12 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checks/importers"
 )
 
-// updateGolden regenerates the golden snapshots instead of asserting against
-// them: `go test ./internal/handlers/checks/importers/ -update`.
-var updateGolden = flag.Bool("update", false, "update the importer golden files")
+// updateGolden reports whether the golden snapshots should be regenerated
+// instead of asserted against:
+// `UPDATE_GOLDEN=1 go test ./internal/handlers/checks/importers/`.
+func updateGolden() bool {
+	return os.Getenv("UPDATE_GOLDEN") != ""
+}
 
 // goldenSnapshot is the stable, serialized form of a conversion: the produced
 // export document plus every warning, in source order.
@@ -42,14 +44,14 @@ func assertGolden(t *testing.T, name string, result *importers.ConversionResult)
 
 	path := filepath.Join("testdata", name+".golden.json")
 
-	if *updateGolden {
+	if updateGolden() {
 		r.NoError(os.WriteFile(path, actual, 0o600))
 
 		return
 	}
 
-	expected, err := os.ReadFile(path) //nolint:gosec // fixed test-data path
-	r.NoError(err, "missing golden file %s — run the test with -update", path)
+	expected, err := os.ReadFile(path)
+	r.NoError(err, "missing golden file %s — re-run with UPDATE_GOLDEN=1", path)
 	r.JSONEq(string(expected), string(actual))
 }
 
@@ -57,7 +59,7 @@ func assertGolden(t *testing.T, name string, result *importers.ConversionResult)
 func readFixture(t *testing.T, name string) []byte {
 	t.Helper()
 
-	data, err := os.ReadFile(filepath.Join("testdata", name)) //nolint:gosec // fixed test-data path
+	data, err := os.ReadFile(filepath.Join("testdata", name))
 	require.NoError(t, err)
 
 	return data
