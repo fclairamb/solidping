@@ -1064,8 +1064,16 @@ type targetHostCursorPayload struct {
 }
 
 // encodeTargetHostCursor encodes the composite sort=targetHost cursor.
+// targetHostCursorPayload is a plain string struct, so Marshal cannot fail in
+// practice; the error is still checked (never ignored) to satisfy errchkjson
+// and because an encode failure should yield an empty (invalid, rejected on
+// decode) cursor rather than a corrupt one.
 func (s *Service) encodeTargetHostCursor(hostKey, name, uid string) string {
-	payload, _ := json.Marshal(targetHostCursorPayload{Host: hostKey, Name: name, UID: uid})
+	payload, err := json.Marshal(targetHostCursorPayload{Host: hostKey, Name: name, UID: uid})
+	if err != nil {
+		return ""
+	}
+
 	return base64.URLEncoding.EncodeToString(payload)
 }
 
