@@ -28,6 +28,12 @@ const (
 // is what the spec calls for on the Teams card.
 const msTeamsFieldMonitor = "Monitor"
 
+// msTeamsMessageType is the top-level envelope "type" for a Teams Workflow
+// payload — always the literal "message" per the Bot Framework activity
+// schema (distinct from the AdaptiveCard "type": "AdaptiveCard" nested inside
+// the attachment content).
+const msTeamsMessageType = "message"
+
 var (
 	// ErrMSTeamsWebhookURLNotConfigured is returned when the Teams webhook URL is missing.
 	ErrMSTeamsWebhookURLNotConfigured = errors.New("microsoft teams webhook URL not configured")
@@ -159,7 +165,7 @@ func (s *MSTeamsSender) buildMessage(payload *Payload) *msTeamsMessage {
 	}
 
 	return &msTeamsMessage{
-		Type: "message",
+		Type: msTeamsMessageType,
 		Attachments: []msTeamsAttachment{
 			{
 				ContentType: "application/vnd.microsoft.card.adaptive",
@@ -209,7 +215,7 @@ func (s *MSTeamsSender) buildFacts(payload *Payload, checkName string) []msTeams
 
 	facts = append(facts,
 		msTeamsFact{Title: mmFieldCause, Value: getFailureReason(payload.Incident)},
-		msTeamsFact{Title: "Failure Count", Value: strconv.Itoa(payload.Incident.FailureCount)},
+		msTeamsFact{Title: mmFieldFailureCount, Value: strconv.Itoa(payload.Incident.FailureCount)},
 	)
 
 	return facts

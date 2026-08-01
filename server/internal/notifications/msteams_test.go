@@ -96,39 +96,39 @@ func TestMSTeamsSender_EventTypes(t *testing.T) {
 		wantFactTitle []string
 	}{
 		{
-			name:          "created",
+			name:          "created-event",
 			eventType:     eventTypeIncidentCreated,
 			wantTitle:     "[DOWN] API health",
 			wantColor:     msTeamsColorAttention,
-			wantFactTitle: []string{msTeamsFieldMonitor, mmFieldCause, "Failure Count"},
+			wantFactTitle: []string{msTeamsFieldMonitor, mmFieldCause, mmFieldFailureCount},
 		},
 		{
-			name:          "resolved",
+			name:          "resolved-event",
 			eventType:     eventTypeIncidentResolved,
 			wantTitle:     "[RECOVERED] API health",
 			wantColor:     msTeamsColorGood,
 			wantFactTitle: []string{msTeamsFieldMonitor, mmFieldDuration},
 		},
 		{
-			name:          "escalated",
+			name:          "escalated-event",
 			eventType:     eventTypeIncidentEscalated,
 			wantTitle:     "[ESCALATED] API health",
 			wantColor:     msTeamsColorAttention,
-			wantFactTitle: []string{msTeamsFieldMonitor, mmFieldCause, "Failure Count"},
+			wantFactTitle: []string{msTeamsFieldMonitor, mmFieldCause, mmFieldFailureCount},
 		},
 		{
-			name:          "reopened",
+			name:          "reopened-event",
 			eventType:     eventTypeIncidentReopened,
 			wantTitle:     "[REOPENED] API health (relapse #2)",
 			wantColor:     msTeamsColorAttention,
-			wantFactTitle: []string{msTeamsFieldMonitor, mmFieldCause, "Failure Count"},
+			wantFactTitle: []string{msTeamsFieldMonitor, mmFieldCause, mmFieldFailureCount},
 		},
 		{
 			name:          "default/unknown",
 			eventType:     "incident.unknown",
 			wantTitle:     "[UPDATE] API health",
 			wantColor:     "",
-			wantFactTitle: []string{msTeamsFieldMonitor, mmFieldCause, "Failure Count"},
+			wantFactTitle: []string{msTeamsFieldMonitor, mmFieldCause, mmFieldFailureCount},
 		},
 	}
 
@@ -146,7 +146,7 @@ func TestMSTeamsSender_EventTypes(t *testing.T) {
 			r.NoError(err)
 
 			msg := fake.lastMessage(t)
-			r.Equal("message", msg.Type)
+			r.Equal(msTeamsMessageType, msg.Type)
 			r.Len(msg.Attachments, 1)
 
 			att := msg.Attachments[0]

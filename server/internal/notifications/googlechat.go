@@ -192,7 +192,7 @@ func (s *GoogleChatSender) buildWidgets(payload *Payload, checkName string) []go
 			DecoratedText: &googleChatDecoratedText{TopLabel: "Cause", Text: getFailureReason(payload.Incident)},
 		}, googleChatWidget{
 			DecoratedText: &googleChatDecoratedText{
-				TopLabel: "Failure Count",
+				TopLabel: mmFieldFailureCount,
 				Text:     strconv.Itoa(payload.Incident.FailureCount),
 			},
 		})

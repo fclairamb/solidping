@@ -26,9 +26,10 @@ const (
 
 // Mattermost field title labels.
 const (
-	mmFieldCheck    = "Check"
-	mmFieldCause    = "Cause"
-	mmFieldDuration = "Duration"
+	mmFieldCheck        = "Check"
+	mmFieldCause        = "Cause"
+	mmFieldDuration     = "Duration"
+	mmFieldFailureCount = "Failure Count"
 )
 
 var (
@@ -186,7 +187,7 @@ func (s *MattermostSender) buildFields(payload *Payload, checkName string) []mat
 		{Short: true, Title: mmFieldCheck, Value: checkName},
 		{Short: true, Title: "Type", Value: payload.Check.Type},
 		{Short: false, Title: mmFieldCause, Value: getFailureReason(payload.Incident)},
-		{Short: true, Title: "Failure Count", Value: strconv.Itoa(payload.Incident.FailureCount)},
+		{Short: true, Title: mmFieldFailureCount, Value: strconv.Itoa(payload.Incident.FailureCount)},
 	}
 
 	if payload.EventType == eventTypeIncidentReopened {
