@@ -14,6 +14,7 @@ Status pages provide a real-time view of your monitored services. Each organizat
 - Current status of each service (up / down / degraded)
 - Uptime percentage over a configurable history window
 - Per-check response-time history
+- Whole check groups published as a single aggregated component, hiding your internal probe topology
 - Recent incident history
 - Locale-aware date and time formatting
 
@@ -22,7 +23,57 @@ Status pages provide a real-time view of your monitored services. Each organizat
 A status page is organized into **sections** and **resources**:
 
 - **Sections** group related services (for example, "API", "Database", "Frontend"). Sections are ordered and can be reordered.
-- **Resources** are individual checks assigned to a section. Each resource can have a public display name and an explanation that override the internal check name, so you control exactly what visitors see.
+- **Resources** are the components inside a section. A resource targets **either one check or one check group** — never both. Each resource can have a public display name and an explanation that override the internal name, so you control exactly what visitors see.
+
+## Group components
+
+A single host is often probed several times over — TCP, HTTP, TLS, RDP. Publishing all four checks tells your visitors far more about your internal monitoring topology than they need to know, and it quadruples the length of your page.
+
+Point a resource at a **check group** instead and it renders as **one** component. Nothing about the group's members reaches the public page: no member names, no member types, not even how many there are.
+
+### Status
+
+The component's status is rolled up from the group's **enabled** member checks:
+
+| Members | Component reads |
+|---|---|
+| All up | **Up** |
+| All down | **Down** |
+| Some — but not all — down | **Degraded** |
+| None down, at least one warning | **Warning** |
+| No members, or none reporting yet | **No data** |
+
+A member in the transient "validating" state still reads up publicly, exactly as a standalone check does — the component only turns red once a failure is confirmed. Disabled members are ignored entirely.
+
+### Availability
+
+Per time bucket (a day, or an hour in the 24h view), availability is the **weighted average** across members:
+
+```
+availability = sum(successful checks across members) / sum(total checks across members) × 100
+```
+
+This is the same formula a single check already uses, extended across the group — not an average of per-member percentages. So a member probed every 10 seconds carries proportionally more weight in a bucket than one probed every 5 minutes, which is what you want: the number reflects how many probes actually succeeded.
+
+A member with **no data at all** in a bucket contributes nothing to it — it is not counted as a zero. A bucket in which no member reported renders as "no data", exactly like a silent single check.
+
+Group components do not publish a response-time chart. Interleaving several members' latencies into one plot would be meaningless, and it would expose per-member timing — precisely what the group component exists to hide. The availability bar is the group's public performance surface.
+
+### Maintenance
+
+A group component shows the "Scheduled Maintenance" badge when an active maintenance window targets **the group** *or* **any of its member checks**. You can therefore schedule maintenance at whichever granularity is natural and the public page stays correct.
+
+### Setting one up
+
+In the dashboard, open the status page, click **+** on a section, switch the dialog to the **Group** tab and pick the group. An existing component's target can be changed later — including switching it between a check and a group — with the pencil icon on its row.
+
+Via the API, `POST .../sections/{section}/resources` accepts `checkUid` **or** `checkGroupUid` (a UID or a slug for either). Sending both — or neither — is a `VALIDATION_ERROR` naming both fields. `PATCH` on an existing resource accepts the same pair to move it to a different target.
+
+From the CLI:
+
+```bash
+sp status-pages resources create public core --check-group web-frontend
+```
 
 ## Configuration
 
