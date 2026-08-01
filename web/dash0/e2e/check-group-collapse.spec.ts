@@ -98,10 +98,10 @@ function fourMemberGroup(uid: string, name: string): {
   upChecks: MockCheck[];
 } {
   const degradedChecks: MockCheck[] = [
-    { uid: `${uid}-c1`, name: "TCP", status: "down", checkGroupUid: uid },
-    { uid: `${uid}-c2`, name: "HTTP", status: "up", checkGroupUid: uid },
-    { uid: `${uid}-c3`, name: "TLS", status: "up", checkGroupUid: uid },
-    { uid: `${uid}-c4`, name: "RDP", status: "up", checkGroupUid: uid },
+    { uid: `${uid}-c1`, name: "Node A", status: "down", checkGroupUid: uid },
+    { uid: `${uid}-c2`, name: "Node B", status: "up", checkGroupUid: uid },
+    { uid: `${uid}-c3`, name: "Node C", status: "up", checkGroupUid: uid },
+    { uid: `${uid}-c4`, name: "Node D", status: "up", checkGroupUid: uid },
   ];
   const upChecks: MockCheck[] = degradedChecks.map((c) => ({
     ...c,
@@ -149,8 +149,8 @@ test.describe("Check group collapse", () => {
     );
 
     // Non-up status starts expanded — every member row is visible.
-    await expect(section.getByText("TCP")).toBeVisible();
-    await expect(section.getByText("HTTP")).toBeVisible();
+    await expect(section.getByRole("link", { name: "Node A", exact: true })).toBeVisible();
+    await expect(section.getByRole("link", { name: "Node B", exact: true })).toBeVisible();
     await expect(section.getByTestId("group-header")).toHaveAttribute(
       "aria-expanded",
       "true",
@@ -187,11 +187,11 @@ test.describe("Check group collapse", () => {
       "aria-expanded",
       "false",
     );
-    await expect(section.getByText("TCP")).not.toBeVisible();
+    await expect(section.getByRole("link", { name: "Node A", exact: true })).not.toBeVisible();
 
     // Expanding via the chevron reveals the rows.
     await section.getByTestId("group-collapse-toggle").click();
-    await expect(section.getByText("TCP")).toBeVisible();
+    await expect(section.getByRole("link", { name: "Node A", exact: true })).toBeVisible();
     await expect(section.getByTestId("group-header")).toHaveAttribute(
       "aria-expanded",
       "true",
@@ -222,9 +222,9 @@ test.describe("Check group collapse", () => {
     await expect(section).toBeVisible({ timeout: 10000 });
 
     // Starts collapsed (status is up); expand it manually.
-    await expect(section.getByText("TCP")).not.toBeVisible();
+    await expect(section.getByRole("link", { name: "Node A", exact: true })).not.toBeVisible();
     await section.getByTestId("group-collapse-toggle").click();
-    await expect(section.getByText("TCP")).toBeVisible();
+    await expect(section.getByRole("link", { name: "Node A", exact: true })).toBeVisible();
 
     // Re-mock (routes don't survive a reload) and reload — the manual choice
     // must still be in effect, sourced from localStorage.
@@ -236,7 +236,7 @@ test.describe("Check group collapse", () => {
       .getByTestId("group-section")
       .filter({ has: page.getByTestId("group-name").getByText(group.name) });
     await expect(sectionAfterReload).toBeVisible({ timeout: 10000 });
-    await expect(sectionAfterReload.getByText("TCP")).toBeVisible();
+    await expect(sectionAfterReload.getByRole("link", { name: "Node A", exact: true })).toBeVisible();
     await expect(sectionAfterReload.getByTestId("group-header")).toHaveAttribute(
       "aria-expanded",
       "true",
