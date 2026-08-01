@@ -1,5 +1,5 @@
 import { StrictMode, useEffect } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -49,6 +49,19 @@ declare module "@tanstack/react-router" {
 // sees an `lang="en"` page rendered in another language and offers to translate
 // it — auto-translate wraps text nodes in <font> tags, which clashes with React
 // reconciliation and throws "removeChild on Node" on the next re-render.
+//
+// Defence in depth against the same "removeChild on Node" family of crashes:
+//   * index.html carries `translate="no"` + <meta name="google" content="notranslate">
+//     so Chrome never rewrites this DOM in the first place, and the
+//     <html lang> sync below removes the prompt that would tempt a visitor to
+//     translate manually;
+//   * the version line (status-page-view.tsx) is additionally marked
+//     translate="no" — it is rewritten on every 30 s poll, which is the render
+//     most likely to remove a re-parented text node; and
+//   * the entry mounts a SINGLE React root even when this module is
+//     re-executed (see the createRoot call at the bottom of this file), which
+//     is what actually reproduced the crash on every dev page load.
+// e2e/translate-resilience.spec.ts is the regression guard for all three.
 function useSyncHtmlLang() {
   useEffect(() => {
     const sync = () => {
@@ -74,7 +87,29 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(
+/**
+ * Mount exactly one React root per document.
+ *
+ * Vite re-executes this entry module whenever something below it hot-updates
+ * and no intermediate module accepts the update — the generated
+ * `routeTree.gen.ts` does exactly that on the first request after the router
+ * plugin regenerates it. A second `createRoot()` on the same container does not
+ * replace the first tree, it mounts a SECOND one into #root: React warns
+ * ("createRoot() on a container that has already been passed to createRoot()"),
+ * and the original tree then dies on its next commit with
+ *
+ *   NotFoundError: Failed to execute 'removeChild' on 'Node'
+ *
+ * which the visitor sees as TanStack Router's "Something went wrong!" screen.
+ * Reusing the cached root — what React's own warning tells you to do — turns a
+ * hot update back into a plain re-render. In production this module is
+ * evaluated once, so the cache is a no-op.
+ */
+type RootHost = Window & { __spStatus0Root?: Root };
+const host = window as RootHost;
+const container = document.getElementById("root")!;
+host.__spStatus0Root ??= createRoot(container);
+host.__spStatus0Root.render(
   <StrictMode>
     <App />
   </StrictMode>
