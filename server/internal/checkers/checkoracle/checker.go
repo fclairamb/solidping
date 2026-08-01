@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	go_ora "github.com/sijms/go-ora/v2" // Oracle driver registration + connector API
+	go_ora "github.com/sijms/go-ora/v3" // Oracle driver registration + connector API
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
