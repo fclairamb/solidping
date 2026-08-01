@@ -66,7 +66,7 @@ func (h *Handler) handleInstallationUpdate(ctx context.Context, activity *Activi
 }
 
 // handleConversationUpdate captures a conversation reference when the bot
-// itself is added to a team/channel — the Teams analogue of Slack's
+// itself is added to a team/channel — the Teams analog of Slack's
 // member_joined_channel auto-configure.
 func (h *Handler) handleConversationUpdate(ctx context.Context, activity *Activity) error {
 	if !h.botWasAdded(ctx, activity) {

@@ -132,7 +132,7 @@ func botPayload(t *testing.T, eventType string, serviceURL string) *Payload {
 		OrganizationUID: "org-1",
 		StartedAt:       time.Now().Add(-5 * time.Minute),
 		RelapseCount:    2,
-		Details:         models.JSONMap{"failure_reason": "connection refused"},
+		Details:         models.JSONMap{"failure_reason": "upstream returned 503"},
 	}
 
 	if eventType == eventTypeIncidentResolved {
@@ -204,7 +204,7 @@ func TestMSTeamsBotSender_CreatedPostsCardAndStoresID(t *testing.T) {
 	r.Equal(botTestConvID, (*db.setStateCalls[0].value)[msTeamsBotKeyConversationID])
 }
 
-// TestMSTeamsBotSender_EscalationUpdatesInPlace is the behaviour that
+// TestMSTeamsBotSender_EscalationUpdatesInPlace is the behavior that
 // distinguishes this sender from the one-way webhook one: an escalation must
 // rewrite the existing card, not add a second one.
 func TestMSTeamsBotSender_EscalationUpdatesInPlace(t *testing.T) {

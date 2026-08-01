@@ -13,8 +13,8 @@ import (
 	"strings"
 )
 
-// colorIconPNG is the 192×192 colour icon shipped in the app package. It is
-// the same mark as the dashboard favicon so the app is recognisable in the
+// colorIconPNG is the 192×192 color icon shipped in the app package. It is
+// the same mark as the dashboard favicon so the app is recognizable in the
 // Teams app list.
 //
 //go:embed assets/color.png
@@ -32,6 +32,15 @@ const (
 	appFullName     = "SolidPing monitoring"
 	accentColor     = "#1F6FEB"
 	outlineIconSize = 32
+
+	// scopeTeam / scopeGroupChat are the Teams install scopes the bot
+	// declares. Personal scope is phase 2 (see the spec's capability map).
+	scopeTeam      = "team"
+	scopeGroupChat = "groupChat"
+
+	// cmdHintChecksList is the compose-box hint for the checks-list command;
+	// the same literal is asserted in the parser tests.
+	cmdHintChecksList = "checks list"
 )
 
 // Manifest is the Teams app manifest, narrowed to the fields we emit.
@@ -125,14 +134,14 @@ func BuildManifest(appID, baseURL string) *Manifest {
 			// team + groupChat only: personal-scope DMs are phase 2 (see the
 			// spec's capability map), and declaring a scope the bot does not
 			// implement would surface a dead "Chat" tab in Teams.
-			Scopes:             []string{"team", "groupChat"},
+			Scopes:             []string{scopeTeam, scopeGroupChat},
 			SupportsFiles:      false,
 			IsNotificationOnly: false,
 			CommandLists: []ManifestCommandList{{
-				Scopes: []string{"team", "groupChat"},
+				Scopes: []string{scopeTeam, scopeGroupChat},
 				Commands: []ManifestCommand{
 					{Title: "help", Description: "Show the available commands"},
-					{Title: "checks list", Description: "List the organization's checks"},
+					{Title: cmdHintChecksList, Description: "List the organization's checks"},
 					{Title: "checks add <url>", Description: "Start monitoring a URL"},
 					{Title: "checks rm <slug>", Description: "Stop monitoring a check"},
 					{Title: "incidents list", Description: "List recent incidents"},
@@ -186,7 +195,9 @@ func BuildAppPackage(appID, baseURL string) ([]byte, error) {
 		{"outline.png", outline},
 	}
 
-	for _, entry := range entries {
+	for i := range entries {
+		entry := &entries[i]
+
 		file, createErr := writer.Create(entry.name)
 		if createErr != nil {
 			return nil, fmt.Errorf("creating %s in app package: %w", entry.name, createErr)
@@ -206,7 +217,7 @@ func BuildAppPackage(appID, baseURL string) ([]byte, error) {
 
 // buildOutlineIcon renders the 32×32 outline icon Teams shows in the app bar.
 // Teams requires it to be white-on-transparent, so it is generated rather
-// than shipped as a second copy of the coloured mark (which Teams renders as
+// than shipped as a second copy of the colored mark (which Teams renders as
 // a muddy blob). A filled disc is the simplest shape that reads correctly at
 // 32 px.
 func buildOutlineIcon() ([]byte, error) {
@@ -219,13 +230,13 @@ func buildOutlineIcon() ([]byte, error) {
 
 	white := color.NRGBA{R: 255, G: 255, B: 255, A: 255}
 
-	for y := range outlineIconSize {
-		for x := range outlineIconSize {
-			dx := float64(x) + 0.5 - center
-			dy := float64(y) + 0.5 - center
+	for row := range outlineIconSize {
+		for col := range outlineIconSize {
+			dx := float64(col) + 0.5 - center
+			dy := float64(row) + 0.5 - center
 
 			if dx*dx+dy*dy <= radius*radius {
-				img.SetNRGBA(x, y, white)
+				img.SetNRGBA(col, row, white)
 			}
 		}
 	}

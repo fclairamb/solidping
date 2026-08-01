@@ -21,9 +21,9 @@ func TestHandleUninstall_FansOutAcrossOrgs(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, _ := setupService(t)
 
-	connA := newConnection(t, ctx, svc, "teams-uninst-a", testTenantID)
-	connB := newConnection(t, ctx, svc, "teams-uninst-b", testTenantID)
-	connOther := newConnection(t, ctx, svc, "teams-uninst-oth", "other-tenant")
+	connA := newConnection(ctx, t, svc, "teams-uninst-a", testTenantID)
+	connB := newConnection(ctx, t, svc, "teams-uninst-b", testTenantID)
+	connOther := newConnection(ctx, t, svc, "teams-uninst-oth", "other-tenant")
 
 	// Give A a destination so we can prove routing state is cleared.
 	_, err := svc.HandleInstall(ctx, installActivity(testTenantID, "19:channel-a", InstallActionAdd))
@@ -78,7 +78,7 @@ func TestDispatchActivity_RemoveActionUninstalls(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, _ := setupService(t)
 
-	conn := newConnection(t, ctx, svc, "teams-uninst-disp", testTenantID)
+	conn := newConnection(ctx, t, svc, "teams-uninst-disp", testTenantID)
 
 	r.NoError(DispatchActivity(ctx, svc, installActivity(testTenantID, "19:channel-a", InstallActionRemove)))
 
@@ -97,7 +97,7 @@ func TestDispatchActivity_UpgradeActionsAreNotUninstalls(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, _ := setupService(t)
 
-	conn := newConnection(t, ctx, svc, "teams-upgrade", testTenantID)
+	conn := newConnection(ctx, t, svc, "teams-upgrade", testTenantID)
 
 	r.NoError(DispatchActivity(ctx, svc, installActivity(testTenantID, "19:channel-a", "remove-upgrade")))
 
@@ -115,7 +115,7 @@ func TestHandleInstall_ReinstallClearsUninstalledMarker(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, _ := setupService(t)
 
-	newConnection(t, ctx, svc, "teams-reinstall", testTenantID)
+	newConnection(ctx, t, svc, "teams-reinstall", testTenantID)
 
 	_, err := svc.HandleInstall(ctx, installActivity(testTenantID, "19:channel-a", InstallActionAdd))
 	r.NoError(err)

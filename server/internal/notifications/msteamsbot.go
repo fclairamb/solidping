@@ -38,7 +38,7 @@ const msTeamsBotConversationOverrideKey = "conversation_id"
 // Teams bot (Azure Bot / Bot Framework), the two-way `msteams-bot`
 // integration.
 //
-// It is the Teams analogue of SlackSender's threading behaviour:
+// It is the Teams analog of SlackSender's threading behavior:
 //   - `incident.created` posts an Adaptive Card and records its activity id;
 //   - `incident.escalated` UPDATES that same card in place rather than adding
 //     a second one;
@@ -100,7 +100,7 @@ func (s *MSTeamsBotSender) credentials(jctx *jobdef.JobContext) (string, string)
 	return jctx.AppConfig.MSTeams.AppID, jctx.AppConfig.MSTeams.AppSecret
 }
 
-// client builds a Bot Connector client, honouring the test override.
+// client builds a Bot Connector client, honoring the test override.
 func (s *MSTeamsBotSender) client(appID, appSecret, serviceURL string) *msteams.Client {
 	if s.newClient != nil {
 		return s.newClient(appID, appSecret, serviceURL)
@@ -127,22 +127,33 @@ func hasCard(entry *models.StateEntry) bool {
 	return conversationID != "" && activityID != ""
 }
 
-// cardRef reads the stored card reference.
-func cardRef(entry *models.StateEntry) (conversationID, activityID, serviceURL string) {
-	conversationID, _ = (*entry.Value)[msTeamsBotKeyConversationID].(string)
-	activityID, _ = (*entry.Value)[msTeamsBotKeyActivityID].(string)
-	serviceURL, _ = (*entry.Value)[msTeamsBotKeyServiceURL].(string)
+// cardReference is the stored pointer to an incident's already-posted card.
+type cardReference struct {
+	ConversationID string
+	ActivityID     string
+	ServiceURL     string
+}
 
-	return conversationID, activityID, serviceURL
+// cardRef reads the stored card reference.
+func cardRef(entry *models.StateEntry) cardReference {
+	conversationID, _ := (*entry.Value)[msTeamsBotKeyConversationID].(string)
+	activityID, _ := (*entry.Value)[msTeamsBotKeyActivityID].(string)
+	serviceURL, _ := (*entry.Value)[msTeamsBotKeyServiceURL].(string)
+
+	return cardReference{
+		ConversationID: conversationID,
+		ActivityID:     activityID,
+		ServiceURL:     serviceURL,
+	}
 }
 
 // destination resolves the conversation to post into: a per-check override
 // when present, otherwise the connection's default channel.
 func (s *MSTeamsBotSender) destination(
 	settings *models.MSTeamsBotSettings, payload *Payload,
-) (conversationID, serviceURL string, err error) {
-	conversationID = settings.ChannelID
-	serviceURL = settings.ServiceURL
+) (string, string, error) {
+	conversationID := settings.ChannelID
+	serviceURL := settings.ServiceURL
 
 	if payload.CheckConnectionSettings != nil {
 		if override, ok := (*payload.CheckConnectionSettings)[msTeamsBotConversationOverrideKey].(string); ok &&
@@ -220,17 +231,17 @@ func (s *MSTeamsBotSender) updateExistingCard(
 	entry *models.StateEntry,
 	payload *Payload,
 ) error {
-	conversationID, activityID, serviceURL := cardRef(entry)
+	ref := cardRef(entry)
 
-	client := s.client(appID, appSecret, serviceURL)
+	client := s.client(appID, appSecret, ref.ServiceURL)
 
 	if _, err := client.UpdateActivity(
-		ctx, conversationID, activityID, s.buildCardActivity(payload),
+		ctx, ref.ConversationID, ref.ActivityID, s.buildCardActivity(payload),
 	); err != nil {
 		return fmt.Errorf("updating microsoft teams card: %w", err)
 	}
 
-	payload.MessageID = activityID
+	payload.MessageID = ref.ActivityID
 
 	if !isFollowUpEvent(payload.EventType) {
 		return nil
@@ -238,7 +249,7 @@ func (s *MSTeamsBotSender) updateExistingCard(
 
 	reply := msteams.NewTextMessage(s.followUpText(payload))
 
-	if _, err := client.ReplyToActivity(ctx, conversationID, activityID, reply); err != nil {
+	if _, err := client.ReplyToActivity(ctx, ref.ConversationID, ref.ActivityID, reply); err != nil {
 		// The card itself is already correct; a failed thread reply degrades
 		// grouping, it does not lose the notification.
 		slog.WarnContext(ctx, "Failed to post Microsoft Teams follow-up reply",
@@ -291,7 +302,7 @@ func (s *MSTeamsBotSender) buildCardActivity(payload *Payload) *msteams.Activity
 	return msteams.NewCardMessage(title, card)
 }
 
-// titleAndColor maps the event to the card's headline and semantic colour.
+// titleAndColor maps the event to the card's headline and semantic color.
 func (s *MSTeamsBotSender) titleAndColor(payload *Payload, checkName string) (string, string) {
 	switch payload.EventType {
 	case eventTypeIncidentCreated:
@@ -324,7 +335,7 @@ func (s *MSTeamsBotSender) buildFacts(payload *Payload, checkName string) []mste
 		})
 	case payload.EventType != eventTypeIncidentResolved:
 		facts = append(facts,
-			msteams.CardFact{Title: "Cause", Value: getFailureReason(payload.Incident)},
+			msteams.CardFact{Title: mmFieldCause, Value: getFailureReason(payload.Incident)},
 			msteams.CardFact{Title: "Started", Value: payload.Incident.StartedAt.UTC().Format(time.RFC1123)},
 		)
 	}

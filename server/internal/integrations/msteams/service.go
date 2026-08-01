@@ -2,14 +2,13 @@ package msteams
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
 	"strings"
 	"time"
-
-	"database/sql"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -266,8 +265,8 @@ func (s *Service) autoLinkSingleOrg(ctx context.Context, tenantID string) (*mode
 }
 
 // destinationFromActivity builds the conversation reference to store.
-func destinationFromActivity(activity *Activity) models.MSTeamsDestination {
-	return models.MSTeamsDestination{
+func destinationFromActivity(activity *Activity) *models.MSTeamsDestination {
+	return &models.MSTeamsDestination{
 		ID:         activity.ConversationID(),
 		Name:       activity.ConversationName(),
 		TeamID:     activity.TeamID(),
@@ -279,9 +278,9 @@ func destinationFromActivity(activity *Activity) models.MSTeamsDestination {
 
 // upsertDestination adds or refreshes a conversation reference and promotes
 // the first one to the connection's default notification destination — the
-// same "first channel the bot lands in becomes the default" behaviour as
+// same "first channel the bot lands in becomes the default" behavior as
 // slack.handleMemberJoinedChannel.
-func upsertDestination(settings *models.MSTeamsBotSettings, dest models.MSTeamsDestination) {
+func upsertDestination(settings *models.MSTeamsBotSettings, dest *models.MSTeamsDestination) {
 	if dest.ID == "" {
 		return
 	}
@@ -298,14 +297,14 @@ func upsertDestination(settings *models.MSTeamsBotSettings, dest models.MSTeamsD
 			dest.Name = settings.Destinations[i].Name
 		}
 
-		settings.Destinations[i] = dest
+		settings.Destinations[i] = *dest
 		replaced = true
 
 		break
 	}
 
 	if !replaced {
-		settings.Destinations = append(settings.Destinations, dest)
+		settings.Destinations = append(settings.Destinations, *dest)
 	}
 
 	if settings.ChannelID == "" {
@@ -405,7 +404,9 @@ func (s *Service) RegisterConversation(ctx context.Context, activity *Activity) 
 // destination. destID must already be one of the captured conversation
 // references — Teams has no cross-team channel reference syntax, so there is
 // nothing to resolve a free-text channel name against.
-func (s *Service) SetDefaultDestination(ctx context.Context, tenantID, destID string) (*models.MSTeamsDestination, error) {
+func (s *Service) SetDefaultDestination(
+	ctx context.Context, tenantID, destID string,
+) (*models.MSTeamsDestination, error) {
 	conn, err := s.GetConnectionByTenantID(ctx, tenantID)
 	if err != nil {
 		return nil, err

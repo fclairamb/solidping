@@ -31,7 +31,7 @@ func TestDispatchActivity_MentionRepliesWithHelp(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, connector := setupService(t)
 
-	newConnection(t, ctx, svc, "teams-route-help", testTenantID)
+	newConnection(ctx, t, svc, "teams-route-help", testTenantID)
 
 	r.NoError(DispatchActivity(ctx, svc,
 		messageActivity(testTenantID, "19:channel-a", "<at>SolidPing</at> help")))
@@ -51,7 +51,7 @@ func TestDispatchActivity_UnknownCommandWarns(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, connector := setupService(t)
 
-	newConnection(t, ctx, svc, "teams-route-bad", testTenantID)
+	newConnection(ctx, t, svc, "teams-route-bad", testTenantID)
 
 	r.NoError(DispatchActivity(ctx, svc,
 		messageActivity(testTenantID, "19:channel-a", "<at>SolidPing</at> frobnicate")))
@@ -67,7 +67,7 @@ func TestDispatchActivity_IgnoresOwnMessages(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, connector := setupService(t)
 
-	newConnection(t, ctx, svc, "teams-route-self", testTenantID)
+	newConnection(ctx, t, svc, "teams-route-self", testTenantID)
 
 	activity := messageActivity(testTenantID, "19:channel-a", "<at>SolidPing</at> help")
 	activity.From = &ChannelAccount{ID: "28:" + testAppID}
@@ -86,7 +86,7 @@ func TestDispatchActivity_ConfigDefaultChannelUsesCurrentConversation(t *testing
 	r := require.New(t)
 	ctx, svc, connector := setupService(t)
 
-	newConnection(t, ctx, svc, "teams-route-cfg", testTenantID)
+	newConnection(ctx, t, svc, "teams-route-cfg", testTenantID)
 
 	// Two channels captured; the first is the default.
 	_, err := svc.HandleInstall(ctx, installActivity(testTenantID, "19:channel-a", InstallActionAdd))
@@ -138,7 +138,7 @@ func TestDispatchActivity_UninstalledTenantIsRefused(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, connector := setupService(t)
 
-	newConnection(t, ctx, svc, "teams-route-gone", testTenantID)
+	newConnection(ctx, t, svc, "teams-route-gone", testTenantID)
 
 	_, err := svc.HandleInstall(ctx, installActivity(testTenantID, "19:channel-a", InstallActionAdd))
 	r.NoError(err)
@@ -158,7 +158,7 @@ func TestDispatchActivity_IncidentsListEmpty(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, connector := setupService(t)
 
-	newConnection(t, ctx, svc, "teams-route-inc", testTenantID)
+	newConnection(ctx, t, svc, "teams-route-inc", testTenantID)
 
 	r.NoError(DispatchActivity(ctx, svc,
 		messageActivity(testTenantID, "19:channel-a", "<at>SolidPing</at> incidents list")))
@@ -174,7 +174,7 @@ func TestDispatchActivity_UnknownActivityTypeIsIgnored(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, connector := setupService(t)
 
-	newConnection(t, ctx, svc, "teams-route-typing", testTenantID)
+	newConnection(ctx, t, svc, "teams-route-typing", testTenantID)
 
 	activity := messageActivity(testTenantID, "19:channel-a", "")
 	activity.Type = "typing"
@@ -191,8 +191,8 @@ func TestGetConnectionByTenantID_PicksOldestOnAmbiguity(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, _ := setupService(t)
 
-	first := newConnection(t, ctx, svc, "teams-amb-a", testTenantID)
-	newConnection(t, ctx, svc, "teams-amb-b", testTenantID)
+	first := newConnection(ctx, t, svc, "teams-amb-a", testTenantID)
+	newConnection(ctx, t, svc, "teams-amb-b", testTenantID)
 
 	conn, err := svc.GetConnectionByTenantID(ctx, testTenantID)
 	r.NoError(err)

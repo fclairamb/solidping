@@ -53,7 +53,9 @@ func setupService(t *testing.T) (context.Context, *Service, *fakeConnector) {
 }
 
 // newConnection creates a msteams-bot connection bound to a tenant.
-func newConnection(t *testing.T, ctx context.Context, svc *Service, orgSlug, tenantID string) *models.Integration {
+func newConnection(
+	ctx context.Context, t *testing.T, svc *Service, orgSlug, tenantID string,
+) *models.Integration {
 	t.Helper()
 
 	org := models.NewOrganization(orgSlug, "")

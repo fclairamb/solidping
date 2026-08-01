@@ -59,7 +59,7 @@ func TestGetDestinations_ReportsUninstalledState(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, _ := setupService(t)
 
-	conn := newConnection(t, ctx, svc, "teams-dest-uninst", testTenantID)
+	conn := newConnection(ctx, t, svc, "teams-dest-uninst", testTenantID)
 
 	_, err := svc.HandleInstall(ctx, installActivity(testTenantID, "19:channel-a", InstallActionAdd))
 	r.NoError(err)
@@ -100,7 +100,7 @@ func TestGetDestinations_RejectsCrossOrgAccess(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, _ := setupService(t)
 
-	conn := newConnection(t, ctx, svc, "teams-dest-owner", testTenantID)
+	conn := newConnection(ctx, t, svc, "teams-dest-owner", testTenantID)
 
 	intruder := models.NewOrganization("teams-dest-intruder", "")
 	r.NoError(svc.db.CreateOrganization(ctx, intruder))
@@ -129,7 +129,7 @@ func TestSetDefaultDestination_RequiresKnownConversation(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, _ := setupService(t)
 
-	newConnection(t, ctx, svc, "teams-default-dest", testTenantID)
+	newConnection(ctx, t, svc, "teams-default-dest", testTenantID)
 
 	_, err := svc.HandleInstall(ctx, installActivity(testTenantID, "19:channel-a", InstallActionAdd))
 	r.NoError(err)
@@ -161,10 +161,10 @@ func TestCountInstalledTenants_SkipsUninstalled(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, _ := setupService(t)
 
-	newConnection(t, ctx, svc, "teams-count-a", testTenantID)
-	newConnection(t, ctx, svc, "teams-count-b", "tenant-two")
+	newConnection(ctx, t, svc, "teams-count-a", testTenantID)
+	newConnection(ctx, t, svc, "teams-count-b", "tenant-two")
 	// Two orgs on the same tenant must count once.
-	newConnection(t, ctx, svc, "teams-count-c", testTenantID)
+	newConnection(ctx, t, svc, "teams-count-c", testTenantID)
 
 	count, err := svc.CountInstalledTenants(ctx)
 	r.NoError(err)

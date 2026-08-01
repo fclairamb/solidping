@@ -28,7 +28,7 @@ type ParsedCommand struct {
 var mentionTagRegex = regexp.MustCompile(`(?is)<at\b[^>]*>.*?</at>`)
 
 // anchorRegex rewrites `<a href="https://x">label</a>` down to the bare URL,
-// the Teams analogue of Slack's `<https://x|label>` link form.
+// the Teams analog of Slack's `<https://x|label>` link form.
 var anchorRegex = regexp.MustCompile(`(?is)<a\b[^>]*href="([^"]+)"[^>]*>.*?</a>`)
 
 // htmlTagRegex strips whatever markup is left once mentions and anchors are
@@ -61,7 +61,7 @@ func StripMention(text string) string {
 // ParseMentionText extracts a command from a Teams message activity's text.
 //
 // Input:  "<at>SolidPing</at> checks add https://example.com -slug mycheck"
-// Output: ParsedCommand{Command: "checks", Subcommand: "add", Args: [...], Flags: {...}}
+// Output: ParsedCommand{Command: "checks", Subcommand: "add", Args: [...], Flags: {...}}.
 func ParseMentionText(text string) *ParsedCommand {
 	text = StripMention(text)
 

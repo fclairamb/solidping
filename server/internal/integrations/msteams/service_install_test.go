@@ -19,7 +19,7 @@ func TestHandleInstall_CapturesConversationAndDefaults(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, _ := setupService(t)
 
-	conn := newConnection(t, ctx, svc, "teams-install", testTenantID)
+	conn := newConnection(ctx, t, svc, "teams-install", testTenantID)
 
 	updated, err := svc.HandleInstall(ctx, installActivity(testTenantID, "19:channel-a", InstallActionAdd))
 	r.NoError(err)
@@ -55,7 +55,7 @@ func TestHandleInstall_SecondChannelDoesNotStealDefault(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, _ := setupService(t)
 
-	newConnection(t, ctx, svc, "teams-install-2", testTenantID)
+	newConnection(ctx, t, svc, "teams-install-2", testTenantID)
 
 	_, err := svc.HandleInstall(ctx, installActivity(testTenantID, "19:channel-a", InstallActionAdd))
 	r.NoError(err)
@@ -81,7 +81,7 @@ func TestHandleInstall_IsIdempotent(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, _ := setupService(t)
 
-	newConnection(t, ctx, svc, "teams-install-3", testTenantID)
+	newConnection(ctx, t, svc, "teams-install-3", testTenantID)
 
 	for range 3 {
 		_, err := svc.HandleInstall(ctx, installActivity(testTenantID, "19:channel-a", InstallActionAdd))
@@ -106,7 +106,7 @@ func TestHandleInstall_UnknownTenantIsRefused(t *testing.T) {
 	ctx, svc, _ := setupService(t)
 
 	// An org exists, but it never claimed this tenant.
-	newConnection(t, ctx, svc, "teams-other", "some-other-tenant")
+	newConnection(ctx, t, svc, "teams-other", "some-other-tenant")
 
 	_, err := svc.HandleInstall(ctx, installActivity("unclaimed-tenant", "19:channel-a", InstallActionAdd))
 	r.ErrorIs(err, ErrTenantNotLinked)
@@ -196,7 +196,7 @@ func TestDispatchActivity_ConversationUpdateRegistersChannel(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, connector := setupService(t)
 
-	newConnection(t, ctx, svc, "teams-convupdate", testTenantID)
+	newConnection(ctx, t, svc, "teams-convupdate", testTenantID)
 
 	activity := installActivity(testTenantID, "19:channel-a", "")
 	activity.Type = ActivityTypeConversationUpdate
@@ -222,7 +222,7 @@ func TestDispatchActivity_ConversationUpdateIgnoresOtherMembers(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, connector := setupService(t)
 
-	newConnection(t, ctx, svc, "teams-convupdate-2", testTenantID)
+	newConnection(ctx, t, svc, "teams-convupdate-2", testTenantID)
 
 	activity := installActivity(testTenantID, "19:channel-a", "")
 	activity.Type = ActivityTypeConversationUpdate

@@ -273,7 +273,7 @@ type MSTeamsDestination struct {
 }
 
 // MSTeamsBotSettings represents the settings JSONB of a `msteams-bot`
-// connection. It is the Teams analogue of SlackSettings: TenantID replaces
+// connection. It is the Teams analog of SlackSettings: TenantID replaces
 // TeamID as the workspace identity, and Destinations holds the conversation
 // references captured when the bot was added to a team/channel (Teams has no
 // "list all channels" API for a bot, so destinations are accumulated from
@@ -290,7 +290,7 @@ type MSTeamsBotSettings struct {
 	TenantID   string `json:"tenant_id"`
 	TenantName string `json:"tenant_name,omitempty"`
 	// BotID is the bot's own Bot Framework user id inside this tenant
-	// (`28:<app-id>`), used to recognise "the member added is us".
+	// (`28:<app-id>`), used to recognize "the member added is us".
 	BotID string `json:"bot_id,omitempty"`
 	// AppID records which Entra app performed the install, so a credential
 	// rotation that changes the app id is visible rather than silent.

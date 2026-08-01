@@ -63,7 +63,7 @@ type BotClaims struct {
 }
 
 // rawClaims mirrors the JWT payload. `aud` may be a string or an array of
-// strings depending on the token flavour, hence the custom type.
+// strings depending on the token flavor, hence the custom type.
 type rawClaims struct {
 	Issuer     string      `json:"iss"`
 	Audience   audienceSet `json:"aud"`
@@ -106,12 +106,14 @@ func (a audienceSet) contains(want string) bool {
 }
 
 // metadataDocument is the subset of the OpenID metadata we need.
+//
+//nolint:tagliatelle // snake_case is the OpenID discovery wire format
 type metadataDocument struct {
 	Issuer  string `json:"issuer"`
 	JWKSURI string `json:"jwks_uri"`
 }
 
-// Verifier validates inbound Bot Connector tokens. It is the Teams analogue
+// Verifier validates inbound Bot Connector tokens. It is the Teams analog
 // of slack/verify.go's signing-secret check, but asymmetric: Microsoft signs
 // with a rotating key set we fetch from their published JWKS, and there is no
 // shared secret to compare against.
@@ -238,7 +240,7 @@ func (v *Verifier) fetchMetadata(ctx context.Context, metadataURL string) (*meta
 // Bot Framework binds a token to the service URL it was minted for, so
 // checking it stops a token captured from one tenant's traffic being replayed
 // to make us call a different (attacker-controlled) connector endpoint. The
-// claim is optional in some token flavours; when absent, the check is skipped
+// claim is optional in some token flavors; when absent, the check is skipped
 // rather than failing closed on a legitimate token shape.
 func (v *Verifier) VerifyToken(ctx context.Context, rawToken, serviceURL string) (*BotClaims, error) {
 	if v.AppID == "" {

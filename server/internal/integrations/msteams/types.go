@@ -16,7 +16,7 @@ const (
 	// ActivityTypeMessage is a user message (including @mentions of the bot).
 	ActivityTypeMessage = "message"
 	// ActivityTypeInstallationUpdate is emitted when the app is installed in
-	// or removed from a team/chat. This is the Teams analogue of Slack's
+	// or removed from a team/chat. This is the Teams analog of Slack's
 	// OAuth install callback and `app_uninstalled` event.
 	ActivityTypeInstallationUpdate = "installationUpdate"
 	// ActivityTypeConversationUpdate fires when members (including the bot)

@@ -123,6 +123,8 @@ func (c *Client) token(ctx context.Context) (string, error) {
 }
 
 // tokenResponse is the client-credentials response shape.
+//
+//nolint:tagliatelle // snake_case is the OAuth2 token-response wire format
 type tokenResponse struct {
 	AccessToken string `json:"access_token"`
 	ExpiresIn   int    `json:"expires_in"`
