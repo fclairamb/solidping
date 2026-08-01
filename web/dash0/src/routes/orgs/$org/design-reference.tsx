@@ -2329,12 +2329,13 @@ function TokenChipsInputSection() {
 
 function JobsPrimitivesSection() {
   const [tab, setTab] = useState("first");
+  const [segmented, setSegmented] = useState("first");
 
   return (
     <Section
       id="jobs-primitives"
       title="Jobs primitives"
-      description="Building blocks for the admin Jobs observability page: compact stat tiles for the activity overview, in-page Tabs (dependency-free), and a read-only JSON viewer for config/output blocks."
+      description="Building blocks for the admin Jobs observability page: compact stat tiles for the activity overview, in-page Tabs (dependency-free), a two-way segmented Button toggle, and a read-only JSON viewer for config/output blocks."
     >
       <div className="space-y-2">
         <h3 className="text-sm font-medium">Stat tile</h3>
@@ -2366,6 +2367,36 @@ function JobsPrimitivesSection() {
             <div className="rounded-md border bg-card p-4 text-sm">Second panel</div>
           </TabsContent>
         </Tabs>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Segmented toggle (two-way view switch)</h3>
+        <p className="text-xs text-muted-foreground">
+          Two ghost/secondary Buttons in a bordered pill — the pattern used for
+          the jobs page's org-scope toggle and the checks index's "Group by"
+          view switch. When the toggle is a page's primary navigation (like a
+          view mode), drive it from a URL search param and push a history
+          entry on change (see tech note on frontend URL state); use{" "}
+          <code>replace: true</code> instead for incidental refinements.
+        </p>
+        <div className="inline-flex rounded-lg border p-0.5" role="group">
+          <Button
+            size="sm"
+            variant={segmented === "first" ? "secondary" : "ghost"}
+            onClick={() => setSegmented("first")}
+            aria-pressed={segmented === "first"}
+          >
+            Groups
+          </Button>
+          <Button
+            size="sm"
+            variant={segmented === "second" ? "secondary" : "ghost"}
+            onClick={() => setSegmented("second")}
+            aria-pressed={segmented === "second"}
+          >
+            Host
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-2">

@@ -64,6 +64,14 @@ export interface Check {
   escalationPolicyUid?: string | null;
   type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "rdp" | "sleep";
   config?: Record<string, unknown>;
+  /**
+   * Derived, read-time-only host this check probes: config's `host` when
+   * present, else the hostname parsed from `url`, else `target`; absent/null
+   * when none apply (e.g. heartbeat/email). Never stored — renaming a host in
+   * a check's config changes this on the next read. Drives the checks index's
+   * "Group by: Host" view (spec 2026-08-01-04).
+   */
+  targetHost?: string | null;
   configPrivateKeys?: string[];
   /**
    * Detail responses only. True when this check targets a private location and
