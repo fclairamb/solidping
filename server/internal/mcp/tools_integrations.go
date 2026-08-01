@@ -42,7 +42,8 @@ func createIntegrationDef() ToolDefinition {
 			"be attached to checks for incident notifications.",
 		InputSchema: objectSchema(map[string]any{
 			schemaKeyType: stringProp(
-				"Integration type. Allowed: slack, webhook, email, msteams. Example: \"webhook\".",
+				"Integration type. Allowed: webhook, email, msteams. Example: \"webhook\". " +
+					"(\"slack\" is rejected here — see settings below.)",
 			),
 			schemaKeyName:    stringProp("Display name shown in the UI, e.g. \"Engineering Slack\"."),
 			schemaKeyEnabled: boolProp("Whether the integration is active. Default true."),
@@ -50,8 +51,9 @@ func createIntegrationDef() ToolDefinition {
 				"If true, the integration is auto-attached to newly-created checks.",
 			),
 			"settings": objectProp(
-				"Type-specific settings. For webhook: {\"webhookUrl\":\"https://...\"}. " +
-					"For slack: {\"channel\":\"#alerts\",\"webhookUrl\":\"https://hooks.slack.com/...\"}. " +
+				"Type-specific settings. For webhook: {\"url\":\"https://...\"}. " +
+					"Slack cannot be created here — Slack integrations are installed via the " +
+					"dashboard OAuth flow only, and creating type \"slack\" through this tool is rejected. " +
 					"For email: {\"to\":\"oncall@example.com\"}.",
 			),
 		}, []string{schemaKeyType, schemaKeyName}),

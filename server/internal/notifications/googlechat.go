@@ -67,7 +67,7 @@ func (s *GoogleChatSender) Send(ctx context.Context, _ *jobdef.JobContext, paylo
 }
 
 type googleChatSettings struct {
-	WebhookURL       string `json:"webhookUrl"`
+	WebhookURL       string `json:"webhook_url"`
 	ThreadKeyEnabled bool   `json:"threadKeyEnabled"`
 }
 
@@ -86,6 +86,11 @@ func (s *GoogleChatSender) parseSettings(payload *Payload) (*googleChatSettings,
 	if _, ok := payload.Integration.Settings["threadKeyEnabled"]; !ok {
 		settings.ThreadKeyEnabled = true
 	}
+
+	// Backward compatibility: some rows may still carry the legacy camelCase
+	// "webhookUrl" key (e.g. created via raw API calls before the struct tag
+	// was aligned to "webhook_url" to match the dashboard form).
+	settings.WebhookURL = webhookURLWithLegacyFallback(settings.WebhookURL, payload.Integration.Settings)
 
 	if settings.WebhookURL == "" {
 		return nil, ErrGoogleChatWebhookURLNotConfigured

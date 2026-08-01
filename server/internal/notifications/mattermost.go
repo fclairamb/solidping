@@ -82,10 +82,10 @@ func (s *MattermostSender) Send(ctx context.Context, _ *jobdef.JobContext, paylo
 }
 
 type mattermostSettings struct {
-	WebhookURL string `json:"webhookUrl"`
+	WebhookURL string `json:"webhook_url"`
 	Channel    string `json:"channel"`
 	Username   string `json:"username"`
-	IconURL    string `json:"iconUrl"`
+	IconURL    string `json:"icon_url"` //nolint:tagliatelle // aligned with the outgoing Mattermost payload field
 }
 
 func (s *MattermostSender) parseSettings(payload *Payload) (*mattermostSettings, error) {
@@ -98,6 +98,11 @@ func (s *MattermostSender) parseSettings(payload *Payload) (*mattermostSettings,
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return nil, fmt.Errorf("parsing mattermost settings: %w", err)
 	}
+
+	// Backward compatibility: some rows may still carry the legacy camelCase
+	// "webhookUrl" key (e.g. created via raw API calls before the struct tag
+	// was aligned to "webhook_url" to match the dashboard form).
+	settings.WebhookURL = webhookURLWithLegacyFallback(settings.WebhookURL, payload.Integration.Settings)
 
 	if settings.WebhookURL == "" {
 		return nil, ErrMattermostWebhookURLNotConfigured

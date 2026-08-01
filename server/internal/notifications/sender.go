@@ -46,6 +46,29 @@ type Sender interface {
 	Send(ctx context.Context, jctx *jobdef.JobContext, payload *Payload) error
 }
 
+// legacyWebhookURLSettingsKey is the camelCase settings key some pre-existing
+// Google Chat / Mattermost integration rows still use (e.g. created via raw
+// API calls following outdated docs, or from before the struct tags were
+// aligned to "webhook_url" to match the dashboard form and Discord).
+const legacyWebhookURLSettingsKey = "webhookUrl"
+
+// webhookURLWithLegacyFallback returns url if non-empty, otherwise falls back
+// to reading the legacy camelCase "webhookUrl" key out of the raw settings
+// map. Shared by GoogleChatSender and MattermostSender so both senders keep
+// accepting rows written before the "webhook_url" key alignment, without a
+// data migration.
+func webhookURLWithLegacyFallback(url string, settings models.JSONMap) string {
+	if url != "" {
+		return url
+	}
+
+	if v, ok := settings[legacyWebhookURLSettingsKey].(string); ok {
+		return v
+	}
+
+	return ""
+}
+
 // IsNetworkError checks if an error is network-related (retryable).
 func IsNetworkError(err error) bool {
 	if err == nil {
