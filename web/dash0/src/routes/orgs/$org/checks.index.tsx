@@ -30,12 +30,14 @@ import {
   useCheckGroups,
   useCreateCheckGroup,
   useImportChecks,
+  useConvertChecks,
   useEscalationPolicies,
   type Check,
   type CheckGroup,
+  type ConversionWarning,
+  type ConvertSource,
   type EscalationPolicy,
   type ExportDocument,
-  type ImportResult,
 } from "@/api/hooks";
 import { useEmailAddressDomain, emailCheckAddress } from "@/api/email-inbox";
 import { Button } from "@/components/ui/button";
@@ -78,6 +80,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { PasswordInput } from "@/components/ui/password-input";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Select,
   SelectContent,
@@ -117,6 +122,33 @@ interface ChecksIndexSearch {
 // server/internal/handlers/checkgroups/service.go — deliberately NOT the
 // check form's 3-50 rule (check-form.tsx), which is a different resource.
 const groupSlugRegex = /^[a-z][a-z0-9-]{2,39}$/;
+
+// Import sources offered by the checks-list import flow: the native SolidPing
+// export document, plus the third-party converters served by
+// POST /checks/import/convert.
+const IMPORT_SOURCES = ["solidping", "gatus", "betterstack", "uptime-kuma"] as const;
+type ImportSourceId = (typeof IMPORT_SOURCES)[number];
+
+// Sources whose payload is a file the user pastes or uploads. Better Stack is
+// the odd one out: it takes an API token and the server does the fetching.
+const FILE_IMPORT_SOURCES: ImportSourceId[] = ["solidping", "gatus", "uptime-kuma"];
+
+// Accepted upload extensions per source.
+const IMPORT_ACCEPT: Record<ImportSourceId, string> = {
+  solidping: ".json,.yaml,.yml",
+  gatus: ".yaml,.yml",
+  betterstack: "",
+  "uptime-kuma": ".json",
+};
+
+// Normalized preview shape shared by the native import and every converter.
+interface ImportPreview {
+  source: ImportSourceId;
+  created: number;
+  updated: number;
+  errors: { index: number; slug: string; error: string }[];
+  warnings: ConversionWarning[];
+}
 
 export const Route = createFileRoute("/orgs/$org/checks/")({
   component: ChecksIndexPage,
@@ -997,15 +1029,22 @@ function ChecksIndexPage() {
     return () => observer.disconnect();
   }, [handleObserver]);
 
-  const [importPreview, setImportPreview] = useState<{
-    doc: ExportDocument;
-    result: ImportResult;
-  } | null>(null);
+  // Import flow: a source picker (SolidPing export, or one of the third-party
+  // converters) feeds the same dry-run preview dialog before anything is
+  // applied. The Better Stack token lives in component state for the duration
+  // of the import only — it is never persisted here or server-side.
+  const [importOpen, setImportOpen] = useState(false);
+  const [importSource, setImportSource] = useState<ImportSourceId>("solidping");
+  const [importText, setImportText] = useState("");
+  const [importToken, setImportToken] = useState("");
+  const [importFileName, setImportFileName] = useState("");
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const deleteCheck = useDeleteCheck(org);
   const createGroup = useCreateCheckGroup(org);
   const importChecks = useImportChecks(org);
+  const convertChecks = useConvertChecks(org);
 
   const handleDeleteCheck = async () => {
     if (!deleteCheckUid) return;
@@ -1097,14 +1136,28 @@ function ChecksIndexPage() {
     }
   };
 
+  const openImportDialog = () => {
+    setImportSource("solidping");
+    setImportText("");
+    setImportToken("");
+    setImportFileName("");
+    setImportOpen(true);
+  };
+
+  const closeImportDialog = () => {
+    setImportOpen(false);
+    setImportText("");
+    // Never keep the Better Stack credential around after the dialog closes.
+    setImportToken("");
+    setImportFileName("");
+  };
+
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const text = await file.text();
-      const doc = JSON.parse(text) as ExportDocument;
-      const result = await importChecks.mutateAsync({ doc, dryRun: true });
-      setImportPreview({ doc, result });
+      setImportText(await file.text());
+      setImportFileName(file.name);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("toast.parseFailed"));
     }
@@ -1112,12 +1165,55 @@ function ChecksIndexPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  // Runs the import (dry run first, then for real on confirm) for whichever
+  // source is selected. Returns the normalized preview shape.
+  const runImport = async (dryRun: boolean): Promise<ImportPreview> => {
+    if (importSource === "solidping") {
+      const doc = JSON.parse(importText) as ExportDocument;
+      const result = await importChecks.mutateAsync({ doc, dryRun });
+      return {
+        source: importSource,
+        created: result.created,
+        updated: result.updated,
+        errors: result.errors,
+        warnings: [],
+      };
+    }
+
+    const body =
+      importSource === "betterstack"
+        ? JSON.stringify({ token: importToken.trim() })
+        : importText;
+    const result = await convertChecks.mutateAsync({
+      source: importSource as ConvertSource,
+      body,
+      dryRun,
+    });
+    return {
+      source: importSource,
+      created: result.created,
+      updated: result.updated,
+      errors: result.errors,
+      warnings: result.warnings ?? [],
+    };
+  };
+
+  const handleImportPreview = async () => {
+    try {
+      setImportPreview(await runImport(true));
+      setImportOpen(false);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("toast.parseFailed"));
+    }
+  };
+
   const handleImportConfirm = async () => {
     if (!importPreview) return;
     try {
-      const result = await importChecks.mutateAsync({ doc: importPreview.doc });
+      const result = await runImport(false);
       toast.success(t("toast.importSuccess", { count: result.created + result.updated, created: result.created, updated: result.updated }));
       setImportPreview(null);
+      closeImportDialog();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : t("toast.importFailed"));
     }
@@ -1147,20 +1243,13 @@ function ChecksIndexPage() {
             </Button>
             <Button
               variant="outline"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={openImportDialog}
               data-testid="import-button"
               className="hidden sm:inline-flex"
             >
               <Upload className="mr-2 h-4 w-4" />
               {t("import")}
             </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json"
-              className="hidden"
-              onChange={handleImportFile}
-            />
             <Button variant="outline" onClick={() => setShowNewGroup(true)} data-testid="new-group-button">
               <FolderPlus className="sm:mr-2 h-4 w-4" />
               <span className="hidden sm:inline">{t("newGroup")}</span>
@@ -1496,36 +1585,171 @@ function ChecksIndexPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Import Preview Dialog */}
-      <Dialog open={!!importPreview} onOpenChange={() => setImportPreview(null)}>
-        <DialogContent>
+      {/* Import source dialog: pick where the checks come from, then preview. */}
+      <Dialog open={importOpen} onOpenChange={(open) => (open ? setImportOpen(true) : closeImportDialog())}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("dialog.importTitle")}</DialogTitle>
           </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="import-source">{t("dialog.importSource")}</Label>
+              <Select
+                value={importSource}
+                onValueChange={(value) => {
+                  setImportSource(value as ImportSourceId);
+                  setImportText("");
+                  setImportToken("");
+                  setImportFileName("");
+                }}
+              >
+                <SelectTrigger id="import-source" data-testid="import-source">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {IMPORT_SOURCES.map((source) => (
+                    <SelectItem key={source} value={source} data-testid={`import-source-${source}`}>
+                      {t(`dialog.importSources.${source}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t(`dialog.importSourceHelp.${importSource}`)}
+              </p>
+            </div>
+
+            {FILE_IMPORT_SOURCES.includes(importSource) ? (
+              <div className="space-y-2">
+                <Label htmlFor="import-payload">{t("dialog.importPayload")}</Label>
+                <Textarea
+                  id="import-payload"
+                  data-testid="import-payload"
+                  rows={8}
+                  className="font-mono text-xs"
+                  value={importText}
+                  onChange={(e) => {
+                    setImportText(e.target.value);
+                    setImportFileName("");
+                  }}
+                  placeholder={t(`dialog.importPlaceholder.${importSource}`)}
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    data-testid="import-upload-button"
+                  >
+                    <Upload className="mr-2 h-4 w-4" />
+                    {t("dialog.importUpload")}
+                  </Button>
+                  {importFileName && (
+                    <span className="text-xs text-muted-foreground truncate">{importFileName}</span>
+                  )}
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={IMPORT_ACCEPT[importSource]}
+                  className="hidden"
+                  onChange={handleImportFile}
+                  data-testid="import-file-input"
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="import-token">{t("dialog.importToken")}</Label>
+                <PasswordInput
+                  id="import-token"
+                  data-testid="import-token"
+                  value={importToken}
+                  onChange={(e) => setImportToken(e.target.value)}
+                  placeholder="••••••••"
+                />
+                <Alert>
+                  <AlertTitle>{t("dialog.importTokenNoticeTitle")}</AlertTitle>
+                  <AlertDescription>{t("dialog.importTokenNotice")}</AlertDescription>
+                </Alert>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeImportDialog}>
+              {tc("cancel")}
+            </Button>
+            <Button
+              onClick={handleImportPreview}
+              data-testid="import-preview-button"
+              disabled={
+                importChecks.isPending ||
+                convertChecks.isPending ||
+                (FILE_IMPORT_SOURCES.includes(importSource)
+                  ? importText.trim() === ""
+                  : importToken.trim() === "")
+              }
+            >
+              {(importChecks.isPending || convertChecks.isPending) && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              {t("dialog.importPreview")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Preview Dialog */}
+      <Dialog open={!!importPreview} onOpenChange={() => setImportPreview(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t("dialog.importPreview")}</DialogTitle>
+          </DialogHeader>
           {importPreview && (
-            <div className="space-y-4 py-2">
+            <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto" data-testid="import-preview">
               <div className="grid grid-cols-3 gap-4 text-center">
                 <div>
-                  <div className="text-2xl font-bold text-green-600">{importPreview.result.created}</div>
+                  <div className="text-2xl font-bold text-green-600" data-testid="import-preview-created">
+                    {importPreview.created}
+                  </div>
                   <div className="text-sm text-muted-foreground">{t("dialog.toCreate")}</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-blue-600">{importPreview.result.updated}</div>
+                  <div className="text-2xl font-bold text-blue-600" data-testid="import-preview-updated">
+                    {importPreview.updated}
+                  </div>
                   <div className="text-sm text-muted-foreground">{t("dialog.toUpdate")}</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-red-600">{importPreview.result.errors.length}</div>
+                  <div className="text-2xl font-bold text-red-600">{importPreview.errors.length}</div>
                   <div className="text-sm text-muted-foreground">{t("dialog.errors")}</div>
                 </div>
               </div>
-              {importPreview.result.errors.length > 0 && (
+              {importPreview.errors.length > 0 && (
                 <div className="rounded-md bg-red-50 dark:bg-red-950 p-3 text-sm">
-                  {importPreview.result.errors.map((err) => (
+                  {importPreview.errors.map((err) => (
                     <div key={err.index} className="text-red-700 dark:text-red-300">
                       <span className="font-mono">{err.slug}</span>: {err.error}
                     </div>
                   ))}
                 </div>
+              )}
+              {importPreview.warnings.length > 0 && (
+                <Alert variant="warning" data-testid="import-preview-warnings">
+                  <AlertTitle>
+                    {t("dialog.importWarnings", { count: importPreview.warnings.length })}
+                  </AlertTitle>
+                  <AlertDescription>
+                    <ul className="list-disc space-y-1 pl-4">
+                      {importPreview.warnings.map((warning, index) => (
+                        <li key={`${warning.item ?? ""}-${warning.field ?? ""}-${index}`}>
+                          {warning.item && <span className="font-medium">{warning.item}: </span>}
+                          {warning.message}
+                        </li>
+                      ))}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
               )}
             </div>
           )}
@@ -1535,9 +1759,16 @@ function ChecksIndexPage() {
             </Button>
             <Button
               onClick={handleImportConfirm}
-              disabled={importChecks.isPending || (importPreview?.result.created === 0 && importPreview?.result.updated === 0)}
+              data-testid="import-confirm-button"
+              disabled={
+                importChecks.isPending ||
+                convertChecks.isPending ||
+                (importPreview?.created === 0 && importPreview?.updated === 0)
+              }
             >
-              {importChecks.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {(importChecks.isPending || convertChecks.isPending) && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
               {t("import")}
             </Button>
           </DialogFooter>

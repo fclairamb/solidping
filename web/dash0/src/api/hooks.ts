@@ -532,7 +532,62 @@ export interface ImportResult {
   errors: { index: number; slug: string; error: string }[];
 }
 
+/** Third-party import sources the convert endpoint accepts. */
+export const CONVERT_SOURCES = ["gatus", "betterstack", "uptime-kuma"] as const;
+export type ConvertSource = (typeof CONVERT_SOURCES)[number];
+
+/** One source item (or field) that could not be mapped faithfully. */
+export interface ConversionWarning {
+  item?: string;
+  field?: string;
+  message: string;
+}
+
+/** Response of POST /checks/import/convert: the apply shape + conversion info. */
+export interface ConvertResult {
+  source: string;
+  converted: number;
+  manifest: string;
+  dryRun: boolean;
+  created: number;
+  updated: number;
+  unmanaged: number;
+  plan: { slug: string; action: string; reason?: string }[];
+  errors: { index: number; slug: string; error: string }[];
+  warnings: ConversionWarning[];
+}
+
 // Check Export/Import hooks
+
+/**
+ * Converts a third-party monitoring configuration and applies it. The body is
+ * the raw source payload (Gatus YAML / Uptime Kuma backup JSON) or, for Better
+ * Stack, `{"token": "..."}` — the token is sent once and never stored client-
+ * or server-side.
+ */
+export function useConvertChecks(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: { source: ConvertSource; body: string; dryRun?: boolean }) =>
+      apiFetch<ConvertResult>(
+        `/api/v1/orgs/${org}/checks/import/convert?source=${encodeURIComponent(params.source)}${
+          params.dryRun ? "&dryRun=true" : ""
+        }`,
+        {
+          method: "POST",
+          body: params.body,
+        },
+      ),
+    onSuccess: (_, params) => {
+      if (!params.dryRun) {
+        queryClient.invalidateQueries({ queryKey: ["checks", org] });
+        queryClient.invalidateQueries({ queryKey: ["checkGroups", org] });
+      }
+    },
+  });
+}
+
 export function useImportChecks(org: string) {
   const queryClient = useQueryClient();
 

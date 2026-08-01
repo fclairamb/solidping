@@ -85,7 +85,31 @@
     "toCreate": "Zu erstellen",
     "toUpdate": "Zu aktualisieren",
     "moveCheckDescription": "<strong>{{name}}</strong> in eine andere Gruppe verschieben.",
-    "group": "Gruppe"
+    "group": "Gruppe",
+    "importSource": "Quelle",
+    "importSources": {
+      "solidping": "SolidPing-Export (JSON/YAML)",
+      "gatus": "Gatus (config.yaml)",
+      "betterstack": "Better Stack (API-Token)",
+      "uptime-kuma": "Uptime Kuma (Backup-JSON)"
+    },
+    "importSourceHelp": {
+      "solidping": "Ein über die Schaltfläche „Exportieren“ erzeugtes Dokument, als JSON oder YAML.",
+      "gatus": "Fügen Sie Ihre Gatus-config.yaml ein oder laden Sie sie hoch — die endpoints:-Liste wird in Checks umgewandelt.",
+      "betterstack": "Wir lesen Ihre Monitore und Heartbeats über die Better-Stack-API aus und konvertieren sie.",
+      "uptime-kuma": "Uptime Kuma 1.x: Einstellungen → Backup → JSON exportieren. Version 2.x bietet diesen Export nicht mehr an."
+    },
+    "importPlaceholder": {
+      "solidping": "Exportiertes JSON- oder YAML-Dokument einfügen…",
+      "gatus": "Gatus-config.yaml einfügen…",
+      "uptime-kuma": "Uptime-Kuma-Backup-JSON einfügen…"
+    },
+    "importPayload": "Konfiguration",
+    "importUpload": "Datei hochladen",
+    "importToken": "Better-Stack-API-Token",
+    "importTokenNoticeTitle": "Das Token wird nicht gespeichert",
+    "importTokenNotice": "Es wird einmalig gesendet, um Ihre Monitore und Heartbeats zu lesen, und von SolidPing nie gespeichert.",
+    "importWarnings": "{{count}} Element(e) konnten nicht exakt übernommen werden"
   },
   "groupForm": {
     "title": "Gruppe bearbeiten",
