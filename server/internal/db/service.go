@@ -565,6 +565,12 @@ type Service interface {
 	ListCheckGroups(ctx context.Context, orgUID string) ([]*models.CheckGroup, error)
 	UpdateCheckGroup(ctx context.Context, orgUID, uid string, update *models.CheckGroupUpdate) error
 	DeleteCheckGroup(ctx context.Context, uid string) error
+	// GetCheckGroupStatusCounts returns, for every group in the org, the
+	// per-status count of its enabled, non-deleted member checks (check_group_uid
+	// -> status -> count). Ungrouped checks and groups with no enabled members
+	// are simply absent from the map. Feeds models.RollupGroupStatus and the
+	// memberStatusCounts API field (spec 2026-08-01-01).
+	GetCheckGroupStatusCounts(ctx context.Context, orgUID string) (map[string]map[models.CheckStatus]int, error)
 
 	// StatusUpdate operations
 	ListStatusUpdates(

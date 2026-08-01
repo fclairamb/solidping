@@ -4276,6 +4276,49 @@ func (s *Service) ListCheckGroups(ctx context.Context, orgUID string) ([]*models
 	return groups, err
 }
 
+// GetCheckGroupStatusCounts returns, per check group, a count of enabled
+// non-deleted member checks by status (spec 2026-08-01-01). One GROUP BY
+// query over checks, dialect-neutral (no ILIKE, no Postgres-only syntax) so
+// the same implementation works against SQLite.
+func (s *Service) GetCheckGroupStatusCounts(
+	ctx context.Context, orgUID string,
+) (map[string]map[models.CheckStatus]int, error) {
+	type row struct {
+		CheckGroupUID string             `bun:"check_group_uid"`
+		Status        models.CheckStatus `bun:"status"`
+		Count         int                `bun:"count"`
+	}
+
+	var rows []row
+
+	err := s.db.NewSelect().
+		TableExpr("checks").
+		ColumnExpr("check_group_uid").
+		ColumnExpr("status").
+		ColumnExpr("COUNT(*) AS count").
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Where("enabled = ?", true).
+		Where("check_group_uid IS NOT NULL").
+		GroupExpr("check_group_uid, status").
+		Scan(ctx, &rows)
+	if err != nil {
+		return nil, fmt.Errorf("get check group status counts: %w", err)
+	}
+
+	counts := make(map[string]map[models.CheckStatus]int)
+
+	for _, r := range rows {
+		if counts[r.CheckGroupUID] == nil {
+			counts[r.CheckGroupUID] = make(map[models.CheckStatus]int)
+		}
+
+		counts[r.CheckGroupUID][r.Status] = r.Count
+	}
+
+	return counts, nil
+}
+
 func (s *Service) UpdateCheckGroup(
 	ctx context.Context, orgUID, uid string, update *models.CheckGroupUpdate,
 ) error {
