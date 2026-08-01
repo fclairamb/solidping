@@ -203,14 +203,15 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req *http.Request) erro
 		opts.Statuses = statuses
 	}
 
-	// Parse sort ordering (opt-in). Only "group" is recognized today; any other
-	// non-empty value is a validation error rather than a silently-ignored
-	// no-op. Empty/absent keeps the default created_at DESC ordering.
+	// Parse sort ordering (opt-in). "group" and "targetHost" are recognized
+	// today; any other non-empty value is a validation error rather than a
+	// silently-ignored no-op. Empty/absent keeps the default created_at DESC
+	// ordering.
 	if sortParam := query.Get("sort"); sortParam != "" {
-		if sortParam != "group" {
+		if sortParam != "group" && sortParam != "targetHost" {
 			return h.WriteError(
 				writer, http.StatusBadRequest, base.ErrorCodeValidationError,
-				"Invalid sort parameter: only \"group\" is supported")
+				"Invalid sort parameter: only \"group\" or \"targetHost\" is supported")
 		}
 		opts.Sort = sortParam
 	}

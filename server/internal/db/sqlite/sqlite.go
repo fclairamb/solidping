@@ -1283,8 +1283,26 @@ func applyCheckTypeFilter(query *bun.SelectQuery, types []string) *bun.SelectQue
 const groupSortKeyExpr = `COALESCE((SELECT g.sort_order FROM check_groups AS g ` +
 	`WHERE g.uid = check_group_uid), 2147483647)`
 
+// targetHostSortKeyExpr is the effective ordering key for sort=targetHost: the
+// check's config `host`, else `url`, else `target` (as raw text — NOT the
+// hostname-parsed value the response's targetHost field carries, since
+// portably parsing a hostname out of a URL in SQL is impractical across both
+// backends), or a sentinel that sorts strictly last for checks with none of
+// those fields. A same-host prefix (the common case: same scheme, same host,
+// differing path) still sorts contiguously, which is all this ordering needs
+// to do — clients bucket by the exact `targetHost` field from each response,
+// not by this key. Kept byte-identical in spirit to the postgres twin
+// (differs only in the json_extract vs JSONB accessor) for the same reason as
+// groupSortKeyExpr.
+const targetHostSortKeyExpr = `COALESCE(` +
+	`NULLIF(json_extract(config, '$.host'), ''), ` +
+	`NULLIF(json_extract(config, '$.url'), ''), ` +
+	`NULLIF(json_extract(config, '$.target'), ''), ` +
+	"'￿￿￿￿￿￿￿￿￿￿')"
+
 // applyChecksCursor adds the keyset cursor predicate to the ListChecks row
-// query. sort=group uses a composite (group key, created_at, uid) tuple; the
+// query. sort=group uses a composite (group key, created_at, uid) tuple;
+// sort=targetHost uses a composite (target host key, name, uid) tuple; the
 // default ordering keeps the two-part (created_at, uid) cursor.
 func applyChecksCursor(query *bun.SelectQuery, filter *models.ListChecksFilter) *bun.SelectQuery {
 	if filter.SortByGroup {
@@ -1302,6 +1320,21 @@ func applyChecksCursor(query *bun.SelectQuery, filter *models.ListChecksFilter) 
 		)
 	}
 
+	if filter.SortByTargetHost {
+		if filter.CursorTargetHostKey == nil || filter.CursorTargetHostName == nil || filter.CursorUID == nil {
+			return query
+		}
+
+		return query.Where(
+			"("+targetHostSortKeyExpr+" > ?"+
+				" OR ("+targetHostSortKeyExpr+" = ? AND COALESCE(name, '') > ?)"+
+				" OR ("+targetHostSortKeyExpr+" = ? AND COALESCE(name, '') = ? AND uid > ?))",
+			*filter.CursorTargetHostKey,
+			*filter.CursorTargetHostKey, *filter.CursorTargetHostName,
+			*filter.CursorTargetHostKey, *filter.CursorTargetHostName, *filter.CursorUID,
+		)
+	}
+
 	if filter.CursorCreatedAt != nil && filter.CursorUID != nil {
 		return query.Where(
 			"(created_at < ? OR (created_at = ? AND uid < ?))",
@@ -1315,7 +1348,10 @@ func applyChecksCursor(query *bun.SelectQuery, filter *models.ListChecksFilter) 
 // applyChecksOrdering applies the row ordering. sort=group loads in display
 // order (group sort_order asc, ungrouped last via the COALESCE sentinel, then
 // created_at DESC / uid DESC within a bucket) and selects the effective key so
-// the service can encode it into the composite cursor. Default is unchanged.
+// the service can encode it into the composite cursor. sort=targetHost loads
+// targetHost ascending (checks with none of host/url/target last via the
+// COALESCE sentinel), then name ascending, then uid ascending as the final
+// tiebreaker. Default is unchanged.
 func applyChecksOrdering(query *bun.SelectQuery, filter *models.ListChecksFilter) *bun.SelectQuery {
 	if filter != nil && filter.SortByGroup {
 		return query.
@@ -1323,6 +1359,15 @@ func applyChecksOrdering(query *bun.SelectQuery, filter *models.ListChecksFilter
 			ColumnExpr(groupSortKeyExpr+" AS group_sort_key").
 			OrderExpr(groupSortKeyExpr+" ASC").
 			Order("created_at DESC", "uid DESC")
+	}
+
+	if filter != nil && filter.SortByTargetHost {
+		return query.
+			ColumnExpr("*").
+			ColumnExpr(targetHostSortKeyExpr+" AS target_host_sort_key").
+			OrderExpr(targetHostSortKeyExpr+" ASC").
+			OrderExpr("COALESCE(name, '') ASC").
+			Order("uid ASC")
 	}
 
 	return query.Order("created_at DESC", "uid DESC")
