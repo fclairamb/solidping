@@ -90,7 +90,9 @@ These are reported as warnings on the import preview; the check is still importe
   heartbeat checks.
 - **`client.insecure` / `client.ignore-redirect`** — SolidPing verifies certificates
   and follows redirects.
-- **SSH credentials** — never imported. Re-enter them on the check.
+- **SSH credentials** — deliberately never imported. SolidPing has fields for
+  them, but an import must not silently re-persist secrets copied out of a
+  foreign config file. Re-enter them on the check.
 
 ## After the import
 

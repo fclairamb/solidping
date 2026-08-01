@@ -92,8 +92,10 @@ Reported as warnings on the import preview:
 
 - **`playwright` monitors** — browser journeys are not converted. Recreate them as
   SolidPing browser checks.
-- **Basic-auth credentials** (`auth_username` / `auth_password`) — never imported.
-  Re-enter them on the check.
+- **Basic-auth credentials** (`auth_username` / `auth_password`) — deliberately
+  never imported. SolidPing has a field for them, but an import must not
+  silently re-persist secrets read out of another provider's account. Re-enter
+  them on the check.
 - **`verify_ssl: false` and `follow_redirects: false`** — SolidPing verifies
   certificates and follows redirects.
 - **Monitor groups** — assign a SolidPing check group manually after the import.

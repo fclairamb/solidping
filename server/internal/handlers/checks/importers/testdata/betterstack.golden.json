@@ -184,7 +184,7 @@
     {
       "item": "API expected codes",
       "field": "auth_password",
-      "message": "basic-auth credentials are not imported — re-enter them on the check"
+      "message": "basic-auth credentials were deliberately not imported (SolidPing never re-persists secrets from a foreign export) — re-enter them on the check"
     },
     {
       "item": "API expected codes",

@@ -266,8 +266,11 @@ func (c *UptimeKumaConverter) warnUnmapped(monitor *kumaMonitor, name string, wa
 	}
 
 	if monitor.AuthMethod != "" && monitor.AuthMethod != "none" {
+		// checkhttp.HTTPConfig.BasicAuth would hold these; dropped as a
+		// deliberate security policy, not for lack of a field.
 		warn.addf(name, "authMethod",
-			"authentication credentials are not imported — re-enter them on the check")
+			"authentication credentials were deliberately not imported (SolidPing never re-persists secrets "+
+				"from a foreign export) — re-enter them on the check")
 	}
 
 	if len(monitor.Tags) > 0 {
@@ -469,7 +472,10 @@ func kumaMQTTConfig(monitor *kumaMonitor, timeout, name string, warn *warnings) 
 	}
 
 	if monitor.MQTTPassword != "" {
-		warn.addf(name, "mqttPassword", "the MQTT password was not imported — re-enter it on the check")
+		// checkmqtt.MQTTConfig.Password exists; the value is dropped by policy.
+		warn.addf(name, "mqttPassword",
+			"the MQTT password was deliberately not imported (SolidPing never re-persists secrets "+
+				"from a foreign export) — re-enter it on the check")
 	}
 
 	if monitor.MQTTSuccessMessage != "" {
@@ -533,8 +539,11 @@ func kumaDatabaseConfig(
 	}
 
 	if _, hasPassword := passwordOf(conn); hasPassword {
+		// The database checkers all have a Password field; the value is dropped
+		// by policy, not for lack of somewhere to put it.
 		warn.addf(name, "databaseConnectionString",
-			"the database password was not imported — re-enter the credential on the check")
+			"the database password was deliberately not imported (SolidPing never re-persists secrets "+
+				"from a foreign export) — re-enter the credential on the check")
 	}
 
 	if monitor.DatabaseQuery != "" && monitor.Type != srcRedis && monitor.Type != srcMongoDB {

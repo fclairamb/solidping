@@ -229,7 +229,7 @@
     {
       "item": "bastion",
       "field": "ssh",
-      "message": "the SSH credentials were not imported — re-enter the username and password/key on the check"
+      "message": "the SSH credentials were deliberately not imported (SolidPing never re-persists secrets from a foreign export) — re-enter the username and password/key on the check"
     },
     {
       "item": "unsupported transport",

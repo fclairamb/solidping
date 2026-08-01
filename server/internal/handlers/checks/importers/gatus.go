@@ -410,10 +410,15 @@ func gatusSSHConfig(endpoint *gatusEndpoint, target gatusTarget, name string, wa
 	}
 
 	if endpoint.SSH != nil && (endpoint.SSH.Username != "" || endpoint.SSH.Password != "") {
-		// The credential is deliberately dropped, and a username without a
-		// password or key fails checker validation — so neither half is kept.
+		// SolidPing's ssh checker does have username/password/private_key
+		// fields — the credential is dropped as a deliberate security policy,
+		// not for lack of somewhere to put it: a foreign export can carry
+		// plaintext secrets, and silently re-persisting them is not something
+		// an import should do behind the operator's back. A username with no
+		// credential also fails checker validation, so neither half is kept.
 		warn.addf(name, "ssh",
-			"the SSH credentials were not imported — re-enter the username and password/key on the check")
+			"the SSH credentials were deliberately not imported (SolidPing never re-persists secrets "+
+				"from a foreign export) — re-enter the username and password/key on the check")
 	}
 
 	return cfg

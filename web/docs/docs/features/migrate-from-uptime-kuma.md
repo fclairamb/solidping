@@ -89,8 +89,10 @@ to it.
 
 Reported as warnings on the import preview:
 
-- **Passwords** — database, MQTT and basic-auth credentials are never imported.
-  Re-enter them on the check.
+- **Passwords** — database, MQTT and basic-auth credentials are deliberately
+  never imported. SolidPing has fields for all of them, but an import must not
+  silently re-persist secrets copied out of a backup file. Re-enter them on the
+  check.
 - **Notifications** — Kuma notification bindings are not imported. Wire up SolidPing
   [integrations](/docs/features/incidents) instead.
 - **Tags** — add SolidPing labels manually.

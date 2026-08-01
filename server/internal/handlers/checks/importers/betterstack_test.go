@@ -208,7 +208,7 @@ func TestBetterStackConverterMapsMonitorTypes(t *testing.T) {
 	}
 
 	r.True(warningMentions(result.Warnings, `type "playwright"`))
-	r.True(warningMentions(result.Warnings, "basic-auth credentials are not imported"))
+	r.True(warningMentions(result.Warnings, "basic-auth credentials were deliberately not imported"))
 	r.True(warningMentions(result.Warnings, "monitor groups are not imported"))
 	r.True(warningMentions(result.Warnings, "skipping TLS verification"))
 	r.True(warningMentions(result.Warnings, "redirect handling"))

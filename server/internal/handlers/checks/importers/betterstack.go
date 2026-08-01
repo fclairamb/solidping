@@ -371,8 +371,11 @@ func betterStackWarnUnmapped(monitor *betterStackMonitor, name string, warn *war
 	}
 
 	if monitor.AuthUsername != "" || monitor.AuthPassword != "" {
+		// checkhttp.HTTPConfig.BasicAuth would hold these; they are dropped as
+		// a deliberate security policy, not for lack of a field.
 		warn.addf(name, "auth_password",
-			"basic-auth credentials are not imported — re-enter them on the check")
+			"basic-auth credentials were deliberately not imported (SolidPing never re-persists secrets "+
+				"from a foreign export) — re-enter them on the check")
 	}
 
 	if monitor.MonitorGroupID != nil {

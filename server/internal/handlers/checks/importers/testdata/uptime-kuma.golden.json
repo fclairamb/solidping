@@ -268,7 +268,7 @@
     {
       "item": "Broker",
       "field": "mqttPassword",
-      "message": "the MQTT password was not imported — re-enter it on the check"
+      "message": "the MQTT password was deliberately not imported (SolidPing never re-persists secrets from a foreign export) — re-enter it on the check"
     },
     {
       "item": "Broker",
@@ -278,27 +278,27 @@
     {
       "item": "Primary postgres",
       "field": "databaseConnectionString",
-      "message": "the database password was not imported — re-enter the credential on the check"
+      "message": "the database password was deliberately not imported (SolidPing never re-persists secrets from a foreign export) — re-enter the credential on the check"
     },
     {
       "item": "Reporting mysql",
       "field": "databaseConnectionString",
-      "message": "the database password was not imported — re-enter the credential on the check"
+      "message": "the database password was deliberately not imported (SolidPing never re-persists secrets from a foreign export) — re-enter the credential on the check"
     },
     {
       "item": "Session redis",
       "field": "databaseConnectionString",
-      "message": "the database password was not imported — re-enter the credential on the check"
+      "message": "the database password was deliberately not imported (SolidPing never re-persists secrets from a foreign export) — re-enter the credential on the check"
     },
     {
       "item": "Billing mssql",
       "field": "databaseConnectionString",
-      "message": "the database password was not imported — re-enter the credential on the check"
+      "message": "the database password was deliberately not imported (SolidPing never re-persists secrets from a foreign export) — re-enter the credential on the check"
     },
     {
       "item": "Events mongo",
       "field": "databaseConnectionString",
-      "message": "the database password was not imported — re-enter the credential on the check"
+      "message": "the database password was deliberately not imported (SolidPing never re-persists secrets from a foreign export) — re-enter the credential on the check"
     },
     {
       "item": "Radius login",
@@ -318,7 +318,7 @@
     {
       "item": "Authenticated API",
       "field": "authMethod",
-      "message": "authentication credentials are not imported — re-enter them on the check"
+      "message": "authentication credentials were deliberately not imported (SolidPing never re-persists secrets from a foreign export) — re-enter them on the check"
     },
     {
       "item": "Website",

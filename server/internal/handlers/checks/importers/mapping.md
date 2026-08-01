@@ -8,13 +8,31 @@ Shared rules (all sources):
 
 - **Slugs** are derived from the source name (`slugify`, deduped with `-2`,
   `-3`, … suffixes) so a re-import upserts by slug and stays idempotent.
-- **Periods** are clamped to the check type's `MinPeriod`
-  (`normalizeChecks`): an ssl check polled every 30s in the source tool is
-  raised to the SolidPing default, with a warning.
-- **Credentials are never imported.** Passwords, keys, and basic-auth
-  credentials are dropped and reported so the operator re-enters them.
-  The single exception is Better Stack request headers, which land in the
-  encrypted `secretHeaders` field.
+- **Out-of-range values are clamped, never rejected** (`normalizeChecks`), each
+  with a warning, so a foreign value SolidPing does not allow degrades instead
+  of failing the whole check as an `ImportError`:
+  - the check **period** is raised to the type's `MinPeriod` (an ssl check
+    polled every 30s becomes the SolidPing default);
+  - the uniform per-check **`timeout`** key is clamped into 1s–30s
+    (`checks.Min/MaxConfigTimeout`). This key is type-agnostic — the checks
+    service range-checks it for every type and the worker reads it straight off
+    the config map to size the execution budget
+    (`checkworker.perCheckTimeout`), so it is meaningful even for checkers
+    whose own config struct has no `Timeout` field. Uptime Kuma's 48s default
+    timeout lands here on essentially every import;
+  - **`confirmationPeriodSeconds`** / **`recoveryPeriodSeconds`** are clamped to
+    `checks.MaxIncidentPeriodSeconds` (86400). Better Stack routinely allows
+    multi-day heartbeat grace periods, and Kuma's
+    `maxretries × retryInterval` product easily exceeds a day.
+- **Credentials are never imported — deliberately.** SolidPing *does* have
+  somewhere to put them (`checkhttp.HTTPConfig.BasicAuth`, and the
+  `Username`/`Password` fields on the ssh, mqtt and database checkers); the
+  values are dropped as a security policy, not for lack of a field. A foreign
+  export can carry plaintext secrets, and an import must not silently
+  re-persist them into SolidPing behind the operator's back. Every dropped
+  credential is reported so the operator re-enters it deliberately. The single
+  exception is Better Stack request headers, which are carried over into the
+  **encrypted** `secretHeaders` field rather than the queryable public config.
 - **Notification/alert bindings are never imported** (same as native import).
 - The converted document's `organization` is the source id, which becomes the
   managed-manifest label (`solidping.io/managed=gatus|betterstack|uptime-kuma`).

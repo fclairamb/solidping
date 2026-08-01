@@ -158,7 +158,8 @@ func TestGatusConverterWarnsOnUnmappableItems(t *testing.T) {
 	r.True(warningMentions(result.Warnings, "ignore-redirect"), "ignore-redirect must warn")
 	r.True(warningMentions(result.Warnings, "external-endpoint"), "external endpoints must warn")
 	r.True(warningMentions(result.Warnings, "sctp"), "unsupported scheme must warn")
-	r.True(warningMentions(result.Warnings, "SSH credentials"), "ssh credentials must warn")
+	r.True(warningMentions(result.Warnings, "SSH credentials were deliberately not imported"),
+		"ssh credentials must warn")
 
 	// …but the unsupported endpoint is the only one dropped.
 	for i := range result.Document.Checks {
