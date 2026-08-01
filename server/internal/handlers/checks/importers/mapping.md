@@ -1,0 +1,174 @@
+# Third-party importer mapping tables
+
+Reference for what each converter in this package maps, and what it reports as
+a warning instead. Warnings never block an import: what maps is imported, the
+rest is surfaced to the user.
+
+Shared rules (all sources):
+
+- **Slugs** are derived from the source name (`slugify`, deduped with `-2`,
+  `-3`, … suffixes) so a re-import upserts by slug and stays idempotent.
+- **Periods** are clamped to the check type's `MinPeriod`
+  (`normalizeChecks`): an ssl check polled every 30s in the source tool is
+  raised to the SolidPing default, with a warning.
+- **Credentials are never imported.** Passwords, keys, and basic-auth
+  credentials are dropped and reported so the operator re-enters them.
+  The single exception is Better Stack request headers, which land in the
+  encrypted `secretHeaders` field.
+- **Notification/alert bindings are never imported** (same as native import).
+- The converted document's `organization` is the source id, which becomes the
+  managed-manifest label (`solidping.io/managed=gatus|betterstack|uptime-kuma`).
+
+## Gatus (`config.yaml`)
+
+### Check type, from `endpoints[].url`
+
+| Gatus | SolidPing |
+|---|---|
+| `http://`, `https://` | `http` |
+| `ws://`, `wss://`, `websocket://` | `websocket` |
+| `tcp://` | `tcp` |
+| `tls://`, `starttls://` | `tcp` with `tls: true` |
+| `udp://` | `udp` |
+| `icmp://`, `ping://` | `icmp` |
+| `ssh://` | `ssh` |
+| a `dns:` block (url = resolver) | `dns` |
+| `sctp://`, anything else | *skipped* + warning |
+
+### Fields
+
+| Gatus | SolidPing |
+|---|---|
+| `name` | `name` (+ derived `slug`) |
+| `group` | `group` (auto-created on apply) |
+| `enabled` | `enabled` |
+| `interval` | `period` (default `60s`) |
+| `method`, `body`, `headers` | http `method` / `body` / `headers` |
+| `client.timeout` | checker `timeout` |
+| `dns.query-name` / `dns.query-type` | dns `host` / `record_type`; `url` → `nameserver` (`:53` appended) |
+| `ssh.username` / `ssh.password` | *not imported* + warning |
+| `client.insecure`, `client.ignore-redirect`, `client.dns-resolver` (non-dns) | warning |
+| `alerts` | warning |
+| `external-endpoints` | warning (recreate as heartbeat checks) |
+
+### Conditions
+
+| Gatus condition | SolidPing |
+|---|---|
+| `[STATUS] == 200` | `expected_status` |
+| `[STATUS] == any(200, 301)` / `== 2XX` | `expected_status_codes` |
+| `[STATUS] < 300` (range operators) | warning |
+| `[BODY] == value` | `body_expect` |
+| `[BODY] != value` | `body_reject` |
+| `[BODY] == pat(*glob*)` | `body_pattern` (glob → anchored regex) |
+| `[BODY] != pat(...)` | `body_pattern_reject` |
+| `[BODY].path <op> value` | a `json_path_assertions` leaf (`eq`/`neq`/`gt`/`gte`/`lt`/`lte`; `pat()` → `regex`) |
+| `has([BODY].path) == true/false` | `exists` / `not_exists` assertion |
+| `len([BODY].path) …` | warning |
+| `[CERTIFICATE_EXPIRATION] > 48h` | an extra `ssl` check (`criticalDays`/`warningDays`) + warning |
+| `[DOMAIN_EXPIRATION] > 720h` | an extra `domain` check (`thresholdDays`) + warning |
+| `[BODY] == 1.2.3.4` on a dns endpoint | `expected_values` |
+| `[CONNECTED] == true`, `[DNS_RCODE] == NOERROR` (dns) | implicit, no-op |
+| `[RESPONSE_TIME]`, `[IP]`, anything else | warning |
+
+Multiple body-path conditions are combined under a single `and` assertion node.
+
+## Uptime Kuma (backup JSON, 1.x)
+
+Kuma 2.x removed the JSON backup export; 2.x users need a 1.x-compatible
+export. A backup with no `monitorList` is rejected with that hint.
+
+### Monitor types
+
+| Kuma `type` | SolidPing |
+|---|---|
+| `http` | `http` |
+| `keyword` | `http` + `body_expect` (or `body_reject` when `invertKeyword`) |
+| `json-query` | `http` + `json_path_assertions` (`jsonPath` + `expectedValue`, `eq`) |
+| `port` | `tcp` |
+| `ping` | `icmp` |
+| `dns` | `dns` |
+| `docker` | `docker` (`docker_container` → `containerName`; the Docker host warns) |
+| `push` | `heartbeat` + warning (the ping URL changes) |
+| `grpc-keyword` | `grpc` |
+| `mqtt` | `mqtt` |
+| `postgres` | `postgresql` |
+| `mysql` | `mysql` |
+| `redis` | `redis` |
+| `sqlserver` | `mssql` |
+| `mongodb` | `mongodb` |
+| `steam` | `a2s` |
+| `real-browser` | `browser` |
+| `group` | a **check group** (children reference it via `parent`), not a check |
+| `gamedig`, `radius`, `tailscale-ping`, … | *skipped* + warning |
+
+### Fields
+
+| Kuma | SolidPing |
+|---|---|
+| `name`, `description` | `name` (+ derived `slug`), `description` |
+| `active` | `enabled` |
+| `interval` | `period` |
+| `maxretries` × `retryInterval` | `confirmationPeriodSeconds` (the export format replaced the old `incidentThreshold` count with a duration) |
+| `timeout` | checker `timeout` |
+| `accepted_statuscodes` | `expected_status_codes` (`200-299` → `2XX`; other ranges warn) |
+| `headers` (JSON string) | http `headers` |
+| `databaseConnectionString` | host / port / username / database (password dropped + warning) |
+| `databaseQuery` | `query` (postgres/mysql/mssql only) |
+| `dns_resolve_server` / `dns_resolve_type` | `nameserver` (`:53` appended) / `record_type` |
+| `mqttTopic` / `mqttUsername` | `topic` / `username` (password + success message warn) |
+| `grpcUrl` / `grpcServiceName` / `grpcEnableTls` / `keyword` | `host`+`port` / `serviceName` / `tls` / `keyword` |
+| `ignoreTls`, `upsideDown`, `authMethod`, `tags`, `notificationIDList` | warnings |
+
+## Better Stack (Uptime API)
+
+The server fetches every page of `GET /api/v2/monitors` **and**
+`GET /api/v2/heartbeats` with the supplied token as a Bearer credential. The
+token is never persisted, logged, or echoed in an error, upstream error bodies
+are never surfaced (they can echo the request back), and a pagination cursor
+pointing at a different host aborts the fetch.
+
+### Monitor types
+
+| `monitor_type` | SolidPing |
+|---|---|
+| `status`, `expected_status_code` | `http` |
+| `keyword` | `http` + `body_expect` |
+| `keyword_absence` | `http` + `body_reject` |
+| `ping` | `icmp` |
+| `tcp` | `tcp` |
+| `udp` | `udp` |
+| `smtp` | `smtp` |
+| `pop` | `pop3` |
+| `imap` | `imap` |
+| `dns` | `dns` |
+| `playwright`, anything else | *skipped* + warning |
+
+### Fields
+
+| Better Stack | SolidPing |
+|---|---|
+| `pronounceable_name` | `name` (+ derived `slug`) |
+| `paused` | `enabled: false` |
+| `check_frequency` (seconds) | `period` |
+| `request_timeout` (seconds) | checker `timeout` |
+| `http_method`, `request_body` | http `method`, `body` |
+| `request_headers` | http `headers`; credential-looking names → encrypted `secretHeaders` |
+| `required_keyword` | `body_expect` / `body_reject` |
+| `expected_status_codes` | `expected_status_codes` |
+| `port` (number or string) | checker `port` |
+| `verify_ssl: false`, `follow_redirects: false` | warnings |
+| `auth_username` / `auth_password` | *not imported* + warning |
+| `monitor_group_id`, `ssl_expiration`, `domain_expiration` | warnings |
+
+### Heartbeats
+
+| Better Stack | SolidPing |
+|---|---|
+| `name` | `name` (+ derived `slug`) |
+| `period` | `period` (the expected interval) |
+| `grace` | `confirmationPeriodSeconds` |
+| `paused` | `enabled: false` |
+
+A document-level warning always reminds the operator that SolidPing issues its
+own ping URLs, so every cron job or agent must be repointed after the import.
