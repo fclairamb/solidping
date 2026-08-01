@@ -84,3 +84,52 @@ machine, no change to incidents or notifications.
 - No dashboard or status-page consumption — that's specs `2026-08-01-02` and
   `2026-08-01-03`, which depend on this one.
 - No per-region rollup.
+
+## Implementation Plan
+
+1. **Rollup helper** — new `server/internal/db/models/check_group_status.go`:
+   `RollupGroupStatus(counts map[CheckStatus]int) CheckStatus` implementing the
+   six branches exactly as specified (down/degraded/warning/validating/up/created).
+   Table-driven tests in `check_group_status_test.go` covering every branch,
+   including empty map and "only created" counts.
+
+2. **Storage query** — add `GetCheckGroupStatusCounts(ctx, orgUID string)
+   (map[string]map[models.CheckStatus]int, error)` to the `db.Service`
+   interface (`internal/db/service.go`), implemented identically in
+   `internal/db/postgres/postgres.go` and `internal/db/sqlite/sqlite.go`: one
+   `TableExpr("checks")` select with `ColumnExpr("check_group_uid, status,
+   COUNT(*) AS count")`, `Where(organization_uid, deleted_at IS NULL, enabled =
+   true, check_group_uid IS NOT NULL)`, `GroupExpr("check_group_uid, status")`
+   — no dialect-specific SQL (mirrors the existing `ListDistinctLabelKeys`
+   pattern, minus the ILIKE).
+
+3. **API surface** — `checkgroups.CheckGroupResponse` gains `Status string`
+   and `MemberStatusCounts map[string]int` (omitempty). `convertGroupToResponse`
+   takes the per-group counts map, rolls it up via `models.RollupGroupStatus`,
+   and builds the wire-status-keyed count map (omitting zero entries).
+   `ListCheckGroups` and `GetCheckGroup` (service.go) fetch
+   `GetCheckGroupStatusCounts` once per call and pass the relevant group's
+   counts in. `UpdateCheckGroup`'s post-update refetch does the same.
+   `CreateCheckGroup` passes a nil counts map (brand-new group ⇒ `created`,
+   no query needed).
+
+4. **OpenAPI** — add `status` (enum: created/up/down/validating/degraded/
+   warning) and `memberStatusCounts` (object, additionalProperties: integer)
+   to the `CheckGroup` schema in `server/internal/app/openapi/openapi.yaml`;
+   add `status` to the schema's `required` list. Regenerate the Go client via
+   `go generate ./...` in `server/pkg/client/`.
+
+5. **MCP tool** — `list_check_groups` (`internal/mcp/tools_groups.go`) already
+   marshals `Service.ListCheckGroups`'s response verbatim, so the new fields
+   appear automatically; no code change expected, just confirm in review.
+
+6. **Tests** — rollup unit tests (step 1); a service-level test
+   (`internal/handlers/checkgroups/status_test.go`, sqlite in-memory, mirrors
+   `escalation_test.go`'s setup) asserting `status`/`memberStatusCounts` on
+   both `ListCheckGroups` and `GetCheckGroup`, and that disabled and
+   soft-deleted checks are excluded from the counts.
+
+7. **Docs** — add a "Group status" section with a rollup-rules table to
+   `web/docs/docs/features/check-groups.md`.
+
+8. Run `make fmt`, then the scoped gate `make build-backend lint-back test`.
