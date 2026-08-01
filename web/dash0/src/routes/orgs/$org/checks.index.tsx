@@ -1213,15 +1213,20 @@ function ChecksIndexPage() {
             >
               {t("groupBy.groups")}
             </Button>
-            <Button
-              size="sm"
-              variant={groupBy === "host" ? "secondary" : "ghost"}
-              onClick={() => setGroupByMode("host")}
-              aria-pressed={groupBy === "host"}
-              data-testid="group-by-host"
-            >
-              {t("groupBy.host")}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant={groupBy === "host" ? "secondary" : "ghost"}
+                  onClick={() => setGroupByMode("host")}
+                  aria-pressed={groupBy === "host"}
+                  data-testid="group-by-host"
+                >
+                  {t("groupBy.host")}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t("hostBucketDescription")}</TooltipContent>
+            </Tooltip>
           </div>
         </div>
         {user?.isSuperAdmin && (
