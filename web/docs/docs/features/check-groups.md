@@ -27,6 +27,27 @@ and "New Group" dialog both let you set it directly (auto-derived from the name 
 you leave it blank on create); changing an existing group's slug breaks anything
 still using the old one, since there is no redirect from an old slug to a new one.
 
+## Group status
+
+Every group also carries a derived, read-time `status` plus a
+`memberStatusCounts` breakdown (wire status → count), computed from its
+**enabled** member checks — no new stored state, and nothing that changes
+alerting (group incidents already correlate outages; see
+[Group-incident correlation](#group-incident-correlation) below). Disabled and
+deleted checks never affect the rollup.
+
+| Enabled members | Group status |
+|---|---|
+| None, or all `created` | `created` |
+| All `down` | `down` |
+| Some (not all) `down` | `degraded` |
+| No `down`, at least one `warning` | `warning` |
+| No `down`/`warning`, at least one `validating` | `validating` |
+| Otherwise, at least one `up` | `up` |
+
+This mirrors a check's own status vocabulary, so the same status colors and
+labels apply — a group reads as one thing, not four.
+
 ## Group-level escalation policy
 
 A group can carry its own escalation policy that member checks inherit. Escalation
