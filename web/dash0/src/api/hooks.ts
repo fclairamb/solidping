@@ -4056,6 +4056,8 @@ export interface EntitlementsLimits {
   maxUsers?: number | null;
   /** Cap on active deported (private-location) agents. null = unlimited. */
   maxDeportedAgents?: number | null;
+  /** Cap on status pages served on a customer-owned domain. null = unlimited. */
+  maxCustomDomains?: number | null;
 }
 
 export interface EntitlementsUsage {
@@ -4064,6 +4066,8 @@ export interface EntitlementsUsage {
   ssoUsers: number;
   /** Count of active deported (private-location) agents. */
   agents: number;
+  /** Count of live status pages with a custom domain set. */
+  customDomains: number;
 }
 
 export interface EntitlementsResponse {

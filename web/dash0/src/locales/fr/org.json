@@ -31,6 +31,7 @@
     "multiRegionNote": "Une vérification multi-région s'exécute dans chaque région sélectionnée : elle consomme donc régions × 60 s / période vérifications par minute.",
     "users": "Utilisateurs",
     "privateLocationAgents": "Agents de localisation privée",
+    "customDomains": "Domaines personnalisés",
     "unlimited": "Illimité",
     "upgrade": "Mettre à niveau",
     "loadError": "Impossible de charger l'utilisation."

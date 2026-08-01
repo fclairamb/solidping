@@ -31,6 +31,7 @@
     "multiRegionNote": "Una comprobación multirregión se ejecuta en cada región seleccionada, por lo que consume regiones × 60 s / período comprobaciones por minuto.",
     "users": "Usuarios",
     "privateLocationAgents": "Agentes de ubicación privada",
+    "customDomains": "Dominios personalizados",
     "unlimited": "Ilimitado",
     "upgrade": "Mejorar plan",
     "loadError": "No se pudo cargar el uso."

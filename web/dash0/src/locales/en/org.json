@@ -34,6 +34,7 @@
     "multiRegionNote": "A multi-region check runs in every selected region, so it consumes regions × 60s / period checks per minute.",
     "users": "Users",
     "privateLocationAgents": "Private location agents",
+    "customDomains": "Custom domains",
     "unlimited": "Unlimited",
     "upgrade": "Upgrade",
     "loadError": "Could not load usage."
