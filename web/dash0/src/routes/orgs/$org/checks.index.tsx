@@ -831,27 +831,14 @@ function ChecksIndexPage() {
   const { user } = useAuth();
 
   // The view mode ("Group by: Groups / Host") is the page's primary
-  // navigation, so it lives in the URL (search param `groupBy`) like the jobs
-  // page's `tab`. It's ALSO mirrored into local state and re-synced whenever
-  // groupByParam changes: this route sits under the /orgs/$org layout route,
-  // where a cold deep-link's search params are known not to reliably seed a
-  // value read only via Route.useSearch() on first render (see
-  // memory/reference_dash0_url_search_state.md) — plain validateSearch is not
-  // enough, so this is the write-through that catches the value once the
-  // router settles. Resyncing during render (comparing against a *state*
-  // snapshot of the last-seen groupByParam, per React's "adjusting state
-  // during rendering" pattern) rather than in a useEffect avoids the extra
-  // commit+re-render a post-commit effect would add. This can't use a ref for
-  // the snapshot — this repo's lint config (react-hooks/refs) forbids reading
-  // or writing ref.current during render — so it's a second useState instead.
-  const [groupBy, setGroupBy] = useState<GroupByMode>(() => groupByParam ?? "groups");
-  const [lastGroupByParam, setLastGroupByParam] = useState(groupByParam);
-  if (lastGroupByParam !== groupByParam) {
-    setLastGroupByParam(groupByParam);
-    setGroupBy(groupByParam ?? "groups");
-  }
+  // navigation, so — per this repo's convention (see web/dash0/CLAUDE.md,
+  // "A page's core navigation belongs in the URL", and jobs.index.tsx's
+  // `tab`) — it lives in the URL search param `groupBy` and is read directly
+  // via Route.useSearch(), with no local-state mirror: validateSearch already
+  // normalizes it to a safe default ("groups") on every render, including the
+  // first one on a deep link.
+  const groupBy = groupByParam ?? "groups";
   const setGroupByMode = (mode: GroupByMode) => {
-    setGroupBy(mode);
     void navigate({
       search: (prev) => ({ ...prev, groupBy: mode === "groups" ? undefined : mode }),
     });

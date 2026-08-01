@@ -79,6 +79,21 @@ func TestExtractTargetHost(t *testing.T) {
 			config: map[string]any{"url": "://missing-scheme"},
 			want:   nil,
 		},
+		{
+			name:   "docker tcp:// host resolves to the bare hostname",
+			config: map[string]any{"host": "tcp://192.168.1.5:2375", "containerName": "web"},
+			want:   strPtr("192.168.1.5"),
+		},
+		{
+			name:   "docker default unix:// socket host → null (no fallback)",
+			config: map[string]any{"host": "unix:///var/run/docker.sock", "containerName": "web"},
+			want:   nil,
+		},
+		{
+			name:   "docker unix:// host does not fall back to target even when present",
+			config: map[string]any{"host": "unix:///var/run/docker.sock", "target": "should-not-be-used"},
+			want:   nil,
+		},
 	}
 
 	for _, tt := range tests {

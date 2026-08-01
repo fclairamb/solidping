@@ -3129,7 +3129,7 @@ type ListChecksParams struct {
 	// Internal Filter by internal status. "false" (default) shows only non-internal checks, "true" shows only internal checks, "all" shows all checks.
 	Internal *ListChecksParamsInternal `form:"internal,omitempty" json:"internal,omitempty"`
 
-	// Sort Opt-in ordering. "group" orders by group sortOrder ascending with ungrouped checks last, then created_at descending within a bucket — matching the dashboard's display order. Omitted keeps the default created_at descending ordering. Any other value is a validation error.
+	// Sort Opt-in ordering. "group" orders by group sortOrder ascending with ungrouped checks last, then created_at descending within a bucket — matching the dashboard's display order. "targetHost" orders by the derived targetHost ascending (case-sensitive, byte/codepoint order — e.g. "Zebra.example.com" sorts before "api.example.com"), checks with no targetHost last, then name ascending as a tiebreaker — lets a by-host view paginate consistently server-side. Omitted keeps the default created_at descending ordering. Any other value is a validation error.
 	Sort *ListChecksParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
 }
 

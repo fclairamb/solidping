@@ -836,9 +836,10 @@ paths:
             Opt-in ordering. "group" orders by group sortOrder ascending with
             ungrouped checks last, then created_at descending within a bucket —
             matching the dashboard's display order. "targetHost" orders by the
-            derived targetHost ascending (case-insensitive), checks with no
-            targetHost last, then name ascending as a tiebreaker — lets a
-            by-host view paginate consistently server-side. Omitted keeps the
+            derived targetHost ascending (case-sensitive, byte/codepoint order —
+            e.g. "Zebra.example.com" sorts before "api.example.com"), checks
+            with no targetHost last, then name ascending as a tiebreaker — lets
+            a by-host view paginate consistently server-side. Omitted keeps the
             default created_at descending ordering. Any other value is a
             validation error.
           schema:
