@@ -87,16 +87,25 @@ export function StatusUpdateCard({ update }: StatusUpdateCardProps) {
         <h3 className="text-sm font-semibold text-foreground min-w-0 break-words">
           {update.title}
         </h3>
+        {/* translate="no" on both: the kind label flips
+            investigating → identified → resolved as the incident progresses,
+            and the relative timestamp is recomputed on every render, so React
+            rewrites these text nodes while their elements are reused. Neither
+            is operator-authored. See NO_TRANSLATE in status-page-view.tsx. */}
         <div className="flex items-center gap-2 shrink-0">
           <Badge
             variant={kindBadgeVariant(update.kind)}
             aria-label={`Update kind: ${kindLabel(update.kind)}`}
+            data-testid="status-update-kind"
+            translate="no"
           >
             {kindLabel(update.kind)}
           </Badge>
           <time
             dateTime={update.publishedAt}
             className="text-xs text-muted-foreground"
+            data-testid="status-update-time"
+            translate="no"
           >
             {formatRelativeTime(update.publishedAt)}
           </time>

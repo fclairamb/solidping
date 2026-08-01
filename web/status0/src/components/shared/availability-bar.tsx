@@ -61,6 +61,7 @@ export function AvailabilityBar({
           <Tooltip key={point.time ?? point.date}>
             <TooltipTrigger asChild>
               <div
+                data-testid="availability-bar-segment"
                 className={`h-7 flex-1 rounded-sm ${getBarColor(point.status)} transition-opacity hover:opacity-80`}
               />
             </TooltipTrigger>
@@ -88,6 +89,7 @@ export function AvailabilityBar({
           middle span appears/disappears with it. */}
       <div
         className="mt-1 flex justify-between text-xs text-muted-foreground"
+        data-testid="availability-axis"
         translate="no"
       >
         <span>

@@ -63,11 +63,14 @@ declare module "@tanstack/react-router" {
 //      DOM.
 //   2. Element-level opt-out (PRODUCTION hardening, spec 2026-08-01-05).
 //      Every element whose text changes between renders — status labels,
-//      availability percentages, the version, the subscribe button — is marked
-//      translate="no" (see NO_TRANSLATE in components/shared/status-page-view.tsx).
-//      Element-level opt-outs are honoured even by a forced translation, so at
-//      exactly the sites where React rewrites or removes text on every 30 s
-//      poll there is no foreign <font> wrapper to trip over.
+//      availability percentages, incident kinds, relative timestamps, the
+//      subscribe button — is marked translate="no" (see NO_TRANSLATE in
+//      components/shared/status-page-view.tsx; the version line is opted out
+//      for consistency even though `useVersion` never refetches).
+//      Element-level opt-outs are honoured even by a forced translation — per
+//      the HTML spec, though not verified here against a real Chrome
+//      translation — so at exactly the sites where React rewrites or removes
+//      text on every 30 s poll there is no foreign <font> wrapper to trip over.
 //      HONESTY NOTE: no crash at these sites has been reproduced against a
 //      production build — driving a full forced-translation simulation through
 //      language switches and a background refetch did not throw. This is

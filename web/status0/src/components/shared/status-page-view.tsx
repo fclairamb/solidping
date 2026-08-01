@@ -47,15 +47,26 @@ function getStatusLabelKey(status: string) {
  * which visitors see as "Something went wrong!". `index.html` already opts the
  * whole document out, but that is a *hint*: a visitor who explicitly picks
  * "Translate to…" — or any extension that ignores the document-level hint —
- * still gets the rewrite. Element-level opt-outs are honoured even then, so
- * every element below whose TEXT CHANGES BETWEEN RENDERS (status labels,
- * percentages, the version, anything driven by the 30 s poll) carries this
- * marker. Operator-authored content (page name, description, section and
- * resource names) deliberately does NOT: that text is static for the lifetime
- * of the page, so it is safe to translate and valuable to keep translatable.
+ * still gets the rewrite. Element-level opt-outs are honoured even then
+ * (RESIDUAL ASSUMPTION: this is the behaviour the HTML spec defines for
+ * `translate="no"` and what Google Translate documents for `.notranslate`; it
+ * was NOT independently verified against a real Chrome translation in this
+ * work, and the E2E simulation honours it by policy, so the test proves the
+ * markers are on the DOM, not that Chrome obeys them).
  *
- * e2e/translate-resilience.spec.ts asserts these markers are present and
- * effective; see also the block comment in main.tsx.
+ * The rule for applying it: every element below whose TEXT CHANGES BETWEEN
+ * RENDERS while its element is reused — status labels, availability
+ * percentages, incident kinds, relative timestamps, the subscribe button.
+ * Operator-authored content (page name, description, section and resource
+ * names) deliberately does NOT carry it: that text is static for the lifetime
+ * of the page, so it is safe to translate and valuable to keep translatable.
+ * The version line is the one exception to "changes between renders" — it is
+ * fetched once (`useVersion` uses `staleTime: Infinity` and no
+ * `refetchInterval`, so it never refetches) and is opted out for consistency
+ * with the rest of the machine-generated chrome, not because it churns.
+ *
+ * e2e/translate-resilience.spec.ts asserts these markers are on the rendered
+ * DOM; see also the block comment in main.tsx.
  */
 const NO_TRANSLATE = { translate: "no" } as const;
 
@@ -99,6 +110,7 @@ function ResourceCard({
           <Tooltip>
             <TooltipTrigger>
               <span
+                data-testid="resource-status-dot"
                 className={`inline-block h-2.5 w-2.5 rounded-full ${getStatusColor(status)}`}
               />
             </TooltipTrigger>
@@ -117,6 +129,7 @@ function ResourceCard({
           {showAvailability && avail?.overallAvailabilityPct != null && (
             <span
               className="text-sm font-medium text-green-600"
+              data-testid="resource-availability-pct"
               {...NO_TRANSLATE}
             >
               {avail.overallAvailabilityPct.toFixed(3)}%
@@ -336,7 +349,9 @@ export function StatusPageView({
             {t("poweredBy")}
           </a>
           {versionInfo ? (
-            // Poll-driven text — see NO_TRANSLATE above.
+            // Machine-generated chrome. Note this one does NOT churn (useVersion
+            // is staleTime: Infinity, never refetched) — opted out for
+            // consistency / defence in depth. See NO_TRANSLATE above.
             <span className="sp-version" {...NO_TRANSLATE}>
               v{versionInfo.version}
             </span>

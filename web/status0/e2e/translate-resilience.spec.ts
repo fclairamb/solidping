@@ -1,4 +1,10 @@
-import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
+import {
+  test,
+  expect,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 
 /**
  * Regression guard for the recurring
@@ -18,9 +24,14 @@ import { test, expect, type APIRequestContext, type Page } from "@playwright/tes
  *   * PRODUCTION hardening (has teeth in the CI run against the built bundle):
  *     the elements whose text changes between renders are marked
  *     `translate="no"` (NO_TRANSLATE in components/shared/status-page-view.tsx).
- *     The simulation below honours element-level opt-outs exactly as a real
- *     translator does, so "the poll-driven text was never wrapped" is a real
- *     assertion — delete a `translate="no"` and this spec fails.
+ *     The first test seeds its own status page so that every one of those
+ *     elements actually renders, then checks each BY SELECTOR — present, still
+ *     opted out, still unwrapped — plus the two hover-only tooltips. Delete any
+ *     one of those `translate="no"` attributes and this spec fails.
+ *     Caveat: "the simulation honours element-level opt-outs" is the
+ *     SIMULATION'S policy. It matches what the HTML spec says `translate="no"`
+ *     means, but real Chrome was not driven here, so this proves the markers
+ *     are on the DOM — not that Chrome obeys them.
  *   * DEV-ONLY: `#root` must hold exactly one child. A second `createRoot()`
  *     mounted a second app and killed the first with this very error. Only
  *     `vite dev` can cause that (HMR re-executes main.tsx), so that assertion
@@ -42,9 +53,15 @@ const BASE = process.env.E2E_BASE_URL
 const ERROR_BOUNDARY_TEXT = "Something went wrong!";
 
 /**
- * Finds a public status page to exercise. `make dev` seeds the `default` org,
- * `SP_RUNMODE=test` (CI) seeds `test` instead, so probe rather than hardcode.
+ * Credentials per seeded org: `make dev` seeds `default`, `SP_RUNMODE=test`
+ * (CI) seeds `test` instead, so probe rather than hardcode.
  */
+const ORG_LOGINS = [
+  { org: "default", email: "admin@solidping.com", password: "solidpass" },
+  { org: "test", email: "test@test.com", password: "test" },
+];
+
+/** Finds a public status page to exercise (no seeding, no auth). */
 async function resolveStatusPageUrl(request: APIRequestContext): Promise<string> {
   const orgs = process.env.E2E_ORG ? [process.env.E2E_ORG] : ["default", "test"];
   for (const org of orgs) {
@@ -54,6 +71,135 @@ async function resolveStatusPageUrl(request: APIRequestContext): Promise<string>
   throw new Error(
     `No public status page found on ${BASE} for orgs ${orgs.join(", ")}`,
   );
+}
+
+type Json = Record<string, unknown>;
+
+/** Names the check this spec parks inside a maintenance window. */
+const MAINT_CHECK_PREFIX = "e2e-translate-maint-";
+
+async function login(
+  request: APIRequestContext,
+): Promise<{ org: string; token: string }> {
+  const wanted = process.env.E2E_ORG;
+  const candidates = wanted
+    ? ORG_LOGINS.filter((c) => c.org === wanted)
+    : ORG_LOGINS;
+
+  for (const { org, email, password } of candidates) {
+    const response = await request.post(`${BASE}/api/v1/auth/login`, {
+      data: { org, email, password },
+    });
+    if (response.ok()) {
+      const body = (await response.json()) as { accessToken: string };
+      return { org, token: body.accessToken };
+    }
+  }
+  throw new Error(`Could not log in to ${BASE} for any known seeded org`);
+}
+
+/**
+ * Seeds a status page that actually renders EVERY translate-hardened element.
+ *
+ * The seeded fixture the servers ship with has no sections and no resources, so
+ * a test pointed at it would only ever see three of the hardened elements and
+ * the hardened-count assertion would pass for the wrong reason. This builds:
+ *
+ *   * a resource on a pre-existing check (it already has results, so the
+ *     availability bar and percentage render),
+ *   * a second resource whose check sits inside an ACTIVE maintenance window
+ *     (so the maintenance badge renders alongside the normal status badge), and
+ *   * a published status update (so the incident-kind badge and the relative
+ *     <time> render).
+ */
+async function seedRichStatusPage(
+  request: APIRequestContext,
+): Promise<{ url: string; org: string }> {
+  const { org, token } = await login(request);
+  const auth = { Authorization: `Bearer ${token}` };
+  const suffix = Date.now().toString().slice(-9);
+
+  const post = async (path: string, data: Json): Promise<Json> => {
+    const response = await request.post(`${BASE}${path}`, {
+      headers: auth,
+      data,
+    });
+    expect(
+      response.status(),
+      `POST ${path} -> ${await response.text()}`,
+    ).toBeLessThan(300);
+    return (await response.json()) as Json;
+  };
+
+  // A pre-seeded check has results behind it, which is what makes the
+  // availability bar and the "%" span render at all. It must NOT be one of the
+  // maintenance checks a previous run of this spec left behind, otherwise both
+  // resources would render the maintenance badge and the normal status badge
+  // would never appear.
+  const checksResponse = await request.get(
+    `${BASE}/api/v1/orgs/${org}/checks?limit=100`,
+    { headers: auth },
+  );
+  const checksBody = (await checksResponse.json()) as {
+    data?: (Json & { name?: string; status?: string; inMaintenance?: boolean })[];
+  };
+  const usable = (checksBody.data ?? []).filter(
+    (check) =>
+      !check.inMaintenance && !String(check.name).startsWith(MAINT_CHECK_PREFIX),
+  );
+  const existingCheck =
+    usable.find((check) => Boolean(check.status) && check.status !== "unknown") ??
+    usable[0];
+  expect(
+    existingCheck,
+    "no seeded, non-maintenance check to attach a resource to",
+  ).toBeTruthy();
+
+  const maintenanceCheck = await post(`/api/v1/orgs/${org}/checks`, {
+    type: "http",
+    name: `${MAINT_CHECK_PREFIX}${suffix}`,
+    config: { url: "https://example.com" },
+    period: "00:05:00",
+  });
+
+  const slug = `e2e-translate-${suffix}`.slice(0, 40);
+  const statusPage = await post(`/api/v1/orgs/${org}/status-pages`, {
+    name: `E2E Translate ${suffix}`,
+    slug,
+    visibility: "public",
+  });
+  const section = await post(
+    `/api/v1/orgs/${org}/status-pages/${statusPage.uid}/sections`,
+    { name: "Core", slug: `core-${suffix}`.slice(0, 40) },
+  );
+
+  const resourcePath = `/api/v1/orgs/${org}/status-pages/${statusPage.uid}/sections/${section.uid}/resources`;
+  await post(resourcePath, { checkUid: existingCheck!.uid, position: 0 });
+  await post(resourcePath, { checkUid: maintenanceCheck.uid, position: 1 });
+
+  // Active window over the second check -> resource.check.inMaintenance.
+  const now = Date.now();
+  const window = await post(`/api/v1/orgs/${org}/maintenance-windows`, {
+    title: `E2E Translate window ${suffix}`,
+    startAt: new Date(now - 5 * 60_000).toISOString(),
+    endAt: new Date(now + 60 * 60_000).toISOString(),
+    recurrence: "none",
+  });
+  const setChecks = await request.put(
+    `${BASE}/api/v1/orgs/${org}/maintenance-windows/${window.uid}/checks`,
+    { headers: auth, data: { checkUids: [maintenanceCheck.uid] } },
+  );
+  expect(setChecks.status(), await setChecks.text()).toBeLessThan(300);
+
+  await post(`/api/v1/orgs/${org}/status-updates`, {
+    statusPageUid: statusPage.uid,
+    kind: "investigating",
+    title: `E2E translate update ${suffix}`,
+    bodyMarkdown: "Looking into it.",
+    publishedAt: new Date(now - 5 * 60_000).toISOString(),
+  });
+
+  return { url: `${BASE}/status0/${org}/${slug}`, org };
 }
 
 /**
@@ -163,36 +309,115 @@ async function simulateChromeTranslate(
 }
 
 /**
- * Reports, for every element the app opted out of translation, whether the
- * simulation leaked a <font> into it — plus a control element that is NOT
- * opted out, so an empty result can be told apart from a simulation that did
- * nothing.
+ * Every element the hardening is supposed to cover, by stable selector.
+ * `seedRichStatusPage` exists so that all of these actually render.
+ *
+ * The two Radix tooltips (the resource status dot, the availability bars) are
+ * NOT in this list: they only mount while hovered, so they are exercised
+ * separately by `hoverTooltipsAreHardened` below.
  */
-async function optOutReport(page: Page) {
-  return page.evaluate(() => {
-    const hardened = Array.from(
-      document.querySelectorAll('#root [translate="no"], [translate="no"]'),
-    ).filter((el) => el !== document.documentElement);
+const HARDENED_SELECTORS = [
+  '[data-testid="overall-status-badge"]',
+  '[data-testid="resource-status-badge"]',
+  '[data-testid="resource-maintenance-badge"]',
+  '[data-testid="resource-availability-pct"]',
+  '[data-testid="availability-axis"]',
+  '[data-testid="status-update-kind"]',
+  '[data-testid="status-update-time"]',
+  '[data-testid="subscribe-submit"]',
+  ".sp-version",
+] as const;
 
+/**
+ * For each expected element: is it on the page, does it still carry
+ * `translate="no"`, and did the simulation get a <font> into it?
+ *
+ * Deleting a `translate="no"` fails `hardened`. Deleting the element or letting
+ * it stop rendering fails `present` — so the coverage cannot silently rot the
+ * way a bare count can.
+ */
+async function optOutReport(page: Page, selectors: readonly string[]) {
+  return page.evaluate((selectors: string[]) => {
     return {
-      hardenedCount: hardened.length,
-      leaked: hardened
-        .filter((el) => el.querySelector("font"))
-        .map((el) => el.getAttribute("data-testid") || el.className || el.tagName),
-      // Operator content stays translatable on purpose — it must be wrapped,
-      // otherwise the simulation is not doing anything and "no leaks" is
-      // meaningless.
+      elements: selectors.map((selector) => {
+        const el = document.querySelector(selector);
+        return {
+          selector,
+          present: Boolean(el),
+          hardened: el?.getAttribute("translate") === "no",
+          wrapped: Boolean(el?.querySelector("font")),
+        };
+      }),
+      // Operator content stays translatable on purpose — it MUST be wrapped,
+      // otherwise the simulation is not doing anything and everything above
+      // would pass vacuously.
       pageNameWrapped: Boolean(
         document.querySelector(".sp-page-name")?.querySelector("font"),
       ),
-      statusBadgeHardened: document
-        .querySelector('[data-testid="overall-status-badge"]')
-        ?.getAttribute("translate"),
-      versionHardened: document
-        .querySelector(".sp-version")
-        ?.getAttribute("translate"),
     };
-  });
+  }, [...selectors]);
+}
+
+/**
+ * The two hover-only tooltips (the resource status dot, the availability bar
+ * segments). Radix mounts TooltipContent into a portal on hover, so the static
+ * sweep in `optOutReport` cannot reach them.
+ *
+ * After each hover, EVERY tooltip currently mounted must be hardened and
+ * untouched; the collected texts are returned so the caller can prove the two
+ * hovers really did surface two different tooltips (Radix keeps a closing
+ * tooltip's wrapper around for a moment, so "one wrapper" is not a safe proxy).
+ */
+async function hoverTooltipTexts(
+  page: Page,
+  triggers: Locator[],
+): Promise<Set<string>> {
+  const seen = new Set<string>();
+  // Radix leaves the popper wrapper in the DOM after close (exit animation), so
+  // "is a wrapper present" is not "is a tooltip open" — filter on data-state.
+  const open = page.locator(
+    '[data-radix-popper-content-wrapper] > [data-state]:not([data-state="closed"])',
+  );
+
+  for (const trigger of triggers) {
+    // Close whatever is open first, otherwise the next hover can be swallowed
+    // by the previous tooltip and we would assert on it twice.
+    // Move away in STEPS. Radix keeps a tooltip open while it believes the
+    // pointer is in transit from the trigger to the content, and a one-jump
+    // mouse move (what locator.hover() does) never resolves that state — the
+    // tooltip then stays open forever and the next hover is swallowed.
+    await page.mouse.move(5, 5, { steps: 12 });
+    await expect(open).toHaveCount(0, { timeout: 10000 });
+
+    await trigger.hover();
+    await expect(open.first()).toBeVisible({ timeout: 10000 });
+    // Let the content settle (and the translator's observer have its go at it).
+    await page.waitForTimeout(500);
+
+    const states = await open
+      .evaluateAll((els) =>
+        els.map((el) => ({
+          hardened: el.getAttribute("translate") === "no",
+          wrapped: Boolean(el.querySelector("font")),
+          text: el.textContent?.trim() ?? "",
+        })),
+      );
+
+    expect(states.length, "no tooltip mounted on hover").toBeGreaterThan(0);
+    for (const state of states) {
+      expect(
+        state.hardened,
+        `tooltip "${state.text}" lost its translate="no"`,
+      ).toBe(true);
+      expect(
+        state.wrapped,
+        `tooltip "${state.text}" was translated despite translate="no"`,
+      ).toBe(false);
+      seen.add(state.text);
+    }
+  }
+
+  return seen;
 }
 
 /**
@@ -220,15 +445,18 @@ test.describe("Public status page under Chrome auto-translate", () => {
   test.describe.configure({ timeout: 150_000 });
 
   /**
-   * THE production-relevant test: does the app keep the poll-driven text out of
-   * a translator's reach?
+   * THE production-relevant test: does the app keep machine-generated text out
+   * of a translator's reach?
    *
-   * This runs identically against `make dev` and the built bundle CI serves, and
-   * it fails if any `translate="no"` marker added by spec 2026-08-01-05 is
-   * removed — the simulation would then re-parent that text into a <font>, which
-   * is precisely the state React later trips over.
+   * It seeds its own status page so that every hardened element actually
+   * renders (the shipped fixtures have no sections or resources, so a test
+   * pointed at them would silently cover only three of them), then checks each
+   * one BY SELECTOR: present, still carrying `translate="no"`, and untouched by
+   * the simulation. Deleting any single `translate="no"` fails this test, on
+   * `make dev` and against the bundle CI serves alike — verified by reverting
+   * one and watching it fail against the production build.
    */
-  test("keeps poll-driven text out of a forced translation", async ({
+  test("keeps machine-generated text out of a forced translation", async ({
     page,
     request,
   }) => {
@@ -240,12 +468,17 @@ test.describe("Public status page under Chrome auto-translate", () => {
       if (req.url().includes("/api/v1/status-pages/")) statusFetches += 1;
     });
 
-    await page.goto(await resolveStatusPageUrl(request));
+    const { url } = await seedRichStatusPage(request);
+    await page.goto(url);
     await expect(page.locator(".sp-page-name")).toBeVisible({ timeout: 20000 });
-    await expect(
-      page.getByTestId("overall-status-badge"),
-    ).toBeVisible({ timeout: 20000 });
-    await expect(page.locator(".sp-version")).toBeVisible({ timeout: 20000 });
+    // Every covered element must be on screen BEFORE the simulation runs,
+    // otherwise "not wrapped" would just mean "not rendered".
+    for (const selector of HARDENED_SELECTORS) {
+      await expect(
+        page.locator(selector).first(),
+        `${selector} did not render — the seeded fixture no longer covers it`,
+      ).toBeVisible({ timeout: 20000 });
+    }
 
     // A visitor forces "Translate to…", overriding index.html's document-level
     // opt-out. Element-level opt-outs still apply — as in a real translator.
@@ -272,27 +505,39 @@ test.describe("Public status page under Chrome auto-translate", () => {
       .toBeGreaterThan(before);
     await page.waitForTimeout(1000);
 
-    const report = await optOutReport(page);
-
-    // The markers exist at all. Removing any `translate="no"` added by spec
-    // 2026-08-01-05 drops this count — verified by reverting one and watching
-    // this line fail against the production bundle.
-    expect(report.hardenedCount).toBeGreaterThanOrEqual(3);
-    expect(report.statusBadgeHardened).toBe("no");
-    expect(report.versionHardened).toBe("no");
+    const report = await optOutReport(page, HARDENED_SELECTORS);
 
     // The simulation is doing real work: operator content, which is meant to
     // stay translatable, HAS been re-parented into <font> wrappers. Without
-    // this the "no leaks" assertion below could pass vacuously.
-    expect(report.pageNameWrapped).toBe(true);
-
-    // …and not one opted-out element was touched, before or after the
-    // re-renders. This is the property that makes the crash structurally
-    // impossible at the sites React rewrites on every poll.
+    // this every assertion below could pass vacuously.
     expect(
-      report.leaked,
-      `translator leaked into opted-out elements: ${report.leaked.join(", ")}`,
-    ).toEqual([]);
+      report.pageNameWrapped,
+      "the simulation wrapped nothing — the assertions below prove nothing",
+    ).toBe(true);
+
+    for (const element of report.elements) {
+      expect(element.present, `${element.selector} is not on the page`).toBe(
+        true,
+      );
+      expect(
+        element.hardened,
+        `${element.selector} lost its translate="no"`,
+      ).toBe(true);
+      expect(
+        element.wrapped,
+        `${element.selector} was translated despite translate="no"`,
+      ).toBe(false);
+    }
+
+    // The two hover-only tooltips, which the static sweep cannot reach.
+    const tooltipTexts = await hoverTooltipTexts(page, [
+      page.getByTestId("resource-status-dot").first(),
+      page.getByTestId("availability-bar-segment").first(),
+    ]);
+    expect(
+      tooltipTexts.size,
+      `expected two distinct tooltips, saw: ${[...tooltipTexts].join(" | ")}`,
+    ).toBeGreaterThanOrEqual(2);
 
     await expect(page.getByText(ERROR_BOUNDARY_TEXT)).toHaveCount(0);
     expect(pageErrors, `uncaught page errors:\n${pageErrors.join("\n")}`).toEqual(
