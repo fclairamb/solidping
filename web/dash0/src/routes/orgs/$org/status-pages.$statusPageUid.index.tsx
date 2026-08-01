@@ -80,7 +80,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CheckPicker } from "@/components/shared/check-picker";
+import { CheckGroupPicker } from "@/components/shared/check-group-picker";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { ApiError } from "@/api/client";
 
@@ -316,32 +318,246 @@ function EditSectionDialog({
   );
 }
 
+/**
+ * A status page resource targets EITHER one check OR one check group; the two
+ * are mutually exclusive end to end (API validation and a database XOR check
+ * constraint). The dialog therefore picks a KIND first and only ever submits
+ * the field for that kind.
+ */
+type ResourceTargetKind = "check" | "group";
+
+/**
+ * Kind tabs + the matching single-select picker. Shared by the add and the
+ * "change target" dialogs so both speak the same XOR the API enforces: a kind
+ * is chosen first, and only that kind's field is ever submitted.
+ */
+function ResourceTargetPicker({
+  org,
+  kind,
+  onKindChange,
+  selectedUid,
+  selectedLabel,
+  onSelect,
+  excludeCheckUids,
+  excludeGroupUids,
+}: {
+  org: string;
+  kind: ResourceTargetKind;
+  onKindChange: (kind: ResourceTargetKind) => void;
+  selectedUid?: string;
+  selectedLabel?: string;
+  onSelect: (uid: string | undefined, label?: string) => void;
+  excludeCheckUids?: Set<string>;
+  excludeGroupUids?: Set<string>;
+}) {
+  const { t } = useTranslation(["statusPages", "common"]);
+
+  return (
+    <Tabs
+      value={kind}
+      onValueChange={(next) => onKindChange(next === "group" ? "group" : "check")}
+      className="py-2"
+    >
+      <TabsList className="w-full">
+        <TabsTrigger value="check" className="flex-1" data-testid="resource-kind-check">
+          {t("statusPages:resources.kindCheck")}
+        </TabsTrigger>
+        <TabsTrigger value="group" className="flex-1" data-testid="resource-kind-group">
+          {t("statusPages:resources.kindGroup")}
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="check" className="pt-4">
+        <CheckPicker
+          org={org}
+          value={kind === "check" ? selectedUid : undefined}
+          selectedLabel={kind === "check" ? selectedLabel : undefined}
+          excludeUids={excludeCheckUids}
+          placeholder={t("statusPages:resources.selectCheck")}
+          triggerTestId="resource-check-select"
+          onChange={(uid, c) => onSelect(uid, c ? c.name || c.slug || undefined : undefined)}
+        />
+      </TabsContent>
+      <TabsContent value="group" className="pt-4 space-y-2">
+        <CheckGroupPicker
+          org={org}
+          value={kind === "group" ? selectedUid : undefined}
+          selectedLabel={kind === "group" ? selectedLabel : undefined}
+          excludeUids={excludeGroupUids}
+          placeholder={t("statusPages:resources.selectGroup")}
+          triggerTestId="resource-group-select"
+          onChange={(uid, g) => onSelect(uid, g ? g.name : undefined)}
+        />
+        <p className="text-xs text-muted-foreground">
+          {t("statusPages:resources.groupHelp")}
+        </p>
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+/**
+ * "Change target" for an existing resource. This is a single-field change (the
+ * resource's target), which the dash0 route convention explicitly leaves inline,
+ * and it matches how this page already edits its other sub-entities
+ * (EditSectionDialog) — a dedicated route for one picker would diverge from the
+ * page's own pattern.
+ */
+function EditResourceTargetDialog({
+  org,
+  statusPageUid,
+  sectionUid,
+  resource,
+  existingCheckUids,
+  existingGroupUids,
+}: {
+  org: string;
+  statusPageUid: string;
+  sectionUid: string;
+  resource: StatusPageResource;
+  existingCheckUids: Set<string>;
+  existingGroupUids: Set<string>;
+}) {
+  const { t } = useTranslation(["statusPages", "common"]);
+  const [open, setOpen] = useState(false);
+  const initialKind: ResourceTargetKind = resource.checkGroupUid ? "group" : "check";
+  const [kind, setKind] = useState<ResourceTargetKind>(initialKind);
+  const [selectedUid, setSelectedUid] = useState<string | undefined>(
+    resource.checkGroupUid ?? resource.checkUid
+  );
+  const [selectedLabel, setSelectedLabel] = useState<string | undefined>(
+    resource.check?.name
+  );
+  const updateResource = useUpdateResource(org, statusPageUid, sectionUid);
+
+  const reset = () => {
+    setKind(initialKind);
+    setSelectedUid(resource.checkGroupUid ?? resource.checkUid);
+    setSelectedLabel(resource.check?.name);
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedUid) return;
+    try {
+      await updateResource.mutateAsync({
+        resourceUid: resource.uid,
+        request:
+          kind === "group" ? { checkGroupUid: selectedUid } : { checkUid: selectedUid },
+      });
+      toast.success(t("statusPages:resources.targetUpdated"));
+      setOpen(false);
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : t("statusPages:resources.targetUpdateFailed")
+      );
+    }
+  };
+
+  // The resource's own current target must stay selectable, so it is removed
+  // from the exclusion sets it would otherwise be caught by.
+  const excludeCheckUids = new Set(existingCheckUids);
+  if (resource.checkUid) excludeCheckUids.delete(resource.checkUid);
+  const excludeGroupUids = new Set(existingGroupUids);
+  if (resource.checkGroupUid) excludeGroupUids.delete(resource.checkGroupUid);
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) reset();
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          aria-label={t("statusPages:resources.changeTarget")}
+          data-testid="resource-edit-target"
+        >
+          <Pencil className="h-3 w-3" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("statusPages:resources.changeTarget")}</DialogTitle>
+          <DialogDescription>
+            {t("statusPages:resources.changeTargetDescription")}
+          </DialogDescription>
+        </DialogHeader>
+        <ResourceTargetPicker
+          org={org}
+          kind={kind}
+          onKindChange={(next) => {
+            setKind(next);
+            setSelectedUid(undefined);
+            setSelectedLabel(undefined);
+          }}
+          selectedUid={selectedUid}
+          selectedLabel={selectedLabel}
+          onSelect={(uid, label) => {
+            setSelectedUid(uid);
+            setSelectedLabel(label);
+          }}
+          excludeCheckUids={excludeCheckUids}
+          excludeGroupUids={excludeGroupUids}
+        />
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            {t("common:cancel")}
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={!selectedUid || updateResource.isPending}
+            data-testid="resource-edit-submit"
+          >
+            {t("statusPages:resources.save")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function AddResourceDialog({
   org,
   statusPageUid,
   sectionUid,
   existingCheckUids,
+  existingGroupUids,
 }: {
   org: string;
   statusPageUid: string;
   sectionUid: string;
   existingCheckUids: Set<string>;
+  existingGroupUids: Set<string>;
 }) {
   const { t } = useTranslation(["statusPages", "common"]);
   const [open, setOpen] = useState(false);
-  const [selectedCheckUid, setSelectedCheckUid] = useState<string | undefined>();
-  const [selectedCheckLabel, setSelectedCheckLabel] = useState<string | undefined>();
+  const [kind, setKind] = useState<ResourceTargetKind>("check");
+  const [selectedUid, setSelectedUid] = useState<string | undefined>();
+  const [selectedLabel, setSelectedLabel] = useState<string | undefined>();
   const createResource = useCreateResource(org, statusPageUid, sectionUid);
 
   const reset = () => {
-    setSelectedCheckUid(undefined);
-    setSelectedCheckLabel(undefined);
+    setKind("check");
+    setSelectedUid(undefined);
+    setSelectedLabel(undefined);
+  };
+
+  // Switching kind clears the selection: a check uid is never a valid group uid.
+  const switchKind = (next: ResourceTargetKind) => {
+    setKind(next);
+    setSelectedUid(undefined);
+    setSelectedLabel(undefined);
   };
 
   const handleSubmit = async () => {
-    if (!selectedCheckUid) return;
+    if (!selectedUid) return;
     try {
-      await createResource.mutateAsync({ checkUid: selectedCheckUid });
+      await createResource.mutateAsync(
+        kind === "group" ? { checkGroupUid: selectedUid } : { checkUid: selectedUid }
+      );
       toast.success(t("statusPages:resources.added"));
       reset();
       setOpen(false);
@@ -377,26 +593,27 @@ function AddResourceDialog({
           <DialogTitle>{t("statusPages:resources.addToSection")}</DialogTitle>
           <DialogDescription>{t("statusPages:resources.addDescription")}</DialogDescription>
         </DialogHeader>
-        <div className="py-4">
-          <CheckPicker
-            org={org}
-            value={selectedCheckUid}
-            selectedLabel={selectedCheckLabel}
-            excludeUids={existingCheckUids}
-            placeholder={t("statusPages:resources.selectCheck")}
-            onChange={(uid, c) => {
-              setSelectedCheckUid(uid);
-              setSelectedCheckLabel(c ? c.name || c.slug || undefined : undefined);
-            }}
-          />
-        </div>
+        <ResourceTargetPicker
+          org={org}
+          kind={kind}
+          onKindChange={switchKind}
+          selectedUid={selectedUid}
+          selectedLabel={selectedLabel}
+          onSelect={(uid, label) => {
+            setSelectedUid(uid);
+            setSelectedLabel(label);
+          }}
+          excludeCheckUids={existingCheckUids}
+          excludeGroupUids={existingGroupUids}
+        />
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
             {t("common:cancel")}
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!selectedCheckUid || createResource.isPending}
+            disabled={!selectedUid || createResource.isPending}
+            data-testid="resource-add-submit"
           >
             {t("statusPages:resources.add")}
           </Button>
@@ -414,6 +631,8 @@ function ResourceRow({
   org,
   statusPageUid,
   sectionUid,
+  existingCheckUids,
+  existingGroupUids,
 }: {
   resource: StatusPageResource;
   index: number;
@@ -422,6 +641,8 @@ function ResourceRow({
   org: string;
   statusPageUid: string;
   sectionUid: string;
+  existingCheckUids: Set<string>;
+  existingGroupUids: Set<string>;
 }) {
   const { t } = useTranslation(["statusPages", "common"]);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -508,31 +729,65 @@ function ResourceRow({
         </Button>
       </div>
       <StatusDot status={resource.check?.status} />
-      <span className="flex-1 text-sm">
-        {resource.publicName || resource.check?.name || resource.checkUid.slice(0, 8)}
+      <span className="flex-1 text-sm" data-testid="resource-row-name">
+        {resource.publicName ||
+          resource.check?.name ||
+          (resource.checkUid ?? resource.checkGroupUid ?? "").slice(0, 8)}
       </span>
-      {resource.check?.type && (
-        <Badge variant="outline" className="text-xs">
-          {resource.check.type}
+      {/*
+        A group resource carries no check type — the public payload deliberately
+        omits it — so the row labels the KIND instead. That is dashboard-only
+        context; the public page never says a component is aggregated.
+      */}
+      {resource.checkGroupUid ? (
+        <Badge variant="outline" className="text-xs" data-testid="resource-row-group-badge">
+          {t("statusPages:resources.kindGroup")}
         </Badge>
+      ) : (
+        resource.check?.type && (
+          <Badge variant="outline" className="text-xs">
+            {resource.check.type}
+          </Badge>
+        )
       )}
       {resource.check?.status && (
         <StatusBadge status={resource.check.status} />
       )}
-      <Link
-        to="/orgs/$org/checks/$checkUid"
-        params={{ org, checkUid: resource.checkUid }}
-        search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }}
-      >
-        <Button variant="ghost" size="icon" className="h-7 w-7">
-          <Eye className="h-3 w-3" />
-        </Button>
-      </Link>
+      {resource.checkUid ? (
+        <Link
+          to="/orgs/$org/checks/$checkUid"
+          params={{ org, checkUid: resource.checkUid }}
+          search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }}
+        >
+          <Button variant="ghost" size="icon" className="h-7 w-7">
+            <Eye className="h-3 w-3" />
+          </Button>
+        </Link>
+      ) : (
+        resource.checkGroupUid && (
+          <Link
+            to="/orgs/$org/check-groups/$uid/edit"
+            params={{ org, uid: resource.checkGroupUid }}
+          >
+            <Button variant="ghost" size="icon" className="h-7 w-7">
+              <Eye className="h-3 w-3" />
+            </Button>
+          </Link>
+        )
+      )}
+      <EditResourceTargetDialog
+        org={org}
+        statusPageUid={statusPageUid}
+        sectionUid={sectionUid}
+        resource={resource}
+        existingCheckUids={existingCheckUids}
+        existingGroupUids={existingGroupUids}
+      />
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7"
+          className="h-7 w-7 text-destructive"
           onClick={() => setDeleteOpen(true)}
         >
           <Trash2 className="h-3 w-3" />
@@ -585,8 +840,17 @@ function SectionCard({
     opacity: isDragging ? 0.5 : 1,
   };
 
+  // Each kind gets its own exclusion set: a section may hold at most one
+  // resource per check and at most one per group (two partial unique indexes).
   const existingCheckUids = new Set(
-    (section.resources || []).map((r) => r.checkUid)
+    (section.resources || [])
+      .map((r) => r.checkUid)
+      .filter((uid): uid is string => Boolean(uid))
+  );
+  const existingGroupUids = new Set(
+    (section.resources || [])
+      .map((r) => r.checkGroupUid)
+      .filter((uid): uid is string => Boolean(uid))
   );
 
   // Pointer sensor with a small activation distance so click-and-release on
@@ -646,6 +910,7 @@ function SectionCard({
               statusPageUid={statusPageUid}
               sectionUid={section.uid}
               existingCheckUids={existingCheckUids}
+              existingGroupUids={existingGroupUids}
             />
             <Button
               variant="ghost"
@@ -718,6 +983,8 @@ function SectionCard({
                     org={org}
                     statusPageUid={statusPageUid}
                     sectionUid={section.uid}
+                    existingCheckUids={existingCheckUids}
+                    existingGroupUids={existingGroupUids}
                   />
                 ))}
               </div>

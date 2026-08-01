@@ -107,11 +107,14 @@ export function StatusUpdateForm({
 
   const sections = selectedPage?.sections ?? [];
 
-  // Build check options based on selected section
-  const checkOptions =
+  // Build check options based on selected section.
+  // A status update pins to an INDIVIDUAL check, so group-targeting resources
+  // (which have no checkUid) are not selectable here — see spec 2026-08-01-03.
+  const checkOptions = (
     form.sectionUid !== "none"
       ? (sections.find((s) => s.uid === form.sectionUid)?.resources ?? [])
-      : sections.flatMap((s) => s.resources ?? []);
+      : sections.flatMap((s) => s.resources ?? [])
+  ).filter((r): r is typeof r & { checkUid: string } => Boolean(r.checkUid));
 
   const handlePageChange = (v: string) => {
     setForm((f) => ({ ...f, statusPageUid: v, sectionUid: "none", checkUid: "none" }));

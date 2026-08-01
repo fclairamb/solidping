@@ -76,9 +76,9 @@
     "empty": "No checks in this section yet"
   },
   "resources": {
-    "add": "Add Check",
-    "addToSection": "Add Check to Section",
-    "addDescription": "Select a check to add to this section.",
+    "add": "Add Component",
+    "addToSection": "Add Component to Section",
+    "addDescription": "Add a single check, or a whole check group shown as one aggregated component.",
     "selectCheck": "Select a check...",
     "added": "Check added to section",
     "addFailed": "Failed to add check",
@@ -86,7 +86,20 @@
     "removeDescription": "Remove this check from the section? The check itself will not be deleted.",
     "removed": "Check removed from section",
     "removeFailed": "Failed to remove check",
-    "removeButton": "Remove"
+    "removeButton": "Remove",
+    "kindCheck": "Check",
+    "kindGroup": "Group",
+    "selectGroup": "Select a check group...",
+    "searchGroups": "Search groups…",
+    "noGroupMatches": "No groups match.",
+    "groupMemberCount_one": "{{count}} check",
+    "groupMemberCount_other": "{{count}} checks",
+    "groupHelp": "The group is published as one component: a combined status and a combined uptime history. Its member checks are never listed publicly.",
+    "changeTarget": "Change component target",
+    "changeTargetDescription": "Point this component at a different check, or switch it to a check group.",
+    "targetUpdated": "Component target updated",
+    "targetUpdateFailed": "Failed to update the component target",
+    "save": "Save"
   },
   "subscribers": {
     "title": "Subscribers",

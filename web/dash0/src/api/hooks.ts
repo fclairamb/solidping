@@ -1505,12 +1505,20 @@ export interface StatusPageSection {
 
 export interface StatusPageResource {
   uid: string;
-  checkUid: string;
+  /**
+   * Exactly one of checkUid / checkGroupUid is set. A group resource renders as
+   * ONE public component (rolled-up status, weighted-average availability across
+   * its members, maintenance from a group- or member-targeted window) and never
+   * exposes its members publicly.
+   */
+  checkUid?: string;
+  checkGroupUid?: string;
   publicName?: string;
   explanation?: string;
   position: number;
   check?: {
     name?: string;
+    /** Check type for a check resource; empty for a group resource. */
     type: string;
     status: string;
   };
@@ -1561,14 +1569,25 @@ export interface UpdateSectionRequest {
   position?: number;
 }
 
+/**
+ * Exactly one of checkUid / checkGroupUid must be set; zero or both is a
+ * VALIDATION_ERROR naming both fields.
+ */
 export interface CreateResourceRequest {
-  checkUid: string;
+  checkUid?: string;
+  checkGroupUid?: string;
   publicName?: string;
   explanation?: string;
   position?: number;
 }
 
+/**
+ * Supplying checkUid or checkGroupUid switches the resource's target kind;
+ * supplying both is a validation error, supplying neither leaves it untouched.
+ */
 export interface UpdateResourceRequest {
+  checkUid?: string;
+  checkGroupUid?: string;
   publicName?: string;
   explanation?: string;
   position?: number;

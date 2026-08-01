@@ -76,9 +76,9 @@
     "empty": "Aún no hay comprobaciones en esta sección"
   },
   "resources": {
-    "add": "Añadir comprobación",
-    "addToSection": "Añadir comprobación a la sección",
-    "addDescription": "Seleccione una comprobación para añadir a esta sección.",
+    "add": "Añadir componente",
+    "addToSection": "Añadir componente a la sección",
+    "addDescription": "Añada una sola comprobación, o un grupo completo mostrado como un único componente agregado.",
     "selectCheck": "Seleccionar una comprobación...",
     "added": "Comprobación añadida a la sección",
     "addFailed": "Error al añadir la comprobación",
@@ -86,7 +86,20 @@
     "removeDescription": "¿Quitar esta comprobación de la sección? La comprobación en sí no se eliminará.",
     "removed": "Comprobación quitada de la sección",
     "removeFailed": "Error al quitar la comprobación",
-    "removeButton": "Quitar"
+    "removeButton": "Quitar",
+    "kindCheck": "Comprobación",
+    "kindGroup": "Grupo",
+    "selectGroup": "Seleccionar un grupo…",
+    "searchGroups": "Buscar grupos…",
+    "noGroupMatches": "Ningún grupo coincide.",
+    "groupMemberCount_one": "{{count}} comprobación",
+    "groupMemberCount_other": "{{count}} comprobaciones",
+    "groupHelp": "El grupo se publica como un único componente: un estado combinado y un historial de disponibilidad combinado. Sus comprobaciones miembro nunca se listan públicamente.",
+    "changeTarget": "Cambiar el destino del componente",
+    "changeTargetDescription": "Apunte este componente a otra comprobación, o cámbielo a un grupo de comprobaciones.",
+    "targetUpdated": "Destino del componente actualizado",
+    "targetUpdateFailed": "Error al actualizar el destino del componente",
+    "save": "Guardar"
   },
   "subscribers": {
     "title": "Suscriptores",

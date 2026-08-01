@@ -193,10 +193,13 @@ function StatusUpdatesIndexPage() {
 
   const sections = selectedPage?.sections ?? [];
 
-  const checkOptions =
+  // A status update pins to an INDIVIDUAL check, so group-targeting resources
+  // (which have no checkUid) are not selectable here — see spec 2026-08-01-03.
+  const checkOptions = (
     filterSectionUid !== "all"
       ? (sections.find((s) => s.uid === filterSectionUid)?.resources ?? [])
-      : sections.flatMap((s) => s.resources ?? []);
+      : sections.flatMap((s) => s.resources ?? [])
+  ).filter((r): r is typeof r & { checkUid: string } => Boolean(r.checkUid));
 
   const queryParams = {
     ...(filterPageUid !== "all" ? { statusPage: filterPageUid } : {}),

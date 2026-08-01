@@ -76,9 +76,9 @@
     "empty": "Noch keine Prüfungen in diesem Bereich"
   },
   "resources": {
-    "add": "Prüfung hinzufügen",
-    "addToSection": "Prüfung zum Bereich hinzufügen",
-    "addDescription": "Wählen Sie eine Prüfung aus, die zu diesem Bereich hinzugefügt werden soll.",
+    "add": "Komponente hinzufügen",
+    "addToSection": "Komponente zum Bereich hinzufügen",
+    "addDescription": "Fügen Sie eine einzelne Prüfung hinzu oder eine ganze Prüfungsgruppe, die als eine zusammengefasste Komponente angezeigt wird.",
     "selectCheck": "Prüfung auswählen...",
     "added": "Prüfung zum Bereich hinzugefügt",
     "addFailed": "Hinzufügen der Prüfung fehlgeschlagen",
@@ -86,7 +86,20 @@
     "removeDescription": "Diese Prüfung aus dem Bereich entfernen? Die Prüfung selbst wird nicht gelöscht.",
     "removed": "Prüfung aus dem Bereich entfernt",
     "removeFailed": "Entfernen der Prüfung fehlgeschlagen",
-    "removeButton": "Entfernen"
+    "removeButton": "Entfernen",
+    "kindCheck": "Prüfung",
+    "kindGroup": "Gruppe",
+    "selectGroup": "Prüfungsgruppe auswählen…",
+    "searchGroups": "Gruppen suchen…",
+    "noGroupMatches": "Keine passenden Gruppen.",
+    "groupMemberCount_one": "{{count}} Prüfung",
+    "groupMemberCount_other": "{{count}} Prüfungen",
+    "groupHelp": "Die Gruppe wird als eine einzige Komponente veröffentlicht: ein gemeinsamer Status und ein gemeinsamer Verfügbarkeitsverlauf. Ihre Mitgliedsprüfungen werden öffentlich nie aufgelistet.",
+    "changeTarget": "Komponentenziel ändern",
+    "changeTargetDescription": "Richten Sie diese Komponente auf eine andere Prüfung aus oder wechseln Sie zu einer Prüfungsgruppe.",
+    "targetUpdated": "Komponentenziel aktualisiert",
+    "targetUpdateFailed": "Aktualisierung des Komponentenziels fehlgeschlagen",
+    "save": "Speichern"
   },
   "subscribers": {
     "title": "Abonnenten",

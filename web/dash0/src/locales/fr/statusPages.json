@@ -76,9 +76,9 @@
     "empty": "Aucune vérification dans cette section pour le moment"
   },
   "resources": {
-    "add": "Ajouter une vérification",
-    "addToSection": "Ajouter une vérification à la section",
-    "addDescription": "Sélectionnez une vérification à ajouter à cette section.",
+    "add": "Ajouter un composant",
+    "addToSection": "Ajouter un composant à la section",
+    "addDescription": "Ajoutez une vérification, ou un groupe entier affiché comme un seul composant agrégé.",
     "selectCheck": "Sélectionner une vérification...",
     "added": "Vérification ajoutée à la section",
     "addFailed": "Échec de l'ajout de la vérification",
@@ -86,7 +86,20 @@
     "removeDescription": "Retirer cette vérification de la section ? La vérification elle-même ne sera pas supprimée.",
     "removed": "Vérification retirée de la section",
     "removeFailed": "Échec du retrait de la vérification",
-    "removeButton": "Retirer"
+    "removeButton": "Retirer",
+    "kindCheck": "Vérification",
+    "kindGroup": "Groupe",
+    "selectGroup": "Sélectionner un groupe…",
+    "searchGroups": "Rechercher des groupes…",
+    "noGroupMatches": "Aucun groupe correspondant.",
+    "groupMemberCount_one": "{{count}} vérification",
+    "groupMemberCount_other": "{{count}} vérifications",
+    "groupHelp": "Le groupe est publié comme un composant unique : un statut combiné et un historique de disponibilité combiné. Ses vérifications membres ne sont jamais listées publiquement.",
+    "changeTarget": "Changer la cible du composant",
+    "changeTargetDescription": "Pointez ce composant vers une autre vérification, ou basculez-le vers un groupe.",
+    "targetUpdated": "Cible du composant mise à jour",
+    "targetUpdateFailed": "Échec de la mise à jour de la cible du composant",
+    "save": "Enregistrer"
   },
   "subscribers": {
     "title": "Abonnés",

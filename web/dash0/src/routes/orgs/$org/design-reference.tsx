@@ -36,6 +36,7 @@ import {
 import { toast } from "sonner";
 
 import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
+import { CheckGroupPicker } from "@/components/shared/check-group-picker";
 import { RecipientsInput } from "@/components/shared/recipients-input";
 import { TokenChipsInput } from "@/components/shared/token-chips-input";
 import { isValidStatusPattern, normalizeStatusPattern } from "@/lib/http-status";
@@ -154,6 +155,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "feedback", label: "Feedback" },
   { id: "label-filter", label: "Label filter" },
   { id: "check-multi-picker", label: "Check multi-picker" },
+  { id: "check-group-picker", label: "Check group picker" },
   { id: "token-chips-input", label: "Token chips input" },
   { id: "kpi-tiles", label: "KPI tiles" },
   { id: "uptime-strip", label: "Uptime strip" },
@@ -191,6 +193,7 @@ function DesignReferencePage() {
       <FeedbackSection />
       <LabelFilterSection />
       <CheckMultiPickerSection />
+      <CheckGroupPickerSection />
       <TokenChipsInputSection />
       <KpiTileSection />
       <UptimeStripSection />
@@ -2242,6 +2245,38 @@ function CheckMultiPickerSection() {
         <div className="space-y-2">
           <Label>Check groups</Label>
           <CheckMultiPicker org={org} kind="groups" value={groupUids} onChange={setGroupUids} />
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function CheckGroupPickerSection() {
+  const { org } = Route.useParams();
+  const [groupUid, setGroupUid] = useState<string | undefined>();
+  const [groupLabel, setGroupLabel] = useState<string | undefined>();
+
+  return (
+    <Section
+      id="check-group-picker"
+      title="Check group picker"
+      description="Single-select for one check GROUP — the group twin of CheckPicker, with the same popover + search + arrow-key navigation shape. Each entry is labelled with its member count (&quot;N checks&quot;), which is operator-only context: the public status page never says a component aggregates several probes. Used by the status page editor to publish a group as one component."
+    >
+      <p className="text-xs text-muted-foreground">
+        import {"{ CheckGroupPicker }"} from "@/components/shared/check-group-picker"
+      </p>
+      <div className="grid gap-4 sm:grid-cols-2 max-w-2xl">
+        <div className="space-y-2">
+          <Label>Check group</Label>
+          <CheckGroupPicker
+            org={org}
+            value={groupUid}
+            selectedLabel={groupLabel}
+            onChange={(uid, group) => {
+              setGroupUid(uid);
+              setGroupLabel(group ? group.name : undefined);
+            }}
+          />
         </div>
       </div>
     </Section>
