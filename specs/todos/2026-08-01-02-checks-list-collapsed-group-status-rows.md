@@ -68,3 +68,70 @@ one-row summary when collapsed.
 - No changes to the group-ordered pagination backend.
 - No "group by host" derivation — that's spec `2026-08-01-04`.
 - No drag-to-reorder or nesting of groups.
+
+## Implementation Plan
+
+1. **API type**: add `status: string` and `memberStatusCounts?: Record<string, number>`
+   to the hand-written `CheckGroup` interface in `web/dash0/src/api/hooks.ts`
+   (mirrors the already-shipped OpenAPI schema — no backend/codegen change).
+
+2. **Summary formatting helper** (in `checks.index.tsx`, colocated with
+   `CheckGroupSection` since it's presentational and only used there): a
+   `formatMemberSummary(counts, t)` function that:
+   - returns `null` when there are no considered members;
+   - returns the localized `"{{count}}/{{count}} up"` form when every counted
+     member is up (this is exactly the collapse-eligible case);
+   - otherwise joins non-zero buckets ordered by severity
+     (`down → degraded → warning → validating → created → up`) as
+     `"{{count}} {{label}}"` parts joined by `" · "`, e.g. `"1 down · 3 up"`.
+   New i18n keys under `checks.json`'s `groupSummary` namespace (`allUp`,
+   `part`, and one short label per wire status) in `en`, `fr`, `de`, `es`.
+
+3. **Group header UI**: in `CheckGroupSection`,
+   - add a `StatusBadge status={group.status}` next to the group name;
+   - render the formatted summary as muted text next to the badge;
+   - keep the header driven entirely by `group` (status/memberStatusCounts/
+     checkCount all come from the groups list query, independent of which
+     checks page has loaded) so it's correct even when the current page only
+     has a tail slice of the group's members;
+   - make the header row wrap (`flex-wrap`, `min-w-0`/truncate on the name) so
+     the extra badge/summary don't overflow on narrow viewports;
+   - wrap the chevron in a `Tooltip` with a localized expand/collapse label,
+     add `aria-expanded`/keyboard toggling to the header row, and give the
+     chevron and summary stable `data-testid`s for e2e.
+
+4. **Collapse state**: replace the current plain `useState(false)` with:
+   - a small localStorage helper (module-level, mirrors the existing
+     try/catch pattern in `dashboard-page.tsx`/`last-auth-method.ts`) storing
+     one JSON map per org at `solidping_collapsed_groups_${org}`:
+     `{ [groupUid]: boolean }`;
+   - `defaultCollapsed = group.status === "up"`;
+   - `manualOverride` state seeded from the stored map (or `null` if absent);
+   - rendered `collapsed = search ? false : (manualOverride ?? defaultCollapsed)`
+     — searching still force-expands without persisting anything;
+   - the toggle handler sets `manualOverride` and writes through to
+     localStorage immediately.
+   - `UngroupedChecksSection` is untouched — it already always renders its
+     rows, satisfying "never collapsed" as-is.
+
+5. **i18n**: add `menu.expandGroup` / `menu.collapseGroup` tooltip strings and
+   the `groupSummary.*` keys to all four locale files.
+
+6. **Design reference**: add a "Check group status header" example near the
+   existing Status dot section in `design-reference.tsx` showing the badge +
+   summary text combo, so it stays the canonical catalog entry per the
+   frontend rules.
+
+7. **E2E** (`web/dash0/e2e/`), new file `check-group-collapse.spec.ts`:
+   - a group with one down (enabled) member shows a `Down`/degraded-flavored
+     header and starts expanded (rows visible);
+   - an all-up group's section starts collapsed (rows hidden) while the
+     `"N/N up"` summary is still visible in the header;
+   - clicking the chevron toggles collapse, and the choice survives a page
+     reload (localStorage round-trip);
+   - a mobile viewport (375px) renders the header without horizontal
+     overflow.
+   - Verify the pre-existing `checks-index-group-pagination.spec.ts` and
+     `check-groups.spec.ts` still pass unmodified (their seeded groups have no
+     completed runs, so `status` is `created` → expanded by default → no
+     behavior change expected).
