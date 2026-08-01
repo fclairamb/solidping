@@ -14,6 +14,13 @@
   "allChecks": "All checks",
   "internal": "Internal",
   "ungroupedChecks": "Ungrouped Checks",
+  "groupBy": {
+    "label": "Group by:",
+    "groups": "Groups",
+    "host": "Host"
+  },
+  "noHostBucket": "No host",
+  "hostBucketDescription": "Derived from each check's config — renaming a host moves it to a different section.",
   "status": {
     "validating": "Validating",
     "up": "Up",

@@ -14,6 +14,13 @@
   "allChecks": "Tous les contrôles",
   "internal": "Interne",
   "ungroupedChecks": "Contrôles non groupés",
+  "groupBy": {
+    "label": "Grouper par :",
+    "groups": "Groupes",
+    "host": "Hôte"
+  },
+  "noHostBucket": "Sans hôte",
+  "hostBucketDescription": "Dérivé de la configuration de chaque contrôle — renommer un hôte le déplace vers une autre section.",
   "status": {
     "validating": "En validation",
     "up": "Opérationnel",

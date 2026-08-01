@@ -100,9 +100,16 @@ import { slugify } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLiveSubscription } from "@/contexts/LiveEventsContext";
 
+// The checks index can bucket its rows by check group (server-side entity,
+// the default) or by the derived targetHost (spec 2026-08-01-04) — no
+// server-side identity, purely a client-side view over the same rows.
+const GROUP_BY_MODES = ["groups", "host"] as const;
+type GroupByMode = (typeof GROUP_BY_MODES)[number];
+
 interface ChecksIndexSearch {
   labels?: string;
   status?: string;
+  groupBy?: GroupByMode;
 }
 
 // Group slugs are 3-40 chars: a lowercase letter followed by 2-39 lowercase
@@ -116,6 +123,9 @@ export const Route = createFileRoute("/orgs/$org/checks/")({
   validateSearch: (search: Record<string, unknown>): ChecksIndexSearch => ({
     labels: typeof search.labels === "string" && search.labels ? search.labels : undefined,
     status: typeof search.status === "string" && search.status ? search.status : undefined,
+    groupBy: GROUP_BY_MODES.includes(search.groupBy as GroupByMode)
+      ? (search.groupBy as GroupByMode)
+      : undefined,
   }),
 });
 
@@ -197,6 +207,137 @@ function formatMemberSummary(
     parts.push(t("checks:groupSummary.part", { count, label: status }));
   }
   return parts.join(" · ");
+}
+
+// Host bucket sections have no server-side identity (unlike check groups,
+// which carry a precomputed status/memberStatusCounts from the API) — the
+// aggregate status here is a pure client-side function of the currently
+// loaded rows, following the exact same worst-of precedence as
+// models.RollupGroupStatus (server/internal/db/models/check_group_status.go):
+// down if every considered (enabled) member is down, degraded if some (not
+// all) are down, warning if none are down but at least one is warning,
+// validating if none are down/warning but at least one is validating, up if
+// at least one is up, otherwise created.
+function computeHostSectionStatus(checks: Check[]): {
+  status: string;
+  counts: Record<string, number>;
+} {
+  const counts: Record<string, number> = {};
+  let total = 0;
+  for (const check of checks) {
+    if (check.enabled === false) continue;
+    const status = check.status ?? "created";
+    counts[status] = (counts[status] ?? 0) + 1;
+    total++;
+  }
+
+  if (total === 0) return { status: "created", counts };
+
+  const down = counts.down ?? 0;
+  if (down === total) return { status: "down", counts };
+  if (down > 0) return { status: "degraded", counts };
+  if ((counts.warning ?? 0) > 0) return { status: "warning", counts };
+  if ((counts.validating ?? 0) > 0) return { status: "validating", counts };
+  if ((counts.up ?? 0) > 0) return { status: "up", counts };
+  return { status: "created", counts };
+}
+
+// Presentational: a by-host bucket. No group entity backs it (no edit link,
+// no move up/down, no escalation indicator) — just the hostname, member
+// count, and the client-computed rollup status/summary, reusing the same
+// collapse-by-default-when-up behavior as CheckGroupSection. Collapse choices
+// are session-only (component state, not persisted): unlike a group uid, a
+// hostname bucket has no stable identity across a check's config edits, so
+// persisting it per-org would accumulate stale keys.
+function HostSection({
+  hostKey,
+  checks,
+  org,
+  onDeleteCheck,
+  onChangeGroup,
+  groups,
+  checksByUid,
+}: {
+  /** null = the trailing "no host" bucket (checks with no derivable targetHost). */
+  hostKey: string | null;
+  checks: Check[];
+  org: string;
+  onDeleteCheck: (uid: string) => void;
+  onChangeGroup: (check: Check) => void;
+  groups: CheckGroup[];
+  checksByUid: Map<string, Check>;
+}) {
+  const { t } = useTranslation("checks");
+  const isNoHost = hostKey === null;
+  const { status, counts } = useMemo(() => computeHostSectionStatus(checks), [checks]);
+  const memberSummary = formatMemberSummary(counts, t);
+
+  const [manualOverride, setManualOverride] = useState<boolean | null>(null);
+  const defaultCollapsed = status === "up";
+  const collapsed = manualOverride ?? defaultCollapsed;
+  const toggleCollapsed = () => setManualOverride(!collapsed);
+
+  return (
+    <div className="border rounded-lg" data-testid="host-section">
+      <div
+        className="flex items-center justify-between gap-2 px-4 py-3 cursor-pointer hover:bg-muted/50 flex-wrap"
+        onClick={toggleCollapsed}
+        role="button"
+        tabIndex={0}
+        aria-expanded={!collapsed}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggleCollapsed();
+          }
+        }}
+        data-testid="host-section-header"
+      >
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
+          <span className="inline-flex shrink-0">
+            {collapsed ? (
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            )}
+          </span>
+          <span
+            className={`font-semibold truncate ${isNoHost ? "text-muted-foreground italic" : ""}`}
+            data-testid="host-section-name"
+          >
+            {isNoHost ? t("noHostBucket") : hostKey}
+          </span>
+          <span data-testid="host-section-status-badge">
+            <StatusBadge status={status} />
+          </span>
+          {memberSummary && (
+            <span
+              className="text-xs text-muted-foreground whitespace-nowrap"
+              data-testid="host-section-member-summary"
+            >
+              {memberSummary}
+            </span>
+          )}
+          <Badge variant="secondary" className="text-xs">
+            {checks.length}
+          </Badge>
+        </div>
+      </div>
+
+      {!collapsed && (
+        <div className="border-t">
+          <ChecksTable
+            checks={checks}
+            org={org}
+            onDelete={onDeleteCheck}
+            onChangeGroup={onChangeGroup}
+            groups={groups}
+            checksByUid={checksByUid}
+          />
+        </div>
+      )}
+    </div>
+  );
 }
 
 function CheckRow({
@@ -683,11 +824,39 @@ function ChecksIndexPage() {
   const { t } = useTranslation("checks");
   const { t: tc } = useTranslation("common");
   const { org } = Route.useParams();
-  const { labels: labelsParam, status: statusParam } = Route.useSearch();
+  const { labels: labelsParam, status: statusParam, groupBy: groupByParam } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const labelFilters = parseLabelsParam(labelsParam);
   const queryClient = useQueryClient();
   const { user } = useAuth();
+
+  // The view mode ("Group by: Groups / Host") is the page's primary
+  // navigation, so it lives in the URL (search param `groupBy`) like the jobs
+  // page's `tab`. It's ALSO mirrored into local state and re-synced whenever
+  // groupByParam changes: this route sits under the /orgs/$org layout route,
+  // where a cold deep-link's search params are known not to reliably seed a
+  // value read only via Route.useSearch() on first render (see
+  // memory/reference_dash0_url_search_state.md) — plain validateSearch is not
+  // enough, so this is the write-through that catches the value once the
+  // router settles. Resyncing during render (comparing against a *state*
+  // snapshot of the last-seen groupByParam, per React's "adjusting state
+  // during rendering" pattern) rather than in a useEffect avoids the extra
+  // commit+re-render a post-commit effect would add. This can't use a ref for
+  // the snapshot — this repo's lint config (react-hooks/refs) forbids reading
+  // or writing ref.current during render — so it's a second useState instead.
+  const [groupBy, setGroupBy] = useState<GroupByMode>(() => groupByParam ?? "groups");
+  const [lastGroupByParam, setLastGroupByParam] = useState(groupByParam);
+  if (lastGroupByParam !== groupByParam) {
+    setLastGroupByParam(groupByParam);
+    setGroupBy(groupByParam ?? "groups");
+  }
+  const setGroupByMode = (mode: GroupByMode) => {
+    setGroupBy(mode);
+    void navigate({
+      search: (prev) => ({ ...prev, groupBy: mode === "groups" ? undefined : mode }),
+    });
+  };
+
   const [search, setSearch] = useState("");
   const [internalFilter, setInternalFilter] = useState<string>("false");
   const [deleteCheckUid, setDeleteCheckUid] = useState<string | null>(null);
@@ -747,10 +916,13 @@ function ChecksIndexPage() {
     labels: labelsParam,
     status: statusParam,
     limit: 100,
-    // Load the stream in the exact order the page renders it (group sortOrder
-    // asc, ungrouped last, created_at DESC within a bucket), so the top of the
-    // page fills first instead of arriving in unrelated created_at order.
-    sort: "group",
+    // Load the stream in the exact order the page renders it, so the top of
+    // the page fills first instead of arriving in unrelated created_at order:
+    // "group" sortOrder asc / ungrouped last in Groups mode, "targetHost"
+    // ascending / no-host last in Host mode. Distinct sort values give the two
+    // modes distinct query-cache entries (the queryKey includes this options
+    // object), so switching modes is a normal cache miss/hit, not a manual reset.
+    sort: groupBy === "host" ? "targetHost" : "group",
   });
 
   // A bucket that is still empty must read as *loading*, never as an empty
@@ -786,6 +958,30 @@ function ChecksIndexPage() {
       }
     }
     return { checksByGroup: byGroup, ungroupedChecks: ungrouped, checksByUid: byUid };
+  }, [checksData]);
+
+  // Host-mode bucketing (spec 2026-08-01-04): every loaded check bucketed by
+  // its derived targetHost, section order following first-appearance in the
+  // sort=targetHost stream (already host-ascending, so sections fill top to
+  // bottom as pages load) with the null (no derivable host) bucket forced to
+  // the end regardless — belt-and-suspenders alongside the server's own
+  // nulls-last ordering, since this is purely a client-side view with no
+  // server-side identity of its own.
+  const hostBuckets = useMemo(() => {
+    const buckets = new Map<string | null, Check[]>();
+    for (const page of checksData?.pages ?? []) {
+      for (const check of page.data ?? []) {
+        const key = check.targetHost ?? null;
+        const bucket = buckets.get(key);
+        if (bucket) bucket.push(check);
+        else buckets.set(key, [check]);
+      }
+    }
+
+    const entries = Array.from(buckets.entries());
+    const withHost = entries.filter(([key]) => key !== null);
+    const noHost = entries.find(([key]) => key === null);
+    return noHost ? [...withHost, noHost] : withHost;
   }, [checksData]);
 
   // One page-level infinite-scroll sentinel (below the last section) instead of
@@ -1003,6 +1199,31 @@ function ChecksIndexPage() {
             className="pl-9"
           />
         </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-muted-foreground">
+            {t("groupBy.label")}
+          </span>
+          <div className="inline-flex rounded-lg border p-0.5" role="group">
+            <Button
+              size="sm"
+              variant={groupBy === "groups" ? "secondary" : "ghost"}
+              onClick={() => setGroupByMode("groups")}
+              aria-pressed={groupBy === "groups"}
+              data-testid="group-by-groups"
+            >
+              {t("groupBy.groups")}
+            </Button>
+            <Button
+              size="sm"
+              variant={groupBy === "host" ? "secondary" : "ghost"}
+              onClick={() => setGroupByMode("host")}
+              aria-pressed={groupBy === "host"}
+              data-testid="group-by-host"
+            >
+              {t("groupBy.host")}
+            </Button>
+          </div>
+        </div>
         {user?.isSuperAdmin && (
           <Select value={internalFilter} onValueChange={setInternalFilter}>
             <SelectTrigger className="w-[160px]">
@@ -1079,48 +1300,88 @@ function ChecksIndexPage() {
         </div>
       </div>
 
-      {groupsError ? (
-        <QueryErrorView error={groupsError} org={org} onRetry={() => refetchGroups()} />
-      ) : groupsLoading ? (
+      {groupBy === "groups" ? (
+        groupsError ? (
+          <QueryErrorView error={groupsError} org={org} onRetry={() => refetchGroups()} />
+        ) : groupsLoading ? (
+          <div className="space-y-2">
+            {[...Array(6)].map((_, i) => (
+              <Skeleton key={i} className="h-12 rounded-lg" />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {(groups || []).map((group, idx) => (
+              <CheckGroupSection
+                key={group.uid}
+                group={group}
+                org={org}
+                checks={checksByGroup.get(group.uid) ?? []}
+                isLoading={checksStreaming}
+                error={checksError}
+                search={debouncedSearch}
+                isFirst={idx === 0}
+                isLast={idx === (groups?.length ?? 0) - 1}
+                onMoveUp={() => handleMoveGroup(group, "up")}
+                onMoveDown={() => handleMoveGroup(group, "down")}
+                onDeleteCheck={setDeleteCheckUid}
+                onChangeGroup={setChangeGroupCheck}
+                groups={groups || []}
+                checksByUid={checksByUid}
+                escalationPolicyByUid={escalationPolicyByUid}
+              />
+            ))}
+
+            <UngroupedChecksSection
+              org={org}
+              checks={ungroupedChecks}
+              isLoading={checksStreaming}
+              error={checksError}
+              search={debouncedSearch}
+              onDeleteCheck={setDeleteCheckUid}
+              onChangeGroup={setChangeGroupCheck}
+              groups={groups || []}
+              checksByUid={checksByUid}
+            />
+
+            {/* One page-level infinite-scroll sentinel for the whole list. */}
+            <div ref={sentinelRef} className="flex justify-center py-4">
+              {isFetchingNextPage && (
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              )}
+            </div>
+
+            {(!groups || groups.length === 0) && (
+              <NoChecksPlaceholder search={debouncedSearch} />
+            )}
+          </div>
+        )
+      ) : checksError && hostBuckets.length === 0 ? (
+        <QueryErrorView
+          error={checksError}
+          org={org}
+          onRetry={() => queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] })}
+        />
+      ) : checksLoading && hostBuckets.length === 0 ? (
         <div className="space-y-2">
           {[...Array(6)].map((_, i) => (
             <Skeleton key={i} className="h-12 rounded-lg" />
           ))}
         </div>
       ) : (
-        <div className="space-y-4">
-          {(groups || []).map((group, idx) => (
-            <CheckGroupSection
-              key={group.uid}
-              group={group}
+        <div className="space-y-4" data-testid="host-view">
+          {hostBuckets.map(([hostKey, checks]) => (
+            <HostSection
+              key={hostKey ?? "no-host"}
+              hostKey={hostKey}
+              checks={checks}
               org={org}
-              checks={checksByGroup.get(group.uid) ?? []}
-              isLoading={checksStreaming}
-              error={checksError}
-              search={debouncedSearch}
-              isFirst={idx === 0}
-              isLast={idx === (groups?.length ?? 0) - 1}
-              onMoveUp={() => handleMoveGroup(group, "up")}
-              onMoveDown={() => handleMoveGroup(group, "down")}
               onDeleteCheck={setDeleteCheckUid}
               onChangeGroup={setChangeGroupCheck}
               groups={groups || []}
               checksByUid={checksByUid}
-              escalationPolicyByUid={escalationPolicyByUid}
             />
           ))}
-
-          <UngroupedChecksSection
-            org={org}
-            checks={ungroupedChecks}
-            isLoading={checksStreaming}
-            error={checksError}
-            search={debouncedSearch}
-            onDeleteCheck={setDeleteCheckUid}
-            onChangeGroup={setChangeGroupCheck}
-            groups={groups || []}
-            checksByUid={checksByUid}
-          />
 
           {/* One page-level infinite-scroll sentinel for the whole list. */}
           <div ref={sentinelRef} className="flex justify-center py-4">
@@ -1129,8 +1390,10 @@ function ChecksIndexPage() {
             )}
           </div>
 
-          {(!groups || groups.length === 0) && (
-            <NoChecksPlaceholder search={debouncedSearch} />
+          {hostBuckets.length === 0 && !checksStreaming && !debouncedSearch && (
+            <div className="text-center py-10 text-muted-foreground text-sm">
+              {t("noChecksAtAll")}
+            </div>
           )}
         </div>
       )}

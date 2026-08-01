@@ -14,6 +14,13 @@
   "allChecks": "Alle Prüfungen",
   "internal": "Intern",
   "ungroupedChecks": "Nicht gruppierte Prüfungen",
+  "groupBy": {
+    "label": "Gruppieren nach:",
+    "groups": "Gruppen",
+    "host": "Host"
+  },
+  "noHostBucket": "Kein Host",
+  "hostBucketDescription": "Abgeleitet aus der Konfiguration jeder Prüfung — das Umbenennen eines Hosts verschiebt ihn in einen anderen Abschnitt.",
   "status": {
     "validating": "Wird geprüft",
     "up": "Aktiv",
