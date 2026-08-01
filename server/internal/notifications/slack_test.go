@@ -1129,6 +1129,12 @@ func (m *mockDBService) DeleteCheckGroup(_ context.Context, _ string) error {
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetCheckGroupStatusCounts(
+	_ context.Context, _ string,
+) (map[string]map[models.CheckStatus]int, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CreateMaintenanceWindow(_ context.Context, _ *models.MaintenanceWindow) error {
 	panic("not implemented")
 }
