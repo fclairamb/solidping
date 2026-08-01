@@ -1,0 +1,204 @@
+{
+  "document": {
+    "version": 1,
+    "exportedAt": "",
+    "organization": "betterstack",
+    "checks": [
+      {
+        "name": "Main site",
+        "slug": "main-site",
+        "type": "http",
+        "config": {
+          "headers": {
+            "X-Tenant": "acme"
+          },
+          "method": "GET",
+          "secretHeaders": {
+            "Authorization": "Bearer app-token"
+          },
+          "timeout": "30s",
+          "url": "https://example.org/health"
+        },
+        "enabled": true,
+        "period": "3m"
+      },
+      {
+        "name": "API expected codes",
+        "slug": "api-expected-codes",
+        "type": "http",
+        "config": {
+          "body": "{\"probe\":true}",
+          "expected_status_codes": [
+            "200",
+            "201"
+          ],
+          "method": "POST",
+          "timeout": "15s",
+          "url": "https://api.example.org/v1/ping"
+        },
+        "enabled": true,
+        "period": "1m"
+      },
+      {
+        "name": "Shop keyword",
+        "slug": "shop-keyword",
+        "type": "http",
+        "config": {
+          "body_expect": "Add to cart",
+          "url": "https://shop.example.org"
+        },
+        "enabled": false,
+        "period": "5m"
+      },
+      {
+        "name": "No maintenance banner",
+        "slug": "no-maintenance-banner",
+        "type": "http",
+        "config": {
+          "body_reject": "Scheduled maintenance",
+          "url": "https://status.example.org"
+        },
+        "enabled": true,
+        "period": "5m"
+      },
+      {
+        "name": "Gateway ping",
+        "slug": "gateway-ping",
+        "type": "icmp",
+        "config": {
+          "host": "gw.example.org"
+        },
+        "enabled": true,
+        "period": "1m"
+      },
+      {
+        "name": "Postgres port",
+        "slug": "postgres-port",
+        "type": "tcp",
+        "config": {
+          "host": "db.example.org",
+          "port": 5432,
+          "timeout": "10s"
+        },
+        "enabled": true,
+        "period": "2m"
+      },
+      {
+        "name": "Syslog udp",
+        "slug": "syslog-udp",
+        "type": "udp",
+        "config": {
+          "host": "syslog.example.org",
+          "port": 514
+        },
+        "enabled": true,
+        "period": "2m"
+      },
+      {
+        "name": "Mail relay",
+        "slug": "mail-relay",
+        "type": "smtp",
+        "config": {
+          "host": "smtp.example.org",
+          "port": 587
+        },
+        "enabled": true,
+        "period": "5m"
+      },
+      {
+        "name": "Mailbox pop",
+        "slug": "mailbox-pop",
+        "type": "pop3",
+        "config": {
+          "host": "mail.example.org",
+          "port": 995
+        },
+        "enabled": true,
+        "period": "5m"
+      },
+      {
+        "name": "Mailbox imap",
+        "slug": "mailbox-imap",
+        "type": "imap",
+        "config": {
+          "host": "mail.example.org",
+          "port": 993
+        },
+        "enabled": true,
+        "period": "5m"
+      },
+      {
+        "name": "Apex dns",
+        "slug": "apex-dns",
+        "type": "dns",
+        "config": {
+          "host": "example.org"
+        },
+        "enabled": true,
+        "period": "10m"
+      },
+      {
+        "name": "Nightly backup",
+        "slug": "nightly-backup",
+        "type": "heartbeat",
+        "config": {},
+        "enabled": true,
+        "period": "24h",
+        "confirmationPeriodSeconds": 3600
+      },
+      {
+        "name": "Hourly sync",
+        "slug": "hourly-sync",
+        "type": "heartbeat",
+        "config": {},
+        "enabled": false,
+        "period": "1h"
+      }
+    ]
+  },
+  "warnings": [
+    {
+      "item": "Main site",
+      "field": "request_headers",
+      "message": "1 credential-bearing header(s) were imported into the encrypted secretHeaders field"
+    },
+    {
+      "item": "API expected codes",
+      "field": "verify_ssl",
+      "message": "skipping TLS verification is not supported — the check verifies certificates"
+    },
+    {
+      "item": "API expected codes",
+      "field": "follow_redirects",
+      "message": "redirect handling is not configurable on SolidPing http checks (redirects are followed)"
+    },
+    {
+      "item": "API expected codes",
+      "field": "auth_password",
+      "message": "basic-auth credentials are not imported — re-enter them on the check"
+    },
+    {
+      "item": "API expected codes",
+      "field": "monitor_group_id",
+      "message": "Better Stack monitor groups are not imported — assign a SolidPing check group manually"
+    },
+    {
+      "item": "API expected codes",
+      "field": "ssl_expiration",
+      "message": "certificate expiry is a dedicated ssl check in SolidPing — add one for this host"
+    },
+    {
+      "item": "API expected codes",
+      "field": "domain_expiration",
+      "message": "domain expiry is a dedicated domain check in SolidPing — add one for this host"
+    },
+    {
+      "item": "Login journey",
+      "field": "monitor_type",
+      "message": "monitor skipped: Better Stack type \"playwright\" has no SolidPing counterpart"
+    },
+    {
+      "message": "2 heartbeat(s) were imported: SolidPing issues its own ping URLs, so repoint every cron job or agent at the new URL after the import"
+    }
+  ]
+}

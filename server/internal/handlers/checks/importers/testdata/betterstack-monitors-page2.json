@@ -1,0 +1,96 @@
+{
+  "data": [
+    {
+      "id": "5",
+      "type": "monitor",
+      "attributes": {
+        "url": "gw.example.org",
+        "pronounceable_name": "Gateway ping",
+        "monitor_type": "ping",
+        "check_frequency": 60
+      }
+    },
+    {
+      "id": "6",
+      "type": "monitor",
+      "attributes": {
+        "url": "db.example.org",
+        "pronounceable_name": "Postgres port",
+        "monitor_type": "tcp",
+        "port": 5432,
+        "check_frequency": 120,
+        "request_timeout": 10
+      }
+    },
+    {
+      "id": "7",
+      "type": "monitor",
+      "attributes": {
+        "url": "syslog.example.org",
+        "pronounceable_name": "Syslog udp",
+        "monitor_type": "udp",
+        "port": "514",
+        "check_frequency": 120
+      }
+    },
+    {
+      "id": "8",
+      "type": "monitor",
+      "attributes": {
+        "url": "smtp.example.org",
+        "pronounceable_name": "Mail relay",
+        "monitor_type": "smtp",
+        "port": 587,
+        "check_frequency": 300
+      }
+    },
+    {
+      "id": "9",
+      "type": "monitor",
+      "attributes": {
+        "url": "mail.example.org",
+        "pronounceable_name": "Mailbox pop",
+        "monitor_type": "pop",
+        "port": 995,
+        "check_frequency": 300
+      }
+    },
+    {
+      "id": "10",
+      "type": "monitor",
+      "attributes": {
+        "url": "mail.example.org",
+        "pronounceable_name": "Mailbox imap",
+        "monitor_type": "imap",
+        "port": 993,
+        "check_frequency": 300
+      }
+    },
+    {
+      "id": "11",
+      "type": "monitor",
+      "attributes": {
+        "url": "example.org",
+        "pronounceable_name": "Apex dns",
+        "monitor_type": "dns",
+        "check_frequency": 600
+      }
+    },
+    {
+      "id": "12",
+      "type": "monitor",
+      "attributes": {
+        "url": "https://app.example.org/login",
+        "pronounceable_name": "Login journey",
+        "monitor_type": "playwright",
+        "check_frequency": 900
+      }
+    }
+  ],
+  "pagination": {
+    "first": "{{BASE}}/api/v2/monitors?page=1",
+    "last": "{{BASE}}/api/v2/monitors?page=2",
+    "prev": "{{BASE}}/api/v2/monitors?page=1",
+    "next": null
+  }
+}
