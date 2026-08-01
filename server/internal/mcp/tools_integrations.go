@@ -14,7 +14,7 @@ func listIntegrationsDef() ToolDefinition {
 			"before attaching them to a check.",
 		InputSchema: objectSchema(map[string]any{
 			schemaKeyType: stringProp(
-				"Filter by integration type. Allowed: slack, webhook, email. " +
+				"Filter by integration type. Allowed: slack, webhook, email, msteams. " +
 					"Example: \"slack\".",
 			),
 		}, nil),
@@ -42,7 +42,7 @@ func createIntegrationDef() ToolDefinition {
 			"be attached to checks for incident notifications.",
 		InputSchema: objectSchema(map[string]any{
 			schemaKeyType: stringProp(
-				"Integration type. Allowed: slack, webhook, email. Example: \"webhook\".",
+				"Integration type. Allowed: slack, webhook, email, msteams. Example: \"webhook\".",
 			),
 			schemaKeyName:    stringProp("Display name shown in the UI, e.g. \"Engineering Slack\"."),
 			schemaKeyEnabled: boolProp("Whether the integration is active. Default true."),

@@ -19,9 +19,9 @@ const (
 // IntegrationConnection.Settings shape.
 //
 // URL fields are intentionally NOT secret: webhook `url` and the
-// `webhook_url` of Discord / GoogleChat / Mattermost stay in the public
-// `settings` JSONB so the dashboard can render them on the edit form. The
-// threat model (DB-theft only, see server/CLAUDE.md) doesn't require
+// `webhook_url` of Discord / GoogleChat / Mattermost / MSTeams stay in the
+// public `settings` JSONB so the dashboard can render them on the edit form.
+// The threat model (DB-theft only, see server/CLAUDE.md) doesn't require
 // encrypting endpoint URLs.
 //
 //nolint:gochecknoglobals // registry of secret-key declarations; treated as a constant lookup table

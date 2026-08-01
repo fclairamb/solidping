@@ -175,8 +175,8 @@ func TestConnectionSecretFieldsRegistry(t *testing.T) {
 
 // TestConnectionSecretFieldsURLNotSecret guards the webhook-URL fix: endpoint
 // URLs must stay in public settings so the dashboard edit form can render
-// them. The webhook `url` and the discord/googlechat/mattermost `webhook_url`
-// must NOT be reported as secret.
+// them. The webhook `url` and the discord/googlechat/mattermost/msteams
+// `webhook_url` must NOT be reported as secret.
 func TestConnectionSecretFieldsURLNotSecret(t *testing.T) {
 	t.Parallel()
 
@@ -187,7 +187,7 @@ func TestConnectionSecretFieldsURLNotSecret(t *testing.T) {
 	r.Contains(credentials.ConnectionSecretFields("webhook"), "signingSecret")
 	r.Contains(credentials.ConnectionSecretFields("webhook"), "auth_token")
 
-	for _, ct := range []models.ConnectionType{"discord", "googlechat", "mattermost"} {
+	for _, ct := range []models.ConnectionType{"discord", "googlechat", "mattermost", "msteams"} {
 		r.NotContains(credentials.ConnectionSecretFields(ct), "webhook_url",
 			"%s webhook_url must not be a secret", ct)
 	}

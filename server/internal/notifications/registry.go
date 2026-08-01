@@ -29,6 +29,8 @@ func GetSender(connType models.ConnectionType) (Sender, bool) {
 		return &GoogleChatSender{}, true
 	case models.ConnectionTypeMattermost:
 		return &MattermostSender{}, true
+	case models.ConnectionTypeMSTeams:
+		return &MSTeamsSender{}, true
 	case models.ConnectionTypeNtfy:
 		return &NtfySender{}, true
 	case models.ConnectionTypeOpsgenie:
