@@ -153,11 +153,12 @@
      .sp-logo { background: url("https://cdn.example/logo.svg") center /
                 contain no-repeat; width: 120px; }
 
-   `min-height` on the wrapper keeps the box from collapsing to zero when the
-   <img> is hidden, so the background fallback stays visible even if the
-   operator only sets a width.
+   `min-width`/`min-height` on the wrapper keep the box from collapsing to zero
+   when the <img> is hidden, so the background fallback stays visible even if
+   the operator sets only one of the two dimensions.
    --------------------------------------------------------------------------- */
 .sp-logo {
+  min-width: var(--sp-logo-size, 2rem);
   min-height: var(--sp-logo-size, 2rem);
 }
 

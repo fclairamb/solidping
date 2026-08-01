@@ -6,17 +6,30 @@ import { test, expect, type APIRequestContext, type Page } from "@playwright/tes
  * crash on the public status page (surfaced to visitors as TanStack Router's
  * default "Something went wrong!" screen).
  *
- * Root cause: Chrome's auto-translate re-parents every text node into nested
+ * Failure class: a machine translator re-parents every text node into nested
  * <font style="vertical-align: inherit"> wrappers, *keeping the original text
  * node object*. React's fiber tree still records the ORIGINAL parent for that
  * text node, so the next commit that removes it calls
  * `originalParent.removeChild(textNode)` and the DOM throws NotFoundError,
  * because the node now lives under a <font>.
  *
- * The tests below reproduce that DOM shape (including Chrome's MutationObserver
- * behaviour of re-translating anything React renders afterwards) and then drive
- * the two re-render paths that historically crashed: switching the UI language
- * and the 30 s background refetch.
+ * What these tests actually guard, and what they do not:
+ *
+ *   * PRODUCTION hardening (has teeth in the CI run against the built bundle):
+ *     the elements whose text changes between renders are marked
+ *     `translate="no"` (NO_TRANSLATE in components/shared/status-page-view.tsx).
+ *     The simulation below honours element-level opt-outs exactly as a real
+ *     translator does, so "the poll-driven text was never wrapped" is a real
+ *     assertion — delete a `translate="no"` and this spec fails.
+ *   * DEV-ONLY: `#root` must hold exactly one child. A second `createRoot()`
+ *     mounted a second app and killed the first with this very error. Only
+ *     `vite dev` can cause that (HMR re-executes main.tsx), so that assertion
+ *     has teeth against `make dev` and is trivially true against the bundle.
+ *   * NOT established: no crash has been reproduced against a production build.
+ *     Wrapping literally every text node (the `forced` mode used by the
+ *     hostile-DOM test) and driving language switches plus a background refetch
+ *     does not throw today. Treat the no-pageerror assertions as a guard for a
+ *     documented failure class, not as proof a live bug was fixed.
  */
 
 // Honors E2E_BASE_URL so this can be pointed at a side-car / CI server rather
@@ -44,18 +57,37 @@ async function resolveStatusPageUrl(request: APIRequestContext): Promise<string>
 }
 
 /**
- * Installs a faithful simulation of Chrome auto-translate:
+ * Installs a simulation of a machine translator (Chrome auto-translate, the
+ * Google Translate widget, a translating extension):
  *
  *  - every visible HTML text node is MOVED into nested <font> wrappers (the
  *    same node object, exactly like Chrome — this is what breaks React), and
  *  - a MutationObserver keeps doing it to anything rendered later, which is how
- *    Chrome keeps a live SPA translated.
+ *    a translator keeps a live SPA translated.
  *
- * SVG text is skipped: Chrome does not translate it, and wrapping it would
- * manufacture a failure mode that cannot happen in the field.
+ * Two modes:
+ *
+ *   "respectOptOut" (default) — models the realistic worst case: a visitor who
+ *     explicitly picked "Translate to…", so the DOCUMENT-level hints in
+ *     index.html (`<html translate="no">`, the notranslate meta) are overridden,
+ *     but ELEMENT-level `translate="no"` / `.notranslate` subtrees are still
+ *     honoured, which is what real translators do. This is the mode that gives
+ *     the hardening in status-page-view.tsx something to prove.
+ *
+ *   "forced" — ignores every opt-out and wraps everything. Not a real
+ *     translator; it is the maximally hostile DOM used to check the app still
+ *     survives even if some future actor ignores the hints entirely.
+ *
+ * SVG text is skipped in both modes: translators leave it alone, and wrapping
+ * it would manufacture a failure mode that cannot happen in the field.
  */
-async function simulateChromeTranslate(page: Page): Promise<number> {
-  return page.evaluate(() => {
+type TranslateMode = "respectOptOut" | "forced";
+
+async function simulateChromeTranslate(
+  page: Page,
+  mode: TranslateMode = "respectOptOut",
+): Promise<number> {
+  return page.evaluate((mode: TranslateMode) => {
     interface TranslateWindow extends Window {
       __spTranslateWrapped?: number;
       __spTranslateObserver?: MutationObserver;
@@ -76,6 +108,14 @@ async function simulateChromeTranslate(page: Page): Promise<number> {
       // Never touch the operator stylesheet, scripts, form values, or text we
       // already wrapped (that would loop forever).
       if (parent.closest("script, style, textarea, font")) return false;
+      if (mode === "respectOptOut") {
+        // Element-level opt-out, honoured even when the visitor forces a
+        // translation. `<html translate="no">` is deliberately NOT treated as a
+        // boundary here — that is the document-level hint the visitor just
+        // overrode, and treating it as one would make this simulation a no-op.
+        const optOut = parent.closest('[translate="no"], .notranslate');
+        if (optOut && optOut !== document.documentElement) return false;
+      }
       return true;
     };
 
@@ -119,6 +159,39 @@ async function simulateChromeTranslate(page: Page): Promise<number> {
     w.__spTranslateObserver = observer;
 
     return w.__spTranslateWrapped ?? 0;
+  }, mode);
+}
+
+/**
+ * Reports, for every element the app opted out of translation, whether the
+ * simulation leaked a <font> into it — plus a control element that is NOT
+ * opted out, so an empty result can be told apart from a simulation that did
+ * nothing.
+ */
+async function optOutReport(page: Page) {
+  return page.evaluate(() => {
+    const hardened = Array.from(
+      document.querySelectorAll('#root [translate="no"], [translate="no"]'),
+    ).filter((el) => el !== document.documentElement);
+
+    return {
+      hardenedCount: hardened.length,
+      leaked: hardened
+        .filter((el) => el.querySelector("font"))
+        .map((el) => el.getAttribute("data-testid") || el.className || el.tagName),
+      // Operator content stays translatable on purpose — it must be wrapped,
+      // otherwise the simulation is not doing anything and "no leaks" is
+      // meaningless.
+      pageNameWrapped: Boolean(
+        document.querySelector(".sp-page-name")?.querySelector("font"),
+      ),
+      statusBadgeHardened: document
+        .querySelector('[data-testid="overall-status-badge"]')
+        ?.getAttribute("translate"),
+      versionHardened: document
+        .querySelector(".sp-version")
+        ?.getAttribute("translate"),
+    };
   });
 }
 
@@ -145,6 +218,87 @@ async function switchLanguage(page: Page, label: string) {
 test.describe("Public status page under Chrome auto-translate", () => {
   // A real 30 s refetch cycle is waited on, so the default 30 s is too tight.
   test.describe.configure({ timeout: 150_000 });
+
+  /**
+   * THE production-relevant test: does the app keep the poll-driven text out of
+   * a translator's reach?
+   *
+   * This runs identically against `make dev` and the built bundle CI serves, and
+   * it fails if any `translate="no"` marker added by spec 2026-08-01-05 is
+   * removed — the simulation would then re-parent that text into a <font>, which
+   * is precisely the state React later trips over.
+   */
+  test("keeps poll-driven text out of a forced translation", async ({
+    page,
+    request,
+  }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(String(error.message)));
+
+    let statusFetches = 0;
+    page.on("request", (req) => {
+      if (req.url().includes("/api/v1/status-pages/")) statusFetches += 1;
+    });
+
+    await page.goto(await resolveStatusPageUrl(request));
+    await expect(page.locator(".sp-page-name")).toBeVisible({ timeout: 20000 });
+    await expect(
+      page.getByTestId("overall-status-badge"),
+    ).toBeVisible({ timeout: 20000 });
+    await expect(page.locator(".sp-version")).toBeVisible({ timeout: 20000 });
+
+    // A visitor forces "Translate to…", overriding index.html's document-level
+    // opt-out. Element-level opt-outs still apply — as in a real translator.
+    const wrapped = await simulateChromeTranslate(page, "respectOptOut");
+    expect(wrapped).toBeGreaterThan(3);
+
+    // Then live re-renders: two language switches and a real background refetch.
+    await switchLanguage(page, "Français");
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.lang), {
+        timeout: 10000,
+      })
+      .toBe("fr");
+    await switchLanguage(page, "Deutsch");
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.lang), {
+        timeout: 10000,
+      })
+      .toBe("de");
+
+    const before = statusFetches;
+    await expect
+      .poll(() => statusFetches, { timeout: 60000, intervals: [1000] })
+      .toBeGreaterThan(before);
+    await page.waitForTimeout(1000);
+
+    const report = await optOutReport(page);
+
+    // The markers exist at all. Removing any `translate="no"` added by spec
+    // 2026-08-01-05 drops this count — verified by reverting one and watching
+    // this line fail against the production bundle.
+    expect(report.hardenedCount).toBeGreaterThanOrEqual(3);
+    expect(report.statusBadgeHardened).toBe("no");
+    expect(report.versionHardened).toBe("no");
+
+    // The simulation is doing real work: operator content, which is meant to
+    // stay translatable, HAS been re-parented into <font> wrappers. Without
+    // this the "no leaks" assertion below could pass vacuously.
+    expect(report.pageNameWrapped).toBe(true);
+
+    // …and not one opted-out element was touched, before or after the
+    // re-renders. This is the property that makes the crash structurally
+    // impossible at the sites React rewrites on every poll.
+    expect(
+      report.leaked,
+      `translator leaked into opted-out elements: ${report.leaked.join(", ")}`,
+    ).toEqual([]);
+
+    await expect(page.getByText(ERROR_BOUNDARY_TEXT)).toHaveCount(0);
+    expect(pageErrors, `uncaught page errors:\n${pageErrors.join("\n")}`).toEqual(
+      [],
+    );
+  });
 
   test("survives translated DOM across language switches and refetches", async ({
     page,
@@ -179,7 +333,10 @@ test.describe("Public status page under Chrome auto-translate", () => {
       .toEqual([]);
 
     // --- Hostile mutation ------------------------------------------------
-    const wrapped = await simulateChromeTranslate(page);
+    // "forced": ignores every opt-out, so even the hardened elements get
+    // wrapped. Nothing in the field behaves this badly; this is the belt to the
+    // previous test's braces.
+    const wrapped = await simulateChromeTranslate(page, "forced");
 
     // Positive control #1: the simulation actually did something, and the
     // resulting DOM really is the shape that breaks React — the status page

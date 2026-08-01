@@ -33,6 +33,32 @@ function getStatusLabelKey(status: string) {
   return statusStyle(status).labelKey;
 }
 
+/**
+ * Marks a subtree as "never machine-translate this".
+ *
+ * Translation tools (Chrome auto-translate, the Google Translate widget,
+ * translating browser extensions) rewrite a text node by MOVING it into nested
+ * <font> wrappers. React's fiber still records the original parent, so the next
+ * commit that removes or reorders that text node calls
+ * `originalParent.removeChild(textNode)` and the DOM throws
+ *
+ *   NotFoundError: Failed to execute 'removeChild' on 'Node'
+ *
+ * which visitors see as "Something went wrong!". `index.html` already opts the
+ * whole document out, but that is a *hint*: a visitor who explicitly picks
+ * "Translate to…" — or any extension that ignores the document-level hint —
+ * still gets the rewrite. Element-level opt-outs are honoured even then, so
+ * every element below whose TEXT CHANGES BETWEEN RENDERS (status labels,
+ * percentages, the version, anything driven by the 30 s poll) carries this
+ * marker. Operator-authored content (page name, description, section and
+ * resource names) deliberately does NOT: that text is static for the lifetime
+ * of the page, so it is safe to translate and valuable to keep translatable.
+ *
+ * e2e/translate-resilience.spec.ts asserts these markers are present and
+ * effective; see also the block comment in main.tsx.
+ */
+const NO_TRANSLATE = { translate: "no" } as const;
+
 function getOverallStatus(sections: StatusPageSection[]): string {
   let hasWarning = false;
   for (const section of sections) {
@@ -76,7 +102,9 @@ function ResourceCard({
                 className={`inline-block h-2.5 w-2.5 rounded-full ${getStatusColor(status)}`}
               />
             </TooltipTrigger>
-            <TooltipContent>{t(getStatusLabelKey(status))}</TooltipContent>
+            <TooltipContent {...NO_TRANSLATE}>
+              {t(getStatusLabelKey(status))}
+            </TooltipContent>
           </Tooltip>
           <span className="text-sm font-medium">{name}</span>
           {resource.check?.type && (
@@ -87,7 +115,10 @@ function ResourceCard({
         </div>
         <div className="flex items-center gap-2">
           {showAvailability && avail?.overallAvailabilityPct != null && (
-            <span className="text-sm font-medium text-green-600">
+            <span
+              className="text-sm font-medium text-green-600"
+              {...NO_TRANSLATE}
+            >
               {avail.overallAvailabilityPct.toFixed(3)}%
             </span>
           )}
@@ -95,11 +126,16 @@ function ResourceCard({
             <Badge
               variant="warning"
               data-testid="resource-maintenance-badge"
+              {...NO_TRANSLATE}
             >
               {t("scheduledMaintenance")}
             </Badge>
           ) : (
-            <Badge variant={getStatusBadgeVariant(status)}>
+            <Badge
+              variant={getStatusBadgeVariant(status)}
+              data-testid="resource-status-badge"
+              {...NO_TRANSLATE}
+            >
               {t(getStatusLabelKey(status))}
             </Badge>
           )}
@@ -227,6 +263,8 @@ export function StatusPageView({
             <Badge
               variant={getStatusBadgeVariant(overallStatus)}
               className="text-sm px-4 py-1"
+              data-testid="overall-status-badge"
+              {...NO_TRANSLATE}
             >
               {overallStatus === "ok"
                 ? t("allSystemsOperational")
@@ -298,10 +336,8 @@ export function StatusPageView({
             {t("poweredBy")}
           </a>
           {versionInfo ? (
-            // translate="no": the version string is rewritten on every poll,
-            // and Chrome auto-translate re-parents such text nodes into <font>
-            // wrappers, which breaks React reconciliation (see main.tsx).
-            <span className="sp-version" translate="no">
+            // Poll-driven text — see NO_TRANSLATE above.
+            <span className="sp-version" {...NO_TRANSLATE}>
               v{versionInfo.version}
             </span>
           ) : null}
