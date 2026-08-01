@@ -93,7 +93,20 @@
     "slackNotConnectedTitle": "Espace de travail Slack non connecté",
     "slackNotConnectedBody": "Ce canal n'est lié à aucun espace de travail Slack. Installez l'application Slack SolidPing pour en connecter un.",
     "slackConnectButton": "Installer l'application Slack",
-    "testNeedsSave": "Enregistrez d'abord vos modifications — le test utilise les paramètres enregistrés."
+    "testNeedsSave": "Enregistrez d'abord vos modifications — le test utilise les paramètres enregistrés.",
+    "msteamsBotCreateHint": "Créez d'abord l'intégration, puis collez l'ID de votre tenant Microsoft 365 et installez le paquet d'application Teams pour la connecter.",
+    "msteamsBotDisabledTitle": "Le bot Teams est désactivé sur ce serveur",
+    "msteamsBotDisabledBody": "Activez-le dans les paramètres du serveur. Microsoft doit pouvoir joindre cette instance en HTTPS public — un déploiement derrière un pare-feu ne peut pas utiliser le bot Teams.",
+    "msteamsBotEndpointHint": "Microsoft doit pouvoir joindre ce point de terminaison en HTTPS public :",
+    "msteamsBotTenantId": "ID du tenant Microsoft 365",
+    "msteamsBotTenantHint": "Le bot n'accepte que les activités de ce tenant. Si vous installez l'application d'abord, SolidPing répond dans le canal avec l'ID exact à coller ici.",
+    "msteamsBotDownloadApp": "Télécharger le paquet d'application Teams",
+    "msteamsBotSideloadHint": "Dans Teams, ouvrez Applications → Gérer vos applications → Charger une application personnalisée, choisissez ce zip, puis ajoutez SolidPing à une équipe. Le canal où vous l'ajoutez devient une destination de notification.",
+    "msteamsBotDestination": "Canal de notification",
+    "msteamsBotUninstalled": "L'application Teams a été supprimée de ce tenant. Réinstallez-la pour reprendre les notifications.",
+    "msteamsBotLoading": "Chargement…",
+    "msteamsBotError": "Impossible de charger les canaux Teams.",
+    "msteamsBotNoDestinations": "Aucun canal Teams pour l'instant. Ajoutez SolidPing à un canal dans Teams et il apparaîtra ici."
   },
   "freebox": {
     "name": "Freebox",
@@ -147,6 +160,7 @@
     "twilio": "Envoyer des SMS et passer des appels vocaux via Twilio",
     "freebox": "Surveiller une Freebox de Free (qualité de ligne, débit sync, état réseau)",
     "webpush": "Recevoir des alertes sous forme de notifications navigateur sur vos appareils abonnés",
-    "kubernetes": "Surveiller la santé des réplicas Kubernetes (Deployments, ReplicaSets)"
+    "kubernetes": "Surveiller la santé des réplicas Kubernetes (Deployments, ReplicaSets)",
+    "msteams-bot": "Bot Teams bidirectionnel : alertes, commandes @mention et suivi d'incident groupé"
   }
 }

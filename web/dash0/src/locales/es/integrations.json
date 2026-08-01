@@ -90,7 +90,20 @@
     "twilioRemoveNumber": "Eliminar {{n}}",
     "twilioToHint": "Los envíos de canal directo (difusión por comprobación, prueba) envían SMS a estos números.",
     "slackOauthHint": "Los canales de Slack se configuran a través de la instalación OAuth. El bot completará el espacio de trabajo y el nombre del canal al finalizar.",
-    "testNeedsSave": "Guarda tus cambios primero — la prueba usa los ajustes guardados."
+    "testNeedsSave": "Guarda tus cambios primero — la prueba usa los ajustes guardados.",
+    "msteamsBotCreateHint": "Crea primero la integración, luego pega el ID de tu inquilino de Microsoft 365 e instala el paquete de aplicación de Teams para conectarla.",
+    "msteamsBotDisabledTitle": "El bot de Teams está desactivado en este servidor",
+    "msteamsBotDisabledBody": "Actívalo en la configuración del servidor. Microsoft debe poder alcanzar esta instancia por HTTPS público — un despliegue tras un cortafuegos no puede usar el bot de Teams.",
+    "msteamsBotEndpointHint": "Microsoft debe poder alcanzar este punto de conexión por HTTPS público:",
+    "msteamsBotTenantId": "ID del inquilino de Microsoft 365",
+    "msteamsBotTenantHint": "El bot solo acepta actividades de este inquilino. Si instalas la aplicación primero, SolidPing responde en el canal con el ID exacto que debes pegar aquí.",
+    "msteamsBotDownloadApp": "Descargar el paquete de aplicación de Teams",
+    "msteamsBotSideloadHint": "En Teams, abre Aplicaciones → Administrar tus aplicaciones → Cargar una aplicación personalizada, elige este zip y añade SolidPing a un equipo. El canal donde lo añadas se convierte en un destino de notificación.",
+    "msteamsBotDestination": "Canal de notificación",
+    "msteamsBotUninstalled": "La aplicación de Teams se eliminó de este inquilino. Reinstálala para reanudar las notificaciones.",
+    "msteamsBotLoading": "Cargando…",
+    "msteamsBotError": "No se pudieron cargar los canales de Teams.",
+    "msteamsBotNoDestinations": "Todavía no hay canales de Teams. Añade SolidPing a un canal en Teams y aparecerá aquí."
   },
   "kubernetes": {
     "name": "Kubernetes",
@@ -126,6 +139,7 @@
     "pushover": "Notificaciones push móviles vía Pushover",
     "twilio": "Enviar SMS y realizar llamadas de voz mediante Twilio",
     "webpush": "Recibir alertas como notificaciones del navegador en sus dispositivos suscritos",
-    "kubernetes": "Monitorizar la salud de réplicas de cargas Kubernetes (Deployments, ReplicaSets)"
+    "kubernetes": "Monitorizar la salud de réplicas de cargas Kubernetes (Deployments, ReplicaSets)",
+    "msteams-bot": "Bot de Teams bidireccional: alertas, comandos con @mención y actualizaciones agrupadas"
   }
 }

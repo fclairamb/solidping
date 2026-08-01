@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { BellRing } from "lucide-react";
+import { BellRing, Settings } from "lucide-react";
 import { useMyNotifications, type IncidentNotification } from "@/api/hooks";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import {
@@ -51,6 +52,14 @@ function MyNotificationsPage() {
         icon={BellRing}
         title="My pages"
         description="Incidents you were paged for, in reverse chronological order."
+        actions={
+          <Button asChild variant="outline" aria-label="Notification settings">
+            <Link to="/orgs/$org/account/notifications" params={{ org }}>
+              <Settings />
+              <span className="hidden sm:inline">Notification settings</span>
+            </Link>
+          </Button>
+        }
         className="flex-wrap"
       />
 
@@ -66,7 +75,16 @@ function MyNotificationsPage() {
 
           {!isLoading && (!rows || rows.length === 0) && (
             <p className="text-sm text-muted-foreground py-6 text-center">
-              You have not been paged for any incidents yet.
+              You have not been paged for any incidents yet. Configure how you
+              get paged in your{" "}
+              <Link
+                to="/orgs/$org/account/notifications"
+                params={{ org }}
+                className="text-primary hover:underline"
+              >
+                notification settings
+              </Link>
+              .
             </p>
           )}
 

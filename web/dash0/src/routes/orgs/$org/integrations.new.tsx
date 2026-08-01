@@ -47,6 +47,7 @@ const ALL_TYPES: ConnectionType[] = [
   "googlechat",
   "mattermost",
   "msteams",
+  "msteams-bot",
   "ntfy",
   "opsgenie",
   "pushover",

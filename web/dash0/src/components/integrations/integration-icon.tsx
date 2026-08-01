@@ -11,6 +11,7 @@ import {
   Router,
   Users,
   Webhook,
+  Bot,
 } from "lucide-react";
 import type { ConnectionType } from "@/api/hooks";
 
@@ -27,6 +28,7 @@ const ICONS: Record<ConnectionType, typeof Webhook> = {
   googlechat: MessageSquare,
   mattermost: Hash,
   msteams: Users,
+  "msteams-bot": Bot,
   ntfy: Bell,
   opsgenie: Bell,
   pushover: Bell,
@@ -61,6 +63,8 @@ export function integrationLabel(type: ConnectionType): string {
       return "Mattermost";
     case "msteams":
       return "Microsoft Teams";
+    case "msteams-bot":
+      return "Microsoft Teams (bot)";
     case "ntfy":
       return "ntfy";
     case "opsgenie":

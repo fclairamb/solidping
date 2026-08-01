@@ -90,7 +90,20 @@
     "twilioRemoveNumber": "{{n}} entfernen",
     "twilioToHint": "Direktkanal-Sendungen (Broadcast pro Check, Test) senden SMS an diese Nummern.",
     "slackOauthHint": "Slack-Kanäle werden über die Slack-OAuth-Installation konfiguriert. Der Bot füllt Workspace- und Kanalnamen nach Abschluss.",
-    "testNeedsSave": "Speichern Sie zuerst Ihre Änderungen — der Test verwendet die gespeicherten Einstellungen."
+    "testNeedsSave": "Speichern Sie zuerst Ihre Änderungen — der Test verwendet die gespeicherten Einstellungen.",
+    "msteamsBotCreateHint": "Erstellen Sie zuerst die Integration, fügen Sie dann Ihre Microsoft-365-Mandanten-ID ein und installieren Sie das Teams-App-Paket, um sie zu verbinden.",
+    "msteamsBotDisabledTitle": "Der Teams-Bot ist auf diesem Server deaktiviert",
+    "msteamsBotDisabledBody": "Aktivieren Sie ihn in den Servereinstellungen. Microsoft muss diese Instanz über öffentliches HTTPS erreichen können — eine Installation hinter einer Firewall kann den Teams-Bot nicht nutzen.",
+    "msteamsBotEndpointHint": "Microsoft muss diesen Messaging-Endpunkt über öffentliches HTTPS erreichen können:",
+    "msteamsBotTenantId": "Microsoft-365-Mandanten-ID",
+    "msteamsBotTenantHint": "Der Bot akzeptiert nur Aktivitäten aus diesem Mandanten. Wenn Sie die App zuerst installieren, antwortet SolidPing im Kanal mit der genauen Mandanten-ID zum Einfügen.",
+    "msteamsBotDownloadApp": "Teams-App-Paket herunterladen",
+    "msteamsBotSideloadHint": "Öffnen Sie in Teams Apps → Ihre Apps verwalten → Benutzerdefinierte App hochladen, wählen Sie diese ZIP-Datei und fügen Sie SolidPing zu einem Team hinzu. Der Kanal, dem Sie es hinzufügen, wird zu einem Benachrichtigungsziel.",
+    "msteamsBotDestination": "Benachrichtigungskanal",
+    "msteamsBotUninstalled": "Die Teams-App wurde aus diesem Mandanten entfernt. Installieren Sie sie erneut, um Benachrichtigungen fortzusetzen.",
+    "msteamsBotLoading": "Wird geladen…",
+    "msteamsBotError": "Teams-Kanäle konnten nicht geladen werden.",
+    "msteamsBotNoDestinations": "Noch keine Teams-Kanäle. Fügen Sie SolidPing zu einem Kanal in Teams hinzu, dann erscheint er hier."
   },
   "kubernetes": {
     "name": "Kubernetes",
@@ -126,6 +139,7 @@
     "pushover": "Mobile Push-Benachrichtigungen über Pushover",
     "twilio": "SMS senden und Sprachanrufe über Twilio tätigen",
     "webpush": "Browser-Benachrichtigungen auf abonnierten Geräten empfangen",
-    "kubernetes": "Replikat-Gesundheit von Kubernetes-Workloads überwachen (Deployments, ReplicaSets)"
+    "kubernetes": "Replikat-Gesundheit von Kubernetes-Workloads überwachen (Deployments, ReplicaSets)",
+    "msteams-bot": "Bidirektionaler Teams-Bot: Alarme, @Mention-Befehle und gebündelte Vorfall-Updates"
   }
 }

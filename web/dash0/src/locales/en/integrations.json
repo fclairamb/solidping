@@ -97,7 +97,20 @@
     "testHelp": "Deliver a sample alert to confirm this integration is wired up. The test uses the saved settings.",
     "testNeedsSave": "Save your changes first — the test uses the saved settings.",
     "sendTest": "Send test",
-    "testDelivered": "Delivered"
+    "testDelivered": "Delivered",
+    "msteamsBotCreateHint": "Create the integration first, then paste your Microsoft 365 tenant ID and install the Teams app package to connect it.",
+    "msteamsBotDisabledTitle": "The Teams bot is disabled on this server",
+    "msteamsBotDisabledBody": "Enable it in the server settings. Microsoft must be able to reach this instance over public HTTPS — a firewalled deployment cannot use the Teams bot.",
+    "msteamsBotEndpointHint": "Microsoft must be able to reach this messaging endpoint over public HTTPS:",
+    "msteamsBotTenantId": "Microsoft 365 tenant ID",
+    "msteamsBotTenantHint": "The bot only accepts activities from this tenant. If you install the app first, SolidPing replies in the channel with the exact tenant ID to paste here.",
+    "msteamsBotDownloadApp": "Download Teams app package",
+    "msteamsBotSideloadHint": "In Teams, open Apps → Manage your apps → Upload a custom app, pick this zip, then add SolidPing to a team. The channel you add it to becomes a notification destination.",
+    "msteamsBotDestination": "Notification channel",
+    "msteamsBotUninstalled": "The Teams app was removed from this tenant. Reinstall it to resume notifications.",
+    "msteamsBotLoading": "Loading…",
+    "msteamsBotError": "Could not load Teams channels.",
+    "msteamsBotNoDestinations": "No Teams channels yet. Add SolidPing to a channel in Teams and it will appear here."
   },
   "freebox": {
     "name": "Freebox",
@@ -151,6 +164,7 @@
     "twilio": "Send SMS and place voice calls via Twilio",
     "freebox": "Monitor a Free Freebox (line quality, sync rate, network state)",
     "webpush": "Receive alerts as browser notifications on your subscribed devices",
-    "kubernetes": "Monitor Kubernetes workload replica health (Deployments, ReplicaSets)"
+    "kubernetes": "Monitor Kubernetes workload replica health (Deployments, ReplicaSets)",
+    "msteams-bot": "Two-way Teams bot: alerts, @mention commands and threaded incident updates"
   }
 }

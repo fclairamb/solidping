@@ -3310,6 +3310,7 @@ export type ConnectionType =
   | "googlechat"
   | "mattermost"
   | "msteams"
+  | "msteams-bot"
   | "ntfy"
   | "opsgenie"
   | "pushover"
@@ -3339,6 +3340,7 @@ export const CAPABILITIES: Record<ConnectionType, IntegrationCapabilities> = {
   googlechat: NOTIFY,
   mattermost: NOTIFY,
   msteams: NOTIFY,
+  "msteams-bot": NOTIFY,
   ntfy: NOTIFY,
   opsgenie: NOTIFY,
   pushover: NOTIFY,
@@ -3668,6 +3670,68 @@ export function useSlackDestinations(
     staleTime: 60_000,
   });
 }
+
+// Microsoft Teams bot (msteams-bot) setup types and hooks.
+//
+// Unlike Slack there is no live channel list to fetch: a Teams bot cannot
+// enumerate the channels of a team it was never added to, so the destinations
+// are the conversation references the backend captured at install time.
+
+export interface MSTeamsDestination {
+  id: string;
+  name: string;
+  /** Owning Teams team id — channels are per-team in Teams. */
+  team_id?: string;
+  team_name?: string;
+  service_url?: string;
+  type?: string;
+}
+
+export interface MSTeamsDestinationsResponse {
+  destinations: MSTeamsDestination[];
+  tenantId: string;
+  connected: boolean;
+  uninstalled: boolean;
+}
+
+export function useMSTeamsBotDestinations(
+  org: string,
+  channelUid: string,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["msteams-destinations", org, channelUid],
+    queryFn: () =>
+      apiFetch<MSTeamsDestinationsResponse>(
+        `/api/v1/orgs/${org}/channels/${channelUid}/msteams/destinations`,
+      ),
+    enabled: enabled && Boolean(org && channelUid),
+    staleTime: 30_000,
+  });
+}
+
+export interface MSTeamsBotStatus {
+  enabled: boolean;
+  configured: boolean;
+  appId?: string;
+  /** The URL Microsoft must be able to reach over public HTTPS. */
+  messagingEndpoint: string;
+  installedTenants: number;
+  singleTenant?: string;
+}
+
+export function useMSTeamsBotStatus(enabled = true) {
+  return useQuery({
+    queryKey: ["msteams-status"],
+    queryFn: () =>
+      apiFetch<MSTeamsBotStatus>("/api/v1/integrations/msteams/status"),
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
+/** URL of the generated, instance-filled Teams app package (zip). */
+export const MSTEAMS_MANIFEST_URL = "/api/v1/integrations/msteams/manifest.zip";
 
 interface SlackInstallURLResponse {
   url: string;

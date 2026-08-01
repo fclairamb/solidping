@@ -7,6 +7,7 @@ import {
   Loader2,
   MonitorSmartphone,
   RefreshCw,
+  Download,
   Search,
   Send,
   Trash2,
@@ -40,6 +41,7 @@ import type {
   ConnectionType,
   SlackChannel,
   SlackUser,
+  MSTeamsDestination,
   IntegrationTestResult,
 } from "@/api/hooks";
 import {
@@ -47,6 +49,9 @@ import {
   startSlackInstall,
   useRotateWebhookSecret,
   useTestIntegration,
+  useMSTeamsBotDestinations,
+  useMSTeamsBotStatus,
+  MSTEAMS_MANIFEST_URL,
 } from "@/api/hooks";
 import { WebPushEnableButton } from "@/components/notifications/WebPushEnableButton";
 import { deriveDeviceLabel } from "@/lib/browser-detection";
@@ -470,6 +475,15 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
     case "twilio":
       return (
         <TwilioPanel settings={settings} update={update} />
+      );
+    case "msteams-bot":
+      return (
+        <MSTeamsBotPanel
+          settings={settings}
+          onChange={onChange}
+          org={org}
+          channelUid={channelUid}
+        />
       );
     case "slack":
       return (
@@ -1621,6 +1635,205 @@ function TwilioPanel({
             "Direct-channel sends (per-check broadcast, test) text these numbers.",
           )}
         </p>
+      </div>
+    </div>
+  );
+}
+
+// ---- Microsoft Teams bot setup panel ----
+
+interface MSTeamsBotPanelProps {
+  settings: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+  org?: string;
+  channelUid?: string;
+}
+
+/**
+ * Setup surface for the two-way Microsoft Teams bot (`msteams-bot`).
+ *
+ * Three things the Slack panel does not have to do, because Bot Framework has
+ * no OAuth install and no Socket Mode:
+ *  1. it states the public-HTTPS-endpoint requirement up front (a firewalled
+ *     self-hosted instance simply cannot use the bot);
+ *  2. it offers the generated app package instead of an "Install" redirect;
+ *  3. it shows the Entra tenant ID field, which is what links this org to the
+ *     Microsoft 365 tenant whose install activities we accept.
+ */
+function MSTeamsBotPanel({ settings, onChange, org, channelUid }: MSTeamsBotPanelProps) {
+  const { t } = useTranslation("integrations");
+
+  const isEditMode = Boolean(org && channelUid);
+  const tenantId = (settings.tenant_id as string) || "";
+  const uninstalledAt = (settings.uninstalled_at as string) || "";
+
+  const { data: status } = useMSTeamsBotStatus(isEditMode);
+  const { data, isLoading, isError } = useMSTeamsBotDestinations(
+    org ?? "",
+    channelUid ?? "",
+    isEditMode && tenantId.length > 0,
+  );
+
+  const destinations = data?.destinations ?? [];
+  const currentId = (settings.channel_id as string) || "";
+
+  function selectDestination(dest: MSTeamsDestination) {
+    onChange({
+      ...settings,
+      channel_id: dest.id,
+      channel_name: dest.name,
+      team_id: dest.team_id ?? "",
+      display_name: dest.name,
+    });
+  }
+
+  if (!isEditMode) {
+    return (
+      <div className="rounded border bg-muted/30 p-3 text-sm">
+        <p>
+          {t(
+            "form.msteamsBotCreateHint",
+            "Create the integration first, then paste your Microsoft 365 tenant ID and install the Teams app package to connect it.",
+          )}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4" data-testid="msteams-bot-panel">
+      {/* Instance-level prerequisites */}
+      {status && !status.enabled && (
+        <div
+          className="rounded border border-destructive/40 bg-destructive/5 p-3 text-sm"
+          data-testid="msteams-bot-disabled"
+        >
+          <p className="font-medium">
+            {t("form.msteamsBotDisabledTitle", "The Teams bot is disabled on this server")}
+          </p>
+          <p className="text-muted-foreground">
+            {t(
+              "form.msteamsBotDisabledBody",
+              "Enable it in the server settings. Microsoft must be able to reach this instance over public HTTPS — a firewalled deployment cannot use the Teams bot.",
+            )}
+          </p>
+        </div>
+      )}
+
+      {status?.messagingEndpoint && (
+        <div className="space-y-1 text-xs text-muted-foreground">
+          <p>
+            {t(
+              "form.msteamsBotEndpointHint",
+              "Microsoft must be able to reach this messaging endpoint over public HTTPS:",
+            )}
+          </p>
+          <code
+            className="block break-all rounded bg-muted px-2 py-1"
+            data-testid="msteams-bot-endpoint"
+          >
+            {status.messagingEndpoint}
+          </code>
+        </div>
+      )}
+
+      {/* Tenant linkage */}
+      <div className="space-y-2">
+        <Label htmlFor="ch-msteams-tenant">
+          {t("form.msteamsBotTenantId", "Microsoft 365 tenant ID")}
+        </Label>
+        <Input
+          id="ch-msteams-tenant"
+          value={tenantId}
+          placeholder="00000000-0000-0000-0000-000000000000"
+          onChange={(e) => onChange({ ...settings, tenant_id: e.target.value.trim() })}
+          data-testid="msteams-bot-tenant"
+        />
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "form.msteamsBotTenantHint",
+            "The bot only accepts activities from this tenant. If you install the app first, SolidPing replies in the channel with the exact tenant ID to paste here.",
+          )}
+        </p>
+      </div>
+
+      {/* App package download */}
+      <div className="space-y-2">
+        <Button
+          type="button"
+          variant="outline"
+          asChild
+          data-testid="msteams-bot-manifest"
+        >
+          <a href={MSTEAMS_MANIFEST_URL} download>
+            <Download className="mr-2 h-4 w-4" aria-hidden="true" />
+            {t("form.msteamsBotDownloadApp", "Download Teams app package")}
+          </a>
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "form.msteamsBotSideloadHint",
+            "In Teams, open Apps → Manage your apps → Upload a custom app, pick this zip, then add SolidPing to a team. The channel you add it to becomes a notification destination.",
+          )}
+        </p>
+      </div>
+
+      {/* Destination picker */}
+      <div className="space-y-2">
+        <Label>{t("form.msteamsBotDestination", "Notification channel")}</Label>
+
+        {uninstalledAt || data?.uninstalled ? (
+          <p className="text-xs text-destructive" data-testid="msteams-bot-uninstalled">
+            {t(
+              "form.msteamsBotUninstalled",
+              "The Teams app was removed from this tenant. Reinstall it to resume notifications.",
+            )}
+          </p>
+        ) : isLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            <span>{t("form.msteamsBotLoading", "Loading…")}</span>
+          </div>
+        ) : isError ? (
+          <p className="text-xs text-destructive">
+            {t("form.msteamsBotError", "Could not load Teams channels.")}
+          </p>
+        ) : destinations.length === 0 ? (
+          <p className="text-xs text-muted-foreground" data-testid="msteams-bot-empty">
+            {t(
+              "form.msteamsBotNoDestinations",
+              "No Teams channels yet. Add SolidPing to a channel in Teams and it will appear here.",
+            )}
+          </p>
+        ) : (
+          <ul className="space-y-1" data-testid="msteams-bot-destinations">
+            {destinations.map((dest) => (
+              <li key={dest.id}>
+                <button
+                  type="button"
+                  onClick={() => selectDestination(dest)}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-2 rounded border p-2 text-left text-sm hover:bg-accent",
+                    dest.id === currentId && "border-primary bg-accent",
+                  )}
+                  data-testid={`msteams-bot-destination-${dest.id}`}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{dest.name || dest.id}</span>
+                    {dest.team_name && (
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {dest.team_name}
+                      </span>
+                    )}
+                  </span>
+                  {dest.id === currentId && (
+                    <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
