@@ -109,6 +109,33 @@ func (h *Handler) GetDestinations(writer http.ResponseWriter, req *http.Request)
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
 
+// DownloadManifest serves the generated Teams app package (a zip holding
+// manifest.json plus the two icons), pre-filled with this instance's app ID
+// and public URL so setup requires no hand-editing.
+//
+// Route: GET /api/v1/integrations/msteams/manifest.zip.
+func (h *Handler) DownloadManifest(writer http.ResponseWriter, _ *http.Request) error {
+	if h.cfg.MSTeams.AppID == "" {
+		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeValidationError,
+			"Set the Microsoft Teams app ID in the server settings before downloading the app package")
+	}
+
+	pkg, err := BuildAppPackage(h.cfg.MSTeams.AppID, h.cfg.Server.BaseURL)
+	if err != nil {
+		return h.WriteInternalError(writer, err)
+	}
+
+	writer.Header().Set("Content-Type", "application/zip")
+	writer.Header().Set("Content-Disposition", `attachment; filename="solidping-teams-app.zip"`)
+	writer.WriteHeader(http.StatusOK)
+
+	if _, err := writer.Write(pkg); err != nil {
+		return fmt.Errorf("writing teams app package: %w", err)
+	}
+
+	return nil
+}
+
 // HandleMessages is the Bot Framework messaging endpoint.
 //
 // Route: POST /api/v1/integrations/msteams/messages.
