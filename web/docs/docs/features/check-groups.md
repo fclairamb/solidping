@@ -67,6 +67,25 @@ When checks are grouped, the dashboard paginates by group rather than flattening
 everything into one long list, so you see a service's checks together and can page
 through many checks without losing that structure.
 
+## By-host view
+
+Groups are whatever you made them — often organized by check *type* ("TLS
+certificate expiry" for 40 hosts) rather than by host, so the grouping that best
+matches real-world failure correlation — everything probing the same host — may not
+exist anywhere in your group structure. The checks list's **Group by: Groups / Host**
+toggle switches to a by-host view without requiring you to reorganize anything: every
+check is bucketed by its derived `targetHost` — the config's `host` field when
+present, else the hostname parsed from `url`, else `target` — with checks that have
+none of those fields (e.g. heartbeat/email passive checks) in a trailing "No host"
+section.
+
+`targetHost` is **derived at read time, not stored**: it is recomputed from each
+check's config on every response, so renaming a host in one check's config moves that
+check to a different section the next time you load the page — there is nothing to
+migrate or keep in sync. It has no effect on alerting, groups, or status pages; it is
+purely a dashboard view. The checks list API also accepts `?sort=targetHost` if you
+want to page through checks in host order yourself.
+
 ## Group-incident correlation
 
 When several checks in the same group fail at once, SolidPing correlates them into a
