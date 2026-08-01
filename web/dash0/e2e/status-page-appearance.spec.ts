@@ -14,6 +14,11 @@ import { test, expect, API_BASE, type Page } from "./fixtures";
 const PREVIEW_BRAND = "rgb(255, 0, 0)";
 const SAVED_BRAND = "rgb(0, 128, 255)";
 
+// 1x1 transparent GIF — a real, self-contained image URL, so nothing in these
+// tests depends on network access.
+const PIXEL =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
 async function createStatusPage(page: Page, suffix: string): Promise<string> {
   await page.goto(`orgs/test/status-pages/new`);
 
@@ -213,8 +218,105 @@ test.describe("Status page appearance editor", () => {
       "--status-warning",
       "--status-error",
       ".dark",
+      // The `sp-*` element hooks are part of the same documented API.
+      ".sp-logo",
+      ".sp-page-name",
+      ".sp-footer",
+      ".sp-powered-by",
+      ".sp-version",
     ]) {
       expect(value).toContain(variable);
     }
+  });
+
+  /**
+   * The `sp-*` classes are a documented public API (spec 2026-08-01-05): both
+   * logo-replacement techniques and hiding the version must work from custom
+   * CSS alone. Crucially, the status page's own logo sizing lives in a
+   * stylesheet, not an inline style — an inline style would be unbeatable
+   * without `!important` and this test would fail.
+   */
+  test("retargets the logo and hides the version through the sp-* hooks", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const suffix = Date.now().toString().slice(-9);
+    const slug = await createStatusPage(page, suffix);
+    await openAppearance(page);
+
+    const editor = page.getByTestId("custom-css-input");
+    const save = page.getByTestId("custom-css-save");
+
+    const publicPage = await page.context().newPage();
+    await publicPage.goto(`${API_BASE}/status0/test/${slug}`);
+    await publicPage.waitForLoadState("networkidle");
+
+    // Baseline — without custom CSS both are on screen, so the assertions
+    // further down cannot pass vacuously.
+    const logoImg = publicPage.locator(".sp-logo img");
+    const version = publicPage.locator(".sp-version");
+    await expect(logoImg).toBeVisible({ timeout: 15000 });
+    await expect(version).toBeVisible({ timeout: 15000 });
+    expect((await logoImg.boundingBox())?.width).toBeCloseTo(32, 0);
+
+    // --- Technique 1: repaint the <img> and resize it ----------------------
+    await editor.fill(
+      `.sp-logo img { content: url("${PIXEL}"); width: 140px; }`,
+    );
+    await save.click();
+
+    await expect
+      .poll(
+        async () => {
+          await publicPage.reload();
+          await publicPage.waitForLoadState("networkidle");
+
+          return publicPage
+            .locator(".sp-logo img")
+            .evaluate((el) => getComputedStyle(el).content);
+        },
+        { timeout: 20000 },
+      )
+      .toContain("data:image/gif;base64");
+    // The operator's width beats the app's own rule — this is what breaks if
+    // the size ever moves back onto an inline style.
+    expect((await logoImg.boundingBox())?.width).toBeCloseTo(140, 0);
+
+    // --- Technique 2: hide the <img>, paint the wrapper, hide the version ---
+    await editor.fill(
+      [
+        ".sp-logo img { display: none; }",
+        `.sp-logo { background: url("${PIXEL}") center / contain no-repeat;`,
+        "  width: 120px; height: 32px; }",
+        ".sp-version { display: none; }",
+      ].join("\n"),
+    );
+    await save.click();
+
+    await expect
+      .poll(
+        async () => {
+          await publicPage.reload();
+          await publicPage.waitForLoadState("networkidle");
+
+          return publicPage.locator(".sp-logo img").isHidden();
+        },
+        { timeout: 20000 },
+      )
+      .toBe(true);
+
+    // The wrapper did not collapse: it is the sized, painted element now.
+    const wrapper = publicPage.locator(".sp-logo");
+    const box = await wrapper.boundingBox();
+    expect(box?.width).toBeCloseTo(120, 0);
+    expect(box?.height).toBeCloseTo(32, 0);
+    expect(
+      await wrapper.evaluate((el) => getComputedStyle(el).backgroundImage),
+    ).toContain("data:image/gif;base64");
+
+    // And the version line is gone — `.sp-version { display: none }`.
+    await expect(version).toBeHidden();
+
+    await publicPage.close();
   });
 });
