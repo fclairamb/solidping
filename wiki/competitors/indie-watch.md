@@ -98,6 +98,13 @@ open feature branches (`feat/incidents`, `feature/ha`, `feat/teams`, …) that m
 mean work is happening off the default branch without being pushed. Re-verify the
 release feed before treating this as durable.
 
+**Re-verified 2026-08-01 — unchanged.** Still 0.0.46 (2026-04-10), last push
+still 2026-05-24, open issues 90, stars 1,157 → **1,165**. The gap is now ~3.7
+months without a release and ~2.3 months without a commit, with inbound interest
+still growing. The 2026-07-26 condition for acting on this was "if the gap holds
+for ~a month"; six days is not that. `track: true` retained, still not used in
+copy — a solo maintainer's quiet stretch is not a shutdown. Re-check next poll.
+
 ### Kuvasz — https://kuvasz-uptime.dev  ·  github.com/kuvasz-uptime/kuvasz
 Self-hosted OSS uptime **and SSL** monitor, Kotlin, AGPL-3.0, **571★** / 34 forks,
 created 2020-07 and still shipping (v4.0.1 2026-06-17, **v4.1.0 2026-07-14**, repo
@@ -139,6 +146,20 @@ broader scope than SolidPing (APM, logs, sessions), heavier deploy footprint tha
 the single binary. Actively producing "Uptime Kuma vs OneUptime" SEO content —
 tracking their moves maps where "uptime kuma alternative" demand lives. Surfaced
 2026-05-05 via OneUptime/blog#93.
+
+**Advertised vs shipped, self-hosted (2026-08-01).** OneUptime's product page
+advertises **1-second check intervals**; a self-hosted install (v11.7.3, Docker
+Compose, `oneuptime/probe:release`) floors at **1 minute**
+([#2937](https://github.com/OneUptime/oneuptime/issues/2937), open since
+2026-07-30, 0 replies). The reporter's stated workarounds are to "continue using
+Uptime Kuma for 20-second checks" or "maintain a custom patched OneUptime Probe".
+Two things follow. (1) A factual data point for the interval table in
+`comparison.md` — SolidPing's verified floor is 10s self-hosted, unpaywalled.
+(2) A caution that generalises past OneUptime: **advertised intervals in this
+market are frequently SaaS-only figures**, so verify against implementations
+before entering any competitor's number into a comparison. Do not turn this into
+attack copy (§9 — no trashing competitors); it is a self-hosted-parity gap in a
+peer OSS project, and the honest use is our own verified number.
 
 ### OpenStatus — https://www.openstatus.dev
 Open-source status page + uptime monitoring (OSS + paid SaaS), 8k+★, SOC2-ready

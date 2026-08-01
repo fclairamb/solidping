@@ -18,6 +18,52 @@
 
 **Best Global Coverage**: Pingdom (100+ locations)
 
+#### Minimum check interval — full picture (added 2026-08-01)
+
+The table above covers only the three SaaS incumbents. The self-hosted side is
+where this feature actually differentiates, so the numbers are collected here
+with their sources. **Verify claims against implementations** — the entry that
+prompted this table is a vendor advertising 1-second checks while shipping 60.
+
+| Tool | Minimum interval | Gated behind a paid tier? | Source |
+|---|---|---|---|
+| **SolidPing** | **10 seconds** | No — self-hosted, unlimited | `GlobalMinPeriod = 10 * time.Second`, `server/internal/checkers/checkerdef/types.go:240` |
+| Uptime Kuma | ~20 seconds | No — self-hosted | user reports, incl. OneUptime#2937 |
+| OneUptime | **1 minute self-hosted** (product page advertises 1 second) | n/a — the advertised figure is not reachable self-hosted | [OneUptime#2937](https://github.com/OneUptime/oneuptime/issues/2937), open, 2026-07-30, v11.7.3 Docker Compose |
+| BetterStack | 30 seconds | Yes (paid); free tier 3 min | comparison table above |
+| UptimeRobot | 30 seconds | Yes (Enterprise); free tier 5 min | comparison table above |
+| Pingdom | 1 minute | Yes | comparison table above |
+| Hyperping | 30 seconds | Yes — Essentials $24/mo | pricing snapshot |
+| Checkly | 2 min (Hobby) → sub-min paid | Yes | pricing snapshot |
+| exit1.dev | 30 sec (Pro) / 15 sec (Agency) | Yes | pricing snapshot |
+
+SolidPing's 10-second floor applies to any check type that does not declare a
+stricter `MinPeriod`; the deliberate exceptions are SSL (1h), domain expiry (6h)
+and JS scripting (30s). Sub-10s is explicitly out of scope for the
+results/aggregation model (spec `2026-07-01-04`) — the floor is an engineering
+constraint, not a packaging decision, which is why it is not tier-gated.
+
+**Accuracy note for anyone writing copy from this table:** 10 seconds is not the
+fastest figure in the market (SaaS vendors sell 1-second checks). The defensible
+statement is the *combination* — sub-minute **and** self-hosted **and** unlimited
+**and** unpaywalled — not a superlative.
+
+### Migration importers (added 2026-08-01)
+
+SolidPing ships config importers for three competitors, in
+`server/internal/handlers/checks/importers/`:
+
+| Source tool | Importer | Notes |
+|---|---|---|
+| Uptime Kuma | `uptimekuma.go` | maps `interval` → check period; converts Kuma's `maxretries × retryInterval` retry model into a confirmation period |
+| Gatus | `gatus.go` | parses YAML endpoints; defaults to `60s` when interval is unset |
+| Better Stack | `betterstack.go` | — |
+
+This covers the #1 and #2 self-hosted incumbents by stars (Uptime Kuma ~89k★,
+Gatus ~11.5k★) plus one major SaaS, and is the operational answer whenever a
+migration pool opens up (Freshping's 2026-03 shutdown, Peekaping's stall).
+
+
 ## Alerting & Notifications
 
 | Feature | BetterStack | UptimeRobot | Pingdom | StatusCake | Checkly | Healthchecks.io | Uptime Kuma | Gatus | SolidPing |
