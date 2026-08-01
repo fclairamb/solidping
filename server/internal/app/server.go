@@ -92,6 +92,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
+	"github.com/fclairamb/solidping/server/internal/integrations/msteams"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/jmap"
@@ -1228,6 +1229,19 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	slackIntegration.POST("/command", slackHandler.VerifyMiddleware(slackHandler.HandleCommand))
 	slackIntegration.POST("/interaction", slackHandler.VerifyMiddleware(slackHandler.HandleInteraction))
 
+	// Microsoft Teams bot routes (inbound from Bot Framework — no org auth;
+	// authenticity is the per-request JWT check against Microsoft's JWKS in
+	// HandleMessages). The routes are always registered so the status and
+	// manifest endpoints can explain an unconfigured instance; the messaging
+	// endpoint itself refuses traffic with 503 while msteams.enabled is false.
+	msTeamsService := msteams.NewService(s.dbService, s.config, checksService)
+	msTeamsHandler := msteams.NewHandler(msTeamsService, s.config)
+
+	msTeamsIntegration := api.NewGroup("/integrations/msteams")
+	msTeamsIntegration.POST("/messages", msTeamsHandler.HandleMessages)
+	msTeamsIntegration.GET("/status", msTeamsHandler.GetStatus)
+	msTeamsIntegration.GET("/manifest.zip", msTeamsHandler.DownloadManifest)
+
 	// Twilio inbound callbacks (voice TwiML + DTMF ack + delivery status).
 	// No org auth — authenticity is the per-request X-Twilio-Signature check in
 	// VerifyMiddleware, which resolves the connection from the `cid` query param.
@@ -1240,6 +1254,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Slack destinations picker (authenticated, org-scoped)
 	slackOrgRoutes := orgGroup("/orgs/:org/channels/:uid/slack")
 	slackOrgRoutes.GET("/destinations", slackHandler.GetDestinations)
+
+	// Microsoft Teams destinations picker (authenticated, org-scoped). Unlike
+	// Slack this reads the conversation references captured at install rather
+	// than calling out to the provider — a Teams bot cannot enumerate the
+	// channels of a team it was never added to.
+	msTeamsOrgRoutes := orgGroup("/orgs/:org/channels/:uid/msteams")
+	msTeamsOrgRoutes.GET("/destinations", msTeamsHandler.GetDestinations)
 
 	// Org-scoped install-URL minting (spec 2026-07-05-01): the org comes from
 	// the authenticated route context (RequireOrgAccess), never from a query

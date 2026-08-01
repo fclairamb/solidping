@@ -31,6 +31,8 @@ func GetSender(connType models.ConnectionType) (Sender, bool) {
 		return &MattermostSender{}, true
 	case models.ConnectionTypeMSTeams:
 		return &MSTeamsSender{}, true
+	case models.ConnectionTypeMSTeamsBot:
+		return &MSTeamsBotSender{}, true
 	case models.ConnectionTypeNtfy:
 		return &NtfySender{}, true
 	case models.ConnectionTypeOpsgenie:
