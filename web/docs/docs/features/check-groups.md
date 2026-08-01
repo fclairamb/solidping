@@ -17,6 +17,16 @@ order. Each check optionally belongs to exactly one group via its `checkGroupUid
 (a check with no group is ungrouped). The group tracks how many checks it contains
 (`checkCount`).
 
+### The slug is the stable identifier for scripting
+
+`GET`/`PATCH`/`DELETE` requests accept either the group's UID or its slug in the
+URL, and the slug is what shows up in incident payloads as `checkGroupSlug`. That
+makes the slug — not the UID — the identifier to put in DevOps scripts, CI jobs,
+and other tooling that addresses a group by name. The dashboard's group edit page
+and "New Group" dialog both let you set it directly (auto-derived from the name if
+you leave it blank on create); changing an existing group's slug breaks anything
+still using the old one, since there is no redirect from an old slug to a new one.
+
 ## Group-level escalation policy
 
 A group can carry its own escalation policy that member checks inherit. Escalation
