@@ -7771,7 +7771,14 @@ components:
 
     StatusPageResource:
       type: object
-      required: [uid, checkUid, position]
+      description: >-
+        A component displayed on a status page section. It targets either a
+        single check (checkUid) or a whole check group (checkGroupUid) — exactly
+        one is set. A group resource renders as ONE aggregated component: rolled
+        up status, weighted-average availability across its members, and
+        maintenance from a group- or member-targeted window. Its members are
+        never listed publicly.
+      required: [uid, position]
       properties:
         uid:
           type: string
@@ -7779,6 +7786,11 @@ components:
         checkUid:
           type: string
           format: uuid
+          description: Set when the resource targets an individual check.
+        checkGroupUid:
+          type: string
+          format: uuid
+          description: Set when the resource targets a check group.
         publicName:
           type: string
         explanation:
@@ -7799,11 +7811,20 @@ components:
 
     CreateStatusPageResourceRequest:
       type: object
-      required: [checkUid]
+      description: >-
+        Exactly one of checkUid or checkGroupUid must be set; zero or both is a
+        VALIDATION_ERROR naming both fields.
       properties:
         checkUid:
           type: string
-          description: Check UID or slug to attach as a resource
+          description: >-
+            Check UID or slug to attach as a resource. Mutually exclusive with
+            checkGroupUid.
+        checkGroupUid:
+          type: string
+          description: >-
+            Check group UID or slug to attach as one aggregated resource.
+            Mutually exclusive with checkUid.
         publicName:
           type: string
         explanation:
@@ -7813,7 +7834,17 @@ components:
 
     UpdateStatusPageResourceRequest:
       type: object
+      description: >-
+        Supplying checkUid or checkGroupUid switches the resource's target kind;
+        supplying both is a VALIDATION_ERROR naming both fields, and supplying
+        neither leaves the target untouched.
       properties:
+        checkUid:
+          type: string
+          description: Switch the resource to target this check (UID or slug).
+        checkGroupUid:
+          type: string
+          description: Switch the resource to target this check group (UID or slug).
         publicName:
           type: string
         explanation:

@@ -381,16 +381,21 @@ func (h *Handler) toolListStatusPageResources(
 
 func createStatusPageResourceDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "create_status_page_resource",
-		Description: "Pin a check to a status-page section as a publicly-displayed resource.",
+		Name: "create_status_page_resource",
+		Description: "Pin a check — or a whole check group, rendered as one aggregated component " +
+			"that never lists its members — to a status-page section as a publicly-displayed resource.",
 		InputSchema: objectSchema(map[string]any{
 			propPageIdentifier:    stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			propSectionIdentifier: stringProp("Status page section UID or URL-friendly slug, e.g. \"api\"."),
-			propCheckUID:          stringProp("Check UID or slug to pin (required)"),
-			propPublicName:        stringProp("Display name for the public page (defaults to the check name)"),
-			propExplanation:       stringProp("Short explanation rendered under the resource"),
-			propPosition:          intProp("Display position within the section"),
-		}, []string{propPageIdentifier, propSectionIdentifier, propCheckUID}),
+			propCheckUID: stringProp(
+				"Check UID or slug to pin. Mutually exclusive with checkGroupUid; exactly one is required."),
+			propCheckGroupUID: stringProp(
+				"Check group UID or slug to pin as one aggregated component. " +
+					"Mutually exclusive with checkUid; exactly one is required."),
+			propPublicName:  stringProp("Display name for the public page (defaults to the check or group name)"),
+			propExplanation: stringProp("Short explanation rendered under the resource"),
+			propPosition:    intProp("Display position within the section"),
+		}, []string{propPageIdentifier, propSectionIdentifier}),
 	}
 }
 
@@ -400,10 +405,17 @@ func (h *Handler) toolCreateStatusPageResource(
 	pageID := getStringArg(args, propPageIdentifier)
 	sectionID := getStringArg(args, propSectionIdentifier)
 	checkUID := getStringArg(args, propCheckUID)
-	if pageID == "" || sectionID == "" || checkUID == "" {
-		return errorResult("pageIdentifier, sectionIdentifier, and checkUid are required")
+	checkGroupUID := getStringArg(args, propCheckGroupUID)
+
+	if pageID == "" || sectionID == "" {
+		return errorResult("pageIdentifier and sectionIdentifier are required")
 	}
-	req := statuspages.CreateResourceRequest{CheckUID: checkUID}
+
+	if (checkUID == "") == (checkGroupUID == "") {
+		return errorResult("exactly one of checkUid or checkGroupUid is required")
+	}
+
+	req := statuspages.CreateResourceRequest{CheckUID: checkUID, CheckGroupUID: checkGroupUID}
 	if v := getStringArg(args, propPublicName); v != "" {
 		req.PublicName = &v
 	}

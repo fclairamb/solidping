@@ -571,6 +571,11 @@ type Service interface {
 	// are simply absent from the map. Feeds models.RollupGroupStatus and the
 	// memberStatusCounts API field (spec 2026-08-01-01).
 	GetCheckGroupStatusCounts(ctx context.Context, orgUID string) (map[string]map[models.CheckStatus]int, error)
+	// ListCheckUIDsByGroup returns the UIDs of the group's enabled, non-deleted
+	// member checks — the same member set GetCheckGroupStatusCounts rolls up, so
+	// a group's public status and its aggregated availability always describe
+	// the same checks (spec 2026-08-01-03).
+	ListCheckUIDsByGroup(ctx context.Context, orgUID, groupUID string) ([]string, error)
 
 	// StatusUpdate operations
 	ListStatusUpdates(
@@ -663,6 +668,12 @@ type Service interface {
 	// in-process TTL cache can re-evaluate them at the current clock without
 	// re-querying. See spec 2026-06-05-02-check-result-hot-path-db-roundtrips.md.
 	ListMaintenanceWindowsForCheck(ctx context.Context, checkUID string) ([]*models.MaintenanceWindow, error)
+	// ListMaintenanceWindowsForCheckGroup returns every non-deleted maintenance
+	// window that puts the GROUP in maintenance: one targeting the group
+	// directly, or one targeting any of its member checks. Recurrence is not
+	// evaluated — callers decide active/inactive via models.IsActiveAt. Feeds
+	// the status page group component (spec 2026-08-01-03).
+	ListMaintenanceWindowsForCheckGroup(ctx context.Context, groupUID string) ([]*models.MaintenanceWindow, error)
 
 	// File operations
 	CreateFile(ctx context.Context, file *models.File) error

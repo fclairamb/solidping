@@ -24,6 +24,8 @@ const (
 	fieldCustomDomain  = "customDomain"
 	fieldHistoryPeriod = "historyPeriod"
 	fieldCustomCSS     = "customCss"
+	fieldCheckUID      = "checkUid"
+	fieldCheckGroupUID = "checkGroupUid"
 	respKeyData        = "data"
 	msgInvalidJSON     = "Invalid JSON format"
 	historyPeriodMsg   = "History period must be one of: 24h, 7d, 30d, 90d"
@@ -320,7 +322,7 @@ func (h *Handler) CreateResource(writer http.ResponseWriter, req *http.Request) 
 
 	resource, err := h.svc.CreateResource(req.Context(), orgSlug, pageIdentifier, sectionIdentifier, createReq)
 	if err != nil {
-		return h.handleCreateResourceError(writer, err)
+		return h.handleResourceError(writer, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, resource)
@@ -344,7 +346,7 @@ func (h *Handler) UpdateResource(writer http.ResponseWriter, req *http.Request) 
 		req.Context(), orgSlug, pageIdentifier, sectionIdentifier, resourceUID, updateReq,
 	)
 	if err != nil {
-		return h.handleSectionError(writer, err)
+		return h.handleResourceError(writer, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resource)
@@ -658,7 +660,7 @@ func (h *Handler) handleUpdateSectionError(writer http.ResponseWriter, err error
 	}
 }
 
-func (h *Handler) handleCreateResourceError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleResourceError(writer http.ResponseWriter, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
@@ -672,9 +674,27 @@ func (h *Handler) handleCreateResourceError(writer http.ResponseWriter, err erro
 	case errors.Is(err, ErrCheckNotFound):
 		return h.WriteErrorErr(
 			writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+	case errors.Is(err, ErrCheckGroupNotFound):
+		return h.WriteErrorErr(
+			writer, http.StatusNotFound, base.ErrorCodeCheckGroupNotFound, "Check group not found", err)
+	case errors.Is(err, ErrResourceTargetInvalid):
+		return h.writeResourceTargetError(writer)
 	default:
 		return h.WriteInternalError(writer, err)
 	}
+}
+
+// resourceTargetMsg names BOTH fields so the caller can see which pair is
+// mutually exclusive, whether it sent zero or two of them.
+const resourceTargetMsg = "Exactly one of checkUid or checkGroupUid must be set"
+
+// writeResourceTargetError renders the checkUid-XOR-checkGroupUid violation as
+// a VALIDATION_ERROR naming both fields (spec 2026-08-01-03).
+func (h *Handler) writeResourceTargetError(writer http.ResponseWriter) error {
+	return h.WriteValidationError(writer, resourceTargetMsg, []base.ValidationErrorField{
+		{Name: fieldCheckUID, Message: resourceTargetMsg},
+		{Name: fieldCheckGroupUID, Message: resourceTargetMsg},
+	})
 }
 
 func (h *Handler) handlePublicError(writer http.ResponseWriter, err error) error {

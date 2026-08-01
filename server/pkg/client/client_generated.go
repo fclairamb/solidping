@@ -1080,10 +1080,13 @@ type CreateStatusPageRequest struct {
 	Visibility       *string `json:"visibility,omitempty"`
 }
 
-// CreateStatusPageResourceRequest defines model for CreateStatusPageResourceRequest.
+// CreateStatusPageResourceRequest Exactly one of checkUid or checkGroupUid must be set; zero or both is a VALIDATION_ERROR naming both fields.
 type CreateStatusPageResourceRequest struct {
-	// CheckUid Check UID or slug to attach as a resource
-	CheckUid    string  `json:"checkUid"`
+	// CheckGroupUid Check group UID or slug to attach as one aggregated resource. Mutually exclusive with checkUid.
+	CheckGroupUid *string `json:"checkGroupUid,omitempty"`
+
+	// CheckUid Check UID or slug to attach as a resource. Mutually exclusive with checkGroupUid.
+	CheckUid    *string `json:"checkUid,omitempty"`
 	Explanation *string `json:"explanation,omitempty"`
 	Position    *int    `json:"position,omitempty"`
 	PublicName  *string `json:"publicName,omitempty"`
@@ -2503,14 +2506,18 @@ type StatusPageListResponse struct {
 	Data *[]StatusPage `json:"data,omitempty"`
 }
 
-// StatusPageResource defines model for StatusPageResource.
+// StatusPageResource A component displayed on a status page section. It targets either a single check (checkUid) or a whole check group (checkGroupUid) — exactly one is set. A group resource renders as ONE aggregated component: rolled up status, weighted-average availability across its members, and maintenance from a group- or member-targeted window. Its members are never listed publicly.
 type StatusPageResource struct {
-	CheckUid    openapi_types.UUID `json:"checkUid"`
-	CreatedAt   *time.Time         `json:"createdAt,omitempty"`
-	Explanation *string            `json:"explanation,omitempty"`
-	Position    int                `json:"position"`
-	PublicName  *string            `json:"publicName,omitempty"`
-	Uid         openapi_types.UUID `json:"uid"`
+	// CheckGroupUid Set when the resource targets a check group.
+	CheckGroupUid *openapi_types.UUID `json:"checkGroupUid,omitempty"`
+
+	// CheckUid Set when the resource targets an individual check.
+	CheckUid    *openapi_types.UUID `json:"checkUid,omitempty"`
+	CreatedAt   *time.Time          `json:"createdAt,omitempty"`
+	Explanation *string             `json:"explanation,omitempty"`
+	Position    int                 `json:"position"`
+	PublicName  *string             `json:"publicName,omitempty"`
+	Uid         openapi_types.UUID  `json:"uid"`
 }
 
 // StatusPageResourceListResponse defines model for StatusPageResourceListResponse.
@@ -2805,8 +2812,13 @@ type UpdateStatusPageRequest struct {
 	Visibility       *string `json:"visibility,omitempty"`
 }
 
-// UpdateStatusPageResourceRequest defines model for UpdateStatusPageResourceRequest.
+// UpdateStatusPageResourceRequest Supplying checkUid or checkGroupUid switches the resource's target kind; supplying both is a VALIDATION_ERROR naming both fields, and supplying neither leaves the target untouched.
 type UpdateStatusPageResourceRequest struct {
+	// CheckGroupUid Switch the resource to target this check group (UID or slug).
+	CheckGroupUid *string `json:"checkGroupUid,omitempty"`
+
+	// CheckUid Switch the resource to target this check (UID or slug).
+	CheckUid    *string `json:"checkUid,omitempty"`
 	Explanation *string `json:"explanation,omitempty"`
 	Position    *int    `json:"position,omitempty"`
 	PublicName  *string `json:"publicName,omitempty"`

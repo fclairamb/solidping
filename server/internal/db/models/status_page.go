@@ -178,29 +178,62 @@ type StatusPageSectionUpdate struct {
 	Position *int
 }
 
-// StatusPageResource represents a check assigned to a status page section.
+// StatusPageResource represents a check OR a check group assigned to a status
+// page section (spec 2026-08-01-03). Exactly one of CheckUID / CheckGroupUID is
+// set — the database enforces it with an XOR check constraint, mirroring
+// MaintenanceWindowCheck.
+//
+// A group resource renders as ONE public component: rolled-up status, weighted
+// average availability across members, and maintenance from a group- or
+// member-targeted window. Members are never listed publicly.
 type StatusPageResource struct {
-	UID         string    `bun:"uid,pk,type:varchar(36)"`
-	SectionUID  string    `bun:"section_uid,notnull"`
-	CheckUID    string    `bun:"check_uid,notnull"`
-	PublicName  *string   `bun:"public_name"`
-	Explanation *string   `bun:"explanation"`
-	Position    int       `bun:"position,notnull,default:0"`
-	CreatedAt   time.Time `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt   time.Time `bun:"updated_at,notnull,default:current_timestamp"`
+	UID        string `bun:"uid,pk,type:varchar(36)"`
+	SectionUID string `bun:"section_uid,notnull"`
+	// CheckUID is the individual check to display. nil when the resource
+	// targets a group.
+	CheckUID *string `bun:"check_uid"`
+	// CheckGroupUID is the check group to display as one aggregated component.
+	// nil when the resource targets an individual check.
+	CheckGroupUID *string   `bun:"check_group_uid"`
+	PublicName    *string   `bun:"public_name"`
+	Explanation   *string   `bun:"explanation"`
+	Position      int       `bun:"position,notnull,default:0"`
+	CreatedAt     time.Time `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt     time.Time `bun:"updated_at,notnull,default:current_timestamp"`
 }
 
-// NewStatusPageResource creates a new resource with generated UID.
+// IsGroup reports whether the resource targets a check group rather than an
+// individual check.
+func (r *StatusPageResource) IsGroup() bool {
+	return r.CheckGroupUID != nil && *r.CheckGroupUID != ""
+}
+
+// NewStatusPageResource creates a new check-targeting resource with generated UID.
 func NewStatusPageResource(sectionUID, checkUID string, position int) *StatusPageResource {
 	now := time.Now()
 
 	return &StatusPageResource{
 		UID:        uuid.New().String(),
 		SectionUID: sectionUID,
-		CheckUID:   checkUID,
+		CheckUID:   &checkUID,
 		Position:   position,
 		CreatedAt:  now,
 		UpdatedAt:  now,
+	}
+}
+
+// NewStatusPageGroupResource creates a new group-targeting resource with
+// generated UID.
+func NewStatusPageGroupResource(sectionUID, checkGroupUID string, position int) *StatusPageResource {
+	now := time.Now()
+
+	return &StatusPageResource{
+		UID:           uuid.New().String(),
+		SectionUID:    sectionUID,
+		CheckGroupUID: &checkGroupUID,
+		Position:      position,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 }
 
@@ -209,4 +242,11 @@ type StatusPageResourceUpdate struct {
 	PublicName  *string
 	Explanation *string
 	Position    *int
+	// SetTarget switches the resource's target kind. When true, BOTH target
+	// columns are written: exactly one of CheckUID / CheckGroupUID must be
+	// non-nil and the other column is set to NULL, so the XOR constraint always
+	// holds. When false the target is left untouched.
+	SetTarget     bool
+	CheckUID      *string
+	CheckGroupUID *string
 }

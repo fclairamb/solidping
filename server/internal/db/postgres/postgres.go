@@ -4194,6 +4194,14 @@ func (s *Service) UpdateStatusPageResource(
 		query = query.Set("position = ?", *update.Position)
 	}
 
+	// Switching target kind always writes BOTH columns so the XOR constraint
+	// holds (spec 2026-08-01-03).
+	if update.SetTarget {
+		query = query.
+			Set("check_uid = ?", update.CheckUID).
+			Set("check_group_uid = ?", update.CheckGroupUID)
+	}
+
 	_, err := query.Exec(ctx)
 
 	return err
@@ -4318,6 +4326,30 @@ func (s *Service) GetCheckGroupStatusCounts(
 	}
 
 	return counts, nil
+}
+
+// ListCheckUIDsByGroup returns the UIDs of the group's enabled, non-deleted
+// member checks — deliberately the same member predicate as
+// GetCheckGroupStatusCounts so a group's rolled-up status and its aggregated
+// availability always describe the same set of checks (spec 2026-08-01-03).
+func (s *Service) ListCheckUIDsByGroup(
+	ctx context.Context, orgUID, groupUID string,
+) ([]string, error) {
+	var uids []string
+
+	err := s.db.NewSelect().
+		TableExpr("checks").
+		ColumnExpr("uid").
+		Where("organization_uid = ?", orgUID).
+		Where("check_group_uid = ?", groupUID).
+		Where("deleted_at IS NULL").
+		Where("enabled = ?", true).
+		Scan(ctx, &uids)
+	if err != nil {
+		return nil, fmt.Errorf("list check uids by group: %w", err)
+	}
+
+	return uids, nil
 }
 
 func (s *Service) UpdateCheckGroup(
@@ -4597,6 +4629,35 @@ func (s *Service) ListMaintenanceWindowsForCheck(
 			JOIN checks c ON c.check_group_uid = mwc.check_group_uid
 			WHERE c.uid = ? AND c.check_group_uid IS NOT NULL
 		)`, checkUID, checkUID).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return windows, nil
+}
+
+// ListMaintenanceWindowsForCheckGroup returns every non-deleted maintenance
+// window that puts the group in maintenance: one targeting the group directly,
+// or one targeting any of its enabled, non-deleted member checks (spec
+// 2026-08-01-03). Recurrence is not evaluated here — callers use
+// models.IsActiveAt.
+func (s *Service) ListMaintenanceWindowsForCheckGroup(
+	ctx context.Context, groupUID string,
+) ([]*models.MaintenanceWindow, error) {
+	var windows []*models.MaintenanceWindow
+
+	err := s.db.NewSelect().
+		Model(&windows).
+		Where("deleted_at IS NULL").
+		Where(`uid IN (
+			SELECT mwc.maintenance_window_uid FROM maintenance_window_checks mwc
+			WHERE mwc.check_group_uid = ?
+			UNION
+			SELECT mwc.maintenance_window_uid FROM maintenance_window_checks mwc
+			JOIN checks c ON c.uid = mwc.check_uid
+			WHERE c.check_group_uid = ? AND c.deleted_at IS NULL AND c.enabled = ?
+		)`, groupUID, groupUID, true).
 		Scan(ctx)
 	if err != nil {
 		return nil, err

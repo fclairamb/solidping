@@ -1135,6 +1135,10 @@ func (m *mockDBService) GetCheckGroupStatusCounts(
 	panic("not implemented")
 }
 
+func (m *mockDBService) ListCheckUIDsByGroup(_ context.Context, _, _ string) ([]string, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CreateMaintenanceWindow(_ context.Context, _ *models.MaintenanceWindow) error {
 	panic("not implemented")
 }
@@ -1174,6 +1178,12 @@ func (m *mockDBService) ListMaintenanceWindowChecks(
 }
 
 func (m *mockDBService) ListMaintenanceWindowsForCheck(
+	_ context.Context, _ string,
+) ([]*models.MaintenanceWindow, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListMaintenanceWindowsForCheckGroup(
 	_ context.Context, _ string,
 ) ([]*models.MaintenanceWindow, error) {
 	panic("not implemented")

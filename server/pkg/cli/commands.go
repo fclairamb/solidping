@@ -1409,10 +1409,15 @@ func GetCommands() []*cli.Command {
 						},
 						{
 							Name:      cmdCreate,
-							Usage:     "Add a check as a resource",
+							Usage:     "Add a check, or a check group, as a resource",
 							ArgsUsage: argPageSection,
 							Flags: []cli.Flag{
-								&cli.StringFlag{Name: flagCheck, Usage: "Check UID or slug to attach", Required: true},
+								&cli.StringFlag{Name: flagCheck, Usage: "Check UID or slug to attach"},
+								&cli.StringFlag{
+									Name: flagCheckGroup,
+									Usage: "Check group UID or slug to attach as one aggregated component " +
+										"(mutually exclusive with --check)",
+								},
 								&cli.StringFlag{Name: flagPublicName, Usage: "Public display name"},
 								&cli.StringFlag{Name: flagExplanation, Usage: "Explanation shown on the page"},
 								&cli.IntFlag{Name: flagPosition, Usage: usagePosition},
@@ -1424,6 +1429,14 @@ func GetCommands() []*cli.Command {
 							Usage:     "Update a resource",
 							ArgsUsage: argPageSectionResource,
 							Flags: []cli.Flag{
+								&cli.StringFlag{
+									Name:  flagCheck,
+									Usage: "Switch the resource to target this check (UID or slug)",
+								},
+								&cli.StringFlag{
+									Name:  flagCheckGroup,
+									Usage: "Switch the resource to target this check group (UID or slug)",
+								},
 								&cli.StringFlag{Name: flagPublicName, Usage: "Public display name"},
 								&cli.StringFlag{Name: flagExplanation, Usage: "Explanation shown on the page"},
 								&cli.IntFlag{Name: flagPosition, Usage: usagePosition},

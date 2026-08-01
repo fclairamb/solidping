@@ -694,10 +694,24 @@ func statusPagesSectionsReorderAction(ctx context.Context, cmd *cli.Command) err
 
 // --- Resources ---
 
+// resourceTarget renders a resource's target for text output: the check UID, or
+// the check group UID prefixed with "group:" when the resource aggregates a
+// group (spec 2026-08-01-03). Exactly one of the two is ever set.
+func resourceTarget(resource *client.StatusPageResource) string {
+	switch {
+	case resource.CheckUid != nil:
+		return resource.CheckUid.String()
+	case resource.CheckGroupUid != nil:
+		return "group:" + resource.CheckGroupUid.String()
+	default:
+		return ""
+	}
+}
+
 // renderResource prints a single resource in text mode.
 func renderResource(resource *client.StatusPageResource) {
 	output.PrintMessage(os.Stdout, "UID:       "+resource.Uid.String())
-	output.PrintMessage(os.Stdout, "Check:     "+resource.CheckUid.String())
+	output.PrintMessage(os.Stdout, "Target:    "+resourceTarget(resource))
 	output.PrintMessage(os.Stdout, "Position:  "+strconv.Itoa(resource.Position))
 
 	if resource.PublicName != nil {
@@ -742,13 +756,13 @@ func statusPagesResourcesListAction(ctx context.Context, cmd *cli.Command) error
 	}
 
 	tbl := output.NewTable(os.Stdout)
-	tbl.AppendHeader(table.Row{colUID, colCheck, colPosition})
+	tbl.AppendHeader(table.Row{colUID, colTarget, colPosition})
 
 	for i := range *resp.JSON200.Data {
 		resource := &(*resp.JSON200.Data)[i]
 		tbl.AppendRow(table.Row{
 			resource.Uid.String(),
-			resource.CheckUid.String(),
+			resourceTarget(resource),
 			strconv.Itoa(resource.Position),
 		})
 	}
@@ -771,15 +785,24 @@ func statusPagesResourcesCreateAction(ctx context.Context, cmd *cli.Command) err
 	}
 
 	check := cmd.String(flagCheck)
-	if check == "" {
-		return cli.Exit("Error: --check is required", 5)
+	checkGroup := cmd.String(flagCheckGroup)
+
+	// A resource targets exactly one of a check or a check group (spec
+	// 2026-08-01-03) — the same XOR the API and the schema enforce.
+	if (check == "") == (checkGroup == "") {
+		return cli.Exit("Error: exactly one of --check or --check-group is required", 5)
 	}
 
 	body := client.CreateStatusPageResourceJSONRequestBody{
-		CheckUid:    check,
 		PublicName:  optString(cmd, flagPublicName),
 		Explanation: optString(cmd, flagExplanation),
 		Position:    optInt(cmd, flagPosition),
+	}
+
+	if check != "" {
+		body.CheckUid = &check
+	} else {
+		body.CheckGroupUid = &checkGroup
 	}
 
 	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
@@ -819,9 +842,15 @@ func statusPagesResourcesUpdateAction(ctx context.Context, cmd *cli.Command) err
 	}
 
 	body := client.UpdateStatusPageResourceJSONRequestBody{
-		PublicName:  optString(cmd, flagPublicName),
-		Explanation: optString(cmd, flagExplanation),
-		Position:    optInt(cmd, flagPosition),
+		PublicName:    optString(cmd, flagPublicName),
+		Explanation:   optString(cmd, flagExplanation),
+		Position:      optInt(cmd, flagPosition),
+		CheckUid:      optString(cmd, flagCheck),
+		CheckGroupUid: optString(cmd, flagCheckGroup),
+	}
+
+	if body.CheckUid != nil && body.CheckGroupUid != nil {
+		return cli.Exit("Error: --check and --check-group are mutually exclusive", 5)
 	}
 
 	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
