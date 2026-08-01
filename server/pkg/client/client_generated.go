@@ -359,7 +359,8 @@ const (
 
 // Defines values for ListChecksParamsSort.
 const (
-	ListChecksParamsSortGroup ListChecksParamsSort = "group"
+	ListChecksParamsSortGroup      ListChecksParamsSort = "group"
+	ListChecksParamsSortTargetHost ListChecksParamsSort = "targetHost"
 )
 
 // Defines values for GetBadgeParamsStyle.
@@ -607,8 +608,11 @@ type Check struct {
 	RegionSpread *string `json:"regionSpread"`
 
 	// Scheduling Read-only scheduling telemetry, derived from the check's per-region scheduler jobs (max across regions). Present only on the check DETAIL response (GET by uid/slug) — never on list responses — and omitted until the check's first run produces a cost signal.
-	Scheduling *CheckScheduling    `json:"scheduling,omitempty"`
-	Slug       *string             `json:"slug,omitempty"`
+	Scheduling *CheckScheduling `json:"scheduling,omitempty"`
+	Slug       *string          `json:"slug,omitempty"`
+
+	// TargetHost Derived, read-time-only host this check probes: the config's `host` field when present, else the hostname parsed from `url`, else `target`; null when none apply (e.g. heartbeat/email passive checks). Not stored — renaming a host in a check's config moves it to a different value on the next read. Use `?sort=targetHost` on the list endpoint to order checks by it.
+	TargetHost *string             `json:"targetHost"`
 	Type       *CheckType          `json:"type,omitempty"`
 	Uid        *openapi_types.UUID `json:"uid,omitempty"`
 	UpdatedAt  *time.Time          `json:"updatedAt,omitempty"`
@@ -751,8 +755,11 @@ type CheckListItem struct {
 	RegionSpread *string `json:"regionSpread"`
 
 	// Scheduling Read-only scheduling telemetry, derived from the check's per-region scheduler jobs (max across regions). Present only on the check DETAIL response (GET by uid/slug) — never on list responses — and omitted until the check's first run produces a cost signal.
-	Scheduling *CheckScheduling    `json:"scheduling,omitempty"`
-	Slug       *string             `json:"slug,omitempty"`
+	Scheduling *CheckScheduling `json:"scheduling,omitempty"`
+	Slug       *string          `json:"slug,omitempty"`
+
+	// TargetHost Derived, read-time-only host this check probes: the config's `host` field when present, else the hostname parsed from `url`, else `target`; null when none apply (e.g. heartbeat/email passive checks). Not stored — renaming a host in a check's config moves it to a different value on the next read. Use `?sort=targetHost` on the list endpoint to order checks by it.
+	TargetHost *string             `json:"targetHost"`
 	Type       *CheckListItemType  `json:"type,omitempty"`
 	Uid        *openapi_types.UUID `json:"uid,omitempty"`
 	UpdatedAt  *time.Time          `json:"updatedAt,omitempty"`
