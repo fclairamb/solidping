@@ -32,6 +32,16 @@
       "matchUpdateTypes": ["major"],
       "addLabels": ["deps"],
       "automerge": false
+    },
+    {
+      "description": "goja: always automerge, whatever the update type (it only ships pseudo-versions)",
+      "matchDepNames": ["github.com/dop251/goja"],
+      "groupName": null,
+      "addLabels": ["deps"],
+      "automerge": true,
+      "automergeType": "pr",
+      "automergeStrategy": "squash",
+      "platformAutomerge": true
     }
   ]
 }

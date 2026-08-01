@@ -73,14 +73,37 @@ Hesklo, exit1 ($3/mo), PingWatch ($7/mo), Status Harbor ($5/mo) all fish this po
 
 **Axis 2 — "multi-region / distributed confirmation kills false positives."**
 Vigilmon ("only alert when a majority of regions agree → zero false positives"),
-Status Harbor "Lighthouse" agents, failover.io alert-chains.
+Status Harbor "Lighthouse" agents, failover.io alert-chains, UptimeMonitoring.com
+(22 locations with cross-region confirmation, 2026-07-21), UpWatch ("triple-probe
+consensus" as its top-tier feature, 2026-07-27).
+
+*Status update 2026-07-27:* three of those five appeared in the last five weeks.
+Multi-probe consensus has crossed from differentiator to commodity copy — treat a
+headline built on "we confirm from several places" as no longer distinguishing,
+and lead instead with the half none of them can copy: **the probes run inside the
+customer's own network, self-hosted**.
+
+**Axis 3 — "your platform already monitors your apps" (bundling, 2026-07-27).**
+The self-hoster segment is increasingly served monitoring as a bundled feature of
+something else: Temps (563★ Rust PaaS, README sells it as replacing "Better Uptime
+/ Pingdom ($20+/mo)" at $0), plus the Coolify / Dokploy / Zoraxy built-ins. This is
+a distribution threat, not a capability one — nobody installs a second tool for
+something their platform claims to already do.
+*Counter (honest, no trashing):* bundled monitors are **platform-internal** — they
+watch deploys, crashes, cert expiry and backups **from inside the same host**, so
+they share fate with what they monitor. A host-level outage takes the alerting down
+with it, and none of them probe from outside or across protocols. Answer this
+head-on on the self-hoster page; it does not deserve a `/vs/` page.
 
 **What SolidPing has that these lean on but can't match:**
 - *Axis 1:* genuinely simple (single binary, like Uptime Kuma) **and** no per-seat
   / per-monitor cost because it's self-hosted OSS — the SaaS "cheap" tiers still
   cap monitors/seats and rent you your own data.
 - *Axis 2:* real distributed workers across regions for consensus + private-network
-  probing, built in — not a paid add-on tier.
+  probing, built in — not a paid add-on tier. And self-hosted: the consensus
+  vantage points can be *yours*, which no SaaS on this list offers.
+- *Axis 3:* an external observer with its own fate, plus 32 check types — the two
+  things a platform built-in structurally cannot provide.
 
 **Recommendation:** pair both axes in a single headline, because no single
 competitor above can claim both at once:
