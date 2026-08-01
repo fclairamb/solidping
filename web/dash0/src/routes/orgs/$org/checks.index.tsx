@@ -93,9 +93,10 @@ import {
 import { QueryErrorView } from "@/components/shared/error-views";
 import { LabelFilter } from "@/components/shared/label-filter";
 import { checkLabel, tunnelCheckUidOf } from "@/components/checks/tunnel";
-import { ApiError, apiFetch } from "@/api/client";
+import { ApiError, apiFetch, getApiErrorField } from "@/api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseLabelsParam, serializeLabelsParam } from "@/lib/labels";
+import { slugify } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLiveSubscription } from "@/contexts/LiveEventsContext";
 
@@ -103,6 +104,12 @@ interface ChecksIndexSearch {
   labels?: string;
   status?: string;
 }
+
+// Group slugs are 3-40 chars: a lowercase letter followed by 2-39 lowercase
+// letters/digits/hyphens. This mirrors slugRegex in
+// server/internal/handlers/checkgroups/service.go — deliberately NOT the
+// check form's 3-50 rule (check-form.tsx), which is a different resource.
+const groupSlugRegex = /^[a-z][a-z0-9-]{2,39}$/;
 
 export const Route = createFileRoute("/orgs/$org/checks/")({
   component: ChecksIndexPage,
@@ -557,6 +564,12 @@ function ChecksIndexPage() {
   const [deleteCheckUid, setDeleteCheckUid] = useState<string | null>(null);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupSlug, setNewGroupSlug] = useState("");
+  const [newGroupSlugManuallyEdited, setNewGroupSlugManuallyEdited] =
+    useState(false);
+  const [newGroupSlugError, setNewGroupSlugError] = useState<
+    string | undefined
+  >(undefined);
   const [changeGroupCheck, setChangeGroupCheck] = useState<Check | null>(null);
   const debouncedSearch = useDebounce(search, 300);
 
@@ -695,13 +708,35 @@ function ChecksIndexPage() {
 
   const handleCreateGroup = async () => {
     if (!newGroupName.trim()) return;
+    const trimmedSlug = newGroupSlug.trim();
+    if (trimmedSlug && !groupSlugRegex.test(trimmedSlug)) {
+      setNewGroupSlugError(t("dialog.groupSlugInvalid"));
+      return;
+    }
     try {
-      await createGroup.mutateAsync({ name: newGroupName.trim() });
+      await createGroup.mutateAsync({
+        name: newGroupName.trim(),
+        // Untouched and empty keeps sending nothing so the server derives
+        // the slug from the name, exactly like before this field existed.
+        ...(trimmedSlug ? { slug: trimmedSlug } : {}),
+      });
       toast.success(t("toast.groupCreated"));
       setNewGroupName("");
+      setNewGroupSlug("");
+      setNewGroupSlugManuallyEdited(false);
+      setNewGroupSlugError(undefined);
       setShowNewGroup(false);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t("toast.groupCreateFailed"));
+      const fieldMessage = getApiErrorField(err, "slug");
+      if (fieldMessage && err instanceof ApiError) {
+        setNewGroupSlugError(
+          err.message.toLowerCase().includes("already exists")
+            ? t("dialog.groupSlugTaken")
+            : t("dialog.groupSlugInvalid"),
+        );
+      } else {
+        toast.error(err instanceof ApiError ? err.message : t("toast.groupCreateFailed"));
+      }
     }
   };
 
@@ -989,7 +1024,18 @@ function ChecksIndexPage() {
       </AlertDialog>
 
       {/* New Group Dialog */}
-      <Dialog open={showNewGroup} onOpenChange={setShowNewGroup}>
+      <Dialog
+        open={showNewGroup}
+        onOpenChange={(open) => {
+          setShowNewGroup(open);
+          if (!open) {
+            setNewGroupName("");
+            setNewGroupSlug("");
+            setNewGroupSlugManuallyEdited(false);
+            setNewGroupSlugError(undefined);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("dialog.newGroupTitle")}</DialogTitle>
@@ -1001,13 +1047,49 @@ function ChecksIndexPage() {
                 id="group-name"
                 placeholder={t("dialog.groupNamePlaceholder")}
                 value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
+                onChange={(e) => {
+                  setNewGroupName(e.target.value);
+                  if (!newGroupSlugManuallyEdited) {
+                    setNewGroupSlug(slugify(e.target.value));
+                  }
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleCreateGroup();
                 }}
                 autoFocus
                 data-testid="new-group-name-input"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="group-slug">{t("dialog.groupSlug")}</Label>
+              <Input
+                id="group-slug"
+                placeholder="prod-eu-west"
+                value={newGroupSlug}
+                onChange={(e) => {
+                  setNewGroupSlug(e.target.value);
+                  setNewGroupSlugManuallyEdited(true);
+                  setNewGroupSlugError(undefined);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreateGroup();
+                }}
+                className={newGroupSlugError ? "border-destructive" : ""}
+                aria-invalid={!!newGroupSlugError}
+                data-testid="new-group-slug-input"
+              />
+              {newGroupSlugError ? (
+                <p
+                  className="text-xs text-destructive"
+                  data-testid="new-group-slug-error"
+                >
+                  {newGroupSlugError}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {t("dialog.groupSlugHelp")}
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>
