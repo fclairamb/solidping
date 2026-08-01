@@ -277,12 +277,3 @@ func (c *Client) do(ctx context.Context, method, path string, activity *Activity
 
 	return &result, nil
 }
-
-// ResetTokenCache drops every cached bearer token. Exported for tests, which
-// reuse the same app id across fake connectors.
-func ResetTokenCache() {
-	tokenCache.mu.Lock()
-	defer tokenCache.mu.Unlock()
-
-	tokenCache.entries = map[string]tokenEntry{}
-}
