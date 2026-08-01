@@ -5,7 +5,7 @@ pipeline (Hacker News, Mastodon, Lobsters, dev.to, GitHub issues/PRs, LowEndTalk
 Lemmy) that are **not** deep-dived in the per-competitor tier files. Most are solo
 / indie / hackathon / content-farm projects with little traction; a handful are
 genuine rivals. This page is the catalog; the tier files
-([comparison.md](comparison.md), [full-list.md](full-list.md), and the
+([comparison/](comparison/README.md), [full-list.md](full-list.md), and the
 per-vendor folders) stay focused on established players.
 
 **Legend** — `track: true` = scope overlaps SolidPing enough to watch actively;

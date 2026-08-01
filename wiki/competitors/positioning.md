@@ -3,12 +3,13 @@
 How SolidPing should position against the field — buyer-profile win/lose, the
 objections to pre-empt, the positioning trends worth defending, and the messaging
 angles derived from competitor analysis. This is the marketing-facing companion to
-the capability inventory in [comparison.md](comparison.md) (§"SolidPing's
-Competitive Position"), which stays the canonical feature/pricing source of truth.
+the capability inventory in [comparison/](comparison/README.md) (specifically
+[comparison/solidping-position.md](comparison/solidping-position.md)), which stays
+the canonical feature/pricing source of truth.
 
 > Provenance: migrated 2026-07-11 from the SolidPing marketing repo
 > (`solidping-marketing/memory/competitors-detail.md`). Feature claims here are
-> summaries — [comparison.md](comparison.md) and the per-vendor tier files are
+> summaries — [comparison/](comparison/README.md) and the per-vendor tier files are
 > authoritative for exact numbers.
 
 ---
@@ -151,7 +152,7 @@ targets:
 
 For the underlying capability claims behind these hooks (multi-tenant self-host,
 JMAP inbox monitoring, envelope-encrypted credentials, distributed workers,
-group-incident correlation, etc.), see [comparison.md](comparison.md).
+group-incident correlation, etc.), see [comparison/solidping-position.md](comparison/solidping-position.md).
 
 ---
 

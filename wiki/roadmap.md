@@ -19,7 +19,8 @@ The original roadmap is fully shipped. SolidPing now has 38 public check types (
 
 The product has crossed the bar where it can credibly replace **BetterStack + Opsgenie/PagerDuty** for self-hosted teams. The remaining work is about **closing the last competitive gaps** and **lowering switching cost** for users on other tools.
 
-See `competitors/comparison.md` for the full ✅/❌ inventory against 8 competitors.
+See `competitors/comparison/` for the full ✅/❌ inventory against 8 competitors
+(`competitors/comparison/solidping-position.md` for the Tier 1/2/3 breakdown).
 
 ---
 
