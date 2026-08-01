@@ -194,6 +194,8 @@ func (c *BetterStackConverter) ConvertContext(ctx context.Context, input []byte)
 		return nil, fmt.Errorf("%w: no Better Stack monitor could be mapped to a SolidPing check", ErrEmptyInput)
 	}
 
+	normalizeChecks(doc, warn)
+
 	return &ConversionResult{Document: doc, Warnings: warn.result()}, nil
 }
 

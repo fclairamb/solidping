@@ -126,6 +126,8 @@ func (c *GatusConverter) Convert(input []byte) (*ConversionResult, error) {
 		return nil, fmt.Errorf("%w: no gatus endpoint could be mapped to a SolidPing check", ErrEmptyInput)
 	}
 
+	normalizeChecks(doc, warn)
+
 	return &ConversionResult{Document: doc, Warnings: warn.result()}, nil
 }
 
@@ -375,7 +377,7 @@ func gatusDNSConfig(ep *gatusEndpoint, target gatusTarget, timeout string) map[s
 		cfg["record_type"] = strings.ToUpper(ep.DNS.QueryType)
 	}
 
-	if resolver := strings.TrimPrefix(target.host, "dns://"); resolver != "" {
+	if resolver := withDefaultPort(strings.TrimPrefix(target.host, "dns://"), dnsDefaultPort); resolver != "" {
 		cfg["nameserver"] = resolver
 	}
 
@@ -394,15 +396,11 @@ func gatusSSHConfig(ep *gatusEndpoint, target gatusTarget, name string, warn *wa
 		cfg["port"] = target.port
 	}
 
-	if ep.SSH != nil {
-		if ep.SSH.Username != "" {
-			cfg["username"] = ep.SSH.Username
-		}
-
-		if ep.SSH.Password != "" {
-			warn.add(name, "ssh.password",
-				"the SSH password was not imported — re-enter the credential on the check")
-		}
+	if ep.SSH != nil && (ep.SSH.Username != "" || ep.SSH.Password != "") {
+		// The credential is deliberately dropped, and a username without a
+		// password or key fails checker validation — so neither half is kept.
+		warn.add(name, "ssh",
+			"the SSH credentials were not imported — re-enter the username and password/key on the check")
 	}
 
 	return cfg
@@ -478,7 +476,7 @@ func (c *GatusConverter) applyConditions(
 	}
 
 	if len(assertions) > 0 {
-		check.Config["json_path_assertions"] = gatusAssertionRoot(assertions)
+		check.Config["json_path_assertions"] = assertionConfig(gatusAssertionRoot(assertions))
 	}
 
 	return extra

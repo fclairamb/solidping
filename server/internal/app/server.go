@@ -52,6 +52,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkjobs"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
+	"github.com/fclairamb/solidping/server/internal/handlers/checks/importers"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
@@ -703,6 +704,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecksAdmin.GET("/export", checksHandler.ExportChecks)
 	orgChecksAdmin.POST("/import", checksHandler.ImportChecks)
 	orgChecksAdmin.POST("/apply", checksHandler.ApplyChecks)
+
+	// Third-party importers (Gatus / Better Stack / Uptime Kuma) convert a
+	// foreign config into the canonical export document and then reuse the very
+	// same ApplyChecks path above — no second import pipeline.
+	importersHandler := importers.NewHandler(checksService, s.config)
+	importersHandler.RegisterRoutes(orgChecksAdmin)
 
 	orgChecks.POST("/validate", checksHandler.ValidateCheck)
 	orgChecks.GET("/:checkUid", checksHandler.GetCheck)

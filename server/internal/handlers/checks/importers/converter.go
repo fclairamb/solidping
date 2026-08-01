@@ -12,13 +12,17 @@
 package importers
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkhttp"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 )
 
@@ -227,6 +231,77 @@ func newDocument(source string) *checks.ExportDocument {
 		Checks:       []checks.ExportCheck{},
 	}
 }
+
+// normalizeChecks post-processes a converted document so it satisfies the
+// invariants the checks service enforces on apply. Today that is the per-type
+// minimum period: a source tool may poll a certificate every 30s, but SolidPing
+// refuses an ssl check under 1h, and a rejected check would be reported as a
+// per-check error rather than imported.
+func normalizeChecks(doc *checks.ExportDocument, warn *warnings) {
+	for i := range doc.Checks {
+		check := &doc.Checks[i]
+
+		meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckType(check.Type))
+		if meta == nil || check.Period == "" {
+			continue
+		}
+
+		minPeriod := meta.MinPeriod
+		if minPeriod == 0 {
+			minPeriod = checkerdef.GlobalMinPeriod
+		}
+
+		period, err := time.ParseDuration(check.Period)
+		if err == nil && period >= minPeriod {
+			continue
+		}
+
+		replacement := meta.DefaultPeriod
+		if replacement < minPeriod {
+			replacement = minPeriod
+		}
+
+		warn.add(check.Name, "period",
+			"period %q is below the minimum for %s checks; raised to %s",
+			check.Period, check.Type, durationToPeriod(replacement))
+
+		check.Period = durationToPeriod(replacement)
+	}
+}
+
+// assertionConfig renders a JSONPath assertion tree as the plain map the http
+// checker's config validation expects (it rejects a typed struct value).
+func assertionConfig(node checkhttp.AssertionNode) map[string]any {
+	encoded, err := json.Marshal(node)
+	if err != nil {
+		return nil
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		return nil
+	}
+
+	return decoded
+}
+
+// withDefaultPort appends a default port to a bare host, for config fields that
+// require the host:port form (the DNS checker's nameserver).
+func withDefaultPort(host string, port int) string {
+	trimmed := strings.TrimSpace(host)
+	if trimmed == "" {
+		return ""
+	}
+
+	if _, _, err := net.SplitHostPort(trimmed); err == nil {
+		return trimmed
+	}
+
+	return net.JoinHostPort(trimmed, strconv.Itoa(port))
+}
+
+// dnsDefaultPort is the port appended to a bare nameserver address.
+const dnsDefaultPort = 53
 
 // SupportedSources lists every source identifier the convert endpoint accepts.
 func SupportedSources() []string {

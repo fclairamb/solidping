@@ -63,7 +63,7 @@ func TestUptimeKumaConverterMapsEveryType(t *testing.T) {
 
 	dns := checkBySlug(t, doc, "dns-record")
 	r.Equal("dns", dns.Type)
-	r.Equal("1.1.1.1", dns.Config["nameserver"])
+	r.Equal("1.1.1.1:53", dns.Config["nameserver"], "the dns checker requires host:port")
 	r.Equal("A", dns.Config["record_type"])
 
 	docker := checkBySlug(t, doc, "nginx-container")

@@ -121,7 +121,10 @@ func TestGatusConverterMapsCoreFields(t *testing.T) {
 
 	bastion := checkBySlug(t, doc, "bastion")
 	r.Equal("ssh", bastion.Type)
-	r.Equal("monitor", bastion.Config["username"])
+	r.Equal("bastion.example.org", bastion.Config["host"])
+	// Credentials are never imported, and a username with no credential would
+	// fail checker validation — so neither half is carried over.
+	r.NotContains(bastion.Config, "username")
 	r.NotContains(bastion.Config, "password")
 
 	udp := checkBySlug(t, doc, "syslog-relay")
@@ -136,7 +139,7 @@ func TestGatusConverterMapsCoreFields(t *testing.T) {
 	r.Equal("dns", dns.Type)
 	r.Equal("example.org", dns.Config["host"])
 	r.Equal("A", dns.Config["record_type"])
-	r.Equal("8.8.8.8", dns.Config["nameserver"])
+	r.Equal("8.8.8.8:53", dns.Config["nameserver"], "the dns checker requires host:port")
 	r.Equal([]any{"93.184.216.34"}, dns.Config["expected_values"])
 }
 
@@ -155,7 +158,7 @@ func TestGatusConverterWarnsOnUnmappableItems(t *testing.T) {
 	r.True(warningMentions(result.Warnings, "ignore-redirect"), "ignore-redirect must warn")
 	r.True(warningMentions(result.Warnings, "external-endpoint"), "external endpoints must warn")
 	r.True(warningMentions(result.Warnings, "sctp"), "unsupported scheme must warn")
-	r.True(warningMentions(result.Warnings, "SSH password"), "ssh password must warn")
+	r.True(warningMentions(result.Warnings, "SSH credentials"), "ssh credentials must warn")
 
 	// …but the unsupported endpoint is the only one dropped.
 	for i := range result.Document.Checks {

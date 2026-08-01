@@ -47,9 +47,9 @@
         "type": "http",
         "config": {
           "json_path_assertions": {
-            "type": "assertion",
-            "path": "$.status.state",
             "operator": "eq",
+            "path": "$.status.state",
+            "type": "assertion",
             "value": "healthy"
           },
           "url": "https://api.example.org/status"
@@ -85,7 +85,7 @@
         "type": "dns",
         "config": {
           "host": "example.org",
-          "nameserver": "1.1.1.1",
+          "nameserver": "1.1.1.1:53",
           "record_type": "A"
         },
         "enabled": true,

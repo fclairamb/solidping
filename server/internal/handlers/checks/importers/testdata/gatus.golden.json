@@ -16,21 +16,21 @@
             "X-Tenant": "acme"
           },
           "json_path_assertions": {
-            "type": "and",
             "children": [
               {
-                "type": "assertion",
-                "path": "$.status",
                 "operator": "eq",
+                "path": "$.status",
+                "type": "assertion",
                 "value": "UP"
               },
               {
-                "type": "assertion",
-                "path": "$.version",
                 "operator": "neq",
+                "path": "$.version",
+                "type": "assertion",
                 "value": "0"
               }
-            ]
+            ],
+            "type": "and"
           },
           "method": "POST",
           "timeout": "5s",
@@ -50,7 +50,7 @@
           "warningDays": 2
         },
         "enabled": true,
-        "period": "30s",
+        "period": "6h",
         "group": "core"
       },
       {
@@ -64,9 +64,9 @@
             "301"
           ],
           "json_path_assertions": {
-            "type": "assertion",
+            "operator": "not_exists",
             "path": "$.errors",
-            "operator": "not_exists"
+            "type": "assertion"
           },
           "method": "GET",
           "url": "https://www.example.org"
@@ -84,7 +84,7 @@
           "thresholdDays": 30
         },
         "enabled": true,
-        "period": "1m",
+        "period": "24h",
         "group": "public"
       },
       {
@@ -142,8 +142,7 @@
         "type": "ssh",
         "config": {
           "host": "bastion.example.org",
-          "port": 22,
-          "username": "monitor"
+          "port": 22
         },
         "enabled": true,
         "period": "1m"
@@ -178,7 +177,7 @@
             "93.184.216.34"
           ],
           "host": "example.org",
-          "nameserver": "8.8.8.8",
+          "nameserver": "8.8.8.8:53",
           "record_type": "A"
         },
         "enabled": true,
@@ -228,13 +227,23 @@
     },
     {
       "item": "bastion",
-      "field": "ssh.password",
-      "message": "the SSH password was not imported — re-enter the credential on the check"
+      "field": "ssh",
+      "message": "the SSH credentials were not imported — re-enter the username and password/key on the check"
     },
     {
       "item": "unsupported transport",
       "field": "url",
       "message": "endpoint skipped: url scheme \"sctp\" has no SolidPing check type"
+    },
+    {
+      "item": "back-end-ssl",
+      "field": "period",
+      "message": "period \"30s\" is below the minimum for ssl checks; raised to 6h"
+    },
+    {
+      "item": "marketing site-domain",
+      "field": "period",
+      "message": "period \"1m\" is below the minimum for domain checks; raised to 24h"
     }
   ]
 }

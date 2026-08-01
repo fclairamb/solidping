@@ -181,6 +181,54 @@ Query parameters:
 }
 ```
 
+### POST /api/v1/orgs/:org/checks/import/convert
+Import checks from a third-party monitoring tool. Auth: **admin** (org admin
+role required).
+
+Converts a foreign configuration into the canonical export document and then
+feeds it through the **existing** `ApplyChecks` path — there is no second
+import pipeline, so slug upsert, group auto-creation, config validation and
+per-check error collection all behave exactly as they do for `/apply`.
+
+Query parameters:
+- `source` — `gatus` | `betterstack` | `uptime-kuma` (required).
+- `dryRun=true` — compute and return the plan only; mutate nothing.
+
+Request body, per source:
+
+| Source | Body | Notes |
+|---|---|---|
+| `gatus` | the raw `config.yaml` | Gatus has no config-export API. |
+| `uptime-kuma` | the raw backup JSON | Settings → Backup → Export (Kuma 1.x). |
+| `betterstack` | `{"token": "...", "baseUrl": "..."}` | The server fetches every page of `/api/v2/monitors` **and** `/api/v2/heartbeats`. `baseUrl` is optional (tests / proxies). The token is used transiently for that fetch and is **never persisted, logged, or echoed in an error**. |
+
+Each converted document is applied under a per-source managed manifest
+(`solidping.io/managed=gatus` / `betterstack` / `uptime-kuma`), so re-importing
+the same source updates in place and stays idempotent. `prune` is never enabled
+for a conversion — a foreign export is a partial view of the org.
+
+**Response** (the apply/dry-run shape, plus conversion metadata):
+```json
+{
+  "source": "gatus",
+  "converted": 12,
+  "manifest": "gatus",
+  "dryRun": true,
+  "created": 12, "updated": 0, "unmanaged": 0,
+  "plan": [{"slug": "back-end", "action": "create"}],
+  "errors": [],
+  "warnings": [
+    {"item": "back-end", "field": "conditions",
+     "message": "condition \"[RESPONSE_TIME] < 300\" has no SolidPing equivalent and was dropped"}
+  ]
+}
+```
+
+`warnings` lists everything that did not map faithfully — unmappable
+conditions/monitor types, credentials that were deliberately not imported,
+notification bindings, and the heartbeat/push URL change. Unmappable items
+never block the import: what maps is imported, the rest is reported.
+
 ## Check Dependencies
 
 Parent/child DAG edges between checks, used to suppress downstream noise. All

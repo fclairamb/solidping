@@ -136,6 +136,8 @@ func (c *UptimeKumaConverter) Convert(input []byte) (*ConversionResult, error) {
 		return nil, fmt.Errorf("%w: no Uptime Kuma monitor could be mapped to a SolidPing check", ErrEmptyInput)
 	}
 
+	normalizeChecks(doc, warn)
+
 	return &ConversionResult{Document: doc, Warnings: warn.result()}, nil
 }
 
@@ -328,12 +330,12 @@ func (c *UptimeKumaConverter) httpConfig(monitor *kumaMonitor, timeout string, w
 		}
 	case "json-query":
 		if monitor.JSONPath != "" {
-			cfg["json_path_assertions"] = checkhttp.AssertionNode{
+			cfg["json_path_assertions"] = assertionConfig(checkhttp.AssertionNode{
 				Type:     checkhttp.NodeTypeAssertion,
 				Path:     kumaJSONPath(monitor.JSONPath),
 				Operator: "eq",
 				Value:    monitor.ExpectedValue,
-			}
+			})
 		}
 	}
 
@@ -407,8 +409,8 @@ func kumaHostPort(monitor *kumaMonitor, timeout string) map[string]any {
 func kumaDNSConfig(monitor *kumaMonitor) map[string]any {
 	cfg := map[string]any{"host": monitor.Hostname}
 
-	if monitor.DNSResolveServer != "" {
-		cfg["nameserver"] = monitor.DNSResolveServer
+	if resolver := withDefaultPort(monitor.DNSResolveServer, dnsDefaultPort); resolver != "" {
+		cfg["nameserver"] = resolver
 	}
 
 	if monitor.DNSResolveType != "" {
