@@ -102,17 +102,34 @@ export class NetworkError extends Error {
   }
 }
 
+/** A single field-level validation error, as returned in a VALIDATION_ERROR body's `fields`. */
+export interface ApiErrorField {
+  name: string;
+  message: string;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
     public code: string,
     public detail?: string,
     public status?: number,
-    public retryAfter?: number
+    public retryAfter?: number,
+    /** Field-level errors from a VALIDATION_ERROR response (e.g. slug conflicts), if any. */
+    public fields?: ApiErrorField[]
   ) {
     super(message);
     this.name = "ApiError";
   }
+}
+
+/** Looks up a single field's message from an ApiError's `fields`, if present. */
+export function getApiErrorField(
+  err: unknown,
+  name: string
+): string | undefined {
+  if (!(err instanceof ApiError)) return undefined;
+  return err.fields?.find((f) => f.name === name)?.message;
 }
 
 function getStoredOrg(): string | null {
@@ -231,7 +248,9 @@ async function handleResponse<T>(
       error.title || "An error occurred",
       error.code || "UNKNOWN_ERROR",
       error.detail,
-      response.status
+      response.status,
+      undefined,
+      error.fields
     );
   }
 
