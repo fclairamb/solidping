@@ -19,6 +19,15 @@ export interface CheckGroup {
   description?: string;
   sortOrder: number;
   checkCount: number;
+  /**
+   * Derived, read-time rollup of the group's enabled member checks (see
+   * openapi.yaml CheckGroup schema for the exact precedence rule). Never
+   * stored — recomputed on every read, so it's always current regardless of
+   * which page of members has loaded client-side.
+   */
+  status: string;
+  /** Count of enabled member checks per wire status, zero counts omitted. */
+  memberStatusCounts?: Record<string, number>;
   /** Group-level escalation policy member checks inherit; null = none. */
   escalationPolicyUid?: string | null;
   createdAt: string;
