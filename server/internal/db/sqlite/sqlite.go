@@ -1364,8 +1364,8 @@ func applyChecksOrdering(query *bun.SelectQuery, filter *models.ListChecksFilter
 	if filter != nil && filter.SortByTargetHost {
 		return query.
 			ColumnExpr("*").
-			ColumnExpr(targetHostSortKeyExpr+" AS target_host_sort_key").
-			OrderExpr(targetHostSortKeyExpr+" ASC").
+			ColumnExpr(targetHostSortKeyExpr + " AS target_host_sort_key").
+			OrderExpr(targetHostSortKeyExpr + " ASC").
 			OrderExpr("COALESCE(name, '') ASC").
 			Order("uid ASC")
 	}

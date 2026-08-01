@@ -1334,12 +1334,21 @@ const groupSortKeyExpr = `COALESCE((SELECT g.sort_order FROM check_groups AS g `
 // those fields. A same-host prefix (the common case: same scheme, same host,
 // differing path) still sorts contiguously, which is all this ordering needs
 // to do — clients bucket by the exact `targetHost` field from each response,
-// not by this key. Kept byte-identical in spirit to the sqlite twin (differs
-// only in the JSONB vs json_extract accessor) for the same reason as
-// groupSortKeyExpr.
-const targetHostSortKeyExpr = `COALESCE(` +
+// not by this key.
+//
+// Forced to COLLATE "C": Postgres's default database collation is locale-aware
+// (e.g. en_US.UTF-8, via ICU/glibc) and does NOT guarantee the sentinel's
+// U+FFFF noncharacter bytes compare greater than ordinary hostname text —
+// under that collation the sentinel sorted FIRST instead of last, silently
+// breaking the "none of host/url/target sorts last" contract (caught by
+// TestListChecksSortByTargetHostOrdering_Postgres). "C" collation is always a
+// raw byte comparison, matching SQLite's default (non-locale) BINARY
+// collation, so both stores behave identically — the reason this is NOT kept
+// byte-identical in spirit to the sqlite twin's raw expression the way
+// groupSortKeyExpr is (that one is numeric and has no collation to fight).
+const targetHostSortKeyExpr = `(COALESCE(` +
 	`NULLIF(config->>'host', ''), NULLIF(config->>'url', ''), NULLIF(config->>'target', ''), ` +
-	"'￿￿￿￿￿￿￿￿￿￿')"
+	`'￿￿￿￿￿￿￿￿￿￿') COLLATE "C")`
 
 // applyChecksCursor adds the keyset cursor predicate to the ListChecks row
 // query. sort=group uses a composite (group key, created_at, uid) tuple;
@@ -1405,8 +1414,8 @@ func applyChecksOrdering(query *bun.SelectQuery, filter *models.ListChecksFilter
 	if filter != nil && filter.SortByTargetHost {
 		return query.
 			ColumnExpr("*").
-			ColumnExpr(targetHostSortKeyExpr+" AS target_host_sort_key").
-			OrderExpr(targetHostSortKeyExpr+" ASC").
+			ColumnExpr(targetHostSortKeyExpr + " AS target_host_sort_key").
+			OrderExpr(targetHostSortKeyExpr + " ASC").
 			OrderExpr("COALESCE(name, '') ASC").
 			Order("uid ASC")
 	}
