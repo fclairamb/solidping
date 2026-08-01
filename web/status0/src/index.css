@@ -132,3 +132,37 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Public theming hooks (`sp-*`).
+
+   These class names are a DOCUMENTED PUBLIC API used by operator-authored
+   custom CSS — see web/docs/docs/features/status-pages.md ("Element hooks").
+   Do not rename them casually; a rename silently breaks every customer
+   stylesheet in the field.
+
+   The logo rules live here (and not as an inline style on the <img>) so an
+   operator can override them: the custom stylesheet is rendered as a <style>
+   element inside the app root, i.e. LATER in document order, so an equally
+   specific `.sp-logo img { … }` rule of theirs wins. Both documented
+   replacement techniques therefore work:
+
+     .sp-logo img { content: url("https://cdn.example/logo.svg"); }
+
+     .sp-logo img { display: none; }
+     .sp-logo { background: url("https://cdn.example/logo.svg") center /
+                contain no-repeat; width: 120px; }
+
+   `min-height` on the wrapper keeps the box from collapsing to zero when the
+   <img> is hidden, so the background fallback stays visible even if the
+   operator only sets a width.
+   --------------------------------------------------------------------------- */
+.sp-logo {
+  min-height: var(--sp-logo-size, 2rem);
+}
+
+.sp-logo img {
+  width: var(--sp-logo-size, 2rem);
+  height: var(--sp-logo-size, 2rem);
+  object-fit: contain;
+}

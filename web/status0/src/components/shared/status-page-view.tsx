@@ -201,8 +201,13 @@ export function StatusPageView({
       <header className="border-b border-border">
         <div className="mx-auto max-w-3xl px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
+            {/* `sp-logo` is added by <Logo> itself; `sp-page-name` here.
+                Both are documented custom-CSS hooks (public API) — see
+                web/docs/docs/features/status-pages.md. Do not rename. */}
             <Logo size={32} />
-            <span className="font-semibold text-base">{page.name}</span>
+            <span className="sp-page-name font-semibold text-base">
+              {page.name}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <LanguageSwitcher />
@@ -278,17 +283,28 @@ export function StatusPageView({
 
         {/* Footer — outbound brand link to solidping.io. text-brand
             (pink) signals "leaves this page" vs internal nav which
-            stays primary blue. */}
-        <div className="mt-12 text-center text-xs text-muted-foreground flex flex-col items-center gap-1">
+            stays primary blue.
+
+            `sp-footer` / `sp-powered-by` / `sp-version` are documented
+            custom-CSS hooks (public API) — see
+            web/docs/docs/features/status-pages.md. Do not rename. */}
+        <div className="sp-footer mt-12 text-center text-xs text-muted-foreground flex flex-col items-center gap-1">
           <a
             href="https://www.solidping.io"
             target="_blank"
             rel="noreferrer noopener"
-            className="text-brand hover:underline"
+            className="sp-powered-by text-brand hover:underline"
           >
             {t("poweredBy")}
           </a>
-          {versionInfo ? <span>v{versionInfo.version}</span> : null}
+          {versionInfo ? (
+            // translate="no": the version string is rewritten on every poll,
+            // and Chrome auto-translate re-parents such text nodes into <font>
+            // wrappers, which breaks React reconciliation (see main.tsx).
+            <span className="sp-version" translate="no">
+              v{versionInfo.version}
+            </span>
+          ) : null}
         </div>
       </div>
     </div>
