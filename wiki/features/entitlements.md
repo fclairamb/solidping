@@ -23,7 +23,7 @@ The OSS never models "you're on the Pro plan, so you get…". It stores the
 
 ## Limits
 
-`EntitlementLimits` carries exactly four fields. Each is a `*int`; `nil` means
+`EntitlementLimits` carries seven fields. Each is a `*int`; `nil` means
 **unlimited**.
 
 | Field | Meaning | Enforced at |
@@ -32,6 +32,18 @@ The OSS never models "you're on the Pro plan, so you get…". It stores the
 | `maxUsers` | Total org members, however they joined. | `CheckMembership` → [`auth/service.go:413`](../../server/internal/handlers/auth/service.go) |
 | `maxChecksPerMinute` | Aggregate check-execution rate (token bucket). | `ReserveCheckExecution` → [`checkworker/worker.go:877`](../../server/internal/checkworker/worker.go), [`agentws/handler.go:502`](../../server/internal/handlers/agentws/handler.go) |
 | `maxDeportedAgents` | Active deported (private-location) agents across all private regions. | `AgentCreateAllowed` → [`agents/service.go` (`MintEnrollmentToken`)](../../server/internal/handlers/agents/service.go), [`agentws/handler.go` (`awaitEnroll`)](../../server/internal/handlers/agentws/handler.go) |
+| `maxCustomDomains` | Status pages served on a customer-owned domain. | `CustomDomainAllowed` → [`entitlements/usage.go:144`](../../server/internal/entitlements/usage.go), called from [`statuspages/custom_domain.go:208-212`](../../server/internal/handlers/statuspages/custom_domain.go) |
+| `maxSmsPerMonth` | Outbound SMS sent by the org per UTC calendar month. | notification dispatch (SMS channel) |
+| `maxCallsPerMonth` | Outbound voice calls placed by the org per UTC calendar month. | notification dispatch (voice channel) |
+
+`maxCustomDomains` is a **soft, one-directional gate**: only the transition
+from "page has no custom domain" to "page has one" is checked against the
+cap. Swapping an already-custom-domained page to a different domain is free
+(it does not increase the count), and an org that drops below its cap (e.g.
+after a downgrade) keeps its existing custom domains working — nothing is
+revoked retroactively. Enforced at the domain editor's save path, which
+renders a `402` as a quota alert
+([`status-page-custom-domain.tsx:56,72,149`](../../web/dash0/src/components/shared/status-page-custom-domain.tsx)).
 
 `maxUsers` was renamed from `maxSsoUsers` (spec `2026-07-12-02`). The old key
 survives as a **decode-only alias**; the payload always re-marshals as
@@ -61,15 +73,21 @@ after an upgrade or after deleting another agent.
 
 `DefaultsFor(mode)` — anything not listed is `nil` (unlimited):
 
-| Mode | maxChecks | maxUsers | maxChecksPerMinute | maxDeportedAgents | Display identity |
-|---|---|---|---|---|---|
-| Self-hosted | unlimited | 30 | unlimited | unlimited | 🏠 Self-hosted |
-| SaaS | 100 | 5 | 6 | 1 | 🆓 Free |
+| Mode | maxChecks | maxUsers | maxChecksPerMinute | maxDeportedAgents | maxCustomDomains | maxSmsPerMonth | maxCallsPerMonth | Display identity |
+|---|---|---|---|---|---|---|---|---|
+| Self-hosted | unlimited | 30 | unlimited | unlimited | unlimited | unlimited | unlimited | 🏠 Self-hosted |
+| SaaS | 100 | 5 | 6 | 1 | 0 | 0 | 0 | 🆓 Free |
 
 Self-hosted's unlimited `maxDeportedAgents` preserves the "free private
 locations" competitive positioning (see
 [deported-agents.md](deported-agents.md#competitive-position)). SaaS's `1`
 mirrors the Free SKU of the plan ladder (Free 1, Starter 3, Pro 6, Scale 9).
+
+SaaS's `maxCustomDomains`, `maxSmsPerMonth` and `maxCallsPerMonth` are all `0`
+on the Free plan — none of the three ship on Free, and billing raises them per
+paid plan. The plan ladder itself (which paid plan gets how many custom
+domains, SMS, or calls) is owned by `solidping-billing`, not this repo — see
+its `plans` package for the authoritative numbers.
 
 The SaaS numbers implement the Free tier of the 2026-07-12 pricing decision and
 **must stay in sync** with `solidping-billing`'s Free SKU — they are the
@@ -99,7 +117,7 @@ composing three things:
 The resolver always merges defaults in first, so external callers never see a
 nil-means-default ambiguity.
 
-`Usage` has four fields:
+`Usage` has five fields:
 
 | Field | Meaning |
 |---|---|
@@ -107,6 +125,7 @@ nil-means-default ambiguity.
 | `checksPerMinute` | Aggregate execution rate derived from per-check periods. |
 | `ssoUsers` | Total member count. **The wire key stays `ssoUsers` for back-compat** even though it is enforced against `maxUsers`. |
 | `agents` | Active (non-revoked, non-deleted) deported agents across all private regions. Enforced against `maxDeportedAgents`. |
+| `customDomains` | Live status pages with a custom domain set. Enforced against `maxCustomDomains` (soft, one-directional — see [Limits](#limits)). |
 
 ## Sources
 
@@ -174,7 +193,10 @@ The complete payload is:
     "maxChecks": 100,
     "maxUsers": 5,
     "maxChecksPerMinute": 6,
-    "maxDeportedAgents": 1
+    "maxDeportedAgents": 1,
+    "maxCustomDomains": 0,
+    "maxSmsPerMonth": 0,
+    "maxCallsPerMonth": 0
   },
   "displayName": "Team",
   "displayEmoji": "🚀"
@@ -191,8 +213,9 @@ The complete payload is:
   or `allowedCheckTypes` fails the entire request.
 
 Accepted request keys: `limits` (`maxChecks`, `maxUsers`, `maxChecksPerMinute`,
-`maxDeportedAgents`, `maxSsoUsers`), `source`, `displayName`, `displayEmoji`,
-`externalRef`, `metadata`, `expiresAt`, `lastSyncedAt`.
+`maxDeportedAgents`, `maxCustomDomains`, `maxSmsPerMonth`, `maxCallsPerMonth`,
+`maxSsoUsers`), `source`, `displayName`, `displayEmoji`, `externalRef`,
+`metadata`, `expiresAt`, `lastSyncedAt`.
 
 > **PATCH quirk.** `mergePartial` seeds the outgoing row from the current
 > resolved values for `Limits`, `DisplayName`, `DisplayEmoji`, `ExpiresAt` and

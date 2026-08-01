@@ -14,7 +14,7 @@ happens in the entitlements service and is never stored.
 |--------|------|-------------|
 | uid | uuid PK | Primary key |
 | organization_uid | uuid | FK to organizations, UNIQUE (one row per org) |
-| payload | jsonb | Limits (`maxChecks`, `maxUsers`, `maxChecksPerMinute`, `maxDeportedAgents`), display identity (`displayName`, `displayEmoji`), and schema version |
+| payload | jsonb | Limits (`maxChecks`, `maxUsers`, `maxChecksPerMinute`, `maxDeportedAgents`, `maxCustomDomains`, `maxSmsPerMonth`, `maxCallsPerMonth`), display identity (`displayName`, `displayEmoji`), and schema version |
 | external_ref | text | Billing-side subscription reference |
 | expires_at | timestamptz | When the entitlement lapses (NULL = no expiry) |
 | last_synced_at | timestamptz | Last successful sync from the billing service |
