@@ -706,6 +706,14 @@ function ChecksIndexPage() {
     }
   };
 
+  const closeNewGroupDialog = () => {
+    setShowNewGroup(false);
+    setNewGroupName("");
+    setNewGroupSlug("");
+    setNewGroupSlugManuallyEdited(false);
+    setNewGroupSlugError(undefined);
+  };
+
   const handleCreateGroup = async () => {
     if (!newGroupName.trim()) return;
     const trimmedSlug = newGroupSlug.trim();
@@ -721,11 +729,7 @@ function ChecksIndexPage() {
         ...(trimmedSlug ? { slug: trimmedSlug } : {}),
       });
       toast.success(t("toast.groupCreated"));
-      setNewGroupName("");
-      setNewGroupSlug("");
-      setNewGroupSlugManuallyEdited(false);
-      setNewGroupSlugError(undefined);
-      setShowNewGroup(false);
+      closeNewGroupDialog();
     } catch (err) {
       const fieldMessage = getApiErrorField(err, "slug");
       if (fieldMessage && err instanceof ApiError) {
@@ -1027,12 +1031,10 @@ function ChecksIndexPage() {
       <Dialog
         open={showNewGroup}
         onOpenChange={(open) => {
-          setShowNewGroup(open);
-          if (!open) {
-            setNewGroupName("");
-            setNewGroupSlug("");
-            setNewGroupSlugManuallyEdited(false);
-            setNewGroupSlugError(undefined);
+          if (open) {
+            setShowNewGroup(true);
+          } else {
+            closeNewGroupDialog();
           }
         }}
       >
@@ -1093,7 +1095,7 @@ function ChecksIndexPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNewGroup(false)}>
+            <Button variant="outline" onClick={closeNewGroupDialog}>
               {tc("cancel")}
             </Button>
             <Button
