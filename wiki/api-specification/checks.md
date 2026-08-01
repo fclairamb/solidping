@@ -111,7 +111,12 @@ dep edges stay byte-identical to the pre-dependsOn shape.
 > that called these as a non-admin user must switch to an admin token.
 
 ### POST /api/v1/orgs/:org/checks/import
-Import checks from JSON. Auth: **admin** (org admin role required)
+Import checks from an export document. Auth: **admin** (org admin role required)
+
+The body is accepted as **JSON or YAML** (sniffed from `Content-Type` and the
+first non-space byte, same as `/apply`): export emits JSON, but a hand-authored
+or converted manifest is just as likely to be YAML, and both parse to the same
+document. Malformed input is still a `422 VALIDATION_ERROR`.
 
 Two-pass when any entry carries `dependsOn`: pass 1 upserts every check
 unchanged, pass 2 resolves `parentSlug` → check UID against the now-current

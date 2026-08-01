@@ -19,6 +19,21 @@ const GATUS_CONFIG = `endpoints:
       - "[RESPONSE_TIME] < 300"
 `;
 
+// The native SolidPing source advertises "JSON/YAML"; this is the YAML half,
+// which the UI used to claim but not accept (it parsed client-side with
+// JSON.parse). The body is now posted raw and parsed server-side.
+const SOLIDPING_YAML_EXPORT = `version: 1
+organization: test
+checks:
+  - name: e2e yaml export
+    slug: e2e-yaml-export
+    type: http
+    enabled: true
+    period: 5m
+    config:
+      url: https://e2e-yaml.example.com/health
+`;
+
 async function getAuthToken(page: Page): Promise<string> {
   const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
     data: { org: "test", email: "test@test.com", password: "test" },
@@ -76,6 +91,34 @@ test.describe("Checks import sources", () => {
     await expect(page.getByText("e2e gatus api").first()).toBeVisible({ timeout: 10000 });
 
     await deleteCheckBySlug(page, token, "e2e-gatus-api");
+  });
+
+  test("imports a YAML SolidPing export, the format the source picker advertises", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    await deleteCheckBySlug(page, token, "e2e-yaml-export");
+
+    await page.goto("orgs/test/checks");
+    await page.waitForLoadState("networkidle");
+
+    await page.getByTestId("import-button").click();
+
+    // "SolidPing export (JSON/YAML)" is the default selection.
+    await expect(page.getByTestId("import-source")).toContainText("JSON/YAML");
+
+    await page.getByTestId("import-payload").fill(SOLIDPING_YAML_EXPORT);
+    await page.getByTestId("import-preview-button").click();
+
+    await expect(page.getByTestId("import-preview")).toBeVisible();
+    await expect(page.getByTestId("import-preview-created")).toHaveText("1");
+
+    await page.getByTestId("import-confirm-button").click();
+    await expect(page.getByText("e2e yaml export").first()).toBeVisible({ timeout: 10000 });
+
+    await deleteCheckBySlug(page, token, "e2e-yaml-export");
   });
 
   test("shows the not-stored notice for the Better Stack token field", async ({

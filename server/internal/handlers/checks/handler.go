@@ -503,19 +503,30 @@ func (h *Handler) ExportChecks(writer http.ResponseWriter, req *http.Request) er
 	return nil
 }
 
-// ImportChecks handles importing checks from a JSON export document.
+// ImportChecks handles importing checks from an export document. The body is
+// accepted as **JSON or YAML** (sniffed from Content-Type and the first
+// non-space byte, exactly like /apply): export emits JSON, but a hand-authored
+// or converted manifest is just as likely to be YAML, and both parse to the
+// same document.
 func (h *Handler) ImportChecks(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := httpx.Param(req, "org")
 	dryRun := req.URL.Query().Get("dryRun") == queryTrue
 
-	var doc ExportDocument
-	if err := json.NewDecoder(req.Body).Decode(&doc); err != nil {
-		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		return h.WriteValidationError(writer, "Invalid body", []base.ValidationErrorField{
+			{Name: fieldBody, Message: "could not read request body"},
+		})
+	}
+
+	doc, err := parseManifest(body, req.Header.Get("Content-Type"))
+	if err != nil {
+		return h.WriteValidationError(writer, "Invalid document", []base.ValidationErrorField{
 			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
-	result, err := h.svc.ImportChecks(req.Context(), orgSlug, &doc, dryRun)
+	result, err := h.svc.ImportChecks(req.Context(), orgSlug, doc, dryRun)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrOrganizationNotFound):

@@ -557,6 +557,19 @@ export interface ConvertResult {
   warnings: ConversionWarning[];
 }
 
+/**
+ * Picks the Content-Type for an export document the user pasted or uploaded.
+ * The server sniffs the first non-space byte too, but sending an accurate
+ * header keeps a JSON body from being handed to the YAML branch (and vice
+ * versa) — `application/json` forces the JSON parser server-side.
+ */
+function documentContentType(body: string): string {
+  const trimmed = body.trimStart();
+  return trimmed.startsWith("{") || trimmed.startsWith("[")
+    ? "application/json"
+    : "application/yaml";
+}
+
 // Check Export/Import hooks
 
 /**
@@ -588,16 +601,22 @@ export function useConvertChecks(org: string) {
   });
 }
 
+/**
+ * Imports a native SolidPing export document. The body is sent as raw text so
+ * the server-side parser decides the format: /checks/import accepts JSON *and*
+ * YAML, and parsing client-side would silently narrow that to JSON only.
+ */
 export function useImportChecks(org: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (params: { doc: ExportDocument; dryRun?: boolean }) =>
+    mutationFn: (params: { body: string; dryRun?: boolean }) =>
       apiFetch<ImportResult>(
         `/api/v1/orgs/${org}/checks/import${params.dryRun ? "?dryRun=true" : ""}`,
         {
           method: "POST",
-          body: JSON.stringify(params.doc),
+          body: params.body,
+          headers: { "Content-Type": documentContentType(params.body) },
         },
       ),
     onSuccess: (_, params) => {

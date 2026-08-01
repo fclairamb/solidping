@@ -37,7 +37,6 @@ import {
   type ConversionWarning,
   type ConvertSource,
   type EscalationPolicy,
-  type ExportDocument,
 } from "@/api/hooks";
 import { useEmailAddressDomain, emailCheckAddress } from "@/api/email-inbox";
 import { Button } from "@/components/ui/button";
@@ -1169,8 +1168,9 @@ function ChecksIndexPage() {
   // source is selected. Returns the normalized preview shape.
   const runImport = async (dryRun: boolean): Promise<ImportPreview> => {
     if (importSource === "solidping") {
-      const doc = JSON.parse(importText) as ExportDocument;
-      const result = await importChecks.mutateAsync({ doc, dryRun });
+      // Sent as raw text: /checks/import parses JSON *and* YAML server-side, so
+      // parsing here would narrow the accepted formats to JSON only.
+      const result = await importChecks.mutateAsync({ body: importText, dryRun });
       return {
         source: importSource,
         created: result.created,
