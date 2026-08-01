@@ -25,6 +25,18 @@
         "paused": true
       }
     }
+    ,
+    {
+      "id": "103",
+      "type": "heartbeat",
+      "attributes": {
+        "url": "https://uptime.betterstack.com/api/v1/heartbeat/mnopqr",
+        "name": "Weekly report",
+        "period": 604800,
+        "grace": 172800,
+        "paused": false
+      }
+    }
   ],
   "pagination": {
     "first": "{{BASE}}/api/v2/heartbeats?page=1",

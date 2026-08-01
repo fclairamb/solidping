@@ -153,6 +153,15 @@
         "config": {},
         "enabled": false,
         "period": "1h"
+      },
+      {
+        "name": "Weekly report",
+        "slug": "weekly-report",
+        "type": "heartbeat",
+        "config": {},
+        "enabled": true,
+        "period": "168h",
+        "confirmationPeriodSeconds": 86400
       }
     ]
   },
@@ -198,7 +207,12 @@
       "message": "monitor skipped: Better Stack type \"playwright\" has no SolidPing counterpart"
     },
     {
-      "message": "2 heartbeat(s) were imported: SolidPing issues its own ping URLs, so repoint every cron job or agent at the new URL after the import"
+      "message": "3 heartbeat(s) were imported: SolidPing issues its own ping URLs, so repoint every cron job or agent at the new URL after the import"
+    },
+    {
+      "item": "Weekly report",
+      "field": "confirmationPeriodSeconds",
+      "message": "confirmationPeriodSeconds of 48h exceeds SolidPing's 24h maximum; clamped to 24h"
     }
   ]
 }

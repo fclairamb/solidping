@@ -253,39 +253,132 @@ func newDocument(source string) *checks.ExportDocument {
 }
 
 // normalizeChecks post-processes a converted document so it satisfies the
-// invariants the checks service enforces on apply. Today that is the per-type
-// minimum period: a source tool may poll a certificate every 30s, but SolidPing
-// refuses an ssl check under 1h, and a rejected check would be reported as a
-// per-check error rather than imported.
+// bounds the checks service enforces on apply. Every source tool allows values
+// SolidPing does not, and an out-of-range value would otherwise fail the whole
+// check as a per-check ImportError instead of importing it. Rather than drop
+// the check, each value is clamped into range and the adjustment is reported
+// as a warning — the same "import what maps, surface the rest" contract the
+// converters follow for everything else.
+//
+// Three bounds are enforced, all of them real failures observed against real
+// exports (an Uptime Kuma monitor carries a 48s timeout by default, and Better
+// Stack allows multi-day heartbeat grace periods):
+//   - the per-type minimum check period (checkerdef metadata),
+//   - the uniform per-check `timeout` range (checks.Min/MaxConfigTimeout),
+//   - the confirmation/recovery period cap (checks.MaxIncidentPeriodSeconds).
 func normalizeChecks(doc *checks.ExportDocument, warn *warnings) {
 	for i := range doc.Checks {
 		check := &doc.Checks[i]
 
-		meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckType(check.Type))
-		if meta == nil || check.Period == "" {
-			continue
-		}
+		normalizePeriod(check, warn)
+		normalizeConfigTimeout(check, warn)
+		normalizeIncidentPeriods(check, warn)
+	}
+}
 
-		minPeriod := meta.MinPeriod
-		if minPeriod == 0 {
-			minPeriod = checkerdef.GlobalMinPeriod
-		}
+// normalizePeriod raises a sub-minimum check period to the type's default.
+func normalizePeriod(check *checks.ExportCheck, warn *warnings) {
+	meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckType(check.Type))
+	if meta == nil || check.Period == "" {
+		return
+	}
 
-		period, err := time.ParseDuration(check.Period)
-		if err == nil && period >= minPeriod {
-			continue
-		}
+	minPeriod := meta.MinPeriod
+	if minPeriod == 0 {
+		minPeriod = checkerdef.GlobalMinPeriod
+	}
 
-		replacement := meta.DefaultPeriod
-		if replacement < minPeriod {
-			replacement = minPeriod
-		}
+	period, err := time.ParseDuration(check.Period)
+	if err == nil && period >= minPeriod {
+		return
+	}
 
-		warn.addf(check.Name, "period",
-			"period %q is below the minimum for %s checks; raised to %s",
-			check.Period, check.Type, durationToPeriod(replacement))
+	replacement := meta.DefaultPeriod
+	if replacement < minPeriod {
+		replacement = minPeriod
+	}
 
-		check.Period = durationToPeriod(replacement)
+	warn.addf(check.Name, "period",
+		"period %q is below the minimum for %s checks; raised to %s",
+		check.Period, check.Type, durationToPeriod(replacement))
+
+	check.Period = durationToPeriod(replacement)
+}
+
+// normalizeConfigTimeout clamps the uniform per-check `timeout` config key into
+// the 1s–30s range the checks service enforces for every check type. The key is
+// type-agnostic: the worker reads it straight off the config map to size the
+// execution budget (see checkworker.perCheckTimeout), so it is meaningful even
+// for checkers whose own config struct has no Timeout field.
+func normalizeConfigTimeout(check *checks.ExportCheck, warn *warnings) {
+	raw, ok := check.Config[checks.ConfigTimeoutKey].(string)
+	if !ok || raw == "" {
+		return
+	}
+
+	timeout, err := time.ParseDuration(raw)
+	if err != nil {
+		warn.addf(check.Name, checks.ConfigTimeoutKey,
+			"timeout %q is not a valid duration and was dropped; the check uses the default budget", raw)
+		delete(check.Config, checks.ConfigTimeoutKey)
+
+		return
+	}
+
+	clamped := timeout
+	if clamped < checks.MinConfigTimeout {
+		clamped = checks.MinConfigTimeout
+	}
+
+	if clamped > checks.MaxConfigTimeout {
+		clamped = checks.MaxConfigTimeout
+	}
+
+	if clamped == timeout {
+		return
+	}
+
+	warn.addf(check.Name, checks.ConfigTimeoutKey,
+		"timeout %s is outside SolidPing's %s–%s range; clamped to %s",
+		durationToPeriod(timeout), durationToPeriod(checks.MinConfigTimeout),
+		durationToPeriod(checks.MaxConfigTimeout), durationToPeriod(clamped))
+
+	check.Config[checks.ConfigTimeoutKey] = durationToPeriod(clamped)
+}
+
+// normalizeIncidentPeriods clamps the confirmation/recovery periods into the
+// 0–86400s window the checks service accepts. Source tools are more permissive:
+// a Better Stack heartbeat grace period or an Uptime Kuma
+// maxretries × retryInterval product routinely exceeds a day.
+func normalizeIncidentPeriods(check *checks.ExportCheck, warn *warnings) {
+	check.ConfirmationPeriodSeconds = clampIncidentPeriod(
+		check.Name, "confirmationPeriodSeconds", check.ConfirmationPeriodSeconds, warn)
+	check.RecoveryPeriodSeconds = clampIncidentPeriod(
+		check.Name, "recoveryPeriodSeconds", check.RecoveryPeriodSeconds, warn)
+}
+
+// clampIncidentPeriod bounds one incident period, warning when it had to move.
+func clampIncidentPeriod(name, field string, seconds *int, warn *warnings) *int {
+	if seconds == nil {
+		return nil
+	}
+
+	value := *seconds
+	switch {
+	case value < 0:
+		warn.addf(name, field, "%s was negative (%d) and was reset to 0", field, value)
+
+		return intPtr(0)
+	case value > checks.MaxIncidentPeriodSeconds:
+		warn.addf(name, field,
+			"%s of %s exceeds SolidPing's %s maximum; clamped to %s",
+			field, durationToPeriod(time.Duration(value)*time.Second),
+			durationToPeriod(checks.MaxIncidentPeriodSeconds*time.Second),
+			durationToPeriod(checks.MaxIncidentPeriodSeconds*time.Second))
+
+		return intPtr(checks.MaxIncidentPeriodSeconds)
+	default:
+		return seconds
 	}
 }
 

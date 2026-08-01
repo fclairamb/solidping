@@ -17,7 +17,7 @@
             "X-Tenant": "acme"
           },
           "method": "GET",
-          "timeout": "16s",
+          "timeout": "30s",
           "url": "https://example.org"
         },
         "enabled": true,
@@ -39,7 +39,8 @@
         },
         "enabled": true,
         "period": "2m",
-        "group": "Production"
+        "group": "Production",
+        "confirmationPeriodSeconds": 86400
       },
       {
         "name": "API json query",
@@ -318,6 +319,16 @@
       "item": "Authenticated API",
       "field": "authMethod",
       "message": "authentication credentials are not imported — re-enter them on the check"
+    },
+    {
+      "item": "Website",
+      "field": "timeout",
+      "message": "timeout 48s is outside SolidPing's 1s–30s range; clamped to 30s"
+    },
+    {
+      "item": "Docs keyword",
+      "field": "confirmationPeriodSeconds",
+      "message": "confirmationPeriodSeconds of 120h exceeds SolidPing's 24h maximum; clamped to 24h"
     }
   ]
 }

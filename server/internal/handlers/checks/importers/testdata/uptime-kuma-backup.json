@@ -24,7 +24,7 @@
       "interval": 60,
       "retryInterval": 30,
       "maxretries": 2,
-      "timeout": 16,
+      "timeout": 48,
       "accepted_statuscodes": ["200-299"],
       "headers": "{\"X-Tenant\":\"acme\"}",
       "ignoreTls": false,
@@ -41,7 +41,8 @@
       "active": true,
       "parent": 1,
       "interval": 120,
-      "maxretries": 0,
+      "maxretries": 5,
+      "retryInterval": 86400,
       "accepted_statuscodes": ["200-299", "418", "700-799"]
     },
     {

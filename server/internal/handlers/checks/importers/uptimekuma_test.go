@@ -38,7 +38,9 @@ func TestUptimeKumaConverterMapsEveryType(t *testing.T) {
 	r.Equal("1m", site.Period)
 	r.Equal([]any{"2XX"}, site.Config["expected_status_codes"])
 	r.Equal(map[string]any{"X-Tenant": "acme"}, site.Config["headers"])
-	r.Equal("16s", site.Config["timeout"])
+	// Kuma's default 48s timeout is above SolidPing's 30s cap and is clamped
+	// (with a warning) rather than failing the check on import.
+	r.Equal("30s", site.Config["timeout"])
 	// maxretries (2) × retryInterval (30s) → confirmation period.
 	r.NotNil(site.ConfirmationPeriodSeconds)
 	r.Equal(60, *site.ConfirmationPeriodSeconds)

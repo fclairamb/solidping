@@ -97,6 +97,7 @@
             "2XX"
           ],
           "method": "GET",
+          "timeout": "30s",
           "url": "https://legacy.example.org/soap"
         },
         "enabled": false,
@@ -244,6 +245,11 @@
       "item": "marketing site-domain",
       "field": "period",
       "message": "period \"1m\" is below the minimum for domain checks; raised to 24h"
+    },
+    {
+      "item": "legacy soap",
+      "field": "timeout",
+      "message": "timeout 45s is outside SolidPing's 1s–30s range; clamped to 30s"
     }
   ]
 }

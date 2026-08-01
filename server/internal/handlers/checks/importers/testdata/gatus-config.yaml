@@ -39,6 +39,8 @@ endpoints:
   - name: legacy soap
     url: "https://legacy.example.org/soap"
     enabled: false
+    client:
+      timeout: 45s
     conditions:
       - "[STATUS] == 2XX"
       - "[BODY] != nope"

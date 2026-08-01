@@ -134,10 +134,16 @@ func isUUID(s string) bool {
 // typos can't accidentally suspend alerting indefinitely.
 var errIncidentPeriodOutOfRange = errors.New("must be between 0 and 86400 seconds (one day)")
 
+// MaxIncidentPeriodSeconds is the inclusive upper bound on
+// ConfirmationPeriodSeconds / RecoveryPeriodSeconds. Exported so callers
+// outside this package (the third-party importers) can clamp foreign values
+// into range instead of failing the whole check on import.
+const MaxIncidentPeriodSeconds = 86400
+
 // validateIncidentPeriod range-checks a confirmation/recovery period in
 // seconds. 0 is allowed and means "fire immediately on the first signal".
 func validateIncidentPeriod(seconds int) error {
-	if seconds < 0 || seconds > 86400 {
+	if seconds < 0 || seconds > MaxIncidentPeriodSeconds {
 		return errIncidentPeriodOutOfRange
 	}
 
