@@ -303,18 +303,24 @@ func (s *Service) UpdateCheckGroup(
 		return CheckGroupResponse{}, errUpdate
 	}
 
-	// Fetch updated group
-	updatedGroup, err := s.db.GetCheckGroup(ctx, org.UID, group.UID)
+	return s.fetchGroupResponse(ctx, org.UID, group.UID)
+}
+
+// fetchGroupResponse re-fetches a group by UID and its member status counts,
+// combining them into the API response. Shared by GetCheckGroup and
+// UpdateCheckGroup's post-write refetch.
+func (s *Service) fetchGroupResponse(ctx context.Context, orgUID, groupUID string) (CheckGroupResponse, error) {
+	group, err := s.db.GetCheckGroup(ctx, orgUID, groupUID)
 	if err != nil {
 		return CheckGroupResponse{}, err
 	}
 
-	statusCounts, err := s.db.GetCheckGroupStatusCounts(ctx, org.UID)
+	statusCounts, err := s.db.GetCheckGroupStatusCounts(ctx, orgUID)
 	if err != nil {
 		return CheckGroupResponse{}, err
 	}
 
-	return convertGroupToResponse(updatedGroup, statusCounts[updatedGroup.UID]), nil
+	return convertGroupToResponse(group, statusCounts[group.UID]), nil
 }
 
 // DeleteCheckGroup deletes a check group by UID or slug (soft delete).
