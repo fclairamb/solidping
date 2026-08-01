@@ -1,0 +1,323 @@
+{
+  "document": {
+    "version": 1,
+    "exportedAt": "",
+    "organization": "uptime-kuma",
+    "checks": [
+      {
+        "name": "Website",
+        "slug": "website",
+        "description": "Public marketing site",
+        "type": "http",
+        "config": {
+          "expected_status_codes": [
+            "2XX"
+          ],
+          "headers": {
+            "X-Tenant": "acme"
+          },
+          "method": "GET",
+          "timeout": "16s",
+          "url": "https://example.org"
+        },
+        "enabled": true,
+        "period": "1m",
+        "group": "Production",
+        "confirmationPeriodSeconds": 60
+      },
+      {
+        "name": "Docs keyword",
+        "slug": "docs-keyword",
+        "type": "http",
+        "config": {
+          "body_expect": "Documentation",
+          "expected_status_codes": [
+            "2XX",
+            "418"
+          ],
+          "url": "https://docs.example.org"
+        },
+        "enabled": true,
+        "period": "2m",
+        "group": "Production"
+      },
+      {
+        "name": "API json query",
+        "slug": "api-json-query",
+        "type": "http",
+        "config": {
+          "json_path_assertions": {
+            "type": "assertion",
+            "path": "$.status.state",
+            "operator": "eq",
+            "value": "healthy"
+          },
+          "url": "https://api.example.org/status"
+        },
+        "enabled": true,
+        "period": "1m",
+        "confirmationPeriodSeconds": 20
+      },
+      {
+        "name": "SMTP port",
+        "slug": "smtp-port",
+        "type": "tcp",
+        "config": {
+          "host": "smtp.example.org",
+          "port": 587
+        },
+        "enabled": true,
+        "period": "5m"
+      },
+      {
+        "name": "Gateway",
+        "slug": "gateway",
+        "type": "icmp",
+        "config": {
+          "host": "gw.example.org"
+        },
+        "enabled": false,
+        "period": "1m"
+      },
+      {
+        "name": "DNS record",
+        "slug": "dns-record",
+        "type": "dns",
+        "config": {
+          "host": "example.org",
+          "nameserver": "1.1.1.1",
+          "record_type": "A"
+        },
+        "enabled": true,
+        "period": "10m"
+      },
+      {
+        "name": "Nginx container",
+        "slug": "nginx-container",
+        "type": "docker",
+        "config": {
+          "containerName": "nginx"
+        },
+        "enabled": true,
+        "period": "1m"
+      },
+      {
+        "name": "Nightly backup",
+        "slug": "nightly-backup",
+        "type": "heartbeat",
+        "config": {},
+        "enabled": true,
+        "period": "24h"
+      },
+      {
+        "name": "Grpc service",
+        "slug": "grpc-service",
+        "type": "grpc",
+        "config": {
+          "host": "grpc.example.org",
+          "keyword": "SERVING",
+          "port": 50051,
+          "serviceName": "health.v1.Health",
+          "tls": true
+        },
+        "enabled": true,
+        "period": "1m"
+      },
+      {
+        "name": "Broker",
+        "slug": "broker",
+        "type": "mqtt",
+        "config": {
+          "host": "mqtt.example.org",
+          "port": 1883,
+          "topic": "solidping/health",
+          "username": "probe"
+        },
+        "enabled": true,
+        "period": "1m"
+      },
+      {
+        "name": "Primary postgres",
+        "slug": "primary-postgres",
+        "type": "postgresql",
+        "config": {
+          "database": "appdb",
+          "host": "pg.example.org",
+          "port": 5432,
+          "query": "SELECT 1",
+          "username": "monitor"
+        },
+        "enabled": true,
+        "period": "2m"
+      },
+      {
+        "name": "Reporting mysql",
+        "slug": "reporting-mysql",
+        "type": "mysql",
+        "config": {
+          "database": "reporting",
+          "host": "mysql.example.org",
+          "port": 3306,
+          "username": "reader"
+        },
+        "enabled": true,
+        "period": "2m"
+      },
+      {
+        "name": "Session redis",
+        "slug": "session-redis",
+        "type": "redis",
+        "config": {
+          "database": 2,
+          "host": "redis.example.org",
+          "port": 6379
+        },
+        "enabled": true,
+        "period": "1m"
+      },
+      {
+        "name": "Billing mssql",
+        "slug": "billing-mssql",
+        "type": "mssql",
+        "config": {
+          "database": "billing",
+          "host": "mssql.example.org",
+          "port": 1433,
+          "query": "SELECT 1",
+          "username": "probe"
+        },
+        "enabled": true,
+        "period": "5m"
+      },
+      {
+        "name": "Events mongo",
+        "slug": "events-mongo",
+        "type": "mongodb",
+        "config": {
+          "database": "events",
+          "host": "mongo.example.org",
+          "port": 27017,
+          "username": "probe"
+        },
+        "enabled": true,
+        "period": "2m"
+      },
+      {
+        "name": "Game server",
+        "slug": "game-server",
+        "type": "a2s",
+        "config": {
+          "host": "game.example.org",
+          "port": 27015
+        },
+        "enabled": true,
+        "period": "5m"
+      },
+      {
+        "name": "Checkout flow",
+        "slug": "checkout-flow",
+        "type": "browser",
+        "config": {
+          "url": "https://shop.example.org/checkout"
+        },
+        "enabled": true,
+        "period": "10m"
+      },
+      {
+        "name": "Authenticated API",
+        "slug": "authenticated-api",
+        "type": "http",
+        "config": {
+          "url": "https://secure.example.org"
+        },
+        "enabled": true,
+        "period": "1m"
+      }
+    ]
+  },
+  "warnings": [
+    {
+      "message": "notification bindings are not imported — configure SolidPing integrations instead"
+    },
+    {
+      "item": "Website",
+      "field": "tags",
+      "message": "Uptime Kuma tags are not imported — add SolidPing labels manually"
+    },
+    {
+      "item": "Docs keyword",
+      "field": "accepted_statuscodes",
+      "message": "accepted status range \"700-799\" has no SolidPing equivalent and was dropped"
+    },
+    {
+      "item": "API json query",
+      "field": "upsideDown",
+      "message": "upside-down mode has no SolidPing equivalent; the check reports normally"
+    },
+    {
+      "item": "Nginx container",
+      "field": "docker_host",
+      "message": "the Docker host is not imported — the check defaults to the worker's local Docker socket; set a custom host on the check if needed"
+    },
+    {
+      "item": "Nightly backup",
+      "field": "type",
+      "message": "push monitor imported as a SolidPing heartbeat check — the ping URL changes, repoint the job that pushes to it after the import"
+    },
+    {
+      "item": "Broker",
+      "field": "mqttPassword",
+      "message": "the MQTT password was not imported — re-enter it on the check"
+    },
+    {
+      "item": "Broker",
+      "field": "mqttSuccessMessage",
+      "message": "matching an expected MQTT payload is not supported; the check verifies broker connectivity"
+    },
+    {
+      "item": "Primary postgres",
+      "field": "databaseConnectionString",
+      "message": "the database password was not imported — re-enter the credential on the check"
+    },
+    {
+      "item": "Reporting mysql",
+      "field": "databaseConnectionString",
+      "message": "the database password was not imported — re-enter the credential on the check"
+    },
+    {
+      "item": "Session redis",
+      "field": "databaseConnectionString",
+      "message": "the database password was not imported — re-enter the credential on the check"
+    },
+    {
+      "item": "Billing mssql",
+      "field": "databaseConnectionString",
+      "message": "the database password was not imported — re-enter the credential on the check"
+    },
+    {
+      "item": "Events mongo",
+      "field": "databaseConnectionString",
+      "message": "the database password was not imported — re-enter the credential on the check"
+    },
+    {
+      "item": "Radius login",
+      "field": "type",
+      "message": "monitor skipped: Uptime Kuma type \"radius\" has no SolidPing counterpart"
+    },
+    {
+      "item": "Broken db",
+      "field": "databaseConnectionString",
+      "message": "monitor skipped: the connection string is empty"
+    },
+    {
+      "item": "Authenticated API",
+      "field": "ignoreTls",
+      "message": "ignoring TLS errors is not supported — the check verifies certificates"
+    },
+    {
+      "item": "Authenticated API",
+      "field": "authMethod",
+      "message": "authentication credentials are not imported — re-enter them on the check"
+    }
+  ]
+}
