@@ -9,6 +9,7 @@ import {
   MessagesSquare,
   Phone,
   Router,
+  Users,
   Webhook,
 } from "lucide-react";
 import type { ConnectionType } from "@/api/hooks";
@@ -25,6 +26,7 @@ const ICONS: Record<ConnectionType, typeof Webhook> = {
   email: Mail,
   googlechat: MessageSquare,
   mattermost: Hash,
+  msteams: Users,
   ntfy: Bell,
   opsgenie: Bell,
   pushover: Bell,
@@ -57,6 +59,8 @@ export function integrationLabel(type: ConnectionType): string {
       return "Google Chat";
     case "mattermost":
       return "Mattermost";
+    case "msteams":
+      return "Microsoft Teams";
     case "ntfy":
       return "ntfy";
     case "opsgenie":

@@ -3309,6 +3309,7 @@ export type ConnectionType =
   | "email"
   | "googlechat"
   | "mattermost"
+  | "msteams"
   | "ntfy"
   | "opsgenie"
   | "pushover"
@@ -3337,6 +3338,7 @@ export const CAPABILITIES: Record<ConnectionType, IntegrationCapabilities> = {
   email: NOTIFY,
   googlechat: NOTIFY,
   mattermost: NOTIFY,
+  msteams: NOTIFY,
   ntfy: NOTIFY,
   opsgenie: NOTIFY,
   pushover: NOTIFY,

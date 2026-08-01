@@ -339,6 +339,22 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
           onChange={(v) => update("webhook_url", v)}
         />
       );
+    case "msteams":
+      return (
+        <div className="space-y-2">
+          <UrlPanel
+            label={t("form.webhookUrl", "Webhook URL")}
+            value={(settings.webhook_url as string) || ""}
+            onChange={(v) => update("webhook_url", v)}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "form.msteamsWebhookHint",
+              'In Teams, open Workflows → "Post to a channel when a webhook request is received", finish the wizard, then paste the workflow URL it gives you here. The legacy "Incoming Webhook" connector is retired and will not work.',
+            )}
+          </p>
+        </div>
+      );
     case "email": {
       const recipients = Array.isArray(settings.to)
         ? (settings.to as string[])
