@@ -118,6 +118,47 @@ against the closest same-lane project.
 This is a concrete, time-boxed displacement window: lead with "self-host it and it
 can't be sunset on you," plus a low-friction import path. See messaging hook #10.
 
+> **The import path is not hypothetical (verified 2026-08-01):** SolidPing ships
+> importers for Uptime Kuma, Gatus and Better Stack
+> (`server/internal/handlers/checks/importers/`). Every displacement window in
+> this document — Freshping's shutdown, Peekaping's stall — has a concrete
+> operational answer we have so far failed to mention in copy. See
+> `comparison.md` § Migration importers.
+
+### Axis 5 — check frequency, and a rule for telling axes apart (2026-08-01)
+
+By 2026-07-28, three of the axes tracked above had stopped distinguishing
+SolidPing at all: multi-region consensus (three rivals headlined it inside five
+weeks), bundling, and MCP (Kuvasz, a 571★ AGPL *self-hosted* monitor, shipped an
+MCP server six days after we had narrowed our claim to "self-hosted MCP"
+precisely because every MCP rival until then was SaaS).
+
+**Axis 5 is check frequency, and it is a different kind of axis.** SolidPing's
+floor is 10 seconds, self-hosted, unlimited, not tier-gated — verified in source
+(`GlobalMinPeriod`, `checkerdef/types.go:240`), not in marketing.
+
+**The rule worth extracting: sort positioning claims by what stops a competitor
+from writing the same sentence next week.**
+
+- If the answer is "nothing", it is a *feature-list item*, not a positioning
+  line. Consensus, bundling and MCP were all in this category — each is a
+  sentence on a landing page, and each was duplicated within weeks.
+- If the answer is an implementation cost or an architectural property, it can
+  carry positioning. Protocol breadth (38 check types vs Kuvasz's 4) means
+  building 34 checkers. In-customer-network probing is an architecture. A check
+  interval floor is a property of the results/aggregation model.
+
+The cleanest demonstration in the whole registry: **OneUptime advertises
+1-second checks on its product page and ships a 1-minute floor self-hosted**
+([#2937](https://github.com/OneUptime/oneuptime/issues/2937), open, 2026-07-30).
+The claim cost nothing; the capability was not there. Applying the rule above at
+the time would have caught the "self-hosted MCP" line before it expired.
+
+**Copy discipline for Axis 5:** state the four-part combination — sub-minute,
+self-hosted, unlimited, unpaywalled. Do **not** claim "fastest": SaaS vendors
+sell 1-second checks and Uptime Kuma reaches ~20 seconds. The combination is
+what nobody else offers; the superlative is false and checkable.
+
 ---
 
 ## Messaging hooks (derived from the analysis)
