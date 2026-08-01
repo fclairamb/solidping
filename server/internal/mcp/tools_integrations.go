@@ -38,8 +38,9 @@ func (h *Handler) toolListIntegrations(ctx context.Context, orgSlug string, args
 func createIntegrationDef() ToolDefinition {
 	return ToolDefinition{
 		Name: "create_integration",
-		Description: "Create a new integration (Slack, webhook, or email) that can " +
-			"be attached to checks for incident notifications.",
+		Description: "Create a new integration (webhook, email, msteams, …) that can be " +
+			"attached to checks for incident notifications. Slack cannot be created here — " +
+			"install it via the dashboard OAuth flow instead.",
 		InputSchema: objectSchema(map[string]any{
 			schemaKeyType: stringProp(
 				"Integration type. Allowed: webhook, email, msteams. Example: \"webhook\". " +
