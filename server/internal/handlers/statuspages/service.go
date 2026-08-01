@@ -1134,8 +1134,6 @@ func (s *Service) DeleteResource(
 // --- Public view ---
 
 // ViewStatusPage returns a public view of a status page with sections, resources, and live check status.
-//
-//nolint:cyclop // building the composite response requires checking many optional fields
 func (s *Service) ViewStatusPage(
 	ctx context.Context, orgSlug, slug string,
 ) (StatusPageResponse, error) {
@@ -1330,7 +1328,9 @@ func mergeBuckets(
 	merged := make(map[time.Time]uptimebar.BucketStats)
 
 	for _, checkUID := range checkUIDs {
-		for bucket, stats := range bucketsByCheck[checkUID] {
+		byBucket := bucketsByCheck[checkUID]
+		for bucket := range byBucket {
+			stats := byBucket[bucket]
 			acc := merged[bucket]
 			acc.Up += stats.Up
 			acc.Total += stats.Total
@@ -1641,18 +1641,28 @@ func buildResponseTimeData(recentResults []*models.Result) []ResponseTimePoint {
 	return rtData
 }
 
-// statusNoData is the availability-point status for a bucket that has no rows in
-// the shared raw+hour+day union — the front end renders it gray.
-const statusNoData = "noData"
+// The public status vocabulary. Both the live per-resource status (check or
+// rolled-up group) and the per-bucket availability status are spoken in these
+// words, so the front end has a single set of values to render.
+const (
+	// statusNoData is the availability-point status for a bucket that has no
+	// rows in the shared raw+hour+day union — the front end renders it gray.
+	statusNoData    = "noData"
+	statusCreated   = "created"
+	statusUp        = "up"
+	statusWarning   = "warning"
+	statusDegraded  = "degraded"
+	statusDownValue = "down"
+)
 
 func availabilityToStatus(pct float64) string {
 	switch {
 	case pct >= 99.9:
-		return "up"
+		return statusUp
 	case pct >= 99.0:
-		return "degraded"
+		return statusDegraded
 	default:
-		return "down"
+		return statusDownValue
 	}
 }
 
@@ -1822,25 +1832,25 @@ func pageHasGroupResource(sections []StatusPageSectionResponse) bool {
 func publicCheckStatus(status models.CheckStatus) string {
 	switch status {
 	case models.CheckStatusCreated:
-		return "created"
+		return statusCreated
 	case models.CheckStatusUp:
-		return "up"
+		return statusUp
 	case models.CheckStatusDown:
-		return "down"
+		return statusDownValue
 	case models.CheckStatusValidating:
 		// Validating is a transient internal state — the public status page
 		// should still read "up" until the failure is confirmed and an
 		// incident opens.
-		return "up"
+		return statusUp
 	case models.CheckStatusWarning:
 		// Live "up, but something to report" — surfaced amber on the public
 		// page (counts as up for availability, but is not hidden like
 		// validating: the operator deliberately flagged something).
-		return "warning"
+		return statusWarning
 	case models.CheckStatusDegraded:
-		return "degraded"
+		return statusDegraded
 	default:
-		return "created"
+		return statusCreated
 	}
 }
 
