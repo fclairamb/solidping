@@ -333,6 +333,23 @@ jobs:
         env:
           CI: "true"
 
+      # status0's public status page has its own Playwright suite. Only the
+      # translate-resilience spec runs here: it is the regression guard for the
+      # recurring "Failed to execute 'removeChild' on 'Node'" crash (spec
+      # 2026-08-01-05) and resolves its own org, so it works against this
+      # SP_RUNMODE=test server. The older status0 specs still assume the
+      # `default` org that `make dev` seeds, so they would fail here.
+      - name: Run status0 translate-resilience E2E test
+        working-directory: web/status0
+        run: |
+          bun install
+          bunx playwright install chromium
+          bunx playwright test translate-resilience.spec.ts --reporter=list
+        env:
+          CI: "true"
+          E2E_BASE_URL: "http://localhost:4000"
+          E2E_ORG: "test"
+
       # session-continuity.spec.ts's access-token-expiry tests need a server
       # started with a short SP_AUTH_ACCESS_TOKEN_EXPIRY — the main server
       # above runs with the default 1h expiry, which no test can wait out, so

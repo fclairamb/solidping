@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 
 /**
  * Regression guard for the recurring
@@ -19,11 +19,29 @@ import { test, expect, type Page } from "@playwright/test";
  * and the 30 s background refetch.
  */
 
-const BASE = "http://localhost:4000";
-const STATUS_PAGE = `${BASE}/status0/default`;
+// Honors E2E_BASE_URL so this can be pointed at a side-car / CI server rather
+// than only the :4000 dev loop.
+const BASE = process.env.E2E_BASE_URL
+  ? new URL(process.env.E2E_BASE_URL).origin
+  : "http://localhost:4000";
 
 /** TanStack Router's default error boundary copy. */
 const ERROR_BOUNDARY_TEXT = "Something went wrong!";
+
+/**
+ * Finds a public status page to exercise. `make dev` seeds the `default` org,
+ * `SP_RUNMODE=test` (CI) seeds `test` instead, so probe rather than hardcode.
+ */
+async function resolveStatusPageUrl(request: APIRequestContext): Promise<string> {
+  const orgs = process.env.E2E_ORG ? [process.env.E2E_ORG] : ["default", "test"];
+  for (const org of orgs) {
+    const response = await request.get(`${BASE}/api/v1/status-pages/${org}`);
+    if (response.ok()) return `${BASE}/status0/${org}`;
+  }
+  throw new Error(
+    `No public status page found on ${BASE} for orgs ${orgs.join(", ")}`,
+  );
+}
 
 /**
  * Installs a faithful simulation of Chrome auto-translate:
@@ -130,6 +148,7 @@ test.describe("Public status page under Chrome auto-translate", () => {
 
   test("survives translated DOM across language switches and refetches", async ({
     page,
+    request,
   }) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(String(error.message)));
@@ -137,11 +156,11 @@ test.describe("Public status page under Chrome auto-translate", () => {
     // Count background refetches so we can wait for a REAL one instead of
     // guessing at a timeout.
     let statusFetches = 0;
-    page.on("request", (request) => {
-      if (request.url().includes("/api/v1/status-pages/")) statusFetches += 1;
+    page.on("request", (req) => {
+      if (req.url().includes("/api/v1/status-pages/")) statusFetches += 1;
     });
 
-    await page.goto(STATUS_PAGE);
+    await page.goto(await resolveStatusPageUrl(request));
     await expect(page.locator(".sp-page-name")).toBeVisible({ timeout: 20000 });
     const pageName = (await page.locator(".sp-page-name").textContent())?.trim();
     expect(pageName).toBeTruthy();
@@ -229,6 +248,7 @@ test.describe("Public status page under Chrome auto-translate", () => {
 
   test("positive control: the pageerror harness catches uncaught errors", async ({
     page,
+    request,
   }) => {
     // Guards the test above from becoming vacuous: if Playwright ever stopped
     // surfacing uncaught errors, the "no removeChild crash" assertion would
@@ -236,7 +256,7 @@ test.describe("Public status page under Chrome auto-translate", () => {
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(String(error.message)));
 
-    await page.goto(STATUS_PAGE);
+    await page.goto(await resolveStatusPageUrl(request));
     await expect(page.locator(".sp-page-name")).toBeVisible({ timeout: 20000 });
 
     await page.evaluate(() => {
@@ -252,11 +272,12 @@ test.describe("Public status page under Chrome auto-translate", () => {
 
   test("positive control: a removeChild on a re-parented text node throws", async ({
     page,
+    request,
   }) => {
     // Proves the simulated DOM shape is genuinely the one that crashes React:
     // asking the ORIGINAL parent to remove the (now re-parented) text node
     // throws exactly the NotFoundError users were reporting.
-    await page.goto(STATUS_PAGE);
+    await page.goto(await resolveStatusPageUrl(request));
     await expect(page.locator(".sp-page-name")).toBeVisible({ timeout: 20000 });
     await simulateChromeTranslate(page);
 
