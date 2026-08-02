@@ -100,8 +100,12 @@ type Service struct {
 type Option func(*Service)
 
 // WithWhatsAppConfig supplies the instance WhatsApp configuration.
-func WithWhatsAppConfig(cfg config.WhatsAppConfig) Option {
-	return func(s *Service) { s.whatsAppCfg = cfg }
+func WithWhatsAppConfig(cfg *config.WhatsAppConfig) Option {
+	return func(s *Service) {
+		if cfg != nil {
+			s.whatsAppCfg = *cfg
+		}
+	}
 }
 
 // WithWhatsAppSender injects an explicit WhatsApp verification-code sender,

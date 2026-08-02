@@ -68,7 +68,7 @@ type waEnv struct {
 
 // setupWhatsAppEnv builds a service with an unverified WhatsApp contact and a
 // per-service fake sender.
-func setupWhatsAppEnv(t *testing.T, opts ...Option) *waEnv {
+func setupWhatsAppEnv(t *testing.T) *waEnv {
 	t.Helper()
 
 	ctx := context.Background()
@@ -90,7 +90,7 @@ func setupWhatsAppEnv(t *testing.T, opts ...Option) *waEnv {
 	require.NoError(t, dbSvc.UpsertUserContact(ctx, contact))
 
 	sender := &fakeWhatsAppSender{}
-	svc := NewService(dbSvc, nil, append([]Option{WithWhatsAppSender(sender)}, opts...)...)
+	svc := NewService(dbSvc, nil, WithWhatsAppSender(sender))
 
 	return &waEnv{svc: svc, org: org, user: user, contact: contact, sender: sender}
 }
@@ -340,7 +340,7 @@ func TestWhatsAppTemplateSender_SendsAuthenticationTemplate(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	sender := NewWhatsAppTemplateSenderWithBaseURL(config.WhatsAppConfig{
+	sender := NewWhatsAppTemplateSenderWithBaseURL(&config.WhatsAppConfig{
 		Enabled:          true,
 		AccessToken:      "tok",
 		PhoneNumberID:    "PNID",
@@ -364,6 +364,6 @@ func TestWhatsAppTemplateSender_InactiveConfig(t *testing.T) {
 
 	r := require.New(t)
 
-	sender := NewWhatsAppTemplateSender(config.WhatsAppConfig{Enabled: true})
+	sender := NewWhatsAppTemplateSender(&config.WhatsAppConfig{Enabled: true})
 	r.ErrorIs(sender.SendVerificationCode(context.Background(), "+33612345678", "1"), ErrNoWhatsAppProvider)
 }

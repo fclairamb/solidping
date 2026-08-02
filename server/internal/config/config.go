@@ -714,14 +714,14 @@ type WhatsAppConfig struct {
 // verification flow and the public config endpoint: the kill switch must be on
 // AND the two credentials a send cannot work without must be present. Anything
 // else is off — in particular Enabled=true with no token.
-func (c WhatsAppConfig) Active() bool {
+func (c *WhatsAppConfig) Active() bool {
 	return c.Enabled &&
 		strings.TrimSpace(c.AccessToken) != "" &&
 		strings.TrimSpace(c.PhoneNumberID) != ""
 }
 
 // ResolvedAPIVersion returns the configured Graph API version or the default.
-func (c WhatsAppConfig) ResolvedAPIVersion() string {
+func (c *WhatsAppConfig) ResolvedAPIVersion() string {
 	if v := strings.TrimSpace(c.APIVersion); v != "" {
 		return v
 	}
@@ -730,7 +730,7 @@ func (c WhatsAppConfig) ResolvedAPIVersion() string {
 }
 
 // ResolvedAlertTemplate returns the configured alert template name or the default.
-func (c WhatsAppConfig) ResolvedAlertTemplate() string {
+func (c *WhatsAppConfig) ResolvedAlertTemplate() string {
 	if v := strings.TrimSpace(c.AlertTemplate); v != "" {
 		return v
 	}
@@ -739,7 +739,7 @@ func (c WhatsAppConfig) ResolvedAlertTemplate() string {
 }
 
 // ResolvedVerifyTemplate returns the configured verify template name or the default.
-func (c WhatsAppConfig) ResolvedVerifyTemplate() string {
+func (c *WhatsAppConfig) ResolvedVerifyTemplate() string {
 	if v := strings.TrimSpace(c.VerifyTemplate); v != "" {
 		return v
 	}
@@ -748,7 +748,7 @@ func (c WhatsAppConfig) ResolvedVerifyTemplate() string {
 }
 
 // ResolvedTemplateLanguage returns the configured template language or the default.
-func (c WhatsAppConfig) ResolvedTemplateLanguage() string {
+func (c *WhatsAppConfig) ResolvedTemplateLanguage() string {
 	if v := strings.TrimSpace(c.TemplateLanguage); v != "" {
 		return v
 	}
@@ -1223,15 +1223,7 @@ func Load() (*Config, error) {
 	// Manually read the entitlements runaway caps — the underscores in these
 	// key segments are converted to dots by the env TransformFunc, so they
 	// never reach the koanf `*_per_hour` tags automatically.
-	if v := envInt("SP_ENTITLEMENTS_SMS_RUNAWAY_PER_HOUR"); v > 0 {
-		cfg.Entitlements.SMSRunawayPerHour = v
-	}
-	if v := envInt("SP_ENTITLEMENTS_CALL_RUNAWAY_PER_HOUR"); v > 0 {
-		cfg.Entitlements.CallRunawayPerHour = v
-	}
-	if v := envInt("SP_ENTITLEMENTS_WHATSAPP_RUNAWAY_PER_HOUR"); v > 0 {
-		cfg.Entitlements.WhatsAppRunawayPerHour = v
-	}
+	applyEntitlementsEnv(&cfg.Entitlements)
 
 	// If node region is set, also set the check worker region if not already set
 	if cfg.Node.Region != "" && cfg.Server.CheckWorker.Region == "" {
@@ -1755,6 +1747,53 @@ func applyPostHogEnv(cfg *PostHogConfig) {
 	}
 }
 
+// SP_WHATSAPP_* environment variable names. Declared once and referenced from
+// both the manual reader below and the RecognizedEnvVars list in envvars.go, so
+// the two can never drift apart.
+const (
+	EnvWhatsAppAccessToken        = "SP_WHATSAPP_ACCESS_TOKEN"
+	EnvWhatsAppPhoneNumberID      = "SP_WHATSAPP_PHONE_NUMBER_ID"
+	EnvWhatsAppWABAID             = "SP_WHATSAPP_WABA_ID"
+	EnvWhatsAppAppSecret          = "SP_WHATSAPP_APP_SECRET"
+	EnvWhatsAppWebhookVerifyToken = "SP_WHATSAPP_WEBHOOK_VERIFY_TOKEN"
+	EnvWhatsAppAPIVersion         = "SP_WHATSAPP_API_VERSION"
+	EnvWhatsAppAlertTemplate      = "SP_WHATSAPP_ALERT_TEMPLATE"
+	EnvWhatsAppVerifyTemplate     = "SP_WHATSAPP_VERIFY_TEMPLATE"
+	EnvWhatsAppTemplateLanguage   = "SP_WHATSAPP_TEMPLATE_LANGUAGE"
+	EnvWhatsAppBaseURL            = "SP_WHATSAPP_BASE_URL"
+	// EnvEntitlementsWhatsAppRunaway caps outbound WhatsApp messages per org
+	// per hour, independently of the billing-driven monthly quota.
+	EnvEntitlementsWhatsAppRunaway = "SP_ENTITLEMENTS_WHATSAPP_RUNAWAY_PER_HOUR"
+)
+
+// WhatsAppEnvVarNames lists every manually-read SP_WHATSAPP_* name, in the
+// order they are bound.
+func WhatsAppEnvVarNames() []string {
+	return []string{
+		EnvWhatsAppAccessToken, EnvWhatsAppPhoneNumberID, EnvWhatsAppWABAID,
+		EnvWhatsAppAppSecret, EnvWhatsAppWebhookVerifyToken, EnvWhatsAppAPIVersion,
+		EnvWhatsAppAlertTemplate, EnvWhatsAppVerifyTemplate,
+		EnvWhatsAppTemplateLanguage, EnvWhatsAppBaseURL,
+	}
+}
+
+// applyEntitlementsEnv reads the per-org hourly runaway caps. Every key has a
+// snake_case segment koanf's env provider cannot reach, so they are read here.
+// Keep in sync with manualReaderEnvVars.
+func applyEntitlementsEnv(cfg *EntitlementsConfig) {
+	if v := envInt("SP_ENTITLEMENTS_SMS_RUNAWAY_PER_HOUR"); v > 0 {
+		cfg.SMSRunawayPerHour = v
+	}
+
+	if v := envInt("SP_ENTITLEMENTS_CALL_RUNAWAY_PER_HOUR"); v > 0 {
+		cfg.CallRunawayPerHour = v
+	}
+
+	if v := envInt(EnvEntitlementsWhatsAppRunaway); v > 0 {
+		cfg.WhatsAppRunawayPerHour = v
+	}
+}
+
 // applyWhatsAppEnv reads SP_WHATSAPP_* into cfg. Only whatsapp.enabled is
 // koanf-reachable (single-word segment); every other key has a snake_case
 // segment that koanf's underscore→dot collapsing can never reach
@@ -1762,23 +1801,16 @@ func applyPostHogEnv(cfg *PostHogConfig) {
 // are read by hand here — the same quirk as rate_limiting and posthog.
 // Keep in sync with manualReaderPlatformEnvVars.
 func applyWhatsAppEnv(cfg *WhatsAppConfig) {
-	for _, binding := range []struct {
-		name string
-		dst  *string
-	}{
-		{"SP_WHATSAPP_ACCESS_TOKEN", &cfg.AccessToken},
-		{"SP_WHATSAPP_PHONE_NUMBER_ID", &cfg.PhoneNumberID},
-		{"SP_WHATSAPP_WABA_ID", &cfg.WABAID},
-		{"SP_WHATSAPP_APP_SECRET", &cfg.AppSecret},
-		{"SP_WHATSAPP_WEBHOOK_VERIFY_TOKEN", &cfg.WebhookVerifyToken},
-		{"SP_WHATSAPP_API_VERSION", &cfg.APIVersion},
-		{"SP_WHATSAPP_ALERT_TEMPLATE", &cfg.AlertTemplate},
-		{"SP_WHATSAPP_VERIFY_TEMPLATE", &cfg.VerifyTemplate},
-		{"SP_WHATSAPP_TEMPLATE_LANGUAGE", &cfg.TemplateLanguage},
-		{"SP_WHATSAPP_BASE_URL", &cfg.BaseURL},
-	} {
-		if v := strings.TrimSpace(os.Getenv(binding.name)); v != "" {
-			*binding.dst = v
+	targets := []*string{
+		&cfg.AccessToken, &cfg.PhoneNumberID, &cfg.WABAID,
+		&cfg.AppSecret, &cfg.WebhookVerifyToken, &cfg.APIVersion,
+		&cfg.AlertTemplate, &cfg.VerifyTemplate,
+		&cfg.TemplateLanguage, &cfg.BaseURL,
+	}
+
+	for i, name := range WhatsAppEnvVarNames() {
+		if v := strings.TrimSpace(os.Getenv(name)); v != "" {
+			*targets[i] = v
 		}
 	}
 }

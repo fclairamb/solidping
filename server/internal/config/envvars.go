@@ -175,7 +175,7 @@ func manualReaderServerEnvVars() []string {
 // platform rather than request handling: profiler, database pool, Go runtime,
 // file storage and web push.
 func manualReaderPlatformEnvVars() []string {
-	return []string{
+	names := []string{
 		// applyProfilerEnv
 		"SP_PROFILER_BLOCK_RATE",
 		"SP_PROFILER_MUTEX_FRACTION",
@@ -206,19 +206,17 @@ func manualReaderPlatformEnvVars() []string {
 		// and come from the reflection set; these two have snake_case segments.
 		"SP_POSTHOG_PROJECT_API_KEY",
 		"SP_POSTHOG_PERSONAL_API_KEY",
-		// applyWhatsAppEnv — whatsapp.enabled is koanf-reachable and comes from
-		// the reflection set; every other WhatsApp key has a snake_case segment.
-		"SP_WHATSAPP_ACCESS_TOKEN",
-		"SP_WHATSAPP_PHONE_NUMBER_ID",
-		"SP_WHATSAPP_WABA_ID",
-		"SP_WHATSAPP_APP_SECRET",
-		"SP_WHATSAPP_WEBHOOK_VERIFY_TOKEN",
-		"SP_WHATSAPP_API_VERSION",
-		"SP_WHATSAPP_ALERT_TEMPLATE",
-		"SP_WHATSAPP_VERIFY_TEMPLATE",
-		"SP_WHATSAPP_TEMPLATE_LANGUAGE",
-		"SP_WHATSAPP_BASE_URL",
-		// Entitlements runaway cap for WhatsApp (read via envInt in Load).
-		"SP_ENTITLEMENTS_WHATSAPP_RUNAWAY_PER_HOUR",
 	}
+
+	// applyWhatsAppEnv — whatsapp.enabled is koanf-reachable and comes from the
+	// reflection set; every other WhatsApp key has a snake_case segment. The
+	// names come from the same list the reader iterates, so the two cannot drift.
+	// applyEntitlementsEnv contributes the WhatsApp runaway cap.
+	whatsAppNames := WhatsAppEnvVarNames()
+	out := make([]string, 0, len(names)+len(whatsAppNames)+1)
+	out = append(out, names...)
+	out = append(out, whatsAppNames...)
+	out = append(out, EnvEntitlementsWhatsAppRunaway)
+
+	return out
 }

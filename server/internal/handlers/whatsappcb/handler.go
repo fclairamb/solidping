@@ -2,7 +2,7 @@
 // GET subscription handshake and the POST event stream carrying delivery
 // statuses and inbound user replies.
 //
-// It is the WhatsApp analogue of internal/handlers/twiliocb, with one
+// It is the WhatsApp counterpart to internal/handlers/twiliocb, with one
 // structural difference: Twilio callbacks are org-scoped (they carry a `cid`
 // naming the org's connection), while WhatsApp is an *instance*-level
 // integration — one WABA for the whole deployment. Authenticity therefore comes
@@ -123,7 +123,9 @@ func (h *Handler) HandleEvent(writer http.ResponseWriter, req *http.Request) err
 // applyStatuses records each delivery-status transition on the notification
 // audit row that carries the matching provider message id.
 func (h *Handler) applyStatuses(req *http.Request, payload *whatsapp.WebhookPayload) {
-	for _, status := range payload.Statuses() {
+	statuses := payload.Statuses()
+	for i := range statuses {
+		status := &statuses[i]
 		if status.ID == "" || status.Status == "" {
 			continue
 		}
@@ -147,9 +149,10 @@ func (h *Handler) applyStatuses(req *http.Request, payload *whatsapp.WebhookPayl
 // logInbound records user replies. v1 accepts them (they open the free 24-hour
 // session window) but implements no command handling.
 func (h *Handler) logInbound(req *http.Request, payload *whatsapp.WebhookPayload) {
-	for _, msg := range payload.InboundMessages() {
+	messages := payload.InboundMessages()
+	for i := range messages {
 		h.log.InfoContext(req.Context(), "inbound whatsapp message received (no command handling in v1)",
-			"messageId", msg.ID, "type", msg.Type)
+			"messageId", messages[i].ID, "type", messages[i].Type)
 	}
 }
 

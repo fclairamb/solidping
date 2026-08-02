@@ -3,7 +3,6 @@ package whatsapp_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -70,7 +69,7 @@ func TestSendTemplate_PayloadShape(t *testing.T) {
 		`{"messaging_product":"whatsapp","messages":[{"id":"wamid.ABC"}]}`)
 	client := newTestClient(t, fake)
 
-	id, err := client.SendTemplate(context.Background(), whatsapp.TemplateMessage{
+	id, err := client.SendTemplate(context.Background(), &whatsapp.TemplateMessage{
 		To:         "+33612345678",
 		Template:   "solidping_alert",
 		Language:   "fr",
@@ -128,7 +127,7 @@ func TestSendTemplate_AuthenticationTemplateAddsCopyCodeButton(t *testing.T) {
 	fake := newFakeGraph(t, http.StatusOK, `{"messages":[{"id":"wamid.OTP"}]}`)
 	client := newTestClient(t, fake)
 
-	_, err := client.SendTemplate(context.Background(), whatsapp.TemplateMessage{
+	_, err := client.SendTemplate(context.Background(), &whatsapp.TemplateMessage{
 		To:          "+33612345678",
 		Template:    "solidping_verify",
 		Language:    "en",
@@ -173,7 +172,7 @@ func TestSendTemplate_DefaultsLanguageAndAPIVersion(t *testing.T) {
 	})
 	r.NoError(err)
 
-	_, err = client.SendTemplate(context.Background(), whatsapp.TemplateMessage{
+	_, err = client.SendTemplate(context.Background(), &whatsapp.TemplateMessage{
 		To: "+15551234567", Template: "solidping_alert",
 	})
 	r.NoError(err)
@@ -201,11 +200,12 @@ func TestSendTemplate_TypedErrors(t *testing.T) {
 		reason   string
 	}{
 		{
-			name:     "template does not exist",
-			status:   http.StatusBadRequest,
-			response: `{"error":{"message":"Template name does not exist","code":132001,"error_subcode":2494010,"type":"OAuthException"}}`,
-			want:     whatsapp.ErrTemplateUnavailable,
-			reason:   "whatsapp_template_unavailable",
+			name:   "template does not exist",
+			status: http.StatusBadRequest,
+			response: `{"error":{"message":"Template name does not exist","code":132001,` +
+				`"error_subcode":2494010,"type":"OAuthException"}}`,
+			want:   whatsapp.ErrTemplateUnavailable,
+			reason: "whatsapp_template_unavailable",
 		},
 		{
 			name:     "template paused",
@@ -243,11 +243,12 @@ func TestSendTemplate_TypedErrors(t *testing.T) {
 			reason:   "whatsapp_rate_limited",
 		},
 		{
-			name:     "token expired",
-			status:   http.StatusUnauthorized,
-			response: `{"error":{"message":"Error validating access token","code":190,"error_subcode":463,"type":"OAuthException"}}`,
-			want:     whatsapp.ErrTokenExpired,
-			reason:   "whatsapp_token_expired",
+			name:   "token expired",
+			status: http.StatusUnauthorized,
+			response: `{"error":{"message":"Error validating access token","code":190,` +
+				`"error_subcode":463,"type":"OAuthException"}}`,
+			want:   whatsapp.ErrTokenExpired,
+			reason: "whatsapp_token_expired",
 		},
 		{
 			name:     "unknown code falls back to 429 class",
@@ -281,7 +282,7 @@ func TestSendTemplate_TypedErrors(t *testing.T) {
 			fake := newFakeGraph(t, tc.status, tc.response)
 			client := newTestClient(t, fake)
 
-			_, err := client.SendTemplate(context.Background(), whatsapp.TemplateMessage{
+			_, err := client.SendTemplate(context.Background(), &whatsapp.TemplateMessage{
 				To: "+15551234567", Template: "solidping_alert",
 			})
 			r.Error(err)
@@ -289,7 +290,7 @@ func TestSendTemplate_TypedErrors(t *testing.T) {
 			r.Equal(tc.reason, whatsapp.FailureReason(err))
 
 			var apiErr *whatsapp.APIError
-			r.True(errors.As(err, &apiErr))
+			r.ErrorAs(err, &apiErr)
 			r.Equal(tc.status, apiErr.StatusCode)
 			r.NotEmpty(apiErr.Message)
 		})
@@ -304,7 +305,7 @@ func TestSendTemplate_NoMessageID(t *testing.T) {
 	fake := newFakeGraph(t, http.StatusOK, `{"messaging_product":"whatsapp","messages":[]}`)
 	client := newTestClient(t, fake)
 
-	_, err := client.SendTemplate(context.Background(), whatsapp.TemplateMessage{
+	_, err := client.SendTemplate(context.Background(), &whatsapp.TemplateMessage{
 		To: "+15551234567", Template: "solidping_alert",
 	})
 	r.ErrorIs(err, whatsapp.ErrNoMessageID)
@@ -318,19 +319,19 @@ func TestSendTemplate_ValidatesInput(t *testing.T) {
 	fake := newFakeGraph(t, http.StatusOK, `{"messages":[{"id":"wamid.X"}]}`)
 	client := newTestClient(t, fake)
 
-	_, err := client.SendTemplate(context.Background(), whatsapp.TemplateMessage{
+	_, err := client.SendTemplate(context.Background(), &whatsapp.TemplateMessage{
 		To: "not-a-number", Template: "solidping_alert",
 	})
 	r.ErrorIs(err, whatsapp.ErrInvalidRecipient)
 	r.Equal("whatsapp_invalid_recipient", whatsapp.FailureReason(err))
 
-	_, err = client.SendTemplate(context.Background(), whatsapp.TemplateMessage{
+	_, err = client.SendTemplate(context.Background(), &whatsapp.TemplateMessage{
 		To: "+15551234567",
 	})
 	r.ErrorIs(err, whatsapp.ErrMissingTemplate)
 
 	// A bare (no '+') E.164 number is accepted — Meta's own format.
-	_, err = client.SendTemplate(context.Background(), whatsapp.TemplateMessage{
+	_, err = client.SendTemplate(context.Background(), &whatsapp.TemplateMessage{
 		To: "15551234567", Template: "solidping_alert",
 	})
 	r.NoError(err)
@@ -349,18 +350,18 @@ func TestNewClient_NotConfigured(t *testing.T) {
 	r.ErrorIs(err, whatsapp.ErrNotConfigured)
 
 	// Kill switch off → not configured even with full credentials.
-	_, err = whatsapp.NewClientFromConfig(config.WhatsAppConfig{
+	_, err = whatsapp.NewClientFromConfig(&config.WhatsAppConfig{
 		Enabled: false, AccessToken: "t", PhoneNumberID: "1",
 	})
 	r.ErrorIs(err, whatsapp.ErrNotConfigured)
 
-	client, err := whatsapp.NewClientFromConfig(config.WhatsAppConfig{
+	client, err := whatsapp.NewClientFromConfig(&config.WhatsAppConfig{
 		Enabled: true, AccessToken: "t", PhoneNumberID: "1",
 	})
 	r.NoError(err)
 	r.NotNil(client)
 
-	r.Equal("", whatsapp.FailureReason(nil))
+	r.Empty(whatsapp.FailureReason(nil))
 	r.Equal("whatsapp_not_configured", whatsapp.FailureReason(whatsapp.ErrNotConfigured))
 }
 

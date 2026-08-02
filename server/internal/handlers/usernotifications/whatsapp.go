@@ -26,18 +26,18 @@ type whatsAppTemplateSender struct {
 }
 
 // NewWhatsAppTemplateSender builds the production WhatsApp code sender.
-func NewWhatsAppTemplateSender(cfg config.WhatsAppConfig) WhatsAppCodeSender {
-	return &whatsAppTemplateSender{cfg: cfg}
+func NewWhatsAppTemplateSender(cfg *config.WhatsAppConfig) WhatsAppCodeSender {
+	return &whatsAppTemplateSender{cfg: *cfg}
 }
 
 // NewWhatsAppTemplateSenderWithBaseURL builds a sender pointed at a custom
 // Graph API base — the httptest seam used by tests and by test-mode runs.
-func NewWhatsAppTemplateSenderWithBaseURL(cfg config.WhatsAppConfig, baseURL string) WhatsAppCodeSender {
-	return &whatsAppTemplateSender{cfg: cfg, baseURL: baseURL}
+func NewWhatsAppTemplateSenderWithBaseURL(cfg *config.WhatsAppConfig, baseURL string) WhatsAppCodeSender {
+	return &whatsAppTemplateSender{cfg: *cfg, baseURL: baseURL}
 }
 
 // SendVerificationCode sends the authentication template carrying the code.
-func (s *whatsAppTemplateSender) SendVerificationCode(ctx context.Context, to, code string) error {
+func (s *whatsAppTemplateSender) SendVerificationCode(ctx context.Context, recipient, code string) error {
 	if !s.cfg.Active() {
 		return ErrNoWhatsAppProvider
 	}
@@ -57,8 +57,8 @@ func (s *whatsAppTemplateSender) SendVerificationCode(ctx context.Context, to, c
 		return ErrNoWhatsAppProvider
 	}
 
-	if _, err := client.SendTemplate(ctx, whatsapp.TemplateMessage{
-		To:          to,
+	if _, err := client.SendTemplate(ctx, &whatsapp.TemplateMessage{
+		To:          recipient,
 		Template:    s.cfg.ResolvedVerifyTemplate(),
 		Language:    s.cfg.ResolvedTemplateLanguage(),
 		BodyParams:  []string{code},
@@ -81,5 +81,5 @@ func (s *Service) whatsAppCodeSender() (WhatsAppCodeSender, error) {
 		return nil, ErrNoWhatsAppProvider
 	}
 
-	return NewWhatsAppTemplateSender(s.whatsAppCfg), nil
+	return NewWhatsAppTemplateSender(&s.whatsAppCfg), nil
 }

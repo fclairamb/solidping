@@ -152,7 +152,8 @@ func TestHandleVerify(t *testing.T) {
 			r := require.New(t)
 			env := setupEnv(t)
 
-			req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations/whatsapp/webhook?"+tc.query, nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet,
+				"/api/v1/integrations/whatsapp/webhook?"+tc.query, nil)
 			rec := httptest.NewRecorder()
 
 			r.NoError(env.handler.HandleVerify(rec, req))
@@ -177,7 +178,7 @@ func TestHandleVerify_NoTokenConfigured(t *testing.T) {
 	env := setupEnv(t)
 	env.handler.cfg.WhatsApp.WebhookVerifyToken = ""
 
-	req := httptest.NewRequest(http.MethodGet,
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet,
 		"/api/v1/integrations/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=&hub.challenge=abc", nil)
 	rec := httptest.NewRecorder()
 
@@ -212,7 +213,7 @@ func TestHandleEvent_RejectsBadSignature(t *testing.T) {
 			r := require.New(t)
 			env := setupEnv(t)
 
-			req := httptest.NewRequest(http.MethodPost,
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost,
 				"/api/v1/integrations/whatsapp/webhook", strings.NewReader(body))
 			if tc.signature != "" {
 				req.Header.Set("X-Hub-Signature-256", tc.signature)
@@ -242,7 +243,7 @@ func TestHandleEvent_RejectsWhenNoAppSecretConfigured(t *testing.T) {
 	env.handler.cfg.WhatsApp.AppSecret = ""
 
 	body := statusBody(testMessageID, whatsapp.StatusDelivered)
-	req := httptest.NewRequest(http.MethodPost,
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost,
 		"/api/v1/integrations/whatsapp/webhook", strings.NewReader(body))
 	req.Header.Set("X-Hub-Signature-256", whatsapp.Sign("", []byte(body)))
 
@@ -271,7 +272,7 @@ func TestHandleEvent_UpdatesDeliveryRecord(t *testing.T) {
 			r.Empty(env.deliveryBody(t))
 
 			body := statusBody(testMessageID, status)
-			req := httptest.NewRequest(http.MethodPost,
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost,
 				"/api/v1/integrations/whatsapp/webhook", strings.NewReader(body))
 			req.Header.Set("X-Hub-Signature-256", whatsapp.Sign(testAppSecret, []byte(body)))
 
@@ -295,7 +296,7 @@ func TestHandleEvent_FailedStatusCarriesReason(t *testing.T) {
 		`"errors":[{"code":131026,"title":"Message undeliverable",` +
 		`"error_data":{"details":"Receiver is not a WhatsApp user"}}]}]}}]}]}`
 
-	req := httptest.NewRequest(http.MethodPost,
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost,
 		"/api/v1/integrations/whatsapp/webhook", strings.NewReader(body))
 	req.Header.Set("X-Hub-Signature-256", whatsapp.Sign(testAppSecret, []byte(body)))
 
@@ -318,7 +319,7 @@ func TestHandleEvent_UnknownMessageIDIsNoOp(t *testing.T) {
 	env := setupEnv(t)
 
 	body := statusBody("wamid.SOMEONE_ELSE", whatsapp.StatusDelivered)
-	req := httptest.NewRequest(http.MethodPost,
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost,
 		"/api/v1/integrations/whatsapp/webhook", strings.NewReader(body))
 	req.Header.Set("X-Hub-Signature-256", whatsapp.Sign(testAppSecret, []byte(body)))
 
@@ -340,7 +341,7 @@ func TestHandleEvent_InboundReplyAccepted(t *testing.T) {
 		`"value":{"messages":[{"from":"33612345678","id":"wamid.IN","timestamp":"1700000000",` +
 		`"type":"text","text":{"body":"ack"}}]}}]}]}`
 
-	req := httptest.NewRequest(http.MethodPost,
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost,
 		"/api/v1/integrations/whatsapp/webhook", strings.NewReader(body))
 	req.Header.Set("X-Hub-Signature-256", whatsapp.Sign(testAppSecret, []byte(body)))
 
@@ -359,7 +360,7 @@ func TestHandleEvent_UnparseableBodyIsAcknowledged(t *testing.T) {
 	env := setupEnv(t)
 
 	body := "not json at all"
-	req := httptest.NewRequest(http.MethodPost,
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost,
 		"/api/v1/integrations/whatsapp/webhook", strings.NewReader(body))
 	req.Header.Set("X-Hub-Signature-256", whatsapp.Sign(testAppSecret, []byte(body)))
 

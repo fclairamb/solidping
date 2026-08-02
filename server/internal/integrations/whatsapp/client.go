@@ -112,16 +112,19 @@ func (e *APIError) Unwrap() error { return e.class }
 // graphError is the wire shape of a Graph API error response.
 type graphError struct {
 	Error struct {
-		Message   string `json:"message"`
-		Type      string `json:"type"`
-		Code      int    `json:"code"`
-		Subcode   int    `json:"error_subcode"`
+		Message string `json:"message"`
+		Type    string `json:"type"`
+		Code    int    `json:"code"`
+		//nolint:tagliatelle // Meta's Graph API wire format uses snake_case.
+		Subcode int `json:"error_subcode"`
+		//nolint:tagliatelle // Meta's Graph API wire format uses snake_case.
 		FBTraceID string `json:"fbtrace_id"`
 	} `json:"error"`
 }
 
 // sendResponse is the wire shape of a successful /messages response.
 type sendResponse struct {
+	//nolint:tagliatelle // Meta's Graph API wire format uses snake_case.
 	MessagingProduct string `json:"messaging_product"`
 	Messages         []struct {
 		ID string `json:"id"`
@@ -174,7 +177,7 @@ func NewClient(opts Options) (*Client, error) {
 
 // NewClientFromConfig builds a client from the instance WhatsApp config.
 // Returns ErrNotConfigured when the instance cannot send.
-func NewClientFromConfig(cfg config.WhatsAppConfig) (*Client, error) {
+func NewClientFromConfig(cfg *config.WhatsAppConfig) (*Client, error) {
 	if !cfg.Active() {
 		return nil, ErrNotConfigured
 	}
@@ -205,7 +208,7 @@ type TemplateMessage struct {
 
 // SendTemplate posts one template message and returns the Meta message id
 // (`wamid.…`), which is what inbound delivery-status webhooks key on.
-func (c *Client) SendTemplate(ctx context.Context, msg TemplateMessage) (string, error) {
+func (c *Client) SendTemplate(ctx context.Context, msg *TemplateMessage) (string, error) {
 	payload, err := buildTemplatePayload(msg)
 	if err != nil {
 		return "", err
@@ -253,11 +256,13 @@ func (c *Client) SendTemplate(ctx context.Context, msg TemplateMessage) (string,
 // templatePayload / component types are the wire shape of the Cloud API
 // template message.
 type templatePayload struct {
-	MessagingProduct string           `json:"messaging_product"`
-	RecipientType    string           `json:"recipient_type"`
-	To               string           `json:"to"`
-	Type             string           `json:"type"`
-	Template         templateEnvelope `json:"template"`
+	//nolint:tagliatelle // Meta's Graph API wire format uses snake_case.
+	MessagingProduct string `json:"messaging_product"`
+	//nolint:tagliatelle // Meta's Graph API wire format uses snake_case.
+	RecipientType string           `json:"recipient_type"`
+	To            string           `json:"to"`
+	Type          string           `json:"type"`
+	Template      templateEnvelope `json:"template"`
 }
 
 type templateEnvelope struct {
@@ -271,7 +276,8 @@ type templateLanguage struct {
 }
 
 type templateComponent struct {
-	Type       string              `json:"type"`
+	Type string `json:"type"`
+	//nolint:tagliatelle // Meta's Graph API wire format uses snake_case.
 	SubType    string              `json:"sub_type,omitempty"`
 	Index      string              `json:"index,omitempty"`
 	Parameters []templateParameter `json:"parameters,omitempty"`
@@ -288,9 +294,9 @@ var ErrInvalidRecipient = errors.New("whatsapp: recipient is not a valid E.164 n
 // ErrMissingTemplate is returned when no template name was supplied.
 var ErrMissingTemplate = errors.New("whatsapp: template name is required")
 
-func buildTemplatePayload(msg TemplateMessage) (*templatePayload, error) {
-	to := strings.TrimSpace(msg.To)
-	if !ValidE164(to) && !ValidE164("+"+normalizeRecipient(to)) {
+func buildTemplatePayload(msg *TemplateMessage) (*templatePayload, error) {
+	recipient := strings.TrimSpace(msg.To)
+	if !ValidE164(recipient) && !ValidE164("+"+normalizeRecipient(recipient)) {
 		return nil, ErrInvalidRecipient
 	}
 
@@ -328,7 +334,7 @@ func buildTemplatePayload(msg TemplateMessage) (*templatePayload, error) {
 	return &templatePayload{
 		MessagingProduct: "whatsapp",
 		RecipientType:    "individual",
-		To:               normalizeRecipient(to),
+		To:               normalizeRecipient(recipient),
 		Type:             "template",
 		Template: templateEnvelope{
 			Name:       strings.TrimSpace(msg.Template),
@@ -391,10 +397,10 @@ func classifyError(status int, body []byte) error {
 		return apiErr
 	}
 
-	switch {
-	case status == http.StatusUnauthorized || status == http.StatusForbidden:
+	switch status {
+	case http.StatusUnauthorized, http.StatusForbidden:
 		apiErr.class = ErrTokenExpired
-	case status == http.StatusTooManyRequests:
+	case http.StatusTooManyRequests:
 		apiErr.class = ErrRateLimited
 	default:
 		apiErr.class = ErrRequestFailed

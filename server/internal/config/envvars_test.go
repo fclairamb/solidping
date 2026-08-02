@@ -147,6 +147,8 @@ func TestWhatsAppEnvVarsBind(t *testing.T) {
 // TestWhatsAppDefaultsOff proves the feature is dark out of the box and that
 // the kill switch alone cannot turn it on.
 func TestWhatsAppDefaultsOff(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 
 	cfg, err := Load()
@@ -159,8 +161,15 @@ func TestWhatsAppDefaultsOff(t *testing.T) {
 	r.Equal(DefaultWhatsAppTemplateLanguage, cfg.WhatsApp.ResolvedTemplateLanguage())
 
 	// Enabled without credentials is still off.
-	r.False(WhatsAppConfig{Enabled: true}.Active())
-	r.False(WhatsAppConfig{Enabled: true, AccessToken: "t"}.Active())
-	r.False(WhatsAppConfig{Enabled: true, PhoneNumberID: "1"}.Active())
-	r.True(WhatsAppConfig{Enabled: true, AccessToken: "t", PhoneNumberID: "1"}.Active())
+	switchOnly := WhatsAppConfig{Enabled: true}
+	r.False(switchOnly.Active())
+
+	tokenOnly := WhatsAppConfig{Enabled: true, AccessToken: "t"}
+	r.False(tokenOnly.Active())
+
+	idOnly := WhatsAppConfig{Enabled: true, PhoneNumberID: "1"}
+	r.False(idOnly.Active())
+
+	complete := WhatsAppConfig{Enabled: true, AccessToken: "t", PhoneNumberID: "1"}
+	r.True(complete.Active())
 }

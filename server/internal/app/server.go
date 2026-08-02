@@ -978,7 +978,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		// Instance-level WhatsApp credentials power the contact-verification
 		// authentication template. Off by default; NewService keeps the feature
 		// dark when the config is inactive.
-		usernotifications.WithWhatsAppConfig(s.config.WhatsApp),
+		usernotifications.WithWhatsAppConfig(&s.config.WhatsApp),
 	)
 	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender)
 	slackAdapter := usernotifications.NewSlackDMSenderAdapter()

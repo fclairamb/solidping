@@ -35,6 +35,7 @@ type WebhookChange struct {
 
 // WebhookValue carries the delivery statuses and inbound messages.
 type WebhookValue struct {
+	//nolint:tagliatelle // Meta's webhook wire format uses snake_case.
 	MessagingProduct string           `json:"messaging_product"`
 	Metadata         WebhookMetadata  `json:"metadata"`
 	Statuses         []MessageStatus  `json:"statuses"`
@@ -43,15 +44,18 @@ type WebhookValue struct {
 
 // WebhookMetadata identifies the receiving business number.
 type WebhookMetadata struct {
+	//nolint:tagliatelle // Meta's webhook wire format uses snake_case.
 	DisplayPhoneNumber string `json:"display_phone_number"`
-	PhoneNumberID      string `json:"phone_number_id"`
+	//nolint:tagliatelle // Meta's webhook wire format uses snake_case.
+	PhoneNumberID string `json:"phone_number_id"`
 }
 
 // MessageStatus is one delivery-status transition for a message we sent.
 type MessageStatus struct {
-	ID           string         `json:"id"`
-	Status       string         `json:"status"`
-	Timestamp    string         `json:"timestamp"`
+	ID        string `json:"id"`
+	Status    string `json:"status"`
+	Timestamp string `json:"timestamp"`
+	//nolint:tagliatelle // Meta's webhook wire format uses snake_case.
 	RecipientID  string         `json:"recipient_id"`
 	Errors       []StatusError  `json:"errors"`
 	Conversation map[string]any `json:"conversation,omitempty"`
@@ -59,9 +63,10 @@ type MessageStatus struct {
 
 // StatusError is Meta's per-status error detail (present on `failed`).
 type StatusError struct {
-	Code      int    `json:"code"`
-	Title     string `json:"title"`
-	Message   string `json:"message"`
+	Code    int    `json:"code"`
+	Title   string `json:"title"`
+	Message string `json:"message"`
+	//nolint:tagliatelle // Meta's webhook wire format uses snake_case.
 	ErrorData struct {
 		Details string `json:"details"`
 	} `json:"error_data"`
@@ -98,9 +103,9 @@ func (p *WebhookPayload) Statuses() []MessageStatus {
 
 	var out []MessageStatus
 
-	for _, entry := range p.Entry {
-		for _, change := range entry.Changes {
-			out = append(out, change.Value.Statuses...)
+	for i := range p.Entry {
+		for j := range p.Entry[i].Changes {
+			out = append(out, p.Entry[i].Changes[j].Value.Statuses...)
 		}
 	}
 
@@ -115,9 +120,9 @@ func (p *WebhookPayload) InboundMessages() []InboundMessage {
 
 	var out []InboundMessage
 
-	for _, entry := range p.Entry {
-		for _, change := range entry.Changes {
-			out = append(out, change.Value.Messages...)
+	for i := range p.Entry {
+		for j := range p.Entry[i].Changes {
+			out = append(out, p.Entry[i].Changes[j].Value.Messages...)
 		}
 	}
 
@@ -127,20 +132,20 @@ func (p *WebhookPayload) InboundMessages() []InboundMessage {
 // Describe renders a short, storable summary of a delivery status for the
 // notification audit row — "whatsapp status: failed (131026 Message
 // undeliverable: recipient is not a WhatsApp user)". Never carries credentials.
-func (s MessageStatus) Describe() string {
+func (s *MessageStatus) Describe() string {
 	var builder strings.Builder
 
 	builder.WriteString("whatsapp status: ")
 	builder.WriteString(s.Status)
 
 	for i := range s.Errors {
-		e := &s.Errors[i]
+		statusErr := &s.Errors[i]
 
-		builder.WriteString(fmt.Sprintf(" (%d %s", e.Code, e.Title))
+		fmt.Fprintf(&builder, " (%d %s", statusErr.Code, statusErr.Title)
 
-		detail := e.ErrorData.Details
+		detail := statusErr.ErrorData.Details
 		if detail == "" {
-			detail = e.Message
+			detail = statusErr.Message
 		}
 
 		if detail != "" {

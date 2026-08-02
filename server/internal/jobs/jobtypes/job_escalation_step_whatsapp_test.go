@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -390,10 +391,7 @@ func TestWhatsAppDetail(t *testing.T) {
 	})
 	r.Equal("connection refused after 3 tries", detail)
 
-	long := ""
-	for range 40 {
-		long += "abcdefghij"
-	}
+	long := strings.Repeat("abcdefghij", 40)
 
 	detail = run.whatsAppDetail(context.Background(), nil, &models.Incident{
 		Title: &long, StartedAt: time.Now(),

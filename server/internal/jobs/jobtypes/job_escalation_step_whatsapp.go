@@ -52,7 +52,7 @@ func (r *EscalationStepJobRun) pageWhatsApp(
 		return 0
 	}
 
-	cfg := jctx.AppConfig.WhatsApp
+	cfg := &jctx.AppConfig.WhatsApp
 
 	client, err := whatsapp.NewClientFromConfig(cfg)
 	if err != nil {
@@ -66,7 +66,7 @@ func (r *EscalationStepJobRun) pageWhatsApp(
 		return 0
 	}
 
-	messageID, err := client.SendTemplate(ctx, whatsapp.TemplateMessage{
+	messageID, err := client.SendTemplate(ctx, &whatsapp.TemplateMessage{
 		To:       contact.Value,
 		Template: cfg.ResolvedAlertTemplate(),
 		Language: cfg.ResolvedTemplateLanguage(),
