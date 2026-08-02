@@ -165,7 +165,56 @@ const (
 	// burst of slow probes cannot starve due fast checks. Applied at startup
 	// like the worker pool sizes (the worker clamps it to [0, pool_size−1]).
 	KeySchedulingFastLaneReserved ParameterKey = "scheduling.fast_lane_reserved"
+
+	// Product-analytics (PostHog) keys, spec 2026-08-02-08. The feature is
+	// entirely inert unless posthog.project_api_key is set: posthog.enabled
+	// defaults to true but is only a kill switch — see config.PostHogConfig.Active
+	// for the single enablement rule (enabled && project_api_key != "") that the
+	// backend, GET /api/v1/config and the dashboard all apply verbatim.
+	//
+	// Only the personal API key is Secret. The project key is public by design:
+	// it is the browser-side ingestion key and is deliberately shipped to the SPA.
+	KeyPostHogEnabled        ParameterKey = "posthog.enabled"
+	KeyPostHogProjectAPIKey  ParameterKey = "posthog.project_api_key"
+	KeyPostHogHost           ParameterKey = "posthog.host"
+	KeyPostHogPersonalAPIKey ParameterKey = "posthog.personal_api_key"
 )
+
+// EnvVarForKey returns the SP_* environment variable bound to a system
+// parameter key, and ok=false when the key is not a known parameter. Pure data
+// accessor over getKnownParameters — no database dependency.
+func EnvVarForKey(key string) (string, bool) {
+	params := getKnownParameters()
+	for i := range params {
+		if string(params[i].Key) == key && params[i].EnvVar != "" {
+			return params[i].EnvVar, true
+		}
+	}
+
+	return "", false
+}
+
+// EnvOverriddenKeys returns every known parameter key whose effective value is
+// currently forced by its SP_* environment variable, i.e. the keys for which a
+// database edit made through the Server Settings UI would appear not to take
+// effect (env wins in Service.Initialize). Only key names are returned — never
+// values — so it is safe to expose to a super-admin API regardless of secrecy.
+func EnvOverriddenKeys() []string {
+	params := getKnownParameters()
+	out := make([]string, 0, len(params))
+
+	for i := range params {
+		if params[i].EnvVar == "" {
+			continue
+		}
+
+		if os.Getenv(params[i].EnvVar) != "" {
+			out = append(out, string(params[i].Key))
+		}
+	}
+
+	return out
+}
 
 // ParameterDefinition defines a system parameter with its env var mapping.
 type ParameterDefinition struct {
@@ -604,6 +653,51 @@ func getKnownParameters() []ParameterDefinition {
 			ApplyFunc: func(cfg *config.Config, value any) {
 				if v, ok := value.(string); ok {
 					cfg.MSTeams.TenantID = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			// Kill switch only. Defaults to true and still yields a fully inert
+			// integration until a project key is present — never flip this to
+			// "analytics are on".
+			Key:    KeyPostHogEnabled,
+			EnvVar: "SP_POSTHOG_ENABLED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.PostHog.Enabled = parseBool(value, cfg.PostHog.Enabled)
+			},
+		},
+		{
+			// The phc_… browser key. NOT a secret: it is shipped to every SPA
+			// that loads the dashboard, exactly like a Sentry DSN.
+			Key:    KeyPostHogProjectAPIKey,
+			EnvVar: "SP_POSTHOG_PROJECT_API_KEY",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.PostHog.ProjectAPIKey = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			Key:    KeyPostHogHost,
+			EnvVar: "SP_POSTHOG_HOST",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.PostHog.Host = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			// Server-side key. Secret: it carries broader privileges than the
+			// project key and must never leave the process.
+			Key:    KeyPostHogPersonalAPIKey,
+			EnvVar: "SP_POSTHOG_PERSONAL_API_KEY",
+			Secret: true,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.PostHog.PersonalAPIKey = strings.TrimSpace(v)
 				}
 			},
 		},

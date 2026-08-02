@@ -242,6 +242,52 @@ type SentryConfig struct {
 	Debug            bool    `koanf:"debug"`              // Enable Sentry debug logging
 }
 
+// PostHogConfig holds the product-analytics (PostHog) settings.
+//
+// The integration is *entirely inert* unless an operator configures it: with no
+// ProjectAPIKey nothing is instantiated server-side, nothing is advertised to
+// the browser through GET /api/v1/config, and the dashboard never loads any
+// analytics code. Enabled is a kill switch that does NOT enable anything on its
+// own — see Active, which is the single enablement rule shared verbatim by the
+// backend, the public config endpoint and the dashboard.
+type PostHogConfig struct {
+	// Enabled is the kill switch (SP_POSTHOG_ENABLED, default true). It only
+	// ever turns the feature *off*: a key is still required to turn it on.
+	Enabled bool `koanf:"enabled"`
+	// Host is the PostHog ingestion endpoint (SP_POSTHOG_HOST). Defaults to
+	// the EU cloud; supports self-hosted PostHog and reverse proxies.
+	Host string `koanf:"host"`
+	// ProjectAPIKey is the `phc_…` client key (SP_POSTHOG_PROJECT_API_KEY).
+	// Public by design — it is shipped to the browser. Empty = feature off.
+	ProjectAPIKey string `koanf:"project_api_key"`
+	// PersonalAPIKey is an optional server-side key
+	// (SP_POSTHOG_PERSONAL_API_KEY). SECRET: it is never returned by any API
+	// and never reaches the browser. When empty the backend captures with the
+	// project key.
+	PersonalAPIKey string `koanf:"personal_api_key"`
+}
+
+// DefaultPostHogHost is the ingestion endpoint used when none is configured.
+const DefaultPostHogHost = "https://eu.i.posthog.com"
+
+// Active reports whether PostHog is on. This is THE enablement rule, applied
+// identically by the backend analytics client, the public config endpoint and
+// the dashboard: `enabled == true && project_api_key != ""`. Anything else is
+// off — in particular a key with Enabled=false, and Enabled=true with no key.
+func (c PostHogConfig) Active() bool {
+	return c.Enabled && strings.TrimSpace(c.ProjectAPIKey) != ""
+}
+
+// ResolvedHost returns the ingestion host, falling back to the default when the
+// operator left it empty.
+func (c PostHogConfig) ResolvedHost() string {
+	if h := strings.TrimSpace(c.Host); h != "" {
+		return h
+	}
+
+	return DefaultPostHogHost
+}
+
 // WebPushConfig holds VAPID credentials for Web Push notifications.
 // Keys are auto-generated at first startup when not pre-provisioned.
 type WebPushConfig struct {
@@ -283,6 +329,7 @@ type Config struct {
 	App          AppConfig            `koanf:"app"`
 	Deployment   DeploymentConfig     `koanf:"deployment"`
 	WebPush      WebPushConfig        `koanf:"webpush"`
+	PostHog      PostHogConfig        `koanf:"posthog"`
 	Entitlements EntitlementsConfig   `koanf:"entitlements"`
 	ACME         ACMEConfig           `koanf:"acme"`
 	RunMode      string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
@@ -956,10 +1003,14 @@ func Load() (*Config, error) {
 		Microsoft: MicrosoftOAuthConfig{Enabled: false},
 		Slack:     SlackConfig{Enabled: false},
 		MSTeams:   MSTeamsConfig{Enabled: false},
-		Discord:   DiscordOAuthConfig{Enabled: false},
-		OIDC:      OIDCOAuthConfig{Enabled: false},
-		SAML:      SAMLConfig{Enabled: false},
-		LDAP:      LDAPConfig{Enabled: false},
+		// Enabled defaults to true but is inert on its own: PostHogConfig.Active
+		// additionally requires a project API key, which self-hosted installs
+		// never have unless the operator sets one.
+		PostHog: PostHogConfig{Enabled: true, Host: DefaultPostHogHost},
+		Discord: DiscordOAuthConfig{Enabled: false},
+		OIDC:    OIDCOAuthConfig{Enabled: false},
+		SAML:    SAMLConfig{Enabled: false},
+		LDAP:    LDAPConfig{Enabled: false},
 		Node: NodeConfig{
 			Role:   NodeRoleAll,
 			Region: "",
@@ -1091,6 +1142,7 @@ func Load() (*Config, error) {
 	applyPasswordHashingEnv(&cfg.Auth.Password)
 	applyFileStorageEnv(&cfg.FileStorage)
 	applyWebPushEnv(&cfg.WebPush)
+	applyPostHogEnv(&cfg.PostHog)
 	applyJobsEnv(&cfg.Jobs)
 	applyServerEnv(&cfg.Server)
 	applySchedulingEnv(&cfg.Server.Scheduling)
@@ -1561,6 +1613,21 @@ func applyWebPushEnv(cfg *WebPushConfig) {
 
 	if v := os.Getenv("SP_WEBPUSH_ENABLED"); v == envTrue || v == "1" {
 		cfg.Enabled = true
+	}
+}
+
+// applyPostHogEnv reads SP_POSTHOG_* into cfg. posthog.enabled and posthog.host
+// are koanf-reachable (single-word segments) and already bound by the env
+// provider, but posthog.project_api_key / posthog.personal_api_key have
+// snake_case segments that koanf's underscore→dot collapsing can never reach,
+// so they are read by hand here. Keep in sync with manualReaderPlatformEnvVars.
+func applyPostHogEnv(cfg *PostHogConfig) {
+	if v := os.Getenv("SP_POSTHOG_PROJECT_API_KEY"); v != "" {
+		cfg.ProjectAPIKey = strings.TrimSpace(v)
+	}
+
+	if v := os.Getenv("SP_POSTHOG_PERSONAL_API_KEY"); v != "" {
+		cfg.PersonalAPIKey = strings.TrimSpace(v)
 	}
 }
 

@@ -202,5 +202,9 @@ func manualReaderPlatformEnvVars() []string {
 		"SP_WEBPUSH_VAPID_PRIVATE_KEY",
 		"SP_WEBPUSH_SUBJECT",
 		"SP_WEBPUSH_ENABLED",
+		// applyPostHogEnv — posthog.enabled / posthog.host are koanf-reachable
+		// and come from the reflection set; these two have snake_case segments.
+		"SP_POSTHOG_PROJECT_API_KEY",
+		"SP_POSTHOG_PERSONAL_API_KEY",
 	}
 }
