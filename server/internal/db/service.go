@@ -571,6 +571,13 @@ type Service interface {
 	// are simply absent from the map. Feeds models.RollupGroupStatus and the
 	// memberStatusCounts API field (spec 2026-08-01-01).
 	GetCheckGroupStatusCounts(ctx context.Context, orgUID string) (map[string]map[models.CheckStatus]int, error)
+	// GetCheckStatusCounts returns the org-wide (status, enabled) histogram of
+	// non-deleted, non-internal checks — one GROUP BY, never a
+	// load-all-and-count, so the dashboard's KPI counters stay correct past the
+	// checks list's 100-row page clamp (spec 2026-08-02-06). The non-internal
+	// predicate mirrors the list endpoint's `internal=false` default so the
+	// counters describe exactly the checks the operator can see in the list.
+	GetCheckStatusCounts(ctx context.Context, orgUID string) ([]models.CheckStatusCount, error)
 	// ListCheckUIDsByGroup returns the UIDs of the group's enabled, non-deleted
 	// member checks — the same member set GetCheckGroupStatusCounts rolls up, so
 	// a group's public status and its aggregated availability always describe

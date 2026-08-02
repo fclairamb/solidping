@@ -4346,6 +4346,39 @@ func (s *Service) GetCheckGroupStatusCounts(
 	return counts, nil
 }
 
+// GetCheckStatusCounts returns the org-wide (status, enabled) histogram of
+// checks (spec 2026-08-02-06) as a single GROUP BY — never a load-all-and-count,
+// so it stays correct and cheap past the 100-row page clamp of the list
+// endpoint. Dialect-neutral, byte-identical in intent to the PostgreSQL twin.
+//
+// The predicate deliberately mirrors what the dashboard's checks list shows:
+// non-deleted AND non-internal. Internal checks are hidden by the list
+// endpoint's default `internal=false` filter, so counting them here would make
+// the KPI tiles disagree with the list the user can open. Disabled checks ARE
+// counted (the enabled flag is a grouping dimension, not a filter) because the
+// dashboard's down/hard-down tiles filter on status alone.
+func (s *Service) GetCheckStatusCounts(
+	ctx context.Context, orgUID string,
+) ([]models.CheckStatusCount, error) {
+	var rows []models.CheckStatusCount
+
+	err := s.db.NewSelect().
+		TableExpr("checks").
+		ColumnExpr("status").
+		ColumnExpr("enabled").
+		ColumnExpr("COUNT(*) AS count").
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Where("internal = ?", false).
+		GroupExpr("status, enabled").
+		Scan(ctx, &rows)
+	if err != nil {
+		return nil, fmt.Errorf("get check status counts: %w", err)
+	}
+
+	return rows, nil
+}
+
 // ListCheckUIDsByGroup returns the UIDs of the group's enabled, non-deleted
 // member checks — deliberately the same member predicate as
 // GetCheckGroupStatusCounts so a group's rolled-up status and its aggregated

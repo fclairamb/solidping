@@ -56,6 +56,16 @@ func (s CheckStatus) String() string {
 	}
 }
 
+// CheckStatusCount is one row of the org-wide check aggregation
+// (spec 2026-08-02-06): the number of checks sharing a (status, enabled)
+// pair. Produced by db.Service.GetCheckStatusCounts on both dialects and
+// folded into the checks stats response.
+type CheckStatusCount struct {
+	Status  CheckStatus `bun:"status"`
+	Enabled bool        `bun:"enabled"`
+	Count   int         `bun:"count"`
+}
+
 // Check represents a monitoring configuration.
 type Check struct {
 	UID             string  `bun:"uid,pk,type:varchar(36)"`
