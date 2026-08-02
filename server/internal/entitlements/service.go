@@ -64,6 +64,9 @@ type Service struct {
 	// Runaway caps (per org per hour), config-overridable via WithRunawayCaps.
 	smsRunawayPerHour  int
 	callRunawayPerHour int
+	// whatsAppRunawayPerHour bounds a broken escalation loop on the WhatsApp
+	// channel, independently of the billing-driven monthly quota.
+	whatsAppRunawayPerHour int
 }
 
 // Option customizes a Service at construction.
@@ -82,6 +85,16 @@ func WithRunawayCaps(smsPerHour, callsPerHour int) Option {
 	}
 }
 
+// WithWhatsAppRunawayCap overrides the per-org hourly WhatsApp runaway cap. A
+// non-positive value leaves the default in place.
+func WithWhatsAppRunawayCap(perHour int) Option {
+	return func(s *Service) {
+		if perHour > 0 {
+			s.whatsAppRunawayPerHour = perHour
+		}
+	}
+}
+
 // NewService builds an entitlements service with the given defaults.
 // staleAfter of zero disables stale fallback (self-hosted default).
 //
@@ -93,14 +106,15 @@ func NewService(
 	dbService db.Service, defaults Entitlements, staleAfter time.Duration, opts ...Option,
 ) *Service {
 	svc := &Service{
-		db:                 dbService,
-		defaults:           defaults,
-		staleAfter:         staleAfter,
-		now:                time.Now,
-		limiters:           make(map[string]*tokenBucket),
-		runawayBuckets:     make(map[string]*hourlyBucket),
-		smsRunawayPerHour:  defaultSMSRunawayPerHour,
-		callRunawayPerHour: defaultCallRunawayPerHour,
+		db:                     dbService,
+		defaults:               defaults,
+		staleAfter:             staleAfter,
+		now:                    time.Now,
+		limiters:               make(map[string]*tokenBucket),
+		runawayBuckets:         make(map[string]*hourlyBucket),
+		smsRunawayPerHour:      defaultSMSRunawayPerHour,
+		callRunawayPerHour:     defaultCallRunawayPerHour,
+		whatsAppRunawayPerHour: defaultWhatsAppRunawayPerHour,
 	}
 
 	for _, opt := range opts {
@@ -392,6 +406,9 @@ func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	}
 	if limits.MaxCallsPerMonth != nil {
 		out.Limits.MaxCallsPerMonth = limits.MaxCallsPerMonth
+	}
+	if limits.MaxWhatsappPerMonth != nil {
+		out.Limits.MaxWhatsappPerMonth = limits.MaxWhatsappPerMonth
 	}
 
 	return out

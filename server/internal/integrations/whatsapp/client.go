@@ -180,6 +180,7 @@ func NewClientFromConfig(cfg config.WhatsAppConfig) (*Client, error) {
 	}
 
 	return NewClient(Options{
+		BaseURL:       cfg.BaseURL,
 		APIVersion:    cfg.ResolvedAPIVersion(),
 		PhoneNumberID: cfg.PhoneNumberID,
 		AccessToken:   cfg.AccessToken,

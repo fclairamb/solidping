@@ -347,6 +347,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		entitlementsapi.WithRunawayCaps(
 			cfg.Entitlements.SMSRunawayPerHour, cfg.Entitlements.CallRunawayPerHour,
 		),
+		entitlementsapi.WithWhatsAppRunawayCap(cfg.Entitlements.WhatsAppRunawayPerHour),
 	)
 	svcList.Entitlements = entitlementsService
 

@@ -50,6 +50,11 @@ type EntitlementLimits struct {
 	// bring-your-own Twilio); SaaS defaults to 0 and billing raises it per plan.
 	MaxSmsPerMonth   *int `json:"maxSmsPerMonth,omitempty"`
 	MaxCallsPerMonth *int `json:"maxCallsPerMonth,omitempty"`
+	// MaxWhatsappPerMonth caps the org's outbound WhatsApp template messages
+	// per UTC calendar month. nil = unlimited (self-hosted default, the
+	// operator brings their own WABA); SaaS defaults to 0 and billing raises
+	// it per plan.
+	MaxWhatsappPerMonth *int `json:"maxWhatsappPerMonth,omitempty"`
 }
 
 // ErrConflictingUserLimitKeys is returned when a payload sends both the
@@ -67,14 +72,15 @@ func (l *EntitlementLimits) UnmarshalJSON(data []byte) error {
 	// Local wire shape: same fields plus the deprecated alias. Decoded
 	// strictly so unknown keys are rejected (loud typos).
 	var wire struct {
-		MaxChecks          *int `json:"maxChecks"`
-		MaxUsers           *int `json:"maxUsers"`
-		MaxSSOUsers        *int `json:"maxSsoUsers"` // deprecated alias for maxUsers
-		MaxChecksPerMinute *int `json:"maxChecksPerMinute"`
-		MaxDeportedAgents  *int `json:"maxDeportedAgents"`
-		MaxCustomDomains   *int `json:"maxCustomDomains"`
-		MaxSmsPerMonth     *int `json:"maxSmsPerMonth"`
-		MaxCallsPerMonth   *int `json:"maxCallsPerMonth"`
+		MaxChecks           *int `json:"maxChecks"`
+		MaxUsers            *int `json:"maxUsers"`
+		MaxSSOUsers         *int `json:"maxSsoUsers"` // deprecated alias for maxUsers
+		MaxChecksPerMinute  *int `json:"maxChecksPerMinute"`
+		MaxDeportedAgents   *int `json:"maxDeportedAgents"`
+		MaxCustomDomains    *int `json:"maxCustomDomains"`
+		MaxSmsPerMonth      *int `json:"maxSmsPerMonth"`
+		MaxCallsPerMonth    *int `json:"maxCallsPerMonth"`
+		MaxWhatsappPerMonth *int `json:"maxWhatsappPerMonth"`
 	}
 
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -93,6 +99,7 @@ func (l *EntitlementLimits) UnmarshalJSON(data []byte) error {
 	l.MaxCustomDomains = wire.MaxCustomDomains
 	l.MaxSmsPerMonth = wire.MaxSmsPerMonth
 	l.MaxCallsPerMonth = wire.MaxCallsPerMonth
+	l.MaxWhatsappPerMonth = wire.MaxWhatsappPerMonth
 	if wire.MaxUsers != nil {
 		l.MaxUsers = wire.MaxUsers
 	} else {

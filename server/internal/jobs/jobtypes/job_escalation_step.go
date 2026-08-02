@@ -329,6 +329,7 @@ const (
 	channelTokenVoice        = "voice"
 	channelTokenPush         = "push"
 	channelTokenCriticalPush = "critical_push"
+	channelTokenWhatsApp     = "whatsapp"
 )
 
 // severityAllowsPersonTargets reports whether a severity permits paging
@@ -342,7 +343,7 @@ func severityAllowsPersonTargets(filter map[string]bool) bool {
 
 	for _, tok := range []string{
 		channelTokenEmail, channelTokenSMS, channelTokenVoice,
-		channelTokenPush, channelTokenCriticalPush,
+		channelTokenPush, channelTokenCriticalPush, channelTokenWhatsApp,
 	} {
 		if filter[tok] {
 			return true
@@ -377,6 +378,14 @@ func severityAllowsSMS(filter map[string]bool) bool {
 // call.
 func severityAllowsVoice(filter map[string]bool) bool {
 	return filter[channelTokenVoice]
+}
+
+// severityAllowsWhatsApp reports whether a WhatsApp message is permitted. Like
+// voice, WhatsApp is only ever sent on an explicit token — never on a nil
+// filter — so a severity-less escalation cannot surprise a user with a message
+// on a channel they only opted into for specific severities.
+func severityAllowsWhatsApp(filter map[string]bool) bool {
+	return filter[channelTokenWhatsApp]
 }
 
 // enqueueNotificationFor queues a notification job for the
@@ -550,6 +559,8 @@ func (r *EscalationStepJobRun) dispatchRoute(
 		return r.sendWebPush(ctx, jctx, log, incident, route)
 	case models.UserContactTypePhone:
 		return r.pagePhone(ctx, jctx, log, incident, route, filter)
+	case models.UserContactTypeWhatsApp:
+		return r.pageWhatsApp(ctx, jctx, log, incident, route, filter)
 	default:
 		log.WarnContext(ctx, "unknown contact type; skipping route",
 			"type", route.Contact.Type,
@@ -694,9 +705,13 @@ func (r *EscalationStepJobRun) reservePhoneChannel(
 
 	if jctx.Services != nil && jctx.Services.Entitlements != nil {
 		var err error
-		if kind == models.UsageCounterKindVoice {
+
+		switch kind {
+		case models.UsageCounterKindVoice:
 			err = jctx.Services.Entitlements.ReserveCall(ctx, incident.OrganizationUID)
-		} else {
+		case models.UsageCounterKindWhatsApp:
+			err = jctx.Services.Entitlements.ReserveWhatsApp(ctx, incident.OrganizationUID)
+		default:
 			err = jctx.Services.Entitlements.ReserveSMS(ctx, incident.OrganizationUID)
 		}
 

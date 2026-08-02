@@ -323,6 +323,9 @@ func overlayLimits(dst *entcore.Limits, src entcore.Limits) {
 	if src.MaxCallsPerMonth != nil {
 		dst.MaxCallsPerMonth = src.MaxCallsPerMonth
 	}
+	if src.MaxWhatsappPerMonth != nil {
+		dst.MaxWhatsappPerMonth = src.MaxWhatsappPerMonth
+	}
 }
 
 // lookupOrg resolves :org from the route into a model.

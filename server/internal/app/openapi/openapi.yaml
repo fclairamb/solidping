@@ -576,7 +576,8 @@ paths:
 
         When a feature is disabled its configuration fields are **omitted**
         rather than returned empty — e.g. with PostHog unconfigured the
-        response is exactly `{"posthog": {"enabled": false}}`.
+        response is exactly `{"posthog": {"enabled": false}}`. The same rule
+        applies to `whatsapp`, which is a single resolved boolean.
       operationId: getPublicConfig
       security: []
       responses:
@@ -6348,6 +6349,24 @@ components:
       properties:
         posthog:
           $ref: "#/components/schemas/PublicPostHogConfig"
+        whatsapp:
+          $ref: "#/components/schemas/PublicWhatsAppConfig"
+
+    PublicWhatsAppConfig:
+      type: object
+      required: [enabled]
+      description: |
+        Instance-level WhatsApp capability flag. The dashboard reads it to
+        decide whether to offer the WhatsApp notification-contact type and the
+        `whatsapp` severity channel. No credential, phone-number id, WABA id or
+        template name is ever exposed here.
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            Resolved enablement, i.e. `whatsapp.enabled == true` **and** a
+            non-empty access token **and** a non-empty phone-number id. False
+            on any deployment that has not configured a WABA.
 
     PublicPostHogConfig:
       type: object
@@ -7538,7 +7557,11 @@ components:
       properties:
         type:
           type: string
-          description: Contact type (email, phone, slack_user, web_push, ...)
+          description: >-
+            Contact type (email, phone, whatsapp, slack_user, webpush, ...).
+            `whatsapp` is deliberately distinct from `phone` even for the same
+            number: verification proves WhatsApp reachability specifically and
+            is Meta's required opt-in record. WhatsApp values must be E.164.
         value:
           type: string
         label:
@@ -9791,6 +9814,12 @@ components:
           type: integer
           nullable: true
           description: Outbound voice calls per UTC month (null = unlimited)
+        maxWhatsappPerMonth:
+          type: integer
+          nullable: true
+          description: >-
+            Outbound WhatsApp template messages per UTC month
+            (null = unlimited)
 
     EntitlementsUsage:
       type: object
@@ -9803,6 +9832,11 @@ components:
           format: double
         ssoUsers:
           type: integer
+        whatsappThisMonth:
+          type: integer
+          description: >-
+            Outbound WhatsApp template messages sent in the current UTC month.
+            A persistent counter, not a live count.
 
     EntitlementsResponse:
       type: object

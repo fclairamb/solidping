@@ -8,6 +8,9 @@ const (
 	UsageCounterKindSMS = "sms"
 	// UsageCounterKindVoice counts outbound voice calls per month.
 	UsageCounterKindVoice = "voice"
+	// UsageCounterKindWhatsApp counts outbound WhatsApp template messages per
+	// month.
+	UsageCounterKindWhatsApp = "whatsapp"
 )
 
 // OrgUsageCounter is a persistent per-org, per-kind, per-month counter backing

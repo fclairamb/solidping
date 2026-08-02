@@ -702,6 +702,11 @@ type WhatsAppConfig struct {
 	VerifyTemplate string `koanf:"verify_template"`
 	// TemplateLanguage is the template language code both templates use.
 	TemplateLanguage string `koanf:"template_language"`
+	// BaseURL overrides the Graph API base (SP_WHATSAPP_BASE_URL). Empty means
+	// the real graph.facebook.com. Exists so an operator can front Meta with an
+	// egress proxy, and so test mode / E2E can point the whole feature at a
+	// fake Graph API without any code path differing.
+	BaseURL string `koanf:"base_url"`
 }
 
 // Active reports whether WhatsApp can actually send. This is THE enablement
@@ -1770,6 +1775,7 @@ func applyWhatsAppEnv(cfg *WhatsAppConfig) {
 		{"SP_WHATSAPP_ALERT_TEMPLATE", &cfg.AlertTemplate},
 		{"SP_WHATSAPP_VERIFY_TEMPLATE", &cfg.VerifyTemplate},
 		{"SP_WHATSAPP_TEMPLATE_LANGUAGE", &cfg.TemplateLanguage},
+		{"SP_WHATSAPP_BASE_URL", &cfg.BaseURL},
 	} {
 		if v := strings.TrimSpace(os.Getenv(binding.name)); v != "" {
 			*binding.dst = v

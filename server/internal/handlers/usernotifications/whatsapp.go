@@ -42,8 +42,13 @@ func (s *whatsAppTemplateSender) SendVerificationCode(ctx context.Context, to, c
 		return ErrNoWhatsAppProvider
 	}
 
+	baseURL := s.baseURL
+	if baseURL == "" {
+		baseURL = s.cfg.BaseURL
+	}
+
 	client, err := whatsapp.NewClient(whatsapp.Options{
-		BaseURL:       s.baseURL,
+		BaseURL:       baseURL,
 		APIVersion:    s.cfg.ResolvedAPIVersion(),
 		PhoneNumberID: s.cfg.PhoneNumberID,
 		AccessToken:   s.cfg.AccessToken,

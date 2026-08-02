@@ -217,6 +217,7 @@ func manualReaderPlatformEnvVars() []string {
 		"SP_WHATSAPP_ALERT_TEMPLATE",
 		"SP_WHATSAPP_VERIFY_TEMPLATE",
 		"SP_WHATSAPP_TEMPLATE_LANGUAGE",
+		"SP_WHATSAPP_BASE_URL",
 		// Entitlements runaway cap for WhatsApp (read via envInt in Load).
 		"SP_ENTITLEMENTS_WHATSAPP_RUNAWAY_PER_HOUR",
 	}
