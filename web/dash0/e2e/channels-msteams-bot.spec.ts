@@ -53,7 +53,7 @@ async function stubTeamsBotConnection(page: Page, opts: StubOptions = {}) {
     },
   );
 
-  await page.route("**/api/v1/integrations/msteams/status", async (route: Route) => {
+  await page.route("**/api/v1/orgs/test/integrations/msteams/status", async (route: Route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -125,8 +125,14 @@ test.describe("Microsoft Teams bot setup page", () => {
     // The generated, instance-filled app package is downloadable.
     await expect(page.getByTestId("msteams-bot-manifest")).toBeVisible();
 
-    // The tenant linkage field is pre-filled from the stored settings.
-    await expect(page.getByTestId("msteams-bot-tenant")).toHaveValue(TENANT_ID);
+    // The panel states WHICH Microsoft 365 tenant this integration is bound
+    // to, so an admin can confirm the link from the dashboard.
+    await expect(page.getByTestId("msteams-bot-connected")).toContainText(TENANT_ID);
+
+    // There is deliberately no free-text tenant field: a tenant id is a
+    // semi-public identifier, so a form that accepted one would let any org
+    // claim any tenant.
+    await expect(page.getByTestId("msteams-bot-tenant")).toHaveCount(0);
 
     // Both captured conversations are offered as destinations.
     const list = page.getByTestId("msteams-bot-destinations");
@@ -177,6 +183,49 @@ test.describe("Microsoft Teams bot setup page", () => {
     await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("msteams-bot-disabled")).toBeVisible();
+  });
+
+  test("issues a one-time link code instead of accepting a tenant id", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // An unlinked connection: no tenant bound yet.
+    await stubTeamsBotConnection(page, { tenantId: "", destinations: [] });
+
+    let linkBody: Record<string, unknown> | null = null;
+    await page.route(
+      "**/api/v1/orgs/test/integrations/msteams/link-code",
+      async (route: Route) => {
+        expect(route.request().method()).toBe("POST");
+        linkBody = route.request().postDataJSON() as Record<string, unknown>;
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            connectionUid: CHANNEL_UID,
+            code: "ABCDE-FGHIJ",
+            expiresInSeconds: 1800,
+          }),
+        });
+      },
+    );
+
+    await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("msteams-bot-not-connected")).toBeVisible();
+
+    await page.getByTestId("msteams-bot-connect").click();
+
+    // The code is shown as the exact chat command to send from Teams — the
+    // client never supplies a tenant id anywhere in this flow.
+    await expect(page.getByTestId("msteams-bot-link-code")).toContainText(
+      "@SolidPing link ABCDE-FGHIJ",
+    );
+    await expect.poll(() => linkBody).not.toBeNull();
+    expect(linkBody).not.toHaveProperty("tenantId");
+    expect(linkBody).not.toHaveProperty("tenant_id");
   });
 
   test("the new-integration picker offers the Teams bot type", async ({

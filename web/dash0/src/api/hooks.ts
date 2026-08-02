@@ -4,7 +4,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import { apiFetch } from "./client";
+import { apiFetch, getToken } from "./client";
 import {
   stretchWhileLive,
   useLiveSubscription,
@@ -3720,18 +3720,82 @@ export interface MSTeamsBotStatus {
   singleTenant?: string;
 }
 
-export function useMSTeamsBotStatus(enabled = true) {
+export function useMSTeamsBotStatus(org: string, enabled = true) {
   return useQuery({
-    queryKey: ["msteams-status"],
+    queryKey: ["msteams-status", org],
     queryFn: () =>
-      apiFetch<MSTeamsBotStatus>("/api/v1/integrations/msteams/status"),
-    enabled,
+      apiFetch<MSTeamsBotStatus>(
+        `/api/v1/orgs/${org}/integrations/msteams/status`,
+      ),
+    enabled: enabled && Boolean(org),
     staleTime: 60_000,
   });
 }
 
-/** URL of the generated, instance-filled Teams app package (zip). */
-export const MSTEAMS_MANIFEST_URL = "/api/v1/integrations/msteams/manifest.zip";
+export interface MSTeamsPendingLink {
+  connectionUid: string;
+  code: string;
+  expiresInSeconds: number;
+}
+
+/**
+ * Mints a one-time code that links a Microsoft 365 tenant to this org.
+ *
+ * The tenant id is never sent by the client: it is written server-side, only
+ * from a signature-verified Bot Framework activity that quotes this code
+ * back. That round-trip is what proves the org asking for the link and the
+ * tenant being linked are the same actor — Bot Framework has no OAuth
+ * redirect to carry that context the way Slack's install flow does.
+ */
+export function useStartMSTeamsLink(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (connectionUid?: string) =>
+      apiFetch<MSTeamsPendingLink>(
+        `/api/v1/orgs/${org}/integrations/msteams/link-code`,
+        {
+          method: "POST",
+          body: JSON.stringify(connectionUid ? { connectionUid } : {}),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["integrations", org] });
+    },
+  });
+}
+
+/**
+ * Downloads the generated, instance-filled Teams app package.
+ *
+ * The endpoint is authenticated (it names the instance's Entra app id), so
+ * this cannot be a plain anchor href — fetch it with the session token and
+ * hand the browser a blob URL instead.
+ */
+export async function downloadMSTeamsManifest(org: string): Promise<void> {
+  const token = getToken();
+  const response = await fetch(
+    `/api/v1/orgs/${org}/integrations/msteams/manifest.zip`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to download the Teams app package");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+
+  try {
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "solidping-teams-app.zip";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 
 interface SlackInstallURLResponse {
   url: string;

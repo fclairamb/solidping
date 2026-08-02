@@ -149,7 +149,6 @@ func ParseActivityCommand(activity *Activity) *ParsedCommand {
 
 // parseCommandLine applies the command grammar to an already-stripped line.
 func parseCommandLine(text string) *ParsedCommand {
-
 	if text == "" {
 		return &ParsedCommand{Command: cmdHelp, Flags: make(map[string]string)}
 	}

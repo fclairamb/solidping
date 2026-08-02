@@ -7,7 +7,10 @@ import {
   Loader2,
   MonitorSmartphone,
   RefreshCw,
+  AlertTriangle,
+  CheckCircle2,
   Download,
+  Info,
   Search,
   Send,
   Trash2,
@@ -51,8 +54,10 @@ import {
   useTestIntegration,
   useMSTeamsBotDestinations,
   useMSTeamsBotStatus,
-  MSTEAMS_MANIFEST_URL,
+  useStartMSTeamsLink,
+  downloadMSTeamsManifest,
 } from "@/api/hooks";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { WebPushEnableButton } from "@/components/notifications/WebPushEnableButton";
 import { deriveDeviceLabel } from "@/lib/browser-detection";
 
@@ -1657,8 +1662,13 @@ interface MSTeamsBotPanelProps {
  *  1. it states the public-HTTPS-endpoint requirement up front (a firewalled
  *     self-hosted instance simply cannot use the bot);
  *  2. it offers the generated app package instead of an "Install" redirect;
- *  3. it shows the Entra tenant ID field, which is what links this org to the
- *     Microsoft 365 tenant whose install activities we accept.
+ *  3. it issues a one-time LINK CODE rather than asking for a tenant id.
+ *
+ * Point 3 is a security property, not a convenience: a tenant id is a
+ * semi-public identifier, so a free-text field would let any org assert
+ * ownership of any Microsoft 365 tenant. The tenant is written server-side
+ * only, from a signature-verified Bot Framework activity that quotes this
+ * code back.
  */
 function MSTeamsBotPanel({ settings, onChange, org, channelUid }: MSTeamsBotPanelProps) {
   const { t } = useTranslation("integrations");
@@ -1666,13 +1676,17 @@ function MSTeamsBotPanel({ settings, onChange, org, channelUid }: MSTeamsBotPane
   const isEditMode = Boolean(org && channelUid);
   const tenantId = (settings.tenant_id as string) || "";
   const uninstalledAt = (settings.uninstalled_at as string) || "";
+  const isLinked = tenantId.length > 0;
 
-  const { data: status } = useMSTeamsBotStatus(isEditMode);
+  const { data: status } = useMSTeamsBotStatus(org ?? "", isEditMode);
   const { data, isLoading, isError } = useMSTeamsBotDestinations(
     org ?? "",
     channelUid ?? "",
-    isEditMode && tenantId.length > 0,
+    isEditMode && isLinked,
   );
+
+  const startLink = useStartMSTeamsLink(org ?? "");
+  const [linkCode, setLinkCode] = useState<string | null>(null);
 
   const destinations = data?.destinations ?? [];
   const currentId = (settings.channel_id as string) || "";
@@ -1682,9 +1696,31 @@ function MSTeamsBotPanel({ settings, onChange, org, channelUid }: MSTeamsBotPane
       ...settings,
       channel_id: dest.id,
       channel_name: dest.name,
-      team_id: dest.team_id ?? "",
       display_name: dest.name,
     });
+  }
+
+  async function handleConnect() {
+    if (!org) return;
+    try {
+      const pending = await startLink.mutateAsync(channelUid);
+      setLinkCode(pending.code);
+    } catch {
+      toast.error(
+        t("form.msteamsBotLinkFailed", "Could not create a link code"),
+      );
+    }
+  }
+
+  async function handleDownload() {
+    if (!org) return;
+    try {
+      await downloadMSTeamsManifest(org);
+    } catch {
+      toast.error(
+        t("form.msteamsBotDownloadFailed", "Could not download the Teams app package"),
+      );
+    }
   }
 
   if (!isEditMode) {
@@ -1693,7 +1729,7 @@ function MSTeamsBotPanel({ settings, onChange, org, channelUid }: MSTeamsBotPane
         <p>
           {t(
             "form.msteamsBotCreateHint",
-            "Create the integration first, then paste your Microsoft 365 tenant ID and install the Teams app package to connect it.",
+            "Create the integration first, then install the Teams app package and run the link command shown here to connect your Microsoft 365 tenant.",
           )}
         </p>
       </div>
@@ -1702,22 +1738,59 @@ function MSTeamsBotPanel({ settings, onChange, org, channelUid }: MSTeamsBotPane
 
   return (
     <div className="space-y-4" data-testid="msteams-bot-panel">
-      {/* Instance-level prerequisites */}
       {status && !status.enabled && (
-        <div
-          className="rounded border border-destructive/40 bg-destructive/5 p-3 text-sm"
-          data-testid="msteams-bot-disabled"
-        >
-          <p className="font-medium">
+        <Alert variant="destructive" data-testid="msteams-bot-disabled">
+          <AlertTriangle />
+          <AlertTitle>
             {t("form.msteamsBotDisabledTitle", "The Teams bot is disabled on this server")}
-          </p>
-          <p className="text-muted-foreground">
+          </AlertTitle>
+          <AlertDescription>
             {t(
               "form.msteamsBotDisabledBody",
               "Enable it in the server settings. Microsoft must be able to reach this instance over public HTTPS — a firewalled deployment cannot use the Teams bot.",
             )}
-          </p>
-        </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Connection status — which tenant this integration is bound to. */}
+      {uninstalledAt || data?.uninstalled ? (
+        <Alert variant="warning" data-testid="msteams-bot-uninstalled">
+          <AlertTriangle />
+          <AlertTitle>
+            {t("form.msteamsBotUninstalledTitle", "The Teams app was removed")}
+          </AlertTitle>
+          <AlertDescription>
+            {t(
+              "form.msteamsBotUninstalled",
+              "The Teams app was removed from this tenant. Reinstall it to resume notifications.",
+            )}
+          </AlertDescription>
+        </Alert>
+      ) : isLinked ? (
+        <Alert variant="success" data-testid="msteams-bot-connected">
+          <CheckCircle2 />
+          <AlertTitle>{t("form.msteamsBotConnected", "Connected")}</AlertTitle>
+          <AlertDescription>
+            <span className="block">
+              {t("form.msteamsBotTenantLabel", "Microsoft 365 tenant")}:{" "}
+              <code className="break-all">{tenantId}</code>
+            </span>
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <Alert data-testid="msteams-bot-not-connected">
+          <Info />
+          <AlertTitle>
+            {t("form.msteamsBotNotConnectedTitle", "Not connected to Microsoft Teams")}
+          </AlertTitle>
+          <AlertDescription>
+            {t(
+              "form.msteamsBotNotConnectedBody",
+              "Install the Teams app package, then run the link command below in any channel the bot was added to.",
+            )}
+          </AlertDescription>
+        </Alert>
       )}
 
       {status?.messagingEndpoint && (
@@ -1737,38 +1810,16 @@ function MSTeamsBotPanel({ settings, onChange, org, channelUid }: MSTeamsBotPane
         </div>
       )}
 
-      {/* Tenant linkage */}
-      <div className="space-y-2">
-        <Label htmlFor="ch-msteams-tenant">
-          {t("form.msteamsBotTenantId", "Microsoft 365 tenant ID")}
-        </Label>
-        <Input
-          id="ch-msteams-tenant"
-          value={tenantId}
-          placeholder="00000000-0000-0000-0000-000000000000"
-          onChange={(e) => onChange({ ...settings, tenant_id: e.target.value.trim() })}
-          data-testid="msteams-bot-tenant"
-        />
-        <p className="text-xs text-muted-foreground">
-          {t(
-            "form.msteamsBotTenantHint",
-            "The bot only accepts activities from this tenant. If you install the app first, SolidPing replies in the channel with the exact tenant ID to paste here.",
-          )}
-        </p>
-      </div>
-
-      {/* App package download */}
+      {/* Step 1 — app package */}
       <div className="space-y-2">
         <Button
           type="button"
           variant="outline"
-          asChild
+          onClick={() => void handleDownload()}
           data-testid="msteams-bot-manifest"
         >
-          <a href={MSTEAMS_MANIFEST_URL} download>
-            <Download className="mr-2 h-4 w-4" aria-hidden="true" />
-            {t("form.msteamsBotDownloadApp", "Download Teams app package")}
-          </a>
+          <Download className="mr-2 h-4 w-4" aria-hidden="true" />
+          {t("form.msteamsBotDownloadApp", "Download Teams app package")}
         </Button>
         <p className="text-xs text-muted-foreground">
           {t(
@@ -1778,15 +1829,49 @@ function MSTeamsBotPanel({ settings, onChange, org, channelUid }: MSTeamsBotPane
         </p>
       </div>
 
-      {/* Destination picker */}
+      {/* Step 2 — link code */}
+      {!isLinked && (
+        <div className="space-y-2">
+          <Button
+            type="button"
+            onClick={() => void handleConnect()}
+            disabled={startLink.isPending}
+            data-testid="msteams-bot-connect"
+          >
+            {startLink.isPending && (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+            )}
+            {t("form.msteamsBotConnectButton", "Connect Microsoft Teams")}
+          </Button>
+
+          {linkCode && (
+            <div className="space-y-2 rounded border bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  "form.msteamsBotLinkCodeHint",
+                  "In a Teams channel where SolidPing was added, send this message. The code can be used once and expires in 30 minutes.",
+                )}
+              </p>
+              <code
+                className="block break-all rounded bg-background px-2 py-1 text-sm"
+                data-testid="msteams-bot-link-code"
+              >
+                @SolidPing link {linkCode}
+              </code>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Step 3 — destination picker */}
       <div className="space-y-2">
         <Label>{t("form.msteamsBotDestination", "Notification channel")}</Label>
 
-        {uninstalledAt || data?.uninstalled ? (
-          <p className="text-xs text-destructive" data-testid="msteams-bot-uninstalled">
+        {!isLinked ? (
+          <p className="text-xs text-muted-foreground">
             {t(
-              "form.msteamsBotUninstalled",
-              "The Teams app was removed from this tenant. Reinstall it to resume notifications.",
+              "form.msteamsBotLinkFirst",
+              "Connect a Microsoft 365 tenant first — channels appear here once the bot is added to them.",
             )}
           </p>
         ) : isLoading ? (

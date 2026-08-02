@@ -131,7 +131,7 @@ func generateLinkCode(
 // redeemLinkCode consumes a code and returns the org + connection it
 // authorizes. Redemption is single-use and race-safe: the delete is the
 // arbiter, so two activities quoting the same code can never both succeed.
-func redeemLinkCode(ctx context.Context, dbService db.Service, raw string) (orgUID, connUID string, err error) {
+func redeemLinkCode(ctx context.Context, dbService db.Service, raw string) (string, string, error) {
 	code := normalizeLinkCode(raw)
 	if code == "" {
 		return "", "", ErrInvalidLinkCode
@@ -159,8 +159,8 @@ func redeemLinkCode(ctx context.Context, dbService db.Service, raw string) (orgU
 		return "", "", ErrInvalidLinkCode
 	}
 
-	orgUID, _ = (*entry.Value)[linkCodeKeyOrgUID].(string)
-	connUID, _ = (*entry.Value)[linkCodeKeyConnUID].(string)
+	orgUID, _ := (*entry.Value)[linkCodeKeyOrgUID].(string)
+	connUID, _ := (*entry.Value)[linkCodeKeyConnUID].(string)
 
 	if orgUID == "" || connUID == "" {
 		return "", "", ErrInvalidLinkCode

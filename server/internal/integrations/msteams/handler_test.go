@@ -39,7 +39,8 @@ func postActivity(t *testing.T, handler *Handler, token string, activity any) *h
 func postRawActivity(t *testing.T, handler *Handler, token string, body []byte) *httptest.ResponseRecorder {
 	t.Helper()
 
-	req := httptest.NewRequest(http.MethodPost, MessagingEndpointPath, bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(
+		t.Context(), http.MethodPost, MessagingEndpointPath, bytes.NewReader(body))
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -264,7 +265,7 @@ func TestGetStatus_ReportsInstanceState(t *testing.T) {
 
 	handler, _ := newTestHandler(t, svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/status", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/status", nil)
 	rec := httptest.NewRecorder()
 	r.NoError(handler.GetStatus(rec, req))
 	r.Equal(http.StatusOK, rec.Code)
@@ -288,7 +289,7 @@ func TestDownloadManifest_RequiresAppID(t *testing.T) {
 
 	handler, _ := newTestHandler(t, svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/manifest.zip", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/manifest.zip", nil)
 	rec := httptest.NewRecorder()
 	r.NoError(handler.DownloadManifest(rec, req))
 	r.Equal(http.StatusConflict, rec.Code)

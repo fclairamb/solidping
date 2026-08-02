@@ -287,8 +287,8 @@ func (v *Verifier) VerifyToken(ctx context.Context, rawToken, serviceURL string)
 	// with the algorithm advertised by the metadata document. go-oidc's
 	// RemoteKeySet.VerifySignature documents that it does NOT validate `alg`
 	// itself, so pin it here before handing the token over.
-	if err := checkTokenAlg(rawToken, signingAlgs); err != nil {
-		return nil, err
+	if algErr := checkTokenAlg(rawToken, signingAlgs); algErr != nil {
+		return nil, algErr
 	}
 
 	payload, err := keySet.VerifySignature(ctx, rawToken)
@@ -352,8 +352,6 @@ func checkTokenAlg(rawToken string, allowed []string) error {
 
 // validateClaims enforces issuer, audience, validity window, service URL
 // binding and the optional tenant allow-list.
-//
-//nolint:cyclop // a flat list of the documented verification requirements
 func (v *Verifier) validateClaims(claims *rawClaims, issuer, serviceURL string) error {
 	if claims.Issuer != issuer {
 		return fmt.Errorf("%w: issuer %q is not %q", ErrInvalidToken, claims.Issuer, issuer)
