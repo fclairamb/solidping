@@ -28,6 +28,45 @@ and they can be large (SSL cert chains, DNSBL details). The detail endpoint
 (`GET /checks/:checkUid`) keeps the full `lastResult` including
 `output`/`metrics`.
 
+### GET /api/v1/orgs/:org/checks/stats
+Aggregate check counters for the org, computed server-side with one SQL
+`GROUP BY`. Auth: required
+
+```json
+{
+  "total": 262,
+  "enabled": 250,
+  "disabled": 12,
+  "byStatus": {
+    "created": 2, "up": 240, "down": 6,
+    "validating": 0, "degraded": 2, "warning": 0, "unknown": 0
+  },
+  "down": 6,
+  "hardDown": 3
+}
+```
+
+This exists because the list endpoint clamps `limit` to 100, so any counter
+derived from a single page is wrong past 100 checks (GitHub issue #172).
+
+Semantics:
+- **Scope** — non-deleted, **non-internal** checks: exactly the set
+  `GET /checks` returns by default (`internal=false`), so the counters always
+  agree with the list the operator can open.
+- `total`, `byStatus`, `down` and `hardDown` span **enabled and disabled**
+  checks alike; `enabled` / `disabled` partition the same set.
+- `byStatus` always carries every known status key (`created`, `up`, `down`,
+  `validating`, `degraded`, `warning`, `unknown`) — zero when empty — so
+  clients can index it unguarded. Keys are the same tokens the list response's
+  `status` field carries.
+- `down` = status in (`down`, `error`, `timeout`); `hardDown` = status in
+  (`down`, `error`). `error`/`timeout` are *result*-level statuses that a
+  check-level status never holds, so today both equal `byStatus.down`.
+- **Cached ~1 minute per org, in memory.** The response can lag a check
+  create/delete or a status flip by up to the TTL; there is no invalidation.
+  Consumers needing an exact, immediately consistent count should read
+  `pagination.total` from the list endpoint instead.
+
 ### POST /api/v1/orgs/:org/checks
 Create a new check. Type can be inferred from the config URL. Name and slug are auto-generated if omitted. Auth: required
 

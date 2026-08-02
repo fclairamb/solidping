@@ -804,6 +804,27 @@ type CheckScheduling struct {
 	DutyCyclePct int `json:"dutyCyclePct"`
 }
 
+// CheckStats defines model for CheckStats.
+type CheckStats struct {
+	// ByStatus Count per check status. Every known status key (created, up, down, validating, degraded, warning, unknown) is always present, with 0 when empty, so clients can index it without guards. Keys are the same tokens the list endpoint's `status` field carries.
+	ByStatus map[string]int `json:"byStatus"`
+
+	// Disabled Checks with enabled = false.
+	Disabled int `json:"disabled"`
+
+	// Down Checks the dashboard renders as failing (status down, error or timeout). `error` and `timeout` are result-level statuses a check status never holds, so in practice this equals byStatus.down.
+	Down int `json:"down"`
+
+	// Enabled Checks with enabled = true.
+	Enabled int `json:"enabled"`
+
+	// HardDown Checks failing hard (status down or error), i.e. down excluding timeouts.
+	HardDown int `json:"hardDown"`
+
+	// Total Every in-scope check — enabled plus disabled.
+	Total int `json:"total"`
+}
+
 // CheckTypeInfo defines model for CheckTypeInfo.
 type CheckTypeInfo struct {
 	DefaultPeriodSeconds *int     `json:"defaultPeriodSeconds,omitempty"`
@@ -3921,6 +3942,9 @@ type ClientInterface interface {
 
 	CreateCheck(ctx context.Context, org OrgPath, body CreateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetCheckStats request
+	GetCheckStats(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ValidateCheckWithBody request with any body
 	ValidateCheckWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -5220,6 +5244,18 @@ func (c *Client) CreateCheckWithBody(ctx context.Context, org OrgPath, contentTy
 
 func (c *Client) CreateCheck(ctx context.Context, org OrgPath, body CreateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateCheckRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetCheckStats(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCheckStatsRequest(c.Server, org)
 	if err != nil {
 		return nil, err
 	}
@@ -9607,6 +9643,40 @@ func NewCreateCheckRequestWithBody(server string, org OrgPath, contentType strin
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetCheckStatsRequest generates requests for GetCheckStats
+func NewGetCheckStatsRequest(server string, org OrgPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/stats", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -17891,6 +17961,9 @@ type ClientWithResponsesInterface interface {
 
 	CreateCheckWithResponse(ctx context.Context, org OrgPath, body CreateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCheckResult, error)
 
+	// GetCheckStatsWithResponse request
+	GetCheckStatsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*GetCheckStatsResult, error)
+
 	// ValidateCheckWithBodyWithResponse request with any body
 	ValidateCheckWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ValidateCheckResult, error)
 
@@ -19507,6 +19580,29 @@ func (r CreateCheckResult) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r CreateCheckResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetCheckStatsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *CheckStats
+	JSON404      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCheckStatsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCheckStatsResult) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -23825,6 +23921,15 @@ func (c *ClientWithResponses) CreateCheckWithResponse(ctx context.Context, org O
 	return ParseCreateCheckResult(rsp)
 }
 
+// GetCheckStatsWithResponse request returning *GetCheckStatsResult
+func (c *ClientWithResponses) GetCheckStatsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*GetCheckStatsResult, error) {
+	rsp, err := c.GetCheckStats(ctx, org, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCheckStatsResult(rsp)
+}
+
 // ValidateCheckWithBodyWithResponse request with arbitrary body returning *ValidateCheckResult
 func (c *ClientWithResponses) ValidateCheckWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ValidateCheckResult, error) {
 	rsp, err := c.ValidateCheckWithBody(ctx, org, contentType, body, reqEditors...)
@@ -27246,6 +27351,39 @@ func ParseCreateCheckResult(rsp *http.Response) (*CreateCheckResult, error) {
 			return nil, err
 		}
 		response.JSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCheckStatsResult parses an HTTP response from a GetCheckStatsWithResponse call
+func ParseGetCheckStatsResult(rsp *http.Response) (*GetCheckStatsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCheckStatsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckStats
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 

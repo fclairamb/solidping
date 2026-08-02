@@ -886,6 +886,42 @@ paths:
         "422":
           $ref: "#/components/responses/ValidationError"
 
+  /api/v1/orgs/{org}/checks/stats:
+    get:
+      tags: [Checks]
+      summary: Aggregate check counters for an organization
+      operationId: getCheckStats
+      description: >-
+        Org-wide check counters computed server-side with a single SQL
+        aggregation, so they are unaffected by the list endpoint's 100-row page
+        clamp. Scope is the same set the list endpoint shows by default:
+        non-deleted, non-internal checks. `total`, `byStatus`, `down` and
+        `hardDown` span enabled and disabled checks alike; `enabled` and
+        `disabled` partition the same set.
+
+
+        The response is served from a per-organization in-memory cache with a
+        1-minute TTL, so it can lag a check create/delete or a status flip by up
+        to that long. Clients needing an exact, immediately consistent count
+        should read `pagination.total` from the list endpoint instead.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: Aggregate check counters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckStats"
+        "404":
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/orgs/{org}/checks/{slug}:
     put:
       tags: [Checks]
@@ -6491,6 +6527,53 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CheckListItem"
+
+    CheckStats:
+      type: object
+      required: [total, enabled, disabled, byStatus, down, hardDown]
+      properties:
+        total:
+          type: integer
+          description: Every in-scope check — enabled plus disabled.
+          example: 262
+        enabled:
+          type: integer
+          description: Checks with enabled = true.
+          example: 250
+        disabled:
+          type: integer
+          description: Checks with enabled = false.
+          example: 12
+        byStatus:
+          type: object
+          additionalProperties:
+            type: integer
+          description: >-
+            Count per check status. Every known status key (created, up, down,
+            validating, degraded, warning, unknown) is always present, with 0
+            when empty, so clients can index it without guards. Keys are the
+            same tokens the list endpoint's `status` field carries.
+          example:
+            created: 2
+            up: 240
+            down: 6
+            validating: 0
+            degraded: 2
+            warning: 0
+            unknown: 0
+        down:
+          type: integer
+          description: >-
+            Checks the dashboard renders as failing (status down, error or
+            timeout). `error` and `timeout` are result-level statuses a check
+            status never holds, so in practice this equals byStatus.down.
+          example: 6
+        hardDown:
+          type: integer
+          description: >-
+            Checks failing hard (status down or error), i.e. down excluding
+            timeouts.
+          example: 6
 
     CreateCheckRequest:
       type: object
