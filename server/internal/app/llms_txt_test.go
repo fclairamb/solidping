@@ -19,7 +19,7 @@ func TestServeRootLLMsTxt(t *testing.T) {
 
 	s := &Server{}
 
-	req := httptest.NewRequest(http.MethodGet, "/llms.txt", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/llms.txt", http.NoBody)
 	w := httptest.NewRecorder()
 	r.NoError(s.serveRootLLMsTxt(w, req))
 
@@ -37,7 +37,7 @@ func TestServeRootLLMsFullTxt(t *testing.T) {
 
 	s := &Server{}
 
-	req := httptest.NewRequest(http.MethodGet, "/llms-full.txt", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/llms-full.txt", http.NoBody)
 	w := httptest.NewRecorder()
 	r.NoError(s.serveRootLLMsFullTxt(w, req))
 
@@ -57,7 +57,7 @@ func TestServeDocsLLMsTxtStillWorks(t *testing.T) {
 
 	s := &Server{}
 
-	req := httptest.NewRequest(http.MethodGet, "/docs/llms.txt", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/docs/llms.txt", http.NoBody)
 	w := httptest.NewRecorder()
 	r.NoError(s.serveDocsRoute(w, req))
 
