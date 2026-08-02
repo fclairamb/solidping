@@ -68,6 +68,13 @@ type ParameterResponse struct {
 // ListParametersResponse wraps the list of parameters.
 type ListParametersResponse struct {
 	Data []*ParameterResponse `json:"data"`
+	// EnvOverrides lists the known parameter keys whose effective value is
+	// currently forced by an SP_* environment variable. Env wins over the
+	// database in systemconfig.Service.Initialize, so without this an operator
+	// editing one of these keys in Server Settings would see their edit saved
+	// and then apparently ignored. Only key NAMES appear here — never values —
+	// so it is safe regardless of a key's secrecy.
+	EnvOverrides []string `json:"envOverrides"`
 }
 
 // SetParameterRequest represents a request to set a parameter.
@@ -177,7 +184,10 @@ func (s *Service) ListParameters(ctx context.Context) (*ListParametersResponse, 
 		responses = append(responses, s.toResponse(p))
 	}
 
-	return &ListParametersResponse{Data: responses}, nil
+	return &ListParametersResponse{
+		Data:         responses,
+		EnvOverrides: systemconfig.EnvOverriddenKeys(),
+	}, nil
 }
 
 // GetParameter returns a single system parameter with secret masked.

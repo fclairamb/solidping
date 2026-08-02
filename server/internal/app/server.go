@@ -76,6 +76,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
 	"github.com/fclairamb/solidping/server/internal/handlers/members"
 	"github.com/fclairamb/solidping/server/internal/handlers/oncallschedules"
+	"github.com/fclairamb/solidping/server/internal/handlers/publicconfig"
 	"github.com/fclairamb/solidping/server/internal/handlers/realtimews"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
@@ -609,6 +610,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Auth providers endpoint (public)
 	providersHandler := auth.NewProvidersHandler(s.config, passkeyService.Enabled)
 	api.GET("/auth/providers", providersHandler.ListProviders)
+
+	// Public, unauthenticated config blob the SPA reads at boot (spec
+	// 2026-08-02-08). Non-secret values only — see the publicconfig package doc.
+	publicConfigHandler := publicconfig.NewHandler(s.config)
+	api.GET("/config", publicConfigHandler.GetConfig)
 
 	// Check types service (constructed early so MCP can use it too)
 	activationResolver := checkerdef.NewActivationResolver(s.config.Checkers)

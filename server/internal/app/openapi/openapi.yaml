@@ -564,6 +564,29 @@ paths:
               schema:
                 $ref: "#/components/schemas/AuthProvidersResponse"
 
+  /api/v1/config:
+    get:
+      tags: [System]
+      summary: Public browser-safe configuration
+      description: |
+        Unauthenticated configuration blob the dashboard reads at boot, before
+        any login. Contains **only** non-secret, browser-safe values; no
+        parameter marked `secret` in the system-parameter registry is ever
+        exposed here (in particular `posthog.personal_api_key` is not).
+
+        When a feature is disabled its configuration fields are **omitted**
+        rather than returned empty — e.g. with PostHog unconfigured the
+        response is exactly `{"posthog": {"enabled": false}}`.
+      operationId: getPublicConfig
+      security: []
+      responses:
+        "200":
+          description: Public configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicConfigResponse"
+
   /api/v1/auth/register:
     post:
       tags: [Authentication]
@@ -6315,6 +6338,38 @@ components:
           type: boolean
         passkeysEnabled:
           type: boolean
+
+    PublicConfigResponse:
+      type: object
+      description: |
+        Browser-safe public configuration. Designed as a general-purpose blob:
+        future public feature flags are added as sibling properties rather than
+        as new endpoints.
+      properties:
+        posthog:
+          $ref: "#/components/schemas/PublicPostHogConfig"
+
+    PublicPostHogConfig:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            Resolved enablement, i.e. `posthog.enabled == true` **and** a
+            non-empty `posthog.project_api_key`. False on any deployment that
+            has not explicitly configured a project key.
+        projectApiKey:
+          type: string
+          description: |
+            Public `phc_…` browser ingestion key. Present **only** when
+            `enabled` is true; omitted entirely otherwise.
+        host:
+          type: string
+          description: |
+            PostHog ingestion host. Present **only** when `enabled` is true;
+            omitted entirely otherwise.
+          example: https://eu.i.posthog.com
 
     # Check schemas
     Check:
