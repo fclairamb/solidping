@@ -97,20 +97,33 @@ Inbound and setup endpoints for the two-way Teams bot (connection type
 `msteams-bot`). Distinct from the one-way `msteams` Teams Workflow webhook,
 which needs no endpoints at all.
 
+Note: `msteams-bot` connections cannot be created through
+`POST /orgs/:org/integrations` — that returns a validation error, like Slack.
+They are created by the link-code flow below.
+
 ### POST /api/v1/integrations/msteams/messages
 Bot Framework messaging endpoint — Microsoft posts every activity here.
 Auth: Bot Connector JWT, verified against Microsoft's JWKS (issuer, audience =
 app ID, validity window, `serviceurl` claim, optional tenant allow-list).
 Returns 503 while `msteams.enabled` is false.
 
-### GET /api/v1/integrations/msteams/status
-Report whether the Teams bot is enabled and configured on this instance, the
-messaging endpoint Microsoft must be able to reach, and how many Entra tenants
-have a live install. Auth: public
+### POST /api/v1/orgs/:org/integrations/msteams/link-code
+Mint a one-time code that binds a Microsoft 365 tenant to this organization.
+The org comes from the verified route context, and the tenant is written
+server-side only when the code is quoted back from a signature-verified Bot
+Framework activity (`@SolidPing link <code>`) — a tenant id is never accepted
+from the client. Auth: required
 
-### GET /api/v1/integrations/msteams/manifest.zip
+### GET /api/v1/orgs/:org/integrations/msteams/status
+Report whether the Teams bot is enabled and configured on this instance, the
+messaging endpoint Microsoft must be able to reach, the Entra app id, the
+single-tenant pin, and how many tenants have a live install. Auth: required
+(these fields identify the deployment and its customers, so they are not
+served anonymously).
+
+### GET /api/v1/orgs/:org/integrations/msteams/manifest.zip
 Download the generated Teams app package (manifest.json + icons) pre-filled
-with this instance's app ID and public URL. Auth: public
+with this instance's app ID and public URL. Auth: required
 
 ### GET /api/v1/orgs/:org/channels/:uid/msteams/destinations
 List the conversation references captured when the bot was added to Teams

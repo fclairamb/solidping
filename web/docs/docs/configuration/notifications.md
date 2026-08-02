@@ -230,19 +230,39 @@ msteams:
 `msteams.enabled` defaults to **false** — the bot stays off until you turn it
 on, precisely because of the public-endpoint requirement above.
 
-#### 3. Install the app in Teams
+#### 3. Install the app in Teams and link your tenant
 
 1. In SolidPing, create a **Microsoft Teams (bot)** integration and open it.
 2. Click **Download Teams app package** — the zip is generated with your
    instance's app ID and URL already filled in, so nothing has to be edited.
 3. In Teams: **Apps → Manage your apps → Upload a custom app**, pick the zip,
    and add SolidPing to a team.
-4. Paste your **Microsoft 365 tenant ID** into the integration's setup page.
-   If you install the app first, SolidPing replies in the channel with the exact
-   tenant ID to paste.
+4. Back in SolidPing, click **Connect Microsoft Teams**. You get a one-time
+   link code.
+5. In a Teams channel the bot was added to, send:
+
+   ```
+   @SolidPing link ABCDE-FGHIJ
+   ```
+
+   The bot confirms in the channel, and the integration is connected.
 
 Every channel you add the bot to becomes a selectable notification destination;
 the first one becomes the default.
+
+:::note Why a link code instead of a tenant ID field
+A Microsoft 365 tenant ID is a semi-public identifier, not a secret, so simply
+typing one into a form proves nothing — anyone could claim any tenant, and then
+receive that tenant's channel names and post into its channels. Bot Framework
+has no OAuth redirect that could carry your SolidPing organization through the
+install the way Slack's does, so the link code fills that gap: SolidPing issues
+it to a signed-in admin of one organization, and it can only be redeemed from
+inside a real, Microsoft-signed message. Quoting the code back is what proves
+both sides are the same actor.
+
+The code is single-use and expires after 30 minutes. A tenant can be linked to
+exactly one SolidPing organization.
+:::
 
 Publishing to the Teams store is out of scope — custom app upload
 ("sideloading") is the supported path, which your Teams admin may need to allow
@@ -261,6 +281,8 @@ in the Teams admin center.
   - `@SolidPing config default-channel` — makes the current channel the default
     notification target (Teams has no cross-team channel reference, so the
     command is scoped to the team it is issued in)
+  - `@SolidPing link <code>` — connects this Microsoft 365 tenant to a
+    SolidPing organization (see step 5 above)
 - Stops routing when the app is removed from the tenant, and resumes on
   reinstall without losing the org's notification wiring.
 
@@ -268,11 +290,27 @@ Personal-scope direct messages are not supported yet.
 
 #### Security
 
-Every inbound activity is authenticated: the Bot Connector JWT is verified
-against Microsoft's published JWKS, and the issuer, audience (your app ID),
-validity window and `serviceurl` claim are all checked before anything is
-acted on. When `msteams.tenant_id` is set, activities from any other tenant are
-rejected outright.
+Every inbound activity is authenticated before anything is acted on. The Bot
+Connector JWT is verified against Microsoft's published JWKS, and the issuer,
+audience (your app ID), signing algorithm, validity window and `serviceurl`
+binding are all checked — the `serviceurl` check is mandatory, so a captured
+token cannot be replayed with a different body to redirect SolidPing's outbound
+calls.
+
+Microsoft's Connector-to-Bot token carries no tenant claim, so tenant identity
+comes from the activity body — which is trustworthy precisely because the
+request carrying it passed that signature check. Ownership of a tenant is a
+separate question, and is what the link code establishes. When
+`msteams.tenant_id` is set, activities from any other tenant are rejected.
+
+#### Known limitations
+
+- **Managed-identity bots are not supported.** Outbound tokens are minted with
+  a client secret, against the multi-tenant endpoint by default or your own
+  tenant's endpoint when `msteams.tenant_id` is set. A bot registered with a
+  user-assigned managed identity takes its token from the instance metadata
+  endpoint instead, which is a different credential model.
+- **Teams store publication is out of scope** — custom app upload only.
 
 ## Discord
 
