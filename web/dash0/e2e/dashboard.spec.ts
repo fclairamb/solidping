@@ -79,6 +79,14 @@ async function mockDashboard(
      * (page-clamped) checks list.
      */
     stats?: Partial<MockCheckStats>;
+    /**
+     * Overrides `pagination.total` on GET /incidents independently of
+     * `incidents.length` — the dashboard requests only `size: 5`, so a real
+     * org with more active incidents than that returns a truncated `data`
+     * array alongside the untruncated total. Defaults to `incidents.length`
+     * when omitted, matching a page that fits within one request.
+     */
+    incidentsTotal?: number;
   },
 ) {
   const checks = opts.checks.map((c) => ({
@@ -123,7 +131,7 @@ async function mockDashboard(
       contentType: "application/json",
       body: JSON.stringify({
         data: opts.incidents ?? [],
-        pagination: { total: (opts.incidents ?? []).length },
+        pagination: { total: opts.incidentsTotal ?? (opts.incidents ?? []).length },
       }),
     }),
   );
@@ -550,6 +558,45 @@ test.describe("Dashboard", () => {
     expect(incidentBox).not.toBeNull();
     expect(glanceBox).not.toBeNull();
     expect(incidentBox!.y).toBeLessThan(glanceBox!.y);
+  });
+
+  test("active-incidents KPI shows the server-side total, not the truncated page", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // The dashboard requests the incidents list with `size: 5` — mock 5 rows
+    // (the page) but an org-wide active total of 9, mirroring the "GitHub
+    // issue #172" checks-stats scenario above. Before this fix, the KPI tile
+    // and banner both derived the count from `data.length` and would show 5.
+    const incidents = Array.from({ length: 5 }, (_, i) => ({
+      uid: `99999999-9999-9999-9999-99999999999${i}`,
+      title: `Incident ${i}`,
+      state: "active",
+      startedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    }));
+
+    await mockDashboard(page, {
+      checks: [
+        { uid: "61111111-1111-1111-1111-111111111111", name: "Sample A", status: "down" },
+      ],
+      incidents,
+      incidentsTotal: 9,
+    });
+
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    const incidentsTile = page.getByTestId("kpi-tile-incidents");
+    await expect(incidentsTile).toBeVisible({ timeout: 10000 });
+    await expect(incidentsTile).toContainText("9");
+    await expect(incidentsTile).not.toContainText("5");
+
+    // The card below the tile still renders only the 5 rows the list
+    // returned — only the tile number and banner copy read the total.
+    const incidentsCard = page.getByTestId("active-incidents");
+    await expect(incidentsCard).toBeVisible();
+    await expect(incidentsCard.getByText("Incident 0")).toBeVisible();
   });
 
   test("Recent activity row for an incident event shows both incident and check links", async ({
