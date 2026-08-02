@@ -587,6 +587,7 @@ function CheckGroupSection({
   isLoading,
   error,
   search,
+  isFiltering,
   isFirst,
   isLast,
   onMoveUp,
@@ -603,6 +604,12 @@ function CheckGroupSection({
   isLoading: boolean;
   error: unknown;
   search: string;
+  /** True when any of the four filter dimensions (search/status/labels/
+   * internal) is active — see spec 2026-08-02-07. While true, the header
+   * shows the count of *matching* checks (bucket length) instead of the
+   * unfiltered group.checkCount/memberStatusCounts, so it never contradicts
+   * the filtered rows below it. */
+  isFiltering: boolean;
   isFirst: boolean;
   isLast: boolean;
   onMoveUp: () => void;
@@ -639,7 +646,12 @@ function CheckGroupSection({
   const escalationPolicy = group.escalationPolicyUid
     ? escalationPolicyByUid.get(group.escalationPolicyUid)
     : undefined;
-  const memberSummary = formatMemberSummary(group.memberStatusCounts, t);
+  // While filtering, the unfiltered member-status breakdown would contradict
+  // the (filtered) rows shown below it, so it's dropped in favor of the plain
+  // matching count on the badge below.
+  const memberSummary = isFiltering
+    ? undefined
+    : formatMemberSummary(group.memberStatusCounts, t);
 
   return (
     <div className="border rounded-lg" data-testid="group-section">
@@ -688,7 +700,7 @@ function CheckGroupSection({
             </span>
           )}
           <Badge variant="secondary" className="text-xs">
-            {group.checkCount}
+            {isFiltering ? checks.length : group.checkCount}
           </Badge>
           {group.escalationPolicyUid && (
             <Tooltip>
@@ -793,14 +805,18 @@ function CheckGroupSection({
 }
 
 // Presentational: renders the ungrouped bucket from the page-level batched
-// query. Hidden entirely when there is nothing ungrouped to show and no active
-// search (an empty "Ungrouped Checks" heading would just be noise).
+// query. Hidden entirely whenever there is nothing ungrouped to show (once the
+// stream has resolved) — regardless of whether that's because the org simply
+// has no ungrouped checks, or because the active filters (search/status/
+// labels/internal) narrowed the bucket to zero. An empty "Ungrouped Checks"
+// heading, or a "no matches" placeholder under it, would just be noise; the
+// group-hiding behavior above already gives the same "filtered to nothing"
+// feedback by omission. See spec 2026-08-02-07.
 function UngroupedChecksSection({
   org,
   checks,
   isLoading,
   error,
-  search,
   onDeleteCheck,
   onChangeGroup,
   groups,
@@ -810,7 +826,6 @@ function UngroupedChecksSection({
   checks: Check[];
   isLoading: boolean;
   error: unknown;
-  search: string;
   onDeleteCheck: (uid: string) => void;
   onChangeGroup: (check: Check) => void;
   groups: CheckGroup[];
@@ -818,7 +833,7 @@ function UngroupedChecksSection({
 }) {
   const { t } = useTranslation("checks");
 
-  if (!isLoading && !error && checks.length === 0 && !search) {
+  if (!isLoading && !error && checks.length === 0) {
     return null;
   }
 
@@ -841,10 +856,6 @@ function UngroupedChecksSection({
           {[...Array(3)].map((_, i) => (
             <Skeleton key={i} className="h-10 rounded-lg" />
           ))}
-        </div>
-      ) : search ? (
-        <div className="text-center py-6 text-muted-foreground text-sm">
-          {t("noUngroupedChecks")}
         </div>
       ) : null}
     </div>
@@ -888,6 +899,19 @@ function ChecksIndexPage() {
   >(undefined);
   const [changeGroupCheck, setChangeGroupCheck] = useState<Check | null>(null);
   const debouncedSearch = useDebounce(search, 300);
+
+  // True when any of the four filter dimensions narrows the check list away
+  // from its default view: free-text search, the status select, the label
+  // filter, or a non-default internal-checks toggle ("false" is the default,
+  // user-facing view — "true"/"all" are the filtered ones). Drives hiding
+  // fully-filtered-out groups (and the ungrouped section) and swapping group
+  // headers to show matching counts instead of full-fleet counts. See spec
+  // 2026-08-02-07 (GitHub issue #171).
+  const isFiltering =
+    Boolean(debouncedSearch) ||
+    Boolean(statusParam) ||
+    Boolean(labelsParam) ||
+    internalFilter !== "false";
 
   // Live updates: `checks`/`results` hints invalidate both the flat
   // ["checks", org] root and the infinite ["checks", "infinite", org] root
@@ -1392,33 +1416,46 @@ function ChecksIndexPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {(groups || []).map((group, idx) => (
-              <CheckGroupSection
-                key={group.uid}
-                group={group}
-                org={org}
-                checks={checksByGroup.get(group.uid) ?? []}
-                isLoading={checksStreaming}
-                error={checksError}
-                search={debouncedSearch}
-                isFirst={idx === 0}
-                isLast={idx === (groups?.length ?? 0) - 1}
-                onMoveUp={() => handleMoveGroup(group, "up")}
-                onMoveDown={() => handleMoveGroup(group, "down")}
-                onDeleteCheck={setDeleteCheckUid}
-                onChangeGroup={setChangeGroupCheck}
-                groups={groups || []}
-                checksByUid={checksByUid}
-                escalationPolicyByUid={escalationPolicyByUid}
-              />
-            ))}
+            {(groups || [])
+              .map((group, idx) => ({ group, idx }))
+              .filter(({ group }) => {
+                // While filtering, skip groups whose bucket has zero matches
+                // — but only once the stream has fully resolved
+                // (checksStreaming false), so a group never flickers out
+                // before its later pages have had a chance to load. Not
+                // filtering: keep today's behavior (empty groups stay
+                // visible with their placeholder, so users can find/manage
+                // them).
+                if (!isFiltering || checksStreaming) return true;
+                return (checksByGroup.get(group.uid)?.length ?? 0) > 0;
+              })
+              .map(({ group, idx }) => (
+                <CheckGroupSection
+                  key={group.uid}
+                  group={group}
+                  org={org}
+                  checks={checksByGroup.get(group.uid) ?? []}
+                  isLoading={checksStreaming}
+                  error={checksError}
+                  search={debouncedSearch}
+                  isFiltering={isFiltering}
+                  isFirst={idx === 0}
+                  isLast={idx === (groups?.length ?? 0) - 1}
+                  onMoveUp={() => handleMoveGroup(group, "up")}
+                  onMoveDown={() => handleMoveGroup(group, "down")}
+                  onDeleteCheck={setDeleteCheckUid}
+                  onChangeGroup={setChangeGroupCheck}
+                  groups={groups || []}
+                  checksByUid={checksByUid}
+                  escalationPolicyByUid={escalationPolicyByUid}
+                />
+              ))}
 
             <UngroupedChecksSection
               org={org}
               checks={ungroupedChecks}
               isLoading={checksStreaming}
               error={checksError}
-              search={debouncedSearch}
               onDeleteCheck={setDeleteCheckUid}
               onChangeGroup={setChangeGroupCheck}
               groups={groups || []}
@@ -1471,7 +1508,7 @@ function ChecksIndexPage() {
             )}
           </div>
 
-          {hostBuckets.length === 0 && !checksStreaming && !debouncedSearch && (
+          {hostBuckets.length === 0 && !checksStreaming && !isFiltering && (
             <div className="text-center py-10 text-muted-foreground text-sm">
               {t("noChecksAtAll")}
             </div>
