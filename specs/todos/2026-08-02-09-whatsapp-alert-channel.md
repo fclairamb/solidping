@@ -160,3 +160,143 @@ or accepts Meta terms still needs the user's per-action OK in chat.
 - Free-form follow-ups inside the 24h session window.
 - Embedded signup / Meta Tech Provider onboarding.
 - Status-page subscriber notifications over WhatsApp.
+
+## Implementation Plan
+
+### Open questions — resolved
+
+1. **Where the instance-capability flag lives.** Piggyback on the existing
+   unauthenticated `GET /api/v1/config`
+   (`server/internal/handlers/publicconfig/handler.go`). Its package doc already
+   states it is "deliberately a general-purpose document … future public feature
+   flags join the same JSON object instead of minting an endpoint each". WhatsApp
+   credentials are *instance*-level (not per-org), so an instance-level, pre-auth
+   document is exactly the right scope — unlike the SMS `smsAvailable` signal,
+   which is per-org and derived from the org's Twilio connection. New field:
+   `{"whatsapp": {"enabled": bool}}`, where `enabled` is the resolved
+   `WhatsAppConfig.Active()` rule (enabled && access token && phone number id),
+   never the raw kill switch. No secret is ever emitted. dash0 gains a small
+   `useWhatsAppEnabled()` React-Query hook over the same endpoint so a second
+   consumer doesn't re-fetch (`lib/analytics.ts` currently fire-and-forgets it).
+2. **SaaS auto-creating templates via the WABA API.** **No** for v1. Meta
+   approval is asynchronous and out of band; a boot-time create would add a
+   write-scoped token requirement for zero latency win. Manual creation,
+   documented in `web/docs/`. "Template not found / paused / disabled" is a
+   first-class typed delivery error, never a crash.
+3. **Graph API version pinning.** Default `v23.0`, overridable via
+   `SP_WHATSAPP_API_VERSION` (`WhatsAppConfig.APIVersion`). Pinned rather than
+   floating so a Meta version rollout can never silently change payload
+   semantics under a running deployment.
+
+### Phase 1 — Config + capability flag
+- `WhatsAppConfig` in `server/internal/config/config.go` mirroring `SlackConfig`:
+  `Enabled, AccessToken, PhoneNumberID, WABAID, AppSecret, WebhookVerifyToken,
+  APIVersion, AlertTemplate, VerifyTemplate, TemplateLanguage`. Default
+  `Enabled:false`, `APIVersion:"v23.0"`, `AlertTemplate:"solidping_alert"`,
+  `VerifyTemplate:"solidping_verify"`, `TemplateLanguage:"en"`.
+  `Active()` = enabled && access token && phone number id.
+- `applyWhatsAppEnv` manual reader for the snake_case keys koanf's env provider
+  cannot reach (`phone_number_id`, `waba_id`, `app_secret`,
+  `webhook_verify_token`, `api_version`, `alert_template`, `verify_template`,
+  `template_language`) — same quirk as `rate_limiting`/`posthog`. Register the
+  names in `config/envvars.go` `manualReaderPlatformEnvVars`.
+- `publicconfig`: `WhatsAppPublicConfig{Enabled bool}` on `Response`.
+
+### Phase 2 — Meta client package `server/internal/integrations/whatsapp/`
+- `client.go`: `NewClient(cfg)` / `NewClientWithBaseURL(...)` (httptest seam),
+  `SendTemplate(ctx, params)` → `POST /{apiVersion}/{phoneNumberID}/messages`
+  with a `type:"template"` body (body-component parameters + optional
+  authentication-template button component). Bearer auth. Returns the `wamid`.
+- Typed errors classified from Graph's `error.code`/`error_subcode`/message:
+  `ErrTemplateUnavailable` (132000/132001/132005/132007/132012/132015 — not
+  found, paused, disabled), `ErrRecipientNotOnWhatsApp` (131026/131047/131052),
+  `ErrRateLimited` (4/80007/130429/131048 — tier cap / throughput),
+  `ErrTokenExpired` (190/102/‑ OAuthException), `ErrRequestFailed` (fallback).
+  `APIError` carries code/subcode/message for the audit trail.
+- `ValidateSignature(appSecret, body, header)` — HMAC-SHA256 hex,
+  `sha256=` prefix, constant-time compare. Lives here (no import cycle) so both
+  the webhook handler and tests use one implementation.
+- `ValidE164` reused shape (own copy — the package must not import twilio).
+
+### Phase 3 — Inbound webhook `server/internal/handlers/whatsappcb/`
+- `GET /api/v1/integrations/whatsapp/webhook`: `hub.mode=subscribe` +
+  `hub.verify_token` constant-time match → echo `hub.challenge` as text/plain;
+  otherwise 403 with no body.
+- `POST /api/v1/integrations/whatsapp/webhook`: read the **raw body first**,
+  validate `X-Hub-Signature-256` against it *before* parsing (missing/bad → 403,
+  no detail), then decode. `statuses[]` → delivery-record update;
+  `messages[]` (inbound replies) → info log only.
+- New `db.Service` method `UpdateIncidentNotificationDeliveryByMessageIDAnyOrg`
+  (postgres + sqlite): the Meta webhook is instance-level and carries no org, and
+  a `wamid` is globally unique. Failed statuses record the Meta error title/code
+  in `DeliveryDetails.ResponseBody` so the delivery history surfaces
+  e.g. "recipient not on WhatsApp".
+- Registered on the public `api` group next to the Twilio callbacks; the route is
+  wired only when `cfg.WhatsApp.Enabled`.
+
+### Phase 4 — Contact type + verification round-trip
+- `models.UserContactTypeWhatsApp = "whatsapp"`, deliberately distinct from
+  `phone`. No migration: `user_contacts.type` is free-form text and the verify
+  columns already exist.
+- `usernotifications`: generalize the verify flow to a per-type *transport*.
+  `VerifyContact`/`ConfirmVerify` accept `whatsapp` alongside `phone`;
+  `whatsapp` sends the authentication template via a `whatsAppSender` seam
+  (overridable in tests) instead of Twilio. Same resend limiter, same TTL,
+  attempt cap and constant-time compare — no parallel infrastructure, no new
+  endpoints. `ErrNoWhatsAppProvider` when the instance has WhatsApp off.
+- The service gains the app config so it can build the client; `NewService`
+  signature extended (single call site in `server.go`).
+
+### Phase 5 — Severity token, escalation dispatch, quota
+- `severities.allowedChannels()` gains `"whatsapp"`.
+- `channelTokenWhatsApp` + `severityAllowsWhatsApp(filter)` (explicit token only,
+  or nil filter) and `whatsapp` added to `severityAllowsPersonTargets`.
+- `dispatchRoute` case `models.UserContactTypeWhatsApp` → `pageWhatsApp`,
+  mirroring `pagePhone`: unverified → skip; instance disabled → info-log skip;
+  quota reservation; send the alert template with (check, state, detail, org);
+  audit row with channel `whatsapp` + the `wamid` as message id. A send failure
+  returns 0 so the step falls through to the next escalation step exactly like
+  SMS.
+- Entitlements: `models.UsageCounterKindWhatsApp = "whatsapp"`,
+  `MaxWhatsappPerMonth *int` on `EntitlementLimits` (+ strict `UnmarshalJSON`,
+  `overlayLimits`, `merge`, SaaS default `Int(0)` / self-hosted `nil`),
+  `Service.ReserveWhatsApp`, runaway bucket
+  (`SP_ENTITLEMENTS_WHATSAPP_RUNAWAY_PER_HOUR`, default 30),
+  `Usage.WhatsAppThisMonth` for the Usage page.
+
+### Phase 6 — Frontend (dash0)
+- `routes/orgs/$org/account.notifications.tsx`: third contact type in the add
+  form (E.164 input), WhatsApp icon + label, generalized `isPhone` →
+  `needsVerification` predicate, WhatsApp-specific verify dialog copy
+  (authentication template, not SMS). Hidden when the instance flag is off.
+- `useWhatsAppEnabled()` hook over `GET /api/v1/config`.
+- `me.notifications.tsx` + notification detail: a channel-label map so
+  `whatsapp` renders as "WhatsApp" (today the raw token is CSS-capitalized).
+- Usage page: WhatsApp monthly row.
+- i18n keys in en/fr/de/es `account.json` + `org.json`.
+- Note: **there is no severity channel-picker UI in dash0 today** (severity
+  hooks exist in `api/hooks.ts` but no `.tsx` consumes them), so "the picker
+  gains whatsapp" is satisfied by the backend token; no picker is built here.
+
+### Phase 7 — Docs
+- `web/docs/docs/…/whatsapp.md`: self-hoster setup — Meta app, WABA, phone
+  number, the two template definitions (utility + authentication) with exact
+  bodies, webhook subscription, the `SP_WHATSAPP_*` env matrix, and the
+  troubleshooting table mapping typed errors to operator actions.
+
+### Phase 8 — Tests
+- Client: httptest fake Graph API — payload shape (path, bearer, template name,
+  language, body parameters), plus one case per typed error class.
+- Signature: valid / wrong secret / missing / malformed.
+- Webhook: GET handshake ok + token mismatch; POST rejects bad and missing
+  signature *before* parsing; status → delivery-record update; inbound message
+  accepted.
+- Verification: round-trip with a fake sender, resend limiter, wrong code,
+  expiry, attempt cap; whatsapp contact stays distinct from a phone contact with
+  the same number.
+- Escalation: whatsapp route sends; send failure returns 0 (falls through);
+  unverified never contacted; quota blocks at the cap and increments the counter.
+- E2E (dash0): contact add + verify flow against a mocked API, and channel
+  visibility gated on the public-config flag.
+- All test seams are injected per-service/per-test, never a mutated package
+  global (a prior spec in this batch shipped a flake from exactly that).
