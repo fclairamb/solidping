@@ -306,6 +306,7 @@ type Config struct {
 	Email        EmailConfig          `koanf:"email"`
 	Slack        SlackConfig          `koanf:"slack"`
 	MSTeams      MSTeamsConfig        `koanf:"msteams"`
+	WhatsApp     WhatsAppConfig       `koanf:"whatsapp"`
 	Google       GoogleOAuthConfig    `koanf:"google"`
 	GitHub       GitHubOAuthConfig    `koanf:"github"`
 	Microsoft    MicrosoftOAuthConfig `koanf:"microsoft"`
@@ -396,6 +397,10 @@ type EntitlementsConfig struct {
 	SMSRunawayPerHour int `koanf:"sms_runaway_per_hour"`
 	// CallRunawayPerHour caps outbound voice calls per org per hour (default 10).
 	CallRunawayPerHour int `koanf:"call_runaway_per_hour"`
+	// WhatsAppRunawayPerHour caps outbound WhatsApp template messages per org
+	// per hour (default 30). Unlike SMS this is instance-billed even for
+	// self-hosters, so the guard matters just as much.
+	WhatsAppRunawayPerHour int `koanf:"whatsapp_runaway_per_hour"`
 }
 
 // NodeConfig contains node role configuration.
@@ -643,6 +648,107 @@ type MSTeamsConfig struct {
 	AppID     string `koanf:"app_id"`
 	AppSecret string `koanf:"app_secret"`
 	TenantID  string `koanf:"tenant_id"`
+}
+
+// WhatsApp defaults. Exported so the client package and tests share one source
+// of truth for the pinned Graph API version and the template names.
+const (
+	// DefaultWhatsAppAPIVersion pins the Graph API version. Pinned rather than
+	// floating so a Meta version rollout can never silently change payload
+	// semantics under a running deployment; operators bump it deliberately via
+	// SP_WHATSAPP_API_VERSION once they have re-tested.
+	DefaultWhatsAppAPIVersion = "v23.0"
+	// DefaultWhatsAppAlertTemplate is the Meta-approved *utility* template used
+	// for incident alerts. One template covers down/escalate/resolve because the
+	// new state is a body variable.
+	DefaultWhatsAppAlertTemplate = "solidping_alert"
+	// DefaultWhatsAppVerifyTemplate is the Meta-approved *authentication*
+	// template used for the contact verification code.
+	DefaultWhatsAppVerifyTemplate = "solidping_verify"
+	// DefaultWhatsAppTemplateLanguage is the template language/locale code.
+	DefaultWhatsAppTemplateLanguage = "en"
+)
+
+// WhatsAppConfig contains the instance-level WhatsApp Business Cloud API
+// credentials. Mirrors SlackConfig: one deployment-wide identity, no per-org
+// bring-your-own WABA in v1. SaaS supplies SP_WHATSAPP_* in its deployment env;
+// a self-hoster does exactly the same with their own Meta app and WABA — no
+// code path differs between the two.
+//
+// Default Enabled:false. AccessToken and AppSecret are SECRETS: env/SSM only,
+// never logged, never returned by any API, never sent to a browser.
+type WhatsAppConfig struct {
+	// Enabled is the kill switch (SP_WHATSAPP_ENABLED). It only ever turns the
+	// feature off — credentials are still required to turn it on (see Active).
+	Enabled bool `koanf:"enabled"`
+	// AccessToken is the permanent system-user token carrying the
+	// whatsapp_business_messaging permission. SECRET.
+	AccessToken string `koanf:"access_token"`
+	// PhoneNumberID is the WABA phone-number id messages are sent from (the
+	// numeric id, not the phone number itself).
+	PhoneNumberID string `koanf:"phone_number_id"`
+	// WABAID is the WhatsApp Business Account id. Not needed to send; kept for
+	// operator diagnostics and future template-management calls.
+	WABAID string `koanf:"waba_id"`
+	// AppSecret signs inbound webhooks (X-Hub-Signature-256). SECRET.
+	AppSecret string `koanf:"app_secret"`
+	// WebhookVerifyToken is the shared string Meta echoes during the GET
+	// webhook handshake. SECRET-ish: it is an authenticator, never logged.
+	WebhookVerifyToken string `koanf:"webhook_verify_token"`
+	// APIVersion is the pinned Graph API version segment (e.g. "v23.0").
+	APIVersion string `koanf:"api_version"`
+	// AlertTemplate / VerifyTemplate are the approved template names.
+	AlertTemplate  string `koanf:"alert_template"`
+	VerifyTemplate string `koanf:"verify_template"`
+	// TemplateLanguage is the template language code both templates use.
+	TemplateLanguage string `koanf:"template_language"`
+}
+
+// Active reports whether WhatsApp can actually send. This is THE enablement
+// rule, applied identically by the sender, the escalation dispatcher, the
+// verification flow and the public config endpoint: the kill switch must be on
+// AND the two credentials a send cannot work without must be present. Anything
+// else is off — in particular Enabled=true with no token.
+func (c WhatsAppConfig) Active() bool {
+	return c.Enabled &&
+		strings.TrimSpace(c.AccessToken) != "" &&
+		strings.TrimSpace(c.PhoneNumberID) != ""
+}
+
+// ResolvedAPIVersion returns the configured Graph API version or the default.
+func (c WhatsAppConfig) ResolvedAPIVersion() string {
+	if v := strings.TrimSpace(c.APIVersion); v != "" {
+		return v
+	}
+
+	return DefaultWhatsAppAPIVersion
+}
+
+// ResolvedAlertTemplate returns the configured alert template name or the default.
+func (c WhatsAppConfig) ResolvedAlertTemplate() string {
+	if v := strings.TrimSpace(c.AlertTemplate); v != "" {
+		return v
+	}
+
+	return DefaultWhatsAppAlertTemplate
+}
+
+// ResolvedVerifyTemplate returns the configured verify template name or the default.
+func (c WhatsAppConfig) ResolvedVerifyTemplate() string {
+	if v := strings.TrimSpace(c.VerifyTemplate); v != "" {
+		return v
+	}
+
+	return DefaultWhatsAppVerifyTemplate
+}
+
+// ResolvedTemplateLanguage returns the configured template language or the default.
+func (c WhatsAppConfig) ResolvedTemplateLanguage() string {
+	if v := strings.TrimSpace(c.TemplateLanguage); v != "" {
+		return v
+	}
+
+	return DefaultWhatsAppTemplateLanguage
 }
 
 // JobWorkerConfig contains job worker configuration.
@@ -1003,6 +1109,15 @@ func Load() (*Config, error) {
 		Microsoft: MicrosoftOAuthConfig{Enabled: false},
 		Slack:     SlackConfig{Enabled: false},
 		MSTeams:   MSTeamsConfig{Enabled: false},
+		// Off by default. Credentials are instance-level and must be supplied
+		// explicitly; the template/version defaults only matter once they are.
+		WhatsApp: WhatsAppConfig{
+			Enabled:          false,
+			APIVersion:       DefaultWhatsAppAPIVersion,
+			AlertTemplate:    DefaultWhatsAppAlertTemplate,
+			VerifyTemplate:   DefaultWhatsAppVerifyTemplate,
+			TemplateLanguage: DefaultWhatsAppTemplateLanguage,
+		},
 		// Enabled defaults to true but is inert on its own: PostHogConfig.Active
 		// additionally requires a project API key, which self-hosted installs
 		// never have unless the operator sets one.
@@ -1109,6 +1224,9 @@ func Load() (*Config, error) {
 	if v := envInt("SP_ENTITLEMENTS_CALL_RUNAWAY_PER_HOUR"); v > 0 {
 		cfg.Entitlements.CallRunawayPerHour = v
 	}
+	if v := envInt("SP_ENTITLEMENTS_WHATSAPP_RUNAWAY_PER_HOUR"); v > 0 {
+		cfg.Entitlements.WhatsAppRunawayPerHour = v
+	}
 
 	// If node region is set, also set the check worker region if not already set
 	if cfg.Node.Region != "" && cfg.Server.CheckWorker.Region == "" {
@@ -1143,6 +1261,7 @@ func Load() (*Config, error) {
 	applyFileStorageEnv(&cfg.FileStorage)
 	applyWebPushEnv(&cfg.WebPush)
 	applyPostHogEnv(&cfg.PostHog)
+	applyWhatsAppEnv(&cfg.WhatsApp)
 	applyJobsEnv(&cfg.Jobs)
 	applyServerEnv(&cfg.Server)
 	applySchedulingEnv(&cfg.Server.Scheduling)
@@ -1628,6 +1747,33 @@ func applyPostHogEnv(cfg *PostHogConfig) {
 
 	if v := os.Getenv("SP_POSTHOG_PERSONAL_API_KEY"); v != "" {
 		cfg.PersonalAPIKey = strings.TrimSpace(v)
+	}
+}
+
+// applyWhatsAppEnv reads SP_WHATSAPP_* into cfg. Only whatsapp.enabled is
+// koanf-reachable (single-word segment); every other key has a snake_case
+// segment that koanf's underscore→dot collapsing can never reach
+// (SP_WHATSAPP_PHONE_NUMBER_ID would land on whatsapp.phone.number.id), so they
+// are read by hand here — the same quirk as rate_limiting and posthog.
+// Keep in sync with manualReaderPlatformEnvVars.
+func applyWhatsAppEnv(cfg *WhatsAppConfig) {
+	for _, binding := range []struct {
+		name string
+		dst  *string
+	}{
+		{"SP_WHATSAPP_ACCESS_TOKEN", &cfg.AccessToken},
+		{"SP_WHATSAPP_PHONE_NUMBER_ID", &cfg.PhoneNumberID},
+		{"SP_WHATSAPP_WABA_ID", &cfg.WABAID},
+		{"SP_WHATSAPP_APP_SECRET", &cfg.AppSecret},
+		{"SP_WHATSAPP_WEBHOOK_VERIFY_TOKEN", &cfg.WebhookVerifyToken},
+		{"SP_WHATSAPP_API_VERSION", &cfg.APIVersion},
+		{"SP_WHATSAPP_ALERT_TEMPLATE", &cfg.AlertTemplate},
+		{"SP_WHATSAPP_VERIFY_TEMPLATE", &cfg.VerifyTemplate},
+		{"SP_WHATSAPP_TEMPLATE_LANGUAGE", &cfg.TemplateLanguage},
+	} {
+		if v := strings.TrimSpace(os.Getenv(binding.name)); v != "" {
+			*binding.dst = v
+		}
 	}
 }
 

@@ -36,10 +36,24 @@ type PostHogPublicConfig struct {
 	Host string `json:"host,omitempty"`
 }
 
+// WhatsAppPublicConfig is the browser-safe view of the instance's WhatsApp
+// capability. It is a single boolean by design: the dashboard only needs to
+// know whether to offer the WhatsApp contact type and severity channel. No
+// credential, phone-number id, WABA id or template name is ever exposed —
+// those are operator-side facts a browser has no business learning.
+//
+// Enabled is the resolved config.WhatsAppConfig.Active() rule, NOT the raw
+// whatsapp.enabled kill switch: an instance with the switch on but no access
+// token reports enabled=false, because nothing would in fact be delivered.
+type WhatsAppPublicConfig struct {
+	Enabled bool `json:"enabled"`
+}
+
 // Response is the public config document. Fields are added here as new public
 // flags appear; every one of them must be non-secret and browser-safe.
 type Response struct {
-	PostHog PostHogPublicConfig `json:"posthog"`
+	PostHog  PostHogPublicConfig  `json:"posthog"`
+	WhatsApp WhatsAppPublicConfig `json:"whatsapp"`
 }
 
 // Handler serves the public config document.
@@ -68,6 +82,10 @@ func Build(cfg *config.Config) Response {
 			ProjectAPIKey: cfg.PostHog.ProjectAPIKey,
 			Host:          cfg.PostHog.ResolvedHost(),
 		}
+	}
+
+	if cfg != nil && cfg.WhatsApp.Active() {
+		resp.WhatsApp = WhatsAppPublicConfig{Enabled: true}
 	}
 
 	return resp
