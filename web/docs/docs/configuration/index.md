@@ -123,6 +123,20 @@ Users can also enable TOTP two-factor authentication on their accounts. See [Aut
 
 See [Security & Encryption](/configuration/security) for the full guide.
 
+### Product Analytics
+
+Analytics is **off by default** — with no project API key set, the server sends
+nothing and the dashboard loads no analytics code whatsoever.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_POSTHOG_PROJECT_API_KEY` | - | Public `phc_…` PostHog browser key. Empty = analytics entirely off |
+| `SP_POSTHOG_HOST` | `https://eu.i.posthog.com` | PostHog ingestion endpoint |
+| `SP_POSTHOG_PERSONAL_API_KEY` | - | Optional server-side key (stored as a secret, never sent to the browser) |
+| `SP_POSTHOG_ENABLED` | `true` | Kill switch — never enables anything on its own |
+
+See [Product Analytics](/configuration/analytics) for exactly what is and is not sent.
+
 ### Observability
 
 | Variable | Default | Description |
@@ -218,6 +232,7 @@ The SolidPing CLI client (`sp`) uses its own configuration:
 - [Notifications](/configuration/notifications) - Email, Slack, Discord, webhooks, and more
 - [Authentication](/configuration/authentication) - OAuth providers, 2FA, and access control
 - [Security & Encryption](/configuration/security) - Credentials encryption at rest
+- [Product Analytics](/configuration/analytics) - Optional PostHog integration, off unless configured
 
 ## Security Recommendations
 
