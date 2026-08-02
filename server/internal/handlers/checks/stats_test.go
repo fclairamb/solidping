@@ -35,7 +35,7 @@ type statsFixture struct {
 // internal, deleted) combination that the public API would otherwise not let
 // it reach (e.g. a freshly created check is always `created`).
 func seedStatsChecks(
-	t *testing.T, ctx context.Context, dbSvc db.Service, orgUID string, fixtures []statsFixture,
+	ctx context.Context, t *testing.T, dbSvc db.Service, orgUID string, fixtures []statsFixture,
 ) {
 	t.Helper()
 	r := require.New(t)
@@ -211,7 +211,7 @@ func TestGetCheckStatsAggregation_SQLite(t *testing.T) {
 			ctx := t.Context()
 
 			svc, dbSvc, org := newStatsService(t, fmt.Sprintf("stats-agg-%d", i))
-			seedStatsChecks(t, ctx, dbSvc, org.UID, tc.fixtures)
+			seedStatsChecks(ctx, t, dbSvc, org.UID, tc.fixtures)
 
 			stats, err := svc.GetCheckStats(ctx, org.Slug)
 			r.NoError(err)
@@ -254,7 +254,7 @@ func TestGetCheckStatsBeyondPageClamp_SQLite(t *testing.T) {
 		fixtures = append(fixtures, statsFixture{status: models.CheckStatusUp, enabled: false})
 	}
 
-	seedStatsChecks(t, ctx, dbSvc, org.UID, fixtures)
+	seedStatsChecks(ctx, t, dbSvc, org.UID, fixtures)
 
 	handler := checks.NewHandler(svc, &config.Config{})
 	router := httpx.New()
@@ -314,7 +314,7 @@ func TestGetCheckStatsEndpointRouting(t *testing.T) {
 	ctx := t.Context()
 
 	svc, dbSvc, org := newStatsService(t, "stats-http")
-	seedStatsChecks(t, ctx, dbSvc, org.UID, []statsFixture{
+	seedStatsChecks(ctx, t, dbSvc, org.UID, []statsFixture{
 		{status: models.CheckStatusUp, enabled: true},
 		{status: models.CheckStatusDown, enabled: true},
 		{status: models.CheckStatusUp, enabled: false},
@@ -334,23 +334,29 @@ func TestGetCheckStatsEndpointRouting(t *testing.T) {
 
 	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
 
-	// Assert on the raw JSON so a renamed/re-cased field is caught.
-	var payload map[string]any
+	// Assert on the raw key set so a renamed or re-cased field is caught.
+	var raw map[string]json.RawMessage
+
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &raw))
+
+	for _, key := range []string{"total", "enabled", "disabled", "byStatus", "down", "hardDown"} {
+		r.Contains(raw, key, "response must carry the camelCase %q field", key)
+	}
+
+	// It is a stats object, not a check — proving /stats did not fall through
+	// to the :checkUid route.
+	r.NotContains(raw, "uid", "/checks/stats must not resolve to the :checkUid route")
+
+	var payload checks.CheckStatsResponse
+
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &payload))
-	r.Equal(float64(3), payload["total"])
-	r.Equal(float64(2), payload["enabled"])
-	r.Equal(float64(1), payload["disabled"])
-	r.Equal(float64(1), payload["down"])
-	r.Equal(float64(1), payload["hardDown"])
-
-	byStatus, ok := payload["byStatus"].(map[string]any)
-	r.True(ok, "byStatus must be an object")
-	r.Equal(float64(2), byStatus[models.WireStatusUp])
-	r.Equal(float64(1), byStatus[models.WireStatusDown])
-
-	// It is an object, not a bare array (REST convention), and not a check.
-	_, isCheck := payload["uid"]
-	r.False(isCheck, "/checks/stats must not resolve to the :checkUid route")
+	r.Equal(3, payload.Total)
+	r.Equal(2, payload.Enabled)
+	r.Equal(1, payload.Disabled)
+	r.Equal(1, payload.Down)
+	r.Equal(1, payload.HardDown)
+	r.Equal(2, payload.ByStatus[models.WireStatusUp])
+	r.Equal(1, payload.ByStatus[models.WireStatusDown])
 }
 
 // TestGetCheckStatsUnknownOrg returns 404 rather than an internal error.
@@ -378,7 +384,7 @@ func TestGetCheckStatsCacheServesStaleThenRefreshes(t *testing.T) {
 	svc, dbSvc, org := newStatsService(t, "stats-cache")
 	checks.SetCheckStatsTTLForTest(svc, 150*time.Millisecond)
 
-	seedStatsChecks(t, ctx, dbSvc, org.UID, []statsFixture{
+	seedStatsChecks(ctx, t, dbSvc, org.UID, []statsFixture{
 		{status: models.CheckStatusUp, enabled: true},
 	})
 
@@ -387,7 +393,7 @@ func TestGetCheckStatsCacheServesStaleThenRefreshes(t *testing.T) {
 	r.Equal(1, first.Total)
 
 	// Mutate the table behind the cache's back.
-	seedStatsChecks(t, ctx, dbSvc, org.UID, []statsFixture{
+	seedStatsChecks(ctx, t, dbSvc, org.UID, []statsFixture{
 		{status: models.CheckStatusDown, enabled: true},
 		{status: models.CheckStatusDown, enabled: true},
 	})
@@ -417,11 +423,11 @@ func TestGetCheckStatsCacheIsPerOrg(t *testing.T) {
 	orgB := models.NewOrganization("stats-org-b", "Stats Org B")
 	r.NoError(dbSvc.CreateOrganization(ctx, orgB))
 
-	seedStatsChecks(t, ctx, dbSvc, orgA.UID, []statsFixture{
+	seedStatsChecks(ctx, t, dbSvc, orgA.UID, []statsFixture{
 		{status: models.CheckStatusUp, enabled: true},
 		{status: models.CheckStatusDown, enabled: true},
 	})
-	seedStatsChecks(t, ctx, dbSvc, orgB.UID, []statsFixture{
+	seedStatsChecks(ctx, t, dbSvc, orgB.UID, []statsFixture{
 		{status: models.CheckStatusUp, enabled: true},
 	})
 
@@ -444,7 +450,7 @@ func TestGetCheckStatsCachedMapIsNotShared(t *testing.T) {
 	ctx := t.Context()
 
 	svc, dbSvc, org := newStatsService(t, "stats-nomutate")
-	seedStatsChecks(t, ctx, dbSvc, org.UID, []statsFixture{
+	seedStatsChecks(ctx, t, dbSvc, org.UID, []statsFixture{
 		{status: models.CheckStatusUp, enabled: true},
 	})
 

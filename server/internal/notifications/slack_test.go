@@ -1135,6 +1135,12 @@ func (m *mockDBService) GetCheckGroupStatusCounts(
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetCheckStatusCounts(
+	_ context.Context, _ string,
+) ([]models.CheckStatusCount, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) ListCheckUIDsByGroup(_ context.Context, _, _ string) ([]string, error) {
 	panic("not implemented")
 }

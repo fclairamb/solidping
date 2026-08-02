@@ -78,7 +78,7 @@ func TestGetCheckStats_Postgres(t *testing.T) {
 			org := models.NewOrganization(fmt.Sprintf("pgstats-%d", i), "PG Stats Org")
 			r.NoError(dbSvc.CreateOrganization(ctx, org))
 
-			seedStatsChecks(t, ctx, dbSvc, org.UID, tc.fixtures)
+			seedStatsChecks(ctx, t, dbSvc, org.UID, tc.fixtures)
 
 			stats, err := svc.GetCheckStats(ctx, org.Slug)
 			r.NoError(err)
@@ -115,7 +115,7 @@ func TestGetCheckStats_Postgres(t *testing.T) {
 			fixtures = append(fixtures, statsFixture{status: models.CheckStatusUp, enabled: false})
 		}
 
-		seedStatsChecks(t, ctx, dbSvc, org.UID, fixtures)
+		seedStatsChecks(ctx, t, dbSvc, org.UID, fixtures)
 
 		stats, err := svc.GetCheckStats(ctx, org.Slug)
 		r.NoError(err)

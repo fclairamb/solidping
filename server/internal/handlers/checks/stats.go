@@ -69,17 +69,19 @@ type checkStatsCache struct {
 	entries map[string]checkStatsEntry
 }
 
-// allCheckStatusNames lists every wire status a check row can carry, in the
-// order the ByStatus map is seeded. models.CheckStatus.String() maps unknown
+// checkStatusNames lists every wire status a check row can carry — the exact
+// key set ByStatus is seeded with. models.CheckStatus.String() maps unknown
 // column values to WireStatusUnknown, so this set is exhaustive.
-var allCheckStatusNames = []string{
-	models.WireStatusCreated,
-	models.WireStatusUp,
-	models.WireStatusDown,
-	models.WireStatusValidating,
-	models.WireStatusDegraded,
-	models.WireStatusWarning,
-	models.WireStatusUnknown,
+func checkStatusNames() []string {
+	return []string{
+		models.WireStatusCreated,
+		models.WireStatusUp,
+		models.WireStatusDown,
+		models.WireStatusValidating,
+		models.WireStatusDegraded,
+		models.WireStatusWarning,
+		models.WireStatusUnknown,
+	}
 }
 
 // isDownWireStatus mirrors the dashboard's isDownStatus helper
@@ -129,8 +131,10 @@ func (s *Service) GetCheckStats(ctx context.Context, orgSlug string) (CheckStats
 // correctness-sensitive part, since it must agree with the dashboard's status
 // helpers — is directly unit-testable without a database.
 func foldCheckStatusCounts(rows []models.CheckStatusCount) CheckStatsResponse {
-	byStatus := make(map[string]int, len(allCheckStatusNames))
-	for _, name := range allCheckStatusNames {
+	names := checkStatusNames()
+
+	byStatus := make(map[string]int, len(names))
+	for _, name := range names {
 		byStatus[name] = 0
 	}
 

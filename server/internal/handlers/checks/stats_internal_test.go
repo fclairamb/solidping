@@ -81,10 +81,10 @@ func TestFoldCheckStatusCounts(t *testing.T) {
 
 			// Every known status key is always present, and the buckets sum
 			// back to the total — no row may be dropped by the fold.
-			r.Len(got.ByStatus, len(allCheckStatusNames))
+			r.Len(got.ByStatus, len(checkStatusNames()))
 
 			sum := 0
-			for _, name := range allCheckStatusNames {
+			for _, name := range checkStatusNames() {
 				count, ok := got.ByStatus[name]
 				r.True(ok, "byStatus missing key %q", name)
 				sum += count
