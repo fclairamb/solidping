@@ -11,7 +11,8 @@
     "hashing": "Hash de contraseñas",
     "performance": "Rendimiento",
     "aggregation": "Agregación",
-    "slack": "Slack"
+    "slack": "Slack",
+    "analytics": "Analítica"
   },
   "aggregation": {
     "title": "Agregación",
@@ -272,5 +273,26 @@
       "noError": "—",
       "never": "nunca"
     }
+  },
+  "analytics": {
+    "title": "Analítica de producto",
+    "description": "Integración opcional con PostHog. La analítica está completamente desactivada hasta que introduzcas una clave de API de proyecto: sin clave, el servidor no envía nada y el panel no carga ningún código de analítica.",
+    "statusOn": "Analítica activa",
+    "statusOff": "Analítica desactivada",
+    "statusOffHelp": "No hay ninguna clave de API de proyecto configurada, por lo que no se captura nada ni se carga código de analítica en el navegador.",
+    "enabled": "Activar analítica",
+    "enabledHelp": "Interruptor de apagado. Activarlo no habilita nada por sí solo: también se requiere una clave de API de proyecto.",
+    "projectApiKey": "Clave de API de proyecto",
+    "projectApiKeyPlaceholder": "phc_...",
+    "projectApiKeyHelp": "Clave pública de PostHog para el navegador. Se envía al panel de forma intencionada. Déjala vacía para mantener la analítica totalmente desactivada.",
+    "host": "Host",
+    "hostPlaceholder": "https://eu.i.posthog.com",
+    "hostHelp": "Endpoint de ingesta de PostHog. Admite PostHog autoalojado y proxies inversos.",
+    "personalApiKey": "Clave de API personal",
+    "personalApiKeyPlaceholder": "Introduce una nueva clave de API personal",
+    "personalApiKeyHelp": "Clave opcional del lado servidor. Se guarda como secreto y nunca se envía al navegador.",
+    "envOverride": "Definido por el entorno",
+    "envOverrideHelp": "Este valor procede de una variable de entorno, que tiene prioridad sobre cualquier valor guardado aquí.",
+    "whatIsSent": "Qué se envía: cinco eventos de producto (organización creada, usuario registrado, check creado, integración conectada, página de estado publicada), identificados por los UUID de organización y usuario. Nunca se envía: direcciones de correo, objetivos de los checks, nombres de host, URL, contenido de incidencias ni ningún texto que hayas escrito."
   }
 }
