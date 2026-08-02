@@ -376,7 +376,9 @@ func (m *mockDBService) FindRecentlyResolvedIncidentByCheckUID(
 	panic("not implemented")
 }
 
-func (m *mockDBService) ListIncidents(_ context.Context, _ *models.ListIncidentsFilter) ([]*models.Incident, error) {
+func (m *mockDBService) ListIncidents(
+	_ context.Context, _ *models.ListIncidentsFilter,
+) ([]*models.Incident, int64, error) {
 	panic("not implemented")
 }
 

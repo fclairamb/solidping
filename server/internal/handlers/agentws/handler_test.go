@@ -295,7 +295,7 @@ func TestEnrollClaimResultIncident(t *testing.T) {
 	r.True(ok, "result row must exist")
 	r.Equal(int(models.ResultStatusDown), *got.Status)
 
-	incidents, err := e.dbSvc.ListIncidents(ctx, &models.ListIncidentsFilter{OrganizationUID: e.org.UID})
+	incidents, _, err := e.dbSvc.ListIncidents(ctx, &models.ListIncidentsFilter{OrganizationUID: e.org.UID})
 	r.NoError(err)
 	r.NotEmpty(incidents, "a DOWN result with 0s confirmation must open an incident server-side")
 }
