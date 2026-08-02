@@ -693,6 +693,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	checksHandler := checks.NewHandler(checksService, s.config)
 	orgChecks := orgGroup("/orgs/:org/checks")
 	orgChecks.GET("", checksHandler.ListChecks)
+	// Aggregate counters for the org dashboard (spec 2026-08-02-06). Registered
+	// here, ahead of the "/:checkUid" routes below, so the literal "stats"
+	// segment is never captured as a check UID.
+	orgChecks.GET("/stats", checksHandler.GetCheckStats)
 	orgChecks.POST("", checksHandler.CreateCheck)
 
 	// Config-as-code surface (export/import/apply) is admin-only: import and

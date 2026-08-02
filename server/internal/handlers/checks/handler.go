@@ -120,6 +120,36 @@ func parseTypeFilter(typeParam string) []string {
 	return types
 }
 
+// GetCheckStats handles GET /api/v1/orgs/{org}/checks/stats: the org-wide
+// aggregate check counters (spec 2026-08-02-06, GitHub issue #172).
+//
+// This endpoint exists because the dashboard used to derive its KPI counters
+// from one page of the checks list, which the list endpoint clamps to 100
+// rows — so every counter was silently wrong for orgs with more checks than
+// that. The counts here come from a single SQL GROUP BY over the whole table.
+//
+// The response is served from a per-org in-memory cache with a
+// defaultCheckStatsTTL (1 minute) lifetime, so it can lag a check
+// create/delete/status flip by up to that long. That is deliberate: these are
+// informational counters on a polling dashboard, and the alternative — busting
+// the cache from every check write path and from the result pipeline's status
+// transitions — buys nothing at this staleness budget. Consumers needing an
+// exact, immediately-consistent count must use the list endpoint's
+// pagination.total instead.
+//
+// Route ordering note: this MUST stay registered ahead of
+// GET /orgs/:org/checks/:checkUid, or "stats" is captured as a check UID.
+func (h *Handler) GetCheckStats(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+
+	stats, err := h.svc.GetCheckStats(req.Context(), orgSlug)
+	if err != nil {
+		return h.handleListError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, stats)
+}
+
 // ListChecks handles listing all checks for an organization.
 //
 //nolint:funlen,cyclop // List handler has many query parameter extractions
