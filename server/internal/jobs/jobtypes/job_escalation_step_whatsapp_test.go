@@ -406,3 +406,25 @@ func TestWhatsAppDetail(t *testing.T) {
 	r.NotEmpty(detail)
 	r.Contains(detail, "open for")
 }
+
+// TestSeverityAllowsPersonTargets_WhatsApp closes the gap that would make every
+// other WhatsApp test vacuous: fanOutWithSeverity gates user / schedule /
+// all_admins targets on severityAllowsPersonTargets BEFORE dispatchRoute is
+// ever reached. A `{whatsapp}`-only severity that failed this gate would page
+// nobody, no matter how correct pageWhatsApp is.
+func TestSeverityAllowsPersonTargets_WhatsApp(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.True(severityAllowsPersonTargets(map[string]bool{"whatsapp": true}),
+		"a whatsapp-only severity must open the person-target gate")
+
+	// Negative control: a severity with no person-deliverable token stays shut.
+	r.False(severityAllowsPersonTargets(map[string]bool{"slack": true}))
+
+	// And the per-route gate itself is explicit-token-only.
+	r.True(severityAllowsWhatsApp(map[string]bool{"whatsapp": true}))
+	r.False(severityAllowsWhatsApp(nil))
+	r.False(severityAllowsWhatsApp(map[string]bool{"email": true, "sms": true}))
+}
