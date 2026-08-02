@@ -318,7 +318,10 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   const hardDownCount = stats.hardDown;
   const totalChecksCount = stats.total;
   const timeoutOnlyCount = downCount - hardDownCount;
-  const incidentsCount = incidents.length;
+  // The tile and banner need the true count of active incidents, not the
+  // page length — the query below caps at `size: 5` for the "needs
+  // attention" list, so `incidents.length` alone silently truncates at 5.
+  const incidentsCount = incidentsQuery.data?.total ?? incidents.length;
   const availabilityPct = weightedAvailability(results);
 
   const glanceChecks = useMemo(() => orderChecksForGlance(checks), [checks]);
