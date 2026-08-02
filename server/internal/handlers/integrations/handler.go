@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
@@ -141,7 +142,32 @@ func (h *Handler) CreateIntegration(writer http.ResponseWriter, req *http.Reques
 		return h.handleError(writer, err)
 	}
 
+	// Product analytics (spec 2026-08-02-08). No-op unless PostHog is
+	// configured. Only the integration TYPE travels — never the connection
+	// name, webhook URL, token or any other operator-supplied text.
+	captureIntegrationConnected(req, createReq.Type)
+
 	return h.WriteJSON(writer, http.StatusCreated, connection)
+}
+
+// captureIntegrationConnected records the integration_connected product event.
+// Pseudonymous by construction: org UID + user UID only.
+func captureIntegrationConnected(req *http.Request, connType string) {
+	var orgUID, userUID string
+	if org, ok := mw.GetOrganizationFromContext(req.Context()); ok && org != nil {
+		orgUID = org.UID
+	}
+
+	if claims, ok := mw.GetClaimsFromContext(req.Context()); ok && claims != nil {
+		userUID = claims.UserUID
+	}
+
+	analytics.Capture(req.Context(), analytics.Event{
+		Name:       analytics.EventIntegrationConnected,
+		OrgUID:     orgUID,
+		UserUID:    userUID,
+		Properties: map[string]any{"integrationType": connType},
+	})
 }
 
 // UpdateIntegration handles updating a connection.

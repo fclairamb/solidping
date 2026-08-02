@@ -22,6 +22,7 @@ import (
 	"github.com/pquerna/otp/totp"
 
 	"github.com/fclairamb/solidping/server/internal/activation"
+	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -2209,6 +2210,15 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	if createErr := s.db.CreateUser(ctx, user); createErr != nil {
 		return nil, fmt.Errorf("failed to create user: %w", createErr)
 	}
+
+	// Product analytics (spec 2026-08-02-08). Captured here — the moment the
+	// account actually exists — rather than at Register, which only stashes a
+	// pending confirmation. No-op unless PostHog is configured, and only the
+	// user UUID travels: never the email address or the name.
+	analytics.Capture(ctx, analytics.Event{
+		Name:    analytics.EventUserSignedUp,
+		UserUID: user.UID,
+	})
 
 	// Delete the state entry
 	_, _ = s.db.DeleteStateEntry(ctx, nil, matchedEntry.Key)

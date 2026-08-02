@@ -25,6 +25,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	k8sclient "k8s.io/client-go/kubernetes"
 
+	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkfreeboxline"
@@ -419,6 +420,16 @@ func (s *Server) registerSubsystemMetrics(reg prometheus.Registerer) {
 //
 //nolint:funlen,cyclop // Route registration function naturally grows with new routes
 func (s *Server) SetupRoutes(ctx context.Context) {
+	// Install the process-wide product-analytics client (spec 2026-08-02-08).
+	// Done here rather than in NewServer because SetupRoutes runs *after*
+	// InitializeSystemConfig, so DB-stored posthog.* parameters are already
+	// overlaid onto cfg. When PostHog is not configured this installs a genuine
+	// no-op: no client, no goroutine, no network.
+	analytics.SetDefault(analytics.New(s.config.PostHog))
+	if analytics.Default().Enabled() {
+		slog.InfoContext(ctx, "Product analytics enabled", "host", s.config.PostHog.ResolvedHost())
+	}
+
 	router := httpx.New()
 	rateLimiter := middleware.NewRateLimiter(s.config.Server.RateLimiting, ctx)
 	s.rateLimiter = rateLimiter
@@ -2309,6 +2320,12 @@ func (s *Server) Close(ctx context.Context) error {
 	const sentryFlushTimeout = 2 * time.Second
 	if !sentry.Flush(sentryFlushTimeout) {
 		slog.WarnContext(ctx, "Sentry flush timed out, some events may be lost")
+	}
+
+	// Flush buffered product-analytics events. No-op (and instant) when
+	// analytics is not configured.
+	if err := analytics.Close(ctx); err != nil {
+		slog.WarnContext(ctx, "Analytics flush failed, some events may be lost", "error", err)
 	}
 
 	// Shutdown profiler

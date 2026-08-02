@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/checkers/urlparse"
@@ -19,6 +20,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	entitlementshandler "github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	mw "github.com/fclairamb/solidping/server/internal/middleware"
 )
 
 // errInvalidStatus is returned when an unknown status token appears in ?status=.
@@ -305,7 +307,32 @@ func (h *Handler) CreateCheck(writer http.ResponseWriter, req *http.Request) err
 		return h.handleCreateError(writer, err)
 	}
 
+	// Product analytics (spec 2026-08-02-08). No-op unless PostHog is
+	// configured. Only the check TYPE is sent — never the target host, URL,
+	// name, slug or any other part of the check configuration.
+	captureCheckCreated(req, createReq.Type)
+
 	return h.WriteJSON(writer, http.StatusCreated, check)
+}
+
+// captureCheckCreated records the check_created product event. Pseudonymous by
+// construction: org UID + user UID only, plus the low-cardinality check type.
+func captureCheckCreated(req *http.Request, checkType string) {
+	var orgUID, userUID string
+	if org, ok := mw.GetOrganizationFromContext(req.Context()); ok && org != nil {
+		orgUID = org.UID
+	}
+
+	if claims, ok := mw.GetClaimsFromContext(req.Context()); ok && claims != nil {
+		userUID = claims.UserUID
+	}
+
+	analytics.Capture(req.Context(), analytics.Event{
+		Name:       analytics.EventCheckCreated,
+		OrgUID:     orgUID,
+		UserUID:    userUID,
+		Properties: map[string]any{"checkType": checkType},
+	})
 }
 
 // GetCheck handles retrieving a single check by UID or slug.
