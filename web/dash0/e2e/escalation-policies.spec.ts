@@ -112,7 +112,17 @@ test.describe("Escalation policy editor", () => {
     );
     const members = await membersResp.json();
     const userUid = (members.data ?? [])[0]?.userUid as string;
+    const userEmail = (members.data ?? [])[0]?.email as string;
     expect(userUid).toBeTruthy();
+    expect(userEmail).toBeTruthy();
+
+    // Give the member a display name so the dropdown renders "name (email)"
+    // instead of falling back to the name-less "email" case.
+    const userName = `E2E Member ${stamp}`;
+    await page.request.patch(`${API_BASE}/api/v1/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { name: userName },
+    });
 
     const policy = await createEscalationPolicy(
       page,
@@ -167,7 +177,16 @@ test.describe("Escalation policy editor", () => {
       await page.getByRole("option", { name: "User" }).click();
       const userCombobox = page.getByRole("combobox").nth(1);
       await userCombobox.click();
-      await page.getByRole("option").first().click();
+      // Regression: the option must show both the member's name and their
+      // email, so same-named members remain distinguishable (name-only
+      // used to be indistinguishable across members with the same name).
+      const userOption = page.getByRole("option").first();
+      await expect(userOption).toContainText(userName);
+      await expect(userOption).toContainText(userEmail);
+      await userOption.click();
+      // The closed trigger inherits the option's content, so it must show
+      // the email too.
+      await expect(userCombobox).toContainText(userEmail);
       await page.getByRole("button", { name: /save/i }).click();
       await page.waitForLoadState("networkidle");
       await page.reload();
@@ -197,6 +216,10 @@ test.describe("Escalation policy editor", () => {
       await deleteAllEscalationPolicies(page, token);
       await deleteChannel(page, token, channel.uid);
       await deleteOnCallSchedule(page, token, schedule.uid);
+      await page.request.patch(`${API_BASE}/api/v1/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { name: "" },
+      });
     }
   });
 
