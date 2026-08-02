@@ -48,9 +48,9 @@ func (h *Handler) handleInstallationUpdate(ctx context.Context, activity *Activi
 		return h.svc.HandleUninstall(ctx, activity.TenantID())
 	case InstallActionAdd:
 		if _, err := h.svc.HandleInstall(ctx, activity); err != nil {
-			if errors.Is(err, ErrTenantNotLinked) {
-				// Not an error condition — the admin simply has not linked
-				// the tenant yet. Tell them how, in the channel.
+			if isExpectedRoutingError(err) {
+				// Not a server fault — the tenant simply is not linked (or is
+				// not allowed). Say so in the channel instead of 500-ing.
 				return h.replyTenantError(ctx, activity, err)
 			}
 
@@ -74,7 +74,7 @@ func (h *Handler) handleConversationUpdate(ctx context.Context, activity *Activi
 	}
 
 	if _, err := h.svc.HandleInstall(ctx, activity); err != nil {
-		if errors.Is(err, ErrTenantNotLinked) {
+		if isExpectedRoutingError(err) {
 			return h.replyTenantError(ctx, activity, err)
 		}
 
@@ -109,16 +109,22 @@ func (h *Handler) handleMessage(ctx context.Context, activity *Activity) error {
 		return nil
 	}
 
+	cmd := ParseActivityCommand(activity)
+
+	// `link` is the one command that must work BEFORE the tenant is known —
+	// it is what establishes the tenant→org binding in the first place.
+	if cmd.Command == cmdLink {
+		return h.handleLinkCommand(ctx, activity, cmd)
+	}
+
 	// Best-effort: keep the conversation reference and service URL fresh, so
 	// a channel the bot is talked to in is addressable for notifications even
 	// if its conversationUpdate was missed.
 	if err := h.svc.RegisterConversation(ctx, activity); err != nil &&
-		!errors.Is(err, ErrTenantNotLinked) && !errors.Is(err, ErrNoTenantID) {
+		!isExpectedRoutingError(err) && !errors.Is(err, ErrNoTenantID) {
 		slog.WarnContext(ctx, "Failed to refresh Teams conversation reference",
 			"tenant_id", activity.TenantID(), "error", err)
 	}
-
-	cmd := ParseMentionText(activity.Text)
 
 	slog.InfoContext(ctx, "Parsed Microsoft Teams command",
 		"command", cmd.Command,
@@ -128,6 +134,16 @@ func (h *Handler) handleMessage(ctx context.Context, activity *Activity) error {
 	)
 
 	return h.handleMentionCommand(ctx, activity, cmd)
+}
+
+// isExpectedRoutingError reports whether an error is a normal "this tenant
+// cannot be routed" outcome that should be explained in the channel, rather
+// than a server fault worth logging as one.
+func isExpectedRoutingError(err error) bool {
+	return errors.Is(err, ErrTenantNotLinked) ||
+		errors.Is(err, ErrTenantNotAllowed) ||
+		errors.Is(err, ErrAmbiguousTenant) ||
+		errors.Is(err, ErrUninstalled)
 }
 
 // replyInstallWelcome greets the channel after a successful install and

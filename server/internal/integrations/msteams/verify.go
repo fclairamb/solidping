@@ -2,10 +2,12 @@ package msteams
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -54,10 +56,25 @@ var (
 )
 
 // BotClaims is the validated subset of an inbound Bot Connector token.
+//
+// There is deliberately NO tenant field here. Microsoft documents the
+// Connector-to-Bot token payload as exactly `aud` / `iss` / `nbf` / `exp`
+// (plus the `serviceurl` binding claim) — it carries no `tid`, because the
+// token authenticates *the Bot Connector service calling this bot*, not the
+// Microsoft 365 tenant the activity originated in. See
+// https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication
+// ("Connector to Bot: example JWT components").
+//
+// Tenant identity therefore only ever comes from the activity body
+// (`channelData.tenant.id`), which is populated by Bot Framework itself and
+// is trustworthy exactly because the request carrying it passed this
+// signature check. What the body cannot prove is *which SolidPing org owns
+// that tenant* — that is what the linking-code proof-of-possession flow in
+// linkcode.go / Service.LinkTenant exists for. Nothing here silently
+// discards a claim: there is no tenant claim to check.
 type BotClaims struct {
 	Issuer     string
 	Audience   string
-	TenantID   string
 	ServiceURL string
 	ExpiresAt  time.Time
 }
@@ -69,7 +86,6 @@ type rawClaims struct {
 	Audience   audienceSet `json:"aud"`
 	Expiry     int64       `json:"exp"`
 	NotBefore  int64       `json:"nbf"`
-	TenantID   string      `json:"tid"`
 	ServiceURL string      `json:"serviceurl"`
 }
 
@@ -111,6 +127,11 @@ func (a audienceSet) contains(want string) bool {
 type metadataDocument struct {
 	Issuer  string `json:"issuer"`
 	JWKSURI string `json:"jwks_uri"`
+	// SigningAlgs is `id_token_signing_alg_values_supported`. Microsoft's
+	// verification step 6 requires the signature to be checked *using the
+	// algorithm advertised here*, so we pin `alg` against this list rather
+	// than accepting whatever the token header asks for.
+	SigningAlgs []string `json:"id_token_signing_alg_values_supported"`
 }
 
 // Verifier validates inbound Bot Connector tokens. It is the Teams analog
@@ -127,28 +148,32 @@ type Verifier struct {
 	MetadataURL string
 	// AppID is the expected audience — the Entra application (client) ID.
 	AppID string
-	// AllowedTenantID, when non-empty, restricts inbound activities to a
-	// single Entra tenant (self-hosted single-tenant deployments).
-	AllowedTenantID string
 
 	httpClient *http.Client
 
-	mu         sync.Mutex
-	cachedURL  string
-	issuer     string
-	keySet     oidc.KeySet
-	fetchedAt  time.Time
-	timeSource func() time.Time
+	mu          sync.Mutex
+	cachedURL   string
+	issuer      string
+	signingAlgs []string
+	keySet      oidc.KeySet
+	fetchedAt   time.Time
+	timeSource  func() time.Time
 }
 
-// NewVerifier builds a Verifier for the given app ID and optional tenant
-// allow-list.
-func NewVerifier(appID, allowedTenantID string) *Verifier {
+// NewVerifier builds a Verifier for the given app ID.
+//
+// It deliberately takes no tenant allow-list: the Connector-to-Bot token has
+// no tenant claim (see BotClaims), so a tenant restriction enforced here
+// would compare against an always-empty value and reject every legitimate
+// activity. The single-tenant pin (`msteams.tenant_id`) is enforced one layer
+// up, in Service.checkTenantAllowed, against the activity body's tenant —
+// after this signature check has established that the request really came
+// from Bot Framework.
+func NewVerifier(appID string) *Verifier {
 	return &Verifier{
-		MetadataURL:     DefaultMetadataURL,
-		AppID:           appID,
-		AllowedTenantID: allowedTenantID,
-		httpClient:      &http.Client{Timeout: metadataTimeout},
+		MetadataURL: DefaultMetadataURL,
+		AppID:       appID,
+		httpClient:  &http.Client{Timeout: metadataTimeout},
 	}
 }
 
@@ -161,9 +186,10 @@ func (v *Verifier) now() time.Time {
 	return time.Now()
 }
 
-// keys returns the cached (issuer, key set), fetching the metadata document
-// when the cache is cold, stale, or the metadata URL changed.
-func (v *Verifier) keys(ctx context.Context) (string, oidc.KeySet, error) {
+// keys returns the cached (issuer, signing algorithms, key set), fetching the
+// metadata document when the cache is cold, stale, or the metadata URL
+// changed.
+func (v *Verifier) keys(ctx context.Context) (string, []string, oidc.KeySet, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
@@ -177,12 +203,12 @@ func (v *Verifier) keys(ctx context.Context) (string, oidc.KeySet, error) {
 		v.now().Sub(v.fetchedAt) < metadataTTL
 
 	if fresh {
-		return v.issuer, v.keySet, nil
+		return v.issuer, v.signingAlgs, v.keySet, nil
 	}
 
 	doc, err := v.fetchMetadata(ctx, metadataURL)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 
 	// The remote key set owns a background refresh loop keyed off the context
@@ -190,11 +216,12 @@ func (v *Verifier) keys(ctx context.Context) (string, oidc.KeySet, error) {
 	// trigger the (re)fetch. WithoutCancel keeps any client/values from the
 	// request context while dropping its cancellation.
 	v.issuer = doc.Issuer
+	v.signingAlgs = doc.SigningAlgs
 	v.keySet = oidc.NewRemoteKeySet(context.WithoutCancel(ctx), doc.JWKSURI)
 	v.cachedURL = metadataURL
 	v.fetchedAt = v.now()
 
-	return v.issuer, v.keySet, nil
+	return v.issuer, v.signingAlgs, v.keySet, nil
 }
 
 // fetchMetadata retrieves and validates the OpenID metadata document.
@@ -251,8 +278,16 @@ func (v *Verifier) VerifyToken(ctx context.Context, rawToken, serviceURL string)
 		return nil, ErrMissingAuthorization
 	}
 
-	issuer, keySet, err := v.keys(ctx)
+	issuer, signingAlgs, keySet, err := v.keys(ctx)
 	if err != nil {
+		return nil, err
+	}
+
+	// Microsoft's verification step 6 requires the signature to be checked
+	// with the algorithm advertised by the metadata document. go-oidc's
+	// RemoteKeySet.VerifySignature documents that it does NOT validate `alg`
+	// itself, so pin it here before handing the token over.
+	if err := checkTokenAlg(rawToken, signingAlgs); err != nil {
 		return nil, err
 	}
 
@@ -273,14 +308,52 @@ func (v *Verifier) VerifyToken(ctx context.Context, rawToken, serviceURL string)
 	return &BotClaims{
 		Issuer:     claims.Issuer,
 		Audience:   v.AppID,
-		TenantID:   claims.TenantID,
 		ServiceURL: claims.ServiceURL,
 		ExpiresAt:  time.Unix(claims.Expiry, 0),
 	}, nil
 }
 
+// tokenHeader is the JWS header subset we inspect before verification.
+type tokenHeader struct {
+	Alg string `json:"alg"`
+}
+
+// checkTokenAlg pins the token's signing algorithm to the set advertised by
+// the OpenID metadata document (`id_token_signing_alg_values_supported`,
+// which is ["RS256"] for Bot Framework). Without this the library would
+// accept any algorithm in its own internal allow-list.
+func checkTokenAlg(rawToken string, allowed []string) error {
+	if len(allowed) == 0 {
+		return fmt.Errorf("%w: metadata advertises no signing algorithms", ErrMetadataFetch)
+	}
+
+	parts := strings.Split(rawToken, ".")
+	if len(parts) != 3 {
+		return fmt.Errorf("%w: malformed JWT", ErrInvalidToken)
+	}
+
+	headerJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return fmt.Errorf("%w: malformed JWT header: %w", ErrInvalidToken, err)
+	}
+
+	var header tokenHeader
+	if err := json.Unmarshal(headerJSON, &header); err != nil {
+		return fmt.Errorf("%w: malformed JWT header: %w", ErrInvalidToken, err)
+	}
+
+	if !slices.Contains(allowed, header.Alg) {
+		return fmt.Errorf("%w: signing algorithm %q is not advertised by the metadata document",
+			ErrInvalidToken, header.Alg)
+	}
+
+	return nil
+}
+
 // validateClaims enforces issuer, audience, validity window, service URL
 // binding and the optional tenant allow-list.
+//
+//nolint:cyclop // a flat list of the documented verification requirements
 func (v *Verifier) validateClaims(claims *rawClaims, issuer, serviceURL string) error {
 	if claims.Issuer != issuer {
 		return fmt.Errorf("%w: issuer %q is not %q", ErrInvalidToken, claims.Issuer, issuer)
@@ -300,13 +373,21 @@ func (v *Verifier) validateClaims(claims *rawClaims, issuer, serviceURL string) 
 		return fmt.Errorf("%w: token not yet valid", ErrInvalidToken)
 	}
 
-	if claims.ServiceURL != "" && serviceURL != "" &&
-		normalizeServiceURL(claims.ServiceURL) != normalizeServiceURL(serviceURL) {
-		return fmt.Errorf("%w: serviceurl claim does not match the activity", ErrInvalidToken)
+	// Microsoft's verification requirement 7 is unconditional: the token's
+	// `serviceUrl` claim must match the activity's `serviceUrl`. Treating a
+	// missing value as "not applicable" would be fail-open — the body is
+	// attacker-chosen, so anyone replaying a captured token could simply omit
+	// serviceUrl to skip the binding and redirect our outbound calls.
+	if claims.ServiceURL == "" {
+		return fmt.Errorf("%w: token carries no serviceurl claim", ErrInvalidToken)
 	}
 
-	if v.AllowedTenantID != "" && claims.TenantID != v.AllowedTenantID {
-		return fmt.Errorf("%w: %q", ErrTenantNotAllowed, claims.TenantID)
+	if serviceURL == "" {
+		return fmt.Errorf("%w: activity carries no serviceUrl to bind the token to", ErrInvalidToken)
+	}
+
+	if normalizeServiceURL(claims.ServiceURL) != normalizeServiceURL(serviceURL) {
+		return fmt.Errorf("%w: serviceurl claim does not match the activity", ErrInvalidToken)
 	}
 
 	return nil

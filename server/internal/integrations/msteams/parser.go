@@ -25,7 +25,7 @@ type ParsedCommand struct {
 // renames the app in their own manifest keeps working commands, which is the
 // resolution of the spec's "confirm the display name works for both SaaS and
 // self-hosted manifests" open question.
-var mentionTagRegex = regexp.MustCompile(`(?is)<at\b[^>]*>.*?</at>`)
+var mentionTagRegex = regexp.MustCompile(`(?is)<at\b[^>]*>(.*?)</at>`)
 
 // anchorRegex rewrites `<a href="https://x">label</a>` down to the bare URL,
 // the Teams analog of Slack's `<https://x|label>` link form.
@@ -39,10 +39,80 @@ var htmlTagRegex = regexp.MustCompile(`(?is)</?[a-z][^>]*>`)
 // leaves behind after a mention.
 var whitespaceRegex = regexp.MustCompile(`\s+`)
 
-// StripMention removes the bot mention (and surrounding Teams markup) from an
-// activity's text, leaving the bare command line.
+// StripMention removes every mention tag from an activity's text. Prefer
+// StripRecipientMention, which removes only the bot's own mention — this
+// un-anchored form is the fallback for activities that carry no entity list.
 func StripMention(text string) string {
-	text = mentionTagRegex.ReplaceAllString(text, " ")
+	return stripMentions(text, nil)
+}
+
+// StripRecipientMention removes only the mention of THIS bot, leaving
+// mentions of other people intact as plain text.
+//
+// This is the Bot Framework `removeRecipientMention` pattern. It matters for
+// correctness, not just tidiness: `@SolidPing checks rm <at>Bob</at>` would
+// otherwise have Bob's mention silently deleted and the remaining command
+// arguments shifted, so the bot would act on the wrong token. The entity list
+// is the only thing that can tell "a mention of me" from "a mention of
+// someone else quoted in the message"; when it is absent (or names no
+// recipient mention) we fall back to the un-anchored strip.
+func StripRecipientMention(text string, entities []Mention, recipientID string) string {
+	if recipientID == "" || len(entities) == 0 {
+		return stripMentions(text, nil)
+	}
+
+	botMentionTexts := make([]string, 0, len(entities))
+
+	for i := range entities {
+		entity := &entities[i]
+		if !strings.EqualFold(entity.Type, mentionEntityType) {
+			continue
+		}
+
+		if entity.Mentioned == nil || entity.Mentioned.ID != recipientID {
+			continue
+		}
+
+		if entity.Text != "" {
+			botMentionTexts = append(botMentionTexts, entity.Text)
+		}
+	}
+
+	if len(botMentionTexts) == 0 {
+		// The activity carries entities but none of them is a mention of us
+		// (e.g. the bot was addressed via a channel-wide alias). Nothing of
+		// ours to strip; leave other people's mentions alone and let the tag
+		// stripper below turn them into plain text.
+		return stripMentions(text, nil)
+	}
+
+	return stripMentions(text, botMentionTexts)
+}
+
+// mentionEntityType is the Bot Framework entity type for a mention.
+const mentionEntityType = "mention"
+
+// stripMentions removes mention markup. When onlyExact is non-empty, only the
+// listed mention snippets (verbatim `<at>…</at>` runs from the entity list)
+// are removed; every other mention tag is unwrapped to its display text so
+// the words a user typed survive into the command line.
+func stripMentions(text string, onlyExact []string) string {
+	if len(onlyExact) > 0 {
+		for _, snippet := range onlyExact {
+			text = strings.ReplaceAll(text, snippet, " ")
+		}
+
+		// Any mention tag left belongs to someone else: keep the name.
+		text = mentionTagRegex.ReplaceAllString(text, "$1")
+	} else {
+		text = mentionTagRegex.ReplaceAllString(text, " ")
+	}
+
+	return finishStrip(text)
+}
+
+// finishStrip performs the markup cleanup shared by both stripping modes.
+func finishStrip(text string) string {
 	text = anchorRegex.ReplaceAllString(text, " $1 ")
 	text = htmlTagRegex.ReplaceAllString(text, " ")
 
@@ -63,7 +133,22 @@ func StripMention(text string) string {
 // Input:  "<at>SolidPing</at> checks add https://example.com -slug mycheck"
 // Output: ParsedCommand{Command: "checks", Subcommand: "add", Args: [...], Flags: {...}}.
 func ParseMentionText(text string) *ParsedCommand {
-	text = StripMention(text)
+	return parseCommandLine(StripMention(text))
+}
+
+// ParseActivityCommand is the entity-aware entry point used by the dispatcher:
+// it strips only the bot's own mention before applying the shared grammar.
+func ParseActivityCommand(activity *Activity) *ParsedCommand {
+	recipientID := ""
+	if activity.Recipient != nil {
+		recipientID = activity.Recipient.ID
+	}
+
+	return parseCommandLine(StripRecipientMention(activity.Text, activity.Entities, recipientID))
+}
+
+// parseCommandLine applies the command grammar to an already-stripped line.
+func parseCommandLine(text string) *ParsedCommand {
 
 	if text == "" {
 		return &ParsedCommand{Command: cmdHelp, Flags: make(map[string]string)}

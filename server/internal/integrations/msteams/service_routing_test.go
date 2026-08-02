@@ -114,8 +114,8 @@ func TestDispatchActivity_ConfigDefaultChannelUsesCurrentConversation(t *testing
 }
 
 // TestDispatchActivity_UnlinkedTenantMessageIsActionable pins that a command
-// from an unlinked tenant answers with the tenant id to paste, not a generic
-// failure.
+// from an unlinked tenant explains how to link, without leaking or
+// legitimizing the tenant id.
 func TestDispatchActivity_UnlinkedTenantMessageIsActionable(t *testing.T) {
 	t.Parallel()
 
@@ -127,7 +127,10 @@ func TestDispatchActivity_UnlinkedTenantMessageIsActionable(t *testing.T) {
 
 	calls := connector.recorded()
 	r.Len(calls, 1)
-	r.Contains(cardJSON(t, calls[0]), "stranger-tenant")
+
+	card := cardJSON(t, calls[0])
+	r.Contains(card, "link")
+	r.NotContains(card, "stranger-tenant")
 }
 
 // TestDispatchActivity_UninstalledTenantIsRefused checks that commands stop
@@ -183,18 +186,42 @@ func TestDispatchActivity_UnknownActivityTypeIsIgnored(t *testing.T) {
 	r.Empty(connector.recorded())
 }
 
-// TestGetConnectionByTenantID_PicksOldestOnAmbiguity documents the routing
-// tie-break when one tenant is connected to several orgs.
-func TestGetConnectionByTenantID_PicksOldestOnAmbiguity(t *testing.T) {
+// TestGetConnectionByTenantID_FailsSafeOnAmbiguity replaces the previous
+// "oldest row wins" test, which pinned the behavior that made the
+// cross-tenant hijack exploitable: an attacker's older row would silently
+// absorb a victim tenant's conversation references.
+//
+// Under the linking-code model a tenant can only ever be bound to one
+// connection (LinkTenant refuses an already-held tenant), so duplicates are
+// unreachable through the API. If they exist anyway — hand-edited rows, an
+// imported dataset — routing must refuse rather than pick one, because every
+// possible pick hands one organization another's Teams data.
+func TestGetConnectionByTenantID_FailsSafeOnAmbiguity(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	ctx, svc, _ := setupService(t)
 
-	first := newConnection(ctx, t, svc, "teams-amb-a", testTenantID)
+	newConnection(ctx, t, svc, "teams-amb-a", testTenantID)
 	newConnection(ctx, t, svc, "teams-amb-b", testTenantID)
 
-	conn, err := svc.GetConnectionByTenantID(ctx, testTenantID)
-	r.NoError(err)
-	r.Equal(first.UID, conn.UID)
+	_, err := svc.GetConnectionByTenantID(ctx, testTenantID)
+	r.ErrorIs(err, ErrAmbiguousTenant)
+}
+
+// TestDispatchActivity_AmbiguousTenantIsExplained checks the ambiguity path
+// degrades into a clear channel message rather than a 500.
+func TestDispatchActivity_AmbiguousTenantIsExplained(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, connector := setupService(t)
+
+	newConnection(ctx, t, svc, "teams-amb-c", testTenantID)
+	newConnection(ctx, t, svc, "teams-amb-d", testTenantID)
+
+	r.NoError(DispatchActivity(ctx, svc,
+		messageActivity(testTenantID, "19:channel-a", "<at>SolidPing</at> incidents list")))
+
+	r.True(connector.containsText("more than one SolidPing integration"))
 }

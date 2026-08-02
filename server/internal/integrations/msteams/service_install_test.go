@@ -239,10 +239,15 @@ func TestDispatchActivity_ConversationUpdateIgnoresOtherMembers(t *testing.T) {
 	r.Empty(connector.recorded())
 }
 
-// TestDispatchActivity_UnlinkedTenantGetsActionableReply pins the
-// self-service onboarding path: an install from an unlinked tenant answers in
-// the channel with the tenant id the admin must paste into the dashboard.
-func TestDispatchActivity_UnlinkedTenantGetsActionableReply(t *testing.T) {
+// TestDispatchActivity_UnlinkedTenantGetsLinkInstructions pins the
+// self-service onboarding path: an install from an unlinked tenant is
+// answered in the channel with instructions to redeem a link code.
+//
+// It must NOT echo the tenant GUID as something to paste into a dashboard:
+// possession of a tenant id proves nothing (it is a semi-public identifier),
+// so that instruction would be telling users to perform the very
+// self-assertion that made cross-tenant hijacking possible.
+func TestDispatchActivity_UnlinkedTenantGetsLinkInstructions(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -258,5 +263,7 @@ func TestDispatchActivity_UnlinkedTenantGetsActionableReply(t *testing.T) {
 
 	body, err := json.Marshal(card)
 	r.NoError(err)
-	r.Contains(string(body), "unlinked-tenant")
+	r.Contains(string(body), "link")
+	r.NotContains(string(body), "unlinked-tenant",
+		"the reply must not present the tenant id as a credential to paste")
 }

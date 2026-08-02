@@ -13,6 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	mw "github.com/fclairamb/solidping/server/internal/middleware"
 )
 
 // maxActivityBody caps the inbound activity payload. Bot Framework activities
@@ -34,7 +35,7 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 		HandlerBase: base.NewHandlerBase(cfg),
 		svc:         service,
 		cfg:         cfg,
-		verifier:    NewVerifier(cfg.MSTeams.AppID, cfg.MSTeams.TenantID),
+		verifier:    NewVerifier(cfg.MSTeams.AppID),
 	}
 }
 
@@ -45,12 +46,17 @@ func (h *Handler) SetVerifier(v *Verifier) { h.verifier = v }
 // StatusResponse is returned by GetStatus — the Teams counterpart of Slack's
 // socket-status endpoint. It is what the dashboard setup page reads to
 // explain *why* the bot is unavailable rather than just failing silently.
+//
+// This endpoint is org-scoped and authenticated on purpose. An earlier
+// revision served it publicly, which handed any anonymous caller the pinned
+// tenant GUID and a live count of installed Microsoft 365 tenants — a free
+// customer-enumeration oracle. Everything here is now behind org auth; the
+// fields that genuinely need to be public live in PublicStatusResponse.
 type StatusResponse struct {
 	Enabled bool `json:"enabled"`
 	// Configured is true when an app ID and secret are present.
 	Configured bool `json:"configured"`
-	// AppID is public (it is the manifest's bot id) and lets the setup page
-	// show which Entra app this instance runs as.
+	// AppID lets the setup page show which Entra app this instance runs as.
 	AppID string `json:"appId,omitempty"`
 	// MessagingEndpoint is the URL that must be reachable from Microsoft over
 	// public HTTPS — the single most common self-hosted misconfiguration.
@@ -67,7 +73,7 @@ const MessagingEndpointPath = "/api/v1/integrations/msteams/messages"
 
 // GetStatus reports whether the Teams bot is usable on this instance.
 //
-// Route: GET /api/v1/integrations/msteams/status.
+// Route: GET /api/v1/orgs/:org/integrations/msteams/status (authenticated).
 func (h *Handler) GetStatus(writer http.ResponseWriter, req *http.Request) error {
 	resp := StatusResponse{
 		Enabled:           h.svc.Enabled(),
@@ -82,6 +88,54 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, req *http.Request) error
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
+// linkRequest is the optional body of StartLink.
+type linkRequest struct {
+	ConnectionUID string `json:"connectionUid"`
+}
+
+// StartLink mints a one-time linking code for the authenticated caller's
+// organization, creating an unlinked connection when none is specified.
+//
+// The org comes from the verified route context (RequireOrgAccess), never
+// from client input — that binding is the whole point: the code proves that
+// whoever later quotes it inside a Microsoft 365 tenant is acting for THIS
+// organization.
+//
+// Route: POST /api/v1/orgs/:org/integrations/msteams/link-code.
+func (h *Handler) StartLink(writer http.ResponseWriter, req *http.Request) error {
+	org, ok := mw.GetOrganizationFromContext(req.Context())
+	if !ok || org == nil {
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound,
+			"Organization not found")
+	}
+
+	var body linkRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: "body", Message: "Invalid JSON format"},
+		})
+	}
+
+	pending, err := h.svc.StartLink(req.Context(), org.UID, body.ConnectionUID)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrConnectionNotFound):
+			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeIntegrationNotFound,
+				"Channel not found")
+		case errors.Is(err, ErrNotMSTeamsBotChannel):
+			return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+				"Channel is not of type msteams-bot")
+		case errors.Is(err, ErrConnectionAlreadyLinked):
+			return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict,
+				"This integration is already linked to a Microsoft 365 tenant")
+		default:
+			return h.WriteInternalError(writer, err)
+		}
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, pending)
 }
 
 // GetDestinations returns the conversation references captured for a
@@ -113,7 +167,11 @@ func (h *Handler) GetDestinations(writer http.ResponseWriter, req *http.Request)
 // manifest.json plus the two icons), pre-filled with this instance's app ID
 // and public URL so setup requires no hand-editing.
 //
-// Route: GET /api/v1/integrations/msteams/manifest.zip.
+// Org-scoped and authenticated: the package is a setup artifact for admins,
+// and serving it anonymously would advertise the instance's Entra app id to
+// anyone who asks.
+//
+// Route: GET /api/v1/orgs/:org/integrations/msteams/manifest.zip.
 func (h *Handler) DownloadManifest(writer http.ResponseWriter, _ *http.Request) error {
 	if h.cfg.MSTeams.AppID == "" {
 		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeValidationError,

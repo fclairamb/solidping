@@ -27,6 +27,7 @@ const (
 	cmdIncidents = "incidents"
 	cmdConfig    = "config"
 	cmdHelp      = "help"
+	cmdLink      = "link"
 
 	subAdd            = "add"
 	subList           = "list"
@@ -50,6 +51,8 @@ func (h *Handler) handleMentionCommand(ctx context.Context, activity *Activity, 
 		return h.handleIncidentsCommand(ctx, activity, cmd)
 	case cmdConfig:
 		return h.handleConfigCommand(ctx, activity, cmd)
+	case cmdLink:
+		return h.handleLinkCommand(ctx, activity, cmd)
 	case cmdHelp, "":
 		return h.handleHelpCommand(ctx, activity)
 	default:
@@ -438,6 +441,7 @@ func (h *Handler) handleHelpCommand(ctx context.Context, activity *Activity) err
 		"",
 		"**Configuration**",
 		"- `config default-channel` — send notifications to this channel",
+		"- `link <code>` — connect this Microsoft 365 tenant to a SolidPing organization",
 		"",
 		"**Examples**",
 		"`" + mentionPrefix + " checks add https://example.com`",
@@ -447,22 +451,76 @@ func (h *Handler) handleHelpCommand(ctx context.Context, activity *Activity) err
 	return h.replyCard(ctx, activity, "SolidPing help", SimpleCard("SolidPing", body, ""))
 }
 
-// replyTenantError renders the right message for a routing failure. The
-// unlinked-tenant case is deliberately actionable: it echoes the tenant id
-// the admin must paste into the dashboard, which is the only piece of
-// information an install activity gives us and the whole reason a Teams
-// install cannot self-provision an organization.
+// handleLinkCommand redeems a linking code, binding this Microsoft 365
+// tenant to the SolidPing organization that minted the code.
+//
+// This is the proof-of-possession step: the code was issued to an
+// authenticated org admin in the dashboard, and it can only be redeemed from
+// inside a real, signature-verified Bot Framework activity. Quoting it here
+// is what demonstrates that the same actor controls both sides. Failures are
+// deliberately indistinguishable ("invalid or expired") so the command cannot
+// be used as an oracle for probing other orgs' codes.
+func (h *Handler) handleLinkCommand(ctx context.Context, activity *Activity, cmd *ParsedCommand) error {
+	if len(cmd.Args) == 0 {
+		return h.replyError(ctx, activity,
+			"Missing link code. Run `"+mentionPrefix+" link <code>` with the code from "+
+				"**Integrations → Microsoft Teams (bot)** in your SolidPing dashboard.")
+	}
+
+	conn, err := h.svc.LinkTenant(ctx, cmd.Args[0], activity)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidLinkCode), errors.Is(err, ErrConnectionNotFound):
+			return h.replyError(ctx, activity,
+				"That link code is invalid or has expired. Generate a fresh one in your SolidPing dashboard.")
+		case errors.Is(err, ErrTenantAlreadyLinked):
+			return h.replyError(ctx, activity,
+				"This Microsoft 365 tenant is already linked to a SolidPing organization. "+
+					"Remove the existing Microsoft Teams integration there first.")
+		case errors.Is(err, ErrTenantNotAllowed):
+			return h.replyError(ctx, activity,
+				"This SolidPing instance only accepts a different Microsoft 365 tenant.")
+		default:
+			slog.ErrorContext(ctx, "Microsoft Teams link failed", "error", err)
+
+			return h.replyError(ctx, activity, "Could not complete the link. Please try again.")
+		}
+	}
+
+	slog.InfoContext(ctx, "Microsoft Teams tenant linked via chat command",
+		"connection_uid", conn.UID, "org_uid", conn.OrganizationUID)
+
+	return h.replyCard(ctx, activity, "Connected", SimpleCard(
+		"✅ SolidPing is connected",
+		"This channel is now a notification destination. Type `"+mentionPrefix+" help` to see what I can do.",
+		CardColorGood))
+}
+
+// replyTenantError renders the right message for a routing failure.
+//
+// The unlinked-tenant case points at the linking code rather than echoing the
+// tenant GUID: a tenant id is not proof of ownership, so telling the channel
+// to paste it into a dashboard was the wrong instruction — anyone could do
+// that for any tenant.
 func (h *Handler) replyTenantError(ctx context.Context, activity *Activity, err error) error {
 	switch {
 	case errors.Is(err, ErrTenantNotLinked):
 		return h.replyCard(ctx, activity, "Not connected", SimpleCard(
 			"SolidPing is not connected to this Microsoft 365 tenant",
-			"Open **Integrations → Microsoft Teams (bot)** in your SolidPing dashboard and paste this "+
-				"tenant ID:\n\n`"+activity.TenantID()+"`",
+			"In your SolidPing dashboard open **Integrations → Microsoft Teams (bot)**, click "+
+				"**Connect Microsoft Teams** to get a link code, then run "+
+				"`"+mentionPrefix+" link <code>` here.",
 			CardColorWarning))
 	case errors.Is(err, ErrUninstalled):
 		return h.replyError(ctx, activity,
 			"This SolidPing connection is marked uninstalled. Reinstall the app to resume.")
+	case errors.Is(err, ErrTenantNotAllowed):
+		return h.replyError(ctx, activity,
+			"This SolidPing instance is configured for a different Microsoft 365 tenant.")
+	case errors.Is(err, ErrAmbiguousTenant):
+		return h.replyError(ctx, activity,
+			"This Microsoft 365 tenant maps to more than one SolidPing integration. "+
+				"Ask an administrator to remove the duplicate before using the bot.")
 	default:
 		slog.ErrorContext(ctx, "Microsoft Teams command failed", "tenant_id", activity.TenantID(), "error", err)
 

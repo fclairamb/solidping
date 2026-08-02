@@ -48,8 +48,9 @@ func newFakeBotFramework(t *testing.T) *fakeBotFramework {
 	mux.HandleFunc("/metadata", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"issuer":   fake.issuer(),
-			"jwks_uri": fake.server.URL + "/keys",
+			"issuer":                                fake.issuer(),
+			"jwks_uri":                              fake.server.URL + "/keys",
+			"id_token_signing_alg_values_supported": []string{"RS256"},
 		})
 	})
 	mux.HandleFunc("/keys", func(w http.ResponseWriter, _ *http.Request) {
@@ -116,8 +117,8 @@ func (f *fakeBotFramework) signWith(t *testing.T, key *rsa.PrivateKey, mutate fu
 	return signed
 }
 
-func newTestVerifier(fake *fakeBotFramework, allowedTenant string) *Verifier {
-	v := NewVerifier(testAppID, allowedTenant)
+func newTestVerifier(fake *fakeBotFramework) *Verifier {
+	v := NewVerifier(testAppID)
 	v.MetadataURL = fake.metadataURL()
 
 	return v
@@ -128,13 +129,13 @@ func TestVerifyToken_AcceptsWellFormedToken(t *testing.T) {
 
 	r := require.New(t)
 	fake := newFakeBotFramework(t)
-	verifier := newTestVerifier(fake, "")
+	verifier := newTestVerifier(fake)
 
 	claims, err := verifier.VerifyToken(t.Context(), fake.sign(t, nil), testServiceURL)
 	r.NoError(err)
-	r.Equal(testTenantID, claims.TenantID)
 	r.Equal(testAppID, claims.Audience)
 	r.Equal(fake.issuer(), claims.Issuer)
+	r.Equal(testServiceURL, claims.ServiceURL)
 }
 
 // TestVerifyToken_AcceptsArrayAudience pins that the `aud` claim decodes from
@@ -145,7 +146,7 @@ func TestVerifyToken_AcceptsArrayAudience(t *testing.T) {
 
 	r := require.New(t)
 	fake := newFakeBotFramework(t)
-	verifier := newTestVerifier(fake, "")
+	verifier := newTestVerifier(fake)
 
 	raw := fake.sign(t, func(c jwt.MapClaims) {
 		c["aud"] = []string{"some-other-app", testAppID}
@@ -160,7 +161,7 @@ func TestVerifyToken_RejectsWrongAudience(t *testing.T) {
 
 	r := require.New(t)
 	fake := newFakeBotFramework(t)
-	verifier := newTestVerifier(fake, "")
+	verifier := newTestVerifier(fake)
 
 	raw := fake.sign(t, func(c jwt.MapClaims) { c["aud"] = "someone-elses-app-id" })
 
@@ -174,7 +175,7 @@ func TestVerifyToken_RejectsWrongIssuer(t *testing.T) {
 
 	r := require.New(t)
 	fake := newFakeBotFramework(t)
-	verifier := newTestVerifier(fake, "")
+	verifier := newTestVerifier(fake)
 
 	raw := fake.sign(t, func(c jwt.MapClaims) { c["iss"] = "https://evil.example.com" })
 
@@ -188,7 +189,7 @@ func TestVerifyToken_RejectsExpiredToken(t *testing.T) {
 
 	r := require.New(t)
 	fake := newFakeBotFramework(t)
-	verifier := newTestVerifier(fake, "")
+	verifier := newTestVerifier(fake)
 
 	raw := fake.sign(t, func(c jwt.MapClaims) {
 		c["exp"] = time.Now().Add(-2 * time.Hour).Unix()
@@ -206,7 +207,7 @@ func TestVerifyToken_RejectsNotYetValidToken(t *testing.T) {
 
 	r := require.New(t)
 	fake := newFakeBotFramework(t)
-	verifier := newTestVerifier(fake, "")
+	verifier := newTestVerifier(fake)
 
 	raw := fake.sign(t, func(c jwt.MapClaims) {
 		c["nbf"] = time.Now().Add(2 * time.Hour).Unix()
@@ -227,7 +228,7 @@ func TestVerifyToken_RejectsUnknownSigningKey(t *testing.T) {
 
 	r := require.New(t)
 	fake := newFakeBotFramework(t)
-	verifier := newTestVerifier(fake, "")
+	verifier := newTestVerifier(fake)
 
 	raw := fake.signWith(t, fake.otherKey, nil)
 
@@ -241,7 +242,7 @@ func TestVerifyToken_RejectsServiceURLMismatch(t *testing.T) {
 
 	r := require.New(t)
 	fake := newFakeBotFramework(t)
-	verifier := newTestVerifier(fake, "")
+	verifier := newTestVerifier(fake)
 
 	_, err := verifier.VerifyToken(t.Context(), fake.sign(t, nil), "https://attacker.example.com/")
 	r.ErrorIs(err, ErrInvalidToken)
@@ -256,32 +257,85 @@ func TestVerifyToken_ServiceURLTrailingSlashIsIgnored(t *testing.T) {
 
 	r := require.New(t)
 	fake := newFakeBotFramework(t)
-	verifier := newTestVerifier(fake, "")
+	verifier := newTestVerifier(fake)
 
 	_, err := verifier.VerifyToken(t.Context(), fake.sign(t, nil), "https://smba.trafficmanager.net/emea")
 	r.NoError(err)
 }
 
-func TestVerifyToken_RejectsDisallowedTenant(t *testing.T) {
+// TestVerifyToken_RejectsMissingServiceURLClaim and its sibling below pin
+// Microsoft's verification requirement 7 as UNCONDITIONAL. Skipping the
+// binding whenever either side is empty would be fail-open: the activity body
+// is attacker-chosen, so replaying a captured token with no serviceUrl would
+// bypass the check entirely and let the attacker steer our outbound calls.
+func TestVerifyToken_RejectsMissingServiceURLClaim(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	fake := newFakeBotFramework(t)
-	verifier := newTestVerifier(fake, "some-other-tenant")
+	verifier := newTestVerifier(fake)
 
-	_, err := verifier.VerifyToken(t.Context(), fake.sign(t, nil), testServiceURL)
-	r.ErrorIs(err, ErrTenantNotAllowed)
+	raw := fake.sign(t, func(c jwt.MapClaims) { delete(c, "serviceurl") })
+
+	_, err := verifier.VerifyToken(t.Context(), raw, testServiceURL)
+	r.ErrorIs(err, ErrInvalidToken)
+	r.Contains(err.Error(), "serviceurl")
 }
 
-func TestVerifyToken_AllowsConfiguredTenant(t *testing.T) {
+func TestVerifyToken_RejectsMissingActivityServiceURL(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	fake := newFakeBotFramework(t)
-	verifier := newTestVerifier(fake, testTenantID)
+	verifier := newTestVerifier(fake)
 
+	_, err := verifier.VerifyToken(t.Context(), fake.sign(t, nil), "")
+	r.ErrorIs(err, ErrInvalidToken)
+	r.Contains(err.Error(), "serviceUrl")
+}
+
+// TestVerifyToken_RejectsUnadvertisedAlg pins Microsoft's verification
+// requirement 6: the signature must be checked with an algorithm the metadata
+// document advertises. go-oidc's VerifySignature documents that it does not
+// check `alg` itself, so without our own pin the token header could name any
+// algorithm the library happens to support.
+func TestVerifyToken_RejectsUnadvertisedAlg(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	fake := newFakeBotFramework(t)
+
+	verifier := newTestVerifier(fake)
+	// Warm the cache, then narrow the advertised set so RS256 is no longer
+	// acceptable — the same effect as a token naming an unadvertised alg.
 	_, err := verifier.VerifyToken(t.Context(), fake.sign(t, nil), testServiceURL)
 	r.NoError(err)
+
+	verifier.mu.Lock()
+	verifier.signingAlgs = []string{"PS512"}
+	verifier.mu.Unlock()
+
+	_, err = verifier.VerifyToken(t.Context(), fake.sign(t, nil), testServiceURL)
+	r.ErrorIs(err, ErrInvalidToken)
+	r.Contains(err.Error(), "signing algorithm")
+}
+
+// TestVerifyToken_TenantClaimIsNotRequired documents the finding that drove
+// removing the JWT-level tenant check: Microsoft's Connector-to-Bot token
+// carries no `tid`. A verifier that demanded one would reject every real
+// activity, silently disabling the whole integration.
+func TestVerifyToken_TenantClaimIsNotRequired(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	fake := newFakeBotFramework(t)
+	verifier := newTestVerifier(fake)
+
+	raw := fake.sign(t, func(c jwt.MapClaims) { delete(c, "tid") })
+
+	claims, err := verifier.VerifyToken(t.Context(), raw, testServiceURL)
+	r.NoError(err)
+	r.Equal(testAppID, claims.Audience)
 }
 
 func TestVerifyToken_RejectsWhenNotConfigured(t *testing.T) {
@@ -290,7 +344,7 @@ func TestVerifyToken_RejectsWhenNotConfigured(t *testing.T) {
 	r := require.New(t)
 	fake := newFakeBotFramework(t)
 
-	verifier := NewVerifier("", "")
+	verifier := NewVerifier("")
 	verifier.MetadataURL = fake.metadataURL()
 
 	_, err := verifier.VerifyToken(t.Context(), fake.sign(t, nil), testServiceURL)
@@ -302,7 +356,7 @@ func TestVerifyToken_RejectsEmptyToken(t *testing.T) {
 
 	r := require.New(t)
 	fake := newFakeBotFramework(t)
-	verifier := newTestVerifier(fake, "")
+	verifier := newTestVerifier(fake)
 
 	_, err := verifier.VerifyToken(t.Context(), "", testServiceURL)
 	r.ErrorIs(err, ErrMissingAuthorization)
@@ -318,7 +372,7 @@ func TestVerifyToken_SurfacesMetadataFailure(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	verifier := NewVerifier(testAppID, "")
+	verifier := NewVerifier(testAppID)
 	verifier.MetadataURL = server.URL
 
 	_, err := verifier.VerifyToken(t.Context(), "not-even-a-jwt", testServiceURL)

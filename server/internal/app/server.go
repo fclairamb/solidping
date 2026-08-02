@@ -1237,10 +1237,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	msTeamsService := msteams.NewService(s.dbService, s.config, checksService)
 	msTeamsHandler := msteams.NewHandler(msTeamsService, s.config)
 
+	// Only the messaging endpoint is public — it has to be, Microsoft calls
+	// it. Status and the app package are org-scoped below: served
+	// anonymously they would hand any caller the instance's Entra app id, the
+	// pinned tenant GUID, and a live count of installed Microsoft 365
+	// tenants.
 	msTeamsIntegration := api.NewGroup("/integrations/msteams")
 	msTeamsIntegration.POST("/messages", msTeamsHandler.HandleMessages)
-	msTeamsIntegration.GET("/status", msTeamsHandler.GetStatus)
-	msTeamsIntegration.GET("/manifest.zip", msTeamsHandler.DownloadManifest)
 
 	// Twilio inbound callbacks (voice TwiML + DTMF ack + delivery status).
 	// No org auth — authenticity is the per-request X-Twilio-Signature check in
@@ -1261,6 +1264,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// channels of a team it was never added to.
 	msTeamsOrgRoutes := orgGroup("/orgs/:org/channels/:uid/msteams")
 	msTeamsOrgRoutes.GET("/destinations", msTeamsHandler.GetDestinations)
+
+	// Teams bot setup (authenticated, org-scoped). link-code is the
+	// proof-of-possession entry point: the org comes from the verified route
+	// context, and the code it mints is the only thing that can bind a
+	// Microsoft 365 tenant to this org.
+	msTeamsOrgIntegrationRoutes := api.NewGroup("/orgs/:org/integrations/msteams").
+		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	msTeamsOrgIntegrationRoutes.POST("/link-code", msTeamsHandler.StartLink)
+	msTeamsOrgIntegrationRoutes.GET("/status", msTeamsHandler.GetStatus)
+	msTeamsOrgIntegrationRoutes.GET("/manifest.zip", msTeamsHandler.DownloadManifest)
 
 	// Org-scoped install-URL minting (spec 2026-07-05-01): the org comes from
 	// the authenticated route context (RequireOrgAccess), never from a query

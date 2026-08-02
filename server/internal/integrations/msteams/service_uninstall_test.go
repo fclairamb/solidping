@@ -21,13 +21,21 @@ func TestHandleUninstall_FansOutAcrossOrgs(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, _ := setupService(t)
 
+	// Duplicate rows for one tenant are unreachable through the API under the
+	// linking-code model, but uninstall still fans out over whatever exists:
+	// a legacy or hand-created duplicate must not be left behind still
+	// claiming a live install.
 	connA := newConnection(ctx, t, svc, "teams-uninst-a", testTenantID)
 	connB := newConnection(ctx, t, svc, "teams-uninst-b", testTenantID)
 	connOther := newConnection(ctx, t, svc, "teams-uninst-oth", "other-tenant")
 
-	// Give A a destination so we can prove routing state is cleared.
-	_, err := svc.HandleInstall(ctx, installActivity(testTenantID, "19:channel-a", InstallActionAdd))
+	// Seed a destination directly (HandleInstall refuses an ambiguous tenant
+	// by design) so we can prove routing state is cleared.
+	settings, err := settingsOf(connA)
 	r.NoError(err)
+	settings.Destinations = []models.MSTeamsDestination{{ID: "19:channel-a", Name: "alerts"}}
+	settings.ChannelID = "19:channel-a"
+	r.NoError(svc.saveSettings(ctx, connA, settings))
 
 	r.NoError(svc.HandleUninstall(ctx, testTenantID))
 

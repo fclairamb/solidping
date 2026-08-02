@@ -38,6 +38,15 @@ var (
 	// ErrUninstalled is returned when the tenant removed the app; the
 	// connection row is kept but must not be routed to.
 	ErrUninstalled = errors.New("microsoft teams app is uninstalled for this tenant")
+	// ErrAmbiguousTenant is returned when more than one connection claims the
+	// same tenant. Under the linking-code model this cannot happen (LinkTenant
+	// refuses a tenant that is already bound), so it means the data was
+	// tampered with or migrated in — fail safe rather than silently guessing
+	// which organization should receive another tenant's data.
+	ErrAmbiguousTenant = errors.New("microsoft teams tenant resolves to multiple connections")
+	// ErrConnectionAlreadyLinked is returned when a link code targets a
+	// connection that is already bound to a tenant.
+	ErrConnectionAlreadyLinked = errors.New("this integration is already linked to a Microsoft 365 tenant")
 )
 
 // Service holds the business logic of the Teams bot integration. It is the
@@ -92,9 +101,14 @@ func (s *Service) Configured() bool {
 // that table's (microsoft, tenant_id) rows belong to the Microsoft SSO
 // connector, and hijacking them here would make "who can sign in with
 // Microsoft" and "whose Teams bot is this" the same decision — two settings
-// an operator legitimately configures independently. So routing is purely
-// connection-driven: the oldest connection for the tenant wins, with a
-// warning when the tenant resolves to more than one org.
+// an operator legitimately configures independently.
+//
+// A tenant maps to at most ONE connection: LinkTenant refuses to bind a
+// tenant that another organization already holds, so ambiguity is impossible
+// by construction. If it is ever observed anyway (hand-edited rows, a bad
+// migration), this fails closed with ErrAmbiguousTenant rather than picking
+// one — silently resolving to the oldest row is exactly how one org would end
+// up receiving another org's Teams data.
 func (s *Service) GetConnectionByTenantID(ctx context.Context, tenantID string) (*models.Integration, error) {
 	if tenantID == "" {
 		return nil, ErrNoTenantID
@@ -112,16 +126,37 @@ func (s *Service) GetConnectionByTenantID(ctx context.Context, tenantID string) 
 	}
 
 	if len(conns) > 1 {
-		slog.WarnContext(ctx, "Microsoft Teams tenant resolves to multiple connections — "+
-			"routing to the oldest one; ambiguous until the extra connections are removed",
+		slog.ErrorContext(ctx, "Microsoft Teams tenant resolves to multiple connections — refusing to route",
 			"tenant_id", tenantID,
 			"connection_count", len(conns),
-			"resolved_connection_uid", conns[0].UID,
-			"resolved_org_uid", conns[0].OrganizationUID,
 		)
+
+		return nil, ErrAmbiguousTenant
 	}
 
 	return conns[0], nil
+}
+
+// checkTenantAllowed enforces the self-hosted single-tenant pin
+// (`msteams.tenant_id`).
+//
+// This is deliberately NOT done during JWT verification: Microsoft documents
+// the Connector-to-Bot token as carrying only aud/iss/nbf/exp/serviceurl —
+// there is no `tid` claim — so a check there would compare the pin against an
+// always-empty value and reject every legitimate activity, disabling the very
+// deployment mode the pin exists to serve. The tenant is instead read from
+// the activity body, which is trustworthy *because* the request carrying it
+// already passed the signature check.
+func (s *Service) checkTenantAllowed(tenantID string) error {
+	if s.cfg == nil || s.cfg.MSTeams.TenantID == "" {
+		return nil
+	}
+
+	if tenantID != s.cfg.MSTeams.TenantID {
+		return fmt.Errorf("%w: %q", ErrTenantNotAllowed, tenantID)
+	}
+
+	return nil
 }
 
 // settingsOf parses a connection's settings, wrapping the parse error.
@@ -157,16 +192,24 @@ func (s *Service) saveSettings(
 // Both carry everything needed to register the conversation as a notification
 // destination, so they share one code path.
 //
-// The org↔tenant link must already exist (an admin pastes the tenant id into
-// the dashboard, or the single-org self-hosted auto-link below applies) —
-// otherwise ErrTenantNotLinked is returned and the caller replies in Teams
-// with the tenant id to paste. Auto-creating an organization the way the
-// Slack Marketplace flow does is not possible here: a Teams install activity
-// carries no user email, so there would be nobody to make an admin of it.
+// The org↔tenant link must ALREADY exist — either because the admin redeemed
+// a linking code (LinkTenant), or because the self-hosted single-tenant
+// auto-link below applies. Otherwise ErrTenantNotLinked is returned and the
+// caller tells the channel how to link. This function never invents the link
+// itself: doing so from a tenant id alone is precisely the cross-tenant
+// hijack the linking code exists to prevent.
+//
+// Auto-creating an organization the way the Slack Marketplace flow does is
+// also not possible here: a Teams install activity carries no user email, so
+// there would be nobody to make an admin of it.
 func (s *Service) HandleInstall(ctx context.Context, activity *Activity) (*models.Integration, error) {
 	tenantID := activity.TenantID()
 	if tenantID == "" {
 		return nil, ErrNoTenantID
+	}
+
+	if err := s.checkTenantAllowed(tenantID); err != nil {
+		return nil, err
 	}
 
 	conn, err := s.GetConnectionByTenantID(ctx, tenantID)
@@ -221,6 +264,171 @@ func (s *Service) HandleInstall(ctx context.Context, activity *Activity) (*model
 	)
 
 	return conn, nil
+}
+
+// PendingLink is what the dashboard shows after the admin clicks "Connect
+// Microsoft Teams".
+type PendingLink struct {
+	ConnectionUID string `json:"connectionUid"`
+	Code          string `json:"code"`
+	ExpiresInSecs int    `json:"expiresInSeconds"`
+}
+
+// StartLink creates (or reuses) an unlinked msteams-bot connection for the
+// organization and mints a one-time linking code for it.
+//
+// The connection deliberately starts with NO tenant id. It gains one only
+// when someone inside a Microsoft 365 tenant sends the bot this code — which
+// is the proof that the org asking for the link and the tenant being linked
+// are the same actor.
+func (s *Service) StartLink(ctx context.Context, orgUID, connectionUID string) (*PendingLink, error) {
+	conn, err := s.resolveLinkTarget(ctx, orgUID, connectionUID)
+	if err != nil {
+		return nil, err
+	}
+
+	code, err := generateLinkCode(ctx, s.db, orgUID, conn.UID)
+	if err != nil {
+		return nil, err
+	}
+
+	slog.InfoContext(ctx, "Minted Microsoft Teams link code",
+		"org_uid", orgUID, "connection_uid", conn.UID)
+
+	return &PendingLink{
+		ConnectionUID: conn.UID,
+		Code:          code,
+		ExpiresInSecs: int(LinkCodeTTL.Seconds()),
+	}, nil
+}
+
+// resolveLinkTarget returns the connection a new link code should authorize:
+// the caller-specified one when given (validated to belong to the org, be of
+// the right type, and not already be linked), otherwise a freshly created
+// unlinked connection.
+func (s *Service) resolveLinkTarget(
+	ctx context.Context, orgUID, connectionUID string,
+) (*models.Integration, error) {
+	if connectionUID == "" {
+		return s.createUnlinkedConnection(ctx, orgUID)
+	}
+
+	conn, err := s.db.GetChannel(ctx, connectionUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrConnectionNotFound
+		}
+
+		return nil, fmt.Errorf("get channel: %w", err)
+	}
+
+	if conn.OrganizationUID != orgUID || conn.DeletedAt != nil {
+		return nil, ErrConnectionNotFound
+	}
+
+	if conn.Type != models.ConnectionTypeMSTeamsBot {
+		return nil, ErrNotMSTeamsBotChannel
+	}
+
+	settings, err := settingsOf(conn)
+	if err != nil {
+		return nil, err
+	}
+
+	// Re-linking a live connection would silently move an active tenant's
+	// notifications; require an explicit delete instead.
+	if settings.TenantID != "" && settings.UninstalledAt == "" {
+		return nil, ErrConnectionAlreadyLinked
+	}
+
+	return conn, nil
+}
+
+// createUnlinkedConnection creates a tenant-less msteams-bot connection.
+func (s *Service) createUnlinkedConnection(ctx context.Context, orgUID string) (*models.Integration, error) {
+	conn := models.NewIntegration(orgUID, models.ConnectionTypeMSTeamsBot, "Microsoft Teams")
+
+	settings := &models.MSTeamsBotSettings{}
+
+	settingsMap, err := settings.ToJSONMap()
+	if err != nil {
+		return nil, fmt.Errorf("convert msteams-bot settings: %w", err)
+	}
+
+	conn.Settings = settingsMap
+
+	if err := s.db.CreateChannel(ctx, conn); err != nil {
+		return nil, fmt.Errorf("create msteams-bot connection: %w", err)
+	}
+
+	return conn, nil
+}
+
+// LinkTenant redeems a linking code presented from inside Teams and binds the
+// activity's tenant to the organization that minted it.
+//
+// This is the ONLY path that ever writes tenant_id from scratch, and the
+// tenant it writes comes from a signature-verified Bot Framework activity —
+// never from user input. A tenant already held by another connection is
+// refused, which keeps the tenant→org mapping one-to-one and inbound routing
+// unambiguous.
+func (s *Service) LinkTenant(ctx context.Context, code string, activity *Activity) (*models.Integration, error) {
+	tenantID := activity.TenantID()
+	if tenantID == "" {
+		return nil, ErrNoTenantID
+	}
+
+	if err := s.checkTenantAllowed(tenantID); err != nil {
+		return nil, err
+	}
+
+	// Refuse before consuming the code, so a user who mistypes which tenant
+	// they are in does not burn their code.
+	existing, err := s.GetConnectionByTenantID(ctx, tenantID)
+	if err != nil && !errors.Is(err, ErrTenantNotLinked) {
+		return nil, err
+	}
+
+	orgUID, connUID, err := redeemLinkCode(ctx, s.db, code)
+	if err != nil {
+		return nil, err
+	}
+
+	if existing != nil && existing.UID != connUID {
+		return nil, ErrTenantAlreadyLinked
+	}
+
+	conn, err := s.db.GetChannel(ctx, connUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrConnectionNotFound
+		}
+
+		return nil, fmt.Errorf("get channel: %w", err)
+	}
+
+	if conn.OrganizationUID != orgUID || conn.DeletedAt != nil ||
+		conn.Type != models.ConnectionTypeMSTeamsBot {
+		return nil, ErrConnectionNotFound
+	}
+
+	settings, err := settingsOf(conn)
+	if err != nil {
+		return nil, err
+	}
+
+	settings.TenantID = tenantID
+
+	if err := s.saveSettings(ctx, conn, settings); err != nil {
+		return nil, err
+	}
+
+	slog.InfoContext(ctx, "Linked Microsoft Teams tenant to organization",
+		"tenant_id", tenantID, "org_uid", orgUID, "connection_uid", conn.UID)
+
+	// Now that the tenant is bound, register the conversation the code was
+	// sent from and re-enable the row.
+	return s.HandleInstall(ctx, activity)
 }
 
 // autoLinkSingleOrg is the self-hosted convenience path: when the operator

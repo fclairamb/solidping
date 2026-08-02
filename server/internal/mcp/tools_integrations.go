@@ -45,8 +45,9 @@ func createIntegrationDef() ToolDefinition {
 		InputSchema: objectSchema(map[string]any{
 			schemaKeyType: stringProp(
 				"Integration type. Allowed: webhook, email, msteams. Example: \"webhook\". " +
-					"(\"slack\" is rejected here — see settings below. \"msteams-bot\" likewise: " +
-					"it is created by installing the Teams app, not through this tool.)",
+					"(\"slack\" and \"msteams-bot\" are both rejected here — they carry a " +
+					"provider-side identity that must be proven, not asserted, so they are " +
+					"created by their own install flows in the dashboard.)",
 			),
 			schemaKeyName:    stringProp("Display name shown in the UI, e.g. \"Engineering Slack\"."),
 			schemaKeyEnabled: boolProp("Whether the integration is active. Default true."),

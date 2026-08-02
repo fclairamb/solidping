@@ -16,6 +16,11 @@ var (
 	// ErrMSTeamsBotNotConfigured is returned when the instance has no Entra
 	// app credentials, so no Bot Connector token can be minted.
 	ErrMSTeamsBotNotConfigured = errors.New("microsoft teams bot app credentials are not configured")
+	// ErrMSTeamsBotDisabled is returned when msteams.enabled is false.
+	// Disabling the feature must stop outbound traffic too, not just close
+	// the inbound endpoint — otherwise "disabled" would still be posting into
+	// customers' Teams channels.
+	ErrMSTeamsBotDisabled = errors.New("the microsoft teams bot is disabled on this instance")
 	// ErrMSTeamsBotNoDestination is returned when the connection has no
 	// default conversation to post into.
 	ErrMSTeamsBotNoDestination = errors.New("no default channel configured for the microsoft teams bot connection")
@@ -63,6 +68,10 @@ func (s *MSTeamsBotSender) Send(ctx context.Context, jctx *jobdef.JobContext, pa
 
 	if settings.UninstalledAt != "" {
 		return ErrMSTeamsBotUninstalled
+	}
+
+	if jctx == nil || jctx.AppConfig == nil || !jctx.AppConfig.MSTeams.Enabled {
+		return ErrMSTeamsBotDisabled
 	}
 
 	appID, appSecret := s.credentials(jctx)
