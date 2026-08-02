@@ -661,7 +661,15 @@ func (s *Service) UpdateStatusPage(
 		return StatusPageResponse{}, err
 	}
 
+	capturePublishTransition(ctx, org.UID, page, updated)
+
 	return s.finalizeCustomDomainUpdate(ctx, org.UID, updated, req)
+}
+
+// isPublished reports whether a status page is live and world-readable, which
+// is what "published" means for the status_page_published product event.
+func isPublished(page *models.StatusPage) bool {
+	return page != nil && page.Enabled && page.Visibility == visibilityPublic
 }
 
 // finalizeCustomDomainUpdate applies the custom-domain set/clear (a separate

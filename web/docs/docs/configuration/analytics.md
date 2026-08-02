@@ -73,10 +73,26 @@ small, fixed set of product events:
 | Event | Fired when | Extra properties |
 |-------|-----------|------------------|
 | `org_created` | An organization is created | – |
-| `user_signed_up` | A self-service registration is confirmed and the account is created | – |
+| `user_signed_up` | A user account is created — by any signup path | `signupMethod` |
 | `check_created` | A check is created | `checkType` (e.g. `http`, `dns`) |
 | `integration_connected` | A notification/integration connection is created | `integrationType` (e.g. `slack`) |
-| `status_page_published` | A status page is created live and publicly visible | `visibility` |
+| `status_page_published` | A status page becomes live and publicly visible | `visibility` |
+
+**`user_signed_up`** covers every way an account can come into existence:
+`password` (email registration, captured at confirmation — when the account
+actually exists — not at the initial request), `invite`, and each SSO provider:
+`google`, `github`, `gitlab`, `microsoft`, `discord`, `slack`, `oidc`, `saml`,
+`ldap`. That provider family is the entire `signupMethod` value — never a
+tenant name, issuer URL, directory DN or email domain. The bootstrap admin
+account seeded on a fresh database is deliberately **not** counted: it is an
+install artifact, not a person signing up.
+
+**`status_page_published`** — SolidPing has no separate "publish" button, so
+publishing is the state of being both enabled and publicly visible. The event
+fires when a page is created already in that state (the default), and when an
+existing private or disabled page *transitions* into it. It never fires on an
+unrelated edit to a page that is already public, so it is neither
+double-counted nor emitted on every save.
 
 Every event carries a **pseudonymous distinct id** built from UUIDs only:
 

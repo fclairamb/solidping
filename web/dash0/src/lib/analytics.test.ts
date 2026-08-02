@@ -59,6 +59,53 @@ describe("initAnalytics", () => {
   it("identify is a pure no-op when nothing was ever loaded", () => {
     expect(() => identifyAnalytics("org-uid", "user-uid")).not.toThrow();
   });
+
+  // An identify that lands before /api/v1/config resolves must be queued, not
+  // dropped — a restored session identifies on boot, usually ahead of the
+  // config round trip.
+  it("queues an early identify and replays it once the config enables analytics", async () => {
+    identifyAnalytics("org-uid", "user-uid");
+
+    const identified: string[] = [];
+    vi.doMock("./posthog-loader", () => ({
+      default: {
+        init: () => {},
+        identify: (id: string) => identified.push(id),
+        reset: () => {},
+        capture: () => {},
+      },
+    }));
+
+    expect(
+      await initAnalytics({ posthog: { enabled: true, projectApiKey: "phc_k" } }),
+    ).toBe(true);
+
+    expect(identified).toEqual(["org:org-uid/user:user-uid"]);
+    vi.doUnmock("./posthog-loader");
+  });
+
+  // …and when analytics stays off, that queued identity is discarded, never sent.
+  it("discards a queued identify when analytics is off", async () => {
+    identifyAnalytics("org-uid", "user-uid");
+    expect(await initAnalytics({ posthog: { enabled: true } })).toBe(false);
+
+    const identified: string[] = [];
+    vi.doMock("./posthog-loader", () => ({
+      default: {
+        init: () => {},
+        identify: (id: string) => identified.push(id),
+        reset: () => {},
+        capture: () => {},
+      },
+    }));
+
+    expect(
+      await initAnalytics({ posthog: { enabled: true, projectApiKey: "phc_k" } }),
+    ).toBe(true);
+
+    expect(identified).toEqual([]);
+    vi.doUnmock("./posthog-loader");
+  });
 });
 
 describe("distinctId", () => {

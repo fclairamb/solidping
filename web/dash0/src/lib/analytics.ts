@@ -135,6 +135,10 @@ let pendingIdentity: string | null = null;
  */
 export async function initAnalytics(config: PublicConfig | null | undefined): Promise<boolean> {
   if (!isAnalyticsEnabled(config)) {
+    // Analytics stays off: discard anything identifyAnalytics queued while the
+    // config fetch was in flight. It was only ever held in memory.
+    pendingIdentity = null;
+
     return false;
   }
 
@@ -194,11 +198,13 @@ export function identifyAnalytics(orgUid?: string | null, userUid?: string | nul
     return;
   }
 
-  // Only queue when a load is genuinely in flight — otherwise analytics is off
-  // and this must stay a pure no-op.
-  if (loading) {
-    pendingIdentity = id;
-  }
+  // Queue unconditionally, including before the /api/v1/config fetch resolves:
+  // a restored session identifies almost immediately on boot, usually ahead of
+  // the config round trip, and dropping it there would silently lose the
+  // identity for the whole session. The id is held in memory only and is
+  // replayed by initAnalytics — if analytics turns out to be off, initAnalytics
+  // discards it and nothing is ever sent.
+  pendingIdentity = id;
 }
 
 /** Clears the identified session on logout. No-op when analytics is off. */

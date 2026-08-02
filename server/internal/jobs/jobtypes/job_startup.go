@@ -135,6 +135,10 @@ func (r *StartupJobRun) ensureDefaultOrganization(ctx context.Context, jctx *job
 	adminUser.PasswordHash = &passwordHash
 	adminUser.SuperAdmin = true
 
+	// Deliberately NOT captured as a user_signed_up product event (spec
+	// 2026-08-02-08): this is the install-bootstrap admin seeded on every
+	// fresh database, not a person signing up. Counting it would add one
+	// phantom signup per install and per test-mode database reset.
 	if createErr := jctx.DBService.CreateUser(ctx, adminUser); createErr != nil {
 		return fmt.Errorf("failed to create admin user: %w", createErr)
 	}

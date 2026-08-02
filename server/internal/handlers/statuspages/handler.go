@@ -8,13 +8,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/config"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	entitlementshandler "github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/httpx"
-	mw "github.com/fclairamb/solidping/server/internal/middleware"
 )
 
 const slugValidationMsg = "Slug must start with a lowercase letter, be 3-40 characters, " +
@@ -104,35 +102,15 @@ func (h *Handler) CreateStatusPage(writer http.ResponseWriter, req *http.Request
 		return h.handleCreatePageError(writer, err)
 	}
 
-	// Product analytics (spec 2026-08-02-08). "Published" means the page was
-	// created live and publicly visible — SolidPing has no separate publish
-	// action. No-op unless PostHog is configured; nothing but the visibility
-	// string travels (never the page name, slug or custom domain).
+	// Product analytics (spec 2026-08-02-08). A page created already enabled +
+	// publicly visible (the default) is published on the spot; one created
+	// private or disabled emits nothing here and instead fires later, on the
+	// update that transitions it into the published state.
 	if page.Enabled && page.Visibility == visibilityPublic {
-		captureStatusPagePublished(req, page.Visibility)
+		capturePagePublished(req.Context(), "", page.Visibility)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, page)
-}
-
-// captureStatusPagePublished records the status_page_published product event.
-// Pseudonymous by construction: org UID + user UID only.
-func captureStatusPagePublished(req *http.Request, visibility string) {
-	var orgUID, userUID string
-	if org, ok := mw.GetOrganizationFromContext(req.Context()); ok && org != nil {
-		orgUID = org.UID
-	}
-
-	if claims, ok := mw.GetClaimsFromContext(req.Context()); ok && claims != nil {
-		userUID = claims.UserUID
-	}
-
-	analytics.Capture(req.Context(), analytics.Event{
-		Name:       analytics.EventStatusPagePublished,
-		OrgUID:     orgUID,
-		UserUID:    userUID,
-		Properties: map[string]any{"visibility": visibility},
-	})
 }
 
 // GetStatusPage handles retrieving a single status page by UID or slug.

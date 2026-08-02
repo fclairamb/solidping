@@ -443,7 +443,9 @@ func (s *SlackOAuthService) findOrCreateUser(
 			user.EmailVerifiedAt = &now
 		}
 
-		if err := s.db.CreateUser(ctx, user); err != nil {
+		// Routed through the package's single account-creation chokepoint so
+		// the user_signed_up product event fires for SSO signups too.
+		if err := createUserAndCapture(ctx, s.db, user, signupMethodSlack); err != nil {
 			return nil, fmt.Errorf("failed to create user: %w", err)
 		}
 	}
