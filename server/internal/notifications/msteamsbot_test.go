@@ -364,3 +364,23 @@ func TestMSTeamsBotSender_MissingServiceURLErrors(t *testing.T) {
 	err := fake.sender("bot-nosvc").Send(context.Background(), botJCtx(&mockDBService{}), payload)
 	r.ErrorIs(err, msteams.ErrMissingServiceURL)
 }
+
+// TestMSTeamsBotSender_DisabledInstanceSendsNothing pins that turning the
+// feature off stops OUTBOUND traffic too, not just the inbound endpoint.
+// Without this gate a "disabled" instance would keep posting incident cards
+// into customers' Teams channels.
+func TestMSTeamsBotSender_DisabledInstanceSendsNothing(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fake := newBotFake(t)
+
+	jctx := botJCtx(&mockDBService{})
+	jctx.AppConfig.MSTeams.Enabled = false
+
+	err := fake.sender("bot-disabled").Send(
+		context.Background(), jctx, fake.payload(t, eventTypeIncidentCreated))
+	r.ErrorIs(err, ErrMSTeamsBotDisabled)
+	r.Empty(fake.recorded(), "a disabled instance must not reach the Bot Connector")
+}
