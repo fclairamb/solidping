@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -135,6 +136,17 @@ type Service struct {
 	// proxy, or acme.enabled = false), in which case the response simply omits
 	// customDomainCertStatus.
 	certStatus CertStatusProvider
+	// analytics receives the status_page_published product event. Injectable
+	// for tests: nil means "use the process-wide client" (the no-op unless
+	// PostHog is configured), while a test attaches its OWN recorder here.
+	//
+	// This is deliberately per-Service rather than a swapped-out global. Every
+	// test that creates or updates a status page goes through a capture path,
+	// so a shared mutable global made any two such tests collide under
+	// t.Parallel() — one test's events landing in another's assertions. Per
+	// spec 2026-08-02-08's own convention, that is a bug to design out, not a
+	// flake to re-run past.
+	analytics analytics.Client
 }
 
 // CertStatusProvider reports the TLS certificate state of a custom domain so
@@ -538,7 +550,7 @@ func (s *Service) CreateStatusPage(
 	// (internal/mcp/tools_statuspages.go) calls this method directly, so a
 	// handler-level capture would silently miss every MCP-created page. Same
 	// reasoning as the update path's capturePublishTransition.
-	capturePublishTransition(ctx, org.UID, nil, page)
+	s.capturePublishTransition(ctx, org.UID, nil, page)
 
 	page, err = s.applyCreateCustomDomain(ctx, org.UID, page, req)
 	if err != nil {
@@ -668,7 +680,7 @@ func (s *Service) UpdateStatusPage(
 		return StatusPageResponse{}, err
 	}
 
-	capturePublishTransition(ctx, org.UID, page, updated)
+	s.capturePublishTransition(ctx, org.UID, page, updated)
 
 	return s.finalizeCustomDomainUpdate(ctx, org.UID, updated, req)
 }

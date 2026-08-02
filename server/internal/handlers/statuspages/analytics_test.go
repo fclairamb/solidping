@@ -40,39 +40,48 @@ func (r *eventRecorder) names() []string {
 	return out
 }
 
-// installRecorder swaps in a recording analytics client for the duration of the
-// test. This is the only test in the package that touches the process-wide
-// analytics client, so there is nothing here for it to race with.
-func installRecorder(t *testing.T) *eventRecorder {
+// countPublished counts status_page_published events seen so far.
+func (r *eventRecorder) countPublished() int {
+	count := 0
+
+	for _, name := range r.names() {
+		if name == analytics.EventStatusPagePublished {
+			count++
+		}
+	}
+
+	return count
+}
+
+// attachRecorder gives THIS test's service its own analytics client.
+//
+// Deliberately per-service, not a swapped-out process-wide default: every test
+// that creates or updates a status page runs through a capture path, so a
+// shared global made any two of them collide under t.Parallel() — one test's
+// events landing in another's assertions, intermittently, depending on
+// goroutine scheduling. Injecting here means each test observes exactly its own
+// events and every other test in the package keeps capturing into the global
+// no-op, whatever it does.
+func attachRecorder(t *testing.T, svc *Service) *eventRecorder {
 	t.Helper()
 
 	rec := &eventRecorder{}
-	analytics.SetDefault(rec)
-	t.Cleanup(func() { analytics.SetDefault(nil) })
+	svc.analytics = rec
 
 	return rec
 }
 
 func boolPtr(b bool) *bool { return &b }
 
-// TestStatusPagePublishedFiresOnlyOnTheTransition covers both publish paths
-// (spec 2026-08-02-08). SolidPing has no explicit publish action, so
-// "published" is the transition into enabled + public. A page created private
-// must emit nothing at create time, exactly one event when it is later made
-// public, and nothing on any subsequent edit while it stays public; a page
-// created already public counts once, at create.
-//
-// Both captures live in the SERVICE, not the handler, so the MCP status-page
-// tools (internal/mcp/tools_statuspages.go, which call the service directly)
-// are covered by the same code path this test exercises.
-func TestStatusPagePublishedFiresOnlyOnTheTransition(t *testing.T) {
+// TestStatusPagePublishedNotFiredOnPrivateCreate: a page created private is not
+// published, so nothing is emitted at create time.
+func TestStatusPagePublishedNotFiredOnPrivateCreate(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
 	ctx, svc, org := setupStatusPagesTest(t)
-	rec := installRecorder(t)
+	rec := attachRecorder(t, svc)
 
-	// Created private: no publish event.
 	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{
 		Name:       "Private page",
 		Slug:       "private-page",
@@ -82,47 +91,21 @@ func TestStatusPagePublishedFiresOnlyOnTheTransition(t *testing.T) {
 	r.Equal("private", page.Visibility)
 	r.NotContains(rec.names(), analytics.EventStatusPagePublished,
 		"a page created private must not count as published")
+}
 
-	// Flip to public → exactly one publish event.
-	_, err = svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
-		Visibility: strPtr(visibilityPublic),
-	})
-	r.NoError(err)
+// TestStatusPagePublishedFiredOnPublicCreate: a page created already enabled +
+// public (the default) is published on the spot.
+//
+// The capture lives in the SERVICE, not the handler, which is what makes
+// MCP-created pages (internal/mcp/tools_statuspages.go calls the service
+// directly) count identically to REST-created ones.
+func TestStatusPagePublishedFiredOnPublicCreate(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
 
-	published := countPublished(rec)
-	r.Equal(1, published, "making a private page public must emit exactly one publish event")
+	ctx, svc, org := setupStatusPagesTest(t)
+	rec := attachRecorder(t, svc)
 
-	// An unrelated edit while it stays public must emit nothing more — no
-	// double-counting, no noise on every save.
-	_, err = svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
-		Name: strPtr("Renamed"),
-	})
-	r.NoError(err)
-
-	published = countPublished(rec)
-	r.Equal(1, published, "editing an already-public page must not re-emit the publish event")
-
-	// The other half of the transition: disabling a public page and then
-	// re-enabling it is a publish too. Kept inside this same test function
-	// because it mutates the same process-wide analytics client — two parallel
-	// top-level tests installing recorders would steal each other's events.
-	_, err = svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
-		Enabled: boolPtr(false),
-	})
-	r.NoError(err)
-
-	published = countPublished(rec)
-	r.Equal(1, published, "disabling a page is not a publish event")
-
-	_, err = svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
-		Enabled: boolPtr(true),
-	})
-	r.NoError(err)
-
-	r.Equal(2, countPublished(rec), "re-enabling a public page is a publish transition")
-
-	// A page created already enabled + public (the default) is published on the
-	// spot, by the service — which is what makes MCP-created pages count.
 	created, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{
 		Name: "Public page",
 		Slug: "public-page",
@@ -131,20 +114,91 @@ func TestStatusPagePublishedFiresOnlyOnTheTransition(t *testing.T) {
 	r.True(created.Enabled)
 	r.Equal(visibilityPublic, created.Visibility)
 
-	r.Equal(3, countPublished(rec), "creating an enabled+public page emits exactly one publish event")
+	r.Equal(1, rec.countPublished(),
+		"creating an enabled+public page emits exactly one publish event")
 }
 
-// countPublished counts status_page_published events seen so far.
-func countPublished(rec *eventRecorder) int {
-	count := 0
+// TestStatusPagePublishedFiresOnVisibilityTransition: flipping a private page
+// public publishes it, and a later unrelated edit must not re-emit.
+func TestStatusPagePublishedFiresOnVisibilityTransition(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
 
-	for _, name := range rec.names() {
-		if name == analytics.EventStatusPagePublished {
-			count++
-		}
-	}
+	ctx, svc, org := setupStatusPagesTest(t)
 
-	return count
+	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{
+		Name:       "Private page",
+		Slug:       "private-page",
+		Visibility: strPtr("private"),
+	})
+	r.NoError(err)
+
+	rec := attachRecorder(t, svc)
+
+	_, err = svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
+		Visibility: strPtr(visibilityPublic),
+	})
+	r.NoError(err)
+	r.Equal(1, rec.countPublished(),
+		"making a private page public must emit exactly one publish event")
+
+	// An unrelated edit while it stays public must emit nothing more — no
+	// double-counting, no noise on every save.
+	_, err = svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
+		Name: strPtr("Renamed"),
+	})
+	r.NoError(err)
+	r.Equal(1, rec.countPublished(),
+		"editing an already-public page must not re-emit the publish event")
+}
+
+// TestStatusPagePublishedFiresOnReEnable: the other half of the transition —
+// disabling a public page is not a publish, re-enabling it is.
+func TestStatusPagePublishedFiresOnReEnable(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{
+		Name: "Public page",
+		Slug: "public-page",
+	})
+	r.NoError(err)
+
+	rec := attachRecorder(t, svc)
+
+	_, err = svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
+		Enabled: boolPtr(false),
+	})
+	r.NoError(err)
+	r.Equal(0, rec.countPublished(), "disabling a page is not a publish event")
+
+	_, err = svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
+		Enabled: boolPtr(true),
+	})
+	r.NoError(err)
+	r.Equal(1, rec.countPublished(), "re-enabling a public page is a publish transition")
+}
+
+// TestAnalyticsClientDefaultsToTheGlobalNoOp pins the fallback: a service built
+// the normal way (no injection) captures through the process-wide client, which
+// is the no-op unless PostHog is configured. This is what keeps every OTHER
+// test in this package — and production — from needing to know analytics exists.
+func TestAnalyticsClientDefaultsToTheGlobalNoOp(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	_, svc, _ := setupStatusPagesTest(t)
+
+	r.Nil(svc.analytics, "a normally constructed service injects no client")
+	r.NotNil(svc.analyticsClient(), "the fallback client must never be nil")
+	r.False(svc.analyticsClient().Enabled(),
+		"with PostHog unconfigured the fallback must be the no-op")
+
+	rec := attachRecorder(t, svc)
+	r.Same(analytics.Client(rec), svc.analyticsClient(),
+		"an injected client must win over the global")
 }
 
 // TestIsPublishedRule pins the predicate both call sites share.

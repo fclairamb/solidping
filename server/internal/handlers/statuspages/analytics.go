@@ -24,7 +24,7 @@ import (
 // Privacy: only the org UID, the acting user UID and the low-cardinality
 // visibility string travel — never the page name, slug, description, custom CSS
 // or custom domain. No-op unless PostHog is configured.
-func capturePagePublished(ctx context.Context, orgUID, visibility string) {
+func (s *Service) capturePagePublished(ctx context.Context, orgUID, visibility string) {
 	var userUID string
 	if claims, ok := mw.GetClaimsFromContext(ctx); ok && claims != nil {
 		userUID = claims.UserUID
@@ -36,12 +36,23 @@ func capturePagePublished(ctx context.Context, orgUID, visibility string) {
 		}
 	}
 
-	analytics.Capture(ctx, analytics.Event{
+	s.analyticsClient().Capture(ctx, analytics.Event{
 		Name:       analytics.EventStatusPagePublished,
 		OrgUID:     orgUID,
 		UserUID:    userUID,
 		Properties: map[string]any{"visibility": visibility},
 	})
+}
+
+// analyticsClient returns the client this service captures through: the
+// injected one when a test attached a recorder, otherwise the process-wide
+// client (a no-op unless PostHog is configured).
+func (s *Service) analyticsClient() analytics.Client {
+	if s.analytics != nil {
+		return s.analytics
+	}
+
+	return analytics.Default()
 }
 
 // capturePublishTransition fires status_page_published when a write moved the
@@ -54,8 +65,10 @@ func capturePagePublished(ctx context.Context, orgUID, visibility string) {
 // Creation passes before=nil, which is never published, so a page created
 // already enabled + public counts exactly once and one created private counts
 // later, on the update that publishes it.
-func capturePublishTransition(ctx context.Context, orgUID string, before, after *models.StatusPage) {
+func (s *Service) capturePublishTransition(
+	ctx context.Context, orgUID string, before, after *models.StatusPage,
+) {
 	if isPublished(after) && !isPublished(before) {
-		capturePagePublished(ctx, orgUID, after.Visibility)
+		s.capturePagePublished(ctx, orgUID, after.Visibility)
 	}
 }
