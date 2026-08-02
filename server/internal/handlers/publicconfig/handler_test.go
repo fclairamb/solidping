@@ -167,3 +167,50 @@ func TestBuildIsNilSafe(t *testing.T) {
 	require.False(t, resp.PostHog.Enabled)
 	require.Empty(t, resp.PostHog.ProjectAPIKey)
 }
+
+// TestBuild_WhatsAppFlag proves the public document reports the *resolved*
+// capability and never leaks a credential. The flag is what the dashboard uses
+// to decide whether to offer the WhatsApp contact type at all.
+func TestBuild_WhatsAppFlag(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// Off by default.
+	r.False(publicconfig.Build(&config.Config{}).WhatsApp.Enabled)
+
+	// Kill switch on but no credentials → still off.
+	cfg := &config.Config{}
+	cfg.WhatsApp = config.WhatsAppConfig{Enabled: true}
+	r.False(publicconfig.Build(cfg).WhatsApp.Enabled)
+
+	cfg.WhatsApp = config.WhatsAppConfig{Enabled: true, AccessToken: "tok"}
+	r.False(publicconfig.Build(cfg).WhatsApp.Enabled)
+
+	// Fully configured → on.
+	cfg.WhatsApp = config.WhatsAppConfig{
+		Enabled:            true,
+		AccessToken:        "super-secret-token",
+		PhoneNumberID:      "555000111",
+		WABAID:             "waba-1",
+		AppSecret:          "super-secret-app-secret",
+		WebhookVerifyToken: "verify-me",
+		AlertTemplate:      "solidping_alert",
+	}
+	resp := publicconfig.Build(cfg)
+	r.True(resp.WhatsApp.Enabled)
+
+	// The serialized document must contain the boolean and nothing else about
+	// WhatsApp — no token, secret, ids or template names.
+	encoded, err := json.Marshal(resp)
+	r.NoError(err)
+
+	body := string(encoded)
+	r.Contains(body, `"whatsapp":{"enabled":true}`)
+	for _, secret := range []string{
+		"super-secret-token", "super-secret-app-secret", "555000111",
+		"waba-1", "verify-me", "solidping_alert",
+	} {
+		r.NotContains(body, secret)
+	}
+}

@@ -182,3 +182,29 @@ func TestSeedDefaultsIsIdempotent(t *testing.T) {
 	r.NoError(err)
 	r.Len(list, 3, "double-seed must not create duplicates")
 }
+
+// TestCreateAcceptsWhatsAppChannel proves the whatsapp severity token passes
+// validation (it is a synthetic direct-channel token, not a connection type),
+// with a negative control so the test cannot pass on a validator that accepts
+// everything.
+func TestCreateAcceptsWhatsAppChannel(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	s := newSetup(t)
+
+	sev, err := s.svc.CreateSeverity(t.Context(), s.org.Slug, severities.CreateSeverityRequest{
+		Slug:     "wake-me",
+		Name:     "Wake me",
+		Channels: []string{"email", "sms", "whatsapp"},
+	})
+	r.NoError(err)
+	r.Contains(sev.Channels, "whatsapp")
+
+	// Negative control: a near-miss spelling must still be rejected.
+	_, err = s.svc.CreateSeverity(t.Context(), s.org.Slug, severities.CreateSeverityRequest{
+		Slug:     "wake-me-2",
+		Name:     "Wake me 2",
+		Channels: []string{"whats_app"},
+	})
+	r.ErrorIs(err, severities.ErrInvalidChannel)
+}

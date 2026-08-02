@@ -15,6 +15,14 @@ import (
 func setupReserveService(t *testing.T) (*Service, *models.Organization) {
 	t.Helper()
 
+	return setupReserveServiceWithOpts(t)
+}
+
+// setupReserveServiceWithOpts is setupReserveService with construction options,
+// so a test can tighten a runaway cap without touching a shared global.
+func setupReserveServiceWithOpts(t *testing.T, opts ...Option) (*Service, *models.Organization) {
+	t.Helper()
+
 	ctx := context.Background()
 	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
 	require.NoError(t, err)
@@ -24,7 +32,7 @@ func setupReserveService(t *testing.T) (*Service, *models.Organization) {
 	org := models.NewOrganization("res-org", "Res Org")
 	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
 
-	svc := NewService(dbSvc, DefaultsFor(config.DeploymentModeSelfHosted), 0)
+	svc := NewService(dbSvc, DefaultsFor(config.DeploymentModeSelfHosted), 0, opts...)
 
 	return svc, org
 }
@@ -125,4 +133,68 @@ func TestReserveCall_ZeroLimitDenies(t *testing.T) {
 
 	err := svc.ReserveCall(ctx, org.UID)
 	r.ErrorIs(err, ErrEntitlementExceeded)
+}
+
+// TestReserveWhatsApp_MonthlyCap verifies the WhatsApp monthly cap is enforced
+// through the same persistent counter as SMS, with a positive control: the
+// first two reservations succeed, the third is refused, and the refusal names
+// the WhatsApp limit rather than the SMS one.
+func TestReserveWhatsApp_MonthlyCap(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	svc, org := setupReserveService(t)
+	r.NoError(svc.Set(ctx, org.UID, Entitlements{
+		Limits: Limits{MaxWhatsappPerMonth: Int(2)},
+		Source: models.EntitlementSourceAdmin,
+	}, "tester", "two per month"))
+
+	r.NoError(svc.ReserveWhatsApp(ctx, org.UID))
+	r.NoError(svc.ReserveWhatsApp(ctx, org.UID))
+
+	err := svc.ReserveWhatsApp(ctx, org.UID)
+	r.Error(err)
+
+	var qErr *QuotaError
+	r.ErrorAs(err, &qErr)
+	r.Equal("MaxWhatsappPerMonth", qErr.LimitName)
+
+	// The SMS cap is untouched by WhatsApp consumption: the two channels use
+	// separate counters, so a WhatsApp burst must not exhaust SMS.
+	r.NoError(svc.Set(ctx, org.UID, Entitlements{
+		Limits: Limits{MaxSmsPerMonth: Int(1), MaxWhatsappPerMonth: Int(2)},
+		Source: models.EntitlementSourceAdmin,
+	}, "tester", "separate counters"))
+	r.NoError(svc.ReserveSMS(ctx, org.UID))
+
+	usage, usageErr := svc.Usage(ctx, org.UID)
+	r.NoError(usageErr)
+	r.Equal(2, usage.WhatsappThisMonth)
+}
+
+// TestReserveWhatsApp_RunawayGuard proves the hourly guard fires independently
+// of the monthly entitlement, including for an unlimited (self-hosted) org.
+func TestReserveWhatsApp_RunawayGuard(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	svc, org := setupReserveServiceWithOpts(t, WithWhatsAppRunawayCap(2))
+
+	fixed := time.Now()
+	svc.now = func() time.Time { return fixed }
+
+	// No entitlement row: MaxWhatsappPerMonth stays nil = unlimited.
+	r.NoError(svc.ReserveWhatsApp(ctx, org.UID))
+	r.NoError(svc.ReserveWhatsApp(ctx, org.UID))
+
+	err := svc.ReserveWhatsApp(ctx, org.UID)
+	r.Error(err)
+
+	var qErr *QuotaError
+	r.ErrorAs(err, &qErr)
+	r.Equal("whatsapp_runaway_per_hour", qErr.LimitName)
 }
