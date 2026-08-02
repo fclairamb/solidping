@@ -2433,7 +2433,7 @@ export function useInviteInfo(token: string) {
 
 export interface AcceptInviteResponse {
   accessToken: string;
-  user: { email: string; name?: string; avatarUrl?: string; role: string };
+  user: { uid: string; email: string; name?: string; avatarUrl?: string; role: string };
   organization: { uid: string; slug: string; name?: string };
   organizations?: Array<{ slug: string; name?: string; role: string }>;
 }
@@ -2677,15 +2677,37 @@ export interface SystemParameter {
   updatedAt: string;
 }
 
+interface SystemParametersResponse {
+  data: SystemParameter[];
+  // Keys whose effective value is forced by an SP_* environment variable, so
+  // a DB edit made here would appear not to take effect. Names only, no values.
+  envOverrides?: string[];
+}
+
+async function fetchSystemParameters(): Promise<SystemParametersResponse> {
+  const response = await apiFetch<SystemParametersResponse>(
+    "/api/v1/system/parameters"
+  );
+  return { data: response.data || [], envOverrides: response.envOverrides || [] };
+}
+
 export function useSystemParameters() {
   return useQuery({
     queryKey: ["system-parameters"],
-    queryFn: async () => {
-      const response = await apiFetch<{ data: SystemParameter[] }>(
-        "/api/v1/system/parameters"
-      );
-      return response.data || [];
-    },
+    queryFn: fetchSystemParameters,
+    select: (response: SystemParametersResponse) => response.data,
+  });
+}
+
+/**
+ * Parameter keys currently overridden by an environment variable. Shares the
+ * `system-parameters` query cache, so this costs no extra request.
+ */
+export function useSystemParameterEnvOverrides() {
+  return useQuery({
+    queryKey: ["system-parameters"],
+    queryFn: fetchSystemParameters,
+    select: (response: SystemParametersResponse) => response.envOverrides ?? [],
   });
 }
 

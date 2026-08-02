@@ -1,6 +1,7 @@
 import { createRootRouteWithContext, Link, Outlet } from "@tanstack/react-router";
 import type { QueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
+import { AnalyticsProvider } from "@/components/shared/analytics-provider";
 import { AuroraPanel } from "@/components/ui/aurora-panel";
 import { Button } from "@/components/ui/button";
 
@@ -27,6 +28,9 @@ function RootLayout() {
     <>
       <Outlet />
       <Toaster position="top-right" />
+      {/* Renders nothing; loads PostHog only when the server says it is
+          configured (spec 2026-08-02-08). */}
+      <AnalyticsProvider />
     </>
   );
 }
