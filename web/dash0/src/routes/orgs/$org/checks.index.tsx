@@ -699,7 +699,11 @@ function CheckGroupSection({
               {memberSummary}
             </span>
           )}
-          <Badge variant="secondary" className="text-xs">
+          <Badge
+            variant="secondary"
+            className="text-xs"
+            data-testid="group-check-count"
+          >
             {isFiltering ? checks.length : group.checkCount}
           </Badge>
           {group.escalationPolicyUid && (
