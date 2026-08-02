@@ -57,5 +57,36 @@
     "connecting": "Conectando…",
     "reconnecting": "Reconectando…",
     "unavailable": "Actualizaciones en vivo no disponibles"
+  },
+  "channels": {
+    "whatsapp": "WhatsApp",
+    "sms": "SMS",
+    "voice": "Llamada de voz",
+    "webpush": "Notificación del navegador",
+    "email": "Correo electrónico",
+    "msteams": "Microsoft Teams",
+    "msteams-bot": "Microsoft Teams",
+    "googlechat": "Google Chat",
+    "mattermost": "Mattermost",
+    "ntfy": "ntfy",
+    "opsgenie": "Opsgenie",
+    "pushover": "Pushover",
+    "slack": "Slack",
+    "discord": "Discord",
+    "webhook": "Webhook"
+  },
+  "notificationFailureReasons": {
+    "whatsapp_template_unavailable": "Plantilla de mensaje de WhatsApp no disponible — pide a un administrador que revise su estado de aprobación",
+    "whatsapp_recipient_not_on_whatsapp": "El destinatario no está en WhatsApp",
+    "whatsapp_rate_limited": "Limitado por WhatsApp (tope del nivel de mensajería)",
+    "whatsapp_unsupported_message": "WhatsApp rechazó el mensaje enviado — pide a un administrador que revise los componentes de la plantilla",
+    "whatsapp_session_window_closed": "Fuera de la ventana de sesión de WhatsApp de 24 horas",
+    "whatsapp_token_expired": "Las credenciales de WhatsApp han caducado — pide a un administrador que las renueve",
+    "whatsapp_not_configured": "WhatsApp no está configurado en esta instancia",
+    "whatsapp_invalid_recipient": "El número de WhatsApp no es un número E.164 válido",
+    "whatsapp_send_failed": "Error en la entrega por WhatsApp",
+    "whatsapp_quota_exhausted": "Cuota mensual de WhatsApp agotada",
+    "sms_quota_exhausted": "Cuota mensual de SMS agotada",
+    "voice_quota_exhausted": "Cuota mensual de llamadas de voz agotada"
   }
 }

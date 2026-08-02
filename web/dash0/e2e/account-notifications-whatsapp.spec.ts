@@ -164,6 +164,50 @@ authTest.describe("Account Notifications — WhatsApp", () => {
       await expect.poll(() => confirmReceived).toBe(true);
     },
   );
+
+  authTest(
+    "renders the WhatsApp channel and a translated failure reason in the delivery history",
+    async ({ authenticatedPage: page }) => {
+      await stubPublicConfig(page, true);
+
+      // Scope the mock to the API path: the dashboard route is
+      // `orgs/test/me/notifications`, so a looser pattern would also intercept
+      // the HTML document navigation and serve it JSON.
+      await page.route("**/api/v1/orgs/*/me/notifications**", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: [
+              {
+                uid: "notif-wa-1",
+                incidentUid: "incident-1",
+                eventType: "incident.escalated",
+                source: "escalation_user",
+                channelType: "whatsapp",
+                status: "skipped",
+                skipReason: "whatsapp_recipient_not_on_whatsapp",
+                createdAt: new Date().toISOString(),
+              },
+            ],
+          }),
+        });
+      });
+
+      await page.goto("orgs/test/me/notifications");
+      await page.waitForLoadState("networkidle");
+
+      // Correct brand casing — a plain CSS capitalize would render "Whatsapp".
+      await expect(page.getByText("WhatsApp", { exact: true })).toBeVisible();
+
+      // The reason must be prose, never the raw i18n key or the raw code.
+      const reason = page.getByTestId("notification-reason-notif-wa-1");
+      await expect(reason).toBeVisible();
+      await expect(reason).toHaveText("Recipient is not on WhatsApp");
+      await expect(reason).not.toContainText("notificationFailureReasons");
+      await expect(reason).not.toContainText("whatsapp_recipient");
+    },
+  );
 });
 
 // A plain (unauthenticated) test: the public config document must never leak a

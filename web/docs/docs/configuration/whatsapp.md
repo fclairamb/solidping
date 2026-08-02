@@ -68,9 +68,9 @@ language you configure as `template_language` (default `en`).
 - **Body** (four variables):
 
   ```text
-  {{1}} is {{2}}.
-  {{3}}
-  Organization: {{4}}
+  Alert: {{1}} is now {{2}}.
+  Detail: {{3}}
+  Organization: {{4}}. Sent by SolidPing.
   ```
 
 | Variable | Meaning | Sample |
@@ -80,6 +80,18 @@ language you configure as `template_language` (default `en`).
 | `{{3}}` | Detail line | `connection refused` |
 | `{{4}}` | Organization slug | `acme` |
 
+:::caution Do not start or end the body with a variable
+WhatsApp Manager rejects a template body that **begins or ends with a
+placeholder**, and also rejects **two adjacent placeholders** (`{{1}} {{2}}`
+with nothing between them). The body above is written to satisfy both rules —
+`Alert: ` before `{{1}}` and `. Sent by SolidPing.` after `{{4}}`.
+
+SolidPing only cares about the **order and count** of the variables, never the
+surrounding words, so you are free to reword the static text (or translate it)
+as long as the four placeholders stay in the order given and none of them is the
+first or last thing in the body.
+:::
+
 One template covers **down, escalated and resolved** because the state is a
 variable. Do not create three separate templates — each one is a separate
 approval to maintain.
@@ -88,10 +100,75 @@ approval to maintain.
 
 - **Name**: `solidping_verify`
 - **Category**: **Authentication**
-- **Body**: Meta supplies the authentication-template copy; add the
-  **one-tap copy code** button when prompted. SolidPing sends the 6-digit code
-  as both the body variable and the button parameter, which is the format Meta
-  mandates for this category.
+
+Authentication templates are not free-form: Meta supplies the body copy and
+**requires a one-tap copy-code button**. SolidPing sends the 6-digit code twice
+— once as the body variable and once as the button parameter — which is the only
+shape Meta accepts for this category. Getting the template shape wrong is the
+single most common cause of every verification send failing with error
+**132000** (component/parameter mismatch), so create it exactly as below.
+
+**In WhatsApp Manager (UI path):**
+
+1. **New template → Category: Authentication**.
+2. Leave the body as the Meta-supplied authentication copy (optionally tick
+   *Add security recommendation*).
+3. Under **Buttons**, choose **Copy code** (not *Autofill / one-tap*, which
+   additionally requires an app signature hash). Button text: `Copy code`.
+4. Optionally set the footer's **code expiration** to `10` minutes, matching
+   SolidPing's own code TTL.
+
+**Via the WABA API (`POST /{waba-id}/message_templates`):**
+
+```json
+{
+  "name": "solidping_verify",
+  "category": "AUTHENTICATION",
+  "language": "en",
+  "components": [
+    { "type": "BODY", "add_security_recommendation": true },
+    { "type": "FOOTER", "code_expiration_minutes": 10 },
+    {
+      "type": "BUTTONS",
+      "buttons": [
+        { "type": "OTP", "otp_type": "COPY_CODE", "text": "Copy code" }
+      ]
+    }
+  ]
+}
+```
+
+The `"type": "OTP"` button with `"otp_type": "COPY_CODE"` is mandatory. A
+body-only authentication template — created without that buttons component —
+will be approved but will reject every send SolidPing makes.
+
+**What SolidPing sends at delivery time** (so you can match the template to it):
+
+```json
+{
+  "messaging_product": "whatsapp",
+  "recipient_type": "individual",
+  "to": "15551234567",
+  "type": "template",
+  "template": {
+    "name": "solidping_verify",
+    "language": { "code": "en" },
+    "components": [
+      { "type": "body", "parameters": [{ "type": "text", "text": "123456" }] },
+      {
+        "type": "button",
+        "sub_type": "url",
+        "index": "0",
+        "parameters": [{ "type": "text", "text": "123456" }]
+      }
+    ]
+  }
+}
+```
+
+The button component uses `sub_type: "url"` at send time even though the
+template declares an `OTP` / `COPY_CODE` button — that is Meta's documented
+send-side representation for copy-code buttons, not a mismatch.
 
 Both names are configurable if your WABA already uses a naming convention.
 
@@ -218,8 +295,10 @@ history; it never fails the escalation step.
 | Symptom in the delivery history | Meaning | Fix |
 |---|---|---|
 | *WhatsApp message template unavailable* | Template missing, paused, disabled, or the parameters do not match its definition | Check the template's status in WhatsApp Manager; a template can be paused automatically after negative user feedback |
-| *Recipient is not on WhatsApp* | The number is not a reachable WhatsApp user | Have the user re-add the correct number |
-| *Rate limited by WhatsApp (messaging tier cap)* | Meta throttled the send — app request limit or WABA messaging tier | Raise the messaging tier by growing quality-rated volume; the next escalation repeat may succeed |
+| *Recipient is not on WhatsApp* | The number is not a reachable WhatsApp user (Meta code 131026) | Have the user re-add the correct number |
+| *WhatsApp rejected the message we built* | Meta code 131051 — an unsupported message type or a component shape the approved template does not declare | A SolidPing-side or template-shape problem, **not** a bad number. Re-check the template against "What SolidPing sends at delivery time" above |
+| *Outside the 24-hour WhatsApp session window* | Meta code 131047 — a non-template message needed an open session window | Should not occur in v1 (templates only); report it if you see it |
+| *Rate limited by WhatsApp (messaging tier cap)* | Meta throttled the send — app request limit, WABA messaging tier, or per-user engagement pacing (code 131049) | Transient. Raise the messaging tier by growing quality-rated volume; the next escalation repeat may succeed. **Not** a sign of a bad recipient number |
 | *WhatsApp credentials expired* | The access token is expired, revoked, or lacks `whatsapp_business_messaging` | Re-issue the permanent system-user token |
 | *WhatsApp is not configured on this instance* | The kill switch is off, or a credential is missing | Check `SP_WHATSAPP_ENABLED`, `SP_WHATSAPP_ACCESS_TOKEN`, `SP_WHATSAPP_PHONE_NUMBER_ID` |
 | Statuses never move past `sent` | Webhook not delivering | Re-check the callback URL, the verify token, the `messages` subscription, and that `app_secret` matches the app |

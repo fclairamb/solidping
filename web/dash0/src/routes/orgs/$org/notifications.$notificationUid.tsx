@@ -30,6 +30,7 @@ import {
   notificationStatusVariant,
   sourceLabel,
 } from "@/lib/notifications";
+import { useTranslation } from "react-i18next";
 import { channelTypeLabel, failureReasonLabel } from "@/lib/channel-labels";
 
 export const Route = createFileRoute(
@@ -254,6 +255,7 @@ function DeliverySection({ notif }: { notif: IncidentNotification }) {
 }
 
 function NotificationDetailPage() {
+  const { t } = useTranslation("common");
   const navigate = useNavigate();
   const { org, notificationUid } = Route.useParams();
   const { from } = Route.useSearch();
@@ -338,7 +340,7 @@ function NotificationDetailPage() {
           {data.status}
         </Badge>
         {data.channelType && data.channelType !== "none" && (
-          <Badge variant="outline">{channelTypeLabel(data.channelType)}</Badge>
+          <Badge variant="outline">{channelTypeLabel(t, data.channelType)}</Badge>
         )}
         <code className="font-mono text-sm text-muted-foreground">
           {data.eventType}
@@ -411,7 +413,7 @@ function NotificationDetailPage() {
           {data.skipReason && (
             <div className="flex flex-wrap gap-x-2">
               <span className="text-muted-foreground">Skip reason:</span>
-              <span>{failureReasonLabel(data.skipReason)}</span>
+              <span>{failureReasonLabel(t, data.skipReason)}</span>
             </div>
           )}
         </CardContent>

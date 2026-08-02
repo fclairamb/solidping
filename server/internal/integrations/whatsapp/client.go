@@ -49,7 +49,23 @@ var (
 	ErrTemplateUnavailable = errors.New("whatsapp: template unavailable (missing, paused, disabled or parameter mismatch)")
 	// ErrRecipientNotOnWhatsApp means the number is not a reachable WhatsApp
 	// user. The contact should not be retried on this channel.
+	//
+	// Kept deliberately narrow: only codes that genuinely mean "this number
+	// cannot receive WhatsApp messages" belong here. Misfiling a transient
+	// pacing error or a payload bug under this class tells an operator to
+	// delete a perfectly good contact and hides the real cause.
 	ErrRecipientNotOnWhatsApp = errors.New("whatsapp: recipient is not on WhatsApp")
+	// ErrUnsupportedMessage means Meta rejected the message *we* built — an
+	// unsupported type or a component/parameter shape that does not match the
+	// approved template. This is our bug, not the recipient's problem, and it
+	// must never be surfaced as "this number is invalid".
+	ErrUnsupportedMessage = errors.New("whatsapp: message type or payload not supported by WhatsApp")
+	// ErrSessionWindowClosed means the send needed an open 24-hour customer
+	// service window and there wasn't one (re-engagement required). v1 sends
+	// templates only, which are exempt, so this should be rare — but an
+	// unmapped code degrading to a generic failure is strictly worse than
+	// naming it.
+	ErrSessionWindowClosed = errors.New("whatsapp: outside the 24-hour session window; a template is required")
 	// ErrRateLimited means Meta throttled us — either the app request limit or
 	// the WABA messaging-tier cap. Transient; the next escalation repeat may
 	// succeed.
@@ -361,16 +377,28 @@ var errorClassByCode = map[int]error{
 	132016: ErrTemplateUnavailable,
 	132068: ErrTemplateUnavailable,
 	132069: ErrTemplateUnavailable,
-	// Recipient is not a reachable WhatsApp user.
+	// Recipient is not a reachable WhatsApp user. 131026 ("Message
+	// undeliverable") is the only code that actually means this.
 	131026: ErrRecipientNotOnWhatsApp,
-	131049: ErrRecipientNotOnWhatsApp,
-	131051: ErrRecipientNotOnWhatsApp,
-	// Throttling and messaging-tier caps.
+	// Throttling, messaging-tier caps and per-user pacing. 131049 is Meta's
+	// "not delivered to maintain healthy ecosystem engagement" — a transient
+	// per-user pacing drop, NOT a bad number, so it belongs here rather than
+	// with the recipient errors.
 	4:      ErrRateLimited,
 	80007:  ErrRateLimited,
 	130429: ErrRateLimited,
 	131048: ErrRateLimited,
+	131049: ErrRateLimited,
 	131056: ErrRateLimited,
+	// Our own payload is wrong: 131051 is "Unsupported message type".
+	131051: ErrUnsupportedMessage,
+	// 132000 is a template component/parameter count mismatch. It is listed
+	// with the template errors above because the operator fix is the same
+	// (align the template with what we send).
+	//
+	// Session window: 131047 is "Re-engagement message" — the 24-hour window
+	// has closed and a template is required.
+	131047: ErrSessionWindowClosed,
 	// Auth / permission.
 	190: ErrTokenExpired,
 	102: ErrTokenExpired,
@@ -420,6 +448,10 @@ func FailureReason(err error) string {
 		return "whatsapp_template_unavailable"
 	case errors.Is(err, ErrRecipientNotOnWhatsApp):
 		return "whatsapp_recipient_not_on_whatsapp"
+	case errors.Is(err, ErrUnsupportedMessage):
+		return "whatsapp_unsupported_message"
+	case errors.Is(err, ErrSessionWindowClosed):
+		return "whatsapp_session_window_closed"
 	case errors.Is(err, ErrRateLimited):
 		return "whatsapp_rate_limited"
 	case errors.Is(err, ErrTokenExpired):

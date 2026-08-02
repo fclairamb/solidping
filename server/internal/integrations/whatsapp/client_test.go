@@ -3,9 +3,11 @@ package whatsapp_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -222,11 +224,48 @@ func TestSendTemplate_TypedErrors(t *testing.T) {
 			reason:   "whatsapp_template_unavailable",
 		},
 		{
-			name:     "recipient not on whatsapp",
-			status:   http.StatusBadRequest,
-			response: `{"error":{"message":"Message undeliverable","code":131026}}`,
-			want:     whatsapp.ErrRecipientNotOnWhatsApp,
-			reason:   "whatsapp_recipient_not_on_whatsapp",
+			name:   "recipient not on whatsapp",
+			status: http.StatusBadRequest,
+			response: `{"error":{"message":"(#131026) Message undeliverable","type":"OAuthException",` +
+				`"code":131026,"error_data":{"messaging_product":"whatsapp","details":` +
+				`"Receiver is incapable of receiving this message"},"fbtrace_id":"Ax1"}}`,
+			want:   whatsapp.ErrRecipientNotOnWhatsApp,
+			reason: "whatsapp_recipient_not_on_whatsapp",
+		},
+		// 131049 is a per-user PACING drop, not a bad number. Filing it under
+		// "recipient is not on WhatsApp" would tell an operator to delete a
+		// perfectly good contact instead of letting the next repeat retry.
+		{
+			name:   "per-user engagement pacing is rate limiting, not a bad recipient",
+			status: http.StatusBadRequest,
+			response: `{"error":{"message":"(#131049) This message was not delivered to maintain ` +
+				`healthy ecosystem engagement","type":"OAuthException","code":131049,` +
+				`"error_data":{"messaging_product":"whatsapp","details":` +
+				`"This message was not delivered to maintain healthy ecosystem engagement."},` +
+				`"fbtrace_id":"Ax2"}}`,
+			want:   whatsapp.ErrRateLimited,
+			reason: "whatsapp_rate_limited",
+		},
+		// 131051 is OUR payload being wrong. It must surface as our bug, never
+		// as "this number is invalid".
+		{
+			name:   "unsupported message type is our bug, not a bad recipient",
+			status: http.StatusBadRequest,
+			response: `{"error":{"message":"(#131051) Unsupported message type","type":"OAuthException",` +
+				`"code":131051,"error_data":{"messaging_product":"whatsapp","details":` +
+				`"Message type is not currently supported"},"fbtrace_id":"Ax3"}}`,
+			want:   whatsapp.ErrUnsupportedMessage,
+			reason: "whatsapp_unsupported_message",
+		},
+		{
+			name:   "re-engagement window closed",
+			status: http.StatusBadRequest,
+			response: `{"error":{"message":"(#131047) Re-engagement message","type":"OAuthException",` +
+				`"code":131047,"error_data":{"messaging_product":"whatsapp","details":` +
+				`"Message failed to send because more than 24 hours have passed since the ` +
+				`customer last replied to this number"},"fbtrace_id":"Ax4"}}`,
+			want:   whatsapp.ErrSessionWindowClosed,
+			reason: "whatsapp_session_window_closed",
 		},
 		{
 			name:     "messaging tier cap",
@@ -374,4 +413,67 @@ func TestValidE164(t *testing.T) {
 	r.False(whatsapp.ValidE164("15551234567"))
 	r.False(whatsapp.ValidE164("+0555123456"))
 	r.False(whatsapp.ValidE164(""))
+}
+
+// TestErrorClasses_AreMutuallyExclusive is the guard against the failure mode
+// this taxonomy exists to prevent: a code landing in a class that produces a
+// *misleading* operator instruction. Asserting only "an error came back" would
+// have let 131049 (pacing) and 131051 (our payload bug) masquerade as
+// "recipient is not on WhatsApp" indefinitely.
+func TestErrorClasses_AreMutuallyExclusive(t *testing.T) {
+	t.Parallel()
+
+	cases := map[int]struct {
+		want    error
+		notWant []error
+	}{
+		131026: {
+			want:    whatsapp.ErrRecipientNotOnWhatsApp,
+			notWant: []error{whatsapp.ErrRateLimited, whatsapp.ErrUnsupportedMessage},
+		},
+		131049: {
+			want:    whatsapp.ErrRateLimited,
+			notWant: []error{whatsapp.ErrRecipientNotOnWhatsApp, whatsapp.ErrUnsupportedMessage},
+		},
+		131051: {
+			want:    whatsapp.ErrUnsupportedMessage,
+			notWant: []error{whatsapp.ErrRecipientNotOnWhatsApp, whatsapp.ErrRateLimited},
+		},
+		131047: {
+			want:    whatsapp.ErrSessionWindowClosed,
+			notWant: []error{whatsapp.ErrRecipientNotOnWhatsApp, whatsapp.ErrRateLimited},
+		},
+		132015: {
+			want:    whatsapp.ErrTemplateUnavailable,
+			notWant: []error{whatsapp.ErrRecipientNotOnWhatsApp, whatsapp.ErrUnsupportedMessage},
+		},
+	}
+
+	for code, tc := range cases {
+		t.Run(strconv.Itoa(code), func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			fake := newFakeGraph(t, http.StatusBadRequest,
+				fmt.Sprintf(`{"error":{"message":"(#%d) something","type":"OAuthException","code":%d,`+
+					`"error_data":{"messaging_product":"whatsapp","details":"detail"},`+
+					`"fbtrace_id":"Ax"}}`, code, code))
+			client := newTestClient(t, fake)
+
+			_, err := client.SendTemplate(context.Background(), &whatsapp.TemplateMessage{
+				To: "+15551234567", Template: "solidping_alert",
+			})
+			r.ErrorIs(err, tc.want)
+
+			for _, other := range tc.notWant {
+				r.NotErrorIs(err, other, "code %d must not be classified as %v", code, other)
+			}
+
+			var apiErr *whatsapp.APIError
+			r.ErrorAs(err, &apiErr)
+			r.Equal(code, apiErr.Code)
+			r.Equal("OAuthException", apiErr.Type)
+		})
+	}
 }

@@ -20,6 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useTranslation } from "react-i18next";
 import { channelTypeLabel, failureReasonLabel } from "@/lib/channel-labels";
 
 export const Route = createFileRoute("/orgs/$org/me/notifications")({
@@ -44,6 +45,7 @@ function statusVariant(
 }
 
 function MyNotificationsPage() {
+  const { t } = useTranslation("common");
   const { org } = Route.useParams();
   const { data: rows, isLoading } = useMyNotifications(org, { limit: 100 });
 
@@ -156,12 +158,12 @@ function MyNotificationsPage() {
                           className="mt-1 text-xs text-muted-foreground break-words"
                           data-testid={`notification-reason-${row.uid}`}
                         >
-                          {failureReasonLabel(row.skipReason) || row.error}
+                          {failureReasonLabel(t, row.skipReason) || row.error}
                         </p>
                       )}
                     </TableCell>
                     <TableCell className="text-sm">
-                      {channelTypeLabel(row.channelType)}
+                      {channelTypeLabel(t, row.channelType)}
                     </TableCell>
                   </TableRow>
                 ))}

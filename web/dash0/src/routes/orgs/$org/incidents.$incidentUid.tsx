@@ -1190,6 +1190,7 @@ function NotificationsCard({
   org: string;
   incidentUid: string;
 }) {
+  const { t } = useTranslation("common");
   const navigate = useNavigate();
   const { data: rows, isLoading } = useIncidentNotifications(org, incidentUid);
 
@@ -1275,7 +1276,7 @@ function NotificationsCard({
                   <TableCell className="text-sm text-muted-foreground">
                     {sourceLabel(row.source, row.repeatIndex)}
                   </TableCell>
-                  <TableCell className="text-sm">{channelTypeLabel(row.channelType)}</TableCell>
+                  <TableCell className="text-sm">{channelTypeLabel(t, row.channelType)}</TableCell>
                   {hasErrors && (
                     <TableCell
                       className="text-sm text-destructive max-w-[200px] truncate"
