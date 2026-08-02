@@ -28,7 +28,8 @@ func TestServeRootLLMsTxt(t *testing.T) {
 
 	r.Equal(http.StatusOK, resp.StatusCode)
 	r.Contains(resp.Header.Get("Content-Type"), "text/plain")
-	r.True(strings.HasPrefix(w.Body.String(), "# SolidPing"), "body should start with the docs title, got: %.80s", w.Body.String())
+	r.True(strings.HasPrefix(w.Body.String(), "# SolidPing"),
+		"body should start with the docs title, got: %.80s", w.Body.String())
 }
 
 func TestServeRootLLMsFullTxt(t *testing.T) {
@@ -46,7 +47,8 @@ func TestServeRootLLMsFullTxt(t *testing.T) {
 
 	r.Equal(http.StatusOK, resp.StatusCode)
 	r.Contains(resp.Header.Get("Content-Type"), "text/plain")
-	r.True(strings.HasPrefix(w.Body.String(), "# SolidPing"), "body should start with the docs title, got: %.80s", w.Body.String())
+	r.True(strings.HasPrefix(w.Body.String(), "# SolidPing"),
+		"body should start with the docs title, got: %.80s", w.Body.String())
 }
 
 // TestServeDocsLLMsTxtStillWorks verifies /docs/llms.txt keeps working
@@ -66,7 +68,8 @@ func TestServeDocsLLMsTxtStillWorks(t *testing.T) {
 
 	r.Equal(http.StatusOK, resp.StatusCode)
 	r.Contains(resp.Header.Get("Content-Type"), "text/plain")
-	r.True(strings.HasPrefix(w.Body.String(), "# SolidPing"), "body should start with the docs title, got: %.80s", w.Body.String())
+	r.True(strings.HasPrefix(w.Body.String(), "# SolidPing"),
+		"body should start with the docs title, got: %.80s", w.Body.String())
 }
 
 // TestServeRootLLMsTxtMissingFile404s asserts a missing root docs file 404s
