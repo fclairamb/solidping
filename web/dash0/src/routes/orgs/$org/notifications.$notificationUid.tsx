@@ -30,6 +30,7 @@ import {
   notificationStatusVariant,
   sourceLabel,
 } from "@/lib/notifications";
+import { channelTypeLabel, failureReasonLabel } from "@/lib/channel-labels";
 
 export const Route = createFileRoute(
   "/orgs/$org/notifications/$notificationUid",
@@ -337,9 +338,7 @@ function NotificationDetailPage() {
           {data.status}
         </Badge>
         {data.channelType && data.channelType !== "none" && (
-          <Badge variant="outline" className="capitalize">
-            {data.channelType}
-          </Badge>
+          <Badge variant="outline">{channelTypeLabel(data.channelType)}</Badge>
         )}
         <code className="font-mono text-sm text-muted-foreground">
           {data.eventType}
@@ -412,7 +411,7 @@ function NotificationDetailPage() {
           {data.skipReason && (
             <div className="flex flex-wrap gap-x-2">
               <span className="text-muted-foreground">Skip reason:</span>
-              <span>{data.skipReason}</span>
+              <span>{failureReasonLabel(data.skipReason)}</span>
             </div>
           )}
         </CardContent>

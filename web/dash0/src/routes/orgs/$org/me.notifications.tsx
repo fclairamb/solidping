@@ -20,6 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { channelTypeLabel, failureReasonLabel } from "@/lib/channel-labels";
 
 export const Route = createFileRoute("/orgs/$org/me/notifications")({
   component: MyNotificationsPage,
@@ -145,9 +146,22 @@ function MyNotificationsPage() {
                       >
                         {row.status}
                       </Badge>
+                      {/*
+                        Why a delivery failed matters more than that it failed:
+                        "recipient not on WhatsApp" is a user action, a paused
+                        template is an admin action.
+                      */}
+                      {(row.skipReason || row.error) && (
+                        <p
+                          className="mt-1 text-xs text-muted-foreground break-words"
+                          data-testid={`notification-reason-${row.uid}`}
+                        >
+                          {failureReasonLabel(row.skipReason) || row.error}
+                        </p>
+                      )}
                     </TableCell>
-                    <TableCell className="text-sm capitalize">
-                      {row.channelType}
+                    <TableCell className="text-sm">
+                      {channelTypeLabel(row.channelType)}
                     </TableCell>
                   </TableRow>
                 ))}

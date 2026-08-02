@@ -135,6 +135,22 @@
       "verified": "Numéro de téléphone vérifié",
       "sendFailed": "Échec de l’envoi du code",
       "incorrectCode": "Code incorrect"
+    },
+    "whatsapp": {
+      "unverifiedBadge": "Non vérifié — vérifiez pour recevoir les alertes WhatsApp",
+      "afterAddHint": "Après l’ajout, vérifiez le numéro sur WhatsApp pour commencer à recevoir les alertes. La vérification vaut aussi consentement à recevoir des messages professionnels.",
+      "invalidNumber": "Saisissez le numéro au format international E.164, par ex. +33612345678",
+      "verify": {
+        "sendCode": "Envoyer le code",
+        "resend": "Renvoyer",
+        "confirm": "Confirmer",
+        "codeSent": "Code de vérification envoyé",
+        "sendFailed": "Échec de l’envoi du code",
+        "incorrectCode": "Code incorrect",
+        "dialogTitle": "Vérifier le numéro WhatsApp",
+        "dialogDescription": "Nous enverrons un code à 6 chiffres au {{phone}} sur WhatsApp. Saisissez-le ci-dessous pour confirmer que ce numéro peut recevoir les alertes WhatsApp.",
+        "verified": "Numéro de téléphone vérifié"
+      }
     }
   }
 }

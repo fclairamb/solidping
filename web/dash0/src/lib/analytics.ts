@@ -28,9 +28,19 @@ export interface PostHogPublicConfig {
   host?: string;
 }
 
+/**
+ * Browser-safe WhatsApp capability flag, as returned by GET /api/v1/config.
+ * A single resolved boolean — no credential, phone-number id or template name
+ * is ever exposed to the browser.
+ */
+export interface WhatsAppPublicConfig {
+  enabled: boolean;
+}
+
 /** The public config document. Extra keys are ignored. */
 export interface PublicConfig {
   posthog?: PostHogPublicConfig;
+  whatsapp?: WhatsAppPublicConfig;
 }
 
 /**

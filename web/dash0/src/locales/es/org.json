@@ -34,7 +34,8 @@
     "customDomains": "Dominios personalizados",
     "unlimited": "Ilimitado",
     "upgrade": "Mejorar plan",
-    "loadError": "No se pudo cargar el uso."
+    "loadError": "No se pudo cargar el uso.",
+    "whatsappThisMonth": "Mensajes de WhatsApp este mes"
   },
   "ai": {
     "title": "Asistentes de IA",

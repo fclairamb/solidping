@@ -126,6 +126,17 @@ function UsagePage() {
                 limit={data.limits.maxCustomDomains}
                 unlimitedLabel={t("usage.unlimited")}
               />
+              {/*
+                WhatsApp is a consumption counter rather than a live resource
+                count: it resets at the start of each UTC month and only ever
+                goes up within one.
+              */}
+              <UsageRow
+                label={t("usage.whatsappThisMonth")}
+                current={data.usage?.whatsappThisMonth ?? 0}
+                limit={data.limits.maxWhatsappPerMonth}
+                unlimitedLabel={t("usage.unlimited")}
+              />
             </div>
             {data.upgradeUrl && (
               <div className="flex justify-end pt-2">

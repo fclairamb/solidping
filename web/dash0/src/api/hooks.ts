@@ -4362,6 +4362,8 @@ export interface EntitlementsLimits {
   maxDeportedAgents?: number | null;
   /** Cap on status pages served on a customer-owned domain. null = unlimited. */
   maxCustomDomains?: number | null;
+  /** Cap on outbound WhatsApp template messages per UTC month. null = unlimited. */
+  maxWhatsappPerMonth?: number | null;
 }
 
 export interface EntitlementsUsage {
@@ -4372,6 +4374,11 @@ export interface EntitlementsUsage {
   agents: number;
   /** Count of live status pages with a custom domain set. */
   customDomains: number;
+  /**
+   * Outbound WhatsApp template messages sent in the current UTC month. A
+   * persistent counter, not a live count — sent messages cannot be un-sent.
+   */
+  whatsappThisMonth: number;
 }
 
 export interface EntitlementsResponse {

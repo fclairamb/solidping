@@ -34,7 +34,8 @@
     "customDomains": "Benutzerdefinierte Domains",
     "unlimited": "Unbegrenzt",
     "upgrade": "Upgrade",
-    "loadError": "Nutzung konnte nicht geladen werden."
+    "loadError": "Nutzung konnte nicht geladen werden.",
+    "whatsappThisMonth": "WhatsApp-Nachrichten diesen Monat"
   },
   "ai": {
     "title": "KI-Assistenten",

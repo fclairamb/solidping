@@ -37,7 +37,8 @@
     "customDomains": "Custom domains",
     "unlimited": "Unlimited",
     "upgrade": "Upgrade",
-    "loadError": "Could not load usage."
+    "loadError": "Could not load usage.",
+    "whatsappThisMonth": "WhatsApp messages this month"
   },
   "ai": {
     "title": "AI assistants",
