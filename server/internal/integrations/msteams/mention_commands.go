@@ -272,7 +272,7 @@ func (h *Handler) handleIncidentsCommand(ctx context.Context, activity *Activity
 		filter.CheckUIDs = []string{check.UID}
 	}
 
-	incidentsList, err := h.svc.db.ListIncidents(ctx, filter)
+	incidentsList, _, err := h.svc.db.ListIncidents(ctx, filter)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to list incidents for Teams command", "error", err)
 

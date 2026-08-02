@@ -301,7 +301,9 @@ type Service interface {
 	// FindRecentlyResolvedIncidentByGroupUID returns the most recent resolved group incident
 	// for a group resolved after `since`. Used for the reopen-within-cooldown path.
 	FindRecentlyResolvedIncidentByGroupUID(ctx context.Context, groupUID string, since time.Time) (*models.Incident, error)
-	ListIncidents(ctx context.Context, filter *models.ListIncidentsFilter) ([]*models.Incident, error)
+	// ListIncidents returns incidents matching filter plus the total count of
+	// matching rows ignoring Limit/cursor (mirrors ListChecks).
+	ListIncidents(ctx context.Context, filter *models.ListIncidentsFilter) ([]*models.Incident, int64, error)
 	UpdateIncident(ctx context.Context, uid string, update *models.IncidentUpdate) error
 	CountActiveIncidentsByCheckUID(ctx context.Context, checkUID string) (int, error)
 	// ListExpiredSnoozedIncidents returns active incidents whose snoozed_until <= now.

@@ -349,7 +349,7 @@ func (h *Handler) handleIncidentsCommand(ctx context.Context, event *Event, cmd 
 	}
 
 	// List incidents directly from DB
-	incidentsList, err := h.svc.db.ListIncidents(ctx, filter)
+	incidentsList, _, err := h.svc.db.ListIncidents(ctx, filter)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to list incidents", "error", err)
 		return h.sendMentionError(ctx, event, "Failed to list incidents.")

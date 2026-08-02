@@ -2152,7 +2152,7 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 // resolveActiveIncidentsForDelete resolves every active incident on a check
 // about to be deleted, so no incident outlives the check it points at.
 func (s *Service) resolveActiveIncidentsForDelete(ctx context.Context, orgUID, checkUID string) error {
-	incidents, err := s.db.ListIncidents(ctx, &models.ListIncidentsFilter{
+	incidents, _, err := s.db.ListIncidents(ctx, &models.ListIncidentsFilter{
 		OrganizationUID: orgUID,
 		CheckUIDs:       []string{checkUID},
 		States:          []models.IncidentState{models.IncidentStateActive},

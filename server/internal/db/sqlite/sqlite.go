@@ -2708,14 +2708,13 @@ func (s *Service) CountFailingIncidentMembers(ctx context.Context, incidentUID s
 	return count, err
 }
 
-func (s *Service) ListIncidents(ctx context.Context, filter *models.ListIncidentsFilter) ([]*models.Incident, error) {
-	var incidents []*models.Incident
-
-	query := s.db.NewSelect().
-		Model(&incidents).
+// applyIncidentsFilter applies every ListIncidentsFilter predicate except
+// cursor and limit, so the list query and the COUNT query built from the
+// same filter can never drift apart.
+func applyIncidentsFilter(query *bun.SelectQuery, filter *models.ListIncidentsFilter) *bun.SelectQuery {
+	query = query.
 		Where("organization_uid = ?", filter.OrganizationUID).
-		Where("deleted_at IS NULL").
-		Order("started_at DESC")
+		Where("deleted_at IS NULL")
 
 	if len(filter.CheckUIDs) > 0 {
 		query = query.Where("check_uid IN (?)", bun.List(filter.CheckUIDs))
@@ -2765,6 +2764,21 @@ func (s *Service) ListIncidents(ctx context.Context, filter *models.ListIncident
 		query = query.Where("caused_by_incident_uid = ?", filter.CausedByUID)
 	}
 
+	return query
+}
+
+func (s *Service) ListIncidents(
+	ctx context.Context, filter *models.ListIncidentsFilter,
+) ([]*models.Incident, int64, error) {
+	var incidents []*models.Incident
+
+	query := applyIncidentsFilter(
+		s.db.NewSelect().Model(&incidents).Order("started_at DESC"),
+		filter,
+	)
+
+	countQuery := applyIncidentsFilter(s.db.NewSelect().Model((*models.Incident)(nil)), filter)
+
 	if filter.CursorTimestamp != nil {
 		if filter.CursorUID != nil {
 			query = query.Where("(started_at < ? OR (started_at = ? AND uid < ?))",
@@ -2778,9 +2792,14 @@ func (s *Service) ListIncidents(ctx context.Context, filter *models.ListIncident
 		query = query.Limit(filter.Limit)
 	}
 
-	err := query.Scan(ctx)
+	total, err := countQuery.Count(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
 
-	return incidents, err
+	err = query.Scan(ctx)
+
+	return incidents, int64(total), err
 }
 
 func (s *Service) UpdateIncident(ctx context.Context, uid string, update *models.IncidentUpdate) error {
