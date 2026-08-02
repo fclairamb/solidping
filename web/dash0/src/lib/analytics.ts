@@ -145,7 +145,9 @@ export async function initAnalytics(config: PublicConfig | null | undefined): Pr
   const settings = config!.posthog!;
 
   if (!loading) {
-    loading = import("posthog-js")
+    // Routed through ./posthog-loader so the emitted chunk carries a
+    // recognizable "posthog" filename that tests can assert on.
+    loading = import("./posthog-loader")
       .then((mod) => {
         const posthog = (mod.default ?? mod) as unknown as PostHogLike;
         posthog.init(settings.projectApiKey!.trim(), {

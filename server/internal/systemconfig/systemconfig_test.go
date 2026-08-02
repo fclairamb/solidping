@@ -588,3 +588,130 @@ func TestKnownEnvVars(t *testing.T) {
 	r.Contains(set, "SP_BASE_URL")
 	r.Contains(set, "SP_SLACK_APP_TOKEN")
 }
+
+// TestKnownPostHogKeys pins the canonical posthog.* parameter-key strings and
+// their secret classification (spec 2026-08-02-08). The dashboard Analytics
+// page (web/dash0/src/routes/orgs/$org/server.analytics.tsx) writes these
+// literal keys; if either side drifts, saving from the UI silently stops
+// applying. Keep these in sync with the KEY_* constants in that file.
+//
+// The secret split is load-bearing for the privacy guarantee: the project key
+// is deliberately NOT secret (it is shipped to the browser), while the personal
+// key MUST be secret so it never leaves the process.
+func TestKnownPostHogKeys(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.Equal("posthog.enabled", string(KeyPostHogEnabled))
+	r.Equal("posthog.project_api_key", string(KeyPostHogProjectAPIKey))
+	r.Equal("posthog.host", string(KeyPostHogHost))
+	r.Equal("posthog.personal_api_key", string(KeyPostHogPersonalAPIKey))
+
+	known := getKnownParameters()
+	byKey := make(map[ParameterKey]ParameterDefinition, len(known))
+	for _, def := range known {
+		byKey[def.Key] = def
+	}
+
+	expectedEnv := map[ParameterKey]string{
+		KeyPostHogEnabled:        "SP_POSTHOG_ENABLED",
+		KeyPostHogProjectAPIKey:  "SP_POSTHOG_PROJECT_API_KEY",
+		KeyPostHogHost:           "SP_POSTHOG_HOST",
+		KeyPostHogPersonalAPIKey: "SP_POSTHOG_PERSONAL_API_KEY",
+	}
+
+	for key, envVar := range expectedEnv {
+		def, ok := byKey[key]
+		r.Truef(ok, "expected %q to be a known parameter", key)
+		r.NotNil(def.ApplyFunc)
+		r.Equalf(envVar, def.EnvVar, "unexpected env var for %q", key)
+	}
+
+	r.False(byKey[KeyPostHogEnabled].Secret, "posthog.enabled must not be secret")
+	r.False(byKey[KeyPostHogHost].Secret, "posthog.host must not be secret")
+	r.False(byKey[KeyPostHogProjectAPIKey].Secret,
+		"posthog.project_api_key is the public browser key and must not be secret")
+	r.True(byKey[KeyPostHogPersonalAPIKey].Secret,
+		"posthog.personal_api_key must be secret — it must never leave the process")
+}
+
+// TestPostHogEnablementRule proves the single enablement rule shared by the
+// backend, GET /api/v1/config and the dashboard: the kill switch never enables
+// anything on its own, and a key alone never overrides the kill switch.
+func TestPostHogEnablementRule(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.False(config.PostHogConfig{}.Active(), "zero value must be off")
+	r.False(config.PostHogConfig{Enabled: true}.Active(),
+		"enabled with no key must be off — this is the self-hosted default")
+	r.False(config.PostHogConfig{Enabled: true, ProjectAPIKey: "  "}.Active(),
+		"whitespace-only key must be off")
+	r.False(config.PostHogConfig{ProjectAPIKey: "phc_k"}.Active(),
+		"key with the kill switch off must be off")
+	r.True(config.PostHogConfig{Enabled: true, ProjectAPIKey: "phc_k"}.Active())
+}
+
+// TestInitializeAppliesPostHogParams verifies the env > db > default precedence
+// for the posthog.* keys, including the negative case: with nothing set
+// anywhere, the resolved config must be inactive.
+func TestInitializeAppliesPostHogParams(t *testing.T) {
+	ctx := context.Background()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	require.NoError(t, err)
+
+	defer func() { _ = dbSvc.Close() }()
+	require.NoError(t, dbSvc.Initialize(ctx))
+
+	t.Run("defaults are inactive", func(t *testing.T) {
+		r := require.New(t)
+
+		cfg := &config.Config{PostHog: config.PostHogConfig{
+			Enabled: true, Host: config.DefaultPostHogHost,
+		}}
+		r.NoError(NewService(dbSvc, cfg).Initialize(ctx))
+		r.False(cfg.PostHog.Active(), "an untouched install must resolve to analytics off")
+	})
+
+	t.Run("db value activates", func(t *testing.T) {
+		r := require.New(t)
+
+		r.NoError(dbSvc.SetSystemParameter(ctx, string(KeyPostHogProjectAPIKey), "phc_from_db", false))
+
+		cfg := &config.Config{PostHog: config.PostHogConfig{
+			Enabled: true, Host: config.DefaultPostHogHost,
+		}}
+		r.NoError(NewService(dbSvc, cfg).Initialize(ctx))
+		r.Equal("phc_from_db", cfg.PostHog.ProjectAPIKey)
+		r.True(cfg.PostHog.Active())
+	})
+
+	t.Run("env beats db", func(t *testing.T) {
+		r := require.New(t)
+
+		t.Setenv("SP_POSTHOG_PROJECT_API_KEY", "phc_from_env")
+
+		cfg := &config.Config{PostHog: config.PostHogConfig{
+			Enabled: true, Host: config.DefaultPostHogHost,
+		}}
+		r.NoError(NewService(dbSvc, cfg).Initialize(ctx))
+		r.Equal("phc_from_env", cfg.PostHog.ProjectAPIKey)
+		r.Contains(EnvOverriddenKeys(), string(KeyPostHogProjectAPIKey))
+	})
+
+	t.Run("kill switch from db disables a configured key", func(t *testing.T) {
+		r := require.New(t)
+
+		r.NoError(dbSvc.SetSystemParameter(ctx, string(KeyPostHogEnabled), false, false))
+
+		cfg := &config.Config{PostHog: config.PostHogConfig{
+			Enabled: true, Host: config.DefaultPostHogHost, ProjectAPIKey: "phc_k",
+		}}
+		r.NoError(NewService(dbSvc, cfg).Initialize(ctx))
+		r.False(cfg.PostHog.Enabled)
+		r.False(cfg.PostHog.Active())
+	})
+}
