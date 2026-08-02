@@ -326,6 +326,48 @@ export function useChecks(
   });
 }
 
+/**
+ * Org-wide aggregate check counters from GET /orgs/:org/checks/stats.
+ *
+ * Every field is computed server-side with a single SQL aggregation, so —
+ * unlike counting a page of `useChecks` — it stays correct past the list
+ * endpoint's 100-row page clamp (GitHub issue #172). Scope is non-deleted,
+ * non-internal checks, i.e. exactly what the checks list shows by default.
+ *
+ * `total`, `byStatus`, `down` and `hardDown` span enabled AND disabled checks;
+ * `enabled`/`disabled` partition the same set.
+ */
+export interface CheckStats {
+  total: number;
+  enabled: number;
+  disabled: number;
+  /** Every known status key is always present (0 when empty). */
+  byStatus: Record<string, number>;
+  /** status in (down, error, timeout) — the "currently down" KPI. */
+  down: number;
+  /** status in (down, error) — down excluding timeouts. */
+  hardDown: number;
+}
+
+/**
+ * Fetches the org's aggregate check counters. The endpoint is cached
+ * server-side for ~1 minute, so polling it faster than that is wasted work —
+ * callers should pass a refetchInterval no shorter than the other dashboard
+ * queries use.
+ */
+export function useCheckStats(
+  org: string,
+  options?: { refetchInterval?: number }
+) {
+  return useQuery({
+    queryKey: ["check-stats", org],
+    queryFn: async () =>
+      apiFetch<CheckStats>(`/api/v1/orgs/${org}/checks/stats`),
+    enabled: !!org,
+    refetchInterval: options?.refetchInterval,
+  });
+}
+
 export function useInfiniteChecks(
   org: string,
   options?: {

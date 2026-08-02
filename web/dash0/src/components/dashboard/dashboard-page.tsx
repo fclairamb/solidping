@@ -1,6 +1,8 @@
-// TODO(perf): switch to GET /api/v1/orgs/{org}/dashboard once a backend
-// aggregate endpoint exists. For orgs > 1000 checks this fetches the full
-// list just to count — fine for now (typical org has <100 checks).
+// Counters on this page come from GET /orgs/{org}/checks/stats (useCheckStats),
+// never from the checks list: the list endpoint clamps a page to 100 rows, so
+// counting `checksQuery.data` was silently wrong for every org with more checks
+// than that (GitHub issue #172). The checks query below is still issued, but
+// only to render the "Checks at a glance" ROWS — never to derive a number.
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
@@ -15,11 +17,13 @@ import {
   RefreshCw,
 } from "lucide-react";
 import {
+  useCheckStats,
   useChecks,
   useEvents,
   useIncidents,
   useResults,
   type Check,
+  type CheckStats,
   type Event,
   type IncidentDetail,
   type OrgResult,
@@ -61,6 +65,21 @@ const EVENT_POLL_MS = 60_000;
 // Max rows in the "Checks at a glance" card. The footer always links to the
 // full /checks list so a capped card is never mistaken for the whole fleet.
 const GLANCE_LIMIT = 10;
+// Page size requested for the glance card's source list. The checks endpoint
+// clamps `limit` to 100 server-side, so asking for more is a lie; the card is
+// explicitly a sample and the counters come from the stats endpoint.
+const GLANCE_PAGE_LIMIT = 100;
+
+// Neutral snapshot used while the stats query is pending or has failed. Never
+// a source of truth — just keeps the tiles from rendering `undefined`.
+const EMPTY_CHECK_STATS: CheckStats = {
+  total: 0,
+  enabled: 0,
+  disabled: 0,
+  byStatus: {},
+  down: 0,
+  hardDown: 0,
+};
 // Hours rendered by each row's 24h uptime strip.
 const UPTIME_HOURS = 24;
 
@@ -91,13 +110,11 @@ function effectiveStatus(check: Check): string | undefined {
   return check.status ?? check.lastResult?.status;
 }
 
-function isDownStatus(status?: string): boolean {
-  return status === "down" || status === "error" || status === "timeout";
-}
-
-function isHardDownStatus(status?: string): boolean {
-  return status === "down" || status === "error";
-}
+// The down / hard-down predicates that used to live here moved server-side to
+// server/internal/handlers/checks/stats.go (isDownWireStatus /
+// isHardDownWireStatus), where they are applied to the whole fleet instead of
+// one page. Keeping a second copy here would let the two drift apart, which is
+// exactly the failure mode the stats endpoint exists to prevent.
 
 function isAttentionStatus(status?: string): boolean {
   return !!status && status !== "up" && status !== "created";
@@ -219,9 +236,18 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   const incidentsLive = useScopeLive({ entity: "incidents" });
   const eventsLive = useScopeLive({ entity: "events" });
 
+  // Rows for the glance card only. `limit` matches the backend's hard clamp
+  // rather than pretending to ask for more: past that the card is a sample of
+  // the fleet, and its footer links to the full list. No counter is derived
+  // from this query — see statsQuery below.
   const checksQuery = useChecks(org, {
     with: "last_result,last_status_change",
-    limit: 1000,
+    limit: GLANCE_PAGE_LIMIT,
+  });
+  // Every KPI counter on this page. Server-side aggregate, so it is correct
+  // regardless of how many checks the org has.
+  const statsQuery = useCheckStats(org, {
+    refetchInterval: stretchWhileLive(CHECK_POLL_MS, checksLive),
   });
   const incidentsQuery = useIncidents(org, {
     state: "active",
@@ -273,18 +299,24 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
 
   const isInitialLoading =
     checksQuery.isPending ||
+    statsQuery.isPending ||
     incidentsQuery.isPending ||
     resultsQuery.isPending ||
     eventsQuery.isPending;
 
-  const isEmptyOrg = !checksQuery.isPending && checks.length === 0;
+  // Every counter below reads the server-side aggregate. `stats` falls back to
+  // an all-zero snapshot only while the query is pending or has errored — the
+  // page renders skeletons in the pending case, and a failed stats query is
+  // better shown as zeros than as a wrong page-derived number.
+  const stats: CheckStats = statsQuery.data ?? EMPTY_CHECK_STATS;
 
-  const enabledCount = checks.filter((c) => c.enabled !== false).length;
-  const disabledCount = checks.length - enabledCount;
-  const downCount = checks.filter((c) => isDownStatus(effectiveStatus(c))).length;
-  const hardDownCount = checks.filter((c) =>
-    isHardDownStatus(effectiveStatus(c)),
-  ).length;
+  const isEmptyOrg = !statsQuery.isPending && stats.total === 0;
+
+  const enabledCount = stats.enabled;
+  const disabledCount = stats.disabled;
+  const downCount = stats.down;
+  const hardDownCount = stats.hardDown;
+  const totalChecksCount = stats.total;
   const timeoutOnlyCount = downCount - hardDownCount;
   const incidentsCount = incidents.length;
   const availabilityPct = weightedAvailability(results);
@@ -297,6 +329,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
 
   const refreshAll = () => {
     checksQuery.refetch();
+    statsQuery.refetch();
     incidentsQuery.refetch();
     resultsQuery.refetch();
     hourlyResultsQuery.refetch();
@@ -305,6 +338,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
 
   const isRefetching =
     checksQuery.isRefetching ||
+    statsQuery.isRefetching ||
     incidentsQuery.isRefetching ||
     resultsQuery.isRefetching ||
     hourlyResultsQuery.isRefetching ||
@@ -312,6 +346,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
 
   const latestUpdate = Math.max(
     checksQuery.dataUpdatedAt || 0,
+    statsQuery.dataUpdatedAt || 0,
     incidentsQuery.dataUpdatedAt || 0,
     resultsQuery.dataUpdatedAt || 0,
     hourlyResultsQuery.dataUpdatedAt || 0,
@@ -360,13 +395,13 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
         <EmptyStateOnboarding org={org} />
       ) : (
         <>
-          <FirstResultCelebration org={org} checks={checks} />
+          <FirstResultCelebration org={org} checks={checks} totalChecks={totalChecksCount} />
           <OverallStatusBanner
             allGreen={downCount === 0 && incidentsCount === 0}
             hardDownCount={hardDownCount}
             timeoutOnlyCount={timeoutOnlyCount}
             incidentsCount={incidentsCount}
-            checksCount={checks.length}
+            checksCount={totalChecksCount}
             availabilityPct={availabilityPct}
           />
 
@@ -444,7 +479,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
           <ChecksGlanceList
             org={org}
             checks={glanceChecks}
-            totalCount={checks.length}
+            totalCount={totalChecksCount}
             uptimeByCheck={uptimeByCheck}
             isError={!!checksQuery.error}
             onRetry={() => checksQuery.refetch()}
@@ -470,7 +505,16 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
 // first check has a result. Persisted in localStorage so it doesn't re-fire
 // across reloads. Quiet on subsequent checks — this is an activation moment,
 // not a per-check toast.
-function FirstResultCelebration({ org, checks }: { org: string; checks: Check[] }) {
+function FirstResultCelebration({
+  org,
+  checks,
+  totalChecks,
+}: {
+  org: string;
+  checks: Check[];
+  /** Org-wide check count from the stats endpoint, not from `checks.length`. */
+  totalChecks: number;
+}) {
   const { t } = useTranslation("dashboard");
   const storageKey = `solidping_celebrated_first_result_${org}`;
   const [dismissed, setDismissed] = useState<boolean>(() => {
@@ -481,7 +525,7 @@ function FirstResultCelebration({ org, checks }: { org: string; checks: Check[] 
   // Trigger only when there is a single check and it has at least one result
   // (lastResult is populated by the dashboard's checks-with-last-result query).
   const trigger =
-    !dismissed && checks.length === 1 && checks[0]?.lastResult !== undefined;
+    !dismissed && totalChecks === 1 && checks[0]?.lastResult !== undefined;
   const checkName = checks[0]?.name || "";
 
   useEffect(() => {
