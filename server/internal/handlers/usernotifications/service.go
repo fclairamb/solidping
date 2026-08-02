@@ -7,11 +7,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/integrations/whatsapp"
 	"github.com/fclairamb/solidping/server/internal/webpush"
 )
 
@@ -26,6 +29,9 @@ var (
 	ErrNoSlackChannelForOrg     = errors.New("no Slack channel configured for this organization")
 	ErrSlackClientNotConfigured = errors.New("slack client not configured")
 	ErrWebPushNotConfigured     = errors.New("web push not configured on this server")
+	// ErrInvalidWhatsAppNumber is returned when a WhatsApp contact value is not
+	// a syntactically valid E.164 number.
+	ErrInvalidWhatsAppNumber = errors.New("WhatsApp number must be in E.164 format (e.g. +15551234567)")
 )
 
 // ContactResponse is the API representation of a UserContact.
@@ -81,12 +87,38 @@ type Service struct {
 	creds credentials.Service
 	// clock is injectable for deterministic verification-code expiry in tests.
 	clock func() time.Time
+	// whatsAppCfg is the instance-level WhatsApp configuration used to build
+	// the production verification-code sender. Zero value = feature off.
+	whatsAppCfg config.WhatsAppConfig
+	// whatsAppSender overrides the config-derived sender. Injected per service
+	// instance — deliberately NOT a package-level seam, so parallel tests can
+	// never race on it.
+	whatsAppSender WhatsAppCodeSender
+}
+
+// Option customizes a Service at construction.
+type Option func(*Service)
+
+// WithWhatsAppConfig supplies the instance WhatsApp configuration.
+func WithWhatsAppConfig(cfg config.WhatsAppConfig) Option {
+	return func(s *Service) { s.whatsAppCfg = cfg }
+}
+
+// WithWhatsAppSender injects an explicit WhatsApp verification-code sender,
+// taking precedence over the config-derived one.
+func WithWhatsAppSender(sender WhatsAppCodeSender) Option {
+	return func(s *Service) { s.whatsAppSender = sender }
 }
 
 // NewService builds a service. creds may be nil when the phone verification
 // flow is not exercised (e.g. unit tests of the route/contact CRUD paths).
-func NewService(dbService db.Service, creds credentials.Service) *Service {
-	return &Service{db: dbService, creds: creds, clock: time.Now}
+func NewService(dbService db.Service, creds credentials.Service, opts ...Option) *Service {
+	svc := &Service{db: dbService, creds: creds, clock: time.Now}
+	for _, opt := range opts {
+		opt(svc)
+	}
+
+	return svc
 }
 
 // now returns the service clock, defaulting to time.Now when unset.
@@ -206,6 +238,12 @@ func (s *Service) CreateContact(
 	}
 
 	position := len(existing)
+
+	// WhatsApp destinations must be E.164 — Meta rejects anything else, and a
+	// malformed number would otherwise sit in the list looking verifiable.
+	if req.Type == models.UserContactTypeWhatsApp && !whatsapp.ValidE164(strings.TrimSpace(req.Value)) {
+		return nil, ErrInvalidWhatsAppNumber
+	}
 
 	contact := models.NewUserContact(user.UID, orgUID, req.Type, req.Value, req.Label)
 

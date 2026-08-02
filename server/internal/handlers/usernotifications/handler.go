@@ -54,6 +54,8 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Notification route not found")
 	case errors.Is(err, ErrContactNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Notification contact not found")
+	case errors.Is(err, ErrInvalidWhatsAppNumber):
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	default:
 		return h.WriteInternalError(writer, err)
 	}
@@ -208,7 +210,7 @@ func (h *Handler) handleVerifyError(writer http.ResponseWriter, err error) error
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Notification contact not found")
 	case errors.Is(err, ErrOrgNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
-	case errors.Is(err, ErrNoProvider):
+	case errors.Is(err, ErrNoProvider), errors.Is(err, ErrNoWhatsAppProvider):
 		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, err.Error())
 	case errors.Is(err, ErrResendTooSoon), errors.Is(err, ErrTooManyAttempts):
 		return h.WriteError(writer, http.StatusTooManyRequests, base.ErrorCodeValidationError, err.Error())

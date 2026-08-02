@@ -30,8 +30,11 @@ const (
 // Verification errors.
 var (
 	// ErrNotAPhoneContact is returned when verification is requested for a
-	// non-phone contact type.
-	ErrNotAPhoneContact = errors.New("only phone contacts can be verified")
+	// contact type that has no code round-trip (email / web push / Slack).
+	ErrNotAPhoneContact = errors.New("only phone and WhatsApp contacts can be verified")
+	// ErrNoWhatsAppProvider is returned when a WhatsApp contact is verified on
+	// an instance that has no WhatsApp credentials configured.
+	ErrNoWhatsAppProvider = errors.New("WhatsApp is not configured on this instance")
 	// ErrAlreadyVerified is returned when a contact is already verified.
 	ErrAlreadyVerified = errors.New("contact is already verified")
 	// ErrNoProvider is returned when the org has no Twilio connection to send
@@ -62,8 +65,48 @@ var resendTracker = newResendLimiter()
 //nolint:gochecknoglobals // test seam for the outbound Twilio client.
 var newTwilioClient = twilio.NewClient
 
-// VerifyContact issues a fresh 6-digit code for a phone contact and sends it
-// via the org's default Twilio connection.
+// codeTransport delivers one verification code to one destination. Resolved
+// per contact type so the shared issue/confirm machinery below stays
+// channel-agnostic: only the transport is new for WhatsApp.
+type codeTransport func(ctx context.Context, to, code string) error
+
+// resolveCodeTransport picks the delivery transport for a contact type and
+// fails early when the provider it needs is unavailable — we must never stamp
+// a code we cannot deliver.
+func (s *Service) resolveCodeTransport(
+	ctx context.Context, orgUID, contactType string,
+) (codeTransport, error) {
+	switch contactType {
+	case models.UserContactTypePhone:
+		_, settings, err := twilioconn.ResolveDefault(ctx, s.db, s.creds, orgUID)
+		if err != nil {
+			if errors.Is(err, twilioconn.ErrNoTwilioConnection) {
+				return nil, ErrNoProvider
+			}
+
+			return nil, fmt.Errorf("resolve twilio connection: %w", err)
+		}
+
+		return func(ctx context.Context, to, code string) error {
+			return sendVerificationSMS(ctx, settings, to, code)
+		}, nil
+	case models.UserContactTypeWhatsApp:
+		sender, err := s.whatsAppCodeSender()
+		if err != nil {
+			return nil, err
+		}
+
+		return sender.SendVerificationCode, nil
+	default:
+		return nil, ErrNotAPhoneContact
+	}
+}
+
+// VerifyContact issues a fresh 6-digit code for a verifiable contact (phone or
+// WhatsApp) and sends it over that contact type's transport: an SMS via the
+// org's default Twilio connection, or the instance's WhatsApp authentication
+// template. Everything else — the code, its hash, the TTL, the resend limiter
+// — is shared.
 func (s *Service) VerifyContact(
 	ctx context.Context, orgSlug string, user *models.User, contactUID string,
 ) error {
@@ -77,7 +120,7 @@ func (s *Service) VerifyContact(
 		return err
 	}
 
-	if contact.Type != models.UserContactTypePhone {
+	if !models.ContactRequiresVerification(contact.Type) {
 		return ErrNotAPhoneContact
 	}
 
@@ -90,13 +133,9 @@ func (s *Service) VerifyContact(
 	}
 
 	// Resolve the provider first so we don't stamp a code we can't deliver.
-	_, settings, err := twilioconn.ResolveDefault(ctx, s.db, s.creds, orgUID)
+	send, err := s.resolveCodeTransport(ctx, orgUID, contact.Type)
 	if err != nil {
-		if errors.Is(err, twilioconn.ErrNoTwilioConnection) {
-			return ErrNoProvider
-		}
-
-		return fmt.Errorf("resolve twilio connection: %w", err)
+		return err
 	}
 
 	code, err := generateCode()
@@ -110,7 +149,7 @@ func (s *Service) VerifyContact(
 		return fmt.Errorf("store verification code: %w", setErr)
 	}
 
-	if sendErr := sendVerificationSMS(ctx, settings, contact.Value, code); sendErr != nil {
+	if sendErr := send(ctx, contact.Value, code); sendErr != nil {
 		return fmt.Errorf("send verification code: %w", sendErr)
 	}
 
@@ -132,7 +171,7 @@ func (s *Service) ConfirmVerify(
 		return err
 	}
 
-	if contact.Type != models.UserContactTypePhone {
+	if !models.ContactRequiresVerification(contact.Type) {
 		return ErrNotAPhoneContact
 	}
 

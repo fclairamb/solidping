@@ -972,7 +972,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgEscalation.DELETE("/:uid", escalationHandler.DeletePolicy)
 
 	// User notification routes (authentication required)
-	userNotifService := usernotifications.NewService(s.dbService, s.services.Credentials)
+	userNotifService := usernotifications.NewService(
+		s.dbService, s.services.Credentials,
+		// Instance-level WhatsApp credentials power the contact-verification
+		// authentication template. Off by default; NewService keeps the feature
+		// dark when the config is inactive.
+		usernotifications.WithWhatsAppConfig(s.config.WhatsApp),
+	)
 	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender)
 	slackAdapter := usernotifications.NewSlackDMSenderAdapter()
 	userNotifHandler := usernotifications.NewHandler(

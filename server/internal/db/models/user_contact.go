@@ -15,7 +15,30 @@ const (
 	UserContactTypePushover  = "pushover_user"
 	UserContactTypeNtfy      = "ntfy_topic"
 	UserContactTypeWebPush   = "webpush"
+	// UserContactTypeWhatsApp is a WhatsApp-reachable number. Deliberately
+	// DISTINCT from UserContactTypePhone even when the digits are identical:
+	// an SMS-verified number proves nothing about WhatsApp reachability, and
+	// the WhatsApp verification round-trip doubles as Meta's required record
+	// of the user's opt-in to receive business-initiated messages. Collapsing
+	// the two would silently reuse an SMS consent as a WhatsApp consent.
+	UserContactTypeWhatsApp = "whatsapp"
 )
+
+// VerifiableContactTypes are the contact types that require a code round-trip
+// before they may be paged. Email and web push are self-verifying (delivery
+// respectively subscription is the proof), so they are absent here.
+func VerifiableContactTypes() map[string]bool {
+	return map[string]bool{
+		UserContactTypePhone:    true,
+		UserContactTypeWhatsApp: true,
+	}
+}
+
+// ContactRequiresVerification reports whether a contact type must complete the
+// verification code round-trip before it can be used.
+func ContactRequiresVerification(contactType string) bool {
+	return VerifiableContactTypes()[contactType]
+}
 
 // UserContact is one addressable endpoint for a user (email, phone, Slack DM, …).
 // A single contact can belong to only one org — contacts are org-scoped so the
