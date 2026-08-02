@@ -102,14 +102,9 @@ func (h *Handler) CreateStatusPage(writer http.ResponseWriter, req *http.Request
 		return h.handleCreatePageError(writer, err)
 	}
 
-	// Product analytics (spec 2026-08-02-08). A page created already enabled +
-	// publicly visible (the default) is published on the spot; one created
-	// private or disabled emits nothing here and instead fires later, on the
-	// update that transitions it into the published state.
-	if page.Enabled && page.Visibility == visibilityPublic {
-		capturePagePublished(req.Context(), "", page.Visibility)
-	}
-
+	// No analytics capture here on purpose: status_page_published is emitted by
+	// Service.CreateStatusPage / Service.UpdateStatusPage, so the MCP tools go
+	// through the same code path (spec 2026-08-02-08).
 	return h.WriteJSON(writer, http.StatusCreated, page)
 }
 

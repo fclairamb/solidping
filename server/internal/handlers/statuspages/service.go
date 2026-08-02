@@ -533,6 +533,13 @@ func (s *Service) CreateStatusPage(
 		return StatusPageResponse{}, errCreate
 	}
 
+	// Product analytics (spec 2026-08-02-08). Captured at the SERVICE layer,
+	// not in the REST handler: the MCP create-status-page tool
+	// (internal/mcp/tools_statuspages.go) calls this method directly, so a
+	// handler-level capture would silently miss every MCP-created page. Same
+	// reasoning as the update path's capturePublishTransition.
+	capturePublishTransition(ctx, org.UID, nil, page)
+
 	page, err = s.applyCreateCustomDomain(ctx, org.UID, page, req)
 	if err != nil {
 		return StatusPageResponse{}, err

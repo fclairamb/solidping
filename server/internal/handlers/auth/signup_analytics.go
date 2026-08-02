@@ -11,6 +11,10 @@ import (
 // Signup method labels attached to the user_signed_up product event. These are
 // deliberately low-cardinality, non-identifying strings: the provider family,
 // never a tenant name, issuer URL, directory DN or email domain.
+//
+// SignupMethodSlack is exported because the Sign-in-with-Slack path lives in
+// internal/integrations/slack and must use the same label — a second literal
+// there could drift and split the metric in two.
 const (
 	signupMethodPassword  = "password"
 	signupMethodInvite    = "invite"
@@ -19,11 +23,15 @@ const (
 	signupMethodGitLab    = "gitlab"
 	signupMethodMicrosoft = "microsoft"
 	signupMethodDiscord   = "discord"
-	signupMethodSlack     = "slack"
+	SignupMethodSlack     = "slack"
 	signupMethodOIDC      = "oidc"
 	signupMethodSAML      = "saml"
 	signupMethodLDAP      = "ldap"
 )
+
+// signupMethodSlack is the package-internal alias, so the local call sites read
+// consistently with their siblings.
+const signupMethodSlack = SignupMethodSlack
 
 // createUserAndCapture inserts a new user row and records the user_signed_up
 // product event (spec 2026-08-02-08).

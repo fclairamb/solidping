@@ -44,13 +44,16 @@ func capturePagePublished(ctx context.Context, orgUID, visibility string) {
 	})
 }
 
-// capturePublishTransition fires status_page_published when an update moved the
+// capturePublishTransition fires status_page_published when a write moved the
 // page INTO the published state (enabled + public).
 //
 // SolidPing has no explicit "publish" action, so publishing is a state
 // transition. Firing only on the transition is what keeps the event honest: an
-// unrelated edit to an already-public page emits nothing, and a page created
-// public is counted once by the create path rather than twice.
+// unrelated edit to an already-public page emits nothing.
+//
+// Creation passes before=nil, which is never published, so a page created
+// already enabled + public counts exactly once and one created private counts
+// later, on the update that publishes it.
 func capturePublishTransition(ctx context.Context, orgUID string, before, after *models.StatusPage) {
 	if isPublished(after) && !isPublished(before) {
 		capturePagePublished(ctx, orgUID, after.Visibility)

@@ -55,11 +55,16 @@ func installRecorder(t *testing.T) *eventRecorder {
 
 func boolPtr(b bool) *bool { return &b }
 
-// TestStatusPagePublishedFiresOnlyOnTheTransition covers the publish-via-update
-// path (spec 2026-08-02-08). SolidPing has no explicit publish action, so
+// TestStatusPagePublishedFiresOnlyOnTheTransition covers both publish paths
+// (spec 2026-08-02-08). SolidPing has no explicit publish action, so
 // "published" is the transition into enabled + public. A page created private
 // must emit nothing at create time, exactly one event when it is later made
-// public, and nothing on any subsequent edit while it stays public.
+// public, and nothing on any subsequent edit while it stays public; a page
+// created already public counts once, at create.
+//
+// Both captures live in the SERVICE, not the handler, so the MCP status-page
+// tools (internal/mcp/tools_statuspages.go, which call the service directly)
+// are covered by the same code path this test exercises.
 func TestStatusPagePublishedFiresOnlyOnTheTransition(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -67,8 +72,7 @@ func TestStatusPagePublishedFiresOnlyOnTheTransition(t *testing.T) {
 	ctx, svc, org := setupStatusPagesTest(t)
 	rec := installRecorder(t)
 
-	// Created private: no publish event. (The create path lives in the handler,
-	// but the service-level state is what matters — assert it directly.)
+	// Created private: no publish event.
 	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{
 		Name:       "Private page",
 		Slug:       "private-page",
@@ -116,6 +120,18 @@ func TestStatusPagePublishedFiresOnlyOnTheTransition(t *testing.T) {
 	r.NoError(err)
 
 	r.Equal(2, countPublished(rec), "re-enabling a public page is a publish transition")
+
+	// A page created already enabled + public (the default) is published on the
+	// spot, by the service — which is what makes MCP-created pages count.
+	created, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{
+		Name: "Public page",
+		Slug: "public-page",
+	})
+	r.NoError(err)
+	r.True(created.Enabled)
+	r.Equal(visibilityPublic, created.Visibility)
+
+	r.Equal(3, countPublished(rec), "creating an enabled+public page emits exactly one publish event")
 }
 
 // countPublished counts status_page_published events seen so far.

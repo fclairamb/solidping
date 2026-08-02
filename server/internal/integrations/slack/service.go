@@ -13,7 +13,6 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -700,20 +699,11 @@ func (s *Service) createUserFromSlack(ctx context.Context, userInfo *OpenIDUserI
 		user.EmailVerifiedAt = &now
 	}
 
-	if err := s.db.CreateUser(ctx, user); err != nil {
+	// Routed through this package's account-creation chokepoint so the
+	// user_signed_up product event fires for Sign-in-with-Slack too.
+	if err := createUserAndCapture(ctx, s.db, user); err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
-
-	// Product analytics (spec 2026-08-02-08): Sign-in-with-Slack is a real
-	// signup path, so it emits user_signed_up like every other provider.
-	// Only the user UUID and the provider family travel — never the email,
-	// display name, avatar or Slack user id. No-op unless PostHog is
-	// configured.
-	analytics.Capture(ctx, analytics.Event{
-		Name:       analytics.EventUserSignedUp,
-		UserUID:    user.UID,
-		Properties: map[string]any{"signupMethod": "slack"},
-	})
 
 	slog.InfoContext(ctx, "Created new user from Slack",
 		"user_uid", user.UID,

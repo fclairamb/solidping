@@ -92,7 +92,9 @@ publishing is the state of being both enabled and publicly visible. The event
 fires when a page is created already in that state (the default), and when an
 existing private or disabled page *transitions* into it. It never fires on an
 unrelated edit to a page that is already public, so it is neither
-double-counted nor emitted on every save.
+double-counted nor emitted on every save. Both captures live in the status-page
+service rather than the REST layer, so pages created or published through the
+MCP tools count identically.
 
 Every event carries a **pseudonymous distinct id** built from UUIDs only:
 
