@@ -266,9 +266,12 @@ func (v *Verifier) fetchMetadata(ctx context.Context, metadataURL string) (*meta
 // serviceURL is the `serviceUrl` of the activity carried in the same request.
 // Bot Framework binds a token to the service URL it was minted for, so
 // checking it stops a token captured from one tenant's traffic being replayed
-// to make us call a different (attacker-controlled) connector endpoint. The
-// claim is optional in some token flavors; when absent, the check is skipped
-// rather than failing closed on a legitimate token shape.
+// to make us call a different (attacker-controlled) connector endpoint.
+//
+// The check is UNCONDITIONAL (Microsoft's verification requirement 7): a
+// missing claim, or an activity with no serviceUrl, is a rejection. Treating
+// either as "not applicable" would be fail-open, since the request body is
+// chosen by whoever replays the token.
 func (v *Verifier) VerifyToken(ctx context.Context, rawToken, serviceURL string) (*BotClaims, error) {
 	if v.AppID == "" {
 		return nil, ErrNotConfigured

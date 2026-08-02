@@ -241,3 +241,95 @@ func TestLinkTenant_HonorsSingleTenantPin(t *testing.T) {
 	_, err := svc.LinkTenant(ctx, code, messageActivity("some-other-tenant", "19:channel-a", ""))
 	r.ErrorIs(err, ErrTenantNotAllowed)
 }
+
+// TestLinkTenant_RefusesFromPrivateChat pins the mitigation for the fact that
+// Bot Framework cannot tell us whether the sender is a team owner without
+// Microsoft Graph consent this integration does not request: the link must at
+// least happen somewhere the tenant's other members can see it.
+func TestLinkTenant_RefusesFromPrivateChat(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, _ := setupService(t)
+
+	_, code := startLinkFor(ctx, t, svc, "teams-link-dm")
+
+	activity := messageActivity(testTenantID, "19:dm", "")
+	activity.Conversation.ConversationType = "personal"
+
+	_, err := svc.LinkTenant(ctx, code, activity)
+	r.ErrorIs(err, ErrLinkRequiresChannel)
+
+	// And nothing was bound.
+	_, err = svc.GetConnectionByTenantID(ctx, testTenantID)
+	r.ErrorIs(err, ErrTenantNotLinked)
+}
+
+// TestLinkTenant_UninstallReleasesTheTenantForRelinking is the recovery path
+// for a tenant that was linked to the wrong organization.
+//
+// Only the holding org can delete its own integration, so without this a bad
+// link would be permanent from the tenant's point of view. Removing the app in
+// Teams is the one lever the tenant's own admin controls, and it now releases
+// the claim: reinstall, mint a code in the right org, link again.
+func TestLinkTenant_UninstallReleasesTheTenantForRelinking(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, _ := setupService(t)
+
+	// The wrong org links first.
+	wrongOrgUID, wrongCode := startLinkFor(ctx, t, svc, "teams-recover-bad")
+
+	wrongConn, err := svc.LinkTenant(ctx, wrongCode, messageActivity(testTenantID, "19:channel-a", ""))
+	r.NoError(err)
+	r.Equal(wrongOrgUID, wrongConn.OrganizationUID)
+
+	// The right org cannot displace a LIVE claim.
+	rightOrgUID, blockedCode := startLinkFor(ctx, t, svc, "teams-recover-ok")
+
+	_, err = svc.LinkTenant(ctx, blockedCode, messageActivity(testTenantID, "19:channel-a", ""))
+	r.ErrorIs(err, ErrTenantAlreadyLinked)
+
+	// The tenant's own admin removes the app in Teams.
+	r.NoError(svc.HandleUninstall(ctx, testTenantID))
+
+	// Now a fresh code from the right org succeeds.
+	pending, err := svc.StartLink(ctx, rightOrgUID, "")
+	r.NoError(err)
+
+	conn, err := svc.LinkTenant(ctx, pending.Code, messageActivity(testTenantID, "19:channel-a", ""))
+	r.NoError(err)
+	r.Equal(rightOrgUID, conn.OrganizationUID)
+
+	// Routing now resolves to the right org, and the stale row released its
+	// claim rather than leaving an ambiguous duplicate.
+	resolved, err := svc.GetConnectionByTenantID(ctx, testTenantID)
+	r.NoError(err)
+	r.Equal(conn.UID, resolved.UID)
+
+	stale, err := svc.db.GetChannel(ctx, wrongConn.UID)
+	r.NoError(err)
+
+	staleSettings, err := models.MSTeamsBotSettingsFromJSONMap(stale.Settings)
+	r.NoError(err)
+	r.Empty(staleSettings.TenantID)
+}
+
+// TestLinkTenant_RecordsWhoLinked keeps an audit trail of the user that bound
+// the tenant.
+func TestLinkTenant_RecordsWhoLinked(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, _ := setupService(t)
+
+	_, code := startLinkFor(ctx, t, svc, "teams-link-audit")
+
+	conn, err := svc.LinkTenant(ctx, code, messageActivity(testTenantID, "19:channel-a", ""))
+	r.NoError(err)
+
+	settings, err := models.MSTeamsBotSettingsFromJSONMap(conn.Settings)
+	r.NoError(err)
+	r.Equal("29:user", settings.InstalledByUserID)
+}

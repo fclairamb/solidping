@@ -114,3 +114,66 @@ func TestSetConnectionsRejectsMixedWhenOneIsNonNotify(t *testing.T) {
 	})
 	r.ErrorIs(err, checkchannels.ErrNotNotifyCapable)
 }
+
+// msTeamsBotConn builds a linked msteams-bot connection that has captured one
+// conversation reference.
+func msTeamsBotConn(t *testing.T) *models.Integration {
+	t.Helper()
+
+	settings := &models.MSTeamsBotSettings{
+		TenantID: "tenant-1",
+		Destinations: []models.MSTeamsDestination{
+			{ID: "19:captured-channel", Name: "alerts", Type: "channel"},
+		},
+	}
+
+	settingsMap, err := settings.ToJSONMap()
+	require.NoError(t, err)
+
+	conn := models.NewIntegration("", models.ConnectionTypeMSTeamsBot, "Microsoft Teams")
+	conn.Settings = settingsMap
+
+	return conn
+}
+
+// TestUpdateConnectionSettingsRejectsUncapturedMSTeamsOverride is the security
+// control for the per-check Teams destination override.
+//
+// A Teams conversation id is discoverable ("Get link to channel" URLs contain
+// it), so an override naming a conversation the bot was never added to would
+// otherwise let this org redirect its incident cards into a different tenant's
+// channel via the shared bot credential.
+func TestUpdateConnectionSettingsRejectsUncapturedMSTeamsOverride(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	conn := msTeamsBotConn(t)
+	ctx, svc, org, check := testSetup(t, conn)
+
+	r.NoError(svc.AddChannel(ctx, org.Slug, *check.Slug, conn.UID))
+
+	err := svc.UpdateConnectionSettings(ctx, org.Slug, *check.Slug, conn.UID,
+		checkchannels.UpdateConnectionSettingsRequest{
+			Settings: models.JSONMap{"conversation_id": "19:another-tenants-channel"},
+		})
+	r.ErrorIs(err, checkchannels.ErrMSTeamsBotUnknownDestination)
+}
+
+// TestUpdateConnectionSettingsAcceptsCapturedMSTeamsOverride is the positive
+// control — a legitimate per-check redirect must still work.
+func TestUpdateConnectionSettingsAcceptsCapturedMSTeamsOverride(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	conn := msTeamsBotConn(t)
+	ctx, svc, org, check := testSetup(t, conn)
+
+	r.NoError(svc.AddChannel(ctx, org.Slug, *check.Slug, conn.UID))
+
+	r.NoError(svc.UpdateConnectionSettings(ctx, org.Slug, *check.Slug, conn.UID,
+		checkchannels.UpdateConnectionSettingsRequest{
+			Settings: models.JSONMap{"conversation_id": "19:captured-channel"},
+		}))
+}

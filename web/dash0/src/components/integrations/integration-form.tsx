@@ -1696,6 +1696,9 @@ function MSTeamsBotPanel({ settings, onChange, org, channelUid }: MSTeamsBotPane
       ...settings,
       channel_id: dest.id,
       channel_name: dest.name,
+      // Keep team_id in step with the selected channel — Teams channels are
+      // per-team, so a stale team_id would misattribute the destination.
+      team_id: dest.team_id ?? "",
       display_name: dest.name,
     });
   }

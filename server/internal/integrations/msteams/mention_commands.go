@@ -476,10 +476,15 @@ func (h *Handler) handleLinkCommand(ctx context.Context, activity *Activity, cmd
 		case errors.Is(err, ErrTenantAlreadyLinked):
 			return h.replyError(ctx, activity,
 				"This Microsoft 365 tenant is already linked to a SolidPing organization. "+
-					"Remove the existing Microsoft Teams integration there first.")
+					"Remove the existing Microsoft Teams integration there, or remove this app from the "+
+					"tenant and reinstall it, then link again.")
 		case errors.Is(err, ErrTenantNotAllowed):
 			return h.replyError(ctx, activity,
 				"This SolidPing instance only accepts a different Microsoft 365 tenant.")
+		case errors.Is(err, ErrLinkRequiresChannel):
+			return h.replyError(ctx, activity,
+				"Run the link command in a team channel where SolidPing was added, not in a private chat — "+
+					"linking a whole tenant should be visible to your team.")
 		default:
 			slog.ErrorContext(ctx, "Microsoft Teams link failed", "error", err)
 

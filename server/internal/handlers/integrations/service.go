@@ -65,6 +65,12 @@ var (
 	// one-time code that must be redeemed from inside the tenant itself.
 	ErrMSTeamsBotManualCreate = errors.New(
 		"microsoft teams bot channels are added with a link code, not created directly")
+	// ErrMSTeamsBotUnknownDestination is returned when a destination
+	// selection names a conversation the bot was never added to. The
+	// conversation id is not proof of access — see
+	// models.MSTeamsBotSettings.HasDestination.
+	ErrMSTeamsBotUnknownDestination = errors.New(
+		"the selected Microsoft Teams channel is not one this bot has been added to")
 	// ErrNotWebhookChannel is returned when a webhook-only operation
 	// (rotate-secret) targets a channel of a different type.
 	ErrNotWebhookChannel = errors.New("channel is not a webhook connection")
@@ -603,6 +609,10 @@ func (s *Service) applyUpdateSettings(
 	// tenant_id (or a forged destination) onto an existing connection.
 	if conn.Type == models.ConnectionTypeMSTeamsBot {
 		restoreMSTeamsBotServerFields(existing, merged)
+
+		if vErr := validateMSTeamsBotDestination(merged); vErr != nil {
+			return vErr
+		}
 	}
 
 	// Validate the merged (post-PATCH) settings so a partial update can't leave
@@ -641,6 +651,32 @@ var msTeamsBotServerOwnedKeys = []string{
 	"destinations",
 	"installed_by_user_id",
 	"uninstalled_at",
+}
+
+// validateMSTeamsBotDestination rejects a default-destination selection that
+// does not name one of the connection's captured conversation references.
+//
+// The destination keys stay client-writable (the dashboard picker writes
+// them), so this is what stops a caller from simply typing in another
+// tenant's conversation id and having the shared bot credential post there.
+// The in-band `config default-channel` command enforces the same rule via
+// Service.SetDefaultDestination.
+func validateMSTeamsBotDestination(merged map[string]any) error {
+	selected, _ := merged["channel_id"].(string)
+	if selected == "" {
+		return nil
+	}
+
+	settings, err := models.MSTeamsBotSettingsFromJSONMap(models.JSONMap(merged))
+	if err != nil {
+		return fmt.Errorf("parsing microsoft teams bot settings: %w", err)
+	}
+
+	if !settings.HasDestination(selected) {
+		return ErrMSTeamsBotUnknownDestination
+	}
+
+	return nil
 }
 
 // restoreMSTeamsBotServerFields overwrites the server-owned keys in merged

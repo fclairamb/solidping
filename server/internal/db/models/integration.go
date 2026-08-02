@@ -314,6 +314,41 @@ type MSTeamsBotSettings struct {
 	Destinations []MSTeamsDestination `json:"destinations,omitempty"`
 }
 
+// HasDestination reports whether conversationID is one of the conversation
+// references this connection actually captured from Bot Framework.
+//
+// This is the authorization rule for every destination selection, wherever it
+// is made: the dashboard PATCH, the per-check override, and the in-band
+// `config default-channel` command all funnel through it. A Teams conversation
+// id is discoverable (it appears in "Get link to channel" URLs), so treating
+// one as usable just because a client named it would let an org post into a
+// channel belonging to a different tenant — the same "asserted vs proven
+// identifier" mistake that made tenant_id exploitable.
+func (s *MSTeamsBotSettings) HasDestination(conversationID string) bool {
+	if conversationID == "" {
+		return false
+	}
+
+	for i := range s.Destinations {
+		if s.Destinations[i].ID == conversationID {
+			return true
+		}
+	}
+
+	return false
+}
+
+// FindDestination returns the captured conversation reference with this id.
+func (s *MSTeamsBotSettings) FindDestination(conversationID string) *MSTeamsDestination {
+	for i := range s.Destinations {
+		if s.Destinations[i].ID == conversationID {
+			return &s.Destinations[i]
+		}
+	}
+
+	return nil
+}
+
 // ToJSONMap converts MSTeamsBotSettings to JSONMap for storage.
 func (s *MSTeamsBotSettings) ToJSONMap() (JSONMap, error) {
 	data, err := json.Marshal(s)

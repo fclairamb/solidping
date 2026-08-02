@@ -281,6 +281,25 @@ comment on column status_page_resources.check_uid is
 comment on column status_page_resources.check_group_uid is
   'Check group to display as one aggregated public component. NULL when the resource targets an individual check.';
 
+
+-- ---------------------------------------------------------------------------
+-- Microsoft Teams bot: one Entra tenant maps to at most one connection.
+--
+-- The application refuses to link a tenant another connection already holds,
+-- but that check is a read followed by a write with nothing serializing them:
+-- two concurrent link redemptions could both observe "unclaimed" and both
+-- write the same tenant. The read side already fails closed on ambiguity, so
+-- the outcome would be a self-inflicted denial of service rather than a
+-- disclosure — but the invariant belongs in the database, not in a comment.
+--
+-- Partial so it only constrains live msteams-bot rows: soft-deleted rows and
+-- not-yet-linked connections (empty tenant_id) are exempt.
+create unique index if not exists integrations_msteams_bot_tenant_idx
+  on integrations ((settings ->> 'tenant_id'))
+  where type = 'msteams-bot'
+    and deleted_at is null
+    and coalesce(settings ->> 'tenant_id', '') <> '';
+
 -- ---------------------------------------------------------------------------
 -- (append further v0.7.0 blocks below this line)
 -- ---------------------------------------------------------------------------

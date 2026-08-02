@@ -118,6 +118,7 @@ func botPayload(t *testing.T, eventType string, serviceURL string) *Payload {
 		ChannelName: "alerts",
 		Destinations: []models.MSTeamsDestination{
 			{ID: botTestConvID, Name: "alerts", ServiceURL: serviceURL, Type: "channel"},
+			{ID: "19:channel-b", Name: "incidents", ServiceURL: serviceURL, Type: "channel"},
 		},
 	}
 
@@ -287,7 +288,7 @@ func TestMSTeamsBotSender_ReopenedUpdatesAndReplies(t *testing.T) {
 }
 
 // TestMSTeamsBotSender_PerCheckOverrideRedirectsConversation covers the
-// check-level destination override.
+// check-level destination override to another CAPTURED conversation.
 func TestMSTeamsBotSender_PerCheckOverrideRedirectsConversation(t *testing.T) {
 	t.Parallel()
 
@@ -383,4 +384,46 @@ func TestMSTeamsBotSender_DisabledInstanceSendsNothing(t *testing.T) {
 		context.Background(), jctx, fake.payload(t, eventTypeIncidentCreated))
 	r.ErrorIs(err, ErrMSTeamsBotDisabled)
 	r.Empty(fake.recorded(), "a disabled instance must not reach the Bot Connector")
+}
+
+// TestMSTeamsBotSender_RejectsUncapturedOverride is the send-time authorization
+// control for destination selection.
+//
+// A Teams conversation id is discoverable ("Get link to channel" URLs contain
+// it), so a stored selection naming a conversation this bot was never added to
+// must not be honored — otherwise the shared SaaS bot credential would post one
+// organization's incident cards into another tenant's channel. The write paths
+// reject this too; this guard covers rows that predate the validation or were
+// written straight to the database.
+func TestMSTeamsBotSender_RejectsUncapturedOverride(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fake := newBotFake(t)
+
+	payload := fake.payload(t, eventTypeIncidentCreated)
+	override := models.JSONMap{msTeamsBotConversationOverrideKey: "19:someone-elses-channel"}
+	payload.CheckConnectionSettings = &override
+
+	err := fake.sender("bot-badoverride").Send(context.Background(), botJCtx(&mockDBService{}), payload)
+	r.ErrorIs(err, ErrMSTeamsBotUnknownDestination)
+	r.Empty(fake.recorded(), "nothing may be sent to an uncaptured conversation")
+}
+
+// TestMSTeamsBotSender_RejectsUncapturedDefaultChannel covers the same rule
+// for the connection-level default rather than the per-check override.
+func TestMSTeamsBotSender_RejectsUncapturedDefaultChannel(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fake := newBotFake(t)
+
+	payload := fake.payload(t, eventTypeIncidentCreated)
+	payload.Integration.Settings["channel_id"] = "19:never-joined"
+
+	err := fake.sender("bot-baddefault").Send(context.Background(), botJCtx(&mockDBService{}), payload)
+	r.ErrorIs(err, ErrMSTeamsBotUnknownDestination)
+	r.Empty(fake.recorded())
 }

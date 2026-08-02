@@ -227,6 +227,18 @@ create index status_page_resources_check_idx
 create index status_page_resources_group_idx
   on status_page_resources (check_group_uid) where check_group_uid is not null;
 
+
+-- ---------------------------------------------------------------------------
+-- Microsoft Teams bot: one Entra tenant maps to at most one connection.
+-- See the PostgreSQL migration for the full rationale — the application-level
+-- check is a read-then-write with no serialization, so the uniqueness
+-- invariant is enforced here as well.
+create unique index if not exists integrations_msteams_bot_tenant_idx
+  on integrations (json_extract(settings, '$.tenant_id'))
+  where type = 'msteams-bot'
+    and deleted_at is null
+    and coalesce(json_extract(settings, '$.tenant_id'), '') <> '';
+
 -- ---------------------------------------------------------------------------
 -- (append further v0.7.0 blocks below this line)
 -- ---------------------------------------------------------------------------

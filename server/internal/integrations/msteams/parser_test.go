@@ -54,6 +54,21 @@ func TestStripMention(t *testing.T) {
 			want: "",
 		},
 		{
+			// The addressing mention is the leading one; a mention that comes
+			// after real words is someone the user is talking ABOUT and must
+			// survive as text, or the argument list silently shifts.
+			name: "trailing mention becomes plain text",
+			in:   "<at>SolidPing</at> checks rm <at>Bob</at>",
+			want: "checks rm Bob",
+		},
+		{
+			// A 1:1 chat sends no bot mention at all. The old fallback deleted
+			// Bob here, which is exactly the arg-shifting bug.
+			name: "no addressing mention (1:1 chat)",
+			in:   "checks rm <at>Bob</at>",
+			want: "checks rm Bob",
+		},
+		{
 			name: "no mention at all",
 			in:   "checks list",
 			want: "checks list",
@@ -220,9 +235,9 @@ func TestStripRecipientMention_KeepsOtherPeoplesMentions(t *testing.T) {
 
 	r.Equal("checks rm Bob", StripRecipientMention(text, entities, "28:"+testAppID))
 
-	// The un-anchored fallback is what this fixes — pinned so a regression is
-	// visible rather than silent.
-	r.Equal("checks rm", StripMention(text))
+	// The entity-less fallback must reach the SAME answer via the positional
+	// rule: drop the leading addressing mention, keep everybody else.
+	r.Equal("checks rm Bob", StripMention(text))
 }
 
 // TestParseActivityCommand_ArgsSurviveForeignMentions proves the fix at the
@@ -279,4 +294,72 @@ func TestStripRecipientMention_IgnoresOtherBotsMentions(t *testing.T) {
 
 	got := StripRecipientMention("<at>SomeoneElse</at> checks list", entities, "28:"+testAppID)
 	r.Equal("checks list", got)
+}
+
+// TestParseActivityCommand_OneToOneChatKeepsArgs is the scenario the previous
+// fix round missed. In a 1:1 chat Teams sends no bot-mention entity at all, so
+// the entity-scoped path cannot help — the old fallback deleted EVERY mention
+// tag, silently dropping `Bob` and leaving the bot to act on nothing.
+func TestParseActivityCommand_OneToOneChatKeepsArgs(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	activity := &Activity{
+		Type:      ActivityTypeMessage,
+		Text:      "checks rm <at>Bob</at>",
+		Recipient: &ChannelAccount{ID: "28:" + testAppID},
+		// No Entities: this is what a personal-scope conversation looks like.
+	}
+
+	cmd := ParseActivityCommand(activity)
+	r.Equal(cmdChecks, cmd.Command)
+	r.Equal("rm", cmd.Subcommand)
+	r.Equal([]string{"Bob"}, cmd.Args)
+}
+
+// TestParseActivityCommand_EmptyEntityTextKeepsArgs covers the other fallback
+// trigger: our own mention entity is present but carries no `text`, so there
+// is no snippet to remove and the positional rule has to take over.
+func TestParseActivityCommand_EmptyEntityTextKeepsArgs(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	activity := &Activity{
+		Type:      ActivityTypeMessage,
+		Text:      "<at>SolidPing</at> checks rm <at>Bob</at>",
+		Recipient: &ChannelAccount{ID: "28:" + testAppID},
+		Entities: []Mention{{
+			Type:      "mention",
+			Mentioned: &ChannelAccount{ID: "28:" + testAppID},
+			// Text deliberately empty.
+		}},
+	}
+
+	cmd := ParseActivityCommand(activity)
+	r.Equal(cmdChecks, cmd.Command)
+	r.Equal("rm", cmd.Subcommand)
+	r.Equal([]string{"Bob"}, cmd.Args)
+}
+
+// TestStripMention_LeadingMentionInsideBlockMarkup keeps the positional rule
+// working for the rich-text envelope Teams wraps messages in.
+func TestStripMention_LeadingMentionInsideBlockMarkup(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.Equal("checks rm Bob",
+		StripMention("<p><at>SolidPing</at>&nbsp;checks rm <at>Bob</at></p>"))
+}
+
+// TestStripMention_DoesNotDropAMentionAfterWords is the negative control for
+// the positional rule: only a LEADING mention is the addressee.
+func TestStripMention_DoesNotDropAMentionAfterWords(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.Equal("checks rm Alice Bob", StripMention("checks rm <at>Alice</at> <at>Bob</at>"))
 }

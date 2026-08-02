@@ -26,6 +26,13 @@ var (
 	ErrMSTeamsBotNoDestination = errors.New("no default channel configured for the microsoft teams bot connection")
 	// ErrMSTeamsBotUninstalled is returned when the tenant removed the app.
 	ErrMSTeamsBotUninstalled = errors.New("microsoft teams app is uninstalled for this tenant")
+	// ErrMSTeamsBotUnknownDestination is returned when the resolved
+	// conversation is not one the bot was added to. The write paths already
+	// validate this; re-checking at send time means a row that predates the
+	// validation (or was written straight to the database) still cannot make
+	// the shared bot credential post into a foreign tenant's channel.
+	ErrMSTeamsBotUnknownDestination = errors.New(
+		"microsoft teams conversation is not a captured destination for this connection")
 )
 
 // State keys for the incident → Teams card mapping.
@@ -183,6 +190,12 @@ func (s *MSTeamsBotSender) destination(
 
 	if conversationID == "" {
 		return "", "", ErrMSTeamsBotNoDestination
+	}
+
+	// Defense in depth: only conversations this connection actually captured
+	// from Bot Framework are addressable, whatever a stored selection claims.
+	if !settings.HasDestination(conversationID) {
+		return "", "", ErrMSTeamsBotUnknownDestination
 	}
 
 	// A destination captured from a different regional connector carries its

@@ -127,6 +127,9 @@ alter table status_pages drop column custom_domain_verified_at;
 alter table status_pages drop column custom_domain_token;
 alter table status_pages drop column custom_domain;
 
+
+drop index if exists integrations_msteams_bot_tenant_idx;
+
 -- ---------------------------------------------------------------------------
 -- (append further v0.7.0 teardown blocks below this line)
 -- ---------------------------------------------------------------------------

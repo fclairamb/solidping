@@ -261,7 +261,28 @@ inside a real, Microsoft-signed message. Quoting the code back is what proves
 both sides are the same actor.
 
 The code is single-use and expires after 30 minutes. A tenant can be linked to
-exactly one SolidPing organization.
+exactly one SolidPing organization. The command must be run in a team channel,
+not a private chat, so the link is visible to your team.
+:::
+
+:::caution Who can run the link command
+The link code proves that whoever redeems it holds a code issued to a signed-in
+SolidPing admin — it does **not** prove that the person redeeming it is an
+owner of the Teams team. Microsoft's Bot Connector does not tell a bot the
+sender's role, and determining it would require Microsoft Graph permissions and
+admin consent that this integration deliberately does not request. In practice
+that means **any member of a team the bot has been added to could redeem a
+leaked code**.
+
+Treat a link code like a password: generate it when you are ready to use it,
+paste it once, and let it expire otherwise.
+
+If a tenant ends up linked to the wrong organization, the tenant's own admin can
+recover without SolidPing support: **remove the SolidPing app from the tenant in
+Teams**, then reinstall it and link again with a code from the correct
+organization. Uninstalling releases the tenant's claim — it is the one lever the
+party who actually controls the tenant always holds. (An admin of the holding
+organization can also simply delete the integration.)
 :::
 
 Publishing to the Teams store is out of scope — custom app upload
@@ -303,6 +324,13 @@ request carrying it passed that signature check. Ownership of a tenant is a
 separate question, and is what the link code establishes. When
 `msteams.tenant_id` is set, activities from any other tenant are rejected.
 
+Notification destinations are held to the same standard. A Teams conversation ID
+is discoverable (it appears in "Get link to channel" URLs), so SolidPing only
+accepts a destination the bot has actually been added to — enforced when the
+channel is picked in the dashboard, when a per-check override is set, and again
+at send time. Naming a conversation ID you happen to know is not enough to make
+SolidPing post there.
+
 #### Known limitations
 
 - **Managed-identity bots are not supported.** Outbound tokens are minted with
@@ -311,6 +339,8 @@ separate question, and is what the link code establishes. When
   user-assigned managed identity takes its token from the instance metadata
   endpoint instead, which is a different credential model.
 - **Teams store publication is out of scope** — custom app upload only.
+- **The link command cannot verify the sender is a team owner** — see the
+  caution above for the reasoning and the recovery path.
 
 ## Discord
 

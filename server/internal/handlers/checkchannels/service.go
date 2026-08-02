@@ -21,6 +21,14 @@ var (
 	// to a check as a notification target. This closes the silent-no-op bug
 	// where such a binding was accepted and then dropped at send time.
 	ErrNotNotifyCapable = errors.New("integration cannot receive notifications")
+	// ErrMSTeamsBotUnknownDestination is returned when a per-check Microsoft
+	// Teams override names a conversation the bot was never added to. A Teams
+	// conversation id is discoverable (it appears in "Get link to channel"
+	// URLs), so accepting one on the caller's word would let an org redirect
+	// its incident cards into another tenant's channel via the shared bot
+	// credential.
+	ErrMSTeamsBotUnknownDestination = errors.New(
+		"the selected Microsoft Teams channel is not one this bot has been added to")
 )
 
 // Service provides check-connection management functionality.
@@ -249,6 +257,10 @@ func (s *Service) UpdateConnectionSettings(
 		return ErrConnectionNotFound
 	}
 
+	if vErr := validateMSTeamsBotOverride(conn, req.Settings); vErr != nil {
+		return vErr
+	}
+
 	update := &models.CheckConnectionUpdate{
 		Settings: &req.Settings,
 	}
@@ -259,6 +271,36 @@ func (s *Service) UpdateConnectionSettings(
 			return ErrConnectionNotFound
 		}
 		return err
+	}
+
+	return nil
+}
+
+// msTeamsBotOverrideKey is the per-check settings key that redirects one
+// check's Teams notifications to a different conversation.
+const msTeamsBotOverrideKey = "conversation_id"
+
+// validateMSTeamsBotOverride enforces that a per-check Teams destination
+// override names one of the connection's captured conversation references —
+// the same rule the connection-level picker and the in-band
+// `config default-channel` command apply.
+func validateMSTeamsBotOverride(conn *models.Integration, settings models.JSONMap) error {
+	if conn.Type != models.ConnectionTypeMSTeamsBot || settings == nil {
+		return nil
+	}
+
+	override, _ := settings[msTeamsBotOverrideKey].(string)
+	if override == "" {
+		return nil
+	}
+
+	connSettings, err := models.MSTeamsBotSettingsFromJSONMap(conn.Settings)
+	if err != nil {
+		return err
+	}
+
+	if !connSettings.HasDestination(override) {
+		return ErrMSTeamsBotUnknownDestination
 	}
 
 	return nil

@@ -200,28 +200,81 @@ func TestGetConnectionByTenantID_FailsSafeOnAmbiguity(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	ctx, svc, _ := setupService(t)
+	ctx := t.Context()
 
-	newConnection(ctx, t, svc, "teams-amb-a", testTenantID)
-	newConnection(ctx, t, svc, "teams-amb-b", testTenantID)
+	// Duplicates can no longer be created through the database (see the
+	// unique partial index), so the decision is exercised directly. Routing
+	// must refuse rather than pick one: every possible pick would hand one
+	// organization another's Teams data.
+	dupes := []*models.Integration{
+		models.NewIntegration("org-a", models.ConnectionTypeMSTeamsBot, "A"),
+		models.NewIntegration("org-b", models.ConnectionTypeMSTeamsBot, "B"),
+	}
 
-	_, err := svc.GetConnectionByTenantID(ctx, testTenantID)
+	_, err := resolveSingleConnection(ctx, testTenantID, dupes)
 	r.ErrorIs(err, ErrAmbiguousTenant)
+
+	// The single and empty cases still behave.
+	one, err := resolveSingleConnection(ctx, testTenantID, dupes[:1])
+	r.NoError(err)
+	r.Equal(dupes[0].UID, one.UID)
+
+	_, err = resolveSingleConnection(ctx, testTenantID, nil)
+	r.ErrorIs(err, ErrTenantNotLinked)
 }
 
-// TestDispatchActivity_AmbiguousTenantIsExplained checks the ambiguity path
-// degrades into a clear channel message rather than a 500.
-func TestDispatchActivity_AmbiguousTenantIsExplained(t *testing.T) {
+// TestTenantUniquenessIsEnforcedByTheDatabase pins the storage-level
+// invariant behind the fail-safe read: the application check in LinkTenant is
+// a read followed by a write with nothing serializing them, so the database
+// has to be what actually makes a double claim impossible.
+func TestTenantUniquenessIsEnforcedByTheDatabase(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	ctx, svc, connector := setupService(t)
+	ctx, svc, _ := setupService(t)
 
-	newConnection(ctx, t, svc, "teams-amb-c", testTenantID)
-	newConnection(ctx, t, svc, "teams-amb-d", testTenantID)
+	newConnection(ctx, t, svc, "teams-uniq-a", testTenantID)
 
-	r.NoError(DispatchActivity(ctx, svc,
-		messageActivity(testTenantID, "19:channel-a", "<at>SolidPing</at> incidents list")))
+	org := models.NewOrganization("teams-uniq-b", "")
+	r.NoError(svc.db.CreateOrganization(ctx, org))
 
-	r.True(connector.containsText("more than one SolidPing integration"))
+	dupe := models.NewIntegration(org.UID, models.ConnectionTypeMSTeamsBot, "Duplicate")
+	dupe.Settings = models.JSONMap{"tenant_id": testTenantID}
+
+	err := svc.db.CreateChannel(ctx, dupe)
+	r.Error(err, "a second connection claiming the same tenant must be refused by the database")
+	r.True(isUniqueViolation(err), "the violation must be recognizable: %v", err)
+}
+
+// TestLinkTenant_MapsUniqueViolationToAlreadyLinked pins that a lost race
+// surfaces as the ordinary "already linked" answer rather than a raw database
+// error leaking to a Teams channel.
+func TestLinkTenant_MapsUniqueViolationToAlreadyLinked(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, _ := setupService(t)
+
+	// Org A holds the tenant.
+	newConnection(ctx, t, svc, "teams-race-a", testTenantID)
+
+	// Org B has a code for an unlinked connection. The pre-check would
+	// normally catch this, so bypass it by minting the code and then linking
+	// through the low-level path the race would take.
+	orgUID, code := startLinkFor(ctx, t, svc, "teams-race-b")
+
+	_, connUID, err := redeemLinkCode(ctx, svc.db, code)
+	r.NoError(err)
+
+	conn, err := svc.db.GetChannel(ctx, connUID)
+	r.NoError(err)
+	r.Equal(orgUID, conn.OrganizationUID)
+
+	settings, err := settingsOf(conn)
+	r.NoError(err)
+	settings.TenantID = testTenantID
+
+	saveErr := svc.saveSettings(ctx, conn, settings)
+	r.Error(saveErr)
+	r.True(isUniqueViolation(saveErr), "expected a unique violation, got: %v", saveErr)
 }

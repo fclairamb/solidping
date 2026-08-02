@@ -10,6 +10,8 @@
 // self-hosted instance must be reachable from the internet to use it.
 package msteams
 
+import "strings"
+
 // Activity types we handle. The Bot Framework schema defines many more; the
 // default branch of DispatchActivity ignores everything not listed here.
 const (
@@ -149,6 +151,16 @@ func (a *Activity) ConversationID() string {
 	}
 
 	return a.Conversation.ID
+}
+
+// IsPersonalConversation reports whether the activity came from a 1:1 chat
+// with the bot rather than a shared channel or group chat.
+func (a *Activity) IsPersonalConversation() bool {
+	if a.Conversation == nil {
+		return false
+	}
+
+	return strings.EqualFold(a.Conversation.ConversationType, "personal")
 }
 
 // TeamID returns the owning Teams team id, or "" for a non-team conversation.

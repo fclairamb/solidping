@@ -47,6 +47,10 @@ var (
 	// ErrConnectionAlreadyLinked is returned when a link code targets a
 	// connection that is already bound to a tenant.
 	ErrConnectionAlreadyLinked = errors.New("this integration is already linked to a Microsoft 365 tenant")
+	// ErrLinkRequiresChannel is returned when `link` is used from a personal
+	// (1:1) chat. Linking a whole tenant is a consequential action, so it has
+	// to happen somewhere the tenant's other members can see it.
+	ErrLinkRequiresChannel = errors.New("run the link command in a team channel, not a private chat")
 )
 
 // Service holds the business logic of the Teams bot integration. It is the
@@ -131,6 +135,21 @@ func (s *Service) GetConnectionByTenantID(ctx context.Context, tenantID string) 
 		return nil, fmt.Errorf("list msteams-bot connections: %w", err)
 	}
 
+	return resolveSingleConnection(ctx, tenantID, conns)
+}
+
+// resolveSingleConnection turns the rows claiming a tenant into the one
+// connection to route to, refusing rather than guessing when there is more
+// than one.
+//
+// A unique partial index on the settings tenant_id makes duplicates
+// unreachable through the application, so this is defense in depth for
+// hand-edited or imported data. It is split out from GetConnectionByTenantID
+// precisely because that state can no longer be produced through the database
+// — the decision still has to be verifiable.
+func resolveSingleConnection(
+	ctx context.Context, tenantID string, conns []*models.Integration,
+) (*models.Integration, error) {
 	if len(conns) == 0 {
 		return nil, ErrTenantNotLinked
 	}
@@ -388,12 +407,25 @@ func (s *Service) LinkTenant(ctx context.Context, code string, activity *Activit
 		return nil, ErrNoTenantID
 	}
 
+	// Bot Framework cannot tell us whether the sender is a team owner without
+	// Microsoft Graph consent this integration does not request (see the
+	// security section of the notification docs). Requiring the command to be
+	// issued in a shared conversation is the mitigation available here: the
+	// link cannot be performed silently in a private chat, so the tenant's
+	// other members can see it happen.
+	if activity.IsPersonalConversation() {
+		return nil, ErrLinkRequiresChannel
+	}
+
 	if err := s.checkTenantAllowed(tenantID); err != nil {
 		return nil, err
 	}
 
-	// Refuse before consuming the code, so a user who mistypes which tenant
-	// they are in does not burn their code.
+	// Look the tenant up first so the "already claimed" answer is computed
+	// from pre-redemption state. The code is still consumed below whatever
+	// the outcome — a code that reached a real, verified activity has been
+	// exposed to that tenant's users, so burning it and asking the admin to
+	// mint a fresh one is the safer failure mode than allowing retries.
 	existing, err := s.GetConnectionByTenantID(ctx, tenantID)
 	if err != nil && !errors.Is(err, ErrTenantNotLinked) {
 		return nil, err
@@ -404,10 +436,57 @@ func (s *Service) LinkTenant(ctx context.Context, code string, activity *Activit
 		return nil, err
 	}
 
-	if existing != nil && existing.UID != connUID {
-		return nil, ErrTenantAlreadyLinked
+	if claimErr := s.clearDisplacedClaim(ctx, existing, connUID); claimErr != nil {
+		return nil, claimErr
 	}
 
+	conn, err := s.loadLinkTarget(ctx, orgUID, connUID)
+	if err != nil {
+		return nil, err
+	}
+
+	if bindErr := s.bindTenant(ctx, conn, tenantID, activity); bindErr != nil {
+		return nil, bindErr
+	}
+
+	slog.InfoContext(ctx, "Linked Microsoft Teams tenant to organization",
+		"tenant_id", tenantID, "org_uid", orgUID, "connection_uid", conn.UID)
+
+	// Now that the tenant is bound, register the conversation the code was
+	// sent from and re-enable the row.
+	return s.HandleInstall(ctx, activity)
+}
+
+// clearDisplacedClaim decides what happens when another connection already
+// holds this tenant.
+//
+// A LIVE claim wins: whoever holds it is receiving this tenant's notifications
+// right now. An UNINSTALLED claim does not — the party that controls the
+// tenant has already revoked the app there, which is the strongest signal
+// available that the binding is unwanted, and it is the recovery path for a
+// tenant whose admin was beaten to the link: remove the app in Teams,
+// reinstall it, and link to the right organization. Without this a wrong link
+// would be permanent for the tenant, since only the holding org can delete its
+// own integration.
+func (s *Service) clearDisplacedClaim(ctx context.Context, existing *models.Integration, connUID string) error {
+	if existing == nil || existing.UID == connUID {
+		return nil
+	}
+
+	released, err := s.releaseStaleClaim(ctx, existing)
+	if err != nil {
+		return err
+	}
+
+	if !released {
+		return ErrTenantAlreadyLinked
+	}
+
+	return nil
+}
+
+// loadLinkTarget fetches and validates the connection a redeemed code names.
+func (s *Service) loadLinkTarget(ctx context.Context, orgUID, connUID string) (*models.Integration, error) {
 	conn, err := s.db.GetChannel(ctx, connUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -422,23 +501,98 @@ func (s *Service) LinkTenant(ctx context.Context, code string, activity *Activit
 		return nil, ErrConnectionNotFound
 	}
 
+	return conn, nil
+}
+
+// bindTenant writes the tenant onto the connection, recording who linked it.
+func (s *Service) bindTenant(
+	ctx context.Context, conn *models.Integration, tenantID string, activity *Activity,
+) error {
 	settings, err := settingsOf(conn)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	settings.TenantID = tenantID
 
-	if err := s.saveSettings(ctx, conn, settings); err != nil {
-		return nil, err
+	if activity.From != nil && activity.From.ID != "" {
+		settings.InstalledByUserID = activity.From.ID
 	}
 
-	slog.InfoContext(ctx, "Linked Microsoft Teams tenant to organization",
-		"tenant_id", tenantID, "org_uid", orgUID, "connection_uid", conn.UID)
+	if err := s.saveSettings(ctx, conn, settings); err != nil {
+		// The claim lookup above and this write are not serialized, so two
+		// simultaneous redemptions for the same tenant could both get past
+		// the check. A unique partial index on the settings tenant_id makes
+		// that impossible at the storage layer; translate its violation into
+		// the same answer the application-level check gives.
+		if isUniqueViolation(err) {
+			return ErrTenantAlreadyLinked
+		}
 
-	// Now that the tenant is bound, register the conversation the code was
-	// sent from and re-enable the row.
-	return s.HandleInstall(ctx, activity)
+		return err
+	}
+
+	return nil
+}
+
+// releaseStaleClaim clears the tenant binding from a connection whose app has
+// been uninstalled from the tenant, freeing the tenant to be linked again.
+// Returns false (leaving the row untouched) when the claim is still live.
+func (s *Service) releaseStaleClaim(ctx context.Context, existing *models.Integration) (bool, error) {
+	settings, err := settingsOf(existing)
+	if err != nil {
+		return false, err
+	}
+
+	if settings.UninstalledAt == "" {
+		return false, nil
+	}
+
+	settings.TenantID = ""
+	settings.Destinations = nil
+	settings.ChannelID = ""
+	settings.ChannelName = ""
+	settings.DisplayName = ""
+
+	if err := s.saveSettings(ctx, existing, settings); err != nil {
+		return false, err
+	}
+
+	slog.InfoContext(ctx, "Released an uninstalled Microsoft Teams tenant claim so the tenant can be re-linked",
+		"connection_uid", existing.UID, "org_uid", existing.OrganizationUID)
+
+	return true, nil
+}
+
+// uniqueViolationMarkers are the dialect-specific signatures of a unique
+// index violation. Bun surfaces the driver error verbatim, and the two
+// supported drivers word it differently, so both spellings are matched.
+//
+//nolint:gochecknoglobals // constant marker list
+var uniqueViolationMarkers = []string{
+	"unique constraint", // PostgreSQL (SQLSTATE 23505)
+	"unique violation",  // PostgreSQL, alternate wording
+	"sqlstate=23505",    // PostgreSQL, structured form
+	"unique_violation",  // PostgreSQL, structured form
+	"unique index",      // SQLite
+	"constraint failed", // SQLite (UNIQUE constraint failed: ...)
+}
+
+// isUniqueViolation reports whether err came from a unique index conflict.
+func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+
+	for _, marker := range uniqueViolationMarkers {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // autoLinkSingleOrg is the self-hosted convenience path: when the operator
@@ -544,6 +698,15 @@ func upsertDestination(settings *models.MSTeamsBotSettings, dest *models.MSTeams
 func (s *Service) HandleUninstall(ctx context.Context, tenantID string) error {
 	if tenantID == "" {
 		return ErrNoTenantID
+	}
+
+	// Defense in depth: honor the single-tenant pin here too. A pinned
+	// instance cannot currently hold a row for another tenant, so this is
+	// unreachable today — but it keeps "every tenant-scoped path goes through
+	// checkTenantAllowed" a real invariant rather than an advisory one, so a
+	// future change to pin semantics cannot open a hole here.
+	if err := s.checkTenantAllowed(tenantID); err != nil {
+		return err
 	}
 
 	conns, err := s.db.ListChannelsByProperty(

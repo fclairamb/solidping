@@ -163,8 +163,8 @@ func TestCountInstalledTenants_SkipsUninstalled(t *testing.T) {
 
 	newConnection(ctx, t, svc, "teams-count-a", testTenantID)
 	newConnection(ctx, t, svc, "teams-count-b", "tenant-two")
-	// Two orgs on the same tenant must count once.
-	newConnection(ctx, t, svc, "teams-count-c", testTenantID)
+	// An unlinked connection has no tenant and must not be counted.
+	newConnection(ctx, t, svc, "teams-count-c", "")
 
 	count, err := svc.CountInstalledTenants(ctx)
 	r.NoError(err)

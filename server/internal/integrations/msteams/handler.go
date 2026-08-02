@@ -50,8 +50,9 @@ func (h *Handler) SetVerifier(v *Verifier) { h.verifier = v }
 // This endpoint is org-scoped and authenticated on purpose. An earlier
 // revision served it publicly, which handed any anonymous caller the pinned
 // tenant GUID and a live count of installed Microsoft 365 tenants — a free
-// customer-enumeration oracle. Everything here is now behind org auth; the
-// fields that genuinely need to be public live in PublicStatusResponse.
+// customer-enumeration oracle. There is no public counterpart: the messaging
+// endpoint is the only route on this integration that anonymous callers need,
+// and it already answers 503 when the feature is off.
 type StatusResponse struct {
 	Enabled bool `json:"enabled"`
 	// Configured is true when an app ID and secret are present.

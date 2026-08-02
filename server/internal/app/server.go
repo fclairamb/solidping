@@ -1237,10 +1237,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	msTeamsService := msteams.NewService(s.dbService, s.config, checksService)
 	msTeamsHandler := msteams.NewHandler(msTeamsService, s.config)
 
-	// Only the messaging endpoint is public — it has to be, Microsoft calls
-	// it. Status and the app package are org-scoped below: served
-	// anonymously they would hand any caller the instance's Entra app id, the
-	// pinned tenant GUID, and a live count of installed Microsoft 365
+	// The messaging endpoint is the ONLY public route here — it has to be,
+	// Microsoft calls it, and authenticity comes from the Bot Framework JWT
+	// rather than session auth. Status, the app package and the link-code
+	// endpoint all live on the authenticated org-scoped group further down:
+	// served anonymously they would hand any caller the instance's Entra app
+	// id, the pinned tenant GUID, and a live count of installed Microsoft 365
 	// tenants.
 	msTeamsIntegration := api.NewGroup("/integrations/msteams")
 	msTeamsIntegration.POST("/messages", msTeamsHandler.HandleMessages)

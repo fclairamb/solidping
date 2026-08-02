@@ -39,9 +39,13 @@ var htmlTagRegex = regexp.MustCompile(`(?is)</?[a-z][^>]*>`)
 // leaves behind after a mention.
 var whitespaceRegex = regexp.MustCompile(`\s+`)
 
-// StripMention removes every mention tag from an activity's text. Prefer
-// StripRecipientMention, which removes only the bot's own mention — this
-// un-anchored form is the fallback for activities that carry no entity list.
+// StripMention strips the ADDRESSING mention (a mention tag at the very start
+// of the message, which is how Teams renders "@Bot <command>") and unwraps
+// every other mention to its display text.
+//
+// It is the fallback used when the entity list cannot identify the bot's own
+// mention. Prefer StripRecipientMention, which knows exactly which mention is
+// ours.
 func StripMention(text string) string {
 	return stripMentions(text, nil)
 }
@@ -50,12 +54,17 @@ func StripMention(text string) string {
 // mentions of other people intact as plain text.
 //
 // This is the Bot Framework `removeRecipientMention` pattern. It matters for
-// correctness, not just tidiness: `@SolidPing checks rm <at>Bob</at>` would
-// otherwise have Bob's mention silently deleted and the remaining command
-// arguments shifted, so the bot would act on the wrong token. The entity list
-// is the only thing that can tell "a mention of me" from "a mention of
-// someone else quoted in the message"; when it is absent (or names no
-// recipient mention) we fall back to the un-anchored strip.
+// correctness, not just tidiness: `@SolidPing checks rm <at>Bob</at>` must not
+// lose Bob — deleting his mention would shift the remaining arguments and make
+// the bot act on the wrong token.
+//
+// The entity list is the only thing that can say with certainty which mention
+// is ours. When it cannot (no entity list at all, no mention of us in it, or
+// our entry carries no text — all of which happen in real Teams traffic,
+// notably in 1:1 chats where no bot mention is sent), we fall back to
+// stripMentions' positional rule: drop a mention only if it is the leading,
+// addressing one, and unwrap the rest. Every path preserves other people's
+// mentions as text.
 func StripRecipientMention(text string, entities []Mention, recipientID string) string {
 	if recipientID == "" || len(entities) == 0 {
 		return stripMentions(text, nil)
@@ -79,10 +88,10 @@ func StripRecipientMention(text string, entities []Mention, recipientID string) 
 	}
 
 	if len(botMentionTexts) == 0 {
-		// The activity carries entities but none of them is a mention of us
-		// (e.g. the bot was addressed via a channel-wide alias). Nothing of
-		// ours to strip; leave other people's mentions alone and let the tag
-		// stripper below turn them into plain text.
+		// Entities are present but none identifies a mention of us with usable
+		// text (channel-wide alias, empty entity text, a 1:1 chat that sends
+		// no bot mention at all). Fall back to the positional rule rather than
+		// deleting every mention.
 		return stripMentions(text, nil)
 	}
 
@@ -92,23 +101,59 @@ func StripRecipientMention(text string, entities []Mention, recipientID string) 
 // mentionEntityType is the Bot Framework entity type for a mention.
 const mentionEntityType = "mention"
 
-// stripMentions removes mention markup. When onlyExact is non-empty, only the
-// listed mention snippets (verbatim `<at>…</at>` runs from the entity list)
-// are removed; every other mention tag is unwrapped to its display text so
-// the words a user typed survive into the command line.
+// stripMentions removes mention markup.
+//
+// With onlyExact set (the entity list told us which snippets are ours), those
+// exact `<at>…</at>` runs are removed. Otherwise the positional rule applies:
+// a mention at the very start of the message is the addressing one and is
+// removed, and that is the only mention ever removed.
+//
+// In BOTH modes every remaining mention tag is unwrapped to its display text,
+// so the words a user typed survive into the command line instead of the
+// argument list silently shifting.
 func stripMentions(text string, onlyExact []string) string {
 	if len(onlyExact) > 0 {
 		for _, snippet := range onlyExact {
 			text = strings.ReplaceAll(text, snippet, " ")
 		}
-
-		// Any mention tag left belongs to someone else: keep the name.
-		text = mentionTagRegex.ReplaceAllString(text, "$1")
 	} else {
-		text = mentionTagRegex.ReplaceAllString(text, " ")
+		text = dropLeadingMention(text)
 	}
 
+	// Any mention tag left belongs to someone else: keep the name.
+	text = mentionTagRegex.ReplaceAllString(text, "$1")
+
 	return finishStrip(text)
+}
+
+// dropLeadingMention removes a mention tag that sits at the start of the
+// message — how Teams renders "@Bot <command>" — and leaves everything else
+// alone.
+//
+// "At the start" tolerates the block markup Teams wraps rich text in
+// (`<p>`, `<div>`, `<span>`, `<br>`) and leading whitespace, but nothing
+// else: a mention that appears after real words is somebody the user is
+// talking about, not the addressee.
+func dropLeadingMention(text string) string {
+	loc := mentionTagRegex.FindStringIndex(text)
+	if loc == nil {
+		return text
+	}
+
+	if !isBlankMarkup(text[:loc[0]]) {
+		return text
+	}
+
+	return text[:loc[0]] + " " + text[loc[1]:]
+}
+
+// isBlankMarkup reports whether a prefix carries no user-visible text once
+// block markup and whitespace are removed.
+func isBlankMarkup(prefix string) bool {
+	stripped := htmlTagRegex.ReplaceAllString(prefix, "")
+	stripped = html.UnescapeString(stripped)
+
+	return strings.TrimSpace(strings.ReplaceAll(stripped, "\u00a0", " ")) == ""
 }
 
 // finishStrip performs the markup cleanup shared by both stripping modes.

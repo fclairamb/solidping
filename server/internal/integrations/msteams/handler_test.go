@@ -2,12 +2,14 @@ package msteams
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -295,8 +297,10 @@ func TestDownloadManifest_RequiresAppID(t *testing.T) {
 	r.Equal(http.StatusConflict, rec.Code)
 }
 
-// TestGetDestinations_ServesConnectionState exercises the destinations
-// endpoint through the handler rather than the service.
+// TestGetDestinations_ServesConnectionState drives the destinations endpoint
+// through the HTTP handler, including the org/uid route params, so the
+// handler's own JSON shape and status code are covered — not just the
+// service method underneath it.
 func TestGetDestinations_ServesConnectionState(t *testing.T) {
 	t.Parallel()
 
@@ -308,14 +312,62 @@ func TestGetDestinations_ServesConnectionState(t *testing.T) {
 	org, err := svc.db.GetOrganization(ctx, conn.OrganizationUID)
 	r.NoError(err)
 
-	resp, err := svc.GetDestinations(ctx, org.Slug, conn.UID)
-	r.NoError(err)
+	handler, _ := newTestHandler(t, svc)
+
+	rec := getWithParams(t, handler.GetDestinations,
+		"/orgs/"+org.Slug+"/channels/"+conn.UID+"/msteams/destinations",
+		map[string]string{"org": org.Slug, "uid": conn.UID})
+
+	r.Equal(http.StatusOK, rec.Code)
+
+	var resp DestinationsResponse
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
 	r.Equal(testTenantID, resp.TenantID)
 	r.True(resp.Connected)
 	r.Empty(resp.Destinations)
+}
 
-	// And the model round-trips through the settings blob unchanged.
-	settings, err := models.MSTeamsBotSettingsFromJSONMap(conn.Settings)
-	r.NoError(err)
-	r.Equal(testTenantID, settings.TenantID)
+// TestGetDestinations_RejectsCrossOrgThroughHandler pins the tenancy check at
+// the HTTP layer, where the org slug is caller-supplied.
+func TestGetDestinations_RejectsCrossOrgThroughHandler(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, _ := setupService(t)
+
+	conn := newConnection(ctx, t, svc, "teams-http-x-own", testTenantID)
+
+	intruder := models.NewOrganization("teams-http-x-int", "")
+	r.NoError(svc.db.CreateOrganization(ctx, intruder))
+
+	handler, _ := newTestHandler(t, svc)
+
+	rec := getWithParams(t, handler.GetDestinations,
+		"/orgs/"+intruder.Slug+"/channels/"+conn.UID+"/msteams/destinations",
+		map[string]string{"org": intruder.Slug, "uid": conn.UID})
+
+	r.Equal(http.StatusNotFound, rec.Code)
+}
+
+// getWithParams issues a GET through an httpx handler with chi route params
+// populated, which is how the real router delivers :org / :uid.
+func getWithParams(
+	t *testing.T, handle func(http.ResponseWriter, *http.Request) error,
+	target string, params map[string]string,
+) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, target, nil)
+
+	routeCtx := chi.NewRouteContext()
+	for key, value := range params {
+		routeCtx.URLParams.Add(key, value)
+	}
+
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx))
+
+	rec := httptest.NewRecorder()
+	require.NoError(t, handle(rec, req))
+
+	return rec
 }

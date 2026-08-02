@@ -8,52 +8,52 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-// TestHandleUninstall_FansOutAcrossOrgs mirrors the Slack uninstall
-// acceptance criterion: removing the app in a tenant must stop routing for
-// EVERY org connected to that tenant, and must leave an unrelated tenant's
-// connection untouched.
+// TestHandleUninstall_ClearsRoutingStateForTheTenant covers the uninstall
+// acceptance criterion: removing the app must stop routing for the tenant's
+// connection and leave an unrelated tenant untouched.
 //
-// Unlike Slack the rows are kept (the credentials are instance-level, so a
-// reinstall restores service) — they are marked uninstalled and disabled.
-func TestHandleUninstall_FansOutAcrossOrgs(t *testing.T) {
+// Unlike Slack the row is kept (the credentials are instance-level, so a
+// reinstall restores service) — it is marked uninstalled and disabled.
+func TestHandleUninstall_ClearsRoutingStateForTheTenant(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	ctx, svc, _ := setupService(t)
 
-	// Duplicate rows for one tenant are unreachable through the API under the
-	// linking-code model, but uninstall still fans out over whatever exists:
-	// a legacy or hand-created duplicate must not be left behind still
-	// claiming a live install.
-	connA := newConnection(ctx, t, svc, "teams-uninst-a", testTenantID)
-	connB := newConnection(ctx, t, svc, "teams-uninst-b", testTenantID)
+	conn := newConnection(ctx, t, svc, "teams-uninst-a", testTenantID)
 	connOther := newConnection(ctx, t, svc, "teams-uninst-oth", "other-tenant")
 
-	// Seed a destination directly (HandleInstall refuses an ambiguous tenant
-	// by design) so we can prove routing state is cleared.
-	settings, err := settingsOf(connA)
+	_, err := svc.HandleInstall(ctx, installActivity(testTenantID, "19:channel-a", InstallActionAdd))
 	r.NoError(err)
-	settings.Destinations = []models.MSTeamsDestination{{ID: "19:channel-a", Name: "alerts"}}
-	settings.ChannelID = "19:channel-a"
-	r.NoError(svc.saveSettings(ctx, connA, settings))
 
 	r.NoError(svc.HandleUninstall(ctx, testTenantID))
 
-	for _, uid := range []string{connA.UID, connB.UID} {
-		conn, getErr := svc.db.GetChannel(ctx, uid)
-		r.NoError(getErr)
-		r.False(conn.Enabled, "uninstalled connection must stop routing")
+	stored, err := svc.db.GetChannel(ctx, conn.UID)
+	r.NoError(err)
+	r.False(stored.Enabled, "uninstalled connection must stop routing")
 
-		settings, parseErr := models.MSTeamsBotSettingsFromJSONMap(conn.Settings)
-		r.NoError(parseErr)
-		r.NotEmpty(settings.UninstalledAt)
-		r.Empty(settings.Destinations)
-		r.Empty(settings.ChannelID)
-	}
+	settings, err := models.MSTeamsBotSettingsFromJSONMap(stored.Settings)
+	r.NoError(err)
+	r.NotEmpty(settings.UninstalledAt)
+	r.Empty(settings.Destinations)
+	r.Empty(settings.ChannelID)
 
 	other, err := svc.db.GetChannel(ctx, connOther.UID)
 	r.NoError(err)
 	r.True(other.Enabled, "an unrelated tenant must be untouched")
+}
+
+// TestHandleUninstall_HonorsSingleTenantPin keeps the uninstall path on the
+// same choke point as every other tenant-scoped operation.
+func TestHandleUninstall_HonorsSingleTenantPin(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, _ := setupService(t)
+
+	svc.cfg.MSTeams.TenantID = "the-only-allowed-tenant"
+
+	r.ErrorIs(svc.HandleUninstall(ctx, "some-other-tenant"), ErrTenantNotAllowed)
 }
 
 // TestHandleUninstall_NoConnectionsIsNoop covers a duplicate/retried

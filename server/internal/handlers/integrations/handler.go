@@ -298,6 +298,9 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	case errors.Is(err, ErrMSTeamsBotManualCreate):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
 			"Microsoft Teams bot channels are added with a link code from the integration setup page")
+	case errors.Is(err, ErrMSTeamsBotUnknownDestination):
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+			"That Microsoft Teams channel is not one this bot has been added to")
 	case errors.Is(err, ErrFreeboxPairingFailed):
 		return h.WriteError(writer, http.StatusBadGateway, base.ErrorCodeInternalError, err.Error())
 	default:
