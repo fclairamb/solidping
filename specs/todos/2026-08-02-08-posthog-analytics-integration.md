@@ -148,3 +148,91 @@ Add an **Analytics** tab to the server settings section:
   a baked-in key, while self-hosted stays off? Left out of scope — the rule above
   is uniform, and a SaaS default can be layered on later in
   `server/internal/app/saas.go`.
+
+## Implementation Plan
+
+### Phase 1 — Configuration registry (backend)
+- Add `PostHogConfig` to `server/internal/config/config.go` (`koanf:"posthog"`):
+  `enabled` (default `true`), `host` (default `https://eu.i.posthog.com`),
+  `project_api_key`, `personal_api_key`. Add `Enabled()`-style helper
+  `cfg.PostHog.Active()` implementing the single enablement rule
+  `enabled && project_api_key != ""`.
+- Register the four keys in `server/internal/systemconfig/systemconfig.go`
+  (`KeyPostHogEnabled`, `KeyPostHogProjectAPIKey`, `KeyPostHogHost`,
+  `KeyPostHogPersonalAPIKey`) with `Secret: true` on the personal key only.
+- `posthog.project_api_key` / `posthog.personal_api_key` have snake_case
+  segments, so koanf's env loader cannot reach them: add
+  `SP_POSTHOG_PROJECT_API_KEY` / `SP_POSTHOG_PERSONAL_API_KEY` to
+  `manualReaderPlatformEnvVars()` in `server/internal/config/envvars.go` and an
+  `applyPostHogEnv` reader in `config.Load`. `posthog.enabled` / `posthog.host`
+  are koanf-reachable and need nothing.
+
+### Phase 2 — Public config endpoint
+- New `server/internal/handlers/publicconfig/` package: a general-purpose
+  browser-safe config blob (`{"posthog": {...}}`), designed so future public
+  flags join the same document.
+- `GET /api/v1/config`, unauthenticated, registered next to
+  `/api/v1/auth/providers` in `server/internal/app/server.go`.
+- Disabled ⇒ `{"posthog":{"enabled":false}}` — `projectApiKey`/`host` use
+  `omitempty` and are only populated when active. `personal_api_key` is never
+  referenced by this package.
+
+### Phase 3 — Backend analytics package + capture
+- New `server/internal/analytics`: `Client` interface (`Capture`, `Close`,
+  `Enabled`), a genuine `noopClient` returned by `New()` when inactive, and a
+  `posthogClient` wrapping `posthog-go` (async/buffered) otherwise.
+- Package-level default client (mirrors the global Sentry wiring) so call sites
+  never branch: `analytics.SetDefault`, `analytics.Capture`, `analytics.Close`.
+  Default is the no-op, so every path is inert until explicitly configured.
+- `DistinctID(orgUID, userUID)` = `org:<uid>/user:<uid>` — the exact scheme the
+  frontend reuses. No emails, no hostnames, no free text ever.
+- Instantiate in `Server.SetupRoutes` (runs after `InitializeSystemConfig`, so
+  DB-stored parameters are already overlaid); flush in `Server.Close`.
+- Capture exactly five events: `org_created`, `user_signed_up`,
+  `check_created`, `integration_connected`, `status_page_published`.
+
+### Phase 4 — Frontend posthog-js wiring
+- `posthog-js` dependency; `web/dash0/src/lib/analytics.ts` owns a lazy
+  `import("posthog-js")` performed **only** after `/api/v1/config` reports
+  enabled — so the chunk is never fetched when off.
+- `PostHogProvider` mounted from `__root.tsx`; boot fetch of `/api/v1/config`.
+- `AuthContext` calls `identifyUser(orgUid, userUid)` on login/session restore
+  and `resetAnalytics()` on logout; `uid` added to the parsed user shape.
+- Autocapture conservative: `mask_all_text` off but `mask_all_element_attributes`
+  and `maskInputOptions` on; `sanitize_properties` rewrites `$current_url` /
+  `$pathname` to a scrubbed route template (org slugs and check UIDs replaced
+  with `:org` / `:uid`), `disable_session_recording: true`.
+
+### Phase 5 — Dashboard settings tab
+- `tabs.analytics` in the `server` i18n namespace (en/fr/de/es) + appended to
+  the `tabs` array in `server.tsx`.
+- `server.analytics.tsx` mirroring `server.slack.tsx`/`server.web.tsx`:
+  `useSystemParameters` / `useSetSystemParameter`, enabled Switch, project key
+  Input, host Input, personal key secret Input with the stored/edit/reveal
+  dance. Mobile-friendly (stacked `space-y-*`, no fixed widths).
+- Env-override visibility: `ListParametersResponse` gains an additive
+  `envOverrides: []string` listing parameter keys currently forced by an `SP_*`
+  variable; the tab renders a Badge + hint on those fields.
+
+### Phase 6 — Docs
+- `web/docs/docs/configuration/analytics.md`: explicit "off unless configured",
+  the four env vars, the exact event list, the exact properties, and an
+  explicit "what is never sent" section.
+- `server/internal/app/openapi/openapi.yaml` + `wiki/api-specification/system.md`
+  for `GET /api/v1/config`.
+
+### Phase 7 — Tests (negative first)
+- Go: `publicconfig` handler tests — disabled ⇒ `enabled:false` and the
+  `projectApiKey`/`host` JSON keys **absent** (asserted on the raw JSON, not the
+  struct); enabled ⇒ present and correct; personal key never present under any
+  configuration.
+- Go: `analytics` package tests — `New()` returns the no-op when
+  disabled/keyless/enabled-but-keyless, and captures never hit the network;
+  positive control asserts a configured client posts to the configured host
+  (httptest server).
+- Go: systemconfig test asserting the four keys are registered with the correct
+  secret flags and env names.
+- Playwright `e2e/analytics-optout.spec.ts`: with no credentials, record every
+  request and assert **zero** requests to any posthog host and that no
+  `posthog` chunk is fetched; positive control stubs `/api/v1/config` with a key
+  and asserts the module does load.
