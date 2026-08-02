@@ -192,3 +192,91 @@ func TestParseMentionText_Commands(t *testing.T) {
 		})
 	}
 }
+
+// botMention builds the entity list Teams sends alongside a mention of the
+// bot itself.
+func botMention(text string) []Mention {
+	return []Mention{{
+		Type:      "mention",
+		Text:      text,
+		Mentioned: &ChannelAccount{ID: "28:" + testAppID, Name: "SolidPing"},
+	}}
+}
+
+// TestStripRecipientMention_KeepsOtherPeoplesMentions is the correctness
+// control for entity-scoped stripping.
+//
+// The un-anchored strip deletes EVERY `<at>…</at>` run, so a command that
+// legitimately quotes another person's mention would lose that token and the
+// remaining arguments would shift — the bot would then act on the wrong
+// value. Only the bot's own mention may be removed.
+func TestStripRecipientMention_KeepsOtherPeoplesMentions(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	text := "<at>SolidPing</at> checks rm <at>Bob</at>"
+	entities := botMention("<at>SolidPing</at>")
+
+	r.Equal("checks rm Bob", StripRecipientMention(text, entities, "28:"+testAppID))
+
+	// The un-anchored fallback is what this fixes — pinned so a regression is
+	// visible rather than silent.
+	r.Equal("checks rm", StripMention(text))
+}
+
+// TestParseActivityCommand_ArgsSurviveForeignMentions proves the fix at the
+// level that matters: the parsed argument list.
+func TestParseActivityCommand_ArgsSurviveForeignMentions(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	activity := &Activity{
+		Type:      ActivityTypeMessage,
+		Text:      "<at>SolidPing</at> checks rm <at>Bob</at>",
+		Recipient: &ChannelAccount{ID: "28:" + testAppID},
+		Entities:  botMention("<at>SolidPing</at>"),
+	}
+
+	cmd := ParseActivityCommand(activity)
+	r.Equal(cmdChecks, cmd.Command)
+	r.Equal("rm", cmd.Subcommand)
+	r.Equal([]string{"Bob"}, cmd.Args)
+}
+
+// TestParseActivityCommand_FallsBackWithoutEntities keeps activities that
+// carry no entity list working (older channels, emulator traffic).
+func TestParseActivityCommand_FallsBackWithoutEntities(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	activity := &Activity{
+		Type:      ActivityTypeMessage,
+		Text:      "<at>SolidPing</at> checks list",
+		Recipient: &ChannelAccount{ID: "28:" + testAppID},
+	}
+
+	cmd := ParseActivityCommand(activity)
+	r.Equal(cmdChecks, cmd.Command)
+	r.Equal(subList, cmd.Subcommand)
+}
+
+// TestStripRecipientMention_IgnoresOtherBotsMentions covers the case where the
+// entity list names a mention that is NOT us: nothing of ours to strip, and
+// the other mention must survive as text.
+func TestStripRecipientMention_IgnoresOtherBotsMentions(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	entities := []Mention{{
+		Type:      "mention",
+		Text:      "<at>SomeoneElse</at>",
+		Mentioned: &ChannelAccount{ID: "28:another-app"},
+	}}
+
+	got := StripRecipientMention("<at>SomeoneElse</at> checks list", entities, "28:"+testAppID)
+	r.Equal("checks list", got)
+}

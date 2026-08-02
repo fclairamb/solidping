@@ -74,7 +74,9 @@ func NewService(dbService db.Service, cfg *config.Config, checksService *checks.
 	}
 
 	svc.newBotClient = func(serviceURL string) *Client {
-		return NewClient(cfg.MSTeams.AppID, cfg.MSTeams.AppSecret, serviceURL)
+		return NewClientForTenant(
+			cfg.MSTeams.AppID, cfg.MSTeams.AppSecret, serviceURL, cfg.MSTeams.TenantID,
+		)
 	}
 
 	return svc
@@ -112,6 +114,14 @@ func (s *Service) Configured() bool {
 func (s *Service) GetConnectionByTenantID(ctx context.Context, tenantID string) (*models.Integration, error) {
 	if tenantID == "" {
 		return nil, ErrNoTenantID
+	}
+
+	// The single-tenant pin is enforced here because this is the choke point
+	// every inbound path funnels through — commands, installs and
+	// conversation updates alike — so a foreign tenant cannot reach any of
+	// them by taking a different route.
+	if err := s.checkTenantAllowed(tenantID); err != nil {
+		return nil, err
 	}
 
 	conns, err := s.db.ListChannelsByProperty(

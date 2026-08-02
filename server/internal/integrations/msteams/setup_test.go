@@ -13,9 +13,25 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/handlers/checks"
+	"github.com/fclairamb/solidping/server/internal/notifier"
 )
+
+// noopDEKStore satisfies credentials.DEKStore for the disabled-encryption
+// mode used here (no master key configured).
+type noopDEKStore struct{}
+
+func newNoopDEKStore() *noopDEKStore { return &noopDEKStore{} }
+
+func (*noopDEKStore) LoadDEK(context.Context, string) ([]byte, bool, error) {
+	return nil, false, nil
+}
+
+func (*noopDEKStore) SaveDEK(context.Context, string, []byte) error { return nil }
 
 const testAppSecret = "test-app-secret"
 
@@ -44,7 +60,20 @@ func setupService(t *testing.T) (context.Context, *Service, *fakeConnector) {
 
 	connector := newFakeConnector(t)
 
-	svc := NewService(dbService, cfg, nil)
+	// A REAL checks service, not nil: `checks add/list/rm` and `results` all
+	// go through it, so a nil here would make them structurally untestable
+	// and leave the commands that mutate check data with zero coverage.
+	creds, err := credentials.NewService(nil, newNoopDEKStore())
+	require.NoError(t, err)
+
+	checksService := checks.NewService(
+		dbService,
+		notifier.NewLocalEventNotifier(),
+		creds,
+		entcore.NewService(dbService, entcore.DefaultsFor(config.DeploymentModeSelfHosted), 0),
+	)
+
+	svc := NewService(dbService, cfg, checksService)
 	svc.newBotClient = func(_ string) *Client {
 		return NewClientWithTokenURL(testAppID, testAppSecret, connector.server.URL, connector.tokenURL())
 	}

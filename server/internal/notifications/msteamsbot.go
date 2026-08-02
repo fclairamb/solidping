@@ -94,7 +94,7 @@ func (s *MSTeamsBotSender) Send(ctx context.Context, jctx *jobdef.JobContext, pa
 	}
 
 	if hasCard(entry) {
-		return s.updateExistingCard(ctx, appID, appSecret, entry, payload)
+		return s.updateExistingCard(ctx, jctx, appID, appSecret, entry, payload)
 	}
 
 	return s.postNewCard(ctx, jctx, appID, appSecret, settings, payload, stateKey)
@@ -109,13 +109,23 @@ func (s *MSTeamsBotSender) credentials(jctx *jobdef.JobContext) (string, string)
 	return jctx.AppConfig.MSTeams.AppID, jctx.AppConfig.MSTeams.AppSecret
 }
 
+// pinnedTenant returns the configured single-tenant pin, which selects the
+// single-tenant OAuth token endpoint for outbound calls.
+func (s *MSTeamsBotSender) pinnedTenant(jctx *jobdef.JobContext) string {
+	if jctx == nil || jctx.AppConfig == nil {
+		return ""
+	}
+
+	return jctx.AppConfig.MSTeams.TenantID
+}
+
 // client builds a Bot Connector client, honoring the test override.
-func (s *MSTeamsBotSender) client(appID, appSecret, serviceURL string) *msteams.Client {
+func (s *MSTeamsBotSender) client(appID, appSecret, serviceURL, tenantID string) *msteams.Client {
 	if s.newClient != nil {
 		return s.newClient(appID, appSecret, serviceURL)
 	}
 
-	return msteams.NewClient(appID, appSecret, serviceURL)
+	return msteams.NewClientForTenant(appID, appSecret, serviceURL, tenantID)
 }
 
 // isFollowUpEvent reports whether the event can only make sense as an update
@@ -207,7 +217,7 @@ func (s *MSTeamsBotSender) postNewCard(
 		return err
 	}
 
-	client := s.client(appID, appSecret, serviceURL)
+	client := s.client(appID, appSecret, serviceURL, s.pinnedTenant(jctx))
 
 	result, err := client.SendToConversation(ctx, conversationID, s.buildCardActivity(payload))
 	if err != nil {
@@ -236,13 +246,14 @@ func (s *MSTeamsBotSender) postNewCard(
 // Slack-thread-like grouping.
 func (s *MSTeamsBotSender) updateExistingCard(
 	ctx context.Context,
+	jctx *jobdef.JobContext,
 	appID, appSecret string,
 	entry *models.StateEntry,
 	payload *Payload,
 ) error {
 	ref := cardRef(entry)
 
-	client := s.client(appID, appSecret, ref.ServiceURL)
+	client := s.client(appID, appSecret, ref.ServiceURL, s.pinnedTenant(jctx))
 
 	if _, err := client.UpdateActivity(
 		ctx, ref.ConversationID, ref.ActivityID, s.buildCardActivity(payload),

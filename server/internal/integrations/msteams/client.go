@@ -15,11 +15,16 @@ import (
 )
 
 const (
-	// DefaultTokenURL is the Bot Framework client-credentials token endpoint.
-	// The `botframework.com` tenant segment is not a typo: bot credentials
-	// are always minted against Microsoft's own tenant, whatever tenant the
-	// bot is talking to.
+	// DefaultTokenURL is the Bot Framework client-credentials token endpoint
+	// for a MULTI-TENANT bot registration. The `botframework.com` tenant
+	// segment is not a typo: a multi-tenant bot's credentials are minted
+	// against Microsoft's own tenant, whatever tenant the bot is talking to.
 	DefaultTokenURL = "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token"
+	// tokenURLTemplate builds the SINGLE-TENANT variant. Microsoft documents
+	// a single-tenant Azure Bot as minting tokens against its own tenant
+	// instead, so a self-hosted operator who registered a single-tenant app
+	// would otherwise be unable to send anything at all.
+	tokenURLTemplate = "https://login.microsoftonline.com/%s/oauth2/v2.0/token"
 	// BotFrameworkScope is the scope requested for connector calls.
 	BotFrameworkScope = "https://api.botframework.com/.default"
 	// DefaultTimeout bounds every Bot Connector HTTP call.
@@ -70,9 +75,27 @@ type Client struct {
 	tokenURL   string
 }
 
-// NewClient creates a Bot Connector client for a service URL.
+// NewClient creates a Bot Connector client for a service URL, using the
+// multi-tenant token endpoint.
 func NewClient(appID, appSecret, serviceURL string) *Client {
 	return NewClientWithTokenURL(appID, appSecret, serviceURL, DefaultTokenURL)
+}
+
+// NewClientForTenant creates a Bot Connector client that mints its outbound
+// token against the right endpoint for the registration type: the
+// single-tenant endpoint when the operator pinned a tenant
+// (`msteams.tenant_id`), the multi-tenant one otherwise.
+//
+// Managed-identity bots are NOT supported: they take their token from the
+// instance metadata endpoint rather than a client secret, which is a
+// different credential model entirely. See the self-hosted setup docs.
+func NewClientForTenant(appID, appSecret, serviceURL, tenantID string) *Client {
+	tokenURL := DefaultTokenURL
+	if tenantID != "" {
+		tokenURL = fmt.Sprintf(tokenURLTemplate, url.PathEscape(tenantID))
+	}
+
+	return NewClientWithTokenURL(appID, appSecret, serviceURL, tokenURL)
 }
 
 // NewClientWithTokenURL creates a client with a custom token endpoint.
