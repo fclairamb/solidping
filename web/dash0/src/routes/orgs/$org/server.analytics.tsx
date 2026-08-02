@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { AlertCircle, Check, Eye, EyeOff, Loader2 } from "lucide-react";
@@ -67,15 +67,18 @@ function AnalyticsSettingsPage() {
   const personalStored = getParam(KEY_PERSONAL_API_KEY)?.secret ?? false;
   const personalInputVisible = editingPersonal || !personalStored;
 
-  useEffect(() => {
-    if (!params) return;
+  // Seed the form from the freshly loaded parameters. Done as a render-phase
+  // adjustment (React's documented "adjusting state when props change"
+  // pattern) rather than in an effect, which would cause a cascading render.
+  const [syncedParams, setSyncedParams] = useState<SystemParameter[] | undefined>(undefined);
+  if (params && params !== syncedParams) {
+    setSyncedParams(params);
     setEnabled(persistedEnabled);
     setProjectApiKey(persistedProjectApiKey);
     setHost(persistedHost);
     setPersonalApiKey("");
     setEditingPersonal(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params]);
+  }
 
   // THE enablement rule, identical to the backend's
   // config.PostHogConfig.Active(): the toggle alone never turns anything on.

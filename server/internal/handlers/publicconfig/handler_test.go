@@ -21,7 +21,7 @@ func serve(t *testing.T, cfg *config.Config) map[string]any {
 
 	handler := publicconfig.NewHandler(cfg)
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/config", nil)
 
 	require.NoError(t, handler.GetConfig(recorder, req))
 	require.Equal(t, http.StatusOK, recorder.Code)
@@ -118,7 +118,8 @@ func TestGetConfigNeverLeaksThePersonalAPIKey(t *testing.T) {
 
 		handler := publicconfig.NewHandler(cfg)
 		recorder := httptest.NewRecorder()
-		require.NoError(t, handler.GetConfig(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/config", nil)
+		require.NoError(t, handler.GetConfig(recorder, req))
 
 		require.NotContains(t, recorder.Body.String(), personal)
 		require.NotContains(t, recorder.Body.String(), "personal")

@@ -20,6 +20,10 @@ import (
 const slugValidationMsg = "Slug must start with a lowercase letter, be 3-40 characters, " +
 	"and contain only lowercase letters, digits, or hyphens. UUIDs are not allowed."
 
+// visibilityPublic is the status_pages.visibility value that makes a page
+// world-readable. Shared across the package so the literal appears once.
+const visibilityPublic = "public"
+
 const (
 	fieldSlug          = "slug"
 	fieldBody          = "body"
@@ -104,7 +108,7 @@ func (h *Handler) CreateStatusPage(writer http.ResponseWriter, req *http.Request
 	// created live and publicly visible — SolidPing has no separate publish
 	// action. No-op unless PostHog is configured; nothing but the visibility
 	// string travels (never the page name, slug or custom domain).
-	if page.Enabled && page.Visibility == "public" {
+	if page.Enabled && page.Visibility == visibilityPublic {
 		captureStatusPagePublished(req, page.Visibility)
 	}
 

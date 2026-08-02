@@ -71,6 +71,7 @@ import { Route as OrgsOrgServerMailRouteImport } from './routes/orgs/$org/server
 import { Route as OrgsOrgServerHashingRouteImport } from './routes/orgs/$org/server.hashing'
 import { Route as OrgsOrgServerEmailInboxRouteImport } from './routes/orgs/$org/server.email-inbox'
 import { Route as OrgsOrgServerAuthRouteImport } from './routes/orgs/$org/server.auth'
+import { Route as OrgsOrgServerAnalyticsRouteImport } from './routes/orgs/$org/server.analytics'
 import { Route as OrgsOrgServerAggregationRouteImport } from './routes/orgs/$org/server.aggregation'
 import { Route as OrgsOrgServerActivationRouteImport } from './routes/orgs/$org/server.activation'
 import { Route as OrgsOrgOrganizationUsageRouteImport } from './routes/orgs/$org/organization.usage'
@@ -443,6 +444,11 @@ const OrgsOrgServerAuthRoute = OrgsOrgServerAuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => OrgsOrgServerRoute,
 } as any)
+const OrgsOrgServerAnalyticsRoute = OrgsOrgServerAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => OrgsOrgServerRoute,
+} as any)
 const OrgsOrgServerAggregationRoute =
   OrgsOrgServerAggregationRouteImport.update({
     id: '/aggregation',
@@ -784,6 +790,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/organization/usage': typeof OrgsOrgOrganizationUsageRoute
   '/orgs/$org/server/activation': typeof OrgsOrgServerActivationRoute
   '/orgs/$org/server/aggregation': typeof OrgsOrgServerAggregationRoute
+  '/orgs/$org/server/analytics': typeof OrgsOrgServerAnalyticsRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
   '/orgs/$org/server/hashing': typeof OrgsOrgServerHashingRoute
@@ -877,6 +884,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/organization/usage': typeof OrgsOrgOrganizationUsageRoute
   '/orgs/$org/server/activation': typeof OrgsOrgServerActivationRoute
   '/orgs/$org/server/aggregation': typeof OrgsOrgServerAggregationRoute
+  '/orgs/$org/server/analytics': typeof OrgsOrgServerAnalyticsRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
   '/orgs/$org/server/hashing': typeof OrgsOrgServerHashingRoute
@@ -990,6 +998,7 @@ export interface FileRoutesById {
   '/orgs/$org/organization/usage': typeof OrgsOrgOrganizationUsageRoute
   '/orgs/$org/server/activation': typeof OrgsOrgServerActivationRoute
   '/orgs/$org/server/aggregation': typeof OrgsOrgServerAggregationRoute
+  '/orgs/$org/server/analytics': typeof OrgsOrgServerAnalyticsRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
   '/orgs/$org/server/hashing': typeof OrgsOrgServerHashingRoute
@@ -1105,6 +1114,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/usage'
     | '/orgs/$org/server/activation'
     | '/orgs/$org/server/aggregation'
+    | '/orgs/$org/server/analytics'
     | '/orgs/$org/server/auth'
     | '/orgs/$org/server/email-inbox'
     | '/orgs/$org/server/hashing'
@@ -1198,6 +1208,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/usage'
     | '/orgs/$org/server/activation'
     | '/orgs/$org/server/aggregation'
+    | '/orgs/$org/server/analytics'
     | '/orgs/$org/server/auth'
     | '/orgs/$org/server/email-inbox'
     | '/orgs/$org/server/hashing'
@@ -1310,6 +1321,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/usage'
     | '/orgs/$org/server/activation'
     | '/orgs/$org/server/aggregation'
+    | '/orgs/$org/server/analytics'
     | '/orgs/$org/server/auth'
     | '/orgs/$org/server/email-inbox'
     | '/orgs/$org/server/hashing'
@@ -1806,6 +1818,13 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/orgs/$org/server/auth'
       preLoaderRoute: typeof OrgsOrgServerAuthRouteImport
+      parentRoute: typeof OrgsOrgServerRoute
+    }
+    '/orgs/$org/server/analytics': {
+      id: '/orgs/$org/server/analytics'
+      path: '/analytics'
+      fullPath: '/orgs/$org/server/analytics'
+      preLoaderRoute: typeof OrgsOrgServerAnalyticsRouteImport
       parentRoute: typeof OrgsOrgServerRoute
     }
     '/orgs/$org/server/aggregation': {
@@ -2432,6 +2451,7 @@ const OrgsOrgOrganizationRouteWithChildren =
 interface OrgsOrgServerRouteChildren {
   OrgsOrgServerActivationRoute: typeof OrgsOrgServerActivationRoute
   OrgsOrgServerAggregationRoute: typeof OrgsOrgServerAggregationRoute
+  OrgsOrgServerAnalyticsRoute: typeof OrgsOrgServerAnalyticsRoute
   OrgsOrgServerAuthRoute: typeof OrgsOrgServerAuthRoute
   OrgsOrgServerEmailInboxRoute: typeof OrgsOrgServerEmailInboxRoute
   OrgsOrgServerHashingRoute: typeof OrgsOrgServerHashingRoute
@@ -2445,6 +2465,7 @@ interface OrgsOrgServerRouteChildren {
 const OrgsOrgServerRouteChildren: OrgsOrgServerRouteChildren = {
   OrgsOrgServerActivationRoute: OrgsOrgServerActivationRoute,
   OrgsOrgServerAggregationRoute: OrgsOrgServerAggregationRoute,
+  OrgsOrgServerAnalyticsRoute: OrgsOrgServerAnalyticsRoute,
   OrgsOrgServerAuthRoute: OrgsOrgServerAuthRoute,
   OrgsOrgServerEmailInboxRoute: OrgsOrgServerEmailInboxRoute,
   OrgsOrgServerHashingRoute: OrgsOrgServerHashingRoute,

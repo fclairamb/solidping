@@ -180,6 +180,15 @@ const (
 	KeyPostHogPersonalAPIKey ParameterKey = "posthog.personal_api_key"
 )
 
+// SP_* environment variable names for the product-analytics parameters,
+// hoisted to constants because the tests assert on them too.
+const (
+	EnvPostHogEnabled        = "SP_POSTHOG_ENABLED"
+	EnvPostHogProjectAPIKey  = "SP_POSTHOG_PROJECT_API_KEY"
+	EnvPostHogHost           = "SP_POSTHOG_HOST"
+	EnvPostHogPersonalAPIKey = "SP_POSTHOG_PERSONAL_API_KEY"
+)
+
 // EnvVarForKey returns the SP_* environment variable bound to a system
 // parameter key, and ok=false when the key is not a known parameter. Pure data
 // accessor over getKnownParameters — no database dependency.
@@ -661,7 +670,7 @@ func getKnownParameters() []ParameterDefinition {
 			// integration until a project key is present — never flip this to
 			// "analytics are on".
 			Key:    KeyPostHogEnabled,
-			EnvVar: "SP_POSTHOG_ENABLED",
+			EnvVar: EnvPostHogEnabled,
 			Secret: false,
 			ApplyFunc: func(cfg *config.Config, value any) {
 				cfg.PostHog.Enabled = parseBool(value, cfg.PostHog.Enabled)
@@ -671,7 +680,7 @@ func getKnownParameters() []ParameterDefinition {
 			// The phc_… browser key. NOT a secret: it is shipped to every SPA
 			// that loads the dashboard, exactly like a Sentry DSN.
 			Key:    KeyPostHogProjectAPIKey,
-			EnvVar: "SP_POSTHOG_PROJECT_API_KEY",
+			EnvVar: EnvPostHogProjectAPIKey,
 			Secret: false,
 			ApplyFunc: func(cfg *config.Config, value any) {
 				if v, ok := value.(string); ok {
@@ -681,7 +690,7 @@ func getKnownParameters() []ParameterDefinition {
 		},
 		{
 			Key:    KeyPostHogHost,
-			EnvVar: "SP_POSTHOG_HOST",
+			EnvVar: EnvPostHogHost,
 			Secret: false,
 			ApplyFunc: func(cfg *config.Config, value any) {
 				if v, ok := value.(string); ok {
@@ -693,7 +702,7 @@ func getKnownParameters() []ParameterDefinition {
 			// Server-side key. Secret: it carries broader privileges than the
 			// project key and must never leave the process.
 			Key:    KeyPostHogPersonalAPIKey,
-			EnvVar: "SP_POSTHOG_PERSONAL_API_KEY",
+			EnvVar: EnvPostHogPersonalAPIKey,
 			Secret: true,
 			ApplyFunc: func(cfg *config.Config, value any) {
 				if v, ok := value.(string); ok {

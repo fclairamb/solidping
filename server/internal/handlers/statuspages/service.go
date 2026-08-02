@@ -1147,7 +1147,7 @@ func (s *Service) ViewStatusPage(
 		return StatusPageResponse{}, ErrStatusPageNotFound
 	}
 
-	if !page.Enabled || page.Visibility != "public" {
+	if !page.Enabled || page.Visibility != visibilityPublic {
 		return StatusPageResponse{}, ErrStatusPageNotFound
 	}
 

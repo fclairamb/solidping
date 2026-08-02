@@ -328,7 +328,7 @@ func (s *Service) CustomDomainServable(ctx context.Context, domain string) bool 
 		return false
 	}
 
-	return page.CustomDomainVerifiedAt != nil && page.Enabled && page.Visibility == "public"
+	return page.CustomDomainVerifiedAt != nil && page.Enabled && page.Visibility == visibilityPublic
 }
 
 // isUniqueViolation reports whether an error looks like a unique-constraint

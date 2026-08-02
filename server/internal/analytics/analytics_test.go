@@ -135,9 +135,13 @@ func TestDisabledClientNeverTouchesTheNetwork(t *testing.T) {
 	}
 }
 
-// TestPackageDefaultIsInertUntilConfigured proves the process-wide default —
-// what every call site uses — is a no-op before SetDefault is ever called.
-func TestPackageDefaultIsInertUntilConfigured(t *testing.T) {
+// TestProcessWideDefaultLifecycle proves the process-wide default — what every
+// call site actually uses — is inert until something configures it.
+//
+// The two halves live in one test function rather than two because both mutate
+// the package-level default; splitting them would make the parallel runs race.
+func TestProcessWideDefaultLifecycle(t *testing.T) {
+	t.Parallel()
 	r := require.New(t)
 
 	rec, host := newRecorder(t)
@@ -156,14 +160,11 @@ func TestPackageDefaultIsInertUntilConfigured(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond)
 	r.Equal(0, rec.count())
-}
 
-// TestSetDefaultNilResetsToNoop guards the reset path used by tests and by a
-// misconfiguration fallback.
-func TestSetDefaultNilResetsToNoop(t *testing.T) {
+	// Resetting to nil must land back on the no-op, never on a nil client.
 	analytics.SetDefault(nil)
-	require.False(t, analytics.Default().Enabled())
-	require.NotNil(t, analytics.Default())
+	r.NotNil(analytics.Default())
+	r.False(analytics.Default().Enabled())
 }
 
 // TestConfiguredClientCaptures is the positive control for the negative tests

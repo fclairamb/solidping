@@ -2,6 +2,7 @@ package systemconfig
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -615,10 +616,10 @@ func TestKnownPostHogKeys(t *testing.T) {
 	}
 
 	expectedEnv := map[ParameterKey]string{
-		KeyPostHogEnabled:        "SP_POSTHOG_ENABLED",
-		KeyPostHogProjectAPIKey:  "SP_POSTHOG_PROJECT_API_KEY",
-		KeyPostHogHost:           "SP_POSTHOG_HOST",
-		KeyPostHogPersonalAPIKey: "SP_POSTHOG_PERSONAL_API_KEY",
+		KeyPostHogEnabled:        EnvPostHogEnabled,
+		KeyPostHogProjectAPIKey:  EnvPostHogProjectAPIKey,
+		KeyPostHogHost:           EnvPostHogHost,
+		KeyPostHogPersonalAPIKey: EnvPostHogPersonalAPIKey,
 	}
 
 	for key, envVar := range expectedEnv {
@@ -656,62 +657,109 @@ func TestPostHogEnablementRule(t *testing.T) {
 
 // TestInitializeAppliesPostHogParams verifies the env > db > default precedence
 // for the posthog.* keys, including the negative case: with nothing set
-// anywhere, the resolved config must be inactive.
+// anywhere, the resolved config must stay inactive.
 func TestInitializeAppliesPostHogParams(t *testing.T) {
-	ctx := context.Background()
+	type paramRow struct {
+		value  any
+		secret bool
+	}
 
-	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
-	require.NoError(t, err)
+	tests := []struct {
+		name        string
+		dbParams    map[string]paramRow
+		env         map[string]string
+		wantKey     string
+		wantEnabled bool
+		wantActive  bool
+	}{
+		{
+			// The stock self-hosted install: kill switch on, no key anywhere.
+			name:        "defaults resolve to inactive",
+			wantEnabled: true,
+			wantActive:  false,
+		},
+		{
+			name: "db key activates",
+			dbParams: map[string]paramRow{
+				string(KeyPostHogProjectAPIKey): {value: "phc_from_db"},
+			},
+			wantKey:     "phc_from_db",
+			wantEnabled: true,
+			wantActive:  true,
+		},
+		{
+			name: "env beats db",
+			dbParams: map[string]paramRow{
+				string(KeyPostHogProjectAPIKey): {value: "phc_from_db"},
+			},
+			env:         map[string]string{EnvPostHogProjectAPIKey: "phc_from_env"},
+			wantKey:     "phc_from_env",
+			wantEnabled: true,
+			wantActive:  true,
+		},
+		{
+			name: "db kill switch disables a configured key",
+			dbParams: map[string]paramRow{
+				string(KeyPostHogProjectAPIKey): {value: "phc_from_db"},
+				string(KeyPostHogEnabled):       {value: false},
+			},
+			wantKey:     "phc_from_db",
+			wantEnabled: false,
+			wantActive:  false,
+		},
+		{
+			name:        "env kill switch disables a configured key",
+			dbParams:    map[string]paramRow{string(KeyPostHogProjectAPIKey): {value: "phc_from_db"}},
+			env:         map[string]string{EnvPostHogEnabled: strconv.FormatBool(false)},
+			wantKey:     "phc_from_db",
+			wantEnabled: false,
+			wantActive:  false,
+		},
+	}
 
-	defer func() { _ = dbSvc.Close() }()
-	require.NoError(t, dbSvc.Initialize(ctx))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := require.New(t)
+			ctx := context.Background()
 
-	t.Run("defaults are inactive", func(t *testing.T) {
-		r := require.New(t)
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
 
-		cfg := &config.Config{PostHog: config.PostHogConfig{
-			Enabled: true, Host: config.DefaultPostHogHost,
-		}}
-		r.NoError(NewService(dbSvc, cfg).Initialize(ctx))
-		r.False(cfg.PostHog.Active(), "an untouched install must resolve to analytics off")
-	})
+			dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+			r.NoError(err)
+			r.NoError(dbSvc.Initialize(ctx))
+			t.Cleanup(func() { _ = dbSvc.Close() })
 
-	t.Run("db value activates", func(t *testing.T) {
-		r := require.New(t)
+			for key, p := range tt.dbParams {
+				r.NoError(dbSvc.SetSystemParameter(ctx, key, p.value, p.secret))
+			}
 
-		r.NoError(dbSvc.SetSystemParameter(ctx, string(KeyPostHogProjectAPIKey), "phc_from_db", false))
+			cfg := &config.Config{PostHog: config.PostHogConfig{
+				Enabled: true, Host: config.DefaultPostHogHost,
+			}}
+			r.NoError(NewService(dbSvc, cfg).Initialize(ctx))
 
-		cfg := &config.Config{PostHog: config.PostHogConfig{
-			Enabled: true, Host: config.DefaultPostHogHost,
-		}}
-		r.NoError(NewService(dbSvc, cfg).Initialize(ctx))
-		r.Equal("phc_from_db", cfg.PostHog.ProjectAPIKey)
-		r.True(cfg.PostHog.Active())
-	})
+			r.Equal(tt.wantKey, cfg.PostHog.ProjectAPIKey)
+			r.Equal(tt.wantEnabled, cfg.PostHog.Enabled)
+			r.Equal(tt.wantActive, cfg.PostHog.Active())
 
-	t.Run("env beats db", func(t *testing.T) {
-		r := require.New(t)
+			for k := range tt.env {
+				r.Contains(EnvOverriddenKeys(), envKeyToParam(k))
+			}
+		})
+	}
+}
 
-		t.Setenv("SP_POSTHOG_PROJECT_API_KEY", "phc_from_env")
-
-		cfg := &config.Config{PostHog: config.PostHogConfig{
-			Enabled: true, Host: config.DefaultPostHogHost,
-		}}
-		r.NoError(NewService(dbSvc, cfg).Initialize(ctx))
-		r.Equal("phc_from_env", cfg.PostHog.ProjectAPIKey)
-		r.Contains(EnvOverriddenKeys(), string(KeyPostHogProjectAPIKey))
-	})
-
-	t.Run("kill switch from db disables a configured key", func(t *testing.T) {
-		r := require.New(t)
-
-		r.NoError(dbSvc.SetSystemParameter(ctx, string(KeyPostHogEnabled), false, false))
-
-		cfg := &config.Config{PostHog: config.PostHogConfig{
-			Enabled: true, Host: config.DefaultPostHogHost, ProjectAPIKey: "phc_k",
-		}}
-		r.NoError(NewService(dbSvc, cfg).Initialize(ctx))
-		r.False(cfg.PostHog.Enabled)
-		r.False(cfg.PostHog.Active())
-	})
+// envKeyToParam maps the SP_* names used above back to their parameter key so
+// the env-override reporting is asserted from the same table.
+func envKeyToParam(envVar string) string {
+	switch envVar {
+	case EnvPostHogProjectAPIKey:
+		return string(KeyPostHogProjectAPIKey)
+	case EnvPostHogEnabled:
+		return string(KeyPostHogEnabled)
+	default:
+		return envVar
+	}
 }

@@ -148,7 +148,7 @@ func New(cfg config.PostHogConfig) Client {
 		// A misconfigured analytics client must never prevent the server from
 		// serving traffic — degrade to the no-op.
 		//
-		//nolint:sloglint // startup-only, no request context available here
+
 		slog.Warn("analytics: failed to initialize PostHog client, product analytics disabled", "error", err)
 
 		return noopClient{}
