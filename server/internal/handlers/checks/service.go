@@ -371,6 +371,12 @@ type Service struct {
 	// entitlements enforces the per-org MaxChecks cap at creation. May be
 	// nil in tests / paths that don't construct it; guards no-op when nil.
 	entitlements *entcore.Service
+	// checkStats caches the per-org aggregate counters served by
+	// GetCheckStats (spec 2026-08-02-06). Zero value is a usable empty cache.
+	checkStats checkStatsCache
+	// checkStatsTTL overrides defaultCheckStatsTTL. Zero = use the default;
+	// only tests set it.
+	checkStatsTTL time.Duration
 }
 
 // NewService creates a new checks service. entSvc enforces the MaxChecks
