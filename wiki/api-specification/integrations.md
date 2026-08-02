@@ -107,6 +107,11 @@ Auth: Bot Connector JWT, verified against Microsoft's JWKS (issuer, audience =
 app ID, validity window, `serviceurl` claim, optional tenant allow-list).
 Returns 503 while `msteams.enabled` is false.
 
+Destination selections (the connection's `channel_id` and the per-check
+`conversation_id` override) are validated against the connection's captured
+`destinations` on every write and again at send time — a Teams conversation ID
+is discoverable, so naming one is not authorization to post there.
+
 ### POST /api/v1/orgs/:org/integrations/msteams/link-code
 Mint a one-time code that binds a Microsoft 365 tenant to this organization.
 The org comes from the verified route context, and the tenant is written
