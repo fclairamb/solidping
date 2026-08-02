@@ -1,0 +1,458 @@
+package checks_test
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/handlers/checks"
+	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/notifier"
+)
+
+// statsFixture describes one check row to seed for a stats aggregation case.
+type statsFixture struct {
+	status   models.CheckStatus
+	enabled  bool
+	internal bool
+	deleted  bool
+}
+
+// seedStatsChecks writes the fixture rows straight through the db service —
+// no CreateCheck round-trip — so a case can pin an exact (status, enabled,
+// internal, deleted) combination that the public API would otherwise not let
+// it reach (e.g. a freshly created check is always `created`).
+func seedStatsChecks(
+	t *testing.T, ctx context.Context, dbSvc db.Service, orgUID string, fixtures []statsFixture,
+) {
+	t.Helper()
+	r := require.New(t)
+
+	for _, f := range fixtures {
+		// Unique slug per row: seedStatsChecks is called more than once
+		// against the same org (the cache tests seed, then seed again).
+		check := models.NewCheck(orgUID, "c"+uuid.NewString(), "http")
+		check.Config = models.JSONMap{"url": "https://example.com"}
+		check.Status = f.status
+		check.Enabled = f.enabled
+		check.Internal = f.internal
+		r.NoError(dbSvc.CreateCheck(ctx, check))
+
+		if f.deleted {
+			r.NoError(dbSvc.DeleteCheck(ctx, check.UID))
+		}
+	}
+}
+
+// newStatsService builds a checks service over a fresh in-memory SQLite DB
+// with one organization.
+func newStatsService(t *testing.T, slug string) (*checks.Service, db.Service, *models.Organization) {
+	t.Helper()
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization(slug, "Stats Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	entSvc := entcore.NewService(dbSvc, entcore.DefaultsFor(config.DeploymentModeSelfHosted), 0)
+	svc := checks.NewService(dbSvc, notifier.NewLocalEventNotifier(), disabledCreds(t), entSvc)
+
+	return svc, dbSvc, org
+}
+
+// statsAggregationCases is shared by the SQLite suite below and by the
+// embedded-Postgres twin in stats_postgres_test.go, so both dialects are held
+// to byte-identical expectations.
+func statsAggregationCases() []struct {
+	name     string
+	fixtures []statsFixture
+	expected checks.CheckStatsResponse
+} {
+	return []struct {
+		name     string
+		fixtures []statsFixture
+		expected checks.CheckStatsResponse
+	}{
+		{
+			name:     "empty org",
+			fixtures: nil,
+			expected: checks.CheckStatsResponse{
+				Total: 0, Enabled: 0, Disabled: 0, Down: 0, HardDown: 0,
+				ByStatus: map[string]int{},
+			},
+		},
+		{
+			name: "mixed statuses, all enabled",
+			fixtures: []statsFixture{
+				{status: models.CheckStatusUp, enabled: true},
+				{status: models.CheckStatusUp, enabled: true},
+				{status: models.CheckStatusDown, enabled: true},
+				{status: models.CheckStatusWarning, enabled: true},
+				{status: models.CheckStatusCreated, enabled: true},
+				{status: models.CheckStatusValidating, enabled: true},
+				{status: models.CheckStatusDegraded, enabled: true},
+			},
+			expected: checks.CheckStatsResponse{
+				Total: 7, Enabled: 7, Disabled: 0, Down: 1, HardDown: 1,
+				ByStatus: map[string]int{
+					models.WireStatusUp:         2,
+					models.WireStatusDown:       1,
+					models.WireStatusWarning:    1,
+					models.WireStatusCreated:    1,
+					models.WireStatusValidating: 1,
+					models.WireStatusDegraded:   1,
+				},
+			},
+		},
+		{
+			name: "enabled and disabled split, disabled checks still counted by status",
+			fixtures: []statsFixture{
+				{status: models.CheckStatusUp, enabled: true},
+				{status: models.CheckStatusUp, enabled: false},
+				{status: models.CheckStatusDown, enabled: false},
+				{status: models.CheckStatusDown, enabled: true},
+			},
+			expected: checks.CheckStatsResponse{
+				// down/hardDown span disabled checks too — the dashboard's
+				// downCount filters on status alone, never on `enabled`.
+				Total: 4, Enabled: 2, Disabled: 2, Down: 2, HardDown: 2,
+				ByStatus: map[string]int{
+					models.WireStatusUp:   2,
+					models.WireStatusDown: 2,
+				},
+			},
+		},
+		{
+			name: "internal checks are excluded, matching the list endpoint default",
+			fixtures: []statsFixture{
+				{status: models.CheckStatusUp, enabled: true},
+				{status: models.CheckStatusDown, enabled: true, internal: true},
+				{status: models.CheckStatusUp, enabled: true, internal: true},
+			},
+			expected: checks.CheckStatsResponse{
+				Total: 1, Enabled: 1, Disabled: 0, Down: 0, HardDown: 0,
+				ByStatus: map[string]int{models.WireStatusUp: 1},
+			},
+		},
+		{
+			name: "soft-deleted checks are excluded",
+			fixtures: []statsFixture{
+				{status: models.CheckStatusUp, enabled: true},
+				{status: models.CheckStatusDown, enabled: true, deleted: true},
+			},
+			expected: checks.CheckStatsResponse{
+				Total: 1, Enabled: 1, Disabled: 0, Down: 0, HardDown: 0,
+				ByStatus: map[string]int{models.WireStatusUp: 1},
+			},
+		},
+	}
+}
+
+// requireStatsEqual compares an actual response to an expectation whose
+// ByStatus only lists the non-zero buckets: every known status key must be
+// present in the response (clients index it unguarded), and any key the
+// expectation omits must be zero.
+func requireStatsEqual(t *testing.T, expected, actual checks.CheckStatsResponse) {
+	t.Helper()
+	r := require.New(t)
+
+	r.Equal(expected.Total, actual.Total, "total")
+	r.Equal(expected.Enabled, actual.Enabled, "enabled")
+	r.Equal(expected.Disabled, actual.Disabled, "disabled")
+	r.Equal(expected.Down, actual.Down, "down")
+	r.Equal(expected.HardDown, actual.HardDown, "hardDown")
+
+	knownStatuses := []string{
+		models.WireStatusCreated,
+		models.WireStatusUp,
+		models.WireStatusDown,
+		models.WireStatusValidating,
+		models.WireStatusDegraded,
+		models.WireStatusWarning,
+		models.WireStatusUnknown,
+	}
+
+	for _, key := range knownStatuses {
+		got, ok := actual.ByStatus[key]
+		r.True(ok, "byStatus must always carry the %q key so clients can index it unguarded", key)
+		r.Equal(expected.ByStatus[key], got, "byStatus[%q]", key)
+	}
+
+	r.Len(actual.ByStatus, len(knownStatuses), "byStatus must carry exactly the known statuses")
+}
+
+// TestGetCheckStatsAggregation_SQLite is the table-driven aggregation suite on
+// SQLite. Its embedded-Postgres twin lives in stats_postgres_test.go and runs
+// the same cases through statsAggregationCases().
+func TestGetCheckStatsAggregation_SQLite(t *testing.T) {
+	t.Parallel()
+
+	for i, tc := range statsAggregationCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+			ctx := t.Context()
+
+			svc, dbSvc, org := newStatsService(t, fmt.Sprintf("stats-agg-%d", i))
+			seedStatsChecks(t, ctx, dbSvc, org.UID, tc.fixtures)
+
+			stats, err := svc.GetCheckStats(ctx, org.Slug)
+			r.NoError(err)
+			requireStatsEqual(t, tc.expected, stats)
+		})
+	}
+}
+
+// TestGetCheckStatsBeyondPageClamp_SQLite is the regression proof for GitHub
+// issue #172: with 250 checks the stats endpoint must report all 250, a number
+// the old client-side counting could never produce because the list endpoint
+// clamps `limit` to 100 rows per page and the dashboard never paginated.
+//
+// The assertions are deliberately framed against that clamp: totals must
+// exceed 100, and the down count must exceed what a single 100-row page could
+// contain even in the worst case.
+func TestGetCheckStatsBeyondPageClamp_SQLite(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, dbSvc, org := newStatsService(t, "stats-clamp")
+
+	const (
+		upCount       = 130
+		downCount     = 105
+		disabledCount = 15
+	)
+
+	fixtures := make([]statsFixture, 0, upCount+downCount+disabledCount)
+	for range upCount {
+		fixtures = append(fixtures, statsFixture{status: models.CheckStatusUp, enabled: true})
+	}
+
+	for range downCount {
+		fixtures = append(fixtures, statsFixture{status: models.CheckStatusDown, enabled: true})
+	}
+
+	for range disabledCount {
+		fixtures = append(fixtures, statsFixture{status: models.CheckStatusUp, enabled: false})
+	}
+
+	seedStatsChecks(t, ctx, dbSvc, org.UID, fixtures)
+
+	handler := checks.NewHandler(svc, &config.Config{})
+	router := httpx.New()
+	group := router.NewGroup("/api/v1/orgs/:org/checks")
+	group.GET("", handler.ListChecks)
+	group.GET("/stats", handler.GetCheckStats)
+
+	// Positive control for the bug: the list endpoint really does clamp a page
+	// to 100 rows even when the dashboard asks for limit=1000, so any counter
+	// derived from one page physically cannot see this fleet. Asserted, not
+	// assumed — if this ever stops clamping, the >100 proof below would pass
+	// for the wrong reason.
+	listReq := httptest.NewRequestWithContext(
+		ctx, http.MethodGet, "/api/v1/orgs/"+org.Slug+"/checks?limit=1000", nil)
+	listRec := httptest.NewRecorder()
+	router.ServeHTTP(listRec, listReq)
+	r.Equal(http.StatusOK, listRec.Code, listRec.Body.String())
+
+	var listPayload struct {
+		Data []map[string]any `json:"data"`
+	}
+
+	r.NoError(json.Unmarshal(listRec.Body.Bytes(), &listPayload))
+	r.Len(listPayload.Data, 100, "list endpoint must still clamp a page to 100 rows")
+
+	// The stats endpoint, over the same data, sees the whole fleet.
+	statsReq := httptest.NewRequestWithContext(
+		ctx, http.MethodGet, "/api/v1/orgs/"+org.Slug+"/checks/stats", nil)
+	statsRec := httptest.NewRecorder()
+	router.ServeHTTP(statsRec, statsReq)
+	r.Equal(http.StatusOK, statsRec.Code, statsRec.Body.String())
+
+	var stats checks.CheckStatsResponse
+
+	r.NoError(json.Unmarshal(statsRec.Body.Bytes(), &stats))
+	r.Greater(stats.Total, len(listPayload.Data),
+		"stats must report more checks than one clamped page can carry")
+
+	r.Equal(upCount+downCount+disabledCount, stats.Total)
+	r.Greater(stats.Total, 100, "total must exceed the 100-row page clamp")
+	r.Equal(upCount+downCount, stats.Enabled)
+	r.Equal(disabledCount, stats.Disabled)
+	r.Equal(downCount, stats.Down)
+	r.Greater(stats.Down, 100, "down count must exceed what one clamped page could ever report")
+	r.Equal(downCount, stats.HardDown)
+	r.Equal(upCount+disabledCount, stats.ByStatus[models.WireStatusUp])
+	r.Equal(downCount, stats.ByStatus[models.WireStatusDown])
+}
+
+// TestGetCheckStatsEndpointRouting exercises the HTTP surface: /checks/stats
+// must resolve to the stats handler and not be swallowed by the
+// /checks/:checkUid route (the classic ordering bug), and it must return the
+// documented JSON shape with camelCase keys.
+func TestGetCheckStatsEndpointRouting(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, dbSvc, org := newStatsService(t, "stats-http")
+	seedStatsChecks(t, ctx, dbSvc, org.UID, []statsFixture{
+		{status: models.CheckStatusUp, enabled: true},
+		{status: models.CheckStatusDown, enabled: true},
+		{status: models.CheckStatusUp, enabled: false},
+	})
+
+	handler := checks.NewHandler(svc, &config.Config{})
+	router := httpx.New()
+	group := router.NewGroup("/api/v1/orgs/:org/checks")
+	// Same registration order as internal/app/server.go: stats first.
+	group.GET("/stats", handler.GetCheckStats)
+	group.GET("/:checkUid", handler.GetCheck)
+
+	req := httptest.NewRequestWithContext(
+		ctx, http.MethodGet, "/api/v1/orgs/"+org.Slug+"/checks/stats", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+	// Assert on the raw JSON so a renamed/re-cased field is caught.
+	var payload map[string]any
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &payload))
+	r.Equal(float64(3), payload["total"])
+	r.Equal(float64(2), payload["enabled"])
+	r.Equal(float64(1), payload["disabled"])
+	r.Equal(float64(1), payload["down"])
+	r.Equal(float64(1), payload["hardDown"])
+
+	byStatus, ok := payload["byStatus"].(map[string]any)
+	r.True(ok, "byStatus must be an object")
+	r.Equal(float64(2), byStatus[models.WireStatusUp])
+	r.Equal(float64(1), byStatus[models.WireStatusDown])
+
+	// It is an object, not a bare array (REST convention), and not a check.
+	_, isCheck := payload["uid"]
+	r.False(isCheck, "/checks/stats must not resolve to the :checkUid route")
+}
+
+// TestGetCheckStatsUnknownOrg returns 404 rather than an internal error.
+func TestGetCheckStatsUnknownOrg(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, _, _ := newStatsService(t, "stats-404")
+
+	_, err := svc.GetCheckStats(t.Context(), "no-such-org")
+	r.ErrorIs(err, checks.ErrOrganizationNotFound)
+}
+
+// TestGetCheckStatsCacheServesStaleThenRefreshes pins the documented caching
+// contract from the outside: within the TTL a second call must serve the
+// snapshot even though the underlying table has changed, and once the TTL has
+// elapsed the next call must recompute. The TTL is exercised through the
+// exported API with a real clock, using the shortest interval that is not
+// flaky; the zero-allocation internal variant lives in stats_internal_test.go.
+func TestGetCheckStatsCacheServesStaleThenRefreshes(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, dbSvc, org := newStatsService(t, "stats-cache")
+	checks.SetCheckStatsTTLForTest(svc, 150*time.Millisecond)
+
+	seedStatsChecks(t, ctx, dbSvc, org.UID, []statsFixture{
+		{status: models.CheckStatusUp, enabled: true},
+	})
+
+	first, err := svc.GetCheckStats(ctx, org.Slug)
+	r.NoError(err)
+	r.Equal(1, first.Total)
+
+	// Mutate the table behind the cache's back.
+	seedStatsChecks(t, ctx, dbSvc, org.UID, []statsFixture{
+		{status: models.CheckStatusDown, enabled: true},
+		{status: models.CheckStatusDown, enabled: true},
+	})
+
+	cached, err := svc.GetCheckStats(ctx, org.Slug)
+	r.NoError(err)
+	r.Equal(1, cached.Total, "within the TTL the cached snapshot must be served")
+	r.Equal(0, cached.Down)
+
+	time.Sleep(200 * time.Millisecond)
+
+	fresh, err := svc.GetCheckStats(ctx, org.Slug)
+	r.NoError(err)
+	r.Equal(3, fresh.Total, "after the TTL elapses the stats must be recomputed")
+	r.Equal(2, fresh.Down)
+}
+
+// TestGetCheckStatsCacheIsPerOrg makes sure one org's snapshot never leaks
+// into another's — the cache is keyed by org UID.
+func TestGetCheckStatsCacheIsPerOrg(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, dbSvc, orgA := newStatsService(t, "stats-org-a")
+
+	orgB := models.NewOrganization("stats-org-b", "Stats Org B")
+	r.NoError(dbSvc.CreateOrganization(ctx, orgB))
+
+	seedStatsChecks(t, ctx, dbSvc, orgA.UID, []statsFixture{
+		{status: models.CheckStatusUp, enabled: true},
+		{status: models.CheckStatusDown, enabled: true},
+	})
+	seedStatsChecks(t, ctx, dbSvc, orgB.UID, []statsFixture{
+		{status: models.CheckStatusUp, enabled: true},
+	})
+
+	statsA, err := svc.GetCheckStats(ctx, orgA.Slug)
+	r.NoError(err)
+	r.Equal(2, statsA.Total)
+	r.Equal(1, statsA.Down)
+
+	statsB, err := svc.GetCheckStats(ctx, orgB.Slug)
+	r.NoError(err)
+	r.Equal(1, statsB.Total)
+	r.Equal(0, statsB.Down)
+}
+
+// TestGetCheckStatsCachedMapIsNotShared: mutating a returned ByStatus map must
+// not corrupt the cached snapshot handed to the next caller.
+func TestGetCheckStatsCachedMapIsNotShared(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, dbSvc, org := newStatsService(t, "stats-nomutate")
+	seedStatsChecks(t, ctx, dbSvc, org.UID, []statsFixture{
+		{status: models.CheckStatusUp, enabled: true},
+	})
+
+	first, err := svc.GetCheckStats(ctx, org.Slug)
+	r.NoError(err)
+	first.ByStatus[models.WireStatusUp] = 9999
+
+	second, err := svc.GetCheckStats(ctx, org.Slug)
+	r.NoError(err)
+	r.Equal(1, second.ByStatus[models.WireStatusUp])
+}

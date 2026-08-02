@@ -181,8 +181,17 @@ func (c *checkStatsCache) get(orgUID string, ttl time.Duration) (CheckStatsRespo
 	return out, true
 }
 
-// put stores a freshly computed snapshot for the org.
+// put stores a freshly computed snapshot for the org. The ByStatus map is
+// copied on the way in as well as on the way out, so the caller that triggered
+// the miss cannot mutate the entry it just seeded.
 func (c *checkStatsCache) put(orgUID string, stats CheckStatsResponse) {
+	stored := stats
+	stored.ByStatus = make(map[string]int, len(stats.ByStatus))
+
+	for k, v := range stats.ByStatus {
+		stored.ByStatus[k] = v
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -190,5 +199,5 @@ func (c *checkStatsCache) put(orgUID string, stats CheckStatsResponse) {
 		c.entries = make(map[string]checkStatsEntry)
 	}
 
-	c.entries[orgUID] = checkStatsEntry{stats: stats, computedAt: time.Now()}
+	c.entries[orgUID] = checkStatsEntry{stats: stored, computedAt: time.Now()}
 }
