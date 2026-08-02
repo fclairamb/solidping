@@ -418,6 +418,15 @@ type Service interface {
 	UpdateIncidentNotificationDeliveryByMessageID(
 		ctx context.Context, orgUID, messageID string, details *models.DeliveryDetails,
 	) error
+	// UpdateIncidentNotificationDeliveryByMessageIDAnyOrg is the org-agnostic
+	// variant, for providers whose callbacks carry no organization context.
+	// Meta's WhatsApp webhook is instance-level: it authenticates with the
+	// app secret, not an org-scoped connection, and its `wamid.…` message ids
+	// are globally unique, so matching on the id alone is unambiguous.
+	// No-op (no error) when nothing matches.
+	UpdateIncidentNotificationDeliveryByMessageIDAnyOrg(
+		ctx context.Context, messageID string, details *models.DeliveryDetails,
+	) error
 	ListIncidentNotifications(
 		ctx context.Context, orgUID string, f ListIncidentNotificationsFilter,
 	) ([]*models.IncidentNotificationRow, error)

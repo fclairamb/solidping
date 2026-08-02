@@ -91,6 +91,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/unsubscribe"
 	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
 	webpushhandler "github.com/fclairamb/solidping/server/internal/handlers/webpush"
+	"github.com/fclairamb/solidping/server/internal/handlers/whatsappcb"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
@@ -1276,6 +1277,19 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	twilioIntegration.POST("/voice", twilioHandler.VerifyMiddleware(twilioHandler.HandleVoice))
 	twilioIntegration.POST("/voice/gather", twilioHandler.VerifyMiddleware(twilioHandler.HandleGather))
 	twilioIntegration.POST("/status", twilioHandler.VerifyMiddleware(twilioHandler.HandleStatus))
+
+	// Meta WhatsApp Cloud API inbound webhook (subscription handshake +
+	// delivery statuses + inbound replies). Instance-level, so unlike Twilio
+	// there is no org-scoped `cid`: the GET handshake matches the configured
+	// verify token and the POST validates X-Hub-Signature-256 over the raw body
+	// with the app secret before parsing. Registered only when the instance has
+	// WhatsApp configured — an unconfigured deployment exposes no route at all.
+	if s.config.WhatsApp.Active() {
+		whatsAppHandler := whatsappcb.NewHandler(s.dbService, s.config)
+		whatsAppIntegration := api.NewGroup("/integrations/whatsapp")
+		whatsAppIntegration.GET("/webhook", whatsAppHandler.HandleVerify)
+		whatsAppIntegration.POST("/webhook", whatsAppHandler.HandleEvent)
+	}
 
 	// Slack destinations picker (authenticated, org-scoped)
 	slackOrgRoutes := orgGroup("/orgs/:org/channels/:uid/slack")

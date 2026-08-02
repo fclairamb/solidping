@@ -107,6 +107,29 @@ func (s *Service) UpdateIncidentNotificationDeliveryByMessageID(
 	return nil
 }
 
+// UpdateIncidentNotificationDeliveryByMessageIDAnyOrg sets delivery_details on
+// the notification row whose message_id matches, without an org filter. Used by
+// instance-level provider callbacks (Meta's WhatsApp webhook) that carry no
+// organization context; the provider message id is globally unique.
+func (s *Service) UpdateIncidentNotificationDeliveryByMessageIDAnyOrg(
+	ctx context.Context, messageID string, details *models.DeliveryDetails,
+) error {
+	if messageID == "" || details == nil {
+		return nil
+	}
+
+	_, err := s.db.NewUpdate().
+		TableExpr("incident_notifications").
+		Set("delivery_details = ?", details).
+		Where("message_id = ?", messageID).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("update incident notification delivery by message id (any org): %w", err)
+	}
+
+	return nil
+}
+
 // MarkIncidentNotificationFailedByJob updates the audit row matching job_uid.
 // When retryable is true the row stays at pending so a retry can update it;
 // when false the row transitions to failed.
