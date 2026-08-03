@@ -109,8 +109,7 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	}
 
 	// Resolve host to IP using context-aware resolver
-	resolver := net.DefaultResolver
-	ips, err := resolver.LookupIPAddr(ctx, cfg.Host)
+	ips, err := checkerdef.LookupIPAddr(ctx, cfg.Host)
 	if err != nil {
 		//nolint:nilerr // Returning result with error details, not nil error
 		return &checkerdef.Result{
