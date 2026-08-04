@@ -4,6 +4,7 @@ package statuspages
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -30,13 +31,81 @@ const (
 	fieldCustomCSS     = "customCss"
 	fieldCheckUID      = "checkUid"
 	fieldCheckGroupUID = "checkGroupUid"
+	fieldSettings      = "settings"
 	respKeyData        = "data"
 	msgInvalidJSON     = "Invalid JSON format"
 	historyPeriodMsg   = "History period must be one of: 24h, 7d, 30d, 90d"
 	customCSSSizeMsg   = "Custom CSS must be at most 64 KB"
 	customCSSImportMsg = "Custom CSS must not contain @import — inline the rules instead " +
 		"(external url() references are allowed)"
+	availabilityThresholdsMsg = "thresholdDegraded must be greater than 0, less than thresholdUp, " +
+		"and thresholdUp must be at most 100"
 )
+
+// AvailabilitySettingsInput/SettingsInput live in service.go alongside the
+// other request DTOs.
+
+// parseSettingsField strictly decodes the top-level "settings" key from the
+// raw request body (unknown keys rejected via DisallowUnknownFields — typos
+// in "availability" or its fields become VALIDATION_ERROR instead of being
+// silently dropped) and reports whether the "settings" key was present at
+// all. present=false means the caller must leave status_pages.settings
+// untouched (PATCH semantics). A present-but-null "settings" returns
+// (nil, true, nil) — no sections to inspect.
+func parseSettingsField(body []byte) (settings *SettingsInput, present bool, err error) {
+	var top map[string]json.RawMessage
+	if uErr := json.Unmarshal(body, &top); uErr != nil {
+		return nil, false, uErr
+	}
+
+	raw, ok := top[fieldSettings]
+	if !ok {
+		return nil, false, nil
+	}
+
+	if string(raw) == "null" {
+		return nil, true, nil
+	}
+
+	var sectionPresence map[string]json.RawMessage
+	if uErr := json.Unmarshal(raw, &sectionPresence); uErr != nil {
+		return nil, true, fmt.Errorf("%w: %s", ErrSettingsUnknownField, uErr.Error())
+	}
+
+	dec := json.NewDecoder(strings.NewReader(string(raw)))
+	dec.DisallowUnknownFields()
+
+	var s SettingsInput
+	if dErr := dec.Decode(&s); dErr != nil {
+		return nil, true, fmt.Errorf("%w: %s", ErrSettingsUnknownField, dErr.Error())
+	}
+
+	_, s.AvailabilitySet = sectionPresence["availability"]
+
+	return &s, true, nil
+}
+
+// mapAvailabilityThresholdsError maps the availability-thresholds validation
+// and settings-decode errors to a VALIDATION_ERROR response. Returns
+// handled=false when err is neither, so the caller can fall through.
+func (h *Handler) mapAvailabilityThresholdsError(writer http.ResponseWriter, err error) (bool, error) {
+	switch {
+	case errors.Is(err, ErrInvalidAvailabilityThresholds):
+		result := h.WriteValidationError(writer, "Invalid availability thresholds", []base.ValidationErrorField{
+			{Name: fieldSettings, Message: availabilityThresholdsMsg},
+		})
+
+		return true, result
+	case errors.Is(err, ErrSettingsUnknownField):
+		result := h.WriteValidationError(writer, "Invalid settings", []base.ValidationErrorField{
+			{Name: fieldSettings, Message: err.Error()},
+		})
+
+		return true, result
+	default:
+		return false, nil
+	}
+}
 
 // mapCustomCSSError maps the customCss validation errors to a VALIDATION_ERROR
 // response. Returns handled=false when err is not one of them so the caller can
@@ -90,12 +159,29 @@ func (h *Handler) ListStatusPages(writer http.ResponseWriter, req *http.Request)
 func (h *Handler) CreateStatusPage(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := httpx.Param(req, "org")
 
-	var createReq CreateStatusPageRequest
-	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
+	body, readErr := io.ReadAll(req.Body)
+	if readErr != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
 			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
+
+	var createReq CreateStatusPageRequest
+	if err := json.Unmarshal(body, &createReq); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	// Settings is decoded separately (not via the lenient default Decode
+	// above) so unknown keys are rejected (DisallowUnknownFields). Presence
+	// is irrelevant at create time — there's nothing to merge against.
+	settings, _, settingsErr := parseSettingsField(body)
+	if settingsErr != nil {
+		return h.handleCreatePageError(writer, settingsErr)
+	}
+
+	createReq.Settings = settings
 
 	page, err := h.svc.CreateStatusPage(req.Context(), orgSlug, &createReq)
 	if err != nil {
@@ -158,6 +244,14 @@ func (h *Handler) UpdateStatusPage(writer http.ResponseWriter, req *http.Request
 	if err := json.Unmarshal(body, &presence); err == nil {
 		_, updateReq.CustomDomainSet = presence["customDomain"]
 	}
+
+	settings, settingsPresent, settingsErr := parseSettingsField(body)
+	if settingsErr != nil {
+		return h.handleUpdatePageError(writer, settingsErr)
+	}
+
+	updateReq.Settings = settings
+	updateReq.SettingsPresent = settingsPresent
 
 	page, err := h.svc.UpdateStatusPage(req.Context(), orgSlug, identifier, &updateReq)
 	if err != nil {
@@ -552,6 +646,10 @@ func (h *Handler) handleCreatePageError(writer http.ResponseWriter, err error) e
 		return result
 	}
 
+	if handled, result := h.mapAvailabilityThresholdsError(writer, err); handled {
+		return result
+	}
+
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
@@ -579,6 +677,10 @@ func (h *Handler) handleUpdatePageError(writer http.ResponseWriter, err error) e
 	}
 
 	if handled, result := h.mapCustomCSSError(writer, err); handled {
+		return result
+	}
+
+	if handled, result := h.mapAvailabilityThresholdsError(writer, err); handled {
 		return result
 	}
 

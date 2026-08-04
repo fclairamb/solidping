@@ -55,6 +55,15 @@ var (
 	ErrCustomCSSTooLarge = errors.New("custom css is too large")
 	// ErrCustomCSSImport is returned when customCss contains an @import rule.
 	ErrCustomCSSImport = errors.New("custom css must not contain @import")
+	// ErrInvalidAvailabilityThresholds is returned when the effective
+	// (submitted or defaulted) availability thresholds don't satisfy
+	// 0 < thresholdDegraded < thresholdUp <= 100.
+	ErrInvalidAvailabilityThresholds = errors.New(
+		"thresholdDegraded must be greater than 0, less than thresholdUp, and thresholdUp must be at most 100")
+	// ErrSettingsUnknownField is returned when the settings object (or a
+	// section within it) contains a key that doesn't match the typed struct —
+	// DisallowUnknownFields catches typos instead of silently dropping them.
+	ErrSettingsUnknownField = errors.New("settings contains an unknown field")
 )
 
 // MaxCustomCSSBytes caps a status page's custom stylesheet. 64 KB is far more
@@ -88,6 +97,62 @@ func validateCustomCSS(css *string) error {
 	}
 
 	return nil
+}
+
+// validateAvailabilitySettings validates the EFFECTIVE (submitted-or-default)
+// availability thresholds: 0 < thresholdDegraded < thresholdUp <= 100. A nil
+// section resolves to the defaults, which always pass — this is the positive
+// control that defaults are never invalid.
+func validateAvailabilitySettings(a *models.AvailabilitySettings) error {
+	up, degraded := a.EffectiveThresholds()
+
+	if !(degraded > 0 && degraded < up && up <= 100) {
+		return ErrInvalidAvailabilityThresholds
+	}
+
+	return nil
+}
+
+// resolveSettingsUpdate applies the no-deep-merge PATCH semantics for
+// status_pages.settings against the page's current value:
+//   - req not mentioning "settings" at all (SettingsPresent=false) ⇒ nil,
+//     nil: the caller must leave the column untouched.
+//   - "settings" present but the "availability" key absent from it ⇒ the
+//     section is left as current (sections not mentioned are untouched).
+//   - "availability" present as an object ⇒ replaces the section wholly
+//     (not a field-by-field merge).
+//   - "availability" present as explicit null ⇒ resets the section to
+//     defaults (nil).
+//
+// A top-level explicit `"settings": null` (Settings==nil but
+// SettingsPresent==true) has no sections to inspect, so it is a no-op —
+// consistent with "sections not mentioned are untouched" since there are no
+// section keys to mention.
+func resolveSettingsUpdate(
+	current models.StatusPageSettings, req *UpdateStatusPageRequest,
+) (*models.StatusPageSettings, error) {
+	if !req.SettingsPresent {
+		return nil, nil //nolint:nilnil // nil,nil is the documented "leave untouched" sentinel
+	}
+
+	next := current
+
+	if req.Settings != nil && req.Settings.AvailabilitySet {
+		if req.Settings.Availability == nil {
+			next.Availability = nil
+		} else {
+			next.Availability = &models.AvailabilitySettings{
+				ThresholdUp:       req.Settings.Availability.ThresholdUp,
+				ThresholdDegraded: req.Settings.Availability.ThresholdDegraded,
+			}
+		}
+	}
+
+	if err := validateAvailabilitySettings(next.Availability); err != nil {
+		return nil, err
+	}
+
+	return &next, nil
 }
 
 func validateSlug(slug string) error {
@@ -238,6 +303,32 @@ type StatusPageResponse struct {
 	// attempt failed — see the server log for the reason). Empty when
 	// in-server TLS is disabled or the domain is not verified yet.
 	CustomDomainCertStatus string `json:"customDomainCertStatus,omitempty"`
+	// Settings mirrors the status_pages.settings storage shape: nil
+	// sub-fields mean "using the default". Present on both admin and public
+	// payloads (spec 2026-08-03-01).
+	Settings *SettingsResponse `json:"settings,omitempty"`
+	// AvailabilityThresholds carries the RESOLVED effective thresholds (never
+	// nil/omitted) so public consumers don't need to know the defaults.
+	AvailabilityThresholds AvailabilityThresholdsResponse `json:"availabilityThresholds"`
+}
+
+// AvailabilitySettingsResponse mirrors models.AvailabilitySettings on the
+// wire — nil fields mean "using the default".
+type AvailabilitySettingsResponse struct {
+	ThresholdUp       *float64 `json:"thresholdUp,omitempty"`
+	ThresholdDegraded *float64 `json:"thresholdDegraded,omitempty"`
+}
+
+// SettingsResponse mirrors models.StatusPageSettings on the wire.
+type SettingsResponse struct {
+	Availability *AvailabilitySettingsResponse `json:"availability,omitempty"`
+}
+
+// AvailabilityThresholdsResponse carries the resolved (never-nil) effective
+// availability thresholds for a page, e.g. for a future legend/target line.
+type AvailabilityThresholdsResponse struct {
+	ThresholdUp       float64 `json:"thresholdUp"`
+	ThresholdDegraded float64 `json:"thresholdDegraded"`
 }
 
 // StatusPageSectionResponse represents a section in API responses.
@@ -322,6 +413,25 @@ type ResponseTimePoint struct {
 
 // --- Request types ---
 
+// AvailabilitySettingsInput is the wire shape for a page's availability
+// threshold section on write, decoded with unknown keys rejected
+// (DisallowUnknownFields, applied by the handler — see parseSettingsField).
+type AvailabilitySettingsInput struct {
+	ThresholdUp       *float64 `json:"thresholdUp,omitempty"`
+	ThresholdDegraded *float64 `json:"thresholdDegraded,omitempty"`
+}
+
+// SettingsInput mirrors status_pages.settings on write. Availability is nil
+// when the "availability" key is either absent or an explicit JSON null;
+// AvailabilitySet (populated by the handler via raw-body presence detection,
+// not by the JSON decode itself) distinguishes "absent" (leave untouched)
+// from "present" (object ⇒ replace the section wholly, null ⇒ reset it to
+// defaults) per the PATCH no-deep-merge semantics (spec 2026-08-03-01).
+type SettingsInput struct {
+	Availability    *AvailabilitySettingsInput `json:"availability,omitempty"`
+	AvailabilitySet bool                       `json:"-"`
+}
+
 // CreateStatusPageRequest represents a request to create a status page.
 type CreateStatusPageRequest struct {
 	Name             string  `json:"name"`
@@ -341,6 +451,11 @@ type CreateStatusPageRequest struct {
 	// value generates a token; empty/nil means no domain). Verification still
 	// happens afterward via the verify endpoint.
 	CustomDomain *string `json:"customDomain,omitempty"`
+	// Settings optionally sets the page's settings (e.g. availability
+	// thresholds) at create time. Populated by the handler from a strict,
+	// unknown-key-rejecting decode — NOT by the default request decode (hence
+	// json:"-").
+	Settings *SettingsInput `json:"-"`
 }
 
 // UpdateStatusPageRequest represents a request to update a status page.
@@ -368,6 +483,14 @@ type UpdateStatusPageRequest struct {
 	// CustomDomainSet is populated by the handler from the raw body, NOT from
 	// JSON — it distinguishes "customDomain omitted" from an explicit null/"".
 	CustomDomainSet bool `json:"-"`
+	// Settings updates the page's settings (e.g. availability thresholds).
+	// Populated by the handler from a strict, unknown-key-rejecting decode of
+	// the raw body — NOT by the default request decode (hence json:"-").
+	// SettingsPresent distinguishes "settings key absent" (leave untouched)
+	// from "present" (Settings nil ⇒ explicit top-level null; non-nil ⇒
+	// object, see SettingsInput.AvailabilitySet for section-level presence).
+	Settings        *SettingsInput `json:"-"`
+	SettingsPresent bool           `json:"-"`
 }
 
 // CreateSectionRequest represents a request to create a section.
@@ -477,6 +600,16 @@ func applyCreateFields(page *models.StatusPage, req *CreateStatusPageRequest) {
 	if req.CustomCSS != nil && *req.CustomCSS != "" {
 		page.CustomCSS = req.CustomCSS
 	}
+
+	// No PATCH merge semantics at create time (nothing to merge against): a
+	// given "availability" object sets the section directly; an explicit null
+	// or an omitted key both leave it at the zero value (defaults).
+	if req.Settings != nil && req.Settings.Availability != nil {
+		page.Settings.Availability = &models.AvailabilitySettings{
+			ThresholdUp:       req.Settings.Availability.ThresholdUp,
+			ThresholdDegraded: req.Settings.Availability.ThresholdDegraded,
+		}
+	}
 }
 
 // daysForPeriod returns a back-compat history_days count for a period enum.
@@ -516,6 +649,18 @@ func (s *Service) CreateStatusPage(
 
 	if errCSS := validateCustomCSS(req.CustomCSS); errCSS != nil {
 		return StatusPageResponse{}, errCSS
+	}
+
+	var reqAvailability *models.AvailabilitySettings
+	if req.Settings != nil && req.Settings.Availability != nil {
+		reqAvailability = &models.AvailabilitySettings{
+			ThresholdUp:       req.Settings.Availability.ThresholdUp,
+			ThresholdDegraded: req.Settings.Availability.ThresholdDegraded,
+		}
+	}
+
+	if errThresholds := validateAvailabilitySettings(reqAvailability); errThresholds != nil {
+		return StatusPageResponse{}, errThresholds
 	}
 
 	// Check slug conflict
@@ -638,6 +783,11 @@ func (s *Service) UpdateStatusPage(
 		return StatusPageResponse{}, errCSS
 	}
 
+	newSettings, errSettings := resolveSettingsUpdate(page.Settings, req)
+	if errSettings != nil {
+		return StatusPageResponse{}, errSettings
+	}
+
 	// Handle default toggle
 	if req.IsDefault != nil && *req.IsDefault && !page.IsDefault {
 		if errClear := s.clearDefaultStatusPage(ctx, org.UID); errClear != nil {
@@ -658,6 +808,7 @@ func (s *Service) UpdateStatusPage(
 		HistoryPeriod:    req.HistoryPeriod,
 		Language:         req.Language,
 		CustomCSS:        req.CustomCSS,
+		Settings:         newSettings,
 	}
 
 	// The period enum is the source of truth; keep history_days in sync for
@@ -1410,6 +1561,7 @@ func (s *Service) enrichWithAvailability(
 
 	// Build availability data for each resource
 	period := string(pagePeriod(page))
+	upThreshold, degradedThreshold := page.Settings.EffectiveThresholds()
 
 	for i := range sections {
 		for j := range sections[i].Resources {
@@ -1418,6 +1570,7 @@ func (s *Service) enrichWithAvailability(
 			availData := buildAvailabilityData(
 				mergeBuckets(bucketsByCheck, memberUIDs), resourceRecentResults(recentByCheck, resource, memberUIDs),
 				todayStart, page.HistoryDays, page.ShowAvailability, page.ShowResponseTime,
+				upThreshold, degradedThreshold,
 			)
 			availData.Period = period
 			availData.BucketUnit = models.PeriodTypeDay
@@ -1509,6 +1662,7 @@ func (s *Service) enrichHourly(
 	}
 
 	recentByCheck := s.fetchRecentResults(ctx, orgUID, checkUIDs, page.ShowResponseTime)
+	upThreshold, degradedThreshold := page.Settings.EffectiveThresholds()
 
 	for i := range sections {
 		for j := range sections[i].Resources {
@@ -1518,6 +1672,7 @@ func (s *Service) enrichHourly(
 				mergeBuckets(bucketsByCheck, memberUIDs),
 				resourceRecentResults(recentByCheck, resource, memberUIDs), bucketStart,
 				page.ShowAvailability, page.ShowResponseTime,
+				upThreshold, degradedThreshold,
 			)
 			availData.Period = string(models.StatusPagePeriod24h)
 			availData.BucketUnit = models.PeriodTypeHour
@@ -1532,7 +1687,7 @@ func (s *Service) enrichHourly(
 // weighted average matches the daily path.
 func buildHourlyAvailabilityData(
 	byBucket map[time.Time]uptimebar.BucketStats, recentResults []*models.Result, bucketStart time.Time,
-	showAvailability, showResponseTime bool,
+	showAvailability, showResponseTime bool, upThreshold, degradedThreshold float64,
 ) *ResourceAvailabilityData {
 	data := &ResourceAvailabilityData{}
 
@@ -1556,7 +1711,7 @@ func buildHourlyAvailabilityData(
 			if stats, ok := byBucket[bucket]; ok {
 				if pct, hasData := stats.AvailabilityPct(); hasData {
 					point.AvailabilityPct = pct
-					point.Status = availabilityToStatus(pct)
+					point.Status = availabilityToStatus(pct, stats.Total-stats.Up, upThreshold, degradedThreshold)
 
 					totalWeightedAvail += pct * float64(stats.Total)
 					totalChecksSum += stats.Total
@@ -1590,6 +1745,7 @@ func buildHourlyAvailabilityData(
 func buildAvailabilityData(
 	byBucket map[time.Time]uptimebar.BucketStats, recentResults []*models.Result,
 	todayStart time.Time, historyDays int, showAvailability, showResponseTime bool,
+	upThreshold, degradedThreshold float64,
 ) *ResourceAvailabilityData {
 	data := &ResourceAvailabilityData{}
 
@@ -1613,7 +1769,7 @@ func buildAvailabilityData(
 			if stats, ok := byBucket[day]; ok {
 				if pct, hasData := stats.AvailabilityPct(); hasData {
 					point.AvailabilityPct = pct
-					point.Status = availabilityToStatus(pct)
+					point.Status = availabilityToStatus(pct, stats.Total-stats.Up, upThreshold, degradedThreshold)
 
 					totalWeightedAvail += pct * float64(stats.Total)
 					totalChecksSum += stats.Total
@@ -1682,11 +1838,25 @@ const (
 	statusDownValue = "down"
 )
 
-func availabilityToStatus(pct float64) string {
+// availabilityToStatus classifies a bucket's availability percentage into the
+// up/degraded/down wire vocabulary using the page's effective thresholds
+// (upThreshold/degradedThreshold — resolved once per request via
+// models.StatusPageSettings.EffectiveThresholds, nil-safe fallback to
+// 99.9/99.0).
+//
+// Small-bucket calibration guard (spec 2026-08-03-01 §4): a bucket with
+// exactly ONE failed sample never renders "down", only at worst "degraded" —
+// red requires >= 2 failed samples. failures is stats.Total - stats.Up. This
+// fixes the hourly "one failed minute = red hour" cliff without changing
+// percentage-threshold behavior on buckets large enough that one sample can't
+// swing the classification anyway.
+func availabilityToStatus(pct float64, failures int, upThreshold, degradedThreshold float64) string {
 	switch {
-	case pct >= 99.9:
+	case pct >= upThreshold:
 		return statusUp
-	case pct >= 99.0:
+	case pct >= degradedThreshold:
+		return statusDegraded
+	case failures <= 1:
 		return statusDegraded
 	default:
 		return statusDownValue
@@ -1952,6 +2122,8 @@ func anyWindowActive(windows []*models.MaintenanceWindow) bool {
 }
 
 func convertPageToResponse(page *models.StatusPage) StatusPageResponse {
+	up, degraded := page.Settings.EffectiveThresholds()
+
 	return StatusPageResponse{
 		UID:              page.UID,
 		Name:             page.Name,
@@ -1967,6 +2139,27 @@ func convertPageToResponse(page *models.StatusPage) StatusPageResponse {
 		Language:         page.Language,
 		CustomCSS:        page.CustomCSS,
 		CreatedAt:        &page.CreatedAt,
+		Settings:         convertSettingsToResponse(page.Settings),
+		AvailabilityThresholds: AvailabilityThresholdsResponse{
+			ThresholdUp:       up,
+			ThresholdDegraded: degraded,
+		},
+	}
+}
+
+// convertSettingsToResponse mirrors the storage shape: an unset section
+// (nil) round-trips as nil, not as zero-valued numbers, so the admin UI can
+// tell "no override" from "override set to 0".
+func convertSettingsToResponse(settings models.StatusPageSettings) *SettingsResponse {
+	if settings.Availability == nil {
+		return &SettingsResponse{}
+	}
+
+	return &SettingsResponse{
+		Availability: &AvailabilitySettingsResponse{
+			ThresholdUp:       settings.Availability.ThresholdUp,
+			ThresholdDegraded: settings.Availability.ThresholdDegraded,
+		},
 	}
 }
 

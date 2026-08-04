@@ -51,7 +51,8 @@ func TestBuildAvailabilityData_UTCBucketing(t *testing.T) {
 		yesterdayUTC: {Up: 1440, Total: 1440},
 	}
 
-	out := buildAvailabilityData(byBucket, nil, todayUTC, 7, true, false)
+	out := buildAvailabilityData(byBucket, nil, todayUTC, 7, true, false,
+		models.DefaultAvailabilityThresholdUp, models.DefaultAvailabilityThresholdDegraded)
 	r.NotNil(out)
 	r.Len(out.DailyAvailability, 7)
 
@@ -461,7 +462,8 @@ func TestBuildHourlyAvailabilityData_Builds24Buckets(t *testing.T) {
 		currentHour: {Up: 60, Total: 60},
 	}
 
-	out := buildHourlyAvailabilityData(byBucket, nil, bucketStart, true, false)
+	out := buildHourlyAvailabilityData(byBucket, nil, bucketStart, true, false,
+		models.DefaultAvailabilityThresholdUp, models.DefaultAvailabilityThresholdDegraded)
 	r.NotNil(out)
 	r.Len(out.DailyAvailability, 24, "24h renders 24 hourly buckets")
 
