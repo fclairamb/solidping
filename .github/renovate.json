@@ -34,6 +34,16 @@
       "automerge": false
     },
     {
+      "description": "OTel log signal: hold at 0.20.x. go.opentelemetry.io/contrib/bridges/otelslog is only released up to v0.19.0, which is built against otel/log v0.20.0 — advancing the log modules alone breaks the build (undefined: log.Value / log.KeyValue, see PR #190). Remove this rule once an otelslog release supports the newer API.",
+      "matchDepNames": [
+        "go.opentelemetry.io/otel/log",
+        "go.opentelemetry.io/otel/sdk/log",
+        "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc",
+        "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
+      ],
+      "allowedVersions": "<0.21.0"
+    },
+    {
       "description": "goja: always automerge, whatever the update type (it only ships pseudo-versions)",
       "matchDepNames": ["github.com/dop251/goja"],
       "groupName": null,
