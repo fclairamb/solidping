@@ -506,12 +506,15 @@ func uptimeBarPeriodInfo(period string) (string, int, time.Duration) {
 	}
 }
 
-// uptimeBarColor returns the SVG hex color for the given availability percentage.
+// uptimeBarColor returns the SVG hex color for the given availability
+// percentage. Badges are check-scoped (no status-page context) and
+// deliberately stay on the global default thresholds — see
+// statuspages package's spec 2026-08-03-01 Decisions.
 func uptimeBarColor(pct float64) string {
 	switch {
-	case pct >= 99.9:
+	case pct >= models.DefaultAvailabilityThresholdUp:
 		return ColorGreen
-	case pct >= 99:
+	case pct >= models.DefaultAvailabilityThresholdDegraded:
 		return ColorYellow
 	case pct >= 98:
 		return ColorOrange
@@ -782,11 +785,13 @@ func calculateAvailability(results []*models.Result) float64 {
 	return float64(upCount) / float64(total) * 100
 }
 
+// availabilityColor stays on the global default thresholds — see
+// uptimeBarColor.
 func availabilityColor(pct float64) string {
 	switch {
-	case pct >= 99.9:
+	case pct >= models.DefaultAvailabilityThresholdUp:
 		return ColorGreen
-	case pct >= 99:
+	case pct >= models.DefaultAvailabilityThresholdDegraded:
 		return ColorYellow
 	case pct >= 98:
 		return ColorOrange
