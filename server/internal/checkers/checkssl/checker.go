@@ -50,9 +50,7 @@ func (c *SSLChecker) Validate(spec *checkerdef.CheckSpec) error {
 
 // resolveHost resolves the hostname to an IP address, preferring IPv4.
 func resolveHost(ctx context.Context, host string) (net.IP, error) {
-	resolver := &net.Resolver{}
-
-	addrs, err := resolver.LookupIPAddr(ctx, host)
+	addrs, err := checkerdef.LookupIPAddr(ctx, host)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve hostname: %w", err)
 	}
