@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/fclairamb/solidping/compare/v0.7.0...v0.7.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* **deps:** Go dependencies rolled forward — koanf (`v2`, and the json/yaml/env/structs providers), `docker/go-connections` v0.8.1, `go.uber.org/zap` v1.28.0, and the OTel OTLP trace/metric exporters v1.45.0. The OTel **log** signal (`otel/log`, `otel/sdk/log`, and the two `otlplog` exporters) is deliberately held at 0.20.x: `contrib/bridges/otelslog` is only released up to v0.19.0, which is built against the v0.20.0 API, so advancing the log modules alone breaks the build (`undefined: log.Value` / `log.KeyValue`). A Renovate rule pins them until the bridge catches up. ([#190](https://github.com/fclairamb/solidping/issues/190)) ([e090f93](https://github.com/fclairamb/solidping/commit/e090f93d04313553e1150ea5d2e0d2973639e77e))
+
 ## [0.7.0](https://github.com/fclairamb/solidping/compare/v0.6.2...v0.7.0) (2026-08-04)
 
 Two batches landed in this release: [#170](https://github.com/fclairamb/solidping/issues/170) (`1184b15`) and [#175](https://github.com/fclairamb/solidping/issues/175) (`9ffd436`). The headline is that a status page can now live on your own domain over HTTPS with no external proxy and no second DNS record, checks can be read as hosts rather than as a flat list, and alerting reaches phones — SMS, voice, and WhatsApp.
