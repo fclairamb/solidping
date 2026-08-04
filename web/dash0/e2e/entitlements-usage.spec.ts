@@ -48,7 +48,7 @@ test.describe("Entitlements usage", () => {
     await resetEntitlements(authenticatedPage, token);
   });
 
-  test("usage page renders five limit/usage rows", async ({
+  test("usage page renders six limit/usage rows", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -59,17 +59,20 @@ test.describe("Entitlements usage", () => {
     await page.goto("orgs/test/organization/usage");
     await page.waitForLoadState("networkidle");
 
-    // Heading + the five rows (Checks, Checks per minute, Users, Private
-    // location agents, Custom domains).
+    // Heading + the six rows (Checks, Checks per minute, Users, Private
+    // location agents, Custom domains, WhatsApp messages this month).
     await expect(
       page.getByRole("heading", { name: /usage/i }),
     ).toBeVisible();
-    await expect(page.getByTestId(/^usage-row-/)).toHaveCount(5);
+    await expect(page.getByTestId(/^usage-row-/)).toHaveCount(6);
     await expect(
       page.getByTestId("usage-row-Private location agents"),
     ).toBeVisible();
     await expect(
       page.getByTestId("usage-row-Custom domains"),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("usage-row-WhatsApp messages this month"),
     ).toBeVisible();
 
     // With null limits, each row shows the "Unlimited" label.

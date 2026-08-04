@@ -38,6 +38,11 @@ jobs:
           mkdir -p internal/app/dash0res && echo "placeholder" > internal/app/dash0res/index.html
           mkdir -p internal/app/status0res && echo "placeholder" > internal/app/status0res/index.html
           mkdir -p internal/app/docsres && echo "placeholder" > internal/app/docsres/index.html
+          # docusaurus-plugin-llms emits these into the real docs build; the
+          # root /llms.txt and /llms-full.txt routes resolve them out of the
+          # embedded FS, so they must exist here too or those tests 404.
+          echo "placeholder" > internal/app/docsres/llms.txt
+          echo "placeholder" > internal/app/docsres/llms-full.txt
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9.3.0
