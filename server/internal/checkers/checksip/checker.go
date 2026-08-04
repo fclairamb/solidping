@@ -92,9 +92,7 @@ func (c *SIPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 	start := time.Now()
 
 	// Resolve hostname (StatusError on failure, like checkudp/checktcp).
-	resolver := &net.Resolver{}
-
-	addrs, err := resolver.LookupIPAddr(ctx, local.Host)
+	addrs, err := checkerdef.LookupIPAddr(ctx, local.Host)
 	if err != nil {
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,

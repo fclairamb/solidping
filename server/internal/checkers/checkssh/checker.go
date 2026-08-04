@@ -95,9 +95,7 @@ func (c *SSHChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 	start := time.Now()
 
 	// Resolve host
-	resolver := &net.Resolver{}
-
-	addrs, err := resolver.LookupIPAddr(ctx, cfg.Host)
+	addrs, err := checkerdef.LookupIPAddr(ctx, cfg.Host)
 	if err != nil {
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,

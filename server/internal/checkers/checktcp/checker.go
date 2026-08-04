@@ -106,9 +106,7 @@ func (c *TCPChecker) executeDirect(
 	start time.Time,
 ) *checkerdef.Result {
 	// Resolve hostname
-	resolver := &net.Resolver{}
-
-	addrs, err := resolver.LookupIPAddr(ctx, cfg.Host)
+	addrs, err := checkerdef.LookupIPAddr(ctx, cfg.Host)
 	if err != nil {
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
