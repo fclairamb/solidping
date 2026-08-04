@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.7.0](https://github.com/fclairamb/solidping/compare/v0.6.2...v0.7.0) (2026-08-04)
+
+
+### Features
+
+* batch 2026-07-22 — status-page custom domains, SMS/voice alerting, transactional compaction, heartbeat token rotation, results storage trim ([#170](https://github.com/fclairamb/solidping/issues/170)) ([1184b15](https://github.com/fclairamb/solidping/commit/1184b156c27192e2a67f9cc9842b446116e2d9e3))
+* custom-domain in-server ACME, status-page custom CSS, and fly.io system agents ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+
+
+### Bug Fixes
+
+* **deps:** update dependency recharts to v3.10.1 ([#177](https://github.com/fclairamb/solidping/issues/177)) ([c7a6e91](https://github.com/fclairamb/solidping/commit/c7a6e9186f2c427448aad24d68b114413ce01f8e))
+* **deps:** update github.com/dop251/goja digest to b4aef50 ([#169](https://github.com/fclairamb/solidping/issues/169)) ([0d090cb](https://github.com/fclairamb/solidping/commit/0d090cb033609b214b45f4a87e487b7b8c6f05a6))
+* **deps:** update github.com/dop251/goja digest to c65cf2f ([#159](https://github.com/fclairamb/solidping/issues/159)) ([6d7223e](https://github.com/fclairamb/solidping/commit/6d7223e338be92726b6dfc362f65d8f57ea4016a))
+* **deps:** update go dependencies (non-major) ([#167](https://github.com/fclairamb/solidping/issues/167)) ([68ee7da](https://github.com/fclairamb/solidping/commit/68ee7da0b24541c92e9e76c7ddb34b3cc79f0264))
+* **deps:** update go dependencies (non-major) ([#178](https://github.com/fclairamb/solidping/issues/178)) ([6a175f8](https://github.com/fclairamb/solidping/commit/6a175f86a4a8481e7b631a875c70e7d44b2ce9d6))
+* **deps:** update go dependencies (non-major) ([#184](https://github.com/fclairamb/solidping/issues/184)) ([d731b26](https://github.com/fclairamb/solidping/commit/d731b2641b7ec1fa75b409e77fcc978ec9072488))
+* **deps:** update go dependencies (non-major) ([#189](https://github.com/fclairamb/solidping/issues/189)) ([4bb9aba](https://github.com/fclairamb/solidping/commit/4bb9aba2efcaad293820d66e92a7bcec0a9b36ec))
+* **deps:** update module github.com/prometheus/common to v0.70.1 ([#168](https://github.com/fclairamb/solidping/issues/168)) ([2696a9a](https://github.com/fclairamb/solidping/commit/2696a9a8a9ba860999ef935686da6e2a044393f3))
+* **deps:** update module github.com/sijms/go-ora/v2 to v3 ([#186](https://github.com/fclairamb/solidping/issues/186)) ([4cd8081](https://github.com/fclairamb/solidping/commit/4cd8081edce2cc36966ee1cb3df3b656ffd3fde6))
+* **deps:** update module github.com/sijms/go-ora/v2 to v3 ([#187](https://github.com/fclairamb/solidping/issues/187)) ([22f932c](https://github.com/fclairamb/solidping/commit/22f932cb1a7193ca8563153d91968b1355efd89e))
+* **deps:** update module github.com/vanng822/go-premailer to v1.35.0 ([#188](https://github.com/fclairamb/solidping/issues/188)) ([d54cadf](https://github.com/fclairamb/solidping/commit/d54cadf42619045b2fcee24717be8fca5d86a80e))
+
 ## [Unreleased]
 
 ### Features
