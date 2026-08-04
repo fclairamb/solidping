@@ -168,3 +168,99 @@ reload, values persist.
 - Should the public page render the thresholds anywhere (legend or tooltip,
   e.g. "target ≥ 99.9%")? The payload will carry them; UI can be a
   follow-up.
+
+## Implementation Plan
+
+1. **Model** (`server/internal/db/models/status_page_settings.go`, new file):
+   `StatusPageSettings` / `AvailabilitySettings` typed structs,
+   `DefaultAvailabilityThresholdUp`/`Degraded` constants,
+   `AvailabilitySettings.EffectiveThresholds()` (nil-safe) and
+   `StatusPageSettings.EffectiveThresholds()`, plus `Value()`/`Scan()`
+   (`driver.Valuer`/`sql.Scanner`) mirroring `models.DeliveryDetails` so the
+   struct persists as JSON on both Postgres (jsonb) and SQLite (text). Add
+   `Settings StatusPageSettings` to `models.StatusPage` and
+   `Settings *StatusPageSettings` to `models.StatusPageUpdate` (nil = leave
+   column untouched; non-nil = whole-column overwrite, matching the
+   `CustomCSS` pointer-clears-vs-nil-untouched convention already used there).
+
+2. **Migrations** (fresh number `009_v0_8_0`, both dialects): add
+   `status_pages.settings` — `jsonb not null default '{}'` (Postgres) /
+   `text not null default '{}'` (SQLite). Down migrations drop the column.
+
+3. **DB layer** (`internal/db/postgres/postgres.go`,
+   `internal/db/sqlite/sqlite.go`): `UpdateStatusPage` gains
+   `if update.Settings != nil { query.Set("settings = ?", *update.Settings) }`,
+   mirroring the `CustomCSS` block. `CreateStatusPage` needs no change (full
+   model insert already covers the new column).
+
+4. **Service DTOs & validation** (`internal/handlers/statuspages/service.go`):
+   - `AvailabilitySettingsInput`/`SettingsInput` wire types (decoded with
+     `DisallowUnknownFields` by the handler, not by the default lenient
+     decode — see step 5).
+   - `CreateStatusPageRequest.Settings`/`UpdateStatusPageRequest.Settings`
+     (+`SettingsPresent` on update) tagged `json:"-"` — populated by the
+     handler from a dedicated raw-body pass, the same reason
+     `CustomDomainSet` is handler-populated today.
+   - `validateAvailabilitySettings(*models.AvailabilitySettings) error` /
+     `ErrInvalidAvailabilityThresholds`: validates the *effective* resolved
+     values (`0 < degraded < up <= 100`).
+   - `resolveSettingsUpdate(current, req) (*models.StatusPageSettings, error)`:
+     applies the no-deep-merge, section-replace-or-reset semantics — absent
+     `settings` ⇒ nil (untouched); present ⇒ copy `current`, then only if the
+     `availability` key was itself present in the request either replace the
+     whole section (object given) or reset it to nil defaults (explicit
+     `null`); validate the result.
+   - `CreateStatusPage`/`UpdateStatusPage` call these and thread the result
+     into `models.StatusPage.Settings` / `models.StatusPageUpdate.Settings`.
+   - `StatusPageResponse` gains `Settings *SettingsResponse` (mirrors the
+     storage shape, nil sub-fields meaning "using the default" — present on
+     admin AND public payloads since they share `convertPageToResponse`) and
+     `AvailabilityThresholds *AvailabilityThresholdsResponse` (always
+     populated with the two resolved, non-nil numbers) so the public payload
+     satisfies "never null" without inventing a second response type.
+
+5. **Handler** (`internal/handlers/statuspages/handler.go`): a
+   `parseSettingsField(body []byte) (*SettingsInput, present bool, err error)`
+   helper — probes a `map[string]json.RawMessage` for top-level `settings`
+   presence, then (if present and not JSON `null`) strict-decodes that
+   sub-document with `json.Decoder.DisallowUnknownFields()` into
+   `SettingsInput`, and probes ITS raw map for `availability` presence to set
+   `SettingsInput.AvailabilitySet`. `CreateStatusPage`/`UpdateStatusPage`
+   handlers call it (Update already reads the full body for the existing
+   `CustomDomainSet` probe) and map `ErrInvalidAvailabilityThresholds` /
+   decode errors to `VALIDATION_ERROR` on field `settings`, mirroring
+   `mapCustomCSSError`.
+
+6. **Status computation** (`service.go`): `availabilityToStatus(pct float64,
+   failures int, upThreshold, degradedThreshold float64) string` — red only
+   when `pct < degradedThreshold` AND `failures >= 2` (else degraded; the
+   small-bucket calibration guard). `buildAvailabilityData` and
+   `buildHourlyAvailabilityData` gain `upThreshold, degradedThreshold
+   float64` params, threaded from `enrichWithAvailability`/`enrichHourly`
+   which resolve them once via `page.Settings.EffectiveThresholds()`.
+   Failures = `stats.Total - stats.Up` (`uptimebar.BucketStats`).
+
+7. **Badges** (`internal/handlers/badges/service.go` :512, :787): point the
+   two duplicated `99.9`/`99` literals at
+   `models.DefaultAvailabilityThresholdUp`/`Degraded` — no other change
+   (badges stay check-scoped, no page-settings wiring, per Decisions).
+
+8. **Dashboard UI**
+   (`web/dash0/src/routes/orgs/$org/status-pages.$statusPageUid.edit.tsx`):
+   two numeric inputs ("Up threshold %", "Degraded threshold %") near
+   `showAvailability`, empty-is-default helper text, wired to
+   `settings.availability.thresholdUp/thresholdDegraded` in the PATCH body
+   (omit the whole `availability` key when both are empty so the request
+   doesn't touch existing thresholds; send explicit numbers otherwise).
+   Reuses `Input`/`Label`/form primitives already used on that page — no new
+   design-reference entries needed (plain numeric inputs, already cataloged).
+
+9. **Tests**:
+   - `service_test.go`: table-driven `availabilityToStatus` (custom
+     thresholds + defaults-unchanged positive control), PATCH semantics
+     (`degraded >= up` rejected, unknown key rejected, explicit null resets,
+     absent leaves untouched), calibration guard (1/60 → degraded, 2/60 →
+     down positive control), public payload effective-thresholds exposure.
+   - Playwright (`web/dash0/e2e/`): settings form round-trip (set → save →
+     reload → persisted), authored even if not runnable against the local
+     devloop (see QA notes).

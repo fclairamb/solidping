@@ -85,10 +85,14 @@ type StatusPage struct {
 	CustomDomainCheckedAt *time.Time `bun:"custom_domain_checked_at"`
 	// CustomDomainFailures counts consecutive re-verification failures. At 3 the
 	// verification is cleared (domain release/takeover protection).
-	CustomDomainFailures int        `bun:"custom_domain_failures,notnull,default:0"`
-	CreatedAt            time.Time  `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt            time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt            *time.Time `bun:"deleted_at"`
+	CustomDomainFailures int `bun:"custom_domain_failures,notnull,default:0"`
+	// Settings holds per-page display customization (e.g. availability color
+	// thresholds), typed rather than a free-form map so keys stay
+	// discoverable (spec 2026-08-03-01). Column is NOT NULL DEFAULT '{}'.
+	Settings  StatusPageSettings `bun:"settings,type:jsonb,notnull"`
+	CreatedAt time.Time          `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt time.Time          `bun:"updated_at,notnull,default:current_timestamp"`
+	DeletedAt *time.Time         `bun:"deleted_at"`
 }
 
 // NewStatusPage creates a new status page with generated UID.
@@ -128,6 +132,11 @@ type StatusPageUpdate struct {
 	// string clears the column (the appearance editor's "empty textarea"), a
 	// nil pointer leaves it untouched.
 	CustomCSS *string
+	// Settings overwrites the whole settings column when non-nil (the caller
+	// — statuspages.Service — has already applied the no-deep-merge
+	// section-replace-or-reset semantics against the current value). A nil
+	// pointer leaves the column untouched.
+	Settings *StatusPageSettings
 }
 
 // StatusPageCustomDomainUpdate is the whole-lifecycle writer for a status
