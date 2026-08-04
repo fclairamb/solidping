@@ -104,6 +104,22 @@
       "verified": "Número de teléfono verificado",
       "sendFailed": "Error al enviar el código",
       "incorrectCode": "Código incorrecto"
+    },
+    "whatsapp": {
+      "unverifiedBadge": "Sin verificar — verifica para recibir alertas por WhatsApp",
+      "afterAddHint": "Después de añadirlo, verifica el número en WhatsApp para empezar a recibir alertas. La verificación es también tu consentimiento para recibir mensajes comerciales.",
+      "invalidNumber": "Introduce el número en formato internacional E.164, p. ej. +34612345678",
+      "verify": {
+        "sendCode": "Enviar código",
+        "resend": "Reenviar",
+        "confirm": "Confirmar",
+        "codeSent": "Código de verificación enviado",
+        "sendFailed": "Error al enviar el código",
+        "incorrectCode": "Código incorrecto",
+        "dialogTitle": "Verificar número de WhatsApp",
+        "dialogDescription": "Enviaremos un código de 6 dígitos al {{phone}} por WhatsApp. Introdúcelo a continuación para confirmar que este número puede recibir alertas por WhatsApp.",
+        "verified": "Número de teléfono verificado"
+      }
     }
   }
 }

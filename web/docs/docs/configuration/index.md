@@ -36,6 +36,22 @@ SolidPing is configured primarily through environment variables. All environment
 | `SP_SHUTDOWN_TIMEOUT` | `30s` | Graceful shutdown timeout |
 | `PORT` | - | Alternative to `SP_SERVER_LISTEN` (for PaaS compatibility) |
 
+### Custom Domains & TLS
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_CUSTOM_DOMAIN_CNAME_TARGET` | host of `base_url` | Hostname customers point their status-page `CNAME` at |
+| `SP_CUSTOM_DOMAIN_CNAME_MODE` | `shared` | `shared` (plain target) or `token` (per-page `<token>.cname.<target>`) |
+| `SP_ACME_ENABLED` | `false` | Terminate TLS in-server with Let's Encrypt certificates obtained on demand |
+| `SP_ACME_EMAIL` | - | ACME account contact — **required** when `SP_ACME_ENABLED=true` |
+| `SP_ACME_CA_URL` | Let's Encrypt prod | ACME directory URL (point at LE staging while testing) |
+| `SP_ACME_LISTEN_HTTP` | `:80` | HTTP-01 challenge listener; redirects everything else to HTTPS |
+| `SP_ACME_LISTEN_HTTPS` | `:443` | TLS listener, feeding the normal routing |
+
+Enabling `SP_ACME_ENABLED` makes the process bind two extra ports and removes
+the need for a TLS-terminating reverse proxy. Leave it off to keep TLS at your
+own edge. See [Custom Domains](/features/custom-domains) for the full setup.
+
 ### Distributed Workers
 
 | Variable | Default | Description |
@@ -106,6 +122,20 @@ Users can also enable TOTP two-factor authentication on their accounts. See [Aut
 | `SP_ENCRYPTION_AUTO_MIGRATE` | `true` | Encrypt existing plaintext credentials on startup |
 
 See [Security & Encryption](/configuration/security) for the full guide.
+
+### Product Analytics
+
+Analytics is **off by default** — with no project API key set, the server sends
+nothing and the dashboard loads no analytics code whatsoever.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_POSTHOG_PROJECT_API_KEY` | - | Public `phc_…` PostHog browser key. Empty = analytics entirely off |
+| `SP_POSTHOG_HOST` | `https://eu.i.posthog.com` | PostHog ingestion endpoint |
+| `SP_POSTHOG_PERSONAL_API_KEY` | - | Optional server-side key (stored as a secret, never sent to the browser) |
+| `SP_POSTHOG_ENABLED` | `true` | Kill switch — never enables anything on its own |
+
+See [Product Analytics](/configuration/analytics) for exactly what is and is not sent.
 
 ### Observability
 
@@ -202,6 +232,7 @@ The SolidPing CLI client (`sp`) uses its own configuration:
 - [Notifications](/configuration/notifications) - Email, Slack, Discord, webhooks, and more
 - [Authentication](/configuration/authentication) - OAuth providers, 2FA, and access control
 - [Security & Encryption](/configuration/security) - Credentials encryption at rest
+- [Product Analytics](/configuration/analytics) - Optional PostHog integration, off unless configured
 
 ## Security Recommendations
 

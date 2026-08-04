@@ -64,15 +64,21 @@ type StatusPage struct {
 	HistoryDays      int     `bun:"history_days,notnull,default:90"`
 	HistoryPeriod    string  `bun:"history_period,notnull,default:'90d'"`
 	Language         *string `bun:"language"`
+	// CustomCSS is operator-authored CSS injected into the public status page
+	// as a <style> text node (never dangerouslySetInnerHTML). nil = none.
+	// Capped at 64 KB and @import-free by API validation; unlike the
+	// custom-domain columns it IS exposed on public responses, since the
+	// public renderer is its only consumer.
+	CustomCSS *string `bun:"custom_css"`
 	// CustomDomain is a customer-owned hostname (punycode/ASCII, lowercased)
 	// the page is served on. nil = none. Globally unique among live rows.
 	CustomDomain *string `bun:"custom_domain"`
-	// CustomDomainToken is the opaque base64url DNS-challenge token, set while a
-	// domain is configured. Never exposed on public endpoints.
+	// CustomDomainToken is the opaque, DNS-label-safe token (lowercase base32),
+	// set while a domain is configured; in token mode it is the leading label of
+	// the expected CNAME target. Never exposed on public endpoints.
 	CustomDomainToken *string `bun:"custom_domain_token"`
-	// CustomDomainVerifiedAt is when the domain last passed verification
-	// (TXT + CNAME). nil = unverified — only verified pages are served on the
-	// custom host.
+	// CustomDomainVerifiedAt is when the domain last passed CNAME verification.
+	// nil = unverified — only verified pages are served on the custom host.
 	CustomDomainVerifiedAt *time.Time `bun:"custom_domain_verified_at"`
 	// CustomDomainCheckedAt is when the periodic re-verification job last
 	// checked this domain.
@@ -118,6 +124,10 @@ type StatusPageUpdate struct {
 	HistoryDays      *int
 	HistoryPeriod    *string
 	Language         *string
+	// CustomCSS updates the page's custom stylesheet. A pointer to the empty
+	// string clears the column (the appearance editor's "empty textarea"), a
+	// nil pointer leaves it untouched.
+	CustomCSS *string
 }
 
 // StatusPageCustomDomainUpdate is the whole-lifecycle writer for a status
@@ -168,29 +178,62 @@ type StatusPageSectionUpdate struct {
 	Position *int
 }
 
-// StatusPageResource represents a check assigned to a status page section.
+// StatusPageResource represents a check OR a check group assigned to a status
+// page section (spec 2026-08-01-03). Exactly one of CheckUID / CheckGroupUID is
+// set — the database enforces it with an XOR check constraint, mirroring
+// MaintenanceWindowCheck.
+//
+// A group resource renders as ONE public component: rolled-up status, weighted
+// average availability across members, and maintenance from a group- or
+// member-targeted window. Members are never listed publicly.
 type StatusPageResource struct {
-	UID         string    `bun:"uid,pk,type:varchar(36)"`
-	SectionUID  string    `bun:"section_uid,notnull"`
-	CheckUID    string    `bun:"check_uid,notnull"`
-	PublicName  *string   `bun:"public_name"`
-	Explanation *string   `bun:"explanation"`
-	Position    int       `bun:"position,notnull,default:0"`
-	CreatedAt   time.Time `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt   time.Time `bun:"updated_at,notnull,default:current_timestamp"`
+	UID        string `bun:"uid,pk,type:varchar(36)"`
+	SectionUID string `bun:"section_uid,notnull"`
+	// CheckUID is the individual check to display. nil when the resource
+	// targets a group.
+	CheckUID *string `bun:"check_uid"`
+	// CheckGroupUID is the check group to display as one aggregated component.
+	// nil when the resource targets an individual check.
+	CheckGroupUID *string   `bun:"check_group_uid"`
+	PublicName    *string   `bun:"public_name"`
+	Explanation   *string   `bun:"explanation"`
+	Position      int       `bun:"position,notnull,default:0"`
+	CreatedAt     time.Time `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt     time.Time `bun:"updated_at,notnull,default:current_timestamp"`
 }
 
-// NewStatusPageResource creates a new resource with generated UID.
+// IsGroup reports whether the resource targets a check group rather than an
+// individual check.
+func (r *StatusPageResource) IsGroup() bool {
+	return r.CheckGroupUID != nil && *r.CheckGroupUID != ""
+}
+
+// NewStatusPageResource creates a new check-targeting resource with generated UID.
 func NewStatusPageResource(sectionUID, checkUID string, position int) *StatusPageResource {
 	now := time.Now()
 
 	return &StatusPageResource{
 		UID:        uuid.New().String(),
 		SectionUID: sectionUID,
-		CheckUID:   checkUID,
+		CheckUID:   &checkUID,
 		Position:   position,
 		CreatedAt:  now,
 		UpdatedAt:  now,
+	}
+}
+
+// NewStatusPageGroupResource creates a new group-targeting resource with
+// generated UID.
+func NewStatusPageGroupResource(sectionUID, checkGroupUID string, position int) *StatusPageResource {
+	now := time.Now()
+
+	return &StatusPageResource{
+		UID:           uuid.New().String(),
+		SectionUID:    sectionUID,
+		CheckGroupUID: &checkGroupUID,
+		Position:      position,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 }
 
@@ -199,4 +242,11 @@ type StatusPageResourceUpdate struct {
 	PublicName  *string
 	Explanation *string
 	Position    *int
+	// SetTarget switches the resource's target kind. When true, BOTH target
+	// columns are written: exactly one of CheckUID / CheckGroupUID must be
+	// non-nil and the other column is set to NULL, so the XOR constraint always
+	// holds. When false the target is left untouched.
+	SetTarget     bool
+	CheckUID      *string
+	CheckGroupUID *string
 }

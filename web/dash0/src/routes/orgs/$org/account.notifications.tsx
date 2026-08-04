@@ -19,6 +19,7 @@ import {
   Mail,
   MessageSquare,
   MonitorSmartphone,
+  MessageCircle,
   Phone,
   ShieldCheck,
   Trash2,
@@ -49,6 +50,7 @@ import {
   type NotificationRoute,
   type SlackSuggestion,
 } from "@/api/hooks";
+import { useWhatsAppEnabled } from "@/api/public-config";
 
 export const Route = createFileRoute("/orgs/$org/account/notifications")({
   component: NotificationsPage,
@@ -60,6 +62,8 @@ function contactTypeIcon(type: string) {
       return <Mail className="h-4 w-4" />;
     case "phone":
       return <Phone className="h-4 w-4" />;
+    case "whatsapp":
+      return <MessageCircle className="h-4 w-4" />;
     case "slack_user":
       return <MessageSquare className="h-4 w-4" />;
     case "webpush":
@@ -75,6 +79,8 @@ function contactTypeLabel(type: string) {
       return "Email";
     case "phone":
       return "Phone (SMS)";
+    case "whatsapp":
+      return "WhatsApp";
     case "slack_user":
       return "Slack DM";
     case "webpush":
@@ -84,9 +90,15 @@ function contactTypeLabel(type: string) {
   }
 }
 
+/**
+ * Code round-trip dialog shared by the phone (SMS) and WhatsApp contact types.
+ * Only the copy differs: an SMS text vs a WhatsApp authentication template, so
+ * the strings are keyed off `contactType` rather than duplicating the dialog.
+ */
 function VerifyPhoneDialog({
   org,
   contactUid,
+  contactType,
   phone,
   open,
   onOpenChange,
@@ -94,6 +106,7 @@ function VerifyPhoneDialog({
 }: {
   org: string;
   contactUid: string;
+  contactType: string;
   phone: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -105,6 +118,8 @@ function VerifyPhoneDialog({
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const isWhatsApp = contactType === "whatsapp";
+  const copyPrefix = isWhatsApp ? "notifications.whatsapp.verify" : "notifications.verify";
 
   const sendCode = async () => {
     setError(null);
@@ -136,9 +151,9 @@ function VerifyPhoneDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-testid="verify-phone-dialog">
         <DialogHeader>
-          <DialogTitle>{t("notifications.verify.dialogTitle")}</DialogTitle>
+          <DialogTitle>{t(`${copyPrefix}.dialogTitle`)}</DialogTitle>
           <DialogDescription>
-            {t("notifications.verify.dialogDescription", { phone })}
+            {t(`${copyPrefix}.dialogDescription`, { phone })}
           </DialogDescription>
         </DialogHeader>
 
@@ -251,7 +266,11 @@ function RouteRow({
     }
   };
 
-  const isPhone = route.contact.type === "phone";
+  // Both phone (SMS) and WhatsApp contacts go through the same code
+  // round-trip before they may be paged, so the row affordances key off
+  // "needs verification" rather than the phone type specifically.
+  const needsVerification =
+    route.contact.type === "phone" || route.contact.type === "whatsapp";
   const isVerified = !!route.contact.verifiedAt;
 
   return (
@@ -268,7 +287,7 @@ function RouteRow({
             ? (route.contact.label || "Browser")
             : route.contact.value}
         </div>
-        {isPhone && isVerified && (
+        {needsVerification && isVerified && (
           <Badge
             variant="outline"
             className="mt-1 text-xs text-green-600 border-green-400"
@@ -277,17 +296,19 @@ function RouteRow({
             <ShieldCheck className="h-3 w-3 mr-1" /> {t("notifications.verifiedBadge")}
           </Badge>
         )}
-        {isPhone && !isVerified && (
+        {needsVerification && !isVerified && (
           <Badge
             variant="outline"
             className="mt-1 text-xs text-yellow-600 border-yellow-400"
           >
-            {t("notifications.unverifiedBadge")}
+            {route.contact.type === "whatsapp"
+              ? t("notifications.whatsapp.unverifiedBadge")
+              : t("notifications.unverifiedBadge")}
           </Badge>
         )}
       </div>
       <div className="flex items-center gap-2 flex-none">
-        {isPhone && !isVerified && (
+        {needsVerification && !isVerified && (
           <Button
             variant="outline"
             size="sm"
@@ -297,17 +318,18 @@ function RouteRow({
             {t("notifications.verifyButton")}
           </Button>
         )}
-        {isPhone && (
+        {needsVerification && (
           <VerifyPhoneDialog
             org={org}
             contactUid={route.contact.uid}
+            contactType={route.contact.type}
             phone={route.contact.value}
             open={verifyOpen}
             onOpenChange={setVerifyOpen}
             onVerified={onTestSent}
           />
         )}
-        {!isPhone && (
+        {!needsVerification && (
           <Button
             variant="ghost"
             size="sm"
@@ -401,17 +423,22 @@ function SlackBanner({
   );
 }
 
+/** E.164, mirroring the backend's whatsapp.ValidE164 regexp. */
+const E164 = /^\+[1-9]\d{6,14}$/;
+
 function AddContactForm({
   org,
   smsAvailable,
+  whatsAppAvailable,
   onSuccess,
 }: {
   org: string;
   smsAvailable: boolean;
+  whatsAppAvailable: boolean;
   onSuccess: () => void;
 }) {
   const { t } = useTranslation("account");
-  const [type, setType] = useState<"email" | "phone">("email");
+  const [type, setType] = useState<"email" | "phone" | "whatsapp">("email");
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const createContact = useCreateNotificationContact(org);
@@ -422,6 +449,13 @@ function AddContactForm({
 
     if (!value.trim()) {
       setError(type === "email" ? "Email address is required" : "Phone number is required");
+      return;
+    }
+
+    // The backend rejects non-E.164 WhatsApp numbers; catching it here gives a
+    // useful message instead of a round-trip error.
+    if (type === "whatsapp" && !E164.test(value.trim())) {
+      setError(t("notifications.whatsapp.invalidNumber"));
       return;
     }
 
@@ -478,7 +512,24 @@ function AddContactForm({
           >
             <Phone className="h-3 w-3 mr-1" /> Phone
           </Button>
+          {whatsAppAvailable && (
+            <Button
+              type="button"
+              variant={type === "whatsapp" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setType("whatsapp")}
+              data-testid="add-contact-type-whatsapp"
+            >
+              <MessageCircle className="h-3 w-3 mr-1" /> WhatsApp
+            </Button>
+          )}
         </div>
+
+        {type === "whatsapp" && (
+          <p className="text-xs text-muted-foreground">
+            {t("notifications.whatsapp.afterAddHint")}
+          </p>
+        )}
 
         {type === "phone" && !smsAvailable && (
           <Alert>
@@ -507,6 +558,13 @@ function AddContactForm({
             type={type === "email" ? "email" : "tel"}
             placeholder={
               type === "email" ? "you@example.com" : "+1 555 123 4567"
+            }
+            aria-label={
+              type === "email"
+                ? "Email address"
+                : type === "whatsapp"
+                  ? "WhatsApp number"
+                  : "Phone number"
             }
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -552,6 +610,10 @@ function NotificationsPage() {
 
   const { data, isLoading, isError, refetch } = useNotificationRoutes(org);
   const { data: integrations } = useIntegrations(org);
+  // WhatsApp is an *instance*-level capability (one WABA for the whole
+  // deployment), unlike SMS which is a per-org Twilio connection — hence the
+  // public-config flag rather than the org integrations list.
+  const whatsAppAvailable = useWhatsAppEnabled();
 
   const routes = data?.data ?? [];
   const slackSuggestion = !dismissedSlack ? data?.slackSuggestion : undefined;
@@ -622,6 +684,7 @@ function NotificationsPage() {
             <AddContactForm
               org={org}
               smsAvailable={smsAvailable}
+              whatsAppAvailable={whatsAppAvailable}
               onSuccess={() => setShowAddForm(false)}
             />
           ) : (

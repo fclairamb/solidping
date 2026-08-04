@@ -1,8 +1,22 @@
 // Package domainverify normalizes customer-owned status-page hostnames and
-// verifies ownership + routing over DNS. Ownership is proven by a TXT challenge
-// (`_solidping-challenge.<domain>` = `sp-domain-verify=<token>`); routing is
-// proven by a CNAME of `<domain>` pointing at the installation's configured
-// CNAME target. Both are required to serve a page on a custom host.
+// verifies routing + ownership over DNS with a SINGLE CNAME record.
+//
+// Two modes are supported (see Mode):
+//
+//   - shared: the customer CNAMEs their host at the installation's plain CNAME
+//     target (e.g. "status.acme.com CNAME solidping.io"). One record, matching
+//     every competitor's UX. Trade-off: a dangling CNAME left pointing at the
+//     shared target can be claimed by any org — the global unique index on
+//     status_pages.custom_domain (first claim wins) is the only arbiter.
+//   - token: the CNAME target is per-page, "<token>.cname.<target>". Same
+//     one-record UX, but the target itself carries the per-page secret, so a
+//     dangling CNAME can only ever be re-claimed by a page holding that token.
+//     Requires a wildcard A/AAAA (or ALIAS) record at "*.cname.<target>" — NOT
+//     a CNAME, because net.Resolver.LookupCNAME returns the canonical (final)
+//     name of the chain and a wildcard CNAME hop would be invisible.
+//
+// Verification passes in the configured mode only: accepting the shared target
+// while in token mode would nullify the protection.
 //
 // The resolver funcs are injectable so handlers and jobs can be unit-tested
 // without real DNS, mirroring the net.Resolver idiom in checkers/checkdns.
@@ -18,16 +32,49 @@ import (
 	"golang.org/x/net/idna"
 )
 
-// DNS challenge naming. The TXT record lives at ChallengeLabel + "." + domain
-// and its value is TXTValuePrefix + token.
 const (
-	// ChallengeLabel is the sub-label the ownership TXT record is published at.
-	ChallengeLabel = "_solidping-challenge"
-	// TXTValuePrefix prefixes the token inside the challenge TXT record.
-	TXTValuePrefix = "sp-domain-verify="
+	// TokenHostLabel is the label the per-page token hosts live under in token
+	// mode: "<token>.cname.<cnameTarget>". The installation must publish a
+	// wildcard A/AAAA (or ALIAS) record for "*.cname.<cnameTarget>".
+	TokenHostLabel = "cname"
 	// maxDomainLen is the DNS maximum hostname length.
 	maxDomainLen = 253
+	// maxLabelLen is the DNS maximum single-label length. The token must stay
+	// well inside it since it becomes a label of the expected CNAME target.
+	maxLabelLen = 63
 )
+
+// Mode is the CNAME verification mode (config
+// server.custom_domain_cname_mode).
+type Mode string
+
+const (
+	// ModeShared verifies against the installation's plain CNAME target.
+	ModeShared Mode = "shared"
+	// ModeToken verifies against a per-page "<token>.cname.<target>" host.
+	ModeToken Mode = "token"
+)
+
+// Valid reports whether m is one of the supported modes.
+func (m Mode) Valid() bool {
+	return m == ModeShared || m == ModeToken
+}
+
+// ParseMode maps a raw config string to a Mode, defaulting to ModeShared for
+// the empty string. An unrecognized value returns ok=false so config validation
+// can reject it loudly instead of silently downgrading the protection.
+func ParseMode(raw string) (Mode, bool) {
+	switch Mode(strings.ToLower(strings.TrimSpace(raw))) {
+	case "":
+		return ModeShared, true
+	case ModeShared:
+		return ModeShared, true
+	case ModeToken:
+		return ModeToken, true
+	default:
+		return ModeShared, false
+	}
+}
 
 // Validation errors returned by Normalize. All wrap ErrInvalidDomain so callers
 // can map any of them to a single VALIDATION_ERROR.
@@ -44,7 +91,8 @@ var (
 )
 
 // Record is one DNS record the customer must create to activate a custom
-// domain. Type is "CNAME" or "TXT".
+// domain. Only "CNAME" is emitted since v0.8.0 — the TXT ownership challenge
+// was removed in favor of the token-mode CNAME target.
 type Record struct {
 	Type  string `json:"type"`
 	Name  string `json:"name"`
@@ -107,26 +155,75 @@ func Normalize(raw string) (string, error) {
 	return ascii, nil
 }
 
-// ChallengeName returns the fully-qualified name of the ownership TXT record for
-// a (normalized) domain.
-func ChallengeName(domain string) string {
-	return ChallengeLabel + "." + domain
-}
+// TokenHost returns the per-page CNAME target used in token mode:
+// "<token>.cname.<cnameTarget>". It returns "" when either input is empty or
+// the token cannot be a DNS label (too long / illegal characters), so callers
+// never publish or verify against a malformed target.
+func TokenHost(token, cnameTarget string) string {
+	tok := strings.ToLower(strings.TrimSpace(token))
+	target := normalizeTarget(cnameTarget)
 
-// Records returns the two DNS records a customer must create: the CNAME that
-// routes the domain to the installation and the TXT challenge that proves
-// ownership.
-func Records(domain, token, cnameTarget string) []Record {
-	return []Record{
-		{Type: "CNAME", Name: domain, Value: cnameTarget},
-		{Type: "TXT", Name: ChallengeName(domain), Value: TXTValuePrefix + token},
+	if tok == "" || target == "" || len(tok) > maxLabelLen || !isDNSLabel(tok) {
+		return ""
 	}
+
+	return tok + "." + TokenHostLabel + "." + target
 }
 
-// Verifier runs the DNS checks. The lookup funcs default to a plain
-// net.Resolver but are injectable for tests.
+// isDNSLabel reports whether s is a syntactically valid single DNS label
+// (letters, digits and internal hyphens).
+func isDNSLabel(s string) bool {
+	if s == "" || strings.HasPrefix(s, "-") || strings.HasSuffix(s, "-") {
+		return false
+	}
+
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= '0' && r <= '9':
+		case r == '-':
+		default:
+			return false
+		}
+	}
+
+	return true
+}
+
+// normalizeTarget lowercases and strips a trailing dot / surrounding space from
+// a CNAME target.
+func normalizeTarget(target string) string {
+	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(target), "."))
+}
+
+// ExpectedTarget returns the single CNAME value the customer must publish for a
+// page, given the installation's CNAME target, the page's token and the
+// configured mode. Returns "" when the target cannot be built (no configured
+// CNAME target, or token mode with an unusable token) — callers must treat that
+// as "custom domains not configured" and never verify successfully.
+func ExpectedTarget(mode Mode, token, cnameTarget string) string {
+	if mode == ModeToken {
+		return TokenHost(token, cnameTarget)
+	}
+
+	return normalizeTarget(cnameTarget)
+}
+
+// Records returns the DNS records a customer must create. Since v0.8.0 that is
+// exactly one CNAME whose value depends on the configured mode. An empty slice
+// is returned when no target can be built.
+func Records(domain, token, cnameTarget string, mode Mode) []Record {
+	value := ExpectedTarget(mode, token, cnameTarget)
+	if value == "" {
+		return nil
+	}
+
+	return []Record{{Type: "CNAME", Name: domain, Value: value}}
+}
+
+// Verifier runs the DNS checks. The lookup func defaults to a plain
+// net.Resolver but is injectable for tests.
 type Verifier struct {
-	LookupTXT   func(ctx context.Context, name string) ([]string, error)
 	LookupCNAME func(ctx context.Context, host string) (string, error)
 }
 
@@ -135,54 +232,40 @@ func New() *Verifier {
 	resolver := &net.Resolver{}
 
 	return &Verifier{
-		LookupTXT:   resolver.LookupTXT,
 		LookupCNAME: resolver.LookupCNAME,
 	}
 }
 
-// CheckTXT reports whether the ownership TXT challenge is published for the
-// domain. A transport/lookup error (including NXDOMAIN) is returned so callers
+// CheckCNAME reports whether the domain's CNAME resolves to the expected target
+// (case-insensitive, trailing-dot-stripped). An empty expected target never
+// matches. A transport/lookup error (including NXDOMAIN) is returned so callers
 // can log it, but always alongside ok=false.
-func (v *Verifier) CheckTXT(ctx context.Context, domain, token string) (bool, error) {
-	records, err := v.LookupTXT(ctx, ChallengeName(domain))
-	if err != nil {
-		return false, err
+func (v *Verifier) CheckCNAME(ctx context.Context, domain, expected string) (bool, error) {
+	want := normalizeTarget(expected)
+	if want == "" {
+		return false, nil
 	}
 
-	expected := TXTValuePrefix + token
-
-	for _, record := range records {
-		if strings.TrimSpace(record) == expected {
-			return true, nil
-		}
-	}
-
-	return false, nil
-}
-
-// CheckCNAME reports whether the domain's CNAME resolves to the configured
-// target (case-insensitive, trailing-dot-stripped).
-func (v *Verifier) CheckCNAME(ctx context.Context, domain, cnameTarget string) (bool, error) {
 	cname, err := v.LookupCNAME(ctx, domain)
 	if err != nil {
 		return false, err
 	}
 
-	got := strings.ToLower(strings.TrimSuffix(cname, "."))
-	want := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(cnameTarget), "."))
+	got := normalizeTarget(cname)
 
-	return want != "" && got == want, nil
+	return got == want, nil
 }
 
-// Verify reports whether the domain passes both ownership (TXT) and routing
-// (CNAME). Lookup errors count as "not verified".
-func (v *Verifier) Verify(ctx context.Context, domain, token, cnameTarget string) bool {
-	txtOK, _ := v.CheckTXT(ctx, domain, token)
-	if !txtOK {
+// Verify reports whether the domain's CNAME points at the mode's expected
+// target. Lookup errors count as "not verified". There is deliberately no
+// dual-accept: in token mode the plain shared target does NOT verify.
+func (v *Verifier) Verify(ctx context.Context, domain, token, cnameTarget string, mode Mode) bool {
+	expected := ExpectedTarget(mode, token, cnameTarget)
+	if expected == "" {
 		return false
 	}
 
-	cnameOK, _ := v.CheckCNAME(ctx, domain, cnameTarget)
+	ok, _ := v.CheckCNAME(ctx, domain, expected)
 
-	return cnameOK
+	return ok
 }

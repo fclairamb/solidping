@@ -93,11 +93,12 @@ func TestGetIntegration_WebhookURLRendered(t *testing.T) {
 }
 
 // TestGetIntegration_WebhookURLFieldRendered asserts the `webhook_url` field of
-// discord / googlechat / mattermost renders on GET under both encryption modes.
+// discord / googlechat / mattermost / msteams renders on GET under both
+// encryption modes.
 func TestGetIntegration_WebhookURLFieldRendered(t *testing.T) {
 	t.Parallel()
 
-	types := []string{"discord", "googlechat", "mattermost"}
+	types := []string{"discord", "googlechat", "mattermost", "msteams"}
 
 	for _, enc := range []bool{false, true} {
 		for _, connType := range types {

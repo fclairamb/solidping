@@ -104,6 +104,22 @@
       "verified": "Telefonnummer verifiziert",
       "sendFailed": "Senden des Codes fehlgeschlagen",
       "incorrectCode": "Falscher Code"
+    },
+    "whatsapp": {
+      "unverifiedBadge": "Nicht verifiziert — verifizieren, um WhatsApp-Benachrichtigungen zu erhalten",
+      "afterAddHint": "Verifizieren Sie die Nummer nach dem Hinzufügen in WhatsApp, um Benachrichtigungen zu erhalten. Die Verifizierung gilt zugleich als Einwilligung in geschäftliche Nachrichten.",
+      "invalidNumber": "Geben Sie die Nummer im internationalen E.164-Format an, z. B. +4915112345678",
+      "verify": {
+        "sendCode": "Code senden",
+        "resend": "Erneut senden",
+        "confirm": "Bestätigen",
+        "codeSent": "Verifizierungscode gesendet",
+        "sendFailed": "Senden des Codes fehlgeschlagen",
+        "incorrectCode": "Falscher Code",
+        "dialogTitle": "WhatsApp-Nummer verifizieren",
+        "dialogDescription": "Wir senden einen 6-stelligen Code per WhatsApp an {{phone}}. Geben Sie ihn unten ein, um zu bestätigen, dass diese Nummer WhatsApp-Benachrichtigungen empfangen kann.",
+        "verified": "Telefonnummer verifiziert"
+      }
     }
   }
 }

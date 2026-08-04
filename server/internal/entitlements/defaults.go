@@ -79,6 +79,10 @@ const (
 	// stays unlimited (nil) — bring-your-own Twilio.
 	defaultMaxSmsPerMonthSaaS   = 0
 	defaultMaxCallsPerMonthSaaS = 0
+	// defaultMaxWhatsappPerMonthSaaS is 0 for the same reason: the Free plan
+	// ships no WhatsApp alerts. Self-hosted stays unlimited (nil) — the
+	// operator pays Meta directly for their own WABA.
+	defaultMaxWhatsappPerMonthSaaS = 0
 )
 
 // Display identity shown on the usage page when a row has none of its
@@ -108,13 +112,14 @@ func DefaultsFor(mode string) Entitlements {
 	case config.DeploymentModeSaaS:
 		return Entitlements{
 			Limits: Limits{
-				MaxChecks:          Int(defaultMaxChecksSaaS),
-				MaxChecksPerMinute: Int(defaultMaxChecksPerMinuteSaaS),
-				MaxUsers:           Int(defaultMaxUsersSaaS),
-				MaxDeportedAgents:  Int(defaultMaxDeportedAgentsSaaS),
-				MaxCustomDomains:   Int(defaultMaxCustomDomainsSaaS),
-				MaxSmsPerMonth:     Int(defaultMaxSmsPerMonthSaaS),
-				MaxCallsPerMonth:   Int(defaultMaxCallsPerMonthSaaS),
+				MaxChecks:           Int(defaultMaxChecksSaaS),
+				MaxChecksPerMinute:  Int(defaultMaxChecksPerMinuteSaaS),
+				MaxUsers:            Int(defaultMaxUsersSaaS),
+				MaxDeportedAgents:   Int(defaultMaxDeportedAgentsSaaS),
+				MaxCustomDomains:    Int(defaultMaxCustomDomainsSaaS),
+				MaxSmsPerMonth:      Int(defaultMaxSmsPerMonthSaaS),
+				MaxCallsPerMonth:    Int(defaultMaxCallsPerMonthSaaS),
+				MaxWhatsappPerMonth: Int(defaultMaxWhatsappPerMonthSaaS),
 			},
 			Source:       models.EntitlementSourceDefault,
 			DisplayName:  strPtr(displayNameSaaS),

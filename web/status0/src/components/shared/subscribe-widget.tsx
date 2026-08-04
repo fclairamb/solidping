@@ -65,10 +65,17 @@ export function SubscribeWidget({
                 </p>
               )}
             </div>
+            {/* translate="no" — the label swaps between two strings while the
+                button element itself is reused, so React rewrites this text
+                node. A translator that has re-parented it into a <font> turns
+                that into "removeChild on Node". See NO_TRANSLATE in
+                status-page-view.tsx. */}
             <button
               type="submit"
               disabled={subscribe.isPending}
               className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              data-testid="subscribe-submit"
+              translate="no"
             >
               {subscribe.isPending
                 ? t("subscribe.submitting")

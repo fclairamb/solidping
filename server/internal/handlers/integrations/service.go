@@ -55,6 +55,22 @@ var (
 	// install flow (which writes the bot token); a manually-created stub has no
 	// token and is permanently broken.
 	ErrSlackManualCreate = errors.New("slack channels are added by installing the Slack app")
+	// ErrMSTeamsBotManualCreate is returned when a msteams-bot channel is
+	// created through the generic API. Like Slack, this type carries a
+	// provider-side identity that must be PROVEN, not asserted: its tenant_id
+	// decides whose Teams conversations the connection receives, so allowing
+	// a caller to supply one would let any org claim any Microsoft 365
+	// tenant. Creation goes through
+	// POST /orgs/:org/integrations/msteams/link-code, which issues a
+	// one-time code that must be redeemed from inside the tenant itself.
+	ErrMSTeamsBotManualCreate = errors.New(
+		"microsoft teams bot channels are added with a link code, not created directly")
+	// ErrMSTeamsBotUnknownDestination is returned when a destination
+	// selection names a conversation the bot was never added to. The
+	// conversation id is not proof of access — see
+	// models.MSTeamsBotSettings.HasDestination.
+	ErrMSTeamsBotUnknownDestination = errors.New(
+		"the selected Microsoft Teams channel is not one this bot has been added to")
 	// ErrNotWebhookChannel is returned when a webhook-only operation
 	// (rotate-secret) targets a channel of a different type.
 	ErrNotWebhookChannel = errors.New("channel is not a webhook connection")
@@ -389,6 +405,10 @@ func (s *Service) CreateIntegration(
 		return nil, ErrSlackManualCreate
 	}
 
+	if connType == models.ConnectionTypeMSTeamsBot {
+		return nil, ErrMSTeamsBotManualCreate
+	}
+
 	conn := models.NewIntegration(org.UID, connType, req.Name)
 
 	if req.Enabled != nil {
@@ -447,6 +467,8 @@ var validConnectionTypes = map[models.ConnectionType]bool{
 	models.ConnectionTypeEmail:      true,
 	models.ConnectionTypeGoogleChat: true,
 	models.ConnectionTypeMattermost: true,
+	models.ConnectionTypeMSTeams:    true,
+	models.ConnectionTypeMSTeamsBot: true,
 	models.ConnectionTypeNtfy:       true,
 	models.ConnectionTypeOpsgenie:   true,
 	models.ConnectionTypePushover:   true,
@@ -580,6 +602,19 @@ func (s *Service) applyUpdateSettings(
 	secrets := credentials.ConnectionSecretFields(conn.Type)
 	merged := credentials.MergePatch(existing, reqSettings, secrets)
 
+	// The Teams bot's provider-side identity is server-owned: it is written
+	// only from signature-verified Bot Framework activities. Restoring those
+	// keys from the stored settings makes them immutable through this API, so
+	// the creation guard above cannot be side-stepped by PATCHing a
+	// tenant_id (or a forged destination) onto an existing connection.
+	if conn.Type == models.ConnectionTypeMSTeamsBot {
+		restoreMSTeamsBotServerFields(existing, merged)
+
+		if vErr := validateMSTeamsBotDestination(merged); vErr != nil {
+			return vErr
+		}
+	}
+
 	// Validate the merged (post-PATCH) settings so a partial update can't leave
 	// a Twilio connection in an unsendable state.
 	if conn.Type == models.ConnectionTypeTwilio {
@@ -599,6 +634,64 @@ func (s *Service) applyUpdateSettings(
 	update.ClearSettingsPrivate = conn.SettingsPrivate == nil
 
 	return nil
+}
+
+// msTeamsBotServerOwnedKeys are the msteams-bot settings keys that only the
+// inbound Bot Framework path may write. Everything else on the connection
+// (the selected default destination) stays client-settable so the dashboard
+// picker keeps working.
+//
+//nolint:gochecknoglobals // constant key list
+var msTeamsBotServerOwnedKeys = []string{
+	"tenant_id",
+	"tenant_name",
+	"bot_id",
+	"app_id",
+	"service_url",
+	"destinations",
+	"installed_by_user_id",
+	"uninstalled_at",
+}
+
+// validateMSTeamsBotDestination rejects a default-destination selection that
+// does not name one of the connection's captured conversation references.
+//
+// The destination keys stay client-writable (the dashboard picker writes
+// them), so this is what stops a caller from simply typing in another
+// tenant's conversation id and having the shared bot credential post there.
+// The in-band `config default-channel` command enforces the same rule via
+// Service.SetDefaultDestination.
+func validateMSTeamsBotDestination(merged map[string]any) error {
+	selected, _ := merged["channel_id"].(string)
+	if selected == "" {
+		return nil
+	}
+
+	settings, err := models.MSTeamsBotSettingsFromJSONMap(models.JSONMap(merged))
+	if err != nil {
+		return fmt.Errorf("parsing microsoft teams bot settings: %w", err)
+	}
+
+	if !settings.HasDestination(selected) {
+		return ErrMSTeamsBotUnknownDestination
+	}
+
+	return nil
+}
+
+// restoreMSTeamsBotServerFields overwrites the server-owned keys in merged
+// with their stored values (deleting them when unset), discarding whatever
+// the client sent.
+func restoreMSTeamsBotServerFields(existing, merged map[string]any) {
+	for _, key := range msTeamsBotServerOwnedKeys {
+		if stored, ok := existing[key]; ok {
+			merged[key] = stored
+
+			continue
+		}
+
+		delete(merged, key)
+	}
 }
 
 // applySettingsEncryption splits Settings into public/private using the

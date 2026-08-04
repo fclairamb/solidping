@@ -268,8 +268,10 @@ export function OnCallScheduleForm({
                   onChange={() => toggleUser(m.userUid)}
                 />
                 <span className="text-sm">
-                  {m.name || m.email}{" "}
-                  <span className="text-muted-foreground">({m.email})</span>
+                  {m.name || m.email}
+                  {m.name ? (
+                    <span className="text-muted-foreground"> ({m.email})</span>
+                  ) : null}
                 </span>
               </label>
             ))

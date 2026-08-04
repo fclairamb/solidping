@@ -28,6 +28,45 @@ and they can be large (SSL cert chains, DNSBL details). The detail endpoint
 (`GET /checks/:checkUid`) keeps the full `lastResult` including
 `output`/`metrics`.
 
+### GET /api/v1/orgs/:org/checks/stats
+Aggregate check counters for the org, computed server-side with one SQL
+`GROUP BY`. Auth: required
+
+```json
+{
+  "total": 262,
+  "enabled": 250,
+  "disabled": 12,
+  "byStatus": {
+    "created": 2, "up": 240, "down": 6,
+    "validating": 0, "degraded": 2, "warning": 0, "unknown": 0
+  },
+  "down": 6,
+  "hardDown": 3
+}
+```
+
+This exists because the list endpoint clamps `limit` to 100, so any counter
+derived from a single page is wrong past 100 checks (GitHub issue #172).
+
+Semantics:
+- **Scope** — non-deleted, **non-internal** checks: exactly the set
+  `GET /checks` returns by default (`internal=false`), so the counters always
+  agree with the list the operator can open.
+- `total`, `byStatus`, `down` and `hardDown` span **enabled and disabled**
+  checks alike; `enabled` / `disabled` partition the same set.
+- `byStatus` always carries every known status key (`created`, `up`, `down`,
+  `validating`, `degraded`, `warning`, `unknown`) — zero when empty — so
+  clients can index it unguarded. Keys are the same tokens the list response's
+  `status` field carries.
+- `down` = status in (`down`, `error`, `timeout`); `hardDown` = status in
+  (`down`, `error`). `error`/`timeout` are *result*-level statuses that a
+  check-level status never holds, so today both equal `byStatus.down`.
+- **Cached ~1 minute per org, in memory.** The response can lag a check
+  create/delete or a status flip by up to the TTL; there is no invalidation.
+  Consumers needing an exact, immediately consistent count should read
+  `pagination.total` from the list endpoint instead.
+
 ### POST /api/v1/orgs/:org/checks
 Create a new check. Type can be inferred from the config URL. Name and slug are auto-generated if omitted. Auth: required
 
@@ -111,7 +150,12 @@ dep edges stay byte-identical to the pre-dependsOn shape.
 > that called these as a non-admin user must switch to an admin token.
 
 ### POST /api/v1/orgs/:org/checks/import
-Import checks from JSON. Auth: **admin** (org admin role required)
+Import checks from an export document. Auth: **admin** (org admin role required)
+
+The body is accepted as **JSON or YAML** (sniffed from `Content-Type` and the
+first non-space byte, same as `/apply`): export emits JSON, but a hand-authored
+or converted manifest is just as likely to be YAML, and both parse to the same
+document. Malformed input is still a `422 VALIDATION_ERROR`.
 
 Two-pass when any entry carries `dependsOn`: pass 1 upserts every check
 unchanged, pass 2 resolves `parentSlug` → check UID against the now-current
@@ -180,6 +224,54 @@ Query parameters:
   "errors": []
 }
 ```
+
+### POST /api/v1/orgs/:org/checks/import/convert
+Import checks from a third-party monitoring tool. Auth: **admin** (org admin
+role required).
+
+Converts a foreign configuration into the canonical export document and then
+feeds it through the **existing** `ApplyChecks` path — there is no second
+import pipeline, so slug upsert, group auto-creation, config validation and
+per-check error collection all behave exactly as they do for `/apply`.
+
+Query parameters:
+- `source` — `gatus` | `betterstack` | `uptime-kuma` (required).
+- `dryRun=true` — compute and return the plan only; mutate nothing.
+
+Request body, per source:
+
+| Source | Body | Notes |
+|---|---|---|
+| `gatus` | the raw `config.yaml` | Gatus has no config-export API. |
+| `uptime-kuma` | the raw backup JSON | Settings → Backup → Export (Kuma 1.x). |
+| `betterstack` | `{"token": "...", "baseUrl": "..."}` | The server fetches every page of `/api/v2/monitors` **and** `/api/v2/heartbeats`. `baseUrl` is optional (tests / proxies). The token is used transiently for that fetch and is **never persisted, logged, or echoed in an error**. |
+
+Each converted document is applied under a per-source managed manifest
+(`solidping.io/managed=gatus` / `betterstack` / `uptime-kuma`), so re-importing
+the same source updates in place and stays idempotent. `prune` is never enabled
+for a conversion — a foreign export is a partial view of the org.
+
+**Response** (the apply/dry-run shape, plus conversion metadata):
+```json
+{
+  "source": "gatus",
+  "converted": 12,
+  "manifest": "gatus",
+  "dryRun": true,
+  "created": 12, "updated": 0, "unmanaged": 0,
+  "plan": [{"slug": "back-end", "action": "create"}],
+  "errors": [],
+  "warnings": [
+    {"item": "back-end", "field": "conditions",
+     "message": "condition \"[RESPONSE_TIME] < 300\" has no SolidPing equivalent and was dropped"}
+  ]
+}
+```
+
+`warnings` lists everything that did not map faithfully — unmappable
+conditions/monitor types, credentials that were deliberately not imported,
+notification bindings, and the heartbeat/push URL change. Unmappable items
+never block the import: what maps is imported, the rest is reported.
 
 ## Check Dependencies
 

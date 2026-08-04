@@ -11,7 +11,8 @@
     "hashing": "Password Hashing",
     "performance": "Performance",
     "aggregation": "Aggregation",
-    "slack": "Slack"
+    "slack": "Slack",
+    "analytics": "Analytics"
   },
   "aggregation": {
     "title": "Aggregation",
@@ -272,5 +273,26 @@
       "noError": "—",
       "never": "never"
     }
+  },
+  "analytics": {
+    "title": "Product Analytics",
+    "description": "Optional PostHog integration. Analytics is completely off until you enter a project API key — with no key configured the server sends nothing and the dashboard loads no analytics code at all.",
+    "statusOn": "Analytics is active",
+    "statusOff": "Analytics is off",
+    "statusOffHelp": "No project API key is configured, so nothing is captured and no analytics code is loaded in the browser.",
+    "enabled": "Enable analytics",
+    "enabledHelp": "Kill switch. Turning this on does not enable anything on its own — a project API key is also required.",
+    "projectApiKey": "Project API key",
+    "projectApiKeyPlaceholder": "phc_...",
+    "projectApiKeyHelp": "The public PostHog browser key. It is intentionally sent to the dashboard. Leave empty to keep analytics fully disabled.",
+    "host": "Host",
+    "hostPlaceholder": "https://eu.i.posthog.com",
+    "hostHelp": "PostHog ingestion endpoint. Supports self-hosted PostHog and reverse proxies.",
+    "personalApiKey": "Personal API key",
+    "personalApiKeyPlaceholder": "Enter new personal API key",
+    "personalApiKeyHelp": "Optional server-side key. Stored as a secret and never sent to the browser.",
+    "envOverride": "Set by environment",
+    "envOverrideHelp": "This value comes from an environment variable, which takes precedence over anything saved here.",
+    "whatIsSent": "What is sent: five product events (organization created, user signed up, check created, integration connected, status page published), keyed by organization and user UUIDs. Never sent: email addresses, check targets, hostnames, URLs, incident contents or any text you typed."
   }
 }

@@ -14,6 +14,13 @@
   "allChecks": "Alle Prüfungen",
   "internal": "Intern",
   "ungroupedChecks": "Nicht gruppierte Prüfungen",
+  "groupBy": {
+    "label": "Gruppieren nach:",
+    "groups": "Gruppen",
+    "host": "Host"
+  },
+  "noHostBucket": "Kein Host",
+  "hostBucketDescription": "Abgeleitet aus der Konfiguration jeder Prüfung — das Umbenennen eines Hosts verschiebt ihn in einen anderen Abschnitt.",
   "status": {
     "validating": "Wird geprüft",
     "up": "Aktiv",
@@ -21,6 +28,16 @@
     "warning": "Warnung",
     "degraded": "Beeinträchtigt",
     "unknown": "Unbekannt"
+  },
+  "groupSummary": {
+    "allUp": "{{count}}/{{count}} aktiv",
+    "part": "{{count}} {{label}}",
+    "up": "aktiv",
+    "down": "ausgefallen",
+    "warning": "Warnung",
+    "degraded": "beeinträchtigt",
+    "validating": "wird geprüft",
+    "created": "ausstehend"
   },
   "table": {
     "name": "Name",
@@ -37,7 +54,9 @@
     "delete": "Löschen",
     "moveUp": "Nach oben",
     "moveDown": "Nach unten",
-    "deleteGroup": "Gruppe löschen"
+    "deleteGroup": "Gruppe löschen",
+    "expandGroup": "Gruppe erweitern",
+    "collapseGroup": "Gruppe einklappen"
   },
   "dialog": {
     "deleteTitle": "Prüfung löschen",
@@ -47,6 +66,10 @@
     "newGroupTitle": "Neue Gruppe",
     "groupName": "Gruppenname",
     "groupNamePlaceholder": "Gruppennamen eingeben",
+    "groupSlug": "Slug (optional)",
+    "groupSlugHelp": "Wird verwendet, um diese Gruppe in der API und in Skripten anzusprechen. Wird automatisch aus dem Namen generiert, wenn leer gelassen.",
+    "groupSlugInvalid": "Der Slug muss mit einem Kleinbuchstaben beginnen, 3-40 Zeichen lang sein und darf nur Kleinbuchstaben, Ziffern oder Bindestriche enthalten.",
+    "groupSlugTaken": "Eine Prüfungsgruppe mit diesem Slug existiert bereits in dieser Organisation.",
     "changeGroupTitle": "Gruppe ändern",
     "selectGroup": "Gruppe auswählen",
     "noGroup": "Keine Gruppe (nicht gruppiert)",
@@ -62,12 +85,40 @@
     "toCreate": "Zu erstellen",
     "toUpdate": "Zu aktualisieren",
     "moveCheckDescription": "<strong>{{name}}</strong> in eine andere Gruppe verschieben.",
-    "group": "Gruppe"
+    "group": "Gruppe",
+    "importSource": "Quelle",
+    "importSources": {
+      "solidping": "SolidPing-Export (JSON/YAML)",
+      "gatus": "Gatus (config.yaml)",
+      "betterstack": "Better Stack (API-Token)",
+      "uptime-kuma": "Uptime Kuma (Backup-JSON)"
+    },
+    "importSourceHelp": {
+      "solidping": "Ein über die Schaltfläche „Exportieren“ erzeugtes Dokument, als JSON oder YAML.",
+      "gatus": "Fügen Sie Ihre Gatus-config.yaml ein oder laden Sie sie hoch — die endpoints:-Liste wird in Checks umgewandelt.",
+      "betterstack": "Wir lesen Ihre Monitore und Heartbeats über die Better-Stack-API aus und konvertieren sie.",
+      "uptime-kuma": "Uptime Kuma 1.x: Einstellungen → Backup → JSON exportieren. Version 2.x bietet diesen Export nicht mehr an."
+    },
+    "importPlaceholder": {
+      "solidping": "Exportiertes JSON- oder YAML-Dokument einfügen…",
+      "gatus": "Gatus-config.yaml einfügen…",
+      "uptime-kuma": "Uptime-Kuma-Backup-JSON einfügen…"
+    },
+    "importPayload": "Konfiguration",
+    "importUpload": "Datei hochladen",
+    "importToken": "Better-Stack-API-Token",
+    "importTokenNoticeTitle": "Das Token wird nicht gespeichert",
+    "importTokenNotice": "Es wird einmalig gesendet, um Ihre Monitore und Heartbeats zu lesen, und von SolidPing nie gespeichert.",
+    "importWarnings": "{{count}} Element(e) konnten nicht exakt übernommen werden"
   },
   "groupForm": {
     "title": "Gruppe bearbeiten",
     "detailsTitle": "Details",
-    "detailsDescription": "Name und Beschreibung dieser Prüfungsgruppe.",
+    "detailsDescription": "Name, Slug und Beschreibung dieser Prüfungsgruppe.",
+    "slug": "Slug",
+    "slugHelp": "Wird verwendet, um diese Gruppe in der API und in Skripten anzusprechen (z. B. checkGroupSlug in Incident-Payloads). Eine Änderung bricht bestehende Referenzen.",
+    "slugInvalid": "Der Slug muss mit einem Kleinbuchstaben beginnen, 3-40 Zeichen lang sein und darf nur Kleinbuchstaben, Ziffern oder Bindestriche enthalten.",
+    "slugTaken": "Eine Prüfungsgruppe mit diesem Slug existiert bereits in dieser Organisation.",
     "description": "Beschreibung",
     "descriptionPlaceholder": "Wofür ist diese Gruppe von Prüfungen?",
     "escalationTitle": "Eskalationsrichtlinie",

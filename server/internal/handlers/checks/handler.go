@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/checkers/urlparse"
@@ -19,6 +20,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	entitlementshandler "github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	mw "github.com/fclairamb/solidping/server/internal/middleware"
 )
 
 // errInvalidStatus is returned when an unknown status token appears in ?status=.
@@ -120,6 +122,36 @@ func parseTypeFilter(typeParam string) []string {
 	return types
 }
 
+// GetCheckStats handles GET /api/v1/orgs/{org}/checks/stats: the org-wide
+// aggregate check counters (spec 2026-08-02-06, GitHub issue #172).
+//
+// This endpoint exists because the dashboard used to derive its KPI counters
+// from one page of the checks list, which the list endpoint clamps to 100
+// rows — so every counter was silently wrong for orgs with more checks than
+// that. The counts here come from a single SQL GROUP BY over the whole table.
+//
+// The response is served from a per-org in-memory cache with a
+// defaultCheckStatsTTL (1 minute) lifetime, so it can lag a check
+// create/delete/status flip by up to that long. That is deliberate: these are
+// informational counters on a polling dashboard, and the alternative — busting
+// the cache from every check write path and from the result pipeline's status
+// transitions — buys nothing at this staleness budget. Consumers needing an
+// exact, immediately-consistent count must use the list endpoint's
+// pagination.total instead.
+//
+// Route ordering note: this MUST stay registered ahead of
+// GET /orgs/:org/checks/:checkUid, or "stats" is captured as a check UID.
+func (h *Handler) GetCheckStats(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+
+	stats, err := h.svc.GetCheckStats(req.Context(), orgSlug)
+	if err != nil {
+		return h.handleListError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, stats)
+}
+
 // ListChecks handles listing all checks for an organization.
 //
 //nolint:funlen,cyclop // List handler has many query parameter extractions
@@ -203,14 +235,15 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req *http.Request) erro
 		opts.Statuses = statuses
 	}
 
-	// Parse sort ordering (opt-in). Only "group" is recognized today; any other
-	// non-empty value is a validation error rather than a silently-ignored
-	// no-op. Empty/absent keeps the default created_at DESC ordering.
+	// Parse sort ordering (opt-in). "group" and "targetHost" are recognized
+	// today; any other non-empty value is a validation error rather than a
+	// silently-ignored no-op. Empty/absent keeps the default created_at DESC
+	// ordering.
 	if sortParam := query.Get("sort"); sortParam != "" {
-		if sortParam != "group" {
+		if sortParam != "group" && sortParam != "targetHost" {
 			return h.WriteError(
 				writer, http.StatusBadRequest, base.ErrorCodeValidationError,
-				"Invalid sort parameter: only \"group\" is supported")
+				"Invalid sort parameter: only \"group\" or \"targetHost\" is supported")
 		}
 		opts.Sort = sortParam
 	}
@@ -274,7 +307,32 @@ func (h *Handler) CreateCheck(writer http.ResponseWriter, req *http.Request) err
 		return h.handleCreateError(writer, err)
 	}
 
+	// Product analytics (spec 2026-08-02-08). No-op unless PostHog is
+	// configured. Only the check TYPE is sent — never the target host, URL,
+	// name, slug or any other part of the check configuration.
+	captureCheckCreated(req, createReq.Type)
+
 	return h.WriteJSON(writer, http.StatusCreated, check)
+}
+
+// captureCheckCreated records the check_created product event. Pseudonymous by
+// construction: org UID + user UID only, plus the low-cardinality check type.
+func captureCheckCreated(req *http.Request, checkType string) {
+	var orgUID, userUID string
+	if org, ok := mw.GetOrganizationFromContext(req.Context()); ok && org != nil {
+		orgUID = org.UID
+	}
+
+	if claims, ok := mw.GetClaimsFromContext(req.Context()); ok && claims != nil {
+		userUID = claims.UserUID
+	}
+
+	analytics.Capture(req.Context(), analytics.Event{
+		Name:       analytics.EventCheckCreated,
+		OrgUID:     orgUID,
+		UserUID:    userUID,
+		Properties: map[string]any{"checkType": checkType},
+	})
 }
 
 // GetCheck handles retrieving a single check by UID or slug.
@@ -502,19 +560,30 @@ func (h *Handler) ExportChecks(writer http.ResponseWriter, req *http.Request) er
 	return nil
 }
 
-// ImportChecks handles importing checks from a JSON export document.
+// ImportChecks handles importing checks from an export document. The body is
+// accepted as **JSON or YAML** (sniffed from Content-Type and the first
+// non-space byte, exactly like /apply): export emits JSON, but a hand-authored
+// or converted manifest is just as likely to be YAML, and both parse to the
+// same document.
 func (h *Handler) ImportChecks(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := httpx.Param(req, "org")
 	dryRun := req.URL.Query().Get("dryRun") == queryTrue
 
-	var doc ExportDocument
-	if err := json.NewDecoder(req.Body).Decode(&doc); err != nil {
-		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		return h.WriteValidationError(writer, "Invalid body", []base.ValidationErrorField{
+			{Name: fieldBody, Message: "could not read request body"},
+		})
+	}
+
+	doc, err := parseManifest(body, req.Header.Get("Content-Type"))
+	if err != nil {
+		return h.WriteValidationError(writer, "Invalid document", []base.ValidationErrorField{
 			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
-	result, err := h.svc.ImportChecks(req.Context(), orgSlug, &doc, dryRun)
+	result, err := h.svc.ImportChecks(req.Context(), orgSlug, doc, dryRun)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrOrganizationNotFound):

@@ -138,14 +138,16 @@ func TestCLICoverage_StatusPageSectionsResourcesSubscribers(t *testing.T) {
 
 	// --- Resources ---
 	checkUID := "40000000-0000-0000-0000-0000000000a0"
-	cliCovSeedCheck(ctx, t, ts, checkUID, "cli-cov-sr-check", "http", models.JSONMap{"url": "https://example.com"})
+	checkSlug := "cli-cov-sr-check"
+	cliCovSeedCheck(ctx, t, ts, checkUID, checkSlug, "http", models.JSONMap{"url": "https://example.com"})
 
 	resourceResp, err := apiClient.CreateStatusPageResourceWithResponse(ctx, TestOrgSlug, pageUID.String(),
-		sectionUID.String(), client.CreateStatusPageResourceJSONRequestBody{CheckUid: "cli-cov-sr-check"})
+		sectionUID.String(), client.CreateStatusPageResourceJSONRequestBody{CheckUid: &checkSlug})
 	r.NoError(err)
 	r.Equal(201, resourceResp.StatusCode())
 	r.NotNil(resourceResp.JSON201)
 	resourceUID := resourceResp.JSON201.Uid
+	r.NotNil(resourceResp.JSON201.CheckUid)
 	r.Equal(checkUID, resourceResp.JSON201.CheckUid.String())
 
 	listResourcesResp, err := apiClient.ListStatusPageResourcesWithResponse(

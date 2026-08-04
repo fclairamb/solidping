@@ -14,10 +14,49 @@ List regions relevant to the organization. Auth: required
 
 Private regions are created and managed separately — see [agents.md](agents.md).
 
+## Public configuration
+
+### GET /api/v1/config
+Browser-safe public configuration read by the dashboard at boot, before login.
+Auth: **public** (no token).
+
+Deliberately a general-purpose blob, not a per-feature endpoint: new public
+flags are added as sibling properties instead of minting new routes.
+
+Contract:
+
+- It exposes **only** non-secret values. No system parameter marked `secret`
+  ever appears here — `posthog.personal_api_key` in particular is never read by
+  the handler.
+- A disabled feature **omits** its configuration fields rather than returning
+  empty strings, so an operator can tell "unconfigured" from "configured with a
+  blank value" at a glance.
+
+```json
+{ "posthog": { "enabled": true, "projectApiKey": "phc_…", "host": "https://eu.i.posthog.com" } }
+```
+
+With PostHog unconfigured (the default for every self-hosted install) the
+response is exactly:
+
+```json
+{ "posthog": { "enabled": false } }
+```
+
+`posthog.enabled` in this response is the *resolved* state
+(`posthog.enabled == true && posthog.project_api_key != ""`), which is the same
+rule the backend capture client and the dashboard apply.
+
 ## System parameters
 
 ### GET /api/v1/system/parameters
 List all system parameters. Auth: super-admin
+
+Response: `{ "data": [ … ], "envOverrides": ["posthog.host", …] }`.
+`envOverrides` lists the parameter keys whose effective value is currently
+forced by an `SP_*` environment variable (env beats the database), so the
+Server Settings UI can warn that an edit to those keys will not take effect.
+Only key names are listed — never values.
 
 ### GET /api/v1/system/parameters/:key
 Get a system parameter by key. Auth: super-admin

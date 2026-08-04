@@ -561,7 +561,10 @@ func (s *Service) validateCheckOnPage(ctx context.Context, pageUID, checkUID str
 		}
 
 		for _, resource := range resources {
-			if resource.CheckUID == checkUID {
+			// Group-targeting resources have a nil CheckUID (spec
+			// 2026-08-01-03); a status update still pins to an individual check,
+			// so only check resources can satisfy the "on this page" test.
+			if resource.CheckUID != nil && *resource.CheckUID == checkUID {
 				return nil
 			}
 		}

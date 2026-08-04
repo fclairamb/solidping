@@ -48,6 +48,14 @@ The embedded **Docusaurus** documentation site (Docusaurus `baseUrl` is
 `/docs/`). Served on every host, so `solidping.io/docs` works with no extra
 infra. Auth: public.
 
+### GET /llms.txt
+### GET /llms-full.txt
+`docusaurus-plugin-llms`-generated manifests from the embedded docs build,
+served both at `/docs/llms.txt` / `/docs/llms-full.txt` and, for crawler
+convenience, at the conventional root path (same embedded file, no
+duplication). Missing file returns 404 (the docs 404 page), not the SPA
+shell. Auth: public.
+
 ### GET /openapi
 Interactive OpenAPI (Swagger) explorer. Auth: public
 

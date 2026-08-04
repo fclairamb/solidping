@@ -229,7 +229,9 @@ func (s *Service) fetchIncidents(
 		Limit:           1000,
 	}
 
-	return s.db.ListIncidents(ctx, filter)
+	incidents, _, err := s.db.ListIncidents(ctx, filter)
+
+	return incidents, err
 }
 
 // incidentBlock computes the wall-clock outage stats (definition B), clamping

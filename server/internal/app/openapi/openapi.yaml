@@ -564,6 +564,30 @@ paths:
               schema:
                 $ref: "#/components/schemas/AuthProvidersResponse"
 
+  /api/v1/config:
+    get:
+      tags: [System]
+      summary: Public browser-safe configuration
+      description: |
+        Unauthenticated configuration blob the dashboard reads at boot, before
+        any login. Contains **only** non-secret, browser-safe values; no
+        parameter marked `secret` in the system-parameter registry is ever
+        exposed here (in particular `posthog.personal_api_key` is not).
+
+        When a feature is disabled its configuration fields are **omitted**
+        rather than returned empty — e.g. with PostHog unconfigured the
+        response is exactly `{"posthog": {"enabled": false}}`. The same rule
+        applies to `whatsapp`, which is a single resolved boolean.
+      operationId: getPublicConfig
+      security: []
+      responses:
+        "200":
+          description: Public configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicConfigResponse"
+
   /api/v1/auth/register:
     post:
       tags: [Authentication]
@@ -835,11 +859,16 @@ paths:
           description: >-
             Opt-in ordering. "group" orders by group sortOrder ascending with
             ungrouped checks last, then created_at descending within a bucket —
-            matching the dashboard's display order. Omitted keeps the default
-            created_at descending ordering. Any other value is a validation error.
+            matching the dashboard's display order. "targetHost" orders by the
+            derived targetHost ascending (case-sensitive, byte/codepoint order —
+            e.g. "Zebra.example.com" sorts before "api.example.com"), checks
+            with no targetHost last, then name ascending as a tiebreaker — lets
+            a by-host view paginate consistently server-side. Omitted keeps the
+            default created_at descending ordering. Any other value is a
+            validation error.
           schema:
             type: string
-            enum: ["group"]
+            enum: ["group", "targetHost"]
       responses:
         "200":
           description: List of checks
@@ -880,6 +909,42 @@ paths:
                 $ref: "#/components/schemas/Error"
         "422":
           $ref: "#/components/responses/ValidationError"
+
+  /api/v1/orgs/{org}/checks/stats:
+    get:
+      tags: [Checks]
+      summary: Aggregate check counters for an organization
+      operationId: getCheckStats
+      description: >-
+        Org-wide check counters computed server-side with a single SQL
+        aggregation, so they are unaffected by the list endpoint's 100-row page
+        clamp. Scope is the same set the list endpoint shows by default:
+        non-deleted, non-internal checks. `total`, `byStatus`, `down` and
+        `hardDown` span enabled and disabled checks alike; `enabled` and
+        `disabled` partition the same set.
+
+
+        The response is served from a per-organization in-memory cache with a
+        1-minute TTL, so it can lag a check create/delete or a status flip by up
+        to that long. Clients needing an exact, immediately consistent count
+        should read `pagination.total` from the list endpoint instead.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: Aggregate check counters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckStats"
+        "404":
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/v1/orgs/{org}/checks/{slug}:
     put:
@@ -3375,8 +3440,11 @@ paths:
       tags: [StatusPages]
       summary: Verify a status page's custom domain
       description: >-
-        Runs the DNS ownership (TXT) and routing (CNAME) checks synchronously
-        and stamps the result. Rate-limited per organization.
+        Resolves the domain's CNAME and compares it against the expected target
+        for the configured mode (server.custom_domain_cname_mode: "shared" uses
+        the installation target, "token" uses the page-specific
+        "<token>.cname.<target>" host — there is no dual-accept). Stamps the
+        result. Rate-limited per organization.
       operationId: verifyStatusPageCustomDomain
       security:
         - bearerAuth: []
@@ -3406,7 +3474,9 @@ paths:
       description: >-
         Returns 204 when the queried domain currently resolves to a verified,
         enabled, public status page, and 404 otherwise. No body. This is the
-        contract for Caddy on_demand_tls / cert-manager gating on the SaaS edge.
+        contract for Caddy on_demand_tls / cert-manager gating on an external
+        TLS edge; it is unchanged by, and independent of, the server's own
+        in-server ACME support (config acme.enabled).
       operationId: customDomainAllowed
       parameters:
         - name: domain
@@ -6270,6 +6340,56 @@ components:
         passkeysEnabled:
           type: boolean
 
+    PublicConfigResponse:
+      type: object
+      description: |
+        Browser-safe public configuration. Designed as a general-purpose blob:
+        future public feature flags are added as sibling properties rather than
+        as new endpoints.
+      properties:
+        posthog:
+          $ref: "#/components/schemas/PublicPostHogConfig"
+        whatsapp:
+          $ref: "#/components/schemas/PublicWhatsAppConfig"
+
+    PublicWhatsAppConfig:
+      type: object
+      required: [enabled]
+      description: |
+        Instance-level WhatsApp capability flag. The dashboard reads it to
+        decide whether to offer the WhatsApp notification-contact type and the
+        `whatsapp` severity channel. No credential, phone-number id, WABA id or
+        template name is ever exposed here.
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            Resolved enablement, i.e. `whatsapp.enabled == true` **and** a
+            non-empty access token **and** a non-empty phone-number id. False
+            on any deployment that has not configured a WABA.
+
+    PublicPostHogConfig:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            Resolved enablement, i.e. `posthog.enabled == true` **and** a
+            non-empty `posthog.project_api_key`. False on any deployment that
+            has not explicitly configured a project key.
+        projectApiKey:
+          type: string
+          description: |
+            Public `phc_…` browser ingestion key. Present **only** when
+            `enabled` is true; omitted entirely otherwise.
+        host:
+          type: string
+          description: |
+            PostHog ingestion host. Present **only** when `enabled` is true;
+            omitted entirely otherwise.
+          example: https://eu.i.posthog.com
+
     # Check schemas
     Check:
       type: object
@@ -6289,6 +6409,17 @@ components:
           enum: [http, tcp, icmp, dns, ssl, domain]
         config:
           type: object
+        targetHost:
+          type: string
+          nullable: true
+          readOnly: true
+          description: >-
+            Derived, read-time-only host this check probes: the config's
+            `host` field when present, else the hostname parsed from `url`,
+            else `target`; null when none apply (e.g. heartbeat/email passive
+            checks). Not stored — renaming a host in a check's config moves it
+            to a different value on the next read. Use `?sort=targetHost` on
+            the list endpoint to order checks by it.
         enabled:
           type: boolean
         internal:
@@ -6470,6 +6601,53 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CheckListItem"
+
+    CheckStats:
+      type: object
+      required: [total, enabled, disabled, byStatus, down, hardDown]
+      properties:
+        total:
+          type: integer
+          description: Every in-scope check — enabled plus disabled.
+          example: 262
+        enabled:
+          type: integer
+          description: Checks with enabled = true.
+          example: 250
+        disabled:
+          type: integer
+          description: Checks with enabled = false.
+          example: 12
+        byStatus:
+          type: object
+          additionalProperties:
+            type: integer
+          description: >-
+            Count per check status. Every known status key (created, up, down,
+            validating, degraded, warning, unknown) is always present, with 0
+            when empty, so clients can index it without guards. Keys are the
+            same tokens the list endpoint's `status` field carries.
+          example:
+            created: 2
+            up: 240
+            down: 6
+            validating: 0
+            degraded: 2
+            warning: 0
+            unknown: 0
+        down:
+          type: integer
+          description: >-
+            Checks the dashboard renders as failing (status down, error or
+            timeout). `error` and `timeout` are result-level statuses a check
+            status never holds, so in practice this equals byStatus.down.
+          example: 6
+        hardDown:
+          type: integer
+          description: >-
+            Checks failing hard (status down or error), i.e. down excluding
+            timeouts.
+          example: 6
 
     CreateCheckRequest:
       type: object
@@ -7379,7 +7557,11 @@ components:
       properties:
         type:
           type: string
-          description: Contact type (email, phone, slack_user, web_push, ...)
+          description: >-
+            Contact type (email, phone, whatsapp, slack_user, webpush, ...).
+            `whatsapp` is deliberately distinct from `phone` even for the same
+            number: verification proves WhatsApp reachability specifically and
+            is Meta's required opt-in record. WhatsApp values must be E.164.
         value:
           type: string
         label:
@@ -7562,6 +7744,15 @@ components:
           description: History window (24h, 7d, 30d, 90d)
         language:
           type: string
+        customCss:
+          type: string
+          nullable: true
+          description: >-
+            Operator-authored CSS the public status page injects as a <style>
+            text node, overriding its CSS custom properties (--brand,
+            --background, --card, --border, the status colors, .dark). Unlike
+            the custom-domain fields this IS returned on the public view — the
+            public renderer is its consumer. Max 64 KB, @import rejected.
         customDomain:
           type: string
           nullable: true
@@ -7574,11 +7765,25 @@ components:
           enum: [unverified, verified]
           description: >-
             Custom-domain verification state. Authenticated endpoints only.
+        customDomainCertStatus:
+          type: string
+          enum: [none, issued, error]
+          description: >-
+            TLS certificate state for the custom domain when the server
+            terminates TLS itself (config acme.enabled). "none" = nothing issued
+            yet (issuance is on-demand, on the first HTTPS request), "issued" =
+            a certificate is in storage, "error" = the last issuance attempt
+            failed (see the server log). Omitted when in-server TLS is disabled
+            or the domain is not verified yet. Authenticated endpoints only.
         customDomainRecords:
           type: array
           description: >-
-            The DNS records the customer must create (CNAME for routing, TXT for
-            ownership). Authenticated endpoints only.
+            The DNS records the customer must create. Since v0.8.0 this is
+            exactly ONE entry: the routing CNAME. Its value is the installation
+            CNAME target in "shared" mode, or the page-specific
+            "<token>.cname.<target>" host in "token" mode
+            (server.custom_domain_cname_mode). The TXT ownership challenge was
+            removed. Authenticated endpoints only.
           items:
             $ref: "#/components/schemas/DnsRecord"
         sections:
@@ -7599,7 +7804,7 @@ components:
       properties:
         type:
           type: string
-          description: DNS record type (CNAME or TXT)
+          description: DNS record type. Always "CNAME" since v0.8.0.
         name:
           type: string
           description: Fully-qualified record name to create
@@ -7639,6 +7844,12 @@ components:
           type: string
         language:
           type: string
+        customCss:
+          type: string
+          description: >-
+            Optional custom stylesheet for the public page. Max 64 KB;
+            @import is rejected (VALIDATION_ERROR). External url() references
+            are allowed.
         customDomain:
           type: string
           description: >-
@@ -7671,6 +7882,12 @@ components:
           type: string
         language:
           type: string
+        customCss:
+          type: string
+          description: >-
+            Set/replace the custom stylesheet, or clear it with an empty
+            string. Omit the field to leave it unchanged. Max 64 KB; @import
+            is rejected (VALIDATION_ERROR).
         customDomain:
           type: string
           nullable: true
@@ -7731,7 +7948,14 @@ components:
 
     StatusPageResource:
       type: object
-      required: [uid, checkUid, position]
+      description: >-
+        A component displayed on a status page section. It targets either a
+        single check (checkUid) or a whole check group (checkGroupUid) — exactly
+        one is set. A group resource renders as ONE aggregated component: rolled
+        up status, weighted-average availability across its members, and
+        maintenance from a group- or member-targeted window. Its members are
+        never listed publicly.
+      required: [uid, position]
       properties:
         uid:
           type: string
@@ -7739,6 +7963,11 @@ components:
         checkUid:
           type: string
           format: uuid
+          description: Set when the resource targets an individual check.
+        checkGroupUid:
+          type: string
+          format: uuid
+          description: Set when the resource targets a check group.
         publicName:
           type: string
         explanation:
@@ -7759,11 +7988,20 @@ components:
 
     CreateStatusPageResourceRequest:
       type: object
-      required: [checkUid]
+      description: >-
+        Exactly one of checkUid or checkGroupUid must be set; zero or both is a
+        VALIDATION_ERROR naming both fields.
       properties:
         checkUid:
           type: string
-          description: Check UID or slug to attach as a resource
+          description: >-
+            Check UID or slug to attach as a resource. Mutually exclusive with
+            checkGroupUid.
+        checkGroupUid:
+          type: string
+          description: >-
+            Check group UID or slug to attach as one aggregated resource.
+            Mutually exclusive with checkUid.
         publicName:
           type: string
         explanation:
@@ -7773,7 +8011,17 @@ components:
 
     UpdateStatusPageResourceRequest:
       type: object
+      description: >-
+        Supplying checkUid or checkGroupUid switches the resource's target kind;
+        supplying both is a VALIDATION_ERROR naming both fields, and supplying
+        neither leaves the target untouched.
       properties:
+        checkUid:
+          type: string
+          description: Switch the resource to target this check (UID or slug).
+        checkGroupUid:
+          type: string
+          description: Switch the resource to target this check group (UID or slug).
         publicName:
           type: string
         explanation:
@@ -8667,7 +8915,7 @@ components:
     # Check group schemas
     CheckGroup:
       type: object
-      required: [uid, name, slug, sortOrder, checkCount, createdAt, updatedAt]
+      required: [uid, name, slug, sortOrder, checkCount, status, createdAt, updatedAt]
       properties:
         uid:
           type: string
@@ -8682,6 +8930,27 @@ components:
           type: integer
         checkCount:
           type: integer
+        status:
+          type: string
+          enum: [created, up, down, validating, degraded, warning]
+          description: >-
+            Derived, read-time rollup of the group's enabled member checks:
+            "down" if all considered members are down, "degraded" if some
+            (not all) are down, "warning" if none are down but at least one
+            is warning, "validating" if none are down/warning but at least
+            one is validating, "up" if at least one is up, otherwise
+            "created" (no considered members, or only just-created ones).
+            Never stored — recomputed on every read.
+        memberStatusCounts:
+          type: object
+          additionalProperties:
+            type: integer
+          description: >-
+            Count of enabled member checks per status (wire status name ->
+            count), omitting statuses with zero members.
+          example:
+            up: 3
+            down: 1
         escalationPolicyUid:
           type: string
           format: uuid
@@ -9545,6 +9814,12 @@ components:
           type: integer
           nullable: true
           description: Outbound voice calls per UTC month (null = unlimited)
+        maxWhatsappPerMonth:
+          type: integer
+          nullable: true
+          description: >-
+            Outbound WhatsApp template messages per UTC month
+            (null = unlimited)
 
     EntitlementsUsage:
       type: object
@@ -9557,6 +9832,11 @@ components:
           format: double
         ssoUsers:
           type: integer
+        whatsappThisMonth:
+          type: integer
+          description: >-
+            Outbound WhatsApp template messages sent in the current UTC month.
+            A persistent counter, not a live count.
 
     EntitlementsResponse:
       type: object

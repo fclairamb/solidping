@@ -21,7 +21,11 @@
 // knobs (0 = off), so the zero-value Params reproduces today's behavior.
 package scheduling
 
-import "time"
+import (
+	"time"
+
+	"github.com/fclairamb/solidping/server/internal/config"
+)
 
 // DefaultExecutionTimeout is the fallback flat per-check execution ceiling used
 // when no global check timeout is configured (Params.CheckTimeout == 0). The
@@ -281,4 +285,135 @@ func UpdateEWMA(prev, sampleMs float64) float64 {
 	}
 
 	return EWMAAlpha*sampleMs + (1-EWMAAlpha)*prev
+}
+
+// PostExecInput is everything the post-exec accounting needs about one finished
+// execution: the job's stored scheduling state before the run, the outcome, and
+// the next tick.
+type PostExecInput struct {
+	// PrevCostEWMAMs / PrevDelayEWMAMs / PrevLane are the job's stored values.
+	PrevCostEWMAMs  float64
+	PrevDelayEWMAMs float64
+	PrevLane        uint8
+	// PlanWeight is the job's plan tier weight (tier credit input).
+	PlanWeight int
+	// ScheduledAt is the schedule the probe was supposed to start at, and
+	// EffectiveScheduledAt the stored ordering key used as its fallback.
+	ScheduledAt          *time.Time
+	EffectiveScheduledAt *time.Time
+	// DurationMs is the measured probe duration in milliseconds.
+	DurationMs float64
+	// TimedOut pins the cost sample to the execution ceiling.
+	TimedOut bool
+	// ExecStart is the wall-clock instant the outbound probe began. nil means
+	// no delay sample is available (e.g. an agent predating the wire field), in
+	// which case the delay EWMA is carried over unchanged rather than being fed
+	// a fabricated 0.
+	ExecStart *time.Time
+	// NextScheduledAt is the job's next tick, the anchor of the new effective
+	// deadline.
+	NextScheduledAt time.Time
+}
+
+// PostExecState is the scheduling state written back with the lease release.
+type PostExecState struct {
+	CostEWMAMs           float64
+	DelayEWMAMs          float64
+	EffectiveScheduledAt time.Time
+	Lane                 uint8
+}
+
+// PostExec folds one execution's outcome into the job's scheduling state: the
+// cost and delay EWMAs, the recomputed effective deadline, and the
+// hysteresis-classified lane.
+//
+// This is the single implementation of the post-exec accounting. The in-process
+// worker computes it locally and persists it through DirectBackend; the
+// server-side submit path (handlers/workers) computes the same thing for
+// results that arrive over the agent transport, which is what keeps fair
+// scheduling honest on a shared cloud region served by platform agents (spec
+// 2026-07-27-01 item 4).
+//
+// The effective deadline and the lane are derived from the cost EWMA ONLY
+// (specs 2026-07-01-02 / 2026-07-01-03): the delay EWMA is persisted as
+// telemetry but never steers claim order or lane. That is also why an
+// agent-reported ExecStart cannot distort scheduling — a clock-skewed sample
+// only moves a number nothing reads back, and the floor at 0 absorbs backwards
+// clocks.
+func (p Params) PostExec(input *PostExecInput) PostExecState {
+	cost := UpdateEWMA(input.PrevCostEWMAMs, p.CostSampleMs(input.DurationMs, input.TimedOut))
+
+	delay := input.PrevDelayEWMAMs
+	if input.ExecStart != nil {
+		delay = UpdateEWMA(input.PrevDelayEWMAMs,
+			DelaySampleMs(input.ScheduledAt, input.EffectiveScheduledAt, *input.ExecStart))
+	}
+
+	return PostExecState{
+		CostEWMAMs:           cost,
+		DelayEWMAMs:          delay,
+		EffectiveScheduledAt: p.EffectiveScheduledAt(input.NextScheduledAt, cost, input.PlanWeight),
+		Lane:                 ClassifyLane(input.PrevLane, cost, p),
+	}
+}
+
+// CostSampleMs derives the cost sample (ms) folded into the EWMA from one
+// execution. A timeout is pinned to the execution ceiling so a perpetually
+// timing-out check converges to the maximum cost (and stays slow-classified)
+// rather than being scored by the partial duration measured before the deadline
+// fired.
+func (p Params) CostSampleMs(durationMs float64, timedOut bool) float64 {
+	if timedOut {
+		return float64(p.EffectiveCheckTimeout().Milliseconds())
+	}
+
+	return durationMs
+}
+
+// DelaySampleMs is the scheduling-delay sample (ms): how far past the job's real
+// scheduled_at the probe actually started, floored at 0 — true start lateness vs
+// the schedule the user configured (spec 2026-07-01-02 D4). The runner sleeps
+// until scheduled_at, so under spare capacity the probe starts on time and this
+// is 0; it only goes positive when contention pushes the start past the
+// schedule. Falls back to the effective deadline when the row has no
+// scheduled_at (should not happen in practice).
+func DelaySampleMs(scheduledAt, effectiveScheduledAt *time.Time, execStart time.Time) float64 {
+	ref := scheduledAt
+	if ref == nil {
+		ref = effectiveScheduledAt
+	}
+
+	if ref == nil {
+		return 0
+	}
+
+	lateness := execStart.Sub(*ref)
+	if lateness < 0 {
+		return 0
+	}
+
+	return float64(lateness.Milliseconds())
+}
+
+// ParamsFromConfig converts the koanf SchedulingConfig (seconds / ms scalars)
+// into typed Params. Every zero value maps to "feature off", so the default
+// config reproduces pure-FIFO, flat-30s behavior.
+//
+// It lives here rather than in the worker because both sides of the post-exec
+// accounting need it: the in-process worker and the server-side submit path
+// that scores results arriving over the agent transport.
+func ParamsFromConfig(cfg config.SchedulingConfig) Params {
+	secs := func(seconds float64) time.Duration { return time.Duration(seconds * float64(time.Second)) }
+	millis := func(ms float64) time.Duration { return time.Duration(ms * float64(time.Millisecond)) }
+
+	return Params{
+		SlowThresholdMs:     cfg.SlowThresholdMs,
+		CheckTimeout:        millis(cfg.CheckTimeoutMs),
+		TierCreditPerWeight: secs(cfg.TierCreditSeconds),
+		TierCreditMax:       secs(cfg.TierCreditMaxSeconds),
+		CostTimeoutFactor:   cfg.CostTimeoutFactor,
+		CostTimeoutFloor:    millis(cfg.CostTimeoutFloorMs),
+		LaneSlowThresholdMs: cfg.LaneSlowThresholdMs,
+		LaneFastThresholdMs: cfg.LaneFastThresholdMs,
+	}
 }

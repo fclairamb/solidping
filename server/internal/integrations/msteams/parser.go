@@ -1,0 +1,287 @@
+package msteams
+
+import (
+	"html"
+	"regexp"
+	"strings"
+)
+
+// ParsedCommand represents a parsed Teams bot command. The grammar is
+// deliberately identical to the Slack one (internal/integrations/slack:
+// ParsedCommand) so `@solidping checks add …` behaves the same in both
+// products — only the mention-stripping step differs.
+type ParsedCommand struct {
+	Command    string            // "checks", "results", "incidents", "config", "help"
+	Subcommand string            // "add", "list", "rm" (for checks)
+	Args       []string          // Positional arguments (e.g. URL, slug)
+	Flags      map[string]string // Named flags (e.g. "check")
+}
+
+// mentionTagRegex matches a Teams inline mention entity, e.g.
+// `<at>SolidPing</at>` or `<at id="0">SolidPing (dev)</at>`.
+//
+// Stripping the *tag* rather than matching a display name is what makes the
+// trigger word independent of the app's name: a self-hosted operator who
+// renames the app in their own manifest keeps working commands, which is the
+// resolution of the spec's "confirm the display name works for both SaaS and
+// self-hosted manifests" open question.
+var mentionTagRegex = regexp.MustCompile(`(?is)<at\b[^>]*>(.*?)</at>`)
+
+// anchorRegex rewrites `<a href="https://x">label</a>` down to the bare URL,
+// the Teams analog of Slack's `<https://x|label>` link form.
+var anchorRegex = regexp.MustCompile(`(?is)<a\b[^>]*href="([^"]+)"[^>]*>.*?</a>`)
+
+// htmlTagRegex strips whatever markup is left once mentions and anchors are
+// handled — Teams wraps rich-text messages in `<p>`, `<div>`, `<br>`, `<span>`.
+var htmlTagRegex = regexp.MustCompile(`(?is)</?[a-z][^>]*>`)
+
+// whitespaceRegex collapses the runs of spaces and non-breaking spaces Teams
+// leaves behind after a mention.
+var whitespaceRegex = regexp.MustCompile(`\s+`)
+
+// StripMention strips the ADDRESSING mention (a mention tag at the very start
+// of the message, which is how Teams renders "@Bot <command>") and unwraps
+// every other mention to its display text.
+//
+// It is the fallback used when the entity list cannot identify the bot's own
+// mention. Prefer StripRecipientMention, which knows exactly which mention is
+// ours.
+func StripMention(text string) string {
+	return stripMentions(text, nil)
+}
+
+// StripRecipientMention removes only the mention of THIS bot, leaving
+// mentions of other people intact as plain text.
+//
+// This is the Bot Framework `removeRecipientMention` pattern. It matters for
+// correctness, not just tidiness: `@SolidPing checks rm <at>Bob</at>` must not
+// lose Bob — deleting his mention would shift the remaining arguments and make
+// the bot act on the wrong token.
+//
+// The entity list is the only thing that can say with certainty which mention
+// is ours. When it cannot (no entity list at all, no mention of us in it, or
+// our entry carries no text — all of which happen in real Teams traffic,
+// notably in 1:1 chats where no bot mention is sent), we fall back to
+// stripMentions' positional rule: drop a mention only if it is the leading,
+// addressing one, and unwrap the rest. Every path preserves other people's
+// mentions as text.
+func StripRecipientMention(text string, entities []Mention, recipientID string) string {
+	if recipientID == "" || len(entities) == 0 {
+		return stripMentions(text, nil)
+	}
+
+	botMentionTexts := make([]string, 0, len(entities))
+
+	for i := range entities {
+		entity := &entities[i]
+		if !strings.EqualFold(entity.Type, mentionEntityType) {
+			continue
+		}
+
+		if entity.Mentioned == nil || entity.Mentioned.ID != recipientID {
+			continue
+		}
+
+		if entity.Text != "" {
+			botMentionTexts = append(botMentionTexts, entity.Text)
+		}
+	}
+
+	if len(botMentionTexts) == 0 {
+		// Entities are present but none identifies a mention of us with usable
+		// text (channel-wide alias, empty entity text, a 1:1 chat that sends
+		// no bot mention at all). Fall back to the positional rule rather than
+		// deleting every mention.
+		return stripMentions(text, nil)
+	}
+
+	return stripMentions(text, botMentionTexts)
+}
+
+// mentionEntityType is the Bot Framework entity type for a mention.
+const mentionEntityType = "mention"
+
+// stripMentions removes mention markup.
+//
+// With onlyExact set (the entity list told us which snippets are ours), those
+// exact `<at>…</at>` runs are removed. Otherwise the positional rule applies:
+// a mention at the very start of the message is the addressing one and is
+// removed, and that is the only mention ever removed.
+//
+// In BOTH modes every remaining mention tag is unwrapped to its display text,
+// so the words a user typed survive into the command line instead of the
+// argument list silently shifting.
+func stripMentions(text string, onlyExact []string) string {
+	if len(onlyExact) > 0 {
+		for _, snippet := range onlyExact {
+			text = strings.ReplaceAll(text, snippet, " ")
+		}
+	} else {
+		text = dropLeadingMention(text)
+	}
+
+	// Any mention tag left belongs to someone else: keep the name.
+	text = mentionTagRegex.ReplaceAllString(text, "$1")
+
+	return finishStrip(text)
+}
+
+// dropLeadingMention removes a mention tag that sits at the start of the
+// message — how Teams renders "@Bot <command>" — and leaves everything else
+// alone.
+//
+// "At the start" tolerates the block markup Teams wraps rich text in
+// (`<p>`, `<div>`, `<span>`, `<br>`) and leading whitespace, but nothing
+// else: a mention that appears after real words is somebody the user is
+// talking about, not the addressee.
+func dropLeadingMention(text string) string {
+	loc := mentionTagRegex.FindStringIndex(text)
+	if loc == nil {
+		return text
+	}
+
+	if !isBlankMarkup(text[:loc[0]]) {
+		return text
+	}
+
+	return text[:loc[0]] + " " + text[loc[1]:]
+}
+
+// isBlankMarkup reports whether a prefix carries no user-visible text once
+// block markup and whitespace are removed.
+func isBlankMarkup(prefix string) bool {
+	stripped := htmlTagRegex.ReplaceAllString(prefix, "")
+	stripped = html.UnescapeString(stripped)
+
+	return strings.TrimSpace(strings.ReplaceAll(stripped, "\u00a0", " ")) == ""
+}
+
+// finishStrip performs the markup cleanup shared by both stripping modes.
+func finishStrip(text string) string {
+	text = anchorRegex.ReplaceAllString(text, " $1 ")
+	text = htmlTagRegex.ReplaceAllString(text, " ")
+
+	// Unescape after tag removal so an escaped `&lt;at&gt;` in a user's own
+	// text can never be re-interpreted as markup.
+	text = html.UnescapeString(text)
+
+	// html.UnescapeString turns &nbsp; into U+00A0, which is not matched by
+	// \s in Go's regexp — normalize it to a plain space first.
+	text = strings.ReplaceAll(text, "\u00a0", " ")
+	text = whitespaceRegex.ReplaceAllString(text, " ")
+
+	return strings.TrimSpace(text)
+}
+
+// ParseMentionText extracts a command from a Teams message activity's text.
+//
+// Input:  "<at>SolidPing</at> checks add https://example.com -slug mycheck"
+// Output: ParsedCommand{Command: "checks", Subcommand: "add", Args: [...], Flags: {...}}.
+func ParseMentionText(text string) *ParsedCommand {
+	return parseCommandLine(StripMention(text))
+}
+
+// ParseActivityCommand is the entity-aware entry point used by the dispatcher:
+// it strips only the bot's own mention before applying the shared grammar.
+func ParseActivityCommand(activity *Activity) *ParsedCommand {
+	recipientID := ""
+	if activity.Recipient != nil {
+		recipientID = activity.Recipient.ID
+	}
+
+	return parseCommandLine(StripRecipientMention(activity.Text, activity.Entities, recipientID))
+}
+
+// parseCommandLine applies the command grammar to an already-stripped line.
+func parseCommandLine(text string) *ParsedCommand {
+	if text == "" {
+		return &ParsedCommand{Command: cmdHelp, Flags: make(map[string]string)}
+	}
+
+	tokens := tokenize(text)
+	if len(tokens) == 0 {
+		return &ParsedCommand{Command: cmdHelp, Flags: make(map[string]string)}
+	}
+
+	cmd := &ParsedCommand{
+		Command: strings.ToLower(tokens[0]),
+		Flags:   make(map[string]string),
+	}
+
+	tokens = tokens[1:]
+
+	// Commands that take a subcommand.
+	hasSubcommand := map[string]bool{
+		cmdChecks:    true,
+		cmdConfig:    true,
+		cmdIncidents: true,
+	}
+
+	if hasSubcommand[cmd.Command] && len(tokens) > 0 && !strings.HasPrefix(tokens[0], "-") {
+		cmd.Subcommand = strings.ToLower(tokens[0])
+		tokens = tokens[1:]
+	}
+
+	parseArgsAndFlags(cmd, tokens)
+
+	return cmd
+}
+
+// parseArgsAndFlags splits the remaining tokens into positional args and
+// `-flag value` pairs (a flag with no following value is a boolean "true").
+func parseArgsAndFlags(cmd *ParsedCommand, tokens []string) {
+	for i := 0; i < len(tokens); i++ {
+		token := tokens[i]
+
+		if !strings.HasPrefix(token, "-") {
+			cmd.Args = append(cmd.Args, token)
+
+			continue
+		}
+
+		flagName := strings.ToLower(strings.TrimLeft(token, "-"))
+
+		if i+1 < len(tokens) && !strings.HasPrefix(tokens[i+1], "-") {
+			cmd.Flags[flagName] = tokens[i+1]
+			i++
+
+			continue
+		}
+
+		cmd.Flags[flagName] = "true"
+	}
+}
+
+// tokenize splits a string into tokens, respecting quoted strings.
+func tokenize(text string) []string {
+	var (
+		tokens    []string
+		current   strings.Builder
+		inQuote   bool
+		quoteChar = rune(0)
+	)
+
+	for _, char := range text {
+		switch {
+		case (char == '"' || char == '\'') && !inQuote:
+			inQuote = true
+			quoteChar = char
+		case char == quoteChar && inQuote:
+			inQuote = false
+			quoteChar = 0
+		case char == ' ' && !inQuote:
+			if current.Len() > 0 {
+				tokens = append(tokens, current.String())
+				current.Reset()
+			}
+		default:
+			current.WriteRune(char)
+		}
+	}
+
+	if current.Len() > 0 {
+		tokens = append(tokens, current.String())
+	}
+
+	return tokens
+}

@@ -135,6 +135,22 @@
       "verified": "Phone number verified",
       "sendFailed": "Failed to send code",
       "incorrectCode": "Incorrect code"
+    },
+    "whatsapp": {
+      "unverifiedBadge": "Unverified — verify to receive WhatsApp alerts",
+      "afterAddHint": "After adding, verify the number on WhatsApp to start receiving alerts. Verification is also your opt-in to receive business messages.",
+      "invalidNumber": "Enter the number in international E.164 format, e.g. +15551234567",
+      "verify": {
+        "sendCode": "Send code",
+        "resend": "Resend",
+        "confirm": "Confirm",
+        "codeSent": "Verification code sent",
+        "sendFailed": "Failed to send code",
+        "incorrectCode": "Incorrect code",
+        "dialogTitle": "Verify WhatsApp number",
+        "dialogDescription": "We'll send a 6-digit code to {{phone}} on WhatsApp. Enter it below to confirm this number can receive WhatsApp alerts.",
+        "verified": "Phone number verified"
+      }
     }
   }
 }

@@ -18,6 +18,11 @@ import (
 // it first.
 var ErrEnrollmentTokenInvalid = errors.New("enrollment token is invalid, expired, or already used")
 
+// ErrAgentNonceReplayed is returned by CheckAndStoreAgentNonce when a reconnect
+// nonce was already consumed inside the retention window — a replayed
+// signature, rejected cluster-wide rather than per API replica.
+var ErrAgentNonceReplayed = errors.New("agent reconnect nonce already used")
+
 // UsedEnrollmentTokenListWindow is how long a consumed enrollment token stays
 // visible in ListAgentEnrollmentTokens after use. The register-an-agent wizard
 // polls that list to learn its token's fate: without this window a token used
@@ -160,14 +165,36 @@ type Service interface {
 	ListAgentEnrollmentTokens(ctx context.Context, orgUID string) ([]*models.AgentEnrollmentToken, error)
 	// DeleteAgentEnrollmentToken soft-deletes an enrollment token (admin cancel).
 	DeleteAgentEnrollmentToken(ctx context.Context, orgUID, uid string) error
-	// GetAgentEnrollmentTokenByHash returns the live (unused, unexpired) token
-	// with the given hash, or ErrEnrollmentTokenInvalid. Non-consuming — used
-	// for the pre-upgrade WS handshake check; EnrollAgent does the atomic
-	// consume.
+	// GetAgentEnrollmentTokenByHash returns the live, still-usable token with the
+	// given hash, or ErrEnrollmentTokenInvalid. Kind-aware: an org token must be
+	// unused, a system token must have uses left. Non-consuming — used for the
+	// pre-upgrade WS handshake check; EnrollAgent does the atomic consume.
 	GetAgentEnrollmentTokenByHash(ctx context.Context, tokenHash string) (*models.AgentEnrollmentToken, error)
-	// EnrollAgent atomically consumes a valid enrollment token (single-use under
-	// concurrency) and creates the bound agent row, returning the new agent.
+	// EnrollAgent consumes a valid enrollment token and creates the bound agent
+	// row, returning the new agent. Org tokens are single-use under concurrency;
+	// system tokens are multi-use within their (optional) max_uses budget, so a
+	// whole platform fleet can enroll on boot with per-machine keypairs.
 	EnrollAgent(ctx context.Context, tokenHash, name, ed25519Pub, x25519Pub, fingerprint string) (*models.Agent, error)
+	// UpsertSystemAgentEnrollmentToken inserts or refreshes a seeded platform
+	// enrollment token (SP_SYSTEM_AGENT_ENROLLMENT_TOKENS), idempotently.
+	UpsertSystemAgentEnrollmentToken(ctx context.Context, token *models.AgentEnrollmentToken) error
+	// ListSystemAgentEnrollmentTokens returns every live platform token. Never
+	// exposed through the org-admin API.
+	ListSystemAgentEnrollmentTokens(ctx context.Context) ([]*models.AgentEnrollmentToken, error)
+	// RevokeSystemAgentEnrollmentTokensExcept soft-deletes live system tokens
+	// whose hash is not listed — removing a token from the environment revokes
+	// it on the next boot.
+	RevokeSystemAgentEnrollmentTokensExcept(ctx context.Context, keepHashes []string) (int64, error)
+	// ListStaleSystemAgents returns live system agents last seen before cutoff
+	// (never-connected rows are judged on enrolled_at). Org agents are excluded.
+	ListStaleSystemAgents(ctx context.Context, cutoff time.Time) ([]*models.Agent, error)
+	// RetireSystemAgent revokes and soft-deletes one system agent (agent_gc).
+	RetireSystemAgent(ctx context.Context, uid string) error
+	// CheckAndStoreAgentNonce records a reconnect nonce, returning
+	// ErrAgentNonceReplayed when it was already consumed within retain.
+	CheckAndStoreAgentNonce(ctx context.Context, agentUID, nonce string, now time.Time, retain time.Duration) error
+	// PruneAgentNonces deletes consumed nonces older than cutoff.
+	PruneAgentNonces(ctx context.Context, cutoff time.Time) (int64, error)
 	// GetAgent returns an agent by UID (any status).
 	GetAgent(ctx context.Context, uid string) (*models.Agent, error)
 	// ListAgents lists an org's agents (active and revoked, not deleted).
@@ -274,7 +301,9 @@ type Service interface {
 	// FindRecentlyResolvedIncidentByGroupUID returns the most recent resolved group incident
 	// for a group resolved after `since`. Used for the reopen-within-cooldown path.
 	FindRecentlyResolvedIncidentByGroupUID(ctx context.Context, groupUID string, since time.Time) (*models.Incident, error)
-	ListIncidents(ctx context.Context, filter *models.ListIncidentsFilter) ([]*models.Incident, error)
+	// ListIncidents returns incidents matching filter plus the total count of
+	// matching rows ignoring Limit/cursor (mirrors ListChecks).
+	ListIncidents(ctx context.Context, filter *models.ListIncidentsFilter) ([]*models.Incident, int64, error)
 	UpdateIncident(ctx context.Context, uid string, update *models.IncidentUpdate) error
 	CountActiveIncidentsByCheckUID(ctx context.Context, checkUID string) (int, error)
 	// ListExpiredSnoozedIncidents returns active incidents whose snoozed_until <= now.
@@ -390,6 +419,15 @@ type Service interface {
 	// when nothing matches. Used by the Twilio delivery-status callback.
 	UpdateIncidentNotificationDeliveryByMessageID(
 		ctx context.Context, orgUID, messageID string, details *models.DeliveryDetails,
+	) error
+	// UpdateIncidentNotificationDeliveryByMessageIDAnyOrg is the org-agnostic
+	// variant, for providers whose callbacks carry no organization context.
+	// Meta's WhatsApp webhook is instance-level: it authenticates with the
+	// app secret, not an org-scoped connection, and its `wamid.…` message ids
+	// are globally unique, so matching on the id alone is unambiguous.
+	// No-op (no error) when nothing matches.
+	UpdateIncidentNotificationDeliveryByMessageIDAnyOrg(
+		ctx context.Context, messageID string, details *models.DeliveryDetails,
 	) error
 	ListIncidentNotifications(
 		ctx context.Context, orgUID string, f ListIncidentNotificationsFilter,
@@ -538,6 +576,24 @@ type Service interface {
 	ListCheckGroups(ctx context.Context, orgUID string) ([]*models.CheckGroup, error)
 	UpdateCheckGroup(ctx context.Context, orgUID, uid string, update *models.CheckGroupUpdate) error
 	DeleteCheckGroup(ctx context.Context, uid string) error
+	// GetCheckGroupStatusCounts returns, for every group in the org, the
+	// per-status count of its enabled, non-deleted member checks (check_group_uid
+	// -> status -> count). Ungrouped checks and groups with no enabled members
+	// are simply absent from the map. Feeds models.RollupGroupStatus and the
+	// memberStatusCounts API field (spec 2026-08-01-01).
+	GetCheckGroupStatusCounts(ctx context.Context, orgUID string) (map[string]map[models.CheckStatus]int, error)
+	// GetCheckStatusCounts returns the org-wide (status, enabled) histogram of
+	// non-deleted, non-internal checks — one GROUP BY, never a
+	// load-all-and-count, so the dashboard's KPI counters stay correct past the
+	// checks list's 100-row page clamp (spec 2026-08-02-06). The non-internal
+	// predicate mirrors the list endpoint's `internal=false` default so the
+	// counters describe exactly the checks the operator can see in the list.
+	GetCheckStatusCounts(ctx context.Context, orgUID string) ([]models.CheckStatusCount, error)
+	// ListCheckUIDsByGroup returns the UIDs of the group's enabled, non-deleted
+	// member checks — the same member set GetCheckGroupStatusCounts rolls up, so
+	// a group's public status and its aggregated availability always describe
+	// the same checks (spec 2026-08-01-03).
+	ListCheckUIDsByGroup(ctx context.Context, orgUID, groupUID string) ([]string, error)
 
 	// StatusUpdate operations
 	ListStatusUpdates(
@@ -630,6 +686,12 @@ type Service interface {
 	// in-process TTL cache can re-evaluate them at the current clock without
 	// re-querying. See spec 2026-06-05-02-check-result-hot-path-db-roundtrips.md.
 	ListMaintenanceWindowsForCheck(ctx context.Context, checkUID string) ([]*models.MaintenanceWindow, error)
+	// ListMaintenanceWindowsForCheckGroup returns every non-deleted maintenance
+	// window that puts the GROUP in maintenance: one targeting the group
+	// directly, or one targeting any of its member checks. Recurrence is not
+	// evaluated — callers decide active/inactive via models.IsActiveAt. Feeds
+	// the status page group component (spec 2026-08-01-03).
+	ListMaintenanceWindowsForCheckGroup(ctx context.Context, groupUID string) ([]*models.MaintenanceWindow, error)
 
 	// File operations
 	CreateFile(ctx context.Context, file *models.File) error
@@ -752,6 +814,51 @@ type Service interface {
 
 	// SetAppSetting creates or updates a key/value pair (upsert).
 	SetAppSetting(ctx context.Context, key, value string) error
+
+	// --- TLS asset storage (spec 2026-07-26-01) ---
+	//
+	// Backing store for the certmagic.Storage implementation in
+	// internal/tlsedge: ACME account keys, certificates, PRIVATE KEYS, OCSP
+	// staples and distributed-challenge tokens. Keys are certmagic's own
+	// path-like namespace (slash-separated, no leading/trailing slash).
+	//
+	// SECURITY: values contain private keys. Only internal/tlsedge may call
+	// these; never surface them through an API, export, or debug endpoint.
+
+	// TLSStorageStore upserts an asset and refreshes its modification time.
+	TLSStorageStore(ctx context.Context, key string, value []byte) error
+
+	// TLSStorageLoad returns the stored bytes, or sql.ErrNoRows (wrapped) when
+	// the key does not exist.
+	TLSStorageLoad(ctx context.Context, key string) ([]byte, error)
+
+	// TLSStorageDelete removes the key and every key nested under it
+	// ("<key>/..."). Deleting a missing key is not an error.
+	TLSStorageDelete(ctx context.Context, key string) error
+
+	// TLSStorageExists reports whether the key exists as a stored value.
+	TLSStorageExists(ctx context.Context, key string) (bool, error)
+
+	// TLSStorageList returns value-free metadata for the key itself and every
+	// key nested under it, sorted by key. An empty prefix lists everything.
+	TLSStorageList(ctx context.Context, prefix string) ([]models.TLSStorageKeyInfo, error)
+
+	// TLSStorageStat returns metadata for one key, or sql.ErrNoRows (wrapped)
+	// when it does not exist.
+	TLSStorageStat(ctx context.Context, key string) (models.TLSStorageKeyInfo, error)
+
+	// TLSStorageAcquireLock atomically claims the named lock for owner until
+	// expiresAt, succeeding when the lock is free or its current lease has
+	// expired. Returns false (not an error) when a live holder owns it.
+	TLSStorageAcquireLock(ctx context.Context, key, owner string, expiresAt time.Time) (bool, error)
+
+	// TLSStorageRefreshLock extends the lease of a lock this owner still holds.
+	// Returns false when the lock was lost, so the caller stops refreshing.
+	TLSStorageRefreshLock(ctx context.Context, key, owner string, expiresAt time.Time) (bool, error)
+
+	// TLSStorageReleaseLock drops a lock this owner holds. A no-op when the
+	// lock is already gone or was taken over.
+	TLSStorageReleaseLock(ctx context.Context, key, owner string) error
 
 	// --- EmailSuppressions (spec 2026-07-05-10, D4) ---
 

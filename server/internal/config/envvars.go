@@ -89,6 +89,14 @@ func envNameForKoanfPath(path string) (string, bool) {
 // Keep this in sync with the apply*Env helpers and the bare os.Getenv reads in
 // config.Load — TestManualReaderEnvVarsBind spot-checks that these names bind.
 func manualReaderEnvVars() []string {
+	return append(manualReaderServerEnvVars(), manualReaderPlatformEnvVars()...)
+}
+
+// manualReaderServerEnvVars covers Load's own bare reads and the helpers that
+// configure request serving: rate limiting, password hashing, jobs, realtime,
+// agents, auth, the server hosts (docs / custom-domain CNAME), in-server ACME
+// and check scheduling.
+func manualReaderServerEnvVars() []string {
 	return []string{
 		// Bare reads in Load itself.
 		"SP_REDIRECTS",
@@ -144,6 +152,12 @@ func manualReaderEnvVars() []string {
 		"SP_DOCS_HOST",
 		"SP_SERVER_CUSTOM_DOMAIN_CNAME_TARGET",
 		"SP_CUSTOM_DOMAIN_CNAME_TARGET",
+		"SP_SERVER_CUSTOM_DOMAIN_CNAME_MODE",
+		"SP_CUSTOM_DOMAIN_CNAME_MODE",
+		// applyACMEEnv (acme.enabled / acme.email are koanf-reachable)
+		"SP_ACME_CA_URL",
+		"SP_ACME_LISTEN_HTTP",
+		"SP_ACME_LISTEN_HTTPS",
 		// applySchedulingEnv
 		"SP_SCHEDULING_SLOW_THRESHOLD_MS",
 		"SP_SCHEDULING_CHECK_TIMEOUT_MS",
@@ -154,6 +168,14 @@ func manualReaderEnvVars() []string {
 		"SP_SCHEDULING_LANE_SLOW_THRESHOLD_MS",
 		"SP_SCHEDULING_LANE_FAST_THRESHOLD_MS",
 		"SP_SCHEDULING_FAST_LANE_RESERVED",
+	}
+}
+
+// manualReaderPlatformEnvVars covers the helpers that configure the process
+// platform rather than request handling: profiler, database pool, Go runtime,
+// file storage and web push.
+func manualReaderPlatformEnvVars() []string {
+	names := []string{
 		// applyProfilerEnv
 		"SP_PROFILER_BLOCK_RATE",
 		"SP_PROFILER_MUTEX_FRACTION",
@@ -180,5 +202,21 @@ func manualReaderEnvVars() []string {
 		"SP_WEBPUSH_VAPID_PRIVATE_KEY",
 		"SP_WEBPUSH_SUBJECT",
 		"SP_WEBPUSH_ENABLED",
+		// applyPostHogEnv — posthog.enabled / posthog.host are koanf-reachable
+		// and come from the reflection set; these two have snake_case segments.
+		"SP_POSTHOG_PROJECT_API_KEY",
+		"SP_POSTHOG_PERSONAL_API_KEY",
 	}
+
+	// applyWhatsAppEnv — whatsapp.enabled is koanf-reachable and comes from the
+	// reflection set; every other WhatsApp key has a snake_case segment. The
+	// names come from the same list the reader iterates, so the two cannot drift.
+	// applyEntitlementsEnv contributes the WhatsApp runaway cap.
+	whatsAppNames := WhatsAppEnvVarNames()
+	out := make([]string, 0, len(names)+len(whatsAppNames)+1)
+	out = append(out, names...)
+	out = append(out, whatsAppNames...)
+	out = append(out, EnvEntitlementsWhatsAppRunaway)
+
+	return out
 }

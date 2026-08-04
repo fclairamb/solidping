@@ -64,6 +64,7 @@
     "default": "Par défaut pour les nouveaux contrôles",
     "defaultHelp": "Pré-coché à la création d'un contrôle. Les contrôles existants ne sont pas affectés.",
     "webhookUrl": "URL du webhook",
+    "msteamsWebhookHint": "Dans Teams, ouvrez Workflows → « Publier dans un canal lors de la réception d'une requête webhook », terminez l'assistant, puis collez ici l'URL de workflow obtenue. Le connecteur historique « Webhook entrant » est retiré et ne fonctionnera pas.",
     "recipients": "Destinataires",
     "recipientsPlaceholder": "ops@example.com, oncall@example.com",
     "recipientsHint": "Séparez les adresses par un espace, une virgule, un point-virgule ou un saut de ligne — ou collez une liste.",
@@ -92,7 +93,28 @@
     "slackNotConnectedTitle": "Espace de travail Slack non connecté",
     "slackNotConnectedBody": "Ce canal n'est lié à aucun espace de travail Slack. Installez l'application Slack SolidPing pour en connecter un.",
     "slackConnectButton": "Installer l'application Slack",
-    "testNeedsSave": "Enregistrez d'abord vos modifications — le test utilise les paramètres enregistrés."
+    "testNeedsSave": "Enregistrez d'abord vos modifications — le test utilise les paramètres enregistrés.",
+    "msteamsBotCreateHint": "Créez d'abord l'intégration, puis installez le paquet d'application Teams et exécutez la commande de liaison affichée ici pour connecter votre tenant Microsoft 365.",
+    "msteamsBotDisabledTitle": "Le bot Teams est désactivé sur ce serveur",
+    "msteamsBotDisabledBody": "Activez-le dans les paramètres du serveur. Microsoft doit pouvoir joindre cette instance en HTTPS public — un déploiement derrière un pare-feu ne peut pas utiliser le bot Teams.",
+    "msteamsBotEndpointHint": "Microsoft doit pouvoir joindre ce point de terminaison en HTTPS public :",
+    "msteamsBotDownloadApp": "Télécharger le paquet d'application Teams",
+    "msteamsBotSideloadHint": "Dans Teams, ouvrez Applications → Gérer vos applications → Charger une application personnalisée, choisissez ce zip, puis ajoutez SolidPing à une équipe. Le canal où vous l'ajoutez devient une destination de notification.",
+    "msteamsBotDestination": "Canal de notification",
+    "msteamsBotUninstalled": "L'application Teams a été supprimée de ce tenant. Réinstallez-la pour reprendre les notifications.",
+    "msteamsBotLoading": "Chargement…",
+    "msteamsBotError": "Impossible de charger les canaux Teams.",
+    "msteamsBotNoDestinations": "Aucun canal Teams pour l'instant. Ajoutez SolidPing à un canal dans Teams et il apparaîtra ici.",
+    "msteamsBotConnected": "Connecté",
+    "msteamsBotTenantLabel": "Tenant Microsoft 365",
+    "msteamsBotNotConnectedTitle": "Non connecté à Microsoft Teams",
+    "msteamsBotNotConnectedBody": "Installez le paquet d'application Teams, puis exécutez la commande de liaison ci-dessous dans un canal où le bot a été ajouté.",
+    "msteamsBotConnectButton": "Connecter Microsoft Teams",
+    "msteamsBotLinkCodeHint": "Dans un canal Teams où SolidPing a été ajouté, envoyez ce message. Le code est à usage unique et expire dans 30 minutes.",
+    "msteamsBotLinkFailed": "Impossible de créer un code de liaison",
+    "msteamsBotDownloadFailed": "Impossible de télécharger le paquet d'application Teams",
+    "msteamsBotLinkFirst": "Connectez d'abord un tenant Microsoft 365 — les canaux apparaîtront ici une fois le bot ajouté.",
+    "msteamsBotUninstalledTitle": "L'application Teams a été supprimée"
   },
   "freebox": {
     "name": "Freebox",
@@ -139,12 +161,14 @@
     "email": "Envoyer à une ou plusieurs adresses e-mail",
     "googlechat": "Publier dans Google Chat via webhook entrant",
     "mattermost": "Publier dans Mattermost via webhook entrant",
+    "msteams": "Publier dans un canal Microsoft Teams via un workflow Teams",
     "ntfy": "Notifications push via ntfy.sh",
     "opsgenie": "Alerter les astreintes via Opsgenie",
     "pushover": "Notifications push mobile via Pushover",
     "twilio": "Envoyer des SMS et passer des appels vocaux via Twilio",
     "freebox": "Surveiller une Freebox de Free (qualité de ligne, débit sync, état réseau)",
     "webpush": "Recevoir des alertes sous forme de notifications navigateur sur vos appareils abonnés",
-    "kubernetes": "Surveiller la santé des réplicas Kubernetes (Deployments, ReplicaSets)"
+    "kubernetes": "Surveiller la santé des réplicas Kubernetes (Deployments, ReplicaSets)",
+    "msteams-bot": "Bot Teams bidirectionnel : alertes, commandes @mention et suivi d'incident groupé"
   }
 }

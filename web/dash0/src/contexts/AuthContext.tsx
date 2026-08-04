@@ -17,8 +17,11 @@ import {
   getExpiresInSeconds,
 } from "@/api/client";
 import { refreshAccessToken, refreshWithOutcome, shouldRefreshNow } from "@/lib/token-refresh";
+import { identifyAnalytics, resetAnalytics } from "@/lib/analytics";
 
 interface User {
+  // Pseudonymous user UUID. Used for the analytics distinct id; never shown.
+  uid: string;
   email: string;
   name?: string;
   avatarUrl?: string;
@@ -82,6 +85,7 @@ interface AuthResponse {
   refreshToken?: string;
   expiresIn?: number;
   user: {
+    uid: string;
     email: string;
     name?: string;
     avatarUrl?: string;
@@ -103,6 +107,7 @@ interface AuthResponse {
 
 interface MeResponse {
   user: {
+    uid: string;
     email: string;
     name?: string;
     avatarUrl?: string;
@@ -136,8 +141,21 @@ function clearStoredOrg(): void {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [org, setOrg] = useState<string | null>(getStoredOrg());
+  // Organization UUID, tracked alongside the slug purely so product analytics
+  // can build the same pseudonymous distinct id as the backend. Never
+  // persisted, never rendered.
+  const [orgUid, setOrgUid] = useState<string | null>(null);
   const [organizations, setOrganizations] = useState<OrganizationSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Identify the analytics session whenever the resolved org/user pair
+  // changes (login, session restore, org switch). Pseudonymous UUIDs only —
+  // no email, no slug — and a pure no-op unless PostHog is configured.
+  useEffect(() => {
+    if (user?.uid) {
+      identifyAnalytics(orgUid, user.uid);
+    }
+  }, [orgUid, user?.uid]);
 
   const validateSession = useCallback(async () => {
     const token = getToken();
@@ -180,6 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         { suppress401Redirect: true }
       );
       setUser({
+        uid: data.user.uid,
         email: data.user.email,
         name: data.user.name,
         avatarUrl: data.user.avatarUrl,
@@ -192,6 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setStoredOrg(data.organization.slug);
         setOrg(data.organization.slug);
       }
+      setOrgUid(data.organization?.uid ?? null);
       setOrganizations(data.organizations || []);
     } catch (e) {
       // Only clear auth state on auth-failure responses (401/403). Transient
@@ -249,8 +269,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStoredOrg(resolvedOrg);
       setOrg(resolvedOrg);
     }
+    setOrgUid(data.organization?.uid ?? null);
 
     setUser({
+      uid: data.user.uid,
       email: data.user.email,
       name: data.user.name,
       avatarUrl: data.user.avatarUrl,
@@ -311,7 +333,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStoredOrg(data.organization.slug);
       setOrg(data.organization.slug);
     }
+    setOrgUid(data.organization?.uid ?? null);
     setUser({
+      uid: data.user.uid,
       email: data.user.email,
       name: data.user.name,
       avatarUrl: data.user.avatarUrl,
@@ -336,7 +360,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await apiFetch<MeResponse>(
       `/api/v1/auth/me`
     );
+    setOrgUid(data.organization?.uid ?? null);
     setUser({
+      uid: data.user.uid,
       email: data.user.email,
       name: data.user.name,
       avatarUrl: data.user.avatarUrl,
@@ -359,7 +385,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const resolvedOrg = data.organization?.slug || orgSlug;
     setStoredOrg(resolvedOrg);
     setOrg(resolvedOrg);
+    setOrgUid(data.organization?.uid ?? null);
     setUser({
+      uid: data.user.uid,
       email: data.user.email,
       name: data.user.name,
       avatarUrl: data.user.avatarUrl,
@@ -383,7 +411,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     const data = await apiFetch<MeResponse>(`/api/v1/auth/me`);
+    setOrgUid(data.organization?.uid ?? null);
     setUser({
+      uid: data.user.uid,
       email: data.user.email,
       name: data.user.name,
       avatarUrl: data.user.avatarUrl,
@@ -406,7 +436,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearStoredOrg();
       setUser(null);
       setOrg(null);
+      setOrgUid(null);
       setOrganizations([]);
+      // Drop the pseudonymous analytics identity so a subsequent login on the
+      // same browser is not stitched onto the previous user. No-op when
+      // analytics is off.
+      resetAnalytics();
     }
   };
 

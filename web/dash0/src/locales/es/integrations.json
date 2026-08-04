@@ -64,6 +64,7 @@
     "default": "Predeterminado para nuevas comprobaciones",
     "defaultHelp": "Preseleccionado al crear una comprobación. Las existentes no se ven afectadas.",
     "webhookUrl": "URL del webhook",
+    "msteamsWebhookHint": "En Teams, abre Workflows → \"Publicar en un canal cuando se reciba una solicitud de webhook\", termina el asistente y pega aquí la URL del flujo de trabajo que te da. El conector antiguo \"Webhook entrante\" está retirado y no funcionará.",
     "recipients": "Destinatarios",
     "recipientsPlaceholder": "ops@example.com, oncall@example.com",
     "recipientsHint": "Separa las direcciones con un espacio, coma, punto y coma o salto de línea — o pega una lista.",
@@ -89,7 +90,28 @@
     "twilioRemoveNumber": "Eliminar {{n}}",
     "twilioToHint": "Los envíos de canal directo (difusión por comprobación, prueba) envían SMS a estos números.",
     "slackOauthHint": "Los canales de Slack se configuran a través de la instalación OAuth. El bot completará el espacio de trabajo y el nombre del canal al finalizar.",
-    "testNeedsSave": "Guarda tus cambios primero — la prueba usa los ajustes guardados."
+    "testNeedsSave": "Guarda tus cambios primero — la prueba usa los ajustes guardados.",
+    "msteamsBotCreateHint": "Crea primero la integración, luego instala el paquete de aplicación de Teams y ejecuta el comando de vinculación que se muestra aquí para conectar tu inquilino de Microsoft 365.",
+    "msteamsBotDisabledTitle": "El bot de Teams está desactivado en este servidor",
+    "msteamsBotDisabledBody": "Actívalo en la configuración del servidor. Microsoft debe poder alcanzar esta instancia por HTTPS público — un despliegue tras un cortafuegos no puede usar el bot de Teams.",
+    "msteamsBotEndpointHint": "Microsoft debe poder alcanzar este punto de conexión por HTTPS público:",
+    "msteamsBotDownloadApp": "Descargar el paquete de aplicación de Teams",
+    "msteamsBotSideloadHint": "En Teams, abre Aplicaciones → Administrar tus aplicaciones → Cargar una aplicación personalizada, elige este zip y añade SolidPing a un equipo. El canal donde lo añadas se convierte en un destino de notificación.",
+    "msteamsBotDestination": "Canal de notificación",
+    "msteamsBotUninstalled": "La aplicación de Teams se eliminó de este inquilino. Reinstálala para reanudar las notificaciones.",
+    "msteamsBotLoading": "Cargando…",
+    "msteamsBotError": "No se pudieron cargar los canales de Teams.",
+    "msteamsBotNoDestinations": "Todavía no hay canales de Teams. Añade SolidPing a un canal en Teams y aparecerá aquí.",
+    "msteamsBotConnected": "Conectado",
+    "msteamsBotTenantLabel": "Inquilino de Microsoft 365",
+    "msteamsBotNotConnectedTitle": "Sin conexión con Microsoft Teams",
+    "msteamsBotNotConnectedBody": "Instala el paquete de aplicación de Teams y luego ejecuta el comando de vinculación de abajo en cualquier canal donde se haya añadido el bot.",
+    "msteamsBotConnectButton": "Conectar Microsoft Teams",
+    "msteamsBotLinkCodeHint": "En un canal de Teams donde se haya añadido SolidPing, envía este mensaje. El código es de un solo uso y caduca en 30 minutos.",
+    "msteamsBotLinkFailed": "No se pudo crear un código de vinculación",
+    "msteamsBotDownloadFailed": "No se pudo descargar el paquete de aplicación de Teams",
+    "msteamsBotLinkFirst": "Conecta primero un inquilino de Microsoft 365: los canales aparecerán aquí cuando se añada el bot.",
+    "msteamsBotUninstalledTitle": "La aplicación de Teams fue eliminada"
   },
   "kubernetes": {
     "name": "Kubernetes",
@@ -119,11 +141,13 @@
     "email": "Enviar a una o más direcciones de correo",
     "googlechat": "Publicar en un espacio de Google Chat vía webhook entrante",
     "mattermost": "Publicar en un canal Mattermost vía webhook entrante",
+    "msteams": "Publicar en un canal de Microsoft Teams vía un flujo de trabajo de Teams",
     "ntfy": "Notificaciones push vía ntfy.sh",
     "opsgenie": "Avisar a guardias vía Opsgenie",
     "pushover": "Notificaciones push móviles vía Pushover",
     "twilio": "Enviar SMS y realizar llamadas de voz mediante Twilio",
     "webpush": "Recibir alertas como notificaciones del navegador en sus dispositivos suscritos",
-    "kubernetes": "Monitorizar la salud de réplicas de cargas Kubernetes (Deployments, ReplicaSets)"
+    "kubernetes": "Monitorizar la salud de réplicas de cargas Kubernetes (Deployments, ReplicaSets)",
+    "msteams-bot": "Bot de Teams bidireccional: alertas, comandos con @mención y actualizaciones agrupadas"
   }
 }

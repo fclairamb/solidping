@@ -65,6 +65,16 @@ const (
 	CheckTypeTcp    CheckType = "tcp"
 )
 
+// Defines values for CheckGroupStatus.
+const (
+	CheckGroupStatusCreated    CheckGroupStatus = "created"
+	CheckGroupStatusDegraded   CheckGroupStatus = "degraded"
+	CheckGroupStatusDown       CheckGroupStatus = "down"
+	CheckGroupStatusUp         CheckGroupStatus = "up"
+	CheckGroupStatusValidating CheckGroupStatus = "validating"
+	CheckGroupStatusWarning    CheckGroupStatus = "warning"
+)
+
 // Defines values for CheckJobViewState.
 const (
 	CheckJobViewStateCrashLooping CheckJobViewState = "crashLooping"
@@ -183,6 +193,7 @@ const (
 	EventEventTypeCheckDeleted         EventEventType = "check.deleted"
 	EventEventTypeCheckUpdated         EventEventType = "check.updated"
 	EventEventTypeIncidentAcknowledged EventEventType = "incident.acknowledged"
+	EventEventTypeIncidentComment      EventEventType = "incident.comment"
 	EventEventTypeIncidentCreated      EventEventType = "incident.created"
 	EventEventTypeIncidentEscalated    EventEventType = "incident.escalated"
 	EventEventTypeIncidentResolved     EventEventType = "incident.resolved"
@@ -296,6 +307,19 @@ const (
 	ResultFallbackInfoReasonRolledUpToMonth ResultFallbackInfoReason = "rolled_up_to_month"
 )
 
+// Defines values for StatusPageCustomDomainCertStatus.
+const (
+	StatusPageCustomDomainCertStatusError  StatusPageCustomDomainCertStatus = "error"
+	StatusPageCustomDomainCertStatusIssued StatusPageCustomDomainCertStatus = "issued"
+	StatusPageCustomDomainCertStatusNone   StatusPageCustomDomainCertStatus = "none"
+)
+
+// Defines values for StatusPageCustomDomainStatus.
+const (
+	StatusPageCustomDomainStatusUnverified StatusPageCustomDomainStatus = "unverified"
+	StatusPageCustomDomainStatusVerified   StatusPageCustomDomainStatus = "verified"
+)
+
 // Defines values for UpdateDependencyRequestKind.
 const (
 	UpdateDependencyRequestKindHard UpdateDependencyRequestKind = "hard"
@@ -331,6 +355,12 @@ const (
 	ListChecksParamsInternalAll   ListChecksParamsInternal = "all"
 	ListChecksParamsInternalFalse ListChecksParamsInternal = "false"
 	ListChecksParamsInternalTrue  ListChecksParamsInternal = "true"
+)
+
+// Defines values for ListChecksParamsSort.
+const (
+	ListChecksParamsSortGroup      ListChecksParamsSort = "group"
+	ListChecksParamsSortTargetHost ListChecksParamsSort = "targetHost"
 )
 
 // Defines values for GetBadgeParamsStyle.
@@ -531,12 +561,17 @@ type ChannelTestResult struct {
 
 // Check defines model for Check.
 type Check struct {
-	Config    *map[string]interface{} `json:"config,omitempty"`
-	CreatedAt *time.Time              `json:"createdAt,omitempty"`
+	// CheckGroupUid Group this check belongs to, or null.
+	CheckGroupUid *openapi_types.UUID     `json:"checkGroupUid"`
+	Config        *map[string]interface{} `json:"config,omitempty"`
+	CreatedAt     *time.Time              `json:"createdAt,omitempty"`
 
 	// Description Optional documentation describing what this check monitors
 	Description *string `json:"description,omitempty"`
 	Enabled     *bool   `json:"enabled,omitempty"`
+
+	// EscalationPolicyUid Escalation policy assigned directly to this check. When null, the check inherits its group's policy, then the org default, then none (resolved once at incident-open). Assigning a zero-step policy is the "explicitly silent" convention.
+	EscalationPolicyUid *openapi_types.UUID `json:"escalationPolicyUid"`
 
 	// FlapBackoffFactor Each flap multiplies the required recovery time by this factor. 1 = off (constant recovery period).
 	FlapBackoffFactor *int `json:"flapBackoffFactor,omitempty"`
@@ -569,9 +604,15 @@ type Check struct {
 	// Period Interval duration (e.g., "00:01:00" for 1 minute)
 	Period *string `json:"period,omitempty"`
 
+	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). Every selected region runs the check at the full period; this staggers their phases. Null uses the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
+	RegionSpread *string `json:"regionSpread"`
+
 	// Scheduling Read-only scheduling telemetry, derived from the check's per-region scheduler jobs (max across regions). Present only on the check DETAIL response (GET by uid/slug) — never on list responses — and omitted until the check's first run produces a cost signal.
-	Scheduling *CheckScheduling    `json:"scheduling,omitempty"`
-	Slug       *string             `json:"slug,omitempty"`
+	Scheduling *CheckScheduling `json:"scheduling,omitempty"`
+	Slug       *string          `json:"slug,omitempty"`
+
+	// TargetHost Derived, read-time-only host this check probes: the config's `host` field when present, else the hostname parsed from `url`, else `target`; null when none apply (e.g. heartbeat/email passive checks). Not stored — renaming a host in a check's config moves it to a different value on the next read. Use `?sort=targetHost` on the list endpoint to order checks by it.
+	TargetHost *string             `json:"targetHost"`
 	Type       *CheckType          `json:"type,omitempty"`
 	Uid        *openapi_types.UUID `json:"uid,omitempty"`
 	UpdatedAt  *time.Time          `json:"updatedAt,omitempty"`
@@ -604,15 +645,27 @@ type CheckChannelListResponse struct {
 
 // CheckGroup defines model for CheckGroup.
 type CheckGroup struct {
-	CheckCount  int                `json:"checkCount"`
-	CreatedAt   time.Time          `json:"createdAt"`
-	Description *string            `json:"description,omitempty"`
-	Name        string             `json:"name"`
-	Slug        string             `json:"slug"`
-	SortOrder   int                `json:"sortOrder"`
-	Uid         openapi_types.UUID `json:"uid"`
-	UpdatedAt   time.Time          `json:"updatedAt"`
+	CheckCount  int       `json:"checkCount"`
+	CreatedAt   time.Time `json:"createdAt"`
+	Description *string   `json:"description,omitempty"`
+
+	// EscalationPolicyUid Group-level escalation policy that member checks inherit when they have no policy of their own. Null = no group policy.
+	EscalationPolicyUid *openapi_types.UUID `json:"escalationPolicyUid"`
+
+	// MemberStatusCounts Count of enabled member checks per status (wire status name -> count), omitting statuses with zero members.
+	MemberStatusCounts *map[string]int `json:"memberStatusCounts,omitempty"`
+	Name               string          `json:"name"`
+	Slug               string          `json:"slug"`
+	SortOrder          int             `json:"sortOrder"`
+
+	// Status Derived, read-time rollup of the group's enabled member checks: "down" if all considered members are down, "degraded" if some (not all) are down, "warning" if none are down but at least one is warning, "validating" if none are down/warning but at least one is validating, "up" if at least one is up, otherwise "created" (no considered members, or only just-created ones). Never stored — recomputed on every read.
+	Status    CheckGroupStatus   `json:"status"`
+	Uid       openapi_types.UUID `json:"uid"`
+	UpdatedAt time.Time          `json:"updatedAt"`
 }
+
+// CheckGroupStatus Derived, read-time rollup of the group's enabled member checks: "down" if all considered members are down, "degraded" if some (not all) are down, "warning" if none are down but at least one is warning, "validating" if none are down/warning but at least one is validating, "up" if at least one is up, otherwise "created" (no considered members, or only just-created ones). Never stored — recomputed on every read.
+type CheckGroupStatus string
 
 // CheckGroupListResponse defines model for CheckGroupListResponse.
 type CheckGroupListResponse struct {
@@ -655,12 +708,17 @@ type CheckJobViewState string
 
 // CheckListItem defines model for CheckListItem.
 type CheckListItem struct {
-	Config    *map[string]interface{} `json:"config,omitempty"`
-	CreatedAt *time.Time              `json:"createdAt,omitempty"`
+	// CheckGroupUid Group this check belongs to, or null.
+	CheckGroupUid *openapi_types.UUID     `json:"checkGroupUid"`
+	Config        *map[string]interface{} `json:"config,omitempty"`
+	CreatedAt     *time.Time              `json:"createdAt,omitempty"`
 
 	// Description Optional documentation describing what this check monitors
 	Description *string `json:"description,omitempty"`
 	Enabled     *bool   `json:"enabled,omitempty"`
+
+	// EscalationPolicyUid Escalation policy assigned directly to this check. When null, the check inherits its group's policy, then the org default, then none (resolved once at incident-open). Assigning a zero-step policy is the "explicitly silent" convention.
+	EscalationPolicyUid *openapi_types.UUID `json:"escalationPolicyUid"`
 
 	// FlapBackoffFactor Each flap multiplies the required recovery time by this factor. 1 = off (constant recovery period).
 	FlapBackoffFactor *int `json:"flapBackoffFactor,omitempty"`
@@ -693,9 +751,15 @@ type CheckListItem struct {
 	// Period Interval duration (e.g., "00:01:00" for 1 minute)
 	Period *string `json:"period,omitempty"`
 
+	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). Every selected region runs the check at the full period; this staggers their phases. Null uses the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
+	RegionSpread *string `json:"regionSpread"`
+
 	// Scheduling Read-only scheduling telemetry, derived from the check's per-region scheduler jobs (max across regions). Present only on the check DETAIL response (GET by uid/slug) — never on list responses — and omitted until the check's first run produces a cost signal.
-	Scheduling *CheckScheduling    `json:"scheduling,omitempty"`
-	Slug       *string             `json:"slug,omitempty"`
+	Scheduling *CheckScheduling `json:"scheduling,omitempty"`
+	Slug       *string          `json:"slug,omitempty"`
+
+	// TargetHost Derived, read-time-only host this check probes: the config's `host` field when present, else the hostname parsed from `url`, else `target`; null when none apply (e.g. heartbeat/email passive checks). Not stored — renaming a host in a check's config moves it to a different value on the next read. Use `?sort=targetHost` on the list endpoint to order checks by it.
+	TargetHost *string             `json:"targetHost"`
 	Type       *CheckListItemType  `json:"type,omitempty"`
 	Uid        *openapi_types.UUID `json:"uid,omitempty"`
 	UpdatedAt  *time.Time          `json:"updatedAt,omitempty"`
@@ -738,6 +802,27 @@ type CheckScheduling struct {
 
 	// DutyCyclePct round(100 × costEwmaMs / period in ms) — the share of a runner slot this check permanently occupies. 100 means the check takes as long to run as its period (a full-time slot).
 	DutyCyclePct int `json:"dutyCyclePct"`
+}
+
+// CheckStats defines model for CheckStats.
+type CheckStats struct {
+	// ByStatus Count per check status. Every known status key (created, up, down, validating, degraded, warning, unknown) is always present, with 0 when empty, so clients can index it without guards. Keys are the same tokens the list endpoint's `status` field carries.
+	ByStatus map[string]int `json:"byStatus"`
+
+	// Disabled Checks with enabled = false.
+	Disabled int `json:"disabled"`
+
+	// Down Checks the dashboard renders as failing (status down, error or timeout). `error` and `timeout` are result-level statuses a check status never holds, so in practice this equals byStatus.down.
+	Down int `json:"down"`
+
+	// Enabled Checks with enabled = true.
+	Enabled int `json:"enabled"`
+
+	// HardDown Checks failing hard (status down or error), i.e. down excluding timeouts.
+	HardDown int `json:"hardDown"`
+
+	// Total Every in-scope check — enabled plus disabled.
+	Total int `json:"total"`
 }
 
 // CheckTypeInfo defines model for CheckTypeInfo.
@@ -839,19 +924,28 @@ type CreateChannelRequest struct {
 // CreateCheckGroupRequest defines model for CreateCheckGroupRequest.
 type CreateCheckGroupRequest struct {
 	Description *string `json:"description,omitempty"`
-	Name        string  `json:"name"`
-	Slug        *string `json:"slug,omitempty"`
-	SortOrder   *int    `json:"sortOrder,omitempty"`
+
+	// EscalationPolicyUid Group-level escalation policy member checks inherit.
+	EscalationPolicyUid *openapi_types.UUID `json:"escalationPolicyUid,omitempty"`
+	Name                string              `json:"name"`
+	Slug                *string             `json:"slug,omitempty"`
+	SortOrder           *int                `json:"sortOrder,omitempty"`
 }
 
 // CreateCheckRequest defines model for CreateCheckRequest.
 type CreateCheckRequest struct {
+	// CheckGroupUid Group to place this check in.
+	CheckGroupUid *openapi_types.UUID `json:"checkGroupUid,omitempty"`
+
 	// Config Check-specific configuration (e.g., url, port, timeout)
 	Config map[string]interface{} `json:"config"`
 
 	// Description Optional documentation about the check
 	Description *string `json:"description,omitempty"`
 	Enabled     *bool   `json:"enabled,omitempty"`
+
+	// EscalationPolicyUid Escalation policy to assign to this check. Omit or empty to inherit (group → org default → none). A zero-step policy makes the check explicitly silent.
+	EscalationPolicyUid *openapi_types.UUID `json:"escalationPolicyUid,omitempty"`
 
 	// FlapBackoffFactor Each flap multiplies the required recovery time by this factor. 1 = off (constant recovery).
 	FlapBackoffFactor *int `json:"flapBackoffFactor,omitempty"`
@@ -871,6 +965,9 @@ type CreateCheckRequest struct {
 	// Name Check name (auto-generated from URL if not provided)
 	Name   *string `json:"name,omitempty"`
 	Period *string `json:"period,omitempty"`
+
+	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). Null (or omitted) uses the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
+	RegionSpread *string `json:"regionSpread"`
 
 	// Slug URL-friendly identifier (auto-generated from URL if not provided)
 	Slug *string `json:"slug,omitempty"`
@@ -994,6 +1091,11 @@ type CreateSeverityRequest struct {
 
 // CreateStatusPageRequest defines model for CreateStatusPageRequest.
 type CreateStatusPageRequest struct {
+	// CustomCss Optional custom stylesheet for the public page. Max 64 KB; @import is rejected (VALIDATION_ERROR). External url() references are allowed.
+	CustomCss *string `json:"customCss,omitempty"`
+
+	// CustomDomain Optional customer-owned hostname to bind to the new page. A fresh verification token is generated; verify it afterward via the custom-domain verify endpoint.
+	CustomDomain     *string `json:"customDomain,omitempty"`
 	Description      *string `json:"description,omitempty"`
 	HistoryDays      *int    `json:"historyDays,omitempty"`
 	HistoryPeriod    *string `json:"historyPeriod,omitempty"`
@@ -1006,10 +1108,13 @@ type CreateStatusPageRequest struct {
 	Visibility       *string `json:"visibility,omitempty"`
 }
 
-// CreateStatusPageResourceRequest defines model for CreateStatusPageResourceRequest.
+// CreateStatusPageResourceRequest Exactly one of checkUid or checkGroupUid must be set; zero or both is a VALIDATION_ERROR naming both fields.
 type CreateStatusPageResourceRequest struct {
-	// CheckUid Check UID or slug to attach as a resource
-	CheckUid    string  `json:"checkUid"`
+	// CheckGroupUid Check group UID or slug to attach as one aggregated resource. Mutually exclusive with checkUid.
+	CheckGroupUid *string `json:"checkGroupUid,omitempty"`
+
+	// CheckUid Check UID or slug to attach as a resource. Mutually exclusive with checkGroupUid.
+	CheckUid    *string `json:"checkUid,omitempty"`
 	Explanation *string `json:"explanation,omitempty"`
 	Position    *int    `json:"position,omitempty"`
 	PublicName  *string `json:"publicName,omitempty"`
@@ -1154,6 +1259,18 @@ type DiscoveryType struct {
 	Type *string `json:"type,omitempty"`
 }
 
+// DnsRecord defines model for DnsRecord.
+type DnsRecord struct {
+	// Name Fully-qualified record name to create
+	Name string `json:"name"`
+
+	// Type DNS record type. Always "CNAME" since v0.8.0.
+	Type string `json:"type"`
+
+	// Value Record value
+	Value string `json:"value"`
+}
+
 // EmailInboxConfigResponse Saved JMAP inbox configuration, with the password elided.
 type EmailInboxConfigResponse struct {
 	AddressDomain          *string `json:"addressDomain,omitempty"`
@@ -1208,15 +1325,19 @@ type EmailSuppressionListResponse struct {
 
 // EntitlementLimits Per-org numeric limits; null/absent means unlimited
 type EntitlementLimits struct {
+	// MaxCallsPerMonth Outbound voice calls per UTC month (null = unlimited)
+	MaxCallsPerMonth *int `json:"maxCallsPerMonth"`
+
 	// MaxChecks Maximum non-internal checks (null = unlimited)
 	MaxChecks *int `json:"maxChecks"`
 
 	// MaxChecksPerMinute Aggregate check dispatch rate per minute (null = unlimited)
 	MaxChecksPerMinute *int `json:"maxChecksPerMinute"`
 
-	// MaxUsers Maximum organization members (null = unlimited). The deprecated
-	// key `maxSsoUsers` is still accepted as a decode-only alias on write;
-	// responses always use `maxUsers`.
+	// MaxSmsPerMonth Outbound SMS per UTC month (null = unlimited)
+	MaxSmsPerMonth *int `json:"maxSmsPerMonth"`
+
+	// MaxUsers Maximum organization members (null = unlimited). The deprecated key `maxSsoUsers` is still accepted as a decode-only alias on write; responses always use `maxUsers`.
 	MaxUsers *int `json:"maxUsers"`
 }
 
@@ -1281,14 +1402,23 @@ type ErrorCode string
 
 // EscalationPolicy defines model for EscalationPolicy.
 type EscalationPolicy struct {
-	CreatedAt          time.Time          `json:"createdAt"`
-	Description        *string            `json:"description,omitempty"`
-	Name               string             `json:"name"`
-	RepeatAfterSeconds *int               `json:"repeatAfterSeconds,omitempty"`
-	RepeatMax          int                `json:"repeatMax"`
-	Steps              *[]EscalationStep  `json:"steps,omitempty"`
-	Uid                openapi_types.UUID `json:"uid"`
-	UpdatedAt          time.Time          `json:"updatedAt"`
+	CreatedAt          time.Time `json:"createdAt"`
+	Description        *string   `json:"description,omitempty"`
+	Name               string    `json:"name"`
+	RepeatAfterSeconds *int      `json:"repeatAfterSeconds,omitempty"`
+	RepeatMax          int       `json:"repeatMax"`
+
+	// StepCount Number of steps in the policy. A value of 0 marks a "silent" policy (the null-object convention — pages nobody). Always present, including on the light list response where steps are omitted.
+	StepCount *int               `json:"stepCount,omitempty"`
+	Steps     *[]EscalationStep  `json:"steps,omitempty"`
+	Uid       openapi_types.UUID `json:"uid"`
+	UpdatedAt time.Time          `json:"updatedAt"`
+
+	// UsageCheckCount Checks directly referencing this policy. Present only on the list response (drives the delete-guard confirmation).
+	UsageCheckCount *int `json:"usageCheckCount,omitempty"`
+
+	// UsageGroupCount Check groups directly referencing this policy. Present only on the list response.
+	UsageGroupCount *int `json:"usageGroupCount,omitempty"`
 }
 
 // EscalationPolicyListResponse defines model for EscalationPolicyListResponse.
@@ -1383,7 +1513,7 @@ type FileResponse struct {
 
 // GetOrgResultResponse defines model for GetOrgResultResponse.
 type GetOrgResultResponse struct {
-	// AvailabilityPct Availability percentage for aggregated periods (with=availabilityPct)
+	// AvailabilityPct Availability percentage for aggregated periods, derived from successfulChecks / totalChecks × 100 (with=availabilityPct).
 	AvailabilityPct *float32 `json:"availabilityPct,omitempty"`
 
 	// CheckName Check name (with=checkName)
@@ -1453,6 +1583,12 @@ type IncidentCheck struct {
 	Config *map[string]interface{} `json:"config,omitempty"`
 	Slug   *string                 `json:"slug,omitempty"`
 	Type   *string                 `json:"type,omitempty"`
+}
+
+// IncidentCommentRequest A free-text comment to append to the incident timeline.
+type IncidentCommentRequest struct {
+	// Text Comment body, plain text, non-empty after trimming.
+	Text string `json:"text"`
 }
 
 // IncidentDetail defines model for IncidentDetail.
@@ -2097,7 +2233,7 @@ type OrgResponse struct {
 
 // OrgResult defines model for OrgResult.
 type OrgResult struct {
-	// AvailabilityPct Availability percentage for aggregated periods (with=availabilityPct)
+	// AvailabilityPct Availability percentage for aggregated periods, derived from successfulChecks / totalChecks × 100 (with=availabilityPct).
 	AvailabilityPct *float32 `json:"availabilityPct,omitempty"`
 
 	// CheckName Check name (with=checkName)
@@ -2148,6 +2284,12 @@ type OrgResultListResponse struct {
 
 // OrgSettingsResponse defines model for OrgSettingsResponse.
 type OrgSettingsResponse struct {
+	// DefaultEscalationPolicyUid Org-wide fallback escalation policy for checks that resolve to no policy of their own (check → group → org default → none). Omitted when unset (legacy behavior).
+	DefaultEscalationPolicyUid *openapi_types.UUID `json:"defaultEscalationPolicyUid"`
+
+	// InheritingCheckCount How many live checks currently resolve to no policy of their own — the blast radius of setting or changing the org default.
+	InheritingCheckCount int `json:"inheritingCheckCount"`
+
 	// RegistrationEmailPattern Auto-join email regex; empty when unset
 	RegistrationEmailPattern string `json:"registrationEmailPattern"`
 
@@ -2345,10 +2487,25 @@ type StartDiscoveryScanRequest struct {
 
 // StatusPage defines model for StatusPage.
 type StatusPage struct {
-	CreatedAt   *time.Time `json:"createdAt,omitempty"`
-	Description *string    `json:"description,omitempty"`
-	Enabled     bool       `json:"enabled"`
-	HistoryDays int        `json:"historyDays"`
+	CreatedAt *time.Time `json:"createdAt,omitempty"`
+
+	// CustomCss Operator-authored CSS the public status page injects as a <style> text node, overriding its CSS custom properties (--brand, --background, --card, --border, the status colors, .dark). Unlike the custom-domain fields this IS returned on the public view — the public renderer is its consumer. Max 64 KB, @import rejected.
+	CustomCss *string `json:"customCss"`
+
+	// CustomDomain Customer-owned hostname the page is served on (punycode/ASCII). Present only on the authenticated org endpoints, never on the public view.
+	CustomDomain *string `json:"customDomain"`
+
+	// CustomDomainCertStatus TLS certificate state for the custom domain when the server terminates TLS itself (config acme.enabled). "none" = nothing issued yet (issuance is on-demand, on the first HTTPS request), "issued" = a certificate is in storage, "error" = the last issuance attempt failed (see the server log). Omitted when in-server TLS is disabled or the domain is not verified yet. Authenticated endpoints only.
+	CustomDomainCertStatus *StatusPageCustomDomainCertStatus `json:"customDomainCertStatus,omitempty"`
+
+	// CustomDomainRecords The DNS records the customer must create. Since v0.8.0 this is exactly ONE entry: the routing CNAME. Its value is the installation CNAME target in "shared" mode, or the page-specific "<token>.cname.<target>" host in "token" mode (server.custom_domain_cname_mode). The TXT ownership challenge was removed. Authenticated endpoints only.
+	CustomDomainRecords *[]DnsRecord `json:"customDomainRecords,omitempty"`
+
+	// CustomDomainStatus Custom-domain verification state. Authenticated endpoints only.
+	CustomDomainStatus *StatusPageCustomDomainStatus `json:"customDomainStatus,omitempty"`
+	Description        *string                       `json:"description,omitempty"`
+	Enabled            bool                          `json:"enabled"`
+	HistoryDays        int                           `json:"historyDays"`
 
 	// HistoryPeriod History window (24h, 7d, 30d, 90d)
 	HistoryPeriod    string                `json:"historyPeriod"`
@@ -2366,19 +2523,29 @@ type StatusPage struct {
 	Visibility string `json:"visibility"`
 }
 
+// StatusPageCustomDomainCertStatus TLS certificate state for the custom domain when the server terminates TLS itself (config acme.enabled). "none" = nothing issued yet (issuance is on-demand, on the first HTTPS request), "issued" = a certificate is in storage, "error" = the last issuance attempt failed (see the server log). Omitted when in-server TLS is disabled or the domain is not verified yet. Authenticated endpoints only.
+type StatusPageCustomDomainCertStatus string
+
+// StatusPageCustomDomainStatus Custom-domain verification state. Authenticated endpoints only.
+type StatusPageCustomDomainStatus string
+
 // StatusPageListResponse defines model for StatusPageListResponse.
 type StatusPageListResponse struct {
 	Data *[]StatusPage `json:"data,omitempty"`
 }
 
-// StatusPageResource defines model for StatusPageResource.
+// StatusPageResource A component displayed on a status page section. It targets either a single check (checkUid) or a whole check group (checkGroupUid) — exactly one is set. A group resource renders as ONE aggregated component: rolled up status, weighted-average availability across its members, and maintenance from a group- or member-targeted window. Its members are never listed publicly.
 type StatusPageResource struct {
-	CheckUid    openapi_types.UUID `json:"checkUid"`
-	CreatedAt   *time.Time         `json:"createdAt,omitempty"`
-	Explanation *string            `json:"explanation,omitempty"`
-	Position    int                `json:"position"`
-	PublicName  *string            `json:"publicName,omitempty"`
-	Uid         openapi_types.UUID `json:"uid"`
+	// CheckGroupUid Set when the resource targets a check group.
+	CheckGroupUid *openapi_types.UUID `json:"checkGroupUid,omitempty"`
+
+	// CheckUid Set when the resource targets an individual check.
+	CheckUid    *openapi_types.UUID `json:"checkUid,omitempty"`
+	CreatedAt   *time.Time          `json:"createdAt,omitempty"`
+	Explanation *string             `json:"explanation,omitempty"`
+	Position    int                 `json:"position"`
+	PublicName  *string             `json:"publicName,omitempty"`
+	Uid         openapi_types.UUID  `json:"uid"`
 }
 
 // StatusPageResourceListResponse defines model for StatusPageResourceListResponse.
@@ -2527,18 +2694,26 @@ type UpdateChannelRequest struct {
 // UpdateCheckGroupRequest defines model for UpdateCheckGroupRequest.
 type UpdateCheckGroupRequest struct {
 	Description *string `json:"description,omitempty"`
-	Name        *string `json:"name,omitempty"`
-	Slug        *string `json:"slug,omitempty"`
-	SortOrder   *int    `json:"sortOrder,omitempty"`
+
+	// EscalationPolicyUid A UID sets the group policy; an empty string clears it; omit to leave unchanged.
+	EscalationPolicyUid *string `json:"escalationPolicyUid,omitempty"`
+	Name                *string `json:"name,omitempty"`
+	Slug                *string `json:"slug,omitempty"`
+	SortOrder           *int    `json:"sortOrder,omitempty"`
 }
 
 // UpdateCheckRequest defines model for UpdateCheckRequest.
 type UpdateCheckRequest struct {
-	Config *map[string]interface{} `json:"config,omitempty"`
+	// CheckGroupUid Group to move this check to; empty string clears it (no group).
+	CheckGroupUid *string                 `json:"checkGroupUid"`
+	Config        *map[string]interface{} `json:"config,omitempty"`
 
 	// Description Optional documentation about the check
 	Description *string `json:"description,omitempty"`
 	Enabled     *bool   `json:"enabled,omitempty"`
+
+	// EscalationPolicyUid Escalation policy for this check. A UID assigns it; an empty string clears it (inherit group → org default → none); omit to leave unchanged. A zero-step policy makes the check explicitly silent.
+	EscalationPolicyUid *string `json:"escalationPolicyUid,omitempty"`
 
 	// FlapBackoffFactor Each flap multiplies the required recovery time by this factor. 1 = off. Omit to leave unchanged.
 	FlapBackoffFactor *int `json:"flapBackoffFactor,omitempty"`
@@ -2556,7 +2731,10 @@ type UpdateCheckRequest struct {
 	MaxRecoveryMultiplier *int    `json:"maxRecoveryMultiplier,omitempty"`
 	Name                  *string `json:"name,omitempty"`
 	Period                *string `json:"period,omitempty"`
-	Slug                  *string `json:"slug,omitempty"`
+
+	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). An empty string clears it back to the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
+	RegionSpread *string `json:"regionSpread"`
+	Slug         *string `json:"slug,omitempty"`
 }
 
 // UpdateDependencyRequest defines model for UpdateDependencyRequest.
@@ -2617,6 +2795,9 @@ type UpdateOncallScheduleRequest struct {
 
 // UpdateOrgSettingsRequest defines model for UpdateOrgSettingsRequest.
 type UpdateOrgSettingsRequest struct {
+	// DefaultEscalationPolicyUid A UID sets the org default escalation policy (must be a policy in this org); an empty string clears it; omit to leave unchanged.
+	DefaultEscalationPolicyUid *string `json:"defaultEscalationPolicyUid,omitempty"`
+
 	// RegistrationEmailPattern Auto-join email regex; empty string clears it
 	RegistrationEmailPattern *string `json:"registrationEmailPattern,omitempty"`
 
@@ -2641,6 +2822,11 @@ type UpdateSeverityRequest struct {
 
 // UpdateStatusPageRequest defines model for UpdateStatusPageRequest.
 type UpdateStatusPageRequest struct {
+	// CustomCss Set/replace the custom stylesheet, or clear it with an empty string. Omit the field to leave it unchanged. Max 64 KB; @import is rejected (VALIDATION_ERROR).
+	CustomCss *string `json:"customCss,omitempty"`
+
+	// CustomDomain Set/change the custom domain (non-empty), or clear it (null or ""). Omit the field to leave the domain unchanged. Setting a new domain generates a fresh verification token and resets verification.
+	CustomDomain     *string `json:"customDomain"`
 	Description      *string `json:"description,omitempty"`
 	Enabled          *bool   `json:"enabled,omitempty"`
 	HistoryDays      *int    `json:"historyDays,omitempty"`
@@ -2654,8 +2840,13 @@ type UpdateStatusPageRequest struct {
 	Visibility       *string `json:"visibility,omitempty"`
 }
 
-// UpdateStatusPageResourceRequest defines model for UpdateStatusPageResourceRequest.
+// UpdateStatusPageResourceRequest Supplying checkUid or checkGroupUid switches the resource's target kind; supplying both is a VALIDATION_ERROR naming both fields, and supplying neither leaves the target untouched.
 type UpdateStatusPageResourceRequest struct {
+	// CheckGroupUid Switch the resource to target this check group (UID or slug).
+	CheckGroupUid *string `json:"checkGroupUid,omitempty"`
+
+	// CheckUid Switch the resource to target this check (UID or slug).
+	CheckUid    *string `json:"checkUid,omitempty"`
 	Explanation *string `json:"explanation,omitempty"`
 	Position    *int    `json:"position,omitempty"`
 	PublicName  *string `json:"publicName,omitempty"`
@@ -2692,6 +2883,9 @@ type UpsertCheckRequest struct {
 	// Description Optional documentation about the check
 	Description *string `json:"description,omitempty"`
 	Enabled     *bool   `json:"enabled,omitempty"`
+
+	// EscalationPolicyUid Escalation policy for this check. Omit or empty to inherit (group → org default → none); a zero-step policy makes it silent.
+	EscalationPolicyUid *string `json:"escalationPolicyUid,omitempty"`
 
 	// Internal Whether this check is internal (hidden from default listings)
 	Internal *bool `json:"internal,omitempty"`
@@ -2955,10 +3149,16 @@ type ListChecksParams struct {
 
 	// Internal Filter by internal status. "false" (default) shows only non-internal checks, "true" shows only internal checks, "all" shows all checks.
 	Internal *ListChecksParamsInternal `form:"internal,omitempty" json:"internal,omitempty"`
+
+	// Sort Opt-in ordering. "group" orders by group sortOrder ascending with ungrouped checks last, then created_at descending within a bucket — matching the dashboard's display order. "targetHost" orders by the derived targetHost ascending (case-sensitive, byte/codepoint order — e.g. "Zebra.example.com" sorts before "api.example.com"), checks with no targetHost last, then name ascending as a tiebreaker — lets a by-host view paginate consistently server-side. Omitted keeps the default created_at descending ordering. Any other value is a validation error.
+	Sort *ListChecksParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
 }
 
 // ListChecksParamsInternal defines parameters for ListChecks.
 type ListChecksParamsInternal string
+
+// ListChecksParamsSort defines parameters for ListChecks.
+type ListChecksParamsSort string
 
 // ListCheckEventsParams defines parameters for ListCheckEvents.
 type ListCheckEventsParams struct {
@@ -3070,7 +3270,7 @@ type ListFilesParams struct {
 
 // ListIncidentsParams defines parameters for ListIncidents.
 type ListIncidentsParams struct {
-	// CheckUid Filter by check UID (comma-separated for multiple)
+	// CheckUid Filter by check UID or slug (comma-separated for multiple)
 	CheckUid *string `form:"checkUid,omitempty" json:"checkUid,omitempty"`
 
 	// State Filter by state (comma-separated, e.g., "active,resolved")
@@ -3254,6 +3454,12 @@ type ListOrgTokensParams struct {
 	Type *string `form:"type,omitempty" json:"type,omitempty"`
 }
 
+// ConfirmMyNotificationContactJSONBody defines parameters for ConfirmMyNotificationContact.
+type ConfirmMyNotificationContactJSONBody struct {
+	// Code The 6-digit verification code
+	Code string `json:"code"`
+}
+
 // ListUserNotificationsParams defines parameters for ListUserNotifications.
 type ListUserNotificationsParams struct {
 	// Status Filter by delivery status (e.g. sent, failed, skipped)
@@ -3267,6 +3473,12 @@ type ListUserNotificationsParams struct {
 
 	// Before Only rows created strictly before this RFC3339 timestamp
 	Before *NotificationBeforeQuery `form:"before,omitempty" json:"before,omitempty"`
+}
+
+// CustomDomainAllowedParams defines parameters for CustomDomainAllowed.
+type CustomDomainAllowedParams struct {
+	// Domain The hostname to check
+	Domain string `form:"domain" json:"domain"`
 }
 
 // ListSystemCheckJobsParams defines parameters for ListSystemCheckJobs.
@@ -3386,6 +3598,9 @@ type UpdateEscalationPolicyJSONRequestBody = UpdateEscalationPolicyRequest
 // AcknowledgeIncidentJSONRequestBody defines body for AcknowledgeIncident for application/json ContentType.
 type AcknowledgeIncidentJSONRequestBody = IncidentAckRequest
 
+// AddIncidentCommentJSONRequestBody defines body for AddIncidentComment for application/json ContentType.
+type AddIncidentCommentJSONRequestBody = IncidentCommentRequest
+
 // ResolveIncidentJSONRequestBody defines body for ResolveIncident for application/json ContentType.
 type ResolveIncidentJSONRequestBody = IncidentAckRequest
 
@@ -3472,6 +3687,9 @@ type CreateTokenJSONRequestBody = CreateTokenRequest
 
 // AddMyNotificationContactJSONRequestBody defines body for AddMyNotificationContact for application/json ContentType.
 type AddMyNotificationContactJSONRequestBody = AddNotificationContactRequest
+
+// ConfirmMyNotificationContactJSONRequestBody defines body for ConfirmMyNotificationContact for application/json ContentType.
+type ConfirmMyNotificationContactJSONRequestBody ConfirmMyNotificationContactJSONBody
 
 // UpdateMyNotificationRouteJSONRequestBody defines body for UpdateMyNotificationRoute for application/json ContentType.
 type UpdateMyNotificationRouteJSONRequestBody = UpdateNotificationRouteRequest
@@ -3724,6 +3942,9 @@ type ClientInterface interface {
 
 	CreateCheck(ctx context.Context, org OrgPath, body CreateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetCheckStats request
+	GetCheckStats(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ValidateCheckWithBody request with any body
 	ValidateCheckWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -3747,6 +3968,9 @@ type ClientInterface interface {
 
 	// ListCheckEvents request
 	ListCheckEvents(ctx context.Context, org OrgPath, checkUid CheckUidPath, params *ListCheckEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RotateHeartbeatToken request
+	RotateHeartbeatToken(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetCheckAvailability request
 	GetCheckAvailability(ctx context.Context, org OrgPath, check string, params *GetCheckAvailabilityParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3892,6 +4116,11 @@ type ClientInterface interface {
 	AcknowledgeIncidentWithBody(ctx context.Context, org OrgPath, uid IncidentUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	AcknowledgeIncident(ctx context.Context, org OrgPath, uid IncidentUidPath, body AcknowledgeIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AddIncidentCommentWithBody request with any body
+	AddIncidentCommentWithBody(ctx context.Context, org OrgPath, uid IncidentUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AddIncidentComment(ctx context.Context, org OrgPath, uid IncidentUidPath, body AddIncidentCommentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListIncidentEvents request
 	ListIncidentEvents(ctx context.Context, org OrgPath, uid IncidentUidPath, params *ListIncidentEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4111,6 +4340,9 @@ type ClientInterface interface {
 
 	UpdateStatusPage(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body UpdateStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// VerifyStatusPageCustomDomain request
+	VerifyStatusPageCustomDomain(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListStatusPageSections request
 	ListStatusPageSections(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -4197,6 +4429,14 @@ type ClientInterface interface {
 	// RemoveMyNotificationContact request
 	RemoveMyNotificationContact(ctx context.Context, org OrgPath, contactUid ContactUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// VerifyMyNotificationContact request
+	VerifyMyNotificationContact(ctx context.Context, org OrgPath, contactUid ContactUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ConfirmMyNotificationContactWithBody request with any body
+	ConfirmMyNotificationContactWithBody(ctx context.Context, org OrgPath, contactUid ContactUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ConfirmMyNotificationContact(ctx context.Context, org OrgPath, contactUid ContactUidPath, body ConfirmMyNotificationContactJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListMyNotificationRoutes request
 	ListMyNotificationRoutes(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -4210,6 +4450,9 @@ type ClientInterface interface {
 
 	// ListUserNotifications request
 	ListUserNotifications(ctx context.Context, org OrgPath, uid UserUidPath, params *ListUserNotificationsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CustomDomainAllowed request
+	CustomDomainAllowed(ctx context.Context, params *CustomDomainAllowedParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetActivationFunnel request
 	GetActivationFunnel(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5011,6 +5254,18 @@ func (c *Client) CreateCheck(ctx context.Context, org OrgPath, body CreateCheckJ
 	return c.Client.Do(req)
 }
 
+func (c *Client) GetCheckStats(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCheckStatsRequest(c.Server, org)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ValidateCheckWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewValidateCheckRequestWithBody(c.Server, org, contentType, body)
 	if err != nil {
@@ -5109,6 +5364,18 @@ func (c *Client) CloneCheck(ctx context.Context, org OrgPath, checkUid CheckUidP
 
 func (c *Client) ListCheckEvents(ctx context.Context, org OrgPath, checkUid CheckUidPath, params *ListCheckEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListCheckEventsRequest(c.Server, org, checkUid, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RotateHeartbeatToken(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRotateHeartbeatTokenRequest(c.Server, org, checkUid)
 	if err != nil {
 		return nil, err
 	}
@@ -5733,6 +6000,30 @@ func (c *Client) AcknowledgeIncidentWithBody(ctx context.Context, org OrgPath, u
 
 func (c *Client) AcknowledgeIncident(ctx context.Context, org OrgPath, uid IncidentUidPath, body AcknowledgeIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAcknowledgeIncidentRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AddIncidentCommentWithBody(ctx context.Context, org OrgPath, uid IncidentUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddIncidentCommentRequestWithBody(c.Server, org, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AddIncidentComment(ctx context.Context, org OrgPath, uid IncidentUidPath, body AddIncidentCommentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddIncidentCommentRequest(c.Server, org, uid, body)
 	if err != nil {
 		return nil, err
 	}
@@ -6691,6 +6982,18 @@ func (c *Client) UpdateStatusPage(ctx context.Context, org OrgPath, statusPageUi
 	return c.Client.Do(req)
 }
 
+func (c *Client) VerifyStatusPageCustomDomain(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewVerifyStatusPageCustomDomainRequest(c.Server, org, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListStatusPageSections(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListStatusPageSectionsRequest(c.Server, org, statusPageUid)
 	if err != nil {
@@ -7075,6 +7378,42 @@ func (c *Client) RemoveMyNotificationContact(ctx context.Context, org OrgPath, c
 	return c.Client.Do(req)
 }
 
+func (c *Client) VerifyMyNotificationContact(ctx context.Context, org OrgPath, contactUid ContactUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewVerifyMyNotificationContactRequest(c.Server, org, contactUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ConfirmMyNotificationContactWithBody(ctx context.Context, org OrgPath, contactUid ContactUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConfirmMyNotificationContactRequestWithBody(c.Server, org, contactUid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ConfirmMyNotificationContact(ctx context.Context, org OrgPath, contactUid ContactUidPath, body ConfirmMyNotificationContactJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConfirmMyNotificationContactRequest(c.Server, org, contactUid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListMyNotificationRoutes(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListMyNotificationRoutesRequest(c.Server, org)
 	if err != nil {
@@ -7125,6 +7464,18 @@ func (c *Client) TestMyNotificationRoute(ctx context.Context, org OrgPath, route
 
 func (c *Client) ListUserNotifications(ctx context.Context, org OrgPath, uid UserUidPath, params *ListUserNotificationsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListUserNotificationsRequest(c.Server, org, uid, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CustomDomainAllowed(ctx context.Context, params *CustomDomainAllowedParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCustomDomainAllowedRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -9222,6 +9573,22 @@ func NewListChecksRequest(server string, org OrgPath, params *ListChecksParams) 
 
 		}
 
+		if params.Sort != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sort", runtime.ParamLocationQuery, *params.Sort); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		queryURL.RawQuery = queryValues.Encode()
 	}
 
@@ -9276,6 +9643,40 @@ func NewCreateCheckRequestWithBody(server string, org OrgPath, contentType strin
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetCheckStatsRequest generates requests for GetCheckStats
+func NewGetCheckStatsRequest(server string, org OrgPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/stats", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -9589,6 +9990,47 @@ func NewListCheckEventsRequest(server string, org OrgPath, checkUid CheckUidPath
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRotateHeartbeatTokenRequest generates requests for RotateHeartbeatToken
+func NewRotateHeartbeatTokenRequest(server string, org OrgPath, checkUid CheckUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "checkUid", runtime.ParamLocationPath, checkUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/rotate-token", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -11808,6 +12250,60 @@ func NewAcknowledgeIncidentRequestWithBody(server string, org OrgPath, uid Incid
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/orgs/%s/incidents/%s/ack", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAddIncidentCommentRequest calls the generic AddIncidentComment builder with application/json body
+func NewAddIncidentCommentRequest(server string, org OrgPath, uid IncidentUidPath, body AddIncidentCommentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAddIncidentCommentRequestWithBody(server, org, uid, "application/json", bodyReader)
+}
+
+// NewAddIncidentCommentRequestWithBody generates requests for AddIncidentComment with any type of body
+func NewAddIncidentCommentRequestWithBody(server string, org OrgPath, uid IncidentUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "uid", runtime.ParamLocationPath, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/incidents/%s/comments", pathParam0, pathParam1)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -14999,6 +15495,47 @@ func NewUpdateStatusPageRequestWithBody(server string, org OrgPath, statusPageUi
 	return req, nil
 }
 
+// NewVerifyStatusPageCustomDomainRequest generates requests for VerifyStatusPageCustomDomain
+func NewVerifyStatusPageCustomDomainRequest(server string, org OrgPath, statusPageUid StatusPageUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "statusPageUid", runtime.ParamLocationPath, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/custom-domain/verify", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListStatusPageSectionsRequest generates requests for ListStatusPageSections
 func NewListStatusPageSectionsRequest(server string, org OrgPath, statusPageUid StatusPageUidPath) (*http.Request, error) {
 	var err error
@@ -16197,6 +16734,101 @@ func NewRemoveMyNotificationContactRequest(server string, org OrgPath, contactUi
 	return req, nil
 }
 
+// NewVerifyMyNotificationContactRequest generates requests for VerifyMyNotificationContact
+func NewVerifyMyNotificationContactRequest(server string, org OrgPath, contactUid ContactUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "contactUid", runtime.ParamLocationPath, contactUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/users/me/notification-contacts/%s/verify", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewConfirmMyNotificationContactRequest calls the generic ConfirmMyNotificationContact builder with application/json body
+func NewConfirmMyNotificationContactRequest(server string, org OrgPath, contactUid ContactUidPath, body ConfirmMyNotificationContactJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewConfirmMyNotificationContactRequestWithBody(server, org, contactUid, "application/json", bodyReader)
+}
+
+// NewConfirmMyNotificationContactRequestWithBody generates requests for ConfirmMyNotificationContact with any type of body
+func NewConfirmMyNotificationContactRequestWithBody(server string, org OrgPath, contactUid ContactUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "org", runtime.ParamLocationPath, org)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "contactUid", runtime.ParamLocationPath, contactUid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/users/me/notification-contacts/%s/verify/confirm", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListMyNotificationRoutesRequest generates requests for ListMyNotificationRoutes
 func NewListMyNotificationRoutesRequest(server string, org OrgPath) (*http.Request, error) {
 	var err error
@@ -16424,6 +17056,51 @@ func NewListUserNotificationsRequest(server string, org OrgPath, uid UserUidPath
 				}
 			}
 
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCustomDomainAllowedRequest generates requests for CustomDomainAllowed
+func NewCustomDomainAllowedRequest(server string, params *CustomDomainAllowedParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/public/custom-domains/allowed")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "domain", runtime.ParamLocationQuery, params.Domain); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
 		}
 
 		queryURL.RawQuery = queryValues.Encode()
@@ -17284,6 +17961,9 @@ type ClientWithResponsesInterface interface {
 
 	CreateCheckWithResponse(ctx context.Context, org OrgPath, body CreateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCheckResult, error)
 
+	// GetCheckStatsWithResponse request
+	GetCheckStatsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*GetCheckStatsResult, error)
+
 	// ValidateCheckWithBodyWithResponse request with any body
 	ValidateCheckWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ValidateCheckResult, error)
 
@@ -17307,6 +17987,9 @@ type ClientWithResponsesInterface interface {
 
 	// ListCheckEventsWithResponse request
 	ListCheckEventsWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, params *ListCheckEventsParams, reqEditors ...RequestEditorFn) (*ListCheckEventsResult, error)
+
+	// RotateHeartbeatTokenWithResponse request
+	RotateHeartbeatTokenWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*RotateHeartbeatTokenResult, error)
 
 	// GetCheckAvailabilityWithResponse request
 	GetCheckAvailabilityWithResponse(ctx context.Context, org OrgPath, check string, params *GetCheckAvailabilityParams, reqEditors ...RequestEditorFn) (*GetCheckAvailabilityResult, error)
@@ -17452,6 +18135,11 @@ type ClientWithResponsesInterface interface {
 	AcknowledgeIncidentWithBodyWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AcknowledgeIncidentResult, error)
 
 	AcknowledgeIncidentWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, body AcknowledgeIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*AcknowledgeIncidentResult, error)
+
+	// AddIncidentCommentWithBodyWithResponse request with any body
+	AddIncidentCommentWithBodyWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddIncidentCommentResult, error)
+
+	AddIncidentCommentWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, body AddIncidentCommentJSONRequestBody, reqEditors ...RequestEditorFn) (*AddIncidentCommentResult, error)
 
 	// ListIncidentEventsWithResponse request
 	ListIncidentEventsWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, params *ListIncidentEventsParams, reqEditors ...RequestEditorFn) (*ListIncidentEventsResult, error)
@@ -17671,6 +18359,9 @@ type ClientWithResponsesInterface interface {
 
 	UpdateStatusPageWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body UpdateStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateStatusPageResult, error)
 
+	// VerifyStatusPageCustomDomainWithResponse request
+	VerifyStatusPageCustomDomainWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*VerifyStatusPageCustomDomainResult, error)
+
 	// ListStatusPageSectionsWithResponse request
 	ListStatusPageSectionsWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*ListStatusPageSectionsResult, error)
 
@@ -17757,6 +18448,14 @@ type ClientWithResponsesInterface interface {
 	// RemoveMyNotificationContactWithResponse request
 	RemoveMyNotificationContactWithResponse(ctx context.Context, org OrgPath, contactUid ContactUidPath, reqEditors ...RequestEditorFn) (*RemoveMyNotificationContactResult, error)
 
+	// VerifyMyNotificationContactWithResponse request
+	VerifyMyNotificationContactWithResponse(ctx context.Context, org OrgPath, contactUid ContactUidPath, reqEditors ...RequestEditorFn) (*VerifyMyNotificationContactResult, error)
+
+	// ConfirmMyNotificationContactWithBodyWithResponse request with any body
+	ConfirmMyNotificationContactWithBodyWithResponse(ctx context.Context, org OrgPath, contactUid ContactUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ConfirmMyNotificationContactResult, error)
+
+	ConfirmMyNotificationContactWithResponse(ctx context.Context, org OrgPath, contactUid ContactUidPath, body ConfirmMyNotificationContactJSONRequestBody, reqEditors ...RequestEditorFn) (*ConfirmMyNotificationContactResult, error)
+
 	// ListMyNotificationRoutesWithResponse request
 	ListMyNotificationRoutesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListMyNotificationRoutesResult, error)
 
@@ -17770,6 +18469,9 @@ type ClientWithResponsesInterface interface {
 
 	// ListUserNotificationsWithResponse request
 	ListUserNotificationsWithResponse(ctx context.Context, org OrgPath, uid UserUidPath, params *ListUserNotificationsParams, reqEditors ...RequestEditorFn) (*ListUserNotificationsResult, error)
+
+	// CustomDomainAllowedWithResponse request
+	CustomDomainAllowedWithResponse(ctx context.Context, params *CustomDomainAllowedParams, reqEditors ...RequestEditorFn) (*CustomDomainAllowedResult, error)
 
 	// GetActivationFunnelWithResponse request
 	GetActivationFunnelWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetActivationFunnelResult, error)
@@ -18884,6 +19586,29 @@ func (r CreateCheckResult) StatusCode() int {
 	return 0
 }
 
+type GetCheckStatsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *CheckStats
+	JSON404      *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCheckStatsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCheckStatsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ValidateCheckResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -19021,6 +19746,31 @@ func (r ListCheckEventsResult) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ListCheckEventsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RotateHeartbeatTokenResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Check
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r RotateHeartbeatTokenResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RotateHeartbeatTokenResult) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -20025,6 +20775,31 @@ func (r AcknowledgeIncidentResult) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r AcknowledgeIncidentResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AddIncidentCommentResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *Event
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r AddIncidentCommentResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AddIncidentCommentResult) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -21480,6 +22255,31 @@ func (r UpdateStatusPageResult) StatusCode() int {
 	return 0
 }
 
+type VerifyStatusPageCustomDomainResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *StatusPage
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r VerifyStatusPageCustomDomainResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r VerifyStatusPageCustomDomainResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListStatusPageSectionsResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -22007,6 +22807,54 @@ func (r RemoveMyNotificationContactResult) StatusCode() int {
 	return 0
 }
 
+type VerifyMyNotificationContactResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r VerifyMyNotificationContactResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r VerifyMyNotificationContactResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ConfirmMyNotificationContactResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *ValidationError
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ConfirmMyNotificationContactResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ConfirmMyNotificationContactResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListMyNotificationRoutesResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -22099,6 +22947,27 @@ func (r ListUserNotificationsResult) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ListUserNotificationsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CustomDomainAllowedResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// Status returns HTTPResponse.Status
+func (r CustomDomainAllowedResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CustomDomainAllowedResult) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -23052,6 +23921,15 @@ func (c *ClientWithResponses) CreateCheckWithResponse(ctx context.Context, org O
 	return ParseCreateCheckResult(rsp)
 }
 
+// GetCheckStatsWithResponse request returning *GetCheckStatsResult
+func (c *ClientWithResponses) GetCheckStatsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*GetCheckStatsResult, error) {
+	rsp, err := c.GetCheckStats(ctx, org, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCheckStatsResult(rsp)
+}
+
 // ValidateCheckWithBodyWithResponse request with arbitrary body returning *ValidateCheckResult
 func (c *ClientWithResponses) ValidateCheckWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ValidateCheckResult, error) {
 	rsp, err := c.ValidateCheckWithBody(ctx, org, contentType, body, reqEditors...)
@@ -23128,6 +24006,15 @@ func (c *ClientWithResponses) ListCheckEventsWithResponse(ctx context.Context, o
 		return nil, err
 	}
 	return ParseListCheckEventsResult(rsp)
+}
+
+// RotateHeartbeatTokenWithResponse request returning *RotateHeartbeatTokenResult
+func (c *ClientWithResponses) RotateHeartbeatTokenWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*RotateHeartbeatTokenResult, error) {
+	rsp, err := c.RotateHeartbeatToken(ctx, org, checkUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRotateHeartbeatTokenResult(rsp)
 }
 
 // GetCheckAvailabilityWithResponse request returning *GetCheckAvailabilityResult
@@ -23585,6 +24472,23 @@ func (c *ClientWithResponses) AcknowledgeIncidentWithResponse(ctx context.Contex
 		return nil, err
 	}
 	return ParseAcknowledgeIncidentResult(rsp)
+}
+
+// AddIncidentCommentWithBodyWithResponse request with arbitrary body returning *AddIncidentCommentResult
+func (c *ClientWithResponses) AddIncidentCommentWithBodyWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddIncidentCommentResult, error) {
+	rsp, err := c.AddIncidentCommentWithBody(ctx, org, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAddIncidentCommentResult(rsp)
+}
+
+func (c *ClientWithResponses) AddIncidentCommentWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, body AddIncidentCommentJSONRequestBody, reqEditors ...RequestEditorFn) (*AddIncidentCommentResult, error) {
+	rsp, err := c.AddIncidentComment(ctx, org, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAddIncidentCommentResult(rsp)
 }
 
 // ListIncidentEventsWithResponse request returning *ListIncidentEventsResult
@@ -24279,6 +25183,15 @@ func (c *ClientWithResponses) UpdateStatusPageWithResponse(ctx context.Context, 
 	return ParseUpdateStatusPageResult(rsp)
 }
 
+// VerifyStatusPageCustomDomainWithResponse request returning *VerifyStatusPageCustomDomainResult
+func (c *ClientWithResponses) VerifyStatusPageCustomDomainWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*VerifyStatusPageCustomDomainResult, error) {
+	rsp, err := c.VerifyStatusPageCustomDomain(ctx, org, statusPageUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseVerifyStatusPageCustomDomainResult(rsp)
+}
+
 // ListStatusPageSectionsWithResponse request returning *ListStatusPageSectionsResult
 func (c *ClientWithResponses) ListStatusPageSectionsWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*ListStatusPageSectionsResult, error) {
 	rsp, err := c.ListStatusPageSections(ctx, org, statusPageUid, reqEditors...)
@@ -24557,6 +25470,32 @@ func (c *ClientWithResponses) RemoveMyNotificationContactWithResponse(ctx contex
 	return ParseRemoveMyNotificationContactResult(rsp)
 }
 
+// VerifyMyNotificationContactWithResponse request returning *VerifyMyNotificationContactResult
+func (c *ClientWithResponses) VerifyMyNotificationContactWithResponse(ctx context.Context, org OrgPath, contactUid ContactUidPath, reqEditors ...RequestEditorFn) (*VerifyMyNotificationContactResult, error) {
+	rsp, err := c.VerifyMyNotificationContact(ctx, org, contactUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseVerifyMyNotificationContactResult(rsp)
+}
+
+// ConfirmMyNotificationContactWithBodyWithResponse request with arbitrary body returning *ConfirmMyNotificationContactResult
+func (c *ClientWithResponses) ConfirmMyNotificationContactWithBodyWithResponse(ctx context.Context, org OrgPath, contactUid ContactUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ConfirmMyNotificationContactResult, error) {
+	rsp, err := c.ConfirmMyNotificationContactWithBody(ctx, org, contactUid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConfirmMyNotificationContactResult(rsp)
+}
+
+func (c *ClientWithResponses) ConfirmMyNotificationContactWithResponse(ctx context.Context, org OrgPath, contactUid ContactUidPath, body ConfirmMyNotificationContactJSONRequestBody, reqEditors ...RequestEditorFn) (*ConfirmMyNotificationContactResult, error) {
+	rsp, err := c.ConfirmMyNotificationContact(ctx, org, contactUid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConfirmMyNotificationContactResult(rsp)
+}
+
 // ListMyNotificationRoutesWithResponse request returning *ListMyNotificationRoutesResult
 func (c *ClientWithResponses) ListMyNotificationRoutesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListMyNotificationRoutesResult, error) {
 	rsp, err := c.ListMyNotificationRoutes(ctx, org, reqEditors...)
@@ -24599,6 +25538,15 @@ func (c *ClientWithResponses) ListUserNotificationsWithResponse(ctx context.Cont
 		return nil, err
 	}
 	return ParseListUserNotificationsResult(rsp)
+}
+
+// CustomDomainAllowedWithResponse request returning *CustomDomainAllowedResult
+func (c *ClientWithResponses) CustomDomainAllowedWithResponse(ctx context.Context, params *CustomDomainAllowedParams, reqEditors ...RequestEditorFn) (*CustomDomainAllowedResult, error) {
+	rsp, err := c.CustomDomainAllowed(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCustomDomainAllowedResult(rsp)
 }
 
 // GetActivationFunnelWithResponse request returning *GetActivationFunnelResult
@@ -26409,6 +27357,39 @@ func ParseCreateCheckResult(rsp *http.Response) (*CreateCheckResult, error) {
 	return response, nil
 }
 
+// ParseGetCheckStatsResult parses an HTTP response from a GetCheckStatsWithResponse call
+func ParseGetCheckStatsResult(rsp *http.Response) (*GetCheckStatsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCheckStatsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckStats
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseValidateCheckResult parses an HTTP response from a ValidateCheckWithResponse call
 func ParseValidateCheckResult(rsp *http.Response) (*ValidateCheckResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -26622,6 +27603,53 @@ func ParseListCheckEventsResult(rsp *http.Response) (*ListCheckEventsResult, err
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRotateHeartbeatTokenResult parses an HTTP response from a RotateHeartbeatTokenWithResponse call
+func ParseRotateHeartbeatTokenResult(rsp *http.Response) (*RotateHeartbeatTokenResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RotateHeartbeatTokenResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Check
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
@@ -28282,6 +29310,53 @@ func ParseAcknowledgeIncidentResult(rsp *http.Response) (*AcknowledgeIncidentRes
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAddIncidentCommentResult parses an HTTP response from a AddIncidentCommentWithResponse call
+func ParseAddIncidentCommentResult(rsp *http.Response) (*AddIncidentCommentResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AddIncidentCommentResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Event
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
@@ -30765,6 +31840,53 @@ func ParseUpdateStatusPageResult(rsp *http.Response) (*UpdateStatusPageResult, e
 	return response, nil
 }
 
+// ParseVerifyStatusPageCustomDomainResult parses an HTTP response from a VerifyStatusPageCustomDomainWithResponse call
+func ParseVerifyStatusPageCustomDomainResult(rsp *http.Response) (*VerifyStatusPageCustomDomainResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &VerifyStatusPageCustomDomainResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest StatusPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListStatusPageSectionsResult parses an HTTP response from a ListStatusPageSectionsWithResponse call
 func ParseListStatusPageSectionsResult(rsp *http.Response) (*ListStatusPageSectionsResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -31638,6 +32760,86 @@ func ParseRemoveMyNotificationContactResult(rsp *http.Response) (*RemoveMyNotifi
 	return response, nil
 }
 
+// ParseVerifyMyNotificationContactResult parses an HTTP response from a VerifyMyNotificationContactWithResponse call
+func ParseVerifyMyNotificationContactResult(rsp *http.Response) (*VerifyMyNotificationContactResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &VerifyMyNotificationContactResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseConfirmMyNotificationContactResult parses an HTTP response from a ConfirmMyNotificationContactWithResponse call
+func ParseConfirmMyNotificationContactResult(rsp *http.Response) (*ConfirmMyNotificationContactResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ConfirmMyNotificationContactResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListMyNotificationRoutesResult parses an HTTP response from a ListMyNotificationRoutesWithResponse call
 func ParseListMyNotificationRoutesResult(rsp *http.Response) (*ListMyNotificationRoutesResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -31807,6 +33009,22 @@ func ParseListUserNotificationsResult(rsp *http.Response) (*ListUserNotification
 		}
 		response.JSON404 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseCustomDomainAllowedResult parses an HTTP response from a CustomDomainAllowedWithResponse call
+func ParseCustomDomainAllowedResult(rsp *http.Response) (*CustomDomainAllowedResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CustomDomainAllowedResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
 	}
 
 	return response, nil

@@ -91,3 +91,85 @@ func TestManualReaderEnvVarsBind(t *testing.T) {
 	r.Equal(42, cfg.Entitlements.SMSRunawayPerHour)
 	r.Equal(7, cfg.Entitlements.CallRunawayPerHour)
 }
+
+// TestWhatsAppEnvVarsBind proves every SP_WHATSAPP_* name in the manual-reader
+// list actually lands on its struct field. Every one of these keys except
+// `enabled` has a snake_case koanf tag that koanf's env provider can never
+// reach on its own (SP_WHATSAPP_PHONE_NUMBER_ID collapses to
+// whatsapp.phone.number.id), so without applyWhatsAppEnv they would be silent
+// no-ops — the failure mode this test exists to catch.
+func TestWhatsAppEnvVarsBind(t *testing.T) {
+	t.Setenv("SP_WHATSAPP_ENABLED", "true")
+	t.Setenv("SP_WHATSAPP_ACCESS_TOKEN", "tok-123")
+	t.Setenv("SP_WHATSAPP_PHONE_NUMBER_ID", "555000111")
+	t.Setenv("SP_WHATSAPP_WABA_ID", "waba-1")
+	t.Setenv("SP_WHATSAPP_APP_SECRET", "sekrit")
+	t.Setenv("SP_WHATSAPP_WEBHOOK_VERIFY_TOKEN", "verify-me")
+	t.Setenv("SP_WHATSAPP_API_VERSION", "v99.0")
+	t.Setenv("SP_WHATSAPP_ALERT_TEMPLATE", "custom_alert")
+	t.Setenv("SP_WHATSAPP_VERIFY_TEMPLATE", "custom_verify")
+	t.Setenv("SP_WHATSAPP_TEMPLATE_LANGUAGE", "fr")
+	t.Setenv("SP_WHATSAPP_BASE_URL", "https://graph.test")
+	t.Setenv("SP_ENTITLEMENTS_WHATSAPP_RUNAWAY_PER_HOUR", "11")
+
+	r := require.New(t)
+	cfg, err := Load()
+	r.NoError(err)
+
+	r.True(cfg.WhatsApp.Enabled)
+	r.Equal("tok-123", cfg.WhatsApp.AccessToken)
+	r.Equal("555000111", cfg.WhatsApp.PhoneNumberID)
+	r.Equal("waba-1", cfg.WhatsApp.WABAID)
+	r.Equal("sekrit", cfg.WhatsApp.AppSecret)
+	r.Equal("verify-me", cfg.WhatsApp.WebhookVerifyToken)
+	r.Equal("v99.0", cfg.WhatsApp.ResolvedAPIVersion())
+	r.Equal("custom_alert", cfg.WhatsApp.ResolvedAlertTemplate())
+	r.Equal("custom_verify", cfg.WhatsApp.ResolvedVerifyTemplate())
+	r.Equal("fr", cfg.WhatsApp.ResolvedTemplateLanguage())
+	r.Equal("https://graph.test", cfg.WhatsApp.BaseURL)
+	r.Equal(11, cfg.Entitlements.WhatsAppRunawayPerHour)
+	r.True(cfg.WhatsApp.Active())
+
+	// Every name used above must also be advertised as recognized, otherwise
+	// the startup env check would flag a variable that in fact binds.
+	recognized := RecognizedEnvVars()
+	for _, name := range []string{
+		"SP_WHATSAPP_ENABLED", "SP_WHATSAPP_ACCESS_TOKEN", "SP_WHATSAPP_PHONE_NUMBER_ID",
+		"SP_WHATSAPP_WABA_ID", "SP_WHATSAPP_APP_SECRET", "SP_WHATSAPP_WEBHOOK_VERIFY_TOKEN",
+		"SP_WHATSAPP_API_VERSION", "SP_WHATSAPP_ALERT_TEMPLATE", "SP_WHATSAPP_VERIFY_TEMPLATE",
+		"SP_WHATSAPP_TEMPLATE_LANGUAGE", "SP_WHATSAPP_BASE_URL",
+		"SP_ENTITLEMENTS_WHATSAPP_RUNAWAY_PER_HOUR",
+	} {
+		r.Contains(recognized, name)
+	}
+}
+
+// TestWhatsAppDefaultsOff proves the feature is dark out of the box and that
+// the kill switch alone cannot turn it on.
+func TestWhatsAppDefaultsOff(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.False(cfg.WhatsApp.Enabled)
+	r.False(cfg.WhatsApp.Active())
+	r.Equal(DefaultWhatsAppAPIVersion, cfg.WhatsApp.ResolvedAPIVersion())
+	r.Equal(DefaultWhatsAppAlertTemplate, cfg.WhatsApp.ResolvedAlertTemplate())
+	r.Equal(DefaultWhatsAppVerifyTemplate, cfg.WhatsApp.ResolvedVerifyTemplate())
+	r.Equal(DefaultWhatsAppTemplateLanguage, cfg.WhatsApp.ResolvedTemplateLanguage())
+
+	// Enabled without credentials is still off.
+	switchOnly := WhatsAppConfig{Enabled: true}
+	r.False(switchOnly.Active())
+
+	tokenOnly := WhatsAppConfig{Enabled: true, AccessToken: "t"}
+	r.False(tokenOnly.Active())
+
+	idOnly := WhatsAppConfig{Enabled: true, PhoneNumberID: "1"}
+	r.False(idOnly.Active())
+
+	complete := WhatsAppConfig{Enabled: true, AccessToken: "t", PhoneNumberID: "1"}
+	r.True(complete.Active())
+}

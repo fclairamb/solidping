@@ -12,6 +12,8 @@ import {
   Bot,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Copy,
   Eye,
   Info,
@@ -34,6 +36,7 @@ import {
 import { toast } from "sonner";
 
 import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
+import { CheckGroupPicker } from "@/components/shared/check-group-picker";
 import { RecipientsInput } from "@/components/shared/recipients-input";
 import { TokenChipsInput } from "@/components/shared/token-chips-input";
 import { isValidStatusPattern, normalizeStatusPattern } from "@/lib/http-status";
@@ -123,6 +126,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { CodeTextarea } from "@/components/ui/code-textarea";
 import { UptimeStrip } from "@/components/ui/uptime-strip";
 import { useDebounce } from "@/lib/use-debounce";
 import { slugify } from "@/lib/utils";
@@ -151,6 +155,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "feedback", label: "Feedback" },
   { id: "label-filter", label: "Label filter" },
   { id: "check-multi-picker", label: "Check multi-picker" },
+  { id: "check-group-picker", label: "Check group picker" },
   { id: "token-chips-input", label: "Token chips input" },
   { id: "kpi-tiles", label: "KPI tiles" },
   { id: "uptime-strip", label: "Uptime strip" },
@@ -188,6 +193,7 @@ function DesignReferencePage() {
       <FeedbackSection />
       <LabelFilterSection />
       <CheckMultiPickerSection />
+      <CheckGroupPickerSection />
       <TokenChipsInputSection />
       <KpiTileSection />
       <UptimeStripSection />
@@ -1000,6 +1006,42 @@ function ButtonsBadgesSection() {
           importLine={`import { StatusDot } from "@/components/shared/status-dot";\n\n<StatusDot\n  status={check.status ?? check.lastResult?.status}\n  enabled={check.enabled}\n  title={check.enabled === false ? t("checks:detail.disabled") : undefined}\n/>`}
         />
 
+        <h3 className="text-sm font-medium">Check group status header</h3>
+        <p className="text-sm text-muted-foreground">
+          The checks index (
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">checks.index.tsx</code>
+          ) buckets checks by <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">checkGroupUid</code> into
+          collapsible sections. The header always reuses the same{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">StatusBadge</code> as check rows — no
+          new colors — next to a compact member summary derived from the group's{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">memberStatusCounts</code>: the "N/N up"
+          form when every counted member is up (the collapse-eligible case), otherwise
+          severity-ordered parts like "1 down · 3 up". A group defaults to collapsed only
+          when its rollup status is <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">up</code>; any
+          manual toggle overrides the default and persists per org in localStorage.
+        </p>
+        <ExampleRow
+          preview={
+            <>
+              <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                <span className="font-semibold">prod-eu-west</span>
+                <StatusBadge status="up" />
+                <span className="text-xs text-muted-foreground">4/4 up</span>
+                <Badge variant="secondary" className="text-xs">4</Badge>
+              </div>
+              <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                <span className="font-semibold">prod-us-east</span>
+                <StatusBadge status="degraded" />
+                <span className="text-xs text-muted-foreground">1 down · 3 up</span>
+                <Badge variant="secondary" className="text-xs">4</Badge>
+              </div>
+            </>
+          }
+          importLine={`import { StatusBadge } from "@/components/shared/status-badge";\n\n<StatusBadge status={group.status} />\n<span className="text-xs text-muted-foreground">{formatMemberSummary(group.memberStatusCounts, t)}</span>`}
+        />
+
         <h3 className="text-sm font-medium">Live connection status dot</h3>
         <p className="text-sm text-muted-foreground">
           Passive indicator for the org live-updates WebSocket, mounted in the sidebar
@@ -1141,6 +1183,24 @@ function FormsSection() {
             </div>
           }
           importLine={`import { Textarea } from "@/components/ui/textarea";`}
+        />
+
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-sm space-y-2">
+              <Label htmlFor="dr-code-textarea">Code textarea</Label>
+              <CodeTextarea
+                id="dr-code-textarea"
+                rows={4}
+                placeholder={":root {\n  --brand: #ff5500;\n}"}
+              />
+              <p className="text-xs text-muted-foreground">
+                Monospace, with spell-check / autocorrect / autocapitalize off.
+                Use for CSS, JSON and other code input.
+              </p>
+            </div>
+          }
+          importLine={`import { CodeTextarea } from "@/components/ui/code-textarea";`}
         />
 
         <ExampleRow
@@ -1572,7 +1632,7 @@ function DnsRecordRowSection() {
     <Section
       id="dns-record-row"
       title="DNS record row"
-      description="A single DNS record the user must create — a labeled Type / Name / Value grid with copy-to-clipboard buttons on the copyable values. Used by the status-page custom-domain section for the CNAME and TXT challenge records."
+      description="A single DNS record the user must create — a labeled Type / Name / Value grid with copy-to-clipboard buttons on the copyable values. Used by the status-page custom-domain section, which since v0.8.0 asks for exactly one record: the routing CNAME (shared mode below, or the per-page token target in token mode)."
     >
       <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
         <div className="space-y-2">
@@ -1581,9 +1641,9 @@ function DnsRecordRowSection() {
           />
           <DnsRecordRow
             record={{
-              type: "TXT",
-              name: "_solidping-challenge.status.acme.com",
-              value: "sp-domain-verify=Xq7f…",
+              type: "CNAME",
+              name: "status.acme.com",
+              value: "spq7f3k2m6x4t7b.cname.solidping.io",
             }}
           />
         </div>
@@ -2191,6 +2251,38 @@ function CheckMultiPickerSection() {
   );
 }
 
+function CheckGroupPickerSection() {
+  const { org } = Route.useParams();
+  const [groupUid, setGroupUid] = useState<string | undefined>();
+  const [groupLabel, setGroupLabel] = useState<string | undefined>();
+
+  return (
+    <Section
+      id="check-group-picker"
+      title="Check group picker"
+      description="Single-select for one check GROUP — the group twin of CheckPicker, with the same popover + search + arrow-key navigation shape. Each entry is labelled with its member count (&quot;N checks&quot;), which is operator-only context: the public status page never says a component aggregates several probes. Used by the status page editor to publish a group as one component."
+    >
+      <p className="text-xs text-muted-foreground">
+        import {"{ CheckGroupPicker }"} from "@/components/shared/check-group-picker"
+      </p>
+      <div className="grid gap-4 sm:grid-cols-2 max-w-2xl">
+        <div className="space-y-2">
+          <Label>Check group</Label>
+          <CheckGroupPicker
+            org={org}
+            value={groupUid}
+            selectedLabel={groupLabel}
+            onChange={(uid, group) => {
+              setGroupUid(uid);
+              setGroupLabel(group ? group.name : undefined);
+            }}
+          />
+        </div>
+      </div>
+    </Section>
+  );
+}
+
 function TokenChipsInputSection() {
   const [valid, setValid] = useState<string[]>(["ops@example.com"]);
   const [withInvalid, setWithInvalid] = useState<string[]>([
@@ -2237,12 +2329,13 @@ function TokenChipsInputSection() {
 
 function JobsPrimitivesSection() {
   const [tab, setTab] = useState("first");
+  const [segmented, setSegmented] = useState("first");
 
   return (
     <Section
       id="jobs-primitives"
       title="Jobs primitives"
-      description="Building blocks for the admin Jobs observability page: compact stat tiles for the activity overview, in-page Tabs (dependency-free), and a read-only JSON viewer for config/output blocks."
+      description="Building blocks for the admin Jobs observability page: compact stat tiles for the activity overview, in-page Tabs (dependency-free), a two-way segmented Button toggle, and a read-only JSON viewer for config/output blocks."
     >
       <div className="space-y-2">
         <h3 className="text-sm font-medium">Stat tile</h3>
@@ -2274,6 +2367,36 @@ function JobsPrimitivesSection() {
             <div className="rounded-md border bg-card p-4 text-sm">Second panel</div>
           </TabsContent>
         </Tabs>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Segmented toggle (two-way view switch)</h3>
+        <p className="text-xs text-muted-foreground">
+          Two ghost/secondary Buttons in a bordered pill — the pattern used for
+          the jobs page's org-scope toggle and the checks index's "Group by"
+          view switch. When the toggle is a page's primary navigation (like a
+          view mode), drive it from a URL search param and push a history
+          entry on change (see tech note on frontend URL state); use{" "}
+          <code>replace: true</code> instead for incidental refinements.
+        </p>
+        <div className="inline-flex rounded-lg border p-0.5" role="group">
+          <Button
+            size="sm"
+            variant={segmented === "first" ? "secondary" : "ghost"}
+            onClick={() => setSegmented("first")}
+            aria-pressed={segmented === "first"}
+          >
+            Groups
+          </Button>
+          <Button
+            size="sm"
+            variant={segmented === "second" ? "secondary" : "ghost"}
+            onClick={() => setSegmented("second")}
+            aria-pressed={segmented === "second"}
+          >
+            Host
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-2">

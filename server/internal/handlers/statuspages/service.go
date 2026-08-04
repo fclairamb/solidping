@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -33,6 +34,12 @@ var (
 	ErrStatusPageSectionNotFound = errors.New("status page section not found")
 	// ErrCheckNotFound is returned when a check is not found.
 	ErrCheckNotFound = errors.New("check not found")
+	// ErrCheckGroupNotFound is returned when a check group is not found.
+	ErrCheckGroupNotFound = errors.New("check group not found")
+	// ErrResourceTargetInvalid is returned when a resource write sets zero or
+	// both of checkUid / checkGroupUid. A resource targets exactly one of them
+	// (spec 2026-08-01-03), mirroring the database's XOR check constraint.
+	ErrResourceTargetInvalid = errors.New("exactly one of checkUid or checkGroupUid must be set")
 	// ErrSlugConflict is returned when a slug already exists.
 	ErrSlugConflict = errors.New("slug already exists")
 	// ErrInvalidSlugFormat is returned when a slug has an invalid format.
@@ -44,7 +51,44 @@ var (
 	// does not exactly match the section's current resources (missing,
 	// extra, or duplicate UIDs).
 	ErrReorderUIDsMismatch = errors.New("reorder uids do not match the section's resources")
+	// ErrCustomCSSTooLarge is returned when customCss exceeds MaxCustomCSSBytes.
+	ErrCustomCSSTooLarge = errors.New("custom css is too large")
+	// ErrCustomCSSImport is returned when customCss contains an @import rule.
+	ErrCustomCSSImport = errors.New("custom css must not contain @import")
 )
+
+// MaxCustomCSSBytes caps a status page's custom stylesheet. 64 KB is far more
+// than a re-theme needs (the whole status0 variable set is a few hundred
+// bytes) while keeping the value cheap to store and to ship on every public
+// page render.
+const MaxCustomCSSBytes = 64 * 1024
+
+// validateCustomCSS enforces the two write-side rules on a custom stylesheet:
+// a 64 KB cap, and no @import — which would let the page chain arbitrary
+// third-party stylesheets (and, through them, fetch-on-render URLs) beyond
+// what the operator actually reviewed. External url() references (web fonts,
+// background images) stay deliberately allowed: the page admin is trusted for
+// their own public page, and blocking them would make the feature useless.
+// A nil pointer (field omitted) is valid.
+func validateCustomCSS(css *string) error {
+	if css == nil {
+		return nil
+	}
+
+	if len(*css) > MaxCustomCSSBytes {
+		return ErrCustomCSSTooLarge
+	}
+
+	// Case-insensitive, position-independent: "@IMPORT", a mid-file
+	// "\n  @import", and an in-comment one are all rejected. Being stricter
+	// than the CSS grammar is intentional — there is no legitimate reason for
+	// the substring to appear in a status-page theme.
+	if strings.Contains(strings.ToLower(*css), "@import") {
+		return ErrCustomCSSImport
+	}
+
+	return nil
+}
 
 func validateSlug(slug string) error {
 	if slug == "" {
@@ -87,6 +131,37 @@ type Service struct {
 	verifier *domainverify.Verifier
 	// verifyLimiter throttles the synchronous verify-now endpoint per org.
 	verifyLimiter *verifyRateLimiter
+	// certStatus reports the in-server-ACME certificate state for a custom
+	// domain. nil when in-server TLS is off (self-hosted behind an external
+	// proxy, or acme.enabled = false), in which case the response simply omits
+	// customDomainCertStatus.
+	certStatus CertStatusProvider
+	// analytics receives the status_page_published product event. Injectable
+	// for tests: nil means "use the process-wide client" (the no-op unless
+	// PostHog is configured), while a test attaches its OWN recorder here.
+	//
+	// This is deliberately per-Service rather than a swapped-out global. Every
+	// test that creates or updates a status page goes through a capture path,
+	// so a shared mutable global made any two such tests collide under
+	// t.Parallel() — one test's events landing in another's assertions. Per
+	// spec 2026-08-02-08's own convention, that is a bug to design out, not a
+	// flake to re-run past.
+	analytics analytics.Client
+}
+
+// CertStatusProvider reports the TLS certificate state of a custom domain so
+// the dashboard can explain why HTTPS is not live yet. Implemented by
+// internal/tlsedge; injected via Service.SetCertStatusProvider to keep this
+// package free of a certmagic dependency.
+type CertStatusProvider interface {
+	// CertStatus returns "issued", "error" or "none" for a (normalized) domain.
+	CertStatus(domain string) string
+}
+
+// SetCertStatusProvider wires the in-server ACME edge into the custom-domain
+// responses. Safe to skip entirely — a nil provider just omits the field.
+func (s *Service) SetCertStatusProvider(provider CertStatusProvider) {
+	s.certStatus = provider
 }
 
 // NewService creates a new status pages service. cfg may be nil (e.g. the MCP
@@ -133,27 +208,36 @@ type StatusUpdatePublicResponse struct {
 
 // StatusPageResponse represents a status page in API responses.
 type StatusPageResponse struct {
-	UID              string                       `json:"uid"`
-	Name             string                       `json:"name"`
-	Slug             string                       `json:"slug"`
-	Description      *string                      `json:"description,omitempty"`
-	Visibility       string                       `json:"visibility"`
-	IsDefault        bool                         `json:"isDefault"`
-	Enabled          bool                         `json:"enabled"`
-	ShowAvailability bool                         `json:"showAvailability"`
-	ShowResponseTime bool                         `json:"showResponseTime"`
-	HistoryDays      int                          `json:"historyDays"`
-	HistoryPeriod    string                       `json:"historyPeriod"`
-	Language         *string                      `json:"language,omitempty"`
-	Sections         []StatusPageSectionResponse  `json:"sections,omitempty"`
-	RecentUpdates    []StatusUpdatePublicResponse `json:"recentUpdates,omitempty"`
-	CreatedAt        *time.Time                   `json:"createdAt,omitempty"`
+	UID              string  `json:"uid"`
+	Name             string  `json:"name"`
+	Slug             string  `json:"slug"`
+	Description      *string `json:"description,omitempty"`
+	Visibility       string  `json:"visibility"`
+	IsDefault        bool    `json:"isDefault"`
+	Enabled          bool    `json:"enabled"`
+	ShowAvailability bool    `json:"showAvailability"`
+	ShowResponseTime bool    `json:"showResponseTime"`
+	HistoryDays      int     `json:"historyDays"`
+	HistoryPeriod    string  `json:"historyPeriod"`
+	Language         *string `json:"language,omitempty"`
+	// CustomCSS is the operator-authored stylesheet the public page injects as
+	// a <style> text node. Unlike the custom-domain fields below it is set on
+	// the PUBLIC responses too — status0 is its only consumer.
+	CustomCSS     *string                      `json:"customCss,omitempty"`
+	Sections      []StatusPageSectionResponse  `json:"sections,omitempty"`
+	RecentUpdates []StatusUpdatePublicResponse `json:"recentUpdates,omitempty"`
+	CreatedAt     *time.Time                   `json:"createdAt,omitempty"`
 	// Custom-domain fields are populated ONLY on the authenticated org
 	// endpoints (see enrichCustomDomain); the public ViewStatusPage path never
 	// sets them, so a custom domain and its challenge token never leak publicly.
 	CustomDomain        *string               `json:"customDomain,omitempty"`
 	CustomDomainStatus  string                `json:"customDomainStatus,omitempty"`
 	CustomDomainRecords []domainverify.Record `json:"customDomainRecords,omitempty"`
+	// CustomDomainCertStatus is the in-server-ACME certificate state:
+	// "none" (nothing issued yet), "issued", or "error" (last issuance
+	// attempt failed — see the server log for the reason). Empty when
+	// in-server TLS is disabled or the domain is not verified yet.
+	CustomDomainCertStatus string `json:"customDomainCertStatus,omitempty"`
 }
 
 // StatusPageSectionResponse represents a section in API responses.
@@ -166,26 +250,39 @@ type StatusPageSectionResponse struct {
 	CreatedAt *time.Time                   `json:"createdAt,omitempty"`
 }
 
-// StatusPageResourceResponse represents a resource in API responses.
+// StatusPageResourceResponse represents a resource in API responses. Exactly
+// one of CheckUID / CheckGroupUID is set (spec 2026-08-01-03).
 type StatusPageResourceResponse struct {
-	UID          string                    `json:"uid"`
-	CheckUID     string                    `json:"checkUid"`
-	PublicName   *string                   `json:"publicName,omitempty"`
-	Explanation  *string                   `json:"explanation,omitempty"`
-	Position     int                       `json:"position"`
-	Check        *ResourceCheckInfo        `json:"check,omitempty"`
-	Availability *ResourceAvailabilityData `json:"availability,omitempty"`
-	CreatedAt    *time.Time                `json:"createdAt,omitempty"`
+	UID string `json:"uid"`
+	// CheckUID is set when the resource targets an individual check.
+	CheckUID *string `json:"checkUid,omitempty"`
+	// CheckGroupUID is set when the resource targets a check group, rendered as
+	// one aggregated component. It is an opaque UUID and reveals no topology,
+	// so it is carried on the public payload too — unlike the group's members,
+	// which are never exposed.
+	CheckGroupUID *string                   `json:"checkGroupUid,omitempty"`
+	PublicName    *string                   `json:"publicName,omitempty"`
+	Explanation   *string                   `json:"explanation,omitempty"`
+	Position      int                       `json:"position"`
+	Check         *ResourceCheckInfo        `json:"check,omitempty"`
+	Availability  *ResourceAvailabilityData `json:"availability,omitempty"`
+	CreatedAt     *time.Time                `json:"createdAt,omitempty"`
 }
 
-// ResourceCheckInfo contains live check data for a resource.
+// ResourceCheckInfo contains live data for a resource. For a group resource it
+// carries the GROUP's name and its rolled-up status; Type is deliberately left
+// empty (a "group" type string would itself hint that the component aggregates
+// several probes), and no member name, type or count ever appears here.
 type ResourceCheckInfo struct {
-	Name   *string `json:"name,omitempty"`
-	Type   string  `json:"type"`
-	Status string  `json:"status"`
-	// InMaintenance is true when the check is inside an active maintenance
-	// window at request time, so the public page can show a "Scheduled
-	// Maintenance" badge instead of a raw up/down state.
+	Name *string `json:"name,omitempty"`
+	// Type is the check type ("http", "tcp", …) for a check resource, and empty
+	// for a group resource — strict topology hiding (spec 2026-08-01-03).
+	Type   string `json:"type"`
+	Status string `json:"status"`
+	// InMaintenance is true when the check — or, for a group resource, the group
+	// or any of its members — is inside an active maintenance window at request
+	// time, so the public page can show a "Scheduled Maintenance" badge instead
+	// of a raw up/down state.
 	InMaintenance bool `json:"inMaintenance"`
 }
 
@@ -237,6 +334,9 @@ type CreateStatusPageRequest struct {
 	HistoryDays      *int    `json:"historyDays,omitempty"`
 	HistoryPeriod    *string `json:"historyPeriod,omitempty"`
 	Language         *string `json:"language,omitempty"`
+	// CustomCSS optionally sets the page's custom stylesheet at create time.
+	// Max 64 KB, no @import (see validateCustomCSS).
+	CustomCSS *string `json:"customCss,omitempty"`
 	// CustomDomain optionally sets a custom domain on the new page (a non-empty
 	// value generates a token; empty/nil means no domain). Verification still
 	// happens afterward via the verify endpoint.
@@ -256,6 +356,10 @@ type UpdateStatusPageRequest struct {
 	HistoryDays      *int    `json:"historyDays,omitempty"`
 	HistoryPeriod    *string `json:"historyPeriod,omitempty"`
 	Language         *string `json:"language,omitempty"`
+	// CustomCSS sets, replaces or clears the page's custom stylesheet: an empty
+	// string clears the column, an omitted field leaves it untouched. Max
+	// 64 KB, no @import (see validateCustomCSS).
+	CustomCSS *string `json:"customCss,omitempty"`
 	// CustomDomain sets/changes/clears the page's custom domain. A non-empty
 	// value sets it (generating a fresh token); null or "" clears it. Whether
 	// the key was present at all is carried in CustomDomainSet (presence
@@ -280,19 +384,29 @@ type UpdateSectionRequest struct {
 	Position *int    `json:"position,omitempty"`
 }
 
-// CreateResourceRequest represents a request to add a check to a section.
+// CreateResourceRequest represents a request to add a check OR a check group to
+// a section. Exactly one of CheckUID / CheckGroupUID must be set (spec
+// 2026-08-01-03).
 type CreateResourceRequest struct {
-	CheckUID    string  `json:"checkUid"`
-	PublicName  *string `json:"publicName,omitempty"`
-	Explanation *string `json:"explanation,omitempty"`
-	Position    *int    `json:"position,omitempty"`
+	// CheckUID is a check UID or slug. Mutually exclusive with CheckGroupUID.
+	CheckUID string `json:"checkUid"`
+	// CheckGroupUID is a check group UID or slug. Mutually exclusive with
+	// CheckUID. A group resource renders as one aggregated public component.
+	CheckGroupUID string  `json:"checkGroupUid"`
+	PublicName    *string `json:"publicName,omitempty"`
+	Explanation   *string `json:"explanation,omitempty"`
+	Position      *int    `json:"position,omitempty"`
 }
 
-// UpdateResourceRequest represents a request to update a resource.
+// UpdateResourceRequest represents a request to update a resource. Supplying
+// CheckUID or CheckGroupUID switches the resource's target kind; supplying both
+// is a validation error, supplying neither leaves the target untouched.
 type UpdateResourceRequest struct {
-	PublicName  *string `json:"publicName,omitempty"`
-	Explanation *string `json:"explanation,omitempty"`
-	Position    *int    `json:"position,omitempty"`
+	CheckUID      *string `json:"checkUid,omitempty"`
+	CheckGroupUID *string `json:"checkGroupUid,omitempty"`
+	PublicName    *string `json:"publicName,omitempty"`
+	Explanation   *string `json:"explanation,omitempty"`
+	Position      *int    `json:"position,omitempty"`
 }
 
 // --- Options ---
@@ -357,6 +471,12 @@ func applyCreateFields(page *models.StatusPage, req *CreateStatusPageRequest) {
 	if req.Language != nil {
 		page.Language = req.Language
 	}
+
+	// An empty stylesheet is "no stylesheet": leave the column NULL rather than
+	// storing '', matching the update path's clear semantics.
+	if req.CustomCSS != nil && *req.CustomCSS != "" {
+		page.CustomCSS = req.CustomCSS
+	}
 }
 
 // daysForPeriod returns a back-compat history_days count for a period enum.
@@ -394,6 +514,10 @@ func (s *Service) CreateStatusPage(
 		return StatusPageResponse{}, errPeriod
 	}
 
+	if errCSS := validateCustomCSS(req.CustomCSS); errCSS != nil {
+		return StatusPageResponse{}, errCSS
+	}
+
 	// Check slug conflict
 	existing, err := s.db.GetStatusPageBySlug(ctx, org.UID, req.Slug)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -420,6 +544,13 @@ func (s *Service) CreateStatusPage(
 	if errCreate := s.db.CreateStatusPage(ctx, page); errCreate != nil {
 		return StatusPageResponse{}, errCreate
 	}
+
+	// Product analytics (spec 2026-08-02-08). Captured at the SERVICE layer,
+	// not in the REST handler: the MCP create-status-page tool
+	// (internal/mcp/tools_statuspages.go) calls this method directly, so a
+	// handler-level capture would silently miss every MCP-created page. Same
+	// reasoning as the update path's capturePublishTransition.
+	s.capturePublishTransition(ctx, org.UID, nil, page)
 
 	page, err = s.applyCreateCustomDomain(ctx, org.UID, page, req)
 	if err != nil {
@@ -472,15 +603,8 @@ func (s *Service) GetStatusPage(
 			return StatusPageResponse{}, err
 		}
 
-		// Enrich resources with live check data
-		for i := range sections {
-			for j := range sections[i].Resources {
-				checkInfo, infoErr := s.getCheckInfo(ctx, org.UID, sections[i].Resources[j].CheckUID)
-				if infoErr == nil {
-					sections[i].Resources[j].Check = checkInfo
-				}
-			}
-		}
+		// Enrich resources with live check / group data
+		s.enrichResourceInfo(ctx, org.UID, sections)
 
 		response.Sections = sections
 	}
@@ -510,6 +634,10 @@ func (s *Service) UpdateStatusPage(
 		return StatusPageResponse{}, errPeriod
 	}
 
+	if errCSS := validateCustomCSS(req.CustomCSS); errCSS != nil {
+		return StatusPageResponse{}, errCSS
+	}
+
 	// Handle default toggle
 	if req.IsDefault != nil && *req.IsDefault && !page.IsDefault {
 		if errClear := s.clearDefaultStatusPage(ctx, org.UID); errClear != nil {
@@ -529,6 +657,7 @@ func (s *Service) UpdateStatusPage(
 		HistoryDays:      req.HistoryDays,
 		HistoryPeriod:    req.HistoryPeriod,
 		Language:         req.Language,
+		CustomCSS:        req.CustomCSS,
 	}
 
 	// The period enum is the source of truth; keep history_days in sync for
@@ -551,7 +680,15 @@ func (s *Service) UpdateStatusPage(
 		return StatusPageResponse{}, err
 	}
 
+	s.capturePublishTransition(ctx, org.UID, page, updated)
+
 	return s.finalizeCustomDomainUpdate(ctx, org.UID, updated, req)
+}
+
+// isPublished reports whether a status page is live and world-readable, which
+// is what "published" means for the status_page_published product event.
+func isPublished(page *models.StatusPage) bool {
+	return page != nil && page.Enabled && page.Visibility == visibilityPublic
 }
 
 // finalizeCustomDomainUpdate applies the custom-domain set/clear (a separate
@@ -794,7 +931,39 @@ func (s *Service) ListResources(
 	return responses, nil
 }
 
-// CreateResource adds a check to a section.
+// resolveResourceTarget validates the checkUid-XOR-checkGroupUid pair on a
+// resource write and resolves the supplied identifier (UID or slug) to a
+// canonical UID. Exactly one of the two must be non-empty; zero or both is
+// ErrResourceTargetInvalid, whose message names both fields (spec
+// 2026-08-01-03). Returns (checkUID, checkGroupUID) with exactly one set.
+func (s *Service) resolveResourceTarget(
+	ctx context.Context, orgUID, checkIdentifier, groupIdentifier string,
+) (*string, *string, error) {
+	hasCheck := checkIdentifier != ""
+	hasGroup := groupIdentifier != ""
+
+	if hasCheck == hasGroup {
+		return nil, nil, ErrResourceTargetInvalid
+	}
+
+	if hasCheck {
+		check, err := s.db.GetCheckByUidOrSlug(ctx, orgUID, checkIdentifier)
+		if err != nil || check == nil {
+			return nil, nil, ErrCheckNotFound
+		}
+
+		return &check.UID, nil, nil
+	}
+
+	group, err := s.db.GetCheckGroupByUidOrSlug(ctx, orgUID, groupIdentifier)
+	if err != nil || group == nil {
+		return nil, nil, ErrCheckGroupNotFound
+	}
+
+	return nil, &group.UID, nil
+}
+
+// CreateResource adds a check or a check group to a section.
 func (s *Service) CreateResource(
 	ctx context.Context, orgSlug, pageIdentifier, sectionIdentifier string, req CreateResourceRequest,
 ) (StatusPageResourceResponse, error) {
@@ -813,10 +982,10 @@ func (s *Service) CreateResource(
 		return StatusPageResourceResponse{}, err
 	}
 
-	// Verify the check exists in this org
-	check, err := s.db.GetCheckByUidOrSlug(ctx, org.UID, req.CheckUID)
-	if err != nil || check == nil {
-		return StatusPageResourceResponse{}, ErrCheckNotFound
+	// Verify the target exists in this org, and that exactly one kind was given.
+	checkUID, groupUID, err := s.resolveResourceTarget(ctx, org.UID, req.CheckUID, req.CheckGroupUID)
+	if err != nil {
+		return StatusPageResourceResponse{}, err
 	}
 
 	position, err := s.resolveResourcePosition(ctx, section.UID, req.Position)
@@ -824,7 +993,13 @@ func (s *Service) CreateResource(
 		return StatusPageResourceResponse{}, err
 	}
 
-	resource := models.NewStatusPageResource(section.UID, check.UID, position)
+	var resource *models.StatusPageResource
+	if checkUID != nil {
+		resource = models.NewStatusPageResource(section.UID, *checkUID, position)
+	} else {
+		resource = models.NewStatusPageGroupResource(section.UID, *groupUID, position)
+	}
+
 	resource.PublicName = req.PublicName
 	resource.Explanation = req.Explanation
 
@@ -835,14 +1010,21 @@ func (s *Service) CreateResource(
 	return convertResourceToResponse(resource), nil
 }
 
-// UpdateResource updates a resource.
+// UpdateResource updates a resource. Supplying checkUid or checkGroupUid
+// switches the target kind; supplying both is a validation error and supplying
+// neither leaves the target untouched.
 func (s *Service) UpdateResource(
 	ctx context.Context, orgSlug, pageIdentifier, sectionIdentifier, resourceUID string,
 	req UpdateResourceRequest,
 ) (StatusPageResourceResponse, error) {
-	page, err := s.resolveStatusPage(ctx, orgSlug, pageIdentifier)
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
-		return StatusPageResourceResponse{}, err
+		return StatusPageResourceResponse{}, ErrOrganizationNotFound
+	}
+
+	page, err := s.db.GetStatusPageByUidOrSlug(ctx, org.UID, pageIdentifier)
+	if err != nil || page == nil {
+		return StatusPageResourceResponse{}, ErrStatusPageNotFound
 	}
 
 	section, err := s.resolveSection(ctx, page.UID, sectionIdentifier)
@@ -854,6 +1036,19 @@ func (s *Service) UpdateResource(
 		PublicName:  req.PublicName,
 		Explanation: req.Explanation,
 		Position:    req.Position,
+	}
+
+	if req.CheckUID != nil || req.CheckGroupUID != nil {
+		checkUID, groupUID, errTarget := s.resolveResourceTarget(
+			ctx, org.UID, derefOrEmpty(req.CheckUID), derefOrEmpty(req.CheckGroupUID),
+		)
+		if errTarget != nil {
+			return StatusPageResourceResponse{}, errTarget
+		}
+
+		update.SetTarget = true
+		update.CheckUID = checkUID
+		update.CheckGroupUID = groupUID
 	}
 
 	if errUpdate := s.db.UpdateStatusPageResource(ctx, resourceUID, &update); errUpdate != nil {
@@ -966,8 +1161,6 @@ func (s *Service) DeleteResource(
 // --- Public view ---
 
 // ViewStatusPage returns a public view of a status page with sections, resources, and live check status.
-//
-//nolint:cyclop // building the composite response requires checking many optional fields
 func (s *Service) ViewStatusPage(
 	ctx context.Context, orgSlug, slug string,
 ) (StatusPageResponse, error) {
@@ -981,7 +1174,7 @@ func (s *Service) ViewStatusPage(
 		return StatusPageResponse{}, ErrStatusPageNotFound
 	}
 
-	if !page.Enabled || page.Visibility != "public" {
+	if !page.Enabled || page.Visibility != visibilityPublic {
 		return StatusPageResponse{}, ErrStatusPageNotFound
 	}
 
@@ -992,15 +1185,8 @@ func (s *Service) ViewStatusPage(
 		return StatusPageResponse{}, err
 	}
 
-	// Enrich resources with live check data
-	for i := range sections {
-		for j := range sections[i].Resources {
-			checkInfo, checkErr := s.getCheckInfo(ctx, org.UID, sections[i].Resources[j].CheckUID)
-			if checkErr == nil {
-				sections[i].Resources[j].Check = checkInfo
-			}
-		}
-	}
+	// Enrich resources with live check / group data
+	s.enrichResourceInfo(ctx, org.UID, sections)
 
 	// Enrich resources with availability data
 	if page.ShowAvailability || page.ShowResponseTime {
@@ -1095,16 +1281,99 @@ func pagePeriod(page *models.StatusPage) models.StatusPagePeriod {
 	return models.PeriodFromDays(page.HistoryDays)
 }
 
+// resourceMembers is the expansion of every resource on a page into the check
+// UIDs whose results back it: one UID for a check resource, and the group's
+// enabled non-deleted members for a group resource (spec 2026-08-01-03). It is
+// keyed by resource UID.
+type resourceMembers map[string][]string
+
+// expandResourceMembers builds the resource → member check UIDs map and the
+// deduplicated union of every check UID involved, so the whole page still costs
+// exactly ONE uptimebar.BucketAvailability query. A group whose members can't
+// be listed simply expands to nothing and renders as "no data" rather than
+// failing the page.
+func (s *Service) expandResourceMembers(
+	ctx context.Context, orgUID string, sections []StatusPageSectionResponse,
+) (resourceMembers, []string) {
+	members := make(resourceMembers)
+	seen := make(map[string]struct{})
+
+	var union []string
+
+	add := func(uid string) {
+		if _, dup := seen[uid]; dup {
+			return
+		}
+
+		seen[uid] = struct{}{}
+		union = append(union, uid)
+	}
+
+	for i := range sections {
+		for j := range sections[i].Resources {
+			resource := &sections[i].Resources[j]
+
+			switch {
+			case resource.CheckGroupUID != nil:
+				uids, err := s.db.ListCheckUIDsByGroup(ctx, orgUID, *resource.CheckGroupUID)
+				if err != nil {
+					slog.ErrorContext(ctx, "Failed to list check group members for status page",
+						"error", err, "orgUID", orgUID, "checkGroupUID", *resource.CheckGroupUID)
+
+					continue
+				}
+
+				members[resource.UID] = uids
+
+				for _, uid := range uids {
+					add(uid)
+				}
+			case resource.CheckUID != nil:
+				members[resource.UID] = []string{*resource.CheckUID}
+
+				add(*resource.CheckUID)
+			}
+		}
+	}
+
+	return members, union
+}
+
+// mergeBuckets sums the per-bucket stats of several checks into one series.
+// Summing Up and Total (rather than averaging percentages) is exactly the
+// weighted average the single-check path already computes — sum of successful
+// over sum of total — so a group and a check share one formula. A member with
+// no rows in a bucket contributes nothing to that bucket, which is not the same
+// as contributing zero.
+func mergeBuckets(
+	bucketsByCheck map[string]map[time.Time]uptimebar.BucketStats, checkUIDs []string,
+) map[time.Time]uptimebar.BucketStats {
+	if len(checkUIDs) == 1 {
+		return bucketsByCheck[checkUIDs[0]]
+	}
+
+	merged := make(map[time.Time]uptimebar.BucketStats)
+
+	for _, checkUID := range checkUIDs {
+		byBucket := bucketsByCheck[checkUID]
+		for bucket := range byBucket {
+			stats := byBucket[bucket]
+			acc := merged[bucket]
+			acc.Up += stats.Up
+			acc.Total += stats.Total
+			acc.DurCnt += stats.DurCnt
+			acc.DurSum += stats.DurSum
+			merged[bucket] = acc
+		}
+	}
+
+	return merged
+}
+
 func (s *Service) enrichWithAvailability(
 	ctx context.Context, orgUID string, page *models.StatusPage, sections []StatusPageSectionResponse,
 ) {
-	// Collect all check UIDs
-	var checkUIDs []string
-	for i := range sections {
-		for j := range sections[i].Resources {
-			checkUIDs = append(checkUIDs, sections[i].Resources[j].CheckUID)
-		}
-	}
+	members, checkUIDs := s.expandResourceMembers(ctx, orgUID, sections)
 
 	if len(checkUIDs) == 0 {
 		return
@@ -1113,7 +1382,7 @@ func (s *Service) enrichWithAvailability(
 	// 24h renders 24 hourly buckets — a separate code path from the daily mode,
 	// mirroring the badges period=24h hourly bucketing.
 	if pagePeriod(page).IsHourly() {
-		s.enrichHourly(ctx, orgUID, page, sections, checkUIDs)
+		s.enrichHourly(ctx, orgUID, page, sections, members, checkUIDs)
 
 		return
 	}
@@ -1144,16 +1413,34 @@ func (s *Service) enrichWithAvailability(
 
 	for i := range sections {
 		for j := range sections[i].Resources {
-			checkUID := sections[i].Resources[j].CheckUID
+			resource := &sections[i].Resources[j]
+			memberUIDs := members[resource.UID]
 			availData := buildAvailabilityData(
-				bucketsByCheck[checkUID], recentByCheck[checkUID],
+				mergeBuckets(bucketsByCheck, memberUIDs), resourceRecentResults(recentByCheck, resource, memberUIDs),
 				todayStart, page.HistoryDays, page.ShowAvailability, page.ShowResponseTime,
 			)
 			availData.Period = period
 			availData.BucketUnit = models.PeriodTypeDay
-			sections[i].Resources[j].Availability = availData
+			resource.Availability = availData
 		}
 	}
+}
+
+// resourceRecentResults returns the response-time series for a resource.
+//
+// A GROUP resource gets NO series: interleaving several members' p95 points
+// into one chart produces a meaningless plot, and it would publish per-member
+// latency — the one thing a group component exists to hide. The aggregated
+// availability bar is the group's public performance surface (spec
+// 2026-08-01-03).
+func resourceRecentResults(
+	recentByCheck map[string][]*models.Result, resource *StatusPageResourceResponse, memberUIDs []string,
+) []*models.Result {
+	if resource.CheckGroupUID != nil || len(memberUIDs) != 1 {
+		return nil
+	}
+
+	return recentByCheck[memberUIDs[0]]
 }
 
 // fetchRecentResults loads the last responseTimeLimit results per check (any
@@ -1204,7 +1491,7 @@ const hourlyBucketCount = 24
 // rollup lags by RetentionRaw) is filled from raw rather than reading "No data".
 func (s *Service) enrichHourly(
 	ctx context.Context, orgUID string, page *models.StatusPage,
-	sections []StatusPageSectionResponse, checkUIDs []string,
+	sections []StatusPageSectionResponse, members resourceMembers, checkUIDs []string,
 ) {
 	now := time.Now().UTC()
 	// The newest of the 24 buckets is the current, in-progress hour; the oldest is
@@ -1225,14 +1512,16 @@ func (s *Service) enrichHourly(
 
 	for i := range sections {
 		for j := range sections[i].Resources {
-			checkUID := sections[i].Resources[j].CheckUID
+			resource := &sections[i].Resources[j]
+			memberUIDs := members[resource.UID]
 			availData := buildHourlyAvailabilityData(
-				bucketsByCheck[checkUID], recentByCheck[checkUID], bucketStart,
+				mergeBuckets(bucketsByCheck, memberUIDs),
+				resourceRecentResults(recentByCheck, resource, memberUIDs), bucketStart,
 				page.ShowAvailability, page.ShowResponseTime,
 			)
 			availData.Period = string(models.StatusPagePeriod24h)
 			availData.BucketUnit = models.PeriodTypeHour
-			sections[i].Resources[j].Availability = availData
+			resource.Availability = availData
 		}
 	}
 }
@@ -1379,18 +1668,28 @@ func buildResponseTimeData(recentResults []*models.Result) []ResponseTimePoint {
 	return rtData
 }
 
-// statusNoData is the availability-point status for a bucket that has no rows in
-// the shared raw+hour+day union — the front end renders it gray.
-const statusNoData = "noData"
+// The public status vocabulary. Both the live per-resource status (check or
+// rolled-up group) and the per-bucket availability status are spoken in these
+// words, so the front end has a single set of values to render.
+const (
+	// statusNoData is the availability-point status for a bucket that has no
+	// rows in the shared raw+hour+day union — the front end renders it gray.
+	statusNoData    = "noData"
+	statusCreated   = "created"
+	statusUp        = "up"
+	statusWarning   = "warning"
+	statusDegraded  = "degraded"
+	statusDownValue = "down"
+)
 
 func availabilityToStatus(pct float64) string {
 	switch {
 	case pct >= 99.9:
-		return "up"
+		return statusUp
 	case pct >= 99.0:
-		return "degraded"
+		return statusDegraded
 	default:
-		return "down"
+		return statusDownValue
 	}
 }
 
@@ -1499,33 +1798,93 @@ func (s *Service) loadSectionsWithResources(
 	return responses, nil
 }
 
-func (s *Service) getCheckInfo(ctx context.Context, orgUID, checkUID string) (*ResourceCheckInfo, error) {
-	check, err := s.db.GetCheck(ctx, orgUID, checkUID)
-	if err != nil {
-		return nil, err
+// enrichResourceInfo fills each resource's Check block with live data: a check
+// resource gets its check's own status, a group resource gets the group's
+// rolled-up status (spec 2026-08-01-03). The per-group status counts are read
+// ONCE per page rather than per resource. A lookup failure leaves Check nil,
+// exactly as before — a broken target must never take the page down.
+func (s *Service) enrichResourceInfo(
+	ctx context.Context, orgUID string, sections []StatusPageSectionResponse,
+) {
+	var groupCounts map[string]map[models.CheckStatus]int
+
+	if pageHasGroupResource(sections) {
+		counts, err := s.db.GetCheckGroupStatusCounts(ctx, orgUID)
+		if err != nil {
+			slog.ErrorContext(ctx, "Failed to load check group status counts for status page",
+				"error", err, "orgUID", orgUID)
+		} else {
+			groupCounts = counts
+		}
 	}
 
-	statusStr := "created"
+	for i := range sections {
+		for j := range sections[i].Resources {
+			resource := &sections[i].Resources[j]
 
-	switch check.Status {
+			switch {
+			case resource.CheckGroupUID != nil:
+				info, err := s.getGroupInfo(ctx, orgUID, *resource.CheckGroupUID, groupCounts)
+				if err == nil {
+					resource.Check = info
+				}
+			case resource.CheckUID != nil:
+				info, err := s.getCheckInfo(ctx, orgUID, *resource.CheckUID)
+				if err == nil {
+					resource.Check = info
+				}
+			}
+		}
+	}
+}
+
+// pageHasGroupResource reports whether any resource on the page targets a check
+// group, so the group status-counts query is skipped entirely on the (common)
+// check-only page.
+func pageHasGroupResource(sections []StatusPageSectionResponse) bool {
+	for i := range sections {
+		for j := range sections[i].Resources {
+			if sections[i].Resources[j].CheckGroupUID != nil {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// publicCheckStatus maps an internal check status onto the vocabulary the
+// public status page renders. It is shared by the check and the group path so
+// a group's rolled-up status is spoken in exactly the same words as a check's.
+func publicCheckStatus(status models.CheckStatus) string {
+	switch status {
 	case models.CheckStatusCreated:
-		statusStr = "created"
+		return statusCreated
 	case models.CheckStatusUp:
-		statusStr = "up"
+		return statusUp
 	case models.CheckStatusDown:
-		statusStr = "down"
+		return statusDownValue
 	case models.CheckStatusValidating:
 		// Validating is a transient internal state — the public status page
 		// should still read "up" until the failure is confirmed and an
 		// incident opens.
-		statusStr = "up"
+		return statusUp
 	case models.CheckStatusWarning:
 		// Live "up, but something to report" — surfaced amber on the public
 		// page (counts as up for availability, but is not hidden like
 		// validating: the operator deliberately flagged something).
-		statusStr = "warning"
+		return statusWarning
 	case models.CheckStatusDegraded:
-		statusStr = "degraded"
+		return statusDegraded
+	default:
+		return statusCreated
+	}
+}
+
+func (s *Service) getCheckInfo(ctx context.Context, orgUID, checkUID string) (*ResourceCheckInfo, error) {
+	check, err := s.db.GetCheck(ctx, orgUID, checkUID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Flag the resource as under maintenance when the check sits inside an
@@ -1534,22 +1893,62 @@ func (s *Service) getCheckInfo(ctx context.Context, orgUID, checkUID string) (*R
 	inMaintenance := false
 
 	if windows, errMW := s.db.ListMaintenanceWindowsForCheck(ctx, checkUID); errMW == nil {
-		now := time.Now()
-		for _, w := range windows {
-			if models.IsActiveAt(w, now) {
-				inMaintenance = true
-
-				break
-			}
-		}
+		inMaintenance = anyWindowActive(windows)
 	}
 
 	return &ResourceCheckInfo{
 		Name:          check.Name,
 		Type:          check.Type,
-		Status:        statusStr,
+		Status:        publicCheckStatus(check.Status),
 		InMaintenance: inMaintenance,
 	}, nil
+}
+
+// getGroupInfo builds the live block for a GROUP resource: the group's name,
+// its status rolled up from its enabled members via models.RollupGroupStatus
+// (the shared helper from spec 2026-08-01-01), and a maintenance flag that is
+// true when a window targets the group OR any member check.
+//
+// Type is deliberately left empty and no member name, type or count is ever
+// included — the whole point of a group component is hiding internal topology.
+func (s *Service) getGroupInfo(
+	ctx context.Context, orgUID, groupUID string, groupCounts map[string]map[models.CheckStatus]int,
+) (*ResourceCheckInfo, error) {
+	group, err := s.db.GetCheckGroup(ctx, orgUID, groupUID)
+	if err != nil {
+		return nil, err
+	}
+
+	if group == nil {
+		return nil, ErrCheckGroupNotFound
+	}
+
+	inMaintenance := false
+
+	if windows, errMW := s.db.ListMaintenanceWindowsForCheckGroup(ctx, groupUID); errMW == nil {
+		inMaintenance = anyWindowActive(windows)
+	}
+
+	name := group.Name
+
+	return &ResourceCheckInfo{
+		Name:          &name,
+		Type:          "",
+		Status:        publicCheckStatus(models.RollupGroupStatus(groupCounts[groupUID])),
+		InMaintenance: inMaintenance,
+	}, nil
+}
+
+// anyWindowActive reports whether any of the windows is active right now.
+func anyWindowActive(windows []*models.MaintenanceWindow) bool {
+	now := time.Now()
+	for _, w := range windows {
+		if models.IsActiveAt(w, now) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func convertPageToResponse(page *models.StatusPage) StatusPageResponse {
@@ -1566,6 +1965,7 @@ func convertPageToResponse(page *models.StatusPage) StatusPageResponse {
 		HistoryDays:      page.HistoryDays,
 		HistoryPeriod:    string(pagePeriod(page)),
 		Language:         page.Language,
+		CustomCSS:        page.CustomCSS,
 		CreatedAt:        &page.CreatedAt,
 	}
 }
@@ -1582,11 +1982,21 @@ func convertSectionToResponse(section *models.StatusPageSection) StatusPageSecti
 
 func convertResourceToResponse(resource *models.StatusPageResource) StatusPageResourceResponse {
 	return StatusPageResourceResponse{
-		UID:         resource.UID,
-		CheckUID:    resource.CheckUID,
-		PublicName:  resource.PublicName,
-		Explanation: resource.Explanation,
-		Position:    resource.Position,
-		CreatedAt:   &resource.CreatedAt,
+		UID:           resource.UID,
+		CheckUID:      resource.CheckUID,
+		CheckGroupUID: resource.CheckGroupUID,
+		PublicName:    resource.PublicName,
+		Explanation:   resource.Explanation,
+		Position:      resource.Position,
+		CreatedAt:     &resource.CreatedAt,
 	}
+}
+
+// derefOrEmpty returns the pointed-to string, or "" for a nil pointer.
+func derefOrEmpty(v *string) string {
+	if v == nil {
+		return ""
+	}
+
+	return *v
 }

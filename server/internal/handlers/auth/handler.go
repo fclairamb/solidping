@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
@@ -686,6 +687,14 @@ func (h *Handler) CreateOrg(writer http.ResponseWriter, req *http.Request) error
 	// (Login, SwitchOrg, Verify2FA, …) — CreateOrg now mints a fresh session
 	// too.
 	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
+
+	// Product analytics (spec 2026-08-02-08). No-op unless PostHog is
+	// configured. Only the UUIDs travel — never the org name or slug.
+	analytics.Capture(req.Context(), analytics.Event{
+		Name:    analytics.EventOrgCreated,
+		OrgUID:  resp.UID,
+		UserUID: claims.UserUID,
+	})
 
 	return h.WriteJSON(writer, http.StatusCreated, resp)
 }

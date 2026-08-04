@@ -23,6 +23,17 @@ const minConfigTimeout = 1 * time.Second
 // per-check timeout duration string (spec 2026-07-11-05).
 const configKeyTimeout = "timeout"
 
+// ConfigTimeoutKey, MinConfigTimeout and MaxConfigTimeout expose the uniform
+// per-check timeout contract to callers outside this package (the third-party
+// importers clamp foreign values into this range rather than letting an
+// out-of-range timeout fail the whole check on import). Aliases of the
+// unexported constants above so there is a single source of truth.
+const (
+	ConfigTimeoutKey = configKeyTimeout
+	MinConfigTimeout = minConfigTimeout
+	MaxConfigTimeout = maxConfigTimeout
+)
+
 // validateConfigTimeout enforces the uniform per-check timeout rule on a
 // check's config map: when the `timeout` key is present it must be a duration
 // string that parses to >= 1s and <= 30s. An absent (or nil) key is fine — the

@@ -1288,6 +1288,8 @@ func GetCommands() []*cli.Command {
 						&cli.StringFlag{Name: flagDescription, Usage: "Status page description"},
 						&cli.StringFlag{Name: flagVisibility, Usage: "Visibility: public or private"},
 						&cli.StringFlag{Name: flagLanguage, Usage: "Page language (e.g. en, fr)"},
+						&cli.StringFlag{Name: flagCustomCSS, Usage: "Custom CSS for the public page (max 64 KB, no @import)"},
+						&cli.StringFlag{Name: flagCustomCSSFile, Usage: "Read the custom CSS from a file"},
 						&cli.StringFlag{Name: flagHistoryPeriod, Usage: "History window: 24h, 7d, 30d, 90d"},
 						&cli.IntFlag{Name: flagHistoryDays, Usage: "History window in days (legacy)"},
 						&cli.BoolFlag{Name: flagDefault, Usage: "Mark as the default status page"},
@@ -1316,6 +1318,11 @@ func GetCommands() []*cli.Command {
 						&cli.StringFlag{Name: keySlug, Usage: usageSlug},
 						&cli.StringFlag{Name: flagDescription, Usage: "Status page description"},
 						&cli.StringFlag{Name: flagVisibility, Usage: "Visibility: public or private"},
+						&cli.StringFlag{
+							Name:  flagCustomCSS,
+							Usage: "Custom CSS for the public page (max 64 KB, no @import; empty string clears it)",
+						},
+						&cli.StringFlag{Name: flagCustomCSSFile, Usage: "Read the custom CSS from a file"},
 						&cli.StringFlag{Name: flagLanguage, Usage: "Page language (e.g. en, fr)"},
 						&cli.StringFlag{Name: flagHistoryPeriod, Usage: "History window: 24h, 7d, 30d, 90d"},
 						&cli.IntFlag{Name: flagHistoryDays, Usage: "History window in days (legacy)"},
@@ -1402,10 +1409,15 @@ func GetCommands() []*cli.Command {
 						},
 						{
 							Name:      cmdCreate,
-							Usage:     "Add a check as a resource",
+							Usage:     "Add a check, or a check group, as a resource",
 							ArgsUsage: argPageSection,
 							Flags: []cli.Flag{
-								&cli.StringFlag{Name: flagCheck, Usage: "Check UID or slug to attach", Required: true},
+								&cli.StringFlag{Name: flagCheck, Usage: "Check UID or slug to attach"},
+								&cli.StringFlag{
+									Name: flagCheckGroup,
+									Usage: "Check group UID or slug to attach as one aggregated component " +
+										"(mutually exclusive with --check)",
+								},
 								&cli.StringFlag{Name: flagPublicName, Usage: "Public display name"},
 								&cli.StringFlag{Name: flagExplanation, Usage: "Explanation shown on the page"},
 								&cli.IntFlag{Name: flagPosition, Usage: usagePosition},
@@ -1417,6 +1429,14 @@ func GetCommands() []*cli.Command {
 							Usage:     "Update a resource",
 							ArgsUsage: argPageSectionResource,
 							Flags: []cli.Flag{
+								&cli.StringFlag{
+									Name:  flagCheck,
+									Usage: "Switch the resource to target this check (UID or slug)",
+								},
+								&cli.StringFlag{
+									Name:  flagCheckGroup,
+									Usage: "Switch the resource to target this check group (UID or slug)",
+								},
 								&cli.StringFlag{Name: flagPublicName, Usage: "Public display name"},
 								&cli.StringFlag{Name: flagExplanation, Usage: "Explanation shown on the page"},
 								&cli.IntFlag{Name: flagPosition, Usage: usagePosition},

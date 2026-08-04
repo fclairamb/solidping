@@ -19,9 +19,9 @@ const (
 // IntegrationConnection.Settings shape.
 //
 // URL fields are intentionally NOT secret: webhook `url` and the
-// `webhook_url` of Discord / GoogleChat / Mattermost stay in the public
-// `settings` JSONB so the dashboard can render them on the edit form. The
-// threat model (DB-theft only, see server/CLAUDE.md) doesn't require
+// `webhook_url` of Discord / GoogleChat / Mattermost / MSTeams stay in the
+// public `settings` JSONB so the dashboard can render them on the edit form.
+// The threat model (DB-theft only, see server/CLAUDE.md) doesn't require
 // encrypting endpoint URLs.
 //
 //nolint:gochecknoglobals // registry of secret-key declarations; treated as a constant lookup table
@@ -41,6 +41,14 @@ var connectionSecretFields = map[models.ConnectionType][]string{
 	// messaging-service identifiers and recipient numbers stay public so the
 	// dashboard can render them on the edit form.
 	models.ConnectionTypeTwilio: {secretKeyAuthToken},
+	// Microsoft Teams bot: credentials normally live in system config (one
+	// Entra app per instance), so a connection's settings hold no secret in
+	// the standard flow. `app_secret` is registered anyway so that any future
+	// per-connection credential override is encrypted at rest by default
+	// rather than silently landing in the public settings JSONB. Tenant id,
+	// service URL and conversation references stay public — the dashboard
+	// renders them on the setup page.
+	models.ConnectionTypeMSTeamsBot: {"app_secret"},
 }
 
 // ConnectionSecretFields returns the secret keys for a connection type.

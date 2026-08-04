@@ -165,7 +165,7 @@ func TestMonthlyMonthEndSuppression(t *testing.T) {
 	r.NoError(dbSvc.CreateResult(ctx, result))
 	r.NoError(svc.ProcessCheckResult(ctx, check, result))
 
-	openIncidents, err := dbSvc.ListIncidents(ctx, &models.ListIncidentsFilter{OrganizationUID: org.UID})
+	openIncidents, _, err := dbSvc.ListIncidents(ctx, &models.ListIncidentsFilter{OrganizationUID: org.UID})
 	r.NoError(err)
 	r.Empty(openIncidents, "failure inside an active monthly window must be suppressed")
 }

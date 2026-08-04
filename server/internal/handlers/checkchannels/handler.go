@@ -135,6 +135,11 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 			writer, http.StatusBadRequest, base.ErrorCodeValidationError,
 			"This integration cannot receive notifications.",
 		)
+	case errors.Is(err, ErrMSTeamsBotUnknownDestination):
+		return h.WriteError(
+			writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+			"That Microsoft Teams channel is not one this bot has been added to.",
+		)
 	default:
 		return h.WriteInternalError(writer, err)
 	}

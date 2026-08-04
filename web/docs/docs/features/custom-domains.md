@@ -9,16 +9,21 @@ Serve a status page on a domain you own — `status.yourcompany.com` — instead
 the installation's own `.../status0/...` URL. This is the surface your customers
 see, so a branded hostname matters.
 
+**One CNAME record, then automatic HTTPS.** That is the whole setup.
+
 ## Overview
 
 A custom domain is:
 
 - **One per status page.** Bind a hostname to a page; the page is then served at
   the root of that host (`https://status.yourcompany.com/`).
-- **DNS-verified.** You prove ownership (a `TXT` challenge) and set up routing (a
-  `CNAME`). Both are required before the page is served.
-- **Periodically re-verified.** SolidPing re-checks the ownership record every
-  few hours and stops serving the domain if it is released or transferred.
+- **Verified with a single `CNAME`.** No second record, no TXT challenge.
+- **Automatically secured** when in-server TLS is enabled: SolidPing obtains a
+  Let's Encrypt certificate on the first HTTPS request and renews it for you.
+  If you prefer, TLS can still be terminated by your own reverse proxy — see
+  [Alternative: an external TLS proxy](#alternative-an-external-tls-proxy).
+- **Periodically re-verified.** SolidPing re-checks the `CNAME` every few hours
+  and stops serving the domain if it is released or transferred.
 
 Only **verified, enabled, public** pages are served on a custom host. Everything
 else on that host — the operator dashboard, docs, the rest of the API — returns
@@ -29,20 +34,21 @@ badges) is available on the custom host so the page is fully functional.
 
 1. **Add the domain.** Open the status page in the dashboard, find the **Custom
    domain** section, enter your hostname (e.g. `status.yourcompany.com`), and
-   save. SolidPing generates a one-time challenge token and shows you two DNS
-   records.
-2. **Create the DNS records** at your domain provider:
+   save. SolidPing shows you the one DNS record to create.
+2. **Create the `CNAME`** at your domain provider:
 
-   | Type    | Name                                       | Value                          |
-   | ------- | ------------------------------------------ | ------------------------------ |
-   | `CNAME` | `status.yourcompany.com`                   | *(your installation's target)* |
-   | `TXT`   | `_solidping-challenge.status.yourcompany.com` | `sp-domain-verify=<token>`  |
+   | Type    | Name                     | Value                          |
+   | ------- | ------------------------ | ------------------------------ |
+   | `CNAME` | `status.yourcompany.com` | *(your installation's target)* |
 
-   The exact values are shown next to each record in the dashboard, with a
+   The exact value is shown next to the record in the dashboard, with a
    copy-to-clipboard button.
-3. **Click Verify.** SolidPing checks that the `TXT` record proves ownership and
-   the `CNAME` points at the installation. Once both pass, the status chip flips
-   to **Verified** and the page starts serving on your domain.
+3. **Click Verify.** SolidPing resolves the `CNAME` and checks that it points at
+   the expected target. Once it does, the status chip flips to **Verified** and
+   the page starts serving on your domain.
+4. **Visit `https://status.yourcompany.com/`.** With in-server TLS enabled, the
+   certificate is obtained during that first request, so the very first visit
+   may take a few seconds. The dashboard then shows an **HTTPS active** chip.
 
 The `CNAME` target defaults to the host of your installation's base URL. Set it
 explicitly with `SP_CUSTOM_DOMAIN_CNAME_TARGET` (see
@@ -54,12 +60,101 @@ A `CNAME` is illegal at a zone apex (`yourcompany.com` with no subdomain). Use a
 subdomain (`status.yourcompany.com`), or an `ALIAS`/`ANAME` record if your DNS
 provider supports one that points at the same target.
 
-## TLS
+## Verification modes
 
-The Go server **does not terminate TLS or issue certificates** for custom
-domains — that stays with your edge, which keeps the server
-single-responsibility. SolidPing exposes one small contract the edge uses to
-decide whether it should obtain a certificate for an incoming hostname:
+`server.custom_domain_cname_mode` picks what the `CNAME` must point at. Both
+modes ask the customer for exactly one record.
+
+### `shared` (default)
+
+The customer points their host at the plain installation target:
+
+```
+status.yourcompany.com.  CNAME  solidping.example.com.
+```
+
+This is the simplest possible UX and matches what every hosted status-page
+product asks for.
+
+:::caution Dangling-CNAME trade-off
+Because every customer points at the *same* target, the target alone does not
+prove who owns the domain. If a customer deletes their status page but leaves
+the `CNAME` in place, another organization can claim that hostname — the global
+uniqueness constraint means whoever claims it first wins, and the previous owner
+gets a `409 Conflict` if they come back.
+
+This is acceptable for most installations. If it is not acceptable for yours,
+use `token` mode.
+:::
+
+### `token`
+
+The `CNAME` target is derived from a per-page secret:
+
+```
+status.yourcompany.com.  CNAME  spq7f3k2m6x4t7b.cname.solidping.example.com.
+```
+
+Still one record, but now the target itself proves ownership: a dangling
+`CNAME` can only ever be re-claimed by a page that holds that exact token. A
+domain verified in `token` mode does **not** verify against the plain shared
+target — there is deliberately no dual-accept, since accepting both would
+nullify the protection.
+
+:::warning Wildcard DNS requirement (token mode)
+Token mode requires the installation's own zone to answer for
+`*.cname.<your-target>`, and that wildcard **must be an `A`/`AAAA` (or `ALIAS`)
+record — never a `CNAME`.**
+
+Go's resolver returns the *canonical* (final) name of a CNAME chain. If
+`*.cname.<target>` were itself a `CNAME`, the customer's token hop would be
+invisible in the answer and verification could never match.
+:::
+
+Switching modes does not rewrite existing rows: a page picks up the new mode's
+record the next time its domain is verified, and the dashboard shows the record
+for the currently configured mode.
+
+## HTTPS
+
+### In-server (recommended)
+
+Set `SP_ACME_ENABLED=true` and `SP_ACME_EMAIL=...` and the server terminates TLS
+itself:
+
+- It listens on `:80` (ACME HTTP-01 challenge, and a `308` redirect to https for
+  everything else) and `:443` (TLS).
+- Certificates are obtained **on demand**, during the first TLS handshake for a
+  hostname, and renewed automatically.
+- A hostname is only ever sent to the CA if it is one of the installation's own
+  hosts *or* a verified, enabled, public custom domain. Unknown and unverified
+  hostnames are refused before any CA traffic, which blocks certificate
+  squatting and protects Let's Encrypt's failed-validation rate limit.
+- Certificates, private keys and the ACME account live in the database
+  (`tls_storage`), so every replica shares them and a restart never re-issues.
+- Your installation's own hostname gets a certificate too, so a self-hoster does
+  not need any reverse proxy at all.
+
+The dashboard shows the per-domain certificate state next to the domain:
+**HTTPS pending** (nothing issued yet), **HTTPS active**, or **HTTPS failed**
+(the reason is in the server log, keyed by domain).
+
+Requirements:
+
+- The process must be able to bind `:80` and `:443` — run it with the
+  capability, as root, or remap the ports with `SP_ACME_LISTEN_HTTP` /
+  `SP_ACME_LISTEN_HTTPS` and forward to them.
+- Custom-domain traffic must reach the process with TLS **not** already
+  terminated by something else. Behind a Kubernetes ingress that terminates TLS
+  for known hostnames only, use SNI passthrough or a dedicated
+  LoadBalancer/NodePort for the CNAME target.
+
+### Alternative: an external TLS proxy
+
+In-server ACME is opt-in and entirely independent of the external-proxy path,
+which remains supported and unchanged. SolidPing exposes one small contract your
+edge can use to decide whether it should obtain a certificate for an incoming
+hostname:
 
 ```
 GET /api/v1/public/custom-domains/allowed?domain=status.yourcompany.com
@@ -67,11 +162,10 @@ GET /api/v1/public/custom-domains/allowed?domain=status.yourcompany.com
   → 404  otherwise
 ```
 
-### Self-hosted (Caddy `on_demand_tls`)
+#### Caddy `on_demand_tls`
 
-[Caddy](https://caddyserver.com/) can obtain certificates on demand, gated by the
-`allowed` endpoint, so it only issues certs for domains SolidPing actually
-serves:
+[Caddy](https://caddyserver.com/) can obtain certificates on demand, gated by
+that endpoint, so it only issues certs for domains SolidPing actually serves:
 
 ```caddyfile
 {
@@ -94,35 +188,47 @@ https:// {
 }
 ```
 
-Alternatively, if you own a single parent zone, put a **wildcard certificate**
-(`*.yourcompany.com`) or a manually managed certificate on your reverse proxy and
-skip on-demand issuance entirely.
+Leave `SP_ACME_ENABLED` unset (`false`) in this setup so the server does not
+also try to bind `:80`/`:443`.
 
-### SaaS / Kubernetes edge
+#### Wildcard or manual certificates
+
+If you own a single parent zone, put a **wildcard certificate**
+(`*.yourcompany.com`) or a manually managed certificate on your reverse proxy
+and skip on-demand issuance entirely.
+
+#### cert-manager / Kubernetes
 
 Terminate at the edge using the same `allowed` endpoint — a Caddy sidecar with
-`on_demand_tls`, or cert-manager gated on the endpoint. There is **no in-server
-ACME** in this version; the `allowed` endpoint is the only contract between
-SolidPing and the TLS edge.
+`on_demand_tls`, or cert-manager gated on the endpoint.
 
 ## Verification & takeover protection
 
-After the first successful verification, a background job re-runs the ownership
-(`TXT`) check every 6 hours. If the record disappears (the domain was released or
-transferred away), the check fails; after **3 consecutive failures** SolidPing
-clears the verification, stops serving the page on that host, and the `allowed`
-endpoint starts answering `404`. Restore the `TXT` record and click **Verify**
-again to bring it back.
+After the first successful verification, a background job re-runs the `CNAME`
+check every 6 hours. If the record disappears or changes (the domain was
+released or transferred away), the check fails; after **3 consecutive failures**
+SolidPing clears the verification. Serving stops, certificate renewal stops, and
+the `allowed` endpoint starts answering `404`. Restore the `CNAME` and click
+**Verify** again to bring it back.
+
+The re-verification sweep only ever *demotes*: it never promotes an unverified
+domain on its own — that always takes an explicit **Verify**.
 
 The custom-domain column is **globally unique** among live pages, so two
-organizations can never both claim the same hostname — the first to verify wins,
-and a conflicting attempt is rejected with a `409 Conflict`.
+organizations can never both hold the same hostname at once; a conflicting
+attempt is rejected with `409 Conflict`.
 
 ## Configuration
 
-| Setting                              | Env var                                                        | Default                | Description                                                                 |
-| ------------------------------------ | -------------------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------- |
-| `server.custom_domain_cname_target`  | `SP_CUSTOM_DOMAIN_CNAME_TARGET` / `SP_SERVER_CUSTOM_DOMAIN_CNAME_TARGET` | host of `base_url`     | The hostname customers point their `CNAME` at (shown in the DNS records).   |
+| Setting                              | Env var                                                                  | Default            | Description                                                                        |
+| ------------------------------------ | ------------------------------------------------------------------------ | ------------------ | ---------------------------------------------------------------------------------- |
+| `server.custom_domain_cname_target`  | `SP_CUSTOM_DOMAIN_CNAME_TARGET` / `SP_SERVER_CUSTOM_DOMAIN_CNAME_TARGET` | host of `base_url` | The hostname customers point their `CNAME` at (shown in the DNS record).           |
+| `server.custom_domain_cname_mode`    | `SP_CUSTOM_DOMAIN_CNAME_MODE` / `SP_SERVER_CUSTOM_DOMAIN_CNAME_MODE`     | `shared`           | `shared` or `token` — see [Verification modes](#verification-modes).               |
+| `acme.enabled`                       | `SP_ACME_ENABLED`                                                        | `false`            | Master switch for in-server TLS. Off = no extra listeners and no CA traffic.        |
+| `acme.email`                         | `SP_ACME_EMAIL`                                                          | *(none)*           | ACME account contact address. **Required** when `acme.enabled` is true.            |
+| `acme.ca_url`                        | `SP_ACME_CA_URL`                                                         | Let's Encrypt prod | ACME directory URL. Point it at the LE staging directory while testing.            |
+| `acme.listen_http`                   | `SP_ACME_LISTEN_HTTP`                                                    | `:80`              | HTTP-01 challenge listener; redirects everything else to https with a `308`.        |
+| `acme.listen_https`                  | `SP_ACME_LISTEN_HTTPS`                                                   | `:443`             | TLS listener. Requests flow into the normal routing, so custom hosts behave alike.  |
 
 ## Entitlements
 

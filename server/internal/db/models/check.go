@@ -56,6 +56,16 @@ func (s CheckStatus) String() string {
 	}
 }
 
+// CheckStatusCount is one row of the org-wide check aggregation
+// (spec 2026-08-02-06): the number of checks sharing a (status, enabled)
+// pair. Produced by db.Service.GetCheckStatusCounts on both dialects and
+// folded into the checks stats response.
+type CheckStatusCount struct {
+	Status  CheckStatus `bun:"status"`
+	Enabled bool        `bun:"enabled"`
+	Count   int         `bun:"count"`
+}
+
 // Check represents a monitoring configuration.
 type Check struct {
 	UID             string  `bun:"uid,pk,type:varchar(36)"`
@@ -157,6 +167,14 @@ type Check struct {
 	// sentinel (int16 max is 32767, so ungrouped sorts strictly last). Scan-only
 	// and transient — never selected, inserted, or updated outside that query.
 	GroupSortKey int64 `bun:"group_sort_key,scanonly"`
+
+	// TargetHostSortKey is the effective sort=targetHost ordering key: the
+	// check's config host/url/target text (best-effort, not hostname-parsed —
+	// see targetHostSortKeyExpr), or a sentinel that sorts strictly last for
+	// checks with none of those fields. Scan-only and transient; distinct from
+	// the response's TargetHost (checkerdef.ExtractTargetHost), which is the
+	// precise, hostname-parsed value clients bucket by.
+	TargetHostSortKey string `bun:"target_host_sort_key,scanonly"`
 }
 
 // RegionSpreadDuration returns the check's optional inter-region spread
@@ -341,4 +359,14 @@ type ListChecksFilter struct {
 	// the previous page — the leading component of the composite sort=group
 	// cursor. Only set alongside CursorCreatedAt/CursorUID when SortByGroup.
 	CursorGroupSortKey *int64
+
+	// SortByTargetHost opts into the by-host-view pagination (sort=targetHost):
+	// targetHost sort key ascending (checks with none of host/url/target last),
+	// then name ascending, then uid ascending as the final tiebreaker.
+	SortByTargetHost bool
+	// CursorTargetHostKey and CursorTargetHostName are the leading two
+	// components of the composite sort=targetHost cursor (the third, uid, reuses
+	// CursorUID). Only set alongside CursorUID when SortByTargetHost.
+	CursorTargetHostKey  *string
+	CursorTargetHostName *string
 }

@@ -25,12 +25,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	k8sclient "k8s.io/client-go/kubernetes"
 
+	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkfreeboxline"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkkubernetes"
 	"github.com/fclairamb/solidping/server/internal/checkworker"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
+	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/credmigrate"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
@@ -51,6 +53,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkjobs"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
+	"github.com/fclairamb/solidping/server/internal/handlers/checks/importers"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
@@ -74,6 +77,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
 	"github.com/fclairamb/solidping/server/internal/handlers/members"
 	"github.com/fclairamb/solidping/server/internal/handlers/oncallschedules"
+	"github.com/fclairamb/solidping/server/internal/handlers/publicconfig"
 	"github.com/fclairamb/solidping/server/internal/handlers/realtimews"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
@@ -87,9 +91,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/unsubscribe"
 	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
 	webpushhandler "github.com/fclairamb/solidping/server/internal/handlers/webpush"
+	"github.com/fclairamb/solidping/server/internal/handlers/whatsappcb"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
+	"github.com/fclairamb/solidping/server/internal/integrations/msteams"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/jmap"
@@ -106,6 +112,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
+	"github.com/fclairamb/solidping/server/internal/tlsedge"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 	"github.com/fclairamb/solidping/server/internal/version"
@@ -160,6 +167,7 @@ type Server struct {
 	realtimeHub           *realtime.Hub           // Live hint stream fan-out (nil when realtime disabled)
 	statusPagesService    *statuspages.Service    // Public status-page lookups for status0 OG-metadata injection
 	customDomainCache     *customDomainCache      // host -> status-page resolution cache for custom-domain routing
+	tlsEdge               *tlsedge.Edge           // in-server ACME/TLS listeners (nil unless acme.enabled)
 	status0FS             fs.FS                   // overridden in tests; nil means use the real embedded status0Files
 	cancelCtx             context.CancelFunc
 	workersWg             sync.WaitGroup // Tracks workers
@@ -339,6 +347,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		entitlementsapi.WithRunawayCaps(
 			cfg.Entitlements.SMSRunawayPerHour, cfg.Entitlements.CallRunawayPerHour,
 		),
+		entitlementsapi.WithWhatsAppRunawayCap(cfg.Entitlements.WhatsAppRunawayPerHour),
 	)
 	svcList.Entitlements = entitlementsService
 
@@ -413,6 +422,16 @@ func (s *Server) registerSubsystemMetrics(reg prometheus.Registerer) {
 //
 //nolint:funlen,cyclop // Route registration function naturally grows with new routes
 func (s *Server) SetupRoutes(ctx context.Context) {
+	// Install the process-wide product-analytics client (spec 2026-08-02-08).
+	// Done here rather than in NewServer because SetupRoutes runs *after*
+	// InitializeSystemConfig, so DB-stored posthog.* parameters are already
+	// overlaid onto cfg. When PostHog is not configured this installs a genuine
+	// no-op: no client, no goroutine, no network.
+	analytics.SetDefault(analytics.New(s.config.PostHog))
+	if analytics.Default().Enabled() {
+		slog.InfoContext(ctx, "Product analytics enabled", "host", s.config.PostHog.ResolvedHost())
+	}
+
 	router := httpx.New()
 	rateLimiter := middleware.NewRateLimiter(s.config.Server.RateLimiting, ctx)
 	s.rateLimiter = rateLimiter
@@ -605,6 +624,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	providersHandler := auth.NewProvidersHandler(s.config, passkeyService.Enabled)
 	api.GET("/auth/providers", providersHandler.ListProviders)
 
+	// Public, unauthenticated config blob the SPA reads at boot (spec
+	// 2026-08-02-08). Non-secret values only — see the publicconfig package doc.
+	publicConfigHandler := publicconfig.NewHandler(s.config)
+	api.GET("/config", publicConfigHandler.GetConfig)
+
 	// Check types service (constructed early so MCP can use it too)
 	activationResolver := checkerdef.NewActivationResolver(s.config.Checkers)
 	checkTypesService := checktypes.NewService(activationResolver, s.config.Server.BaseURL)
@@ -688,6 +712,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	checksHandler := checks.NewHandler(checksService, s.config)
 	orgChecks := orgGroup("/orgs/:org/checks")
 	orgChecks.GET("", checksHandler.ListChecks)
+	// Aggregate counters for the org dashboard (spec 2026-08-02-06). Registered
+	// here, ahead of the "/:checkUid" routes below, so the literal "stats"
+	// segment is never captured as a check UID.
+	orgChecks.GET("/stats", checksHandler.GetCheckStats)
 	orgChecks.POST("", checksHandler.CreateCheck)
 
 	// Config-as-code surface (export/import/apply) is admin-only: import and
@@ -700,6 +728,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecksAdmin.GET("/export", checksHandler.ExportChecks)
 	orgChecksAdmin.POST("/import", checksHandler.ImportChecks)
 	orgChecksAdmin.POST("/apply", checksHandler.ApplyChecks)
+
+	// Third-party importers (Gatus / Better Stack / Uptime Kuma) convert a
+	// foreign config into the canonical export document and then reuse the very
+	// same ApplyChecks path above — no second import pipeline.
+	importersHandler := importers.NewHandler(checksService, s.config)
+	importersHandler.RegisterRoutes(orgChecksAdmin)
 
 	orgChecks.POST("/validate", checksHandler.ValidateCheck)
 	orgChecks.GET("/:checkUid", checksHandler.GetCheck)
@@ -824,6 +858,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.dbService,
 		s.services.CheckJobs,
 		incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime),
+		scheduling.ParamsFromConfig(s.config.Server.Scheduling),
 	)
 	agentWSHandler := agentws.NewHandler(
 		s.config,
@@ -832,6 +867,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		agentWorkersSvc,
 		s.services.Entitlements,
 		s.services.EventNotifier,
+		s.services.Credentials,
 		agentsAdminSvc.ResealRegion,
 	)
 	api.GET("/agent/ws", agentWSHandler.Serve)
@@ -937,7 +973,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgEscalation.DELETE("/:uid", escalationHandler.DeletePolicy)
 
 	// User notification routes (authentication required)
-	userNotifService := usernotifications.NewService(s.dbService, s.services.Credentials)
+	userNotifService := usernotifications.NewService(
+		s.dbService, s.services.Credentials,
+		// Instance-level WhatsApp credentials power the contact-verification
+		// authentication template. Off by default; NewService keeps the feature
+		// dark when the config is inactive.
+		usernotifications.WithWhatsAppConfig(&s.config.WhatsApp),
+	)
 	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender)
 	slackAdapter := usernotifications.NewSlackDMSenderAdapter()
 	userNotifHandler := usernotifications.NewHandler(
@@ -1216,6 +1258,24 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	slackIntegration.POST("/command", slackHandler.VerifyMiddleware(slackHandler.HandleCommand))
 	slackIntegration.POST("/interaction", slackHandler.VerifyMiddleware(slackHandler.HandleInteraction))
 
+	// Microsoft Teams bot routes (inbound from Bot Framework — no org auth;
+	// authenticity is the per-request JWT check against Microsoft's JWKS in
+	// HandleMessages). The routes are always registered so the status and
+	// manifest endpoints can explain an unconfigured instance; the messaging
+	// endpoint itself refuses traffic with 503 while msteams.enabled is false.
+	msTeamsService := msteams.NewService(s.dbService, s.config, checksService)
+	msTeamsHandler := msteams.NewHandler(msTeamsService, s.config)
+
+	// The messaging endpoint is the ONLY public route here — it has to be,
+	// Microsoft calls it, and authenticity comes from the Bot Framework JWT
+	// rather than session auth. Status, the app package and the link-code
+	// endpoint all live on the authenticated org-scoped group further down:
+	// served anonymously they would hand any caller the instance's Entra app
+	// id, the pinned tenant GUID, and a live count of installed Microsoft 365
+	// tenants.
+	msTeamsIntegration := api.NewGroup("/integrations/msteams")
+	msTeamsIntegration.POST("/messages", msTeamsHandler.HandleMessages)
+
 	// Twilio inbound callbacks (voice TwiML + DTMF ack + delivery status).
 	// No org auth — authenticity is the per-request X-Twilio-Signature check in
 	// VerifyMiddleware, which resolves the connection from the `cid` query param.
@@ -1225,9 +1285,39 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	twilioIntegration.POST("/voice/gather", twilioHandler.VerifyMiddleware(twilioHandler.HandleGather))
 	twilioIntegration.POST("/status", twilioHandler.VerifyMiddleware(twilioHandler.HandleStatus))
 
+	// Meta WhatsApp Cloud API inbound webhook (subscription handshake +
+	// delivery statuses + inbound replies). Instance-level, so unlike Twilio
+	// there is no org-scoped `cid`: the GET handshake matches the configured
+	// verify token and the POST validates X-Hub-Signature-256 over the raw body
+	// with the app secret before parsing. Registered only when the instance has
+	// WhatsApp configured — an unconfigured deployment exposes no route at all.
+	if s.config.WhatsApp.Active() {
+		whatsAppHandler := whatsappcb.NewHandler(s.dbService, s.config)
+		whatsAppIntegration := api.NewGroup("/integrations/whatsapp")
+		whatsAppIntegration.GET("/webhook", whatsAppHandler.HandleVerify)
+		whatsAppIntegration.POST("/webhook", whatsAppHandler.HandleEvent)
+	}
+
 	// Slack destinations picker (authenticated, org-scoped)
 	slackOrgRoutes := orgGroup("/orgs/:org/channels/:uid/slack")
 	slackOrgRoutes.GET("/destinations", slackHandler.GetDestinations)
+
+	// Microsoft Teams destinations picker (authenticated, org-scoped). Unlike
+	// Slack this reads the conversation references captured at install rather
+	// than calling out to the provider — a Teams bot cannot enumerate the
+	// channels of a team it was never added to.
+	msTeamsOrgRoutes := orgGroup("/orgs/:org/channels/:uid/msteams")
+	msTeamsOrgRoutes.GET("/destinations", msTeamsHandler.GetDestinations)
+
+	// Teams bot setup (authenticated, org-scoped). link-code is the
+	// proof-of-possession entry point: the org comes from the verified route
+	// context, and the code it mints is the only thing that can bind a
+	// Microsoft 365 tenant to this org.
+	msTeamsOrgIntegrationRoutes := api.NewGroup("/orgs/:org/integrations/msteams").
+		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	msTeamsOrgIntegrationRoutes.POST("/link-code", msTeamsHandler.StartLink)
+	msTeamsOrgIntegrationRoutes.GET("/status", msTeamsHandler.GetStatus)
+	msTeamsOrgIntegrationRoutes.GET("/manifest.zip", msTeamsHandler.DownloadManifest)
 
 	// Org-scoped install-URL minting (spec 2026-07-05-01): the org comes from
 	// the authenticated route context (RequireOrgAccess), never from a query
@@ -1307,6 +1397,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// /docs to /openapi now that /docs serves the documentation site.
 	mainGroup.GET("/openapi.yaml", s.serveFile(openAPIFiles, "openapi/openapi.yaml"))
 	mainGroup.GET("/openapi", s.serveFile(openAPIFiles, "openapi/index.html"))
+
+	// llms.txt / llms-full.txt at the conventional root path (GitHub issue
+	// #183), generated by docusaurus-plugin-llms alongside the rest of the
+	// embedded docs build. Reuses serveDocsFile so a missing file 404s (via
+	// the docs 404 page) instead of falling through to the SPA catch-all.
+	mainGroup.GET("/llms.txt", s.serveRootLLMsTxt)
+	mainGroup.GET("/llms-full.txt", s.serveRootLLMsFullTxt)
 
 	// Documentation site (Docusaurus), embedded and served at /docs on every
 	// host. docs.solidping.io redirects its root here (see handlerWithDocsHost).
@@ -1574,6 +1671,22 @@ func docsHostMatches(reqHost, docsHost string) bool {
 // the /docs prefix and serves the matching file from the embedded docs build.
 func (s *Server) serveDocsRoute(writer http.ResponseWriter, req *http.Request) error {
 	s.serveDocsFile(writer, strings.TrimPrefix(req.URL.Path, "/docs"))
+
+	return nil
+}
+
+// serveRootLLMsTxt serves the Docusaurus-generated llms.txt manifest at the
+// conventional root path (GitHub issue #183), sharing the embedded-docs
+// lookup, content-type, and cache-header logic used for /docs/llms.txt.
+func (s *Server) serveRootLLMsTxt(writer http.ResponseWriter, _ *http.Request) error {
+	s.serveDocsFile(writer, "/llms.txt")
+
+	return nil
+}
+
+// serveRootLLMsFullTxt is the /llms-full.txt counterpart to serveRootLLMsTxt.
+func (s *Server) serveRootLLMsFullTxt(writer http.ResponseWriter, _ *http.Request) error {
+	s.serveDocsFile(writer, "/llms-full.txt")
 
 	return nil
 }
@@ -1955,9 +2068,78 @@ func (s *Server) runStartupJob(ctx context.Context) error {
 	return nil
 }
 
+// serveHTTP runs the plain HTTP listener (and, when acme.enabled, the in-server
+// TLS listeners) until ctx is canceled or the listener fails, then drains them.
+// It is the body of Start's API-role branch, extracted so Start stays readable.
+func (s *Server) serveHTTP(ctx context.Context) error {
+	slog.InfoContext(ctx, "Starting HTTP server", "listen", s.config.Server.Listen)
+
+	const readHeaderTimeout = 10 * time.Second
+
+	topHandler := s.handlerWithCustomDomains(s.handlerWithDocsHost())
+
+	srv := &http.Server{
+		Addr:              s.config.Server.Listen,
+		Handler:           topHandler,
+		ReadHeaderTimeout: readHeaderTimeout,
+	}
+
+	// In-server TLS (opt-in): two extra listeners feeding the SAME handler
+	// chain, so custom-host routing applies unchanged over HTTPS.
+	if err := s.startTLSEdge(ctx, topHandler); err != nil {
+		return err
+	}
+
+	// Start HTTP server in a goroutine
+	serverErr := make(chan error, 1)
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.ErrorContext(ctx, "HTTP server error", "error", err)
+			serverErr <- err
+		}
+	}()
+
+	// Wait for shutdown signal or server error
+	select {
+	case <-ctx.Done():
+		// Graceful shutdown initiated
+		slog.InfoContext(ctx, "Shutting down server", "timeout", s.config.Server.ShutdownTimeout)
+	case err := <-serverErr:
+		// Server failed to start or encountered an error
+		return err
+	}
+
+	// Close the realtime hub first: it terminates every held-open realtime
+	// WebSocket connection so srv.Shutdown (which waits for active
+	// connections) can drain instead of hanging until the shutdown timeout.
+	if s.realtimeHub != nil {
+		s.realtimeHub.Close()
+	}
+
+	// Shutdown HTTP server first to stop accepting new requests.
+	// Using a fresh context for the shutdown timeout after main ctx is canceled.
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), s.config.Server.ShutdownTimeout)
+	defer shutdownCancel()
+
+	//nolint:contextcheck // shutdownCtx intentionally separate for timeout management
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		//nolint:contextcheck // shutdownCtx intentionally separate for timeout management
+		slog.ErrorContext(shutdownCtx, "HTTP server shutdown error", "error", err)
+	}
+
+	if s.tlsEdge != nil {
+		//nolint:contextcheck // shutdownCtx intentionally separate for timeout management
+		if err := s.tlsEdge.Shutdown(shutdownCtx); err != nil {
+			//nolint:contextcheck // shutdownCtx intentionally separate for timeout management
+			slog.ErrorContext(shutdownCtx, "TLS edge shutdown error", "error", err)
+		}
+	}
+
+	return nil
+}
+
 // Start starts the HTTP server and blocks until shutdown.
-//
-//nolint:funlen,cyclop // Server startup requires multiple conditional component initialization
 func (s *Server) Start(ctx context.Context) error {
 	// Start profiler server (no-op if disabled)
 	if err := s.profilerSrv.Start(ctx); err != nil {
@@ -2032,52 +2214,8 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Start HTTP server only if role allows
 	if s.config.ShouldRunAPI() {
-		slog.InfoContext(ctx, "Starting HTTP server", "listen", s.config.Server.Listen)
-
-		const readHeaderTimeout = 10 * time.Second
-
-		srv := &http.Server{
-			Addr:              s.config.Server.Listen,
-			Handler:           s.handlerWithCustomDomains(s.handlerWithDocsHost()),
-			ReadHeaderTimeout: readHeaderTimeout,
-		}
-
-		// Start HTTP server in a goroutine
-		serverErr := make(chan error, 1)
-		go func() {
-			if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				slog.ErrorContext(ctx, "HTTP server error", "error", err)
-				serverErr <- err
-			}
-		}()
-
-		// Wait for shutdown signal or server error
-		select {
-		case <-ctx.Done():
-			// Graceful shutdown initiated
-			slog.InfoContext(ctx, "Shutting down server", "timeout", s.config.Server.ShutdownTimeout)
-		case err := <-serverErr:
-			// Server failed to start or encountered an error
+		if err := s.serveHTTP(ctx); err != nil {
 			return err
-		}
-
-		// Close the realtime hub first: it terminates every held-open
-		// realtime WebSocket connection so srv.Shutdown (which waits for
-		// active connections) can drain instead of hanging until the
-		// shutdown timeout.
-		if s.realtimeHub != nil {
-			s.realtimeHub.Close()
-		}
-
-		// Shutdown HTTP server first to stop accepting new requests
-		// Using fresh context for shutdown timeout after main ctx is canceled
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), s.config.Server.ShutdownTimeout)
-		defer shutdownCancel()
-
-		//nolint:contextcheck // shutdownCtx intentionally separate for timeout management
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			//nolint:contextcheck // shutdownCtx intentionally separate for timeout management
-			slog.ErrorContext(shutdownCtx, "HTTP server shutdown error", "error", err)
 		}
 	} else {
 		slog.InfoContext(ctx, "Skipping HTTP server", "role", s.config.Node.Role)
@@ -2203,6 +2341,12 @@ func (s *Server) Close(ctx context.Context) error {
 	const sentryFlushTimeout = 2 * time.Second
 	if !sentry.Flush(sentryFlushTimeout) {
 		slog.WarnContext(ctx, "Sentry flush timed out, some events may be lost")
+	}
+
+	// Flush buffered product-analytics events. No-op (and instant) when
+	// analytics is not configured.
+	if err := analytics.Close(ctx); err != nil {
+		slog.WarnContext(ctx, "Analytics flush failed, some events may be lost", "error", err)
 	}
 
 	// Shutdown profiler

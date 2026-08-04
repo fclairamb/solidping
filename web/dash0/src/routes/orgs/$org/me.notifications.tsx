@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { BellRing } from "lucide-react";
+import { BellRing, Settings } from "lucide-react";
 import { useMyNotifications, type IncidentNotification } from "@/api/hooks";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import {
@@ -19,6 +20,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useTranslation } from "react-i18next";
+import { channelTypeLabel, failureReasonLabel } from "@/lib/channel-labels";
 
 export const Route = createFileRoute("/orgs/$org/me/notifications")({
   component: MyNotificationsPage,
@@ -42,6 +45,7 @@ function statusVariant(
 }
 
 function MyNotificationsPage() {
+  const { t } = useTranslation("common");
   const { org } = Route.useParams();
   const { data: rows, isLoading } = useMyNotifications(org, { limit: 100 });
 
@@ -51,6 +55,14 @@ function MyNotificationsPage() {
         icon={BellRing}
         title="My pages"
         description="Incidents you were paged for, in reverse chronological order."
+        actions={
+          <Button asChild variant="outline" aria-label="Notification settings">
+            <Link to="/orgs/$org/account/notifications" params={{ org }}>
+              <Settings />
+              <span className="hidden sm:inline">Notification settings</span>
+            </Link>
+          </Button>
+        }
         className="flex-wrap"
       />
 
@@ -66,7 +78,16 @@ function MyNotificationsPage() {
 
           {!isLoading && (!rows || rows.length === 0) && (
             <p className="text-sm text-muted-foreground py-6 text-center">
-              You have not been paged for any incidents yet.
+              You have not been paged for any incidents yet. Configure how you
+              get paged in your{" "}
+              <Link
+                to="/orgs/$org/account/notifications"
+                params={{ org }}
+                className="text-primary hover:underline"
+              >
+                notification settings
+              </Link>
+              .
             </p>
           )}
 
@@ -127,9 +148,22 @@ function MyNotificationsPage() {
                       >
                         {row.status}
                       </Badge>
+                      {/*
+                        Why a delivery failed matters more than that it failed:
+                        "recipient not on WhatsApp" is a user action, a paused
+                        template is an admin action.
+                      */}
+                      {(row.skipReason || row.error) && (
+                        <p
+                          className="mt-1 text-xs text-muted-foreground break-words"
+                          data-testid={`notification-reason-${row.uid}`}
+                        >
+                          {failureReasonLabel(t, row.skipReason) || row.error}
+                        </p>
+                      )}
                     </TableCell>
-                    <TableCell className="text-sm capitalize">
-                      {row.channelType}
+                    <TableCell className="text-sm">
+                      {channelTypeLabel(t, row.channelType)}
                     </TableCell>
                   </TableRow>
                 ))}

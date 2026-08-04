@@ -1,0 +1,82 @@
+{
+  "data": [
+    {
+      "id": "1",
+      "type": "monitor",
+      "attributes": {
+        "url": "https://example.org/health",
+        "pronounceable_name": "Main site",
+        "monitor_type": "status",
+        "check_frequency": 180,
+        "request_timeout": 30,
+        "http_method": "get",
+        "request_headers": [
+          { "id": "h1", "name": "X-Tenant", "value": "acme" },
+          { "id": "h2", "name": "Authorization", "value": "Bearer app-token" }
+        ],
+        "required_keyword": null,
+        "expected_status_codes": [],
+        "port": null,
+        "paused": false,
+        "verify_ssl": true,
+        "follow_redirects": true,
+        "auth_username": "",
+        "auth_password": "",
+        "monitor_group_id": null,
+        "ssl_expiration": null,
+        "domain_expiration": null
+      }
+    },
+    {
+      "id": "2",
+      "type": "monitor",
+      "attributes": {
+        "url": "https://api.example.org/v1/ping",
+        "pronounceable_name": "API expected codes",
+        "monitor_type": "expected_status_code",
+        "check_frequency": 60,
+        "request_timeout": 15,
+        "http_method": "post",
+        "request_body": "{\"probe\":true}",
+        "expected_status_codes": [200, 201],
+        "paused": false,
+        "verify_ssl": false,
+        "follow_redirects": false,
+        "auth_username": "probe",
+        "auth_password": "hunter2",
+        "monitor_group_id": 42,
+        "ssl_expiration": 14,
+        "domain_expiration": 30
+      }
+    },
+    {
+      "id": "3",
+      "type": "monitor",
+      "attributes": {
+        "url": "https://shop.example.org",
+        "pronounceable_name": "Shop keyword",
+        "monitor_type": "keyword",
+        "check_frequency": 300,
+        "required_keyword": "Add to cart",
+        "paused": true
+      }
+    },
+    {
+      "id": "4",
+      "type": "monitor",
+      "attributes": {
+        "url": "https://status.example.org",
+        "pronounceable_name": "No maintenance banner",
+        "monitor_type": "keyword_absence",
+        "check_frequency": 300,
+        "required_keyword": "Scheduled maintenance"
+      }
+    }
+  ],
+  "pagination": {
+    "first": "{{BASE}}/api/v2/monitors?page=1",
+    "last": "{{BASE}}/api/v2/monitors?page=2",
+    "prev": null,
+    "next": "{{BASE}}/api/v2/monitors?page=2"
+  }
+}

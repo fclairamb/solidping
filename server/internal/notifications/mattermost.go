@@ -26,9 +26,10 @@ const (
 
 // Mattermost field title labels.
 const (
-	mmFieldCheck    = "Check"
-	mmFieldCause    = "Cause"
-	mmFieldDuration = "Duration"
+	mmFieldCheck        = "Check"
+	mmFieldCause        = "Cause"
+	mmFieldDuration     = "Duration"
+	mmFieldFailureCount = "Failure Count"
 )
 
 var (
@@ -81,10 +82,13 @@ func (s *MattermostSender) Send(ctx context.Context, _ *jobdef.JobContext, paylo
 }
 
 type mattermostSettings struct {
-	WebhookURL string `json:"webhookUrl"`
+	// WebhookURL uses snake_case to match the dashboard form field
+	// (integration-form.tsx's UrlPanel writes "webhook_url") and Discord's
+	// DiscordSettings, not the Mattermost incoming-webhook API's own casing.
+	WebhookURL string `json:"webhook_url"` //nolint:tagliatelle // matches dashboard form key
 	Channel    string `json:"channel"`
 	Username   string `json:"username"`
-	IconURL    string `json:"iconUrl"`
+	IconURL    string `json:"icon_url"` //nolint:tagliatelle // aligned with the outgoing Mattermost payload field
 }
 
 func (s *MattermostSender) parseSettings(payload *Payload) (*mattermostSettings, error) {
@@ -97,6 +101,11 @@ func (s *MattermostSender) parseSettings(payload *Payload) (*mattermostSettings,
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return nil, fmt.Errorf("parsing mattermost settings: %w", err)
 	}
+
+	// Backward compatibility: some rows may still carry the legacy camelCase
+	// "webhookUrl" key (e.g. created via raw API calls before the struct tag
+	// was aligned to "webhook_url" to match the dashboard form).
+	settings.WebhookURL = webhookURLWithLegacyFallback(settings.WebhookURL, payload.Integration.Settings)
 
 	if settings.WebhookURL == "" {
 		return nil, ErrMattermostWebhookURLNotConfigured
@@ -186,7 +195,7 @@ func (s *MattermostSender) buildFields(payload *Payload, checkName string) []mat
 		{Short: true, Title: mmFieldCheck, Value: checkName},
 		{Short: true, Title: "Type", Value: payload.Check.Type},
 		{Short: false, Title: mmFieldCause, Value: getFailureReason(payload.Incident)},
-		{Short: true, Title: "Failure Count", Value: strconv.Itoa(payload.Incident.FailureCount)},
+		{Short: true, Title: mmFieldFailureCount, Value: strconv.Itoa(payload.Incident.FailureCount)},
 	}
 
 	if payload.EventType == eventTypeIncidentReopened {

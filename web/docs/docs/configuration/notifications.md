@@ -12,6 +12,8 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 | Channel | Status | Configuration |
 |---------|--------|---------------|
 | Slack | Available | OAuth integration |
+| Microsoft Teams (bot) | Available | Azure Bot / Bot Framework (two-way) |
+| Microsoft Teams (webhook) | Available | Teams Workflow webhook (one-way) |
 | Discord | Available | Webhook |
 | Email | Available | SMTP |
 | Webhooks | Available | HTTP POST |
@@ -21,6 +23,8 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 | Opsgenie | Available | API integration |
 | Pushover | Available | API integration |
 | Web Push | Available | Browser push (VAPID) |
+| SMS / Voice | Available | Twilio (per-organization connection) |
+| WhatsApp | Available | [Meta WhatsApp Business Cloud API](./whatsapp.md) (instance-level) |
 
 ## Email (SMTP)
 
@@ -161,6 +165,184 @@ Slack notifications include:
 - Status change (Up → Down, Down → Up)
 - Error details (for failures)
 - Direct link to the check in SolidPing
+
+## Microsoft Teams
+
+There are **two** Teams integrations, and they are independent — pick either, or
+use both:
+
+| Integration type | What it does | What it needs |
+|---|---|---|
+| `msteams` | One-way: posts Adaptive Cards into a channel | A Teams Workflow URL. No server configuration, works behind a firewall. |
+| `msteams-bot` | Two-way: alerts **plus** `@SolidPing` commands, and incident cards that update in place | An Entra ID app + Azure Bot, and a **publicly reachable HTTPS endpoint**. |
+
+### Microsoft Teams (webhook) — the zero-infra option
+
+1. In Teams, open **Workflows** → "Post to a channel when a webhook request is
+   received"
+2. Finish the wizard and copy the workflow URL it gives you
+3. Paste it into a `msteams` integration in SolidPing
+
+The legacy "Incoming Webhook" Office 365 connector is retired by Microsoft and
+will not work.
+
+### Microsoft Teams (bot) — the Slack-grade option
+
+:::warning Public HTTPS endpoint required
+The Bot Framework has **no Socket-Mode equivalent**: Microsoft's servers push
+activities to your instance, they never dial out from it. Your SolidPing
+instance must therefore be reachable from the public internet over HTTPS at:
+
+```
+https://<your-base-url>/api/v1/integrations/msteams/messages
+```
+
+A self-hosted instance behind a firewall or on a private network **cannot use
+the Teams bot**. Use the `msteams` webhook integration instead — it only makes
+outbound requests.
+:::
+
+#### 1. Register the Entra app and Azure Bot
+
+1. In the [Azure portal](https://portal.azure.com), create an **Azure Bot**
+   resource (multi-tenant for a shared deployment, single-tenant for your own).
+2. Note the **Microsoft App ID** and create a **client secret**.
+3. Set the bot's **messaging endpoint** to
+   `https://<your-base-url>/api/v1/integrations/msteams/messages`.
+4. Enable the **Microsoft Teams** channel on the bot.
+
+#### 2. Configure SolidPing
+
+```bash
+SP_MSTEAMS_ENABLED=true
+SP_MSTEAMS_APP_ID=00000000-0000-0000-0000-000000000000
+SP_MSTEAMS_APP_SECRET=your-client-secret
+# Optional: restrict inbound activities to a single Microsoft 365 tenant.
+SP_MSTEAMS_TENANT_ID=11111111-1111-1111-1111-111111111111
+```
+
+```yaml
+msteams:
+  enabled: true
+  app_id: 00000000-0000-0000-0000-000000000000
+  app_secret: your-client-secret
+  tenant_id: ""   # empty = multi-tenant
+```
+
+`msteams.enabled` defaults to **false** — the bot stays off until you turn it
+on, precisely because of the public-endpoint requirement above.
+
+#### 3. Install the app in Teams and link your tenant
+
+1. In SolidPing, create a **Microsoft Teams (bot)** integration and open it.
+2. Click **Download Teams app package** — the zip is generated with your
+   instance's app ID and URL already filled in, so nothing has to be edited.
+3. In Teams: **Apps → Manage your apps → Upload a custom app**, pick the zip,
+   and add SolidPing to a team.
+4. Back in SolidPing, click **Connect Microsoft Teams**. You get a one-time
+   link code.
+5. In a Teams channel the bot was added to, send:
+
+   ```
+   @SolidPing link ABCDE-FGHIJ
+   ```
+
+   The bot confirms in the channel, and the integration is connected.
+
+Every channel you add the bot to becomes a selectable notification destination;
+the first one becomes the default.
+
+:::note Why a link code instead of a tenant ID field
+A Microsoft 365 tenant ID is a semi-public identifier, not a secret, so simply
+typing one into a form proves nothing — anyone could claim any tenant, and then
+receive that tenant's channel names and post into its channels. Bot Framework
+has no OAuth redirect that could carry your SolidPing organization through the
+install the way Slack's does, so the link code fills that gap: SolidPing issues
+it to a signed-in admin of one organization, and it can only be redeemed from
+inside a real, Microsoft-signed message. Quoting the code back is what proves
+both sides are the same actor.
+
+The code is single-use and expires after 30 minutes. A tenant can be linked to
+exactly one SolidPing organization. The command must be run in a team channel,
+not a private chat, so the link is visible to your team.
+:::
+
+:::caution Who can run the link command
+The link code proves that whoever redeems it holds a code issued to a signed-in
+SolidPing admin — it does **not** prove that the person redeeming it is an
+owner of the Teams team. Microsoft's Bot Connector does not tell a bot the
+sender's role, and determining it would require Microsoft Graph permissions and
+admin consent that this integration deliberately does not request. In practice
+that means **any member of a team the bot has been added to could redeem a
+leaked code**.
+
+Treat a link code like a password: generate it when you are ready to use it,
+paste it once, and let it expire otherwise.
+
+If a tenant ends up linked to the wrong organization, the tenant's own admin can
+recover without SolidPing support: **remove the SolidPing app from the tenant in
+Teams**, then reinstall it and link again with a code from the correct
+organization. Uninstalling releases the tenant's claim — it is the one lever the
+party who actually controls the tenant always holds. (An admin of the holding
+organization can also simply delete the integration.)
+:::
+
+Publishing to the Teams store is out of scope — custom app upload
+("sideloading") is the supported path, which your Teams admin may need to allow
+in the Teams admin center.
+
+#### What the bot can do
+
+- Posts an Adaptive Card when an incident opens, **updates that same card** when
+  the incident escalates or resolves, and replies under it so a channel shows
+  one incident as one grouped conversation.
+- Answers `@SolidPing` commands in a channel:
+  - `@SolidPing help`
+  - `@SolidPing checks add <url>` / `checks list` / `checks rm <slug>`
+  - `@SolidPing results -check <slug>`
+  - `@SolidPing incidents list [-check <slug>]`
+  - `@SolidPing config default-channel` — makes the current channel the default
+    notification target (Teams has no cross-team channel reference, so the
+    command is scoped to the team it is issued in)
+  - `@SolidPing link <code>` — connects this Microsoft 365 tenant to a
+    SolidPing organization (see step 5 above)
+- Stops routing when the app is removed from the tenant, and resumes on
+  reinstall without losing the org's notification wiring.
+
+Personal-scope direct messages are not supported yet.
+
+#### Security
+
+Every inbound activity is authenticated before anything is acted on. The Bot
+Connector JWT is verified against Microsoft's published JWKS, and the issuer,
+audience (your app ID), signing algorithm, validity window and `serviceurl`
+binding are all checked — the `serviceurl` check is mandatory, so a captured
+token cannot be replayed with a different body to redirect SolidPing's outbound
+calls.
+
+Microsoft's Connector-to-Bot token carries no tenant claim, so tenant identity
+comes from the activity body — which is trustworthy precisely because the
+request carrying it passed that signature check. Ownership of a tenant is a
+separate question, and is what the link code establishes. When
+`msteams.tenant_id` is set, activities from any other tenant are rejected.
+
+Notification destinations are held to the same standard. A Teams conversation ID
+is discoverable (it appears in "Get link to channel" URLs), so SolidPing only
+accepts a destination the bot has actually been added to — enforced when the
+channel is picked in the dashboard, when a per-check override is set, and again
+at send time. Naming a conversation ID you happen to know is not enough to make
+SolidPing post there.
+
+#### Known limitations
+
+- **Managed-identity bots are not supported.** Outbound tokens are minted with
+  a client secret, against the multi-tenant endpoint by default or your own
+  tenant's endpoint when `msteams.tenant_id` is set. A bot registered with a
+  user-assigned managed identity takes its token from the instance metadata
+  endpoint instead, which is a different credential model.
+- **Teams store publication is out of scope** — custom app upload only.
+- **The link command cannot verify the sender is a team owner** — see the
+  caution above for the reasoning and the recovery path.
 
 ## Discord
 

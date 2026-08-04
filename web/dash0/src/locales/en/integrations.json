@@ -64,6 +64,7 @@
     "default": "Default for new checks",
     "defaultHelp": "Pre-checked when creating a new check. Existing checks are unaffected.",
     "webhookUrl": "Webhook URL",
+    "msteamsWebhookHint": "In Teams, open Workflows → \"Post to a channel when a webhook request is received\", finish the wizard, then paste the workflow URL it gives you here. The legacy \"Incoming Webhook\" connector is retired and will not work.",
     "recipients": "Recipients",
     "recipientsPlaceholder": "ops@example.com, oncall@example.com",
     "recipientsHint": "Separate addresses with a space, comma, semicolon, or newline — or paste a list.",
@@ -96,7 +97,28 @@
     "testHelp": "Deliver a sample alert to confirm this integration is wired up. The test uses the saved settings.",
     "testNeedsSave": "Save your changes first — the test uses the saved settings.",
     "sendTest": "Send test",
-    "testDelivered": "Delivered"
+    "testDelivered": "Delivered",
+    "msteamsBotCreateHint": "Create the integration first, then install the Teams app package and run the link command shown here to connect your Microsoft 365 tenant.",
+    "msteamsBotDisabledTitle": "The Teams bot is disabled on this server",
+    "msteamsBotDisabledBody": "Enable it in the server settings. Microsoft must be able to reach this instance over public HTTPS — a firewalled deployment cannot use the Teams bot.",
+    "msteamsBotEndpointHint": "Microsoft must be able to reach this messaging endpoint over public HTTPS:",
+    "msteamsBotDownloadApp": "Download Teams app package",
+    "msteamsBotSideloadHint": "In Teams, open Apps → Manage your apps → Upload a custom app, pick this zip, then add SolidPing to a team. The channel you add it to becomes a notification destination.",
+    "msteamsBotDestination": "Notification channel",
+    "msteamsBotUninstalled": "The Teams app was removed from this tenant. Reinstall it to resume notifications.",
+    "msteamsBotLoading": "Loading…",
+    "msteamsBotError": "Could not load Teams channels.",
+    "msteamsBotNoDestinations": "No Teams channels yet. Add SolidPing to a channel in Teams and it will appear here.",
+    "msteamsBotConnected": "Connected",
+    "msteamsBotTenantLabel": "Microsoft 365 tenant",
+    "msteamsBotNotConnectedTitle": "Not connected to Microsoft Teams",
+    "msteamsBotNotConnectedBody": "Install the Teams app package, then run the link command below in any channel the bot was added to.",
+    "msteamsBotConnectButton": "Connect Microsoft Teams",
+    "msteamsBotLinkCodeHint": "In a Teams channel where SolidPing was added, send this message. The code can be used once and expires in 30 minutes.",
+    "msteamsBotLinkFailed": "Could not create a link code",
+    "msteamsBotDownloadFailed": "Could not download the Teams app package",
+    "msteamsBotLinkFirst": "Connect a Microsoft 365 tenant first — channels appear here once the bot is added to them.",
+    "msteamsBotUninstalledTitle": "The Teams app was removed"
   },
   "freebox": {
     "name": "Freebox",
@@ -143,12 +165,14 @@
     "email": "Send notifications to one or more email addresses",
     "googlechat": "Post to a Google Chat space via incoming webhook",
     "mattermost": "Post to a Mattermost channel via incoming webhook",
+    "msteams": "Post to a Microsoft Teams channel via a Teams Workflow",
     "ntfy": "Push notifications via ntfy.sh",
     "opsgenie": "Page on-call engineers via Opsgenie",
     "pushover": "Mobile push notifications via Pushover",
     "twilio": "Send SMS and place voice calls via Twilio",
     "freebox": "Monitor a Free Freebox (line quality, sync rate, network state)",
     "webpush": "Receive alerts as browser notifications on your subscribed devices",
-    "kubernetes": "Monitor Kubernetes workload replica health (Deployments, ReplicaSets)"
+    "kubernetes": "Monitor Kubernetes workload replica health (Deployments, ReplicaSets)",
+    "msteams-bot": "Two-way Teams bot: alerts, @mention commands and threaded incident updates"
   }
 }

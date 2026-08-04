@@ -14,8 +14,9 @@ func listIntegrationsDef() ToolDefinition {
 			"before attaching them to a check.",
 		InputSchema: objectSchema(map[string]any{
 			schemaKeyType: stringProp(
-				"Filter by integration type. Allowed: slack, webhook, email. " +
-					"Example: \"slack\".",
+				"Filter by integration type. Allowed: slack, webhook, email, msteams, " +
+					"msteams-bot. Example: \"slack\". (\"msteams\" is the one-way Teams " +
+					"Workflow webhook; \"msteams-bot\" is the two-way Teams bot.)",
 			),
 		}, nil),
 	}
@@ -38,11 +39,15 @@ func (h *Handler) toolListIntegrations(ctx context.Context, orgSlug string, args
 func createIntegrationDef() ToolDefinition {
 	return ToolDefinition{
 		Name: "create_integration",
-		Description: "Create a new integration (Slack, webhook, or email) that can " +
-			"be attached to checks for incident notifications.",
+		Description: "Create a new integration (webhook, email, msteams, …) that can be " +
+			"attached to checks for incident notifications. Slack cannot be created here — " +
+			"install it via the dashboard OAuth flow instead.",
 		InputSchema: objectSchema(map[string]any{
 			schemaKeyType: stringProp(
-				"Integration type. Allowed: slack, webhook, email. Example: \"webhook\".",
+				"Integration type. Allowed: webhook, email, msteams. Example: \"webhook\". " +
+					"(\"slack\" and \"msteams-bot\" are both rejected here — they carry a " +
+					"provider-side identity that must be proven, not asserted, so they are " +
+					"created by their own install flows in the dashboard.)",
 			),
 			schemaKeyName:    stringProp("Display name shown in the UI, e.g. \"Engineering Slack\"."),
 			schemaKeyEnabled: boolProp("Whether the integration is active. Default true."),
@@ -50,8 +55,9 @@ func createIntegrationDef() ToolDefinition {
 				"If true, the integration is auto-attached to newly-created checks.",
 			),
 			"settings": objectProp(
-				"Type-specific settings. For webhook: {\"webhookUrl\":\"https://...\"}. " +
-					"For slack: {\"channel\":\"#alerts\",\"webhookUrl\":\"https://hooks.slack.com/...\"}. " +
+				"Type-specific settings. For webhook: {\"url\":\"https://...\"}. " +
+					"Slack cannot be created here — Slack integrations are installed via the " +
+					"dashboard OAuth flow only, and creating type \"slack\" through this tool is rejected. " +
 					"For email: {\"to\":\"oncall@example.com\"}.",
 			),
 		}, []string{schemaKeyType, schemaKeyName}),

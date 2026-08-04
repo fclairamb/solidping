@@ -1,0 +1,216 @@
+{
+  "version": "1.23.13",
+  "notificationList": [
+    { "id": 1, "name": "Slack", "type": "slack" }
+  ],
+  "monitorList": [
+    {
+      "id": 1,
+      "name": "Production",
+      "type": "group",
+      "active": true,
+      "parent": null,
+      "interval": 60
+    },
+    {
+      "id": 2,
+      "name": "Website",
+      "description": "Public marketing site",
+      "type": "http",
+      "url": "https://example.org",
+      "method": "GET",
+      "active": true,
+      "parent": 1,
+      "interval": 60,
+      "retryInterval": 30,
+      "maxretries": 2,
+      "timeout": 48,
+      "accepted_statuscodes": ["200-299"],
+      "headers": "{\"X-Tenant\":\"acme\"}",
+      "ignoreTls": false,
+      "notificationIDList": { "1": true },
+      "tags": [{ "name": "team", "value": "platform" }]
+    },
+    {
+      "id": 3,
+      "name": "Docs keyword",
+      "type": "keyword",
+      "url": "https://docs.example.org",
+      "keyword": "Documentation",
+      "invertKeyword": false,
+      "active": true,
+      "parent": 1,
+      "interval": 120,
+      "maxretries": 5,
+      "retryInterval": 86400,
+      "accepted_statuscodes": ["200-299", "418", "700-799"]
+    },
+    {
+      "id": 4,
+      "name": "API json query",
+      "type": "json-query",
+      "url": "https://api.example.org/status",
+      "jsonPath": "status.state",
+      "expectedValue": "healthy",
+      "active": true,
+      "interval": 60,
+      "maxretries": 1,
+      "retryInterval": 20,
+      "upsideDown": true
+    },
+    {
+      "id": 5,
+      "name": "SMTP port",
+      "type": "port",
+      "hostname": "smtp.example.org",
+      "port": 587,
+      "active": true,
+      "interval": 300
+    },
+    {
+      "id": 6,
+      "name": "Gateway",
+      "type": "ping",
+      "hostname": "gw.example.org",
+      "active": false,
+      "interval": 60
+    },
+    {
+      "id": 7,
+      "name": "DNS record",
+      "type": "dns",
+      "hostname": "example.org",
+      "dns_resolve_server": "1.1.1.1",
+      "dns_resolve_type": "A",
+      "active": true,
+      "interval": 600
+    },
+    {
+      "id": 8,
+      "name": "Nginx container",
+      "type": "docker",
+      "docker_container": "nginx",
+      "docker_host": 1,
+      "active": true,
+      "interval": 60
+    },
+    {
+      "id": 9,
+      "name": "Nightly backup",
+      "type": "push",
+      "active": true,
+      "interval": 86400
+    },
+    {
+      "id": 10,
+      "name": "Grpc service",
+      "type": "grpc-keyword",
+      "grpcUrl": "grpc.example.org:50051",
+      "grpcServiceName": "health.v1.Health",
+      "grpcEnableTls": true,
+      "keyword": "SERVING",
+      "active": true,
+      "interval": 60
+    },
+    {
+      "id": 11,
+      "name": "Broker",
+      "type": "mqtt",
+      "hostname": "mqtt.example.org",
+      "port": 1883,
+      "mqttTopic": "solidping/health",
+      "mqttUsername": "probe",
+      "mqttPassword": "s3cret",
+      "mqttSuccessMessage": "ok",
+      "active": true,
+      "interval": 60
+    },
+    {
+      "id": 12,
+      "name": "Primary postgres",
+      "type": "postgres",
+      "databaseConnectionString": "postgres://monitor:s3cret@pg.example.org:5432/appdb",
+      "databaseQuery": "SELECT 1",
+      "active": true,
+      "interval": 120
+    },
+    {
+      "id": 13,
+      "name": "Reporting mysql",
+      "type": "mysql",
+      "databaseConnectionString": "mysql://reader:pw@mysql.example.org:3306/reporting",
+      "active": true,
+      "interval": 120
+    },
+    {
+      "id": 14,
+      "name": "Session redis",
+      "type": "redis",
+      "databaseConnectionString": "redis://:pw@redis.example.org:6379/2",
+      "active": true,
+      "interval": 60
+    },
+    {
+      "id": 15,
+      "name": "Billing mssql",
+      "type": "sqlserver",
+      "databaseConnectionString": "Server=mssql.example.org,1433;Database=billing;User Id=probe;Password=pw;Encrypt=true",
+      "databaseQuery": "SELECT 1",
+      "active": true,
+      "interval": 300
+    },
+    {
+      "id": 16,
+      "name": "Events mongo",
+      "type": "mongodb",
+      "databaseConnectionString": "mongodb://probe:pw@mongo.example.org:27017/events",
+      "active": true,
+      "interval": 120
+    },
+    {
+      "id": 17,
+      "name": "Game server",
+      "type": "steam",
+      "hostname": "game.example.org",
+      "port": 27015,
+      "active": true,
+      "interval": 300
+    },
+    {
+      "id": 18,
+      "name": "Checkout flow",
+      "type": "real-browser",
+      "url": "https://shop.example.org/checkout",
+      "active": true,
+      "interval": 600
+    },
+    {
+      "id": 19,
+      "name": "Radius login",
+      "type": "radius",
+      "hostname": "radius.example.org",
+      "active": true,
+      "interval": 300
+    },
+    {
+      "id": 20,
+      "name": "Broken db",
+      "type": "postgres",
+      "databaseConnectionString": "",
+      "active": true,
+      "interval": 60
+    },
+    {
+      "id": 21,
+      "name": "Authenticated API",
+      "type": "http",
+      "url": "https://secure.example.org",
+      "authMethod": "basic",
+      "basic_auth_user": "probe",
+      "basic_auth_pass": "pw",
+      "ignoreTls": true,
+      "active": true,
+      "interval": 60
+    }
+  ]
+}

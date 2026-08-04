@@ -21,6 +21,8 @@ func TestCapabilitiesFor(t *testing.T) {
 		{name: "email", connType: ConnectionTypeEmail, canNotify: true, canSource: false},
 		{name: "googlechat", connType: ConnectionTypeGoogleChat, canNotify: true, canSource: false},
 		{name: "mattermost", connType: ConnectionTypeMattermost, canNotify: true, canSource: false},
+		{name: "msteams", connType: ConnectionTypeMSTeams, canNotify: true, canSource: false},
+		{name: "msteams-bot", connType: ConnectionTypeMSTeamsBot, canNotify: true, canSource: false},
 		{name: "ntfy", connType: ConnectionTypeNtfy, canNotify: true, canSource: false},
 		{name: "opsgenie", connType: ConnectionTypeOpsgenie, canNotify: true, canSource: false},
 		{name: "pushover", connType: ConnectionTypePushover, canNotify: true, canSource: false},

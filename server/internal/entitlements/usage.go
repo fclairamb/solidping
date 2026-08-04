@@ -32,6 +32,11 @@ type Usage struct {
 	// CustomDomains is the org's count of live status pages with a custom
 	// domain set. Enforced against MaxCustomDomains.
 	CustomDomains int `json:"customDomains"`
+	// WhatsappThisMonth is the org's outbound WhatsApp template messages in
+	// the current UTC calendar month. Enforced against MaxWhatsappPerMonth.
+	// Unlike the other figures this is a persistent counter, not a live count
+	// — sent messages cannot be un-sent.
+	WhatsappThisMonth int `json:"whatsappThisMonth"`
 }
 
 // Usage computes the org's current resource consumption. Non-internal
@@ -73,9 +78,20 @@ func (s *Service) Usage(ctx context.Context, orgUID string) (Usage, error) {
 		return Usage{}, fmt.Errorf("count custom domains: %w", err)
 	}
 
+	// A counter read must never fail the whole usage page: the monthly
+	// counter is informational here, and the reservation path is the one that
+	// actually enforces the cap.
+	whatsapp, err := s.db.GetMonthlyUsage(
+		ctx, orgUID, models.UsageCounterKindWhatsApp, monthStart(s.now()),
+	)
+	if err != nil {
+		whatsapp = 0
+	}
+
 	return Usage{
 		Checks: len(rates), ChecksPerMinute: perMin, SSOUsers: members,
 		Agents: agentCount, CustomDomains: customDomains,
+		WhatsappThisMonth: whatsapp,
 	}, nil
 }
 

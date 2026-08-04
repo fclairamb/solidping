@@ -11,7 +11,8 @@
     "hashing": "Hachage des mots de passe",
     "performance": "Performances",
     "aggregation": "Agrégation",
-    "slack": "Slack"
+    "slack": "Slack",
+    "analytics": "Analytique"
   },
   "aggregation": {
     "title": "Agrégation",
@@ -272,5 +273,26 @@
       "noError": "—",
       "never": "jamais"
     }
+  },
+  "analytics": {
+    "title": "Analytique produit",
+    "description": "Intégration PostHog optionnelle. L'analytique est totalement désactivée tant qu'aucune clé d'API projet n'est renseignée : sans clé, le serveur n'envoie rien et le tableau de bord ne charge aucun code d'analytique.",
+    "statusOn": "Analytique active",
+    "statusOff": "Analytique désactivée",
+    "statusOffHelp": "Aucune clé d'API projet n'est configurée : rien n'est collecté et aucun code d'analytique n'est chargé dans le navigateur.",
+    "enabled": "Activer l'analytique",
+    "enabledHelp": "Interrupteur d'arrêt. L'activer ne suffit pas : une clé d'API projet est également requise.",
+    "projectApiKey": "Clé d'API projet",
+    "projectApiKeyPlaceholder": "phc_...",
+    "projectApiKeyHelp": "Clé publique PostHog pour le navigateur. Elle est volontairement transmise au tableau de bord. Laissez vide pour garder l'analytique entièrement désactivée.",
+    "host": "Hôte",
+    "hostPlaceholder": "https://eu.i.posthog.com",
+    "hostHelp": "Point d'ingestion PostHog. Compatible avec PostHog auto-hébergé et les reverse proxies.",
+    "personalApiKey": "Clé d'API personnelle",
+    "personalApiKeyPlaceholder": "Saisir une nouvelle clé d'API personnelle",
+    "personalApiKeyHelp": "Clé serveur optionnelle. Stockée comme secret et jamais transmise au navigateur.",
+    "envOverride": "Défini par l'environnement",
+    "envOverrideHelp": "Cette valeur provient d'une variable d'environnement, qui prime sur toute valeur enregistrée ici.",
+    "whatIsSent": "Ce qui est envoyé : cinq événements produit (organisation créée, inscription d'un utilisateur, check créé, intégration connectée, page de statut publiée), identifiés par les UUID d'organisation et d'utilisateur. Jamais envoyé : adresses e-mail, cibles de check, noms d'hôtes, URL, contenu des incidents ou tout texte que vous avez saisi."
   }
 }

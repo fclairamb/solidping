@@ -89,6 +89,14 @@ type CheckGroupResponse struct {
 	Description *string `json:"description,omitempty"`
 	SortOrder   int16   `json:"sortOrder"`
 	CheckCount  int     `json:"checkCount"`
+	// Status is the derived, read-time rollup of enabled member checks'
+	// statuses (spec 2026-08-01-01): see models.RollupGroupStatus for the
+	// exact rules. Never stored — recomputed on every read.
+	Status string `json:"status"`
+	// MemberStatusCounts is the per-status count of enabled member checks
+	// (wire status name -> count), omitting statuses with zero members, so
+	// clients can render e.g. "3/4 up" without a second call.
+	MemberStatusCounts map[string]int `json:"memberStatusCounts,omitempty"`
 	// EscalationPolicyUID is the group-level escalation policy that its member
 	// checks inherit when they have no policy of their own. nil = no group
 	// policy (checks then fall back to the org default, then none).
@@ -129,9 +137,14 @@ func (s *Service) ListCheckGroups(ctx context.Context, orgSlug string) ([]CheckG
 		return nil, err
 	}
 
+	statusCounts, err := s.db.GetCheckGroupStatusCounts(ctx, org.UID)
+	if err != nil {
+		return nil, err
+	}
+
 	responses := make([]CheckGroupResponse, len(groups))
 	for i, g := range groups {
-		responses[i] = convertGroupToResponse(g)
+		responses[i] = convertGroupToResponse(g, statusCounts[g.UID])
 	}
 
 	return responses, nil
@@ -210,7 +223,9 @@ func (s *Service) CreateCheckGroup(
 		return CheckGroupResponse{}, err
 	}
 
-	return convertGroupToResponse(group), nil
+	// A brand-new group has no member checks yet — no query needed, the
+	// rollup of an empty/nil counts map is always "created".
+	return convertGroupToResponse(group, nil), nil
 }
 
 // GetCheckGroup retrieves a single check group by UID or slug.
@@ -227,7 +242,12 @@ func (s *Service) GetCheckGroup(
 		return CheckGroupResponse{}, ErrCheckGroupNotFound
 	}
 
-	return convertGroupToResponse(group), nil
+	statusCounts, err := s.db.GetCheckGroupStatusCounts(ctx, org.UID)
+	if err != nil {
+		return CheckGroupResponse{}, err
+	}
+
+	return convertGroupToResponse(group, statusCounts[group.UID]), nil
 }
 
 // UpdateCheckGroup updates an existing check group.
@@ -283,13 +303,24 @@ func (s *Service) UpdateCheckGroup(
 		return CheckGroupResponse{}, errUpdate
 	}
 
-	// Fetch updated group
-	updatedGroup, err := s.db.GetCheckGroup(ctx, org.UID, group.UID)
+	return s.fetchGroupResponse(ctx, org.UID, group.UID)
+}
+
+// fetchGroupResponse re-fetches a group by UID and its member status counts,
+// combining them into the API response. Shared by GetCheckGroup and
+// UpdateCheckGroup's post-write refetch.
+func (s *Service) fetchGroupResponse(ctx context.Context, orgUID, groupUID string) (CheckGroupResponse, error) {
+	group, err := s.db.GetCheckGroup(ctx, orgUID, groupUID)
 	if err != nil {
 		return CheckGroupResponse{}, err
 	}
 
-	return convertGroupToResponse(updatedGroup), nil
+	statusCounts, err := s.db.GetCheckGroupStatusCounts(ctx, orgUID)
+	if err != nil {
+		return CheckGroupResponse{}, err
+	}
+
+	return convertGroupToResponse(group, statusCounts[group.UID]), nil
 }
 
 // DeleteCheckGroup deletes a check group by UID or slug (soft delete).
@@ -307,7 +338,25 @@ func (s *Service) DeleteCheckGroup(ctx context.Context, orgSlug, identifier stri
 	return s.db.DeleteCheckGroup(ctx, group.UID)
 }
 
-func convertGroupToResponse(group *models.CheckGroup) CheckGroupResponse {
+// convertGroupToResponse builds the API response for a group given the
+// per-status counts of its enabled member checks (nil/empty for a group with
+// no such members, e.g. one that was just created).
+func convertGroupToResponse(group *models.CheckGroup, statusCounts map[models.CheckStatus]int) CheckGroupResponse {
+	rollup := models.RollupGroupStatus(statusCounts)
+
+	var memberStatusCounts map[string]int
+	if len(statusCounts) > 0 {
+		memberStatusCounts = make(map[string]int, len(statusCounts))
+
+		for status, count := range statusCounts {
+			if count == 0 {
+				continue
+			}
+
+			memberStatusCounts[status.String()] = count
+		}
+	}
+
 	return CheckGroupResponse{
 		UID:                 group.UID,
 		Name:                group.Name,
@@ -315,6 +364,8 @@ func convertGroupToResponse(group *models.CheckGroup) CheckGroupResponse {
 		Description:         group.Description,
 		SortOrder:           group.SortOrder,
 		CheckCount:          group.CheckCount,
+		Status:              rollup.String(),
+		MemberStatusCounts:  memberStatusCounts,
 		EscalationPolicyUID: group.EscalationPolicyUID,
 		CreatedAt:           group.CreatedAt,
 		UpdatedAt:           group.UpdatedAt,

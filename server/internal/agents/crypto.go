@@ -23,6 +23,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
@@ -43,7 +44,6 @@ const DefaultClockSkew = 5 * time.Minute
 var (
 	ErrBadSignature     = errors.New("agent signature verification failed")
 	ErrClockSkew        = errors.New("agent request timestamp outside accepted clock skew")
-	ErrReplayedNonce    = errors.New("agent request nonce already used within the window")
 	ErrInvalidPublicKey = errors.New("invalid ed25519 public key")
 	ErrInvalidTimestamp = errors.New("invalid timestamp")
 )
@@ -194,4 +194,16 @@ func (k *AgentKeys) Sign(method, path, timestamp, nonce string) (string, error) 
 // ConstantTimeHashEqual compares two token hashes without leaking timing.
 func ConstantTimeHashEqual(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+// WorkerSlug derives the deterministic workers.slug an enrolled agent's worker
+// row uses. It lives here (rather than in the WS handler) because the agent GC
+// job must resolve the same slug to retire a dead machine's worker row.
+func WorkerSlug(agentUID string) string {
+	compact := strings.ReplaceAll(agentUID, "-", "")
+	if len(compact) > 12 {
+		compact = compact[:12]
+	}
+
+	return "ag-" + strings.ToLower(compact)
 }

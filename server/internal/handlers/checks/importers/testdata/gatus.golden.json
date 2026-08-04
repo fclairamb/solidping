@@ -1,0 +1,255 @@
+{
+  "document": {
+    "version": 1,
+    "exportedAt": "",
+    "organization": "gatus",
+    "checks": [
+      {
+        "name": "back-end",
+        "slug": "back-end",
+        "type": "http",
+        "config": {
+          "body": "{\"probe\":\"solidping\"}",
+          "expected_status": 200,
+          "headers": {
+            "Accept": "application/json",
+            "X-Tenant": "acme"
+          },
+          "json_path_assertions": {
+            "children": [
+              {
+                "operator": "eq",
+                "path": "$.status",
+                "type": "assertion",
+                "value": "UP"
+              },
+              {
+                "operator": "neq",
+                "path": "$.version",
+                "type": "assertion",
+                "value": "0"
+              }
+            ],
+            "type": "and"
+          },
+          "method": "POST",
+          "timeout": "5s",
+          "url": "https://example.org/health"
+        },
+        "enabled": true,
+        "period": "30s",
+        "group": "core"
+      },
+      {
+        "name": "back-end-ssl",
+        "slug": "back-end-ssl",
+        "type": "ssl",
+        "config": {
+          "criticalDays": 2,
+          "host": "example.org",
+          "warningDays": 2
+        },
+        "enabled": true,
+        "period": "6h",
+        "group": "core"
+      },
+      {
+        "name": "marketing site",
+        "slug": "marketing-site",
+        "type": "http",
+        "config": {
+          "body_pattern": "^.*Welcome.*$",
+          "expected_status_codes": [
+            "200",
+            "301"
+          ],
+          "json_path_assertions": {
+            "operator": "not_exists",
+            "path": "$.errors",
+            "type": "assertion"
+          },
+          "method": "GET",
+          "url": "https://www.example.org"
+        },
+        "enabled": true,
+        "period": "1m",
+        "group": "public"
+      },
+      {
+        "name": "marketing site-domain",
+        "slug": "marketing-site-domain",
+        "type": "domain",
+        "config": {
+          "domain": "www.example.org",
+          "thresholdDays": 30
+        },
+        "enabled": true,
+        "period": "24h",
+        "group": "public"
+      },
+      {
+        "name": "legacy soap",
+        "slug": "legacy-soap",
+        "type": "http",
+        "config": {
+          "body_reject": "nope",
+          "expected_status_codes": [
+            "2XX"
+          ],
+          "method": "GET",
+          "timeout": "30s",
+          "url": "https://legacy.example.org/soap"
+        },
+        "enabled": false,
+        "period": "1m"
+      },
+      {
+        "name": "database port",
+        "slug": "database-port",
+        "type": "tcp",
+        "config": {
+          "host": "db.example.org",
+          "port": 5432
+        },
+        "enabled": true,
+        "period": "1m",
+        "group": "core"
+      },
+      {
+        "name": "secure relay",
+        "slug": "secure-relay",
+        "type": "tcp",
+        "config": {
+          "host": "smtp.example.org",
+          "port": 587,
+          "tls": true
+        },
+        "enabled": true,
+        "period": "1m"
+      },
+      {
+        "name": "gateway ping",
+        "slug": "gateway-ping",
+        "type": "icmp",
+        "config": {
+          "host": "gw.example.org"
+        },
+        "enabled": true,
+        "period": "2m"
+      },
+      {
+        "name": "bastion",
+        "slug": "bastion",
+        "type": "ssh",
+        "config": {
+          "host": "bastion.example.org",
+          "port": 22
+        },
+        "enabled": true,
+        "period": "1m"
+      },
+      {
+        "name": "syslog relay",
+        "slug": "syslog-relay",
+        "type": "udp",
+        "config": {
+          "host": "logs.example.org",
+          "port": 514
+        },
+        "enabled": true,
+        "period": "1m"
+      },
+      {
+        "name": "realtime feed",
+        "slug": "realtime-feed",
+        "type": "websocket",
+        "config": {
+          "url": "wss://feed.example.org/socket"
+        },
+        "enabled": true,
+        "period": "1m"
+      },
+      {
+        "name": "dns lookup",
+        "slug": "dns-lookup",
+        "type": "dns",
+        "config": {
+          "expected_values": [
+            "93.184.216.34"
+          ],
+          "host": "example.org",
+          "nameserver": "8.8.8.8:53",
+          "record_type": "A"
+        },
+        "enabled": true,
+        "period": "5m",
+        "group": "core"
+      }
+    ]
+  },
+  "warnings": [
+    {
+      "message": "1 external-endpoint(s) were not imported: Gatus push endpoints have no direct equivalent — recreate them as SolidPing heartbeat checks"
+    },
+    {
+      "item": "back-end",
+      "field": "conditions",
+      "message": "condition \"[RESPONSE_TIME] \u003c 300\" has no SolidPing equivalent and was dropped"
+    },
+    {
+      "item": "back-end",
+      "field": "conditions",
+      "message": "condition \"[CERTIFICATE_EXPIRATION] \u003e 48h\" was split out into a dedicated ssl check"
+    },
+    {
+      "item": "back-end",
+      "field": "alerts",
+      "message": "alerting/notification bindings are not imported — configure SolidPing integrations instead"
+    },
+    {
+      "item": "marketing site",
+      "field": "conditions",
+      "message": "condition \"[DOMAIN_EXPIRATION] \u003e 720h\" was split out into a dedicated domain check"
+    },
+    {
+      "item": "marketing site",
+      "field": "client.insecure",
+      "message": "skipping TLS verification is not supported by the SolidPing http checker"
+    },
+    {
+      "item": "marketing site",
+      "field": "client.ignore-redirect",
+      "message": "redirect handling is not configurable on SolidPing http checks (redirects are followed)"
+    },
+    {
+      "item": "legacy soap",
+      "field": "conditions",
+      "message": "condition \"len([BODY].items) \u003e 0\" uses len(), which has no SolidPing equivalent"
+    },
+    {
+      "item": "bastion",
+      "field": "ssh",
+      "message": "the SSH credentials were deliberately not imported (SolidPing never re-persists secrets from a foreign export) — re-enter the username and password/key on the check"
+    },
+    {
+      "item": "unsupported transport",
+      "field": "url",
+      "message": "endpoint skipped: url scheme has no SolidPing check type: \"sctp\""
+    },
+    {
+      "item": "back-end-ssl",
+      "field": "period",
+      "message": "period \"30s\" is below the minimum for ssl checks; raised to 6h"
+    },
+    {
+      "item": "marketing site-domain",
+      "field": "period",
+      "message": "period \"1m\" is below the minimum for domain checks; raised to 24h"
+    },
+    {
+      "item": "legacy soap",
+      "field": "timeout",
+      "message": "timeout 45s is outside SolidPing's 1s–30s range; clamped to 30s"
+    }
+  ]
+}

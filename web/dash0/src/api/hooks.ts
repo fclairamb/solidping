@@ -4,7 +4,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import { apiFetch } from "./client";
+import { apiFetch, getToken } from "./client";
 import {
   stretchWhileLive,
   useLiveSubscription,
@@ -19,6 +19,15 @@ export interface CheckGroup {
   description?: string;
   sortOrder: number;
   checkCount: number;
+  /**
+   * Derived, read-time rollup of the group's enabled member checks (see
+   * openapi.yaml CheckGroup schema for the exact precedence rule). Never
+   * stored — recomputed on every read, so it's always current regardless of
+   * which page of members has loaded client-side.
+   */
+  status: string;
+  /** Count of enabled member checks per wire status, zero counts omitted. */
+  memberStatusCounts?: Record<string, number>;
   /** Group-level escalation policy member checks inherit; null = none. */
   escalationPolicyUid?: string | null;
   createdAt: string;
@@ -55,6 +64,14 @@ export interface Check {
   escalationPolicyUid?: string | null;
   type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "rdp" | "sleep";
   config?: Record<string, unknown>;
+  /**
+   * Derived, read-time-only host this check probes: config's `host` when
+   * present, else the hostname parsed from `url`, else `target`; absent/null
+   * when none apply (e.g. heartbeat/email). Never stored — renaming a host in
+   * a check's config changes this on the next read. Drives the checks index's
+   * "Group by: Host" view (spec 2026-08-01-04).
+   */
+  targetHost?: string | null;
   configPrivateKeys?: string[];
   /**
    * Detail responses only. True when this check targets a private location and
@@ -309,6 +326,48 @@ export function useChecks(
   });
 }
 
+/**
+ * Org-wide aggregate check counters from GET /orgs/:org/checks/stats.
+ *
+ * Every field is computed server-side with a single SQL aggregation, so —
+ * unlike counting a page of `useChecks` — it stays correct past the list
+ * endpoint's 100-row page clamp (GitHub issue #172). Scope is non-deleted,
+ * non-internal checks, i.e. exactly what the checks list shows by default.
+ *
+ * `total`, `byStatus`, `down` and `hardDown` span enabled AND disabled checks;
+ * `enabled`/`disabled` partition the same set.
+ */
+export interface CheckStats {
+  total: number;
+  enabled: number;
+  disabled: number;
+  /** Every known status key is always present (0 when empty). */
+  byStatus: Record<string, number>;
+  /** status in (down, error, timeout) — the "currently down" KPI. */
+  down: number;
+  /** status in (down, error) — down excluding timeouts. */
+  hardDown: number;
+}
+
+/**
+ * Fetches the org's aggregate check counters. The endpoint is cached
+ * server-side for ~1 minute, so polling it faster than that is wasted work —
+ * callers should pass a refetchInterval no shorter than the other dashboard
+ * queries use.
+ */
+export function useCheckStats(
+  org: string,
+  options?: { refetchInterval?: number }
+) {
+  return useQuery({
+    queryKey: ["check-stats", org],
+    queryFn: async () =>
+      apiFetch<CheckStats>(`/api/v1/orgs/${org}/checks/stats`),
+    enabled: !!org,
+    refetchInterval: options?.refetchInterval,
+  });
+}
+
 export function useInfiniteChecks(
   org: string,
   options?: {
@@ -515,17 +574,91 @@ export interface ImportResult {
   errors: { index: number; slug: string; error: string }[];
 }
 
+/** Third-party import sources the convert endpoint accepts. */
+export const CONVERT_SOURCES = ["gatus", "betterstack", "uptime-kuma"] as const;
+export type ConvertSource = (typeof CONVERT_SOURCES)[number];
+
+/** One source item (or field) that could not be mapped faithfully. */
+export interface ConversionWarning {
+  item?: string;
+  field?: string;
+  message: string;
+}
+
+/** Response of POST /checks/import/convert: the apply shape + conversion info. */
+export interface ConvertResult {
+  source: string;
+  converted: number;
+  manifest: string;
+  dryRun: boolean;
+  created: number;
+  updated: number;
+  unmanaged: number;
+  plan: { slug: string; action: string; reason?: string }[];
+  errors: { index: number; slug: string; error: string }[];
+  warnings: ConversionWarning[];
+}
+
+/**
+ * Picks the Content-Type for an export document the user pasted or uploaded.
+ * The server sniffs the first non-space byte too, but sending an accurate
+ * header keeps a JSON body from being handed to the YAML branch (and vice
+ * versa) — `application/json` forces the JSON parser server-side.
+ */
+function documentContentType(body: string): string {
+  const trimmed = body.trimStart();
+  return trimmed.startsWith("{") || trimmed.startsWith("[")
+    ? "application/json"
+    : "application/yaml";
+}
+
 // Check Export/Import hooks
+
+/**
+ * Converts a third-party monitoring configuration and applies it. The body is
+ * the raw source payload (Gatus YAML / Uptime Kuma backup JSON) or, for Better
+ * Stack, `{"token": "..."}` — the token is sent once and never stored client-
+ * or server-side.
+ */
+export function useConvertChecks(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: { source: ConvertSource; body: string; dryRun?: boolean }) =>
+      apiFetch<ConvertResult>(
+        `/api/v1/orgs/${org}/checks/import/convert?source=${encodeURIComponent(params.source)}${
+          params.dryRun ? "&dryRun=true" : ""
+        }`,
+        {
+          method: "POST",
+          body: params.body,
+        },
+      ),
+    onSuccess: (_, params) => {
+      if (!params.dryRun) {
+        queryClient.invalidateQueries({ queryKey: ["checks", org] });
+        queryClient.invalidateQueries({ queryKey: ["checkGroups", org] });
+      }
+    },
+  });
+}
+
+/**
+ * Imports a native SolidPing export document. The body is sent as raw text so
+ * the server-side parser decides the format: /checks/import accepts JSON *and*
+ * YAML, and parsing client-side would silently narrow that to JSON only.
+ */
 export function useImportChecks(org: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (params: { doc: ExportDocument; dryRun?: boolean }) =>
+    mutationFn: (params: { body: string; dryRun?: boolean }) =>
       apiFetch<ImportResult>(
         `/api/v1/orgs/${org}/checks/import${params.dryRun ? "?dryRun=true" : ""}`,
         {
           method: "POST",
-          body: JSON.stringify(params.doc),
+          body: params.body,
+          headers: { "Content-Type": documentContentType(params.body) },
         },
       ),
     onSuccess: (_, params) => {
@@ -1445,7 +1578,8 @@ export function useSignOutOtherSessions(org: string) {
 export type StatusPagePeriod = "24h" | "7d" | "30d" | "90d";
 
 // DnsRecord is one DNS record a customer must create to activate a custom
-// domain (CNAME for routing, TXT for ownership).
+// domain. Since v0.8.0 the API returns exactly one: the routing CNAME (the TXT
+// ownership challenge was removed).
 export interface DnsRecord {
   type: string;
   name: string;
@@ -1453,6 +1587,11 @@ export interface DnsRecord {
 }
 
 export type CustomDomainStatus = "unverified" | "verified";
+
+// CustomDomainCertStatus is the in-server-ACME certificate state for a verified
+// custom domain. Absent when in-server TLS is disabled (TLS handled by an
+// external proxy) or the domain is not verified yet.
+export type CustomDomainCertStatus = "none" | "issued" | "error";
 
 export interface StatusPage {
   uid: string;
@@ -1466,9 +1605,14 @@ export interface StatusPage {
   showResponseTime: boolean;
   historyDays: number;
   historyPeriod: StatusPagePeriod;
+  // Operator-authored stylesheet applied to the PUBLIC status page (status0).
+  // Never applied to dash0's own chrome — only inside the appearance preview
+  // iframe, which loads the real status0 renderer.
+  customCss?: string;
   // Custom-domain fields are only present on the authenticated org endpoints.
   customDomain?: string;
   customDomainStatus?: CustomDomainStatus;
+  customDomainCertStatus?: CustomDomainCertStatus;
   customDomainRecords?: DnsRecord[];
   sections?: StatusPageSection[];
   createdAt?: string;
@@ -1485,12 +1629,20 @@ export interface StatusPageSection {
 
 export interface StatusPageResource {
   uid: string;
-  checkUid: string;
+  /**
+   * Exactly one of checkUid / checkGroupUid is set. A group resource renders as
+   * ONE public component (rolled-up status, weighted-average availability across
+   * its members, maintenance from a group- or member-targeted window) and never
+   * exposes its members publicly.
+   */
+  checkUid?: string;
+  checkGroupUid?: string;
   publicName?: string;
   explanation?: string;
   position: number;
   check?: {
     name?: string;
+    /** Check type for a check resource; empty for a group resource. */
     type: string;
     status: string;
   };
@@ -1507,6 +1659,7 @@ export interface CreateStatusPageRequest {
   showResponseTime?: boolean;
   historyDays?: number;
   historyPeriod?: StatusPagePeriod;
+  customCss?: string;
   customDomain?: string;
 }
 
@@ -1521,6 +1674,8 @@ export interface UpdateStatusPageRequest {
   showResponseTime?: boolean;
   historyDays?: number;
   historyPeriod?: StatusPagePeriod;
+  // An empty string clears the custom stylesheet; omit to leave it unchanged.
+  customCss?: string;
   // null clears the custom domain; a non-empty string sets it; omit to leave
   // it unchanged.
   customDomain?: string | null;
@@ -1538,14 +1693,25 @@ export interface UpdateSectionRequest {
   position?: number;
 }
 
+/**
+ * Exactly one of checkUid / checkGroupUid must be set; zero or both is a
+ * VALIDATION_ERROR naming both fields.
+ */
 export interface CreateResourceRequest {
-  checkUid: string;
+  checkUid?: string;
+  checkGroupUid?: string;
   publicName?: string;
   explanation?: string;
   position?: number;
 }
 
+/**
+ * Supplying checkUid or checkGroupUid switches the resource's target kind;
+ * supplying both is a validation error, supplying neither leaves it untouched.
+ */
 export interface UpdateResourceRequest {
+  checkUid?: string;
+  checkGroupUid?: string;
   publicName?: string;
   explanation?: string;
   position?: number;
@@ -2267,7 +2433,7 @@ export function useInviteInfo(token: string) {
 
 export interface AcceptInviteResponse {
   accessToken: string;
-  user: { email: string; name?: string; avatarUrl?: string; role: string };
+  user: { uid: string; email: string; name?: string; avatarUrl?: string; role: string };
   organization: { uid: string; slug: string; name?: string };
   organizations?: Array<{ slug: string; name?: string; role: string }>;
 }
@@ -2511,15 +2677,37 @@ export interface SystemParameter {
   updatedAt: string;
 }
 
+interface SystemParametersResponse {
+  data: SystemParameter[];
+  // Keys whose effective value is forced by an SP_* environment variable, so
+  // a DB edit made here would appear not to take effect. Names only, no values.
+  envOverrides?: string[];
+}
+
+async function fetchSystemParameters(): Promise<SystemParametersResponse> {
+  const response = await apiFetch<SystemParametersResponse>(
+    "/api/v1/system/parameters"
+  );
+  return { data: response.data || [], envOverrides: response.envOverrides || [] };
+}
+
 export function useSystemParameters() {
   return useQuery({
     queryKey: ["system-parameters"],
-    queryFn: async () => {
-      const response = await apiFetch<{ data: SystemParameter[] }>(
-        "/api/v1/system/parameters"
-      );
-      return response.data || [];
-    },
+    queryFn: fetchSystemParameters,
+    select: (response: SystemParametersResponse) => response.data,
+  });
+}
+
+/**
+ * Parameter keys currently overridden by an environment variable. Shares the
+ * `system-parameters` query cache, so this costs no extra request.
+ */
+export function useSystemParameterEnvOverrides() {
+  return useQuery({
+    queryKey: ["system-parameters"],
+    queryFn: fetchSystemParameters,
+    select: (response: SystemParametersResponse) => response.envOverrides ?? [],
   });
 }
 
@@ -3185,6 +3373,8 @@ export type ConnectionType =
   | "email"
   | "googlechat"
   | "mattermost"
+  | "msteams"
+  | "msteams-bot"
   | "ntfy"
   | "opsgenie"
   | "pushover"
@@ -3213,6 +3403,8 @@ export const CAPABILITIES: Record<ConnectionType, IntegrationCapabilities> = {
   email: NOTIFY,
   googlechat: NOTIFY,
   mattermost: NOTIFY,
+  msteams: NOTIFY,
+  "msteams-bot": NOTIFY,
   ntfy: NOTIFY,
   opsgenie: NOTIFY,
   pushover: NOTIFY,
@@ -3541,6 +3733,132 @@ export function useSlackDestinations(
     enabled: enabled && Boolean(org && channelUid),
     staleTime: 60_000,
   });
+}
+
+// Microsoft Teams bot (msteams-bot) setup types and hooks.
+//
+// Unlike Slack there is no live channel list to fetch: a Teams bot cannot
+// enumerate the channels of a team it was never added to, so the destinations
+// are the conversation references the backend captured at install time.
+
+export interface MSTeamsDestination {
+  id: string;
+  name: string;
+  /** Owning Teams team id — channels are per-team in Teams. */
+  team_id?: string;
+  team_name?: string;
+  service_url?: string;
+  type?: string;
+}
+
+export interface MSTeamsDestinationsResponse {
+  destinations: MSTeamsDestination[];
+  tenantId: string;
+  connected: boolean;
+  uninstalled: boolean;
+}
+
+export function useMSTeamsBotDestinations(
+  org: string,
+  channelUid: string,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["msteams-destinations", org, channelUid],
+    queryFn: () =>
+      apiFetch<MSTeamsDestinationsResponse>(
+        `/api/v1/orgs/${org}/channels/${channelUid}/msteams/destinations`,
+      ),
+    enabled: enabled && Boolean(org && channelUid),
+    staleTime: 30_000,
+  });
+}
+
+export interface MSTeamsBotStatus {
+  enabled: boolean;
+  configured: boolean;
+  appId?: string;
+  /** The URL Microsoft must be able to reach over public HTTPS. */
+  messagingEndpoint: string;
+  installedTenants: number;
+  singleTenant?: string;
+}
+
+export function useMSTeamsBotStatus(org: string, enabled = true) {
+  return useQuery({
+    queryKey: ["msteams-status", org],
+    queryFn: () =>
+      apiFetch<MSTeamsBotStatus>(
+        `/api/v1/orgs/${org}/integrations/msteams/status`,
+      ),
+    enabled: enabled && Boolean(org),
+    staleTime: 60_000,
+  });
+}
+
+export interface MSTeamsPendingLink {
+  connectionUid: string;
+  code: string;
+  expiresInSeconds: number;
+}
+
+/**
+ * Mints a one-time code that links a Microsoft 365 tenant to this org.
+ *
+ * The tenant id is never sent by the client: it is written server-side, only
+ * from a signature-verified Bot Framework activity that quotes this code
+ * back. That round-trip is what proves the org asking for the link and the
+ * tenant being linked are the same actor — Bot Framework has no OAuth
+ * redirect to carry that context the way Slack's install flow does.
+ */
+export function useStartMSTeamsLink(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (connectionUid?: string) =>
+      apiFetch<MSTeamsPendingLink>(
+        `/api/v1/orgs/${org}/integrations/msteams/link-code`,
+        {
+          method: "POST",
+          body: JSON.stringify(connectionUid ? { connectionUid } : {}),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["integrations", org] });
+    },
+  });
+}
+
+/**
+ * Downloads the generated, instance-filled Teams app package.
+ *
+ * The endpoint is authenticated (it names the instance's Entra app id), so
+ * this cannot be a plain anchor href — fetch it with the session token and
+ * hand the browser a blob URL instead.
+ */
+export async function downloadMSTeamsManifest(org: string): Promise<void> {
+  const token = getToken();
+  const response = await fetch(
+    `/api/v1/orgs/${org}/integrations/msteams/manifest.zip`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to download the Teams app package");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+
+  try {
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "solidping-teams-app.zip";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 interface SlackInstallURLResponse {
@@ -4042,6 +4360,10 @@ export interface EntitlementsLimits {
   maxUsers?: number | null;
   /** Cap on active deported (private-location) agents. null = unlimited. */
   maxDeportedAgents?: number | null;
+  /** Cap on status pages served on a customer-owned domain. null = unlimited. */
+  maxCustomDomains?: number | null;
+  /** Cap on outbound WhatsApp template messages per UTC month. null = unlimited. */
+  maxWhatsappPerMonth?: number | null;
 }
 
 export interface EntitlementsUsage {
@@ -4050,6 +4372,13 @@ export interface EntitlementsUsage {
   ssoUsers: number;
   /** Count of active deported (private-location) agents. */
   agents: number;
+  /** Count of live status pages with a custom domain set. */
+  customDomains: number;
+  /**
+   * Outbound WhatsApp template messages sent in the current UTC month. A
+   * persistent counter, not a live count — sent messages cannot be un-sent.
+   */
+  whatsappThisMonth: number;
 }
 
 export interface EntitlementsResponse {

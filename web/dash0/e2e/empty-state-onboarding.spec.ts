@@ -8,14 +8,32 @@ import { test, expect } from "./fixtures";
 // Account.
 //
 // The shared `test` org accumulates checks from other suites (and parallel
-// workers), so instead of mutating shared state to empty it, the checks list
-// endpoint is stubbed to `{"data":[]}` — `isEmptyOrg` in dashboard-page.tsx
-// only depends on the checks query, so this deterministically renders the
-// hero without touching the backend. The click-through to the MCP page then
-// runs against the real backend (the MCP page needs no checks and no PAT —
-// exactly the brand-new-org situation the spec calls out).
+// workers), so instead of mutating shared state to empty it, both check
+// endpoints the dashboard reads are stubbed empty: the list (`{"data":[]}`)
+// and the aggregate counters (`total: 0`). `isEmptyOrg` in dashboard-page.tsx
+// keys off the STATS endpoint — counting the list page would be wrong past
+// 100 checks (GitHub issue #172) — so stubbing the list alone would no longer
+// render the hero. The click-through to the MCP page then runs against the
+// real backend (the MCP page needs no checks and no PAT — exactly the
+// brand-new-org situation the spec calls out).
 test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
   async function gotoEmptyDashboard(page: import("./fixtures").Page) {
+    // Needs its own pattern: a single `*` in a Playwright URL glob never
+    // matches `/`, so the `checks*` route below cannot serve `/checks/stats`.
+    await page.route("**/api/v1/orgs/test/checks/stats*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          total: 0,
+          enabled: 0,
+          disabled: 0,
+          byStatus: {},
+          down: 0,
+          hardDown: 0,
+        }),
+      }),
+    );
     await page.route("**/api/v1/orgs/test/checks*", (route) =>
       route.fulfill({
         status: 200,

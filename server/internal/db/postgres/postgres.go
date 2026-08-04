@@ -1326,8 +1326,33 @@ func applyCheckTypeFilter(query *bun.SelectQuery, types []string) *bun.SelectQue
 const groupSortKeyExpr = `COALESCE((SELECT g.sort_order FROM check_groups AS g ` +
 	`WHERE g.uid = check_group_uid), 2147483647)`
 
+// targetHostSortKeyExpr is the effective ordering key for sort=targetHost: the
+// check's config `host`, else `url`, else `target` (as raw text — NOT the
+// hostname-parsed value the response's targetHost field carries, since
+// portably parsing a hostname out of a URL in SQL is impractical across both
+// backends), or a sentinel that sorts strictly last for checks with none of
+// those fields. A same-host prefix (the common case: same scheme, same host,
+// differing path) still sorts contiguously, which is all this ordering needs
+// to do — clients bucket by the exact `targetHost` field from each response,
+// not by this key.
+//
+// Forced to COLLATE "C": Postgres's default database collation is locale-aware
+// (e.g. en_US.UTF-8, via ICU/glibc) and does NOT guarantee the sentinel's
+// U+FFFF noncharacter bytes compare greater than ordinary hostname text —
+// under that collation the sentinel sorted FIRST instead of last, silently
+// breaking the "none of host/url/target sorts last" contract (caught by
+// TestListChecksSortByTargetHostOrdering_Postgres). "C" collation is always a
+// raw byte comparison, matching SQLite's default (non-locale) BINARY
+// collation, so both stores behave identically — the reason this is NOT kept
+// byte-identical in spirit to the sqlite twin's raw expression the way
+// groupSortKeyExpr is (that one is numeric and has no collation to fight).
+const targetHostSortKeyExpr = `(COALESCE(` +
+	`NULLIF(config->>'host', ''), NULLIF(config->>'url', ''), NULLIF(config->>'target', ''), ` +
+	`'￿￿￿￿￿￿￿￿￿￿') COLLATE "C")`
+
 // applyChecksCursor adds the keyset cursor predicate to the ListChecks row
-// query. sort=group uses a composite (group key, created_at, uid) tuple; the
+// query. sort=group uses a composite (group key, created_at, uid) tuple;
+// sort=targetHost uses a composite (target host key, name, uid) tuple; the
 // default ordering keeps the two-part (created_at, uid) cursor.
 func applyChecksCursor(query *bun.SelectQuery, filter *models.ListChecksFilter) *bun.SelectQuery {
 	if filter.SortByGroup {
@@ -1345,6 +1370,21 @@ func applyChecksCursor(query *bun.SelectQuery, filter *models.ListChecksFilter) 
 		)
 	}
 
+	if filter.SortByTargetHost {
+		if filter.CursorTargetHostKey == nil || filter.CursorTargetHostName == nil || filter.CursorUID == nil {
+			return query
+		}
+
+		return query.Where(
+			"("+targetHostSortKeyExpr+" > ?"+
+				" OR ("+targetHostSortKeyExpr+" = ? AND COALESCE(name, '') > ?)"+
+				" OR ("+targetHostSortKeyExpr+" = ? AND COALESCE(name, '') = ? AND uid > ?))",
+			*filter.CursorTargetHostKey,
+			*filter.CursorTargetHostKey, *filter.CursorTargetHostName,
+			*filter.CursorTargetHostKey, *filter.CursorTargetHostName, *filter.CursorUID,
+		)
+	}
+
 	if filter.CursorCreatedAt != nil && filter.CursorUID != nil {
 		return query.Where(
 			"(created_at < ? OR (created_at = ? AND uid < ?))",
@@ -1358,7 +1398,10 @@ func applyChecksCursor(query *bun.SelectQuery, filter *models.ListChecksFilter) 
 // applyChecksOrdering applies the row ordering. sort=group loads in display
 // order (group sort_order asc, ungrouped last via the COALESCE sentinel, then
 // created_at DESC / uid DESC within a bucket) and selects the effective key so
-// the service can encode it into the composite cursor. Default is unchanged.
+// the service can encode it into the composite cursor. sort=targetHost loads
+// targetHost ascending (checks with none of host/url/target last via the
+// COALESCE sentinel), then name ascending, then uid ascending as the final
+// tiebreaker. Default is unchanged.
 func applyChecksOrdering(query *bun.SelectQuery, filter *models.ListChecksFilter) *bun.SelectQuery {
 	if filter != nil && filter.SortByGroup {
 		return query.
@@ -1366,6 +1409,15 @@ func applyChecksOrdering(query *bun.SelectQuery, filter *models.ListChecksFilter
 			ColumnExpr(groupSortKeyExpr+" AS group_sort_key").
 			OrderExpr(groupSortKeyExpr+" ASC").
 			Order("created_at DESC", "uid DESC")
+	}
+
+	if filter != nil && filter.SortByTargetHost {
+		return query.
+			ColumnExpr("*").
+			ColumnExpr(targetHostSortKeyExpr + " AS target_host_sort_key").
+			OrderExpr(targetHostSortKeyExpr + " ASC").
+			OrderExpr("COALESCE(name, '') ASC").
+			Order("uid ASC")
 	}
 
 	return query.Order("created_at DESC", "uid DESC")
@@ -2697,14 +2749,13 @@ func (s *Service) CountFailingIncidentMembers(ctx context.Context, incidentUID s
 	return count, err
 }
 
-func (s *Service) ListIncidents(ctx context.Context, filter *models.ListIncidentsFilter) ([]*models.Incident, error) {
-	var incidents []*models.Incident
-
-	query := s.db.NewSelect().
-		Model(&incidents).
+// applyIncidentsFilter applies every ListIncidentsFilter predicate except
+// cursor and limit, so the list query and the COUNT query built from the
+// same filter can never drift apart.
+func applyIncidentsFilter(query *bun.SelectQuery, filter *models.ListIncidentsFilter) *bun.SelectQuery {
+	query = query.
 		Where("organization_uid = ?", filter.OrganizationUID).
-		Where("deleted_at IS NULL").
-		Order("started_at DESC")
+		Where("deleted_at IS NULL")
 
 	if len(filter.CheckUIDs) > 0 {
 		query = query.Where("check_uid IN (?)", bun.List(filter.CheckUIDs))
@@ -2756,6 +2807,21 @@ func (s *Service) ListIncidents(ctx context.Context, filter *models.ListIncident
 		query = query.Where("caused_by_incident_uid = ?", filter.CausedByUID)
 	}
 
+	return query
+}
+
+func (s *Service) ListIncidents(
+	ctx context.Context, filter *models.ListIncidentsFilter,
+) ([]*models.Incident, int64, error) {
+	var incidents []*models.Incident
+
+	query := applyIncidentsFilter(
+		s.db.NewSelect().Model(&incidents).Order("started_at DESC"),
+		filter,
+	)
+
+	countQuery := applyIncidentsFilter(s.db.NewSelect().Model((*models.Incident)(nil)), filter)
+
 	if filter.CursorTimestamp != nil {
 		if filter.CursorUID != nil {
 			query = query.Where("(started_at < ? OR (started_at = ? AND uid < ?))",
@@ -2769,9 +2835,14 @@ func (s *Service) ListIncidents(ctx context.Context, filter *models.ListIncident
 		query = query.Limit(filter.Limit)
 	}
 
-	err := query.Scan(ctx)
+	total, err := countQuery.Count(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
 
-	return incidents, err
+	err = query.Scan(ctx)
+
+	return incidents, int64(total), err
 }
 
 func (s *Service) UpdateIncident(ctx context.Context, uid string, update *models.IncidentUpdate) error {
@@ -3885,6 +3956,17 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 		query = query.Set("language = ?", *update.Language)
 	}
 
+	if update.CustomCSS != nil {
+		// An empty stylesheet is stored as NULL, not '': the appearance editor
+		// clears the field by submitting an empty textarea, and "no custom CSS"
+		// must read back as nil so status0 renders no <style> element at all.
+		if *update.CustomCSS == "" {
+			query = query.Set("custom_css = NULL")
+		} else {
+			query = query.Set("custom_css = ?", *update.CustomCSS)
+		}
+	}
+
 	_, err := query.Exec(ctx)
 
 	return err
@@ -4183,6 +4265,14 @@ func (s *Service) UpdateStatusPageResource(
 		query = query.Set("position = ?", *update.Position)
 	}
 
+	// Switching target kind always writes BOTH columns so the XOR constraint
+	// holds (spec 2026-08-01-03).
+	if update.SetTarget {
+		query = query.
+			Set("check_uid = ?", update.CheckUID).
+			Set("check_group_uid = ?", update.CheckGroupUID)
+	}
+
 	_, err := query.Exec(ctx)
 
 	return err
@@ -4263,6 +4353,107 @@ func (s *Service) ListCheckGroups(ctx context.Context, orgUID string) ([]*models
 		Scan(ctx)
 
 	return groups, err
+}
+
+// GetCheckGroupStatusCounts returns, per check group, a count of enabled
+// non-deleted member checks by status (spec 2026-08-01-01). One GROUP BY
+// query over checks, dialect-neutral (no ILIKE, no Postgres-only syntax) so
+// the same implementation works against SQLite.
+func (s *Service) GetCheckGroupStatusCounts(
+	ctx context.Context, orgUID string,
+) (map[string]map[models.CheckStatus]int, error) {
+	type row struct {
+		CheckGroupUID string             `bun:"check_group_uid"`
+		Status        models.CheckStatus `bun:"status"`
+		Count         int                `bun:"count"`
+	}
+
+	var rows []row
+
+	err := s.db.NewSelect().
+		TableExpr("checks").
+		ColumnExpr("check_group_uid").
+		ColumnExpr("status").
+		ColumnExpr("COUNT(*) AS count").
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Where("enabled = ?", true).
+		Where("check_group_uid IS NOT NULL").
+		GroupExpr("check_group_uid, status").
+		Scan(ctx, &rows)
+	if err != nil {
+		return nil, fmt.Errorf("get check group status counts: %w", err)
+	}
+
+	counts := make(map[string]map[models.CheckStatus]int)
+
+	for i := range rows {
+		r := &rows[i]
+		if counts[r.CheckGroupUID] == nil {
+			counts[r.CheckGroupUID] = make(map[models.CheckStatus]int)
+		}
+
+		counts[r.CheckGroupUID][r.Status] = r.Count
+	}
+
+	return counts, nil
+}
+
+// GetCheckStatusCounts returns the org-wide (status, enabled) histogram of
+// checks (spec 2026-08-02-06) as a single GROUP BY — never a load-all-and-count,
+// so it stays correct and cheap past the 100-row page clamp of the list
+// endpoint. Dialect-neutral, byte-identical in intent to the SQLite twin.
+//
+// The predicate deliberately mirrors what the dashboard's checks list shows:
+// non-deleted AND non-internal. Internal checks are hidden by the list
+// endpoint's default `internal=false` filter, so counting them here would make
+// the KPI tiles disagree with the list the user can open. Disabled checks ARE
+// counted (the enabled flag is a grouping dimension, not a filter) because the
+// dashboard's down/hard-down tiles filter on status alone.
+func (s *Service) GetCheckStatusCounts(
+	ctx context.Context, orgUID string,
+) ([]models.CheckStatusCount, error) {
+	var rows []models.CheckStatusCount
+
+	err := s.db.NewSelect().
+		TableExpr("checks").
+		ColumnExpr("status").
+		ColumnExpr("enabled").
+		ColumnExpr("COUNT(*) AS count").
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Where("internal = ?", false).
+		GroupExpr("status, enabled").
+		Scan(ctx, &rows)
+	if err != nil {
+		return nil, fmt.Errorf("get check status counts: %w", err)
+	}
+
+	return rows, nil
+}
+
+// ListCheckUIDsByGroup returns the UIDs of the group's enabled, non-deleted
+// member checks — deliberately the same member predicate as
+// GetCheckGroupStatusCounts so a group's rolled-up status and its aggregated
+// availability always describe the same set of checks (spec 2026-08-01-03).
+func (s *Service) ListCheckUIDsByGroup(
+	ctx context.Context, orgUID, groupUID string,
+) ([]string, error) {
+	var uids []string
+
+	err := s.db.NewSelect().
+		TableExpr("checks").
+		ColumnExpr("uid").
+		Where("organization_uid = ?", orgUID).
+		Where("check_group_uid = ?", groupUID).
+		Where("deleted_at IS NULL").
+		Where("enabled = ?", true).
+		Scan(ctx, &uids)
+	if err != nil {
+		return nil, fmt.Errorf("list check uids by group: %w", err)
+	}
+
+	return uids, nil
 }
 
 func (s *Service) UpdateCheckGroup(
@@ -4542,6 +4733,35 @@ func (s *Service) ListMaintenanceWindowsForCheck(
 			JOIN checks c ON c.check_group_uid = mwc.check_group_uid
 			WHERE c.uid = ? AND c.check_group_uid IS NOT NULL
 		)`, checkUID, checkUID).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return windows, nil
+}
+
+// ListMaintenanceWindowsForCheckGroup returns every non-deleted maintenance
+// window that puts the group in maintenance: one targeting the group directly,
+// or one targeting any of its enabled, non-deleted member checks (spec
+// 2026-08-01-03). Recurrence is not evaluated here — callers use
+// models.IsActiveAt.
+func (s *Service) ListMaintenanceWindowsForCheckGroup(
+	ctx context.Context, groupUID string,
+) ([]*models.MaintenanceWindow, error) {
+	var windows []*models.MaintenanceWindow
+
+	err := s.db.NewSelect().
+		Model(&windows).
+		Where("deleted_at IS NULL").
+		Where(`uid IN (
+			SELECT mwc.maintenance_window_uid FROM maintenance_window_checks mwc
+			WHERE mwc.check_group_uid = ?
+			UNION
+			SELECT mwc.maintenance_window_uid FROM maintenance_window_checks mwc
+			JOIN checks c ON c.uid = mwc.check_uid
+			WHERE c.check_group_uid = ? AND c.deleted_at IS NULL AND c.enabled = ?
+		)`, groupUID, groupUID, true).
 		Scan(ctx)
 	if err != nil {
 		return nil, err

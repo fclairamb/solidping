@@ -58,11 +58,52 @@ func TestSetCustomDomain_NormalizesAndGeneratesRecords(t *testing.T) {
 	r.NotNil(resp.CustomDomain)
 	r.Equal("status.acme.com", *resp.CustomDomain, "domain is lowercased/normalized")
 	r.Equal("unverified", resp.CustomDomainStatus)
-	r.Len(resp.CustomDomainRecords, 2)
+	// v0.8.0 contract: exactly ONE record, and never a TXT challenge.
+	r.Len(resp.CustomDomainRecords, 1)
 	r.Equal("CNAME", resp.CustomDomainRecords[0].Type)
+	r.Equal("status.acme.com", resp.CustomDomainRecords[0].Name)
 	r.Equal("cname.solidping.io", resp.CustomDomainRecords[0].Value)
-	r.Equal("TXT", resp.CustomDomainRecords[1].Type)
-	r.Contains(resp.CustomDomainRecords[1].Value, domainverify.TXTValuePrefix)
+}
+
+// TestSetCustomDomain_TokenModeRecordsPerPageTarget proves the token-mode UX is
+// still a single CNAME, but pointed at the page-specific host.
+func TestSetCustomDomain_TokenModeRecordsPerPageTarget(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	ctx, svc, org := setupCustomDomainTest(t)
+	svc.cfg.Server.CustomDomainCNAMEMode = string(domainverify.ModeToken)
+	page := mkPage(t, svc, org, "main")
+
+	resp, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
+		CustomDomain: strptr("status.acme.com"), CustomDomainSet: true,
+	})
+	r.NoError(err)
+	r.Len(resp.CustomDomainRecords, 1)
+	r.Equal("CNAME", resp.CustomDomainRecords[0].Type)
+
+	stored, err := svc.db.GetStatusPage(ctx, org.UID, page.UID)
+	r.NoError(err)
+	r.Equal(*stored.CustomDomainToken+".cname.cname.solidping.io", resp.CustomDomainRecords[0].Value)
+}
+
+// TestGenerateCustomDomainToken_IsDNSLabelSafe locks the token shape: it has to
+// be usable as the leading DNS label of the token-mode CNAME target.
+func TestGenerateCustomDomainToken_IsDNSLabelSafe(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	const dnsLabelMax = 63
+
+	for range 50 {
+		token, err := generateCustomDomainToken()
+		r.NoError(err)
+		r.LessOrEqual(len(token), dnsLabelMax)
+		r.NotEmpty(token)
+		r.Regexp("^[a-z][a-z0-9]*$", token)
+		// It must survive host construction (TokenHost fails closed otherwise).
+		r.Equal(token+".cname.solidping.io", domainverify.TokenHost(token, "solidping.io"))
+	}
 }
 
 func TestSetCustomDomain_Invalid(t *testing.T) {
@@ -203,11 +244,10 @@ func TestVerifyCustomDomain(t *testing.T) {
 	r.NoError(err)
 	token := *stored.CustomDomainToken
 
-	// Inject a stub verifier that passes both checks.
+	r.NotEmpty(token)
+
+	// Inject a stub verifier whose CNAME answer matches the shared target.
 	svc.verifier = &domainverify.Verifier{
-		LookupTXT: func(_ context.Context, _ string) ([]string, error) {
-			return []string{domainverify.TXTValuePrefix + token}, nil
-		},
 		LookupCNAME: func(_ context.Context, _ string) (string, error) {
 			return "cname.solidping.io.", nil
 		},
@@ -219,6 +259,83 @@ func TestVerifyCustomDomain(t *testing.T) {
 
 	r.True(svc.CustomDomainServable(ctx, "status.acme.com"))
 }
+
+// TestVerifyCustomDomain_TokenModeRejectsSharedTarget is the no-dual-accept
+// negative control: with token mode configured, a CNAME at the plain shared
+// target must NOT verify — otherwise the dangling-CNAME protection is void.
+func TestVerifyCustomDomain_TokenModeRejectsSharedTarget(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	ctx, svc, org := setupCustomDomainTest(t)
+	svc.cfg.Server.CustomDomainCNAMEMode = string(domainverify.ModeToken)
+	page := mkPage(t, svc, org, "main")
+
+	_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
+		CustomDomain: strptr("status.acme.com"), CustomDomainSet: true,
+	})
+	r.NoError(err)
+
+	stored, err := svc.db.GetStatusPage(ctx, org.UID, page.UID)
+	r.NoError(err)
+
+	svc.verifier = &domainverify.Verifier{
+		LookupCNAME: func(_ context.Context, _ string) (string, error) {
+			return "cname.solidping.io.", nil
+		},
+	}
+
+	resp, err := svc.VerifyCustomDomain(ctx, org.Slug, page.UID)
+	r.NoError(err)
+	r.Equal("unverified", resp.CustomDomainStatus)
+	r.False(svc.CustomDomainServable(ctx, "status.acme.com"))
+
+	// The page's own token host does verify.
+	svc.verifier = &domainverify.Verifier{
+		LookupCNAME: func(_ context.Context, _ string) (string, error) {
+			return *stored.CustomDomainToken + ".cname.cname.solidping.io.", nil
+		},
+	}
+
+	resp, err = svc.VerifyCustomDomain(ctx, org.Slug, page.UID)
+	r.NoError(err)
+	r.Equal("verified", resp.CustomDomainStatus)
+}
+
+// TestCertStatusOnlyWhenVerifiedAndProviderPresent covers the
+// customDomainCertStatus surfacing rules.
+func TestCertStatusOnlyWhenVerifiedAndProviderPresent(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	ctx, svc, org := setupCustomDomainTest(t)
+	page := mkPage(t, svc, org, "main")
+
+	resp, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
+		CustomDomain: strptr("status.acme.com"), CustomDomainSet: true,
+	})
+	r.NoError(err)
+	r.Empty(resp.CustomDomainCertStatus, "no provider wired → field omitted")
+
+	svc.SetCertStatusProvider(stubCertStatus("issued"))
+
+	// Still unverified → no cert status (nothing can have been issued).
+	resp, err = svc.GetStatusPage(ctx, org.Slug, page.UID, GetStatusPageOptions{})
+	r.NoError(err)
+	r.Empty(resp.CustomDomainCertStatus)
+
+	svc.verifier = &domainverify.Verifier{
+		LookupCNAME: func(_ context.Context, _ string) (string, error) { return "cname.solidping.io", nil },
+	}
+	verified, err := svc.VerifyCustomDomain(ctx, org.Slug, page.UID)
+	r.NoError(err)
+	r.Equal("issued", verified.CustomDomainCertStatus)
+}
+
+// stubCertStatus is a fixed-answer CertStatusProvider.
+type stubCertStatus string
+
+func (s stubCertStatus) CertStatus(string) string { return string(s) }
 
 func TestPublicViewOmitsCustomDomain(t *testing.T) {
 	t.Parallel()
@@ -259,10 +376,8 @@ func TestCustomDomainServable_Gating(t *testing.T) {
 	// Mark verified directly, then it is servable.
 	stored, err := svc.db.GetStatusPage(ctx, org.UID, page.UID)
 	r.NoError(err)
+	r.NotNil(stored.CustomDomainToken)
 	svc.verifier = &domainverify.Verifier{
-		LookupTXT: func(_ context.Context, _ string) ([]string, error) {
-			return []string{domainverify.TXTValuePrefix + *stored.CustomDomainToken}, nil
-		},
 		LookupCNAME: func(_ context.Context, _ string) (string, error) { return "cname.solidping.io", nil },
 	}
 	_, err = svc.VerifyCustomDomain(ctx, org.Slug, page.UID)

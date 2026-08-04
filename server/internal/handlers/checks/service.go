@@ -134,10 +134,16 @@ func isUUID(s string) bool {
 // typos can't accidentally suspend alerting indefinitely.
 var errIncidentPeriodOutOfRange = errors.New("must be between 0 and 86400 seconds (one day)")
 
+// MaxIncidentPeriodSeconds is the inclusive upper bound on
+// ConfirmationPeriodSeconds / RecoveryPeriodSeconds. Exported so callers
+// outside this package (the third-party importers) can clamp foreign values
+// into range instead of failing the whole check on import.
+const MaxIncidentPeriodSeconds = 86400
+
 // validateIncidentPeriod range-checks a confirmation/recovery period in
 // seconds. 0 is allowed and means "fire immediately on the first signal".
 func validateIncidentPeriod(seconds int) error {
-	if seconds < 0 || seconds > 86400 {
+	if seconds < 0 || seconds > MaxIncidentPeriodSeconds {
 		return errIncidentPeriodOutOfRange
 	}
 
@@ -365,6 +371,12 @@ type Service struct {
 	// entitlements enforces the per-org MaxChecks cap at creation. May be
 	// nil in tests / paths that don't construct it; guards no-op when nil.
 	entitlements *entcore.Service
+	// checkStats caches the per-org aggregate counters served by
+	// GetCheckStats (spec 2026-08-02-06). Zero value is a usable empty cache.
+	checkStats checkStatsCache
+	// checkStatsTTL overrides defaultCheckStatsTTL. Zero = use the default;
+	// only tests set it.
+	checkStatsTTL time.Duration
 }
 
 // NewService creates a new checks service. entSvc enforces the MaxChecks
@@ -659,6 +671,11 @@ type CheckResponse struct {
 	CheckGroupUID *string        `json:"checkGroupUid,omitempty"`
 	Type          *string        `json:"type,omitempty"`
 	Config        map[string]any `json:"config,omitempty"`
+	// TargetHost is derived at read time from the public Config — see
+	// checkerdef.ExtractTargetHost. Not stored; omitted (never sent as
+	// explicit null) when the check's config carries no host/url/target
+	// field (e.g. heartbeat/email).
+	TargetHost *string `json:"targetHost,omitempty"`
 	// ConfigPrivateKeys lists the keys whose values are encrypted at rest
 	// for this check. The dashboard uses it to render placeholder hints
 	// (●●●●●●●●) for fields it can't display. Non-secret by construction
@@ -766,8 +783,10 @@ type ListChecksOptions struct {
 	Cursor   string
 	Limit    int
 	// Sort opts into an alternate ordering. "group" = group sort_order asc,
-	// ungrouped last, then created_at DESC / uid DESC within a bucket. Empty =
-	// the default created_at DESC ordering. The handler validates the value.
+	// ungrouped last, then created_at DESC / uid DESC within a bucket.
+	// "targetHost" = targetHost ascending, none-of-host/url/target last, then
+	// name ascending. Empty = the default created_at DESC ordering. The
+	// handler validates the value.
 	Sort string
 }
 
@@ -801,23 +820,25 @@ func (s *Service) ListChecks(ctx context.Context, orgSlug string, opts ListCheck
 	}
 
 	sortByGroup := opts.Sort == "group"
+	sortByTargetHost := opts.Sort == "targetHost"
 
 	// Build filter
 	filter := &models.ListChecksFilter{
-		Labels:        opts.Labels,
-		CheckGroupUID: opts.CheckGroupUID,
-		Query:         opts.Query,
-		Types:         opts.Types,
-		Internal:      opts.Internal,
-		Statuses:      opts.Statuses,
-		Limit:         opts.Limit,
-		SortByGroup:   sortByGroup,
+		Labels:           opts.Labels,
+		CheckGroupUID:    opts.CheckGroupUID,
+		Query:            opts.Query,
+		Types:            opts.Types,
+		Internal:         opts.Internal,
+		Statuses:         opts.Statuses,
+		Limit:            opts.Limit,
+		SortByGroup:      sortByGroup,
+		SortByTargetHost: sortByTargetHost,
 	}
 
-	// Parse cursor. sort=group carries a composite cursor (group sort key +
-	// created_at + uid); the default ordering keeps the two-part cursor.
+	// Parse cursor. sort=group and sort=targetHost each carry their own
+	// composite cursor; the default ordering keeps the two-part cursor.
 	if opts.Cursor != "" {
-		if cursorErr := s.applyListCursor(filter, opts.Cursor, sortByGroup); cursorErr != nil {
+		if cursorErr := s.applyListCursor(filter, opts.Cursor, sortByGroup, sortByTargetHost); cursorErr != nil {
 			return nil, cursorErr
 		}
 	}
@@ -910,13 +931,22 @@ func (s *Service) ListChecks(ctx context.Context, orgSlug string, opts ListCheck
 
 	// Build next cursor. sort=group emits the composite cursor carrying the
 	// last row's effective group sort key (scanned into GroupSortKey by the
-	// store) so the next page resumes at the right group boundary.
+	// store) so the next page resumes at the right group boundary. sort=
+	// targetHost similarly carries the scanned TargetHostSortKey plus the
+	// tiebreaker name.
 	var nextCursor string
 	if hasMore && len(checks) > 0 {
 		lastCheck := checks[len(checks)-1]
-		if sortByGroup {
+		switch {
+		case sortByGroup:
 			nextCursor = s.encodeGroupCursor(lastCheck.GroupSortKey, lastCheck.CreatedAt, lastCheck.UID)
-		} else {
+		case sortByTargetHost:
+			name := ""
+			if lastCheck.Name != nil {
+				name = *lastCheck.Name
+			}
+			nextCursor = s.encodeTargetHostCursor(lastCheck.TargetHostSortKey, name, lastCheck.UID)
+		default:
 			nextCursor = s.encodeCursor(lastCheck.CreatedAt, lastCheck.UID)
 		}
 	}
@@ -938,8 +968,11 @@ func (s *Service) ListChecks(ctx context.Context, orgSlug string, opts ListCheck
 
 // applyListCursor decodes the pagination cursor and populates the filter's
 // cursor fields. sort=group expects the composite (group key, created_at, uid)
+// cursor; sort=targetHost expects the composite (target host key, name, uid)
 // cursor; the default ordering expects the two-part (created_at, uid) cursor.
-func (s *Service) applyListCursor(filter *models.ListChecksFilter, cursor string, sortByGroup bool) error {
+func (s *Service) applyListCursor(
+	filter *models.ListChecksFilter, cursor string, sortByGroup, sortByTargetHost bool,
+) error {
 	if sortByGroup {
 		groupKey, ts, uid, err := s.decodeGroupCursor(cursor)
 		if err != nil {
@@ -947,6 +980,18 @@ func (s *Service) applyListCursor(filter *models.ListChecksFilter, cursor string
 		}
 		filter.CursorGroupSortKey = &groupKey
 		filter.CursorCreatedAt = &ts
+		filter.CursorUID = &uid
+
+		return nil
+	}
+
+	if sortByTargetHost {
+		hostKey, name, uid, err := s.decodeTargetHostCursor(cursor)
+		if err != nil {
+			return ErrInvalidCursor
+		}
+		filter.CursorTargetHostKey = &hostKey
+		filter.CursorTargetHostName = &name
 		filter.CursorUID = &uid
 
 		return nil
@@ -1017,6 +1062,49 @@ func (s *Service) decodeGroupCursor(cursor string) (int64, time.Time, string, er
 	}
 
 	return groupSortKey, ts, parts[2], nil
+}
+
+// targetHostCursorPayload is the composite sort=targetHost cursor: the
+// scanned TargetHostSortKey, then name, then uid as the final tiebreaker.
+// JSON-encoded (rather than pipe-delimited like the other cursors) because
+// both the sort key (derived from free-form config) and name are
+// user-controlled text that could itself contain "|".
+type targetHostCursorPayload struct {
+	Host string `json:"h"`
+	Name string `json:"n"`
+	UID  string `json:"u"`
+}
+
+// encodeTargetHostCursor encodes the composite sort=targetHost cursor.
+// targetHostCursorPayload is a plain string struct, so Marshal cannot fail in
+// practice; the error is still checked (never ignored) to satisfy errchkjson
+// and because an encode failure should yield an empty (invalid, rejected on
+// decode) cursor rather than a corrupt one.
+func (s *Service) encodeTargetHostCursor(hostKey, name, uid string) string {
+	payload, err := json.Marshal(targetHostCursorPayload{Host: hostKey, Name: name, UID: uid})
+	if err != nil {
+		return ""
+	}
+
+	return base64.URLEncoding.EncodeToString(payload)
+}
+
+func (s *Service) decodeTargetHostCursor(cursor string) (string, string, string, error) {
+	decoded, err := base64.URLEncoding.DecodeString(cursor)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	var payload targetHostCursorPayload
+	if err := json.Unmarshal(decoded, &payload); err != nil {
+		return "", "", "", ErrInvalidCursor
+	}
+
+	if payload.UID == "" {
+		return "", "", "", ErrInvalidCursor
+	}
+
+	return payload.Host, payload.Name, payload.UID, nil
 }
 
 // CreateCheckRequest represents a request to create a new check.
@@ -2064,7 +2152,7 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 // resolveActiveIncidentsForDelete resolves every active incident on a check
 // about to be deleted, so no incident outlives the check it points at.
 func (s *Service) resolveActiveIncidentsForDelete(ctx context.Context, orgUID, checkUID string) error {
-	incidents, err := s.db.ListIncidents(ctx, &models.ListIncidentsFilter{
+	incidents, _, err := s.db.ListIncidents(ctx, &models.ListIncidentsFilter{
 		OrganizationUID: orgUID,
 		CheckUIDs:       []string{checkUID},
 		States:          []models.IncidentState{models.IncidentStateActive},
@@ -2445,6 +2533,7 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		CheckGroupUID:             check.CheckGroupUID,
 		Type:                      &check.Type,
 		Config:                    publicConfig,
+		TargetHost:                checkerdef.ExtractTargetHost(publicConfig),
 		ConfigPrivateKeys:         privateKeys,
 		Regions:                   check.Regions,
 		Enabled:                   &check.Enabled,

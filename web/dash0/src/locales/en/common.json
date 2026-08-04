@@ -57,5 +57,36 @@
     "connecting": "Connecting…",
     "reconnecting": "Reconnecting…",
     "unavailable": "Live updates unavailable"
+  },
+  "channels": {
+    "whatsapp": "WhatsApp",
+    "sms": "SMS",
+    "voice": "Voice call",
+    "webpush": "Browser push",
+    "email": "Email",
+    "msteams": "Microsoft Teams",
+    "msteams-bot": "Microsoft Teams",
+    "googlechat": "Google Chat",
+    "mattermost": "Mattermost",
+    "ntfy": "ntfy",
+    "opsgenie": "Opsgenie",
+    "pushover": "Pushover",
+    "slack": "Slack",
+    "discord": "Discord",
+    "webhook": "Webhook"
+  },
+  "notificationFailureReasons": {
+    "whatsapp_template_unavailable": "WhatsApp message template unavailable — ask an admin to check the template's approval status",
+    "whatsapp_recipient_not_on_whatsapp": "Recipient is not on WhatsApp",
+    "whatsapp_rate_limited": "Rate limited by WhatsApp (messaging tier cap)",
+    "whatsapp_unsupported_message": "WhatsApp rejected the message we built — ask an admin to check the template's components",
+    "whatsapp_session_window_closed": "Outside the 24-hour WhatsApp session window",
+    "whatsapp_token_expired": "WhatsApp credentials expired — ask an admin to refresh them",
+    "whatsapp_not_configured": "WhatsApp is not configured on this instance",
+    "whatsapp_invalid_recipient": "WhatsApp number is not a valid E.164 number",
+    "whatsapp_send_failed": "WhatsApp delivery failed",
+    "whatsapp_quota_exhausted": "Monthly WhatsApp quota exhausted",
+    "sms_quota_exhausted": "Monthly SMS quota exhausted",
+    "voice_quota_exhausted": "Monthly voice-call quota exhausted"
   }
 }

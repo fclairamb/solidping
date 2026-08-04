@@ -143,7 +143,11 @@ function UserSelect({
 
   const list = (data?.data ?? [])
     .slice()
-    .sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email));
+    .sort(
+      (a, b) =>
+        (a.name || a.email).localeCompare(b.name || b.email) ||
+        a.email.localeCompare(b.email),
+    );
   if (list.length === 0) {
     return (
       <span className="text-xs text-muted-foreground">
@@ -155,15 +159,20 @@ function UserSelect({
   const missing = value && !list.some((m) => m.userUid === value);
 
   return (
-    <div className="flex flex-1 items-center gap-2">
+    <div className="flex min-w-0 flex-1 items-center gap-2">
       <Select value={value || undefined} onValueChange={onChange}>
-        <SelectTrigger className="h-8 flex-1">
+        <SelectTrigger className="h-8 min-w-0 flex-1">
           <SelectValue placeholder={t("escalation:editor.pickUser")} />
         </SelectTrigger>
         <SelectContent>
           {list.map((m) => (
             <SelectItem key={m.userUid} value={m.userUid}>
-              {m.name || m.email}
+              <span className="truncate">
+                {m.name || m.email}
+                {m.name ? (
+                  <span className="text-muted-foreground"> ({m.email})</span>
+                ) : null}
+              </span>
             </SelectItem>
           ))}
         </SelectContent>

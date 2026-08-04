@@ -1154,7 +1154,7 @@ func TestClaimJobsNextEligibleHint(t *testing.T) {
 		setTestCheckJobPeriod(t, ctx, dbSvc, job.UID, 10*time.Second)
 
 		jobs, nextIn, err := svc.ClaimJobsForAgent(
-			ctx, worker.UID, org.UID, region, "", 10, 5*time.Minute,
+			ctx, worker.UID, checkjobsvc.AgentScope{OrgUID: org.UID, Region: region}, "", 10, 5*time.Minute,
 		)
 		require.NoError(t, err)
 		assert.Empty(t, jobs, "the job is outside its own 5s claim window")
@@ -1164,10 +1164,78 @@ func TestClaimJobsNextEligibleHint(t *testing.T) {
 		// The same claim for a different private region must see nothing —
 		// the hint is bounded by the agent's hard scope like the claim itself.
 		jobs, nextIn, err = svc.ClaimJobsForAgent(
-			ctx, worker.UID, org.UID, "@test-org/dc2", "", 10, 5*time.Minute,
+			ctx, worker.UID,
+			checkjobsvc.AgentScope{OrgUID: org.UID, Region: "@test-org/dc2"}, "", 10, 5*time.Minute,
 		)
 		require.NoError(t, err)
 		assert.Empty(t, jobs)
 		assert.Zero(t, nextIn, "another region's job must not leak into the hint")
+	})
+}
+
+// TestClaimJobsForAgentRejectsInvalidScope is the fail-closed guard on the
+// agent claim scope. Dropping the organization predicate is what lets a
+// platform agent serve a shared cloud region across tenants, so every scope
+// that is not one of the two legitimate shapes must be REFUSED rather than
+// silently widened:
+//
+//   - no region at all — a scope with no region predicate would claim
+//     everything;
+//   - System with an OrgUID — an ambiguous half-widened scope;
+//   - System pointed at an `@org/region` private slug — a cross-tenant read of
+//     somebody's private location;
+//   - a non-system scope with no OrgUID — an org agent claiming every org.
+//
+// The claim must fail with ErrInvalidAgentScope, never return rows.
+func TestClaimJobsForAgentRejectsInvalidScope(t *testing.T) {
+	t.Parallel()
+
+	dbSvc, ctx := setupTestDB(t)
+	// Cleanup rather than defer: the subtests below are parallel, so they run
+	// after this function returns but before registered cleanups.
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	svc := checkjobsvc.NewService(dbSvc.DB())
+	org := createTestOrg(t, ctx, dbSvc)
+	worker := createTestWorker(t, ctx, dbSvc, nil)
+
+	// A due job in a shared cloud region, so a widened scope would have
+	// something to leak: the rejections below are not vacuous.
+	cloudRegion := "eu-west-1"
+	createTestCheckJob(t, ctx, dbSvc, org.UID, time.Now().Add(-time.Minute), &cloudRegion)
+
+	invalid := map[string]checkjobsvc.AgentScope{
+		"empty region, org agent":                  {OrgUID: org.UID},
+		"empty region, system agent":               {System: true},
+		"empty everything":                         {},
+		"system agent carrying an org":             {OrgUID: org.UID, Region: cloudRegion, System: true},
+		"system agent on a private region":         {Region: "@test-org/dc1", System: true},
+		"org agent without an org":                 {Region: cloudRegion},
+		"org agent without an org, private region": {Region: "@test-org/dc1"},
+	}
+
+	for name, scope := range invalid {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			jobs, nextIn, err := svc.ClaimJobsForAgent(ctx, worker.UID, scope, "", 10, 5*time.Minute)
+			require.ErrorIs(t, err, checkjobsvc.ErrInvalidAgentScope,
+				"an illegitimate scope must fail closed, never be widened")
+			assert.Empty(t, jobs, "a rejected scope must never return rows")
+			assert.Zero(t, nextIn, "a rejected scope must not leak an eligibility hint either")
+		})
+	}
+
+	// Positive control: the very same job IS claimable by a well-formed system
+	// scope, which proves the rejections above are about the scope shape and
+	// not about the fixture.
+	t.Run("valid system scope claims it", func(t *testing.T) {
+		t.Parallel()
+
+		jobs, _, err := svc.ClaimJobsForAgent(
+			ctx, worker.UID, checkjobsvc.AgentScope{Region: cloudRegion, System: true}, "", 10, 5*time.Minute,
+		)
+		require.NoError(t, err)
+		assert.Len(t, jobs, 1, "a well-formed system scope claims the shared region's job")
 	})
 }

@@ -61,10 +61,16 @@ export function AvailabilityBar({
           <Tooltip key={point.time ?? point.date}>
             <TooltipTrigger asChild>
               <div
+                data-testid="availability-bar-segment"
                 className={`h-7 flex-1 rounded-sm ${getBarColor(point.status)} transition-opacity hover:opacity-80`}
               />
             </TooltipTrigger>
-            <TooltipContent>
+            {/* translate="no" — this whole subtree is poll-driven text whose
+                shape changes between renders (the noData branch swaps one <p>
+                for another). A machine translator re-parents those text nodes
+                into <font> wrappers and React's next commit then fails with
+                "removeChild on Node". See NO_TRANSLATE in status-page-view.tsx. */}
+            <TooltipContent translate="no">
               <p className="font-medium">
                 {isHourly ? formatHour(point) : formatDate(point.date)}
               </p>
@@ -79,7 +85,13 @@ export function AvailabilityBar({
           </Tooltip>
         ))}
       </div>
-      <div className="mt-1 flex justify-between text-xs text-muted-foreground">
+      {/* Same reasoning: every label here is recomputed from poll data, and the
+          middle span appears/disappears with it. */}
+      <div
+        className="mt-1 flex justify-between text-xs text-muted-foreground"
+        data-testid="availability-axis"
+        translate="no"
+      >
         <span>
           {isHourly
             ? t("hoursAgo", { count: 24 })

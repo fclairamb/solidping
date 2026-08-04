@@ -20,6 +20,8 @@ func TestGetSender_NotifyCapableTypesResolve(t *testing.T) {
 		models.ConnectionTypeEmail,
 		models.ConnectionTypeGoogleChat,
 		models.ConnectionTypeMattermost,
+		models.ConnectionTypeMSTeams,
+		models.ConnectionTypeMSTeamsBot,
 		models.ConnectionTypeNtfy,
 		models.ConnectionTypeOpsgenie,
 		models.ConnectionTypePushover,

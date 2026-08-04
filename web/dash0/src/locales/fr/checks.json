@@ -14,6 +14,13 @@
   "allChecks": "Tous les contrôles",
   "internal": "Interne",
   "ungroupedChecks": "Contrôles non groupés",
+  "groupBy": {
+    "label": "Grouper par :",
+    "groups": "Groupes",
+    "host": "Hôte"
+  },
+  "noHostBucket": "Sans hôte",
+  "hostBucketDescription": "Dérivé de la configuration de chaque contrôle — renommer un hôte le déplace vers une autre section.",
   "status": {
     "validating": "En validation",
     "up": "Opérationnel",
@@ -21,6 +28,16 @@
     "warning": "Avertissement",
     "degraded": "Dégradé",
     "unknown": "Inconnu"
+  },
+  "groupSummary": {
+    "allUp": "{{count}}/{{count}} opérationnels",
+    "part": "{{count}} {{label}}",
+    "up": "opérationnels",
+    "down": "en panne",
+    "warning": "avertissement",
+    "degraded": "dégradés",
+    "validating": "en validation",
+    "created": "en attente"
   },
   "table": {
     "name": "Nom",
@@ -37,7 +54,9 @@
     "delete": "Supprimer",
     "moveUp": "Monter",
     "moveDown": "Descendre",
-    "deleteGroup": "Supprimer le groupe"
+    "deleteGroup": "Supprimer le groupe",
+    "expandGroup": "Déplier le groupe",
+    "collapseGroup": "Replier le groupe"
   },
   "dialog": {
     "deleteTitle": "Supprimer le contrôle",
@@ -47,6 +66,10 @@
     "newGroupTitle": "Nouveau groupe",
     "groupName": "Nom du groupe",
     "groupNamePlaceholder": "Saisir le nom du groupe",
+    "groupSlug": "Slug (optionnel)",
+    "groupSlugHelp": "Utilisé pour identifier ce groupe dans l'API et les scripts. Généré automatiquement à partir du nom si laissé vide.",
+    "groupSlugInvalid": "Le slug doit commencer par une lettre minuscule, comporter 3 à 40 caractères et ne contenir que des lettres minuscules, des chiffres ou des tirets.",
+    "groupSlugTaken": "Un groupe de contrôles avec ce slug existe déjà dans cette organisation.",
     "changeGroupTitle": "Changer de groupe",
     "selectGroup": "Sélectionner un groupe",
     "noGroup": "Aucun groupe (non groupé)",
@@ -62,12 +85,40 @@
     "toCreate": "À créer",
     "toUpdate": "À mettre à jour",
     "moveCheckDescription": "Déplacer <strong>{{name}}</strong> vers un autre groupe.",
-    "group": "Groupe"
+    "group": "Groupe",
+    "importSource": "Source",
+    "importSources": {
+      "solidping": "Export SolidPing (JSON/YAML)",
+      "gatus": "Gatus (config.yaml)",
+      "betterstack": "Better Stack (jeton d'API)",
+      "uptime-kuma": "Uptime Kuma (sauvegarde JSON)"
+    },
+    "importSourceHelp": {
+      "solidping": "Un document produit par le bouton Exporter, en JSON ou YAML.",
+      "gatus": "Collez ou envoyez votre config.yaml Gatus — la liste endpoints: est convertie en checks.",
+      "betterstack": "Nous récupérons vos moniteurs et heartbeats via l'API Better Stack, puis nous les convertissons.",
+      "uptime-kuma": "Uptime Kuma 1.x : Paramètres → Sauvegarde → Exporter le JSON. La version 2.x ne propose plus cet export."
+    },
+    "importPlaceholder": {
+      "solidping": "Collez le document JSON ou YAML exporté…",
+      "gatus": "Collez votre config.yaml Gatus…",
+      "uptime-kuma": "Collez la sauvegarde JSON Uptime Kuma…"
+    },
+    "importPayload": "Configuration",
+    "importUpload": "Envoyer un fichier",
+    "importToken": "Jeton d'API Better Stack",
+    "importTokenNoticeTitle": "Le jeton n'est pas conservé",
+    "importTokenNotice": "Il est envoyé une seule fois pour lire vos moniteurs et heartbeats, et n'est jamais enregistré par SolidPing.",
+    "importWarnings": "{{count}} élément(s) n'ont pas été convertis à l'identique"
   },
   "groupForm": {
     "title": "Modifier le groupe",
     "detailsTitle": "Détails",
-    "detailsDescription": "Nom et description de ce groupe de contrôles.",
+    "detailsDescription": "Nom, slug et description de ce groupe de contrôles.",
+    "slug": "Slug",
+    "slugHelp": "Utilisé pour identifier ce groupe dans l'API et les scripts (par ex. checkGroupSlug dans les incidents). Le modifier casse les références existantes.",
+    "slugInvalid": "Le slug doit commencer par une lettre minuscule, comporter 3 à 40 caractères et ne contenir que des lettres minuscules, des chiffres ou des tirets.",
+    "slugTaken": "Un groupe de contrôles avec ce slug existe déjà dans cette organisation.",
     "description": "Description",
     "descriptionPlaceholder": "À quoi sert ce groupe de contrôles ?",
     "escalationTitle": "Politique d'escalade",

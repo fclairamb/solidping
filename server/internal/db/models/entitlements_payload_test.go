@@ -187,3 +187,33 @@ func TestEntitlementLimits_MonthlyMessagingRoundTrip(t *testing.T) {
 	r.Contains(string(data), `"maxSmsPerMonth":100`)
 	r.Contains(string(data), `"maxCallsPerMonth":20`)
 }
+
+// TestEntitlementLimits_WhatsAppWire proves maxWhatsappPerMonth survives the
+// strict decoder (which rejects unknown keys) and the encoder round-trip.
+func TestEntitlementLimits_WhatsAppWire(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	var l EntitlementLimits
+	r.NoError(json.Unmarshal([]byte(`{"maxWhatsappPerMonth":250}`), &l))
+	r.NotNil(l.MaxWhatsappPerMonth)
+	r.Equal(250, *l.MaxWhatsappPerMonth)
+
+	// Absent stays nil (unlimited), not zero (nothing allowed) — the
+	// difference decides whether a self-hosted org can page at all.
+	var empty EntitlementLimits
+	r.NoError(json.Unmarshal([]byte(`{}`), &empty))
+	r.Nil(empty.MaxWhatsappPerMonth)
+
+	// An explicit zero is a real cap, distinct from absent.
+	var zero EntitlementLimits
+	r.NoError(json.Unmarshal([]byte(`{"maxWhatsappPerMonth":0}`), &zero))
+	r.NotNil(zero.MaxWhatsappPerMonth)
+	r.Equal(0, *zero.MaxWhatsappPerMonth)
+
+	wa := 42
+	data, err := json.Marshal(EntitlementLimits{MaxWhatsappPerMonth: &wa})
+	r.NoError(err)
+	r.Contains(string(data), `"maxWhatsappPerMonth":42`)
+}

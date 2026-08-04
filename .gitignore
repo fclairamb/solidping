@@ -10,6 +10,15 @@ bin/
 !*.private-locations.tsx
 !*.private-locations.register.tsx
 
+# Environment files. These routinely hold live credentials (SP_POSTHOG_*,
+# SP_ENCRYPTION_MASTER_KEY, OAuth client secrets…), so they must never be
+# committable — not even by an accidental `git add -A`. `.env.example` is
+# deliberately left trackable: it is the credential-free template, so it can be
+# committed if someone chooses to.
+.env
+.env.*
+!.env.example
+
 # Frontend builds
 server/internal/app/dash0res/
 server/internal/app/status0res/

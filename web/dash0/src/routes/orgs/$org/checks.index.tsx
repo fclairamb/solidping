@@ -30,12 +30,13 @@ import {
   useCheckGroups,
   useCreateCheckGroup,
   useImportChecks,
+  useConvertChecks,
   useEscalationPolicies,
   type Check,
   type CheckGroup,
+  type ConversionWarning,
+  type ConvertSource,
   type EscalationPolicy,
-  type ExportDocument,
-  type ImportResult,
 } from "@/api/hooks";
 import { useEmailAddressDomain, emailCheckAddress } from "@/api/email-inbox";
 import { Button } from "@/components/ui/button";
@@ -78,6 +79,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { PasswordInput } from "@/components/ui/password-input";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Select,
   SelectContent,
@@ -93,15 +97,56 @@ import {
 import { QueryErrorView } from "@/components/shared/error-views";
 import { LabelFilter } from "@/components/shared/label-filter";
 import { checkLabel, tunnelCheckUidOf } from "@/components/checks/tunnel";
-import { ApiError, apiFetch } from "@/api/client";
+import { ApiError, apiFetch, getApiErrorField } from "@/api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseLabelsParam, serializeLabelsParam } from "@/lib/labels";
+import { slugify } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLiveSubscription } from "@/contexts/LiveEventsContext";
+
+// The checks index can bucket its rows by check group (server-side entity,
+// the default) or by the derived targetHost (spec 2026-08-01-04) — no
+// server-side identity, purely a client-side view over the same rows.
+const GROUP_BY_MODES = ["groups", "host"] as const;
+type GroupByMode = (typeof GROUP_BY_MODES)[number];
 
 interface ChecksIndexSearch {
   labels?: string;
   status?: string;
+  groupBy?: GroupByMode;
+}
+
+// Group slugs are 3-40 chars: a lowercase letter followed by 2-39 lowercase
+// letters/digits/hyphens. This mirrors slugRegex in
+// server/internal/handlers/checkgroups/service.go — deliberately NOT the
+// check form's 3-50 rule (check-form.tsx), which is a different resource.
+const groupSlugRegex = /^[a-z][a-z0-9-]{2,39}$/;
+
+// Import sources offered by the checks-list import flow: the native SolidPing
+// export document, plus the third-party converters served by
+// POST /checks/import/convert.
+const IMPORT_SOURCES = ["solidping", "gatus", "betterstack", "uptime-kuma"] as const;
+type ImportSourceId = (typeof IMPORT_SOURCES)[number];
+
+// Sources whose payload is a file the user pastes or uploads. Better Stack is
+// the odd one out: it takes an API token and the server does the fetching.
+const FILE_IMPORT_SOURCES: ImportSourceId[] = ["solidping", "gatus", "uptime-kuma"];
+
+// Accepted upload extensions per source.
+const IMPORT_ACCEPT: Record<ImportSourceId, string> = {
+  solidping: ".json,.yaml,.yml",
+  gatus: ".yaml,.yml",
+  betterstack: "",
+  "uptime-kuma": ".json",
+};
+
+// Normalized preview shape shared by the native import and every converter.
+interface ImportPreview {
+  source: ImportSourceId;
+  created: number;
+  updated: number;
+  errors: { index: number; slug: string; error: string }[];
+  warnings: ConversionWarning[];
 }
 
 export const Route = createFileRoute("/orgs/$org/checks/")({
@@ -109,8 +154,222 @@ export const Route = createFileRoute("/orgs/$org/checks/")({
   validateSearch: (search: Record<string, unknown>): ChecksIndexSearch => ({
     labels: typeof search.labels === "string" && search.labels ? search.labels : undefined,
     status: typeof search.status === "string" && search.status ? search.status : undefined,
+    groupBy: GROUP_BY_MODES.includes(search.groupBy as GroupByMode)
+      ? (search.groupBy as GroupByMode)
+      : undefined,
   }),
 });
+
+// Manual collapse/expand choices for check-group sections, persisted per org
+// so a toggle survives a reload. One JSON map per org: { [groupUid]: boolean }.
+// Mirrors the try/catch-guarded localStorage pattern used elsewhere in dash0
+// (dashboard-page.tsx's FirstResultCelebration, lib/last-auth-method.ts) —
+// localStorage can throw in private-browsing mode or when disabled.
+function collapsedGroupsStorageKey(org: string): string {
+  return `solidping_collapsed_groups_${org}`;
+}
+
+function readCollapsedGroups(org: string): Record<string, boolean> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(collapsedGroupsStorageKey(org));
+    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeCollapsedGroup(org: string, groupUid: string, collapsed: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    const map = readCollapsedGroups(org);
+    map[groupUid] = collapsed;
+    window.localStorage.setItem(collapsedGroupsStorageKey(org), JSON.stringify(map));
+  } catch {
+    // Ignore — private mode / storage disabled / quota exceeded. The toggle
+    // still works for this session, it just won't survive a reload.
+  }
+}
+
+// Severity order for the group header's compact member summary — failures
+// first (the thing you came to see), the healthy count last.
+const MEMBER_SUMMARY_ORDER = [
+  "down",
+  "degraded",
+  "warning",
+  "validating",
+  "created",
+  "up",
+] as const;
+
+// Renders memberStatusCounts as a compact, localized summary: "3/3 up" when
+// every counted member is up (exactly the collapse-eligible case), otherwise
+// severity-ordered parts like "1 down · 3 up". Returns null when there are no
+// counted (enabled) members at all.
+function formatMemberSummary(
+  counts: Record<string, number> | undefined,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string | null {
+  if (!counts) return null;
+  const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
+  if (total === 0) return null;
+
+  const upCount = counts.up ?? 0;
+  if (upCount === total) {
+    return t("checks:groupSummary.allUp", { count: total });
+  }
+
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const status of MEMBER_SUMMARY_ORDER) {
+    const count = counts[status] ?? 0;
+    if (count <= 0) continue;
+    seen.add(status);
+    parts.push(
+      t("checks:groupSummary.part", {
+        count,
+        label: t(`checks:groupSummary.${status}`, { defaultValue: status }),
+      }),
+    );
+  }
+  // Any status outside the known order (future wire values) still counts.
+  for (const [status, count] of Object.entries(counts)) {
+    if (seen.has(status) || count <= 0) continue;
+    parts.push(t("checks:groupSummary.part", { count, label: status }));
+  }
+  return parts.join(" · ");
+}
+
+// Host bucket sections have no server-side identity (unlike check groups,
+// which carry a precomputed status/memberStatusCounts from the API) — the
+// aggregate status here is a pure client-side function of the currently
+// loaded rows, following the exact same worst-of precedence as
+// models.RollupGroupStatus (server/internal/db/models/check_group_status.go):
+// down if every considered (enabled) member is down, degraded if some (not
+// all) are down, warning if none are down but at least one is warning,
+// validating if none are down/warning but at least one is validating, up if
+// at least one is up, otherwise created.
+function computeHostSectionStatus(checks: Check[]): {
+  status: string;
+  counts: Record<string, number>;
+} {
+  const counts: Record<string, number> = {};
+  let total = 0;
+  for (const check of checks) {
+    if (check.enabled === false) continue;
+    const status = check.status ?? "created";
+    counts[status] = (counts[status] ?? 0) + 1;
+    total++;
+  }
+
+  if (total === 0) return { status: "created", counts };
+
+  const down = counts.down ?? 0;
+  if (down === total) return { status: "down", counts };
+  if (down > 0) return { status: "degraded", counts };
+  if ((counts.warning ?? 0) > 0) return { status: "warning", counts };
+  if ((counts.validating ?? 0) > 0) return { status: "validating", counts };
+  if ((counts.up ?? 0) > 0) return { status: "up", counts };
+  return { status: "created", counts };
+}
+
+// Presentational: a by-host bucket. No group entity backs it (no edit link,
+// no move up/down, no escalation indicator) — just the hostname, member
+// count, and the client-computed rollup status/summary, reusing the same
+// collapse-by-default-when-up behavior as CheckGroupSection. Collapse choices
+// are session-only (component state, not persisted): unlike a group uid, a
+// hostname bucket has no stable identity across a check's config edits, so
+// persisting it per-org would accumulate stale keys.
+function HostSection({
+  hostKey,
+  checks,
+  org,
+  onDeleteCheck,
+  onChangeGroup,
+  groups,
+  checksByUid,
+}: {
+  /** null = the trailing "no host" bucket (checks with no derivable targetHost). */
+  hostKey: string | null;
+  checks: Check[];
+  org: string;
+  onDeleteCheck: (uid: string) => void;
+  onChangeGroup: (check: Check) => void;
+  groups: CheckGroup[];
+  checksByUid: Map<string, Check>;
+}) {
+  const { t } = useTranslation("checks");
+  const isNoHost = hostKey === null;
+  const { status, counts } = useMemo(() => computeHostSectionStatus(checks), [checks]);
+  const memberSummary = formatMemberSummary(counts, t);
+
+  const [manualOverride, setManualOverride] = useState<boolean | null>(null);
+  const defaultCollapsed = status === "up";
+  const collapsed = manualOverride ?? defaultCollapsed;
+  const toggleCollapsed = () => setManualOverride(!collapsed);
+
+  return (
+    <div className="border rounded-lg" data-testid="host-section">
+      <div
+        className="flex items-center justify-between gap-2 px-4 py-3 cursor-pointer hover:bg-muted/50 flex-wrap"
+        onClick={toggleCollapsed}
+        role="button"
+        tabIndex={0}
+        aria-expanded={!collapsed}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggleCollapsed();
+          }
+        }}
+        data-testid="host-section-header"
+      >
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
+          <span className="inline-flex shrink-0">
+            {collapsed ? (
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            )}
+          </span>
+          <span
+            className={`font-semibold truncate ${isNoHost ? "text-muted-foreground italic" : ""}`}
+            data-testid="host-section-name"
+          >
+            {isNoHost ? t("noHostBucket") : hostKey}
+          </span>
+          <span data-testid="host-section-status-badge">
+            <StatusBadge status={status} />
+          </span>
+          {memberSummary && (
+            <span
+              className="text-xs text-muted-foreground whitespace-nowrap"
+              data-testid="host-section-member-summary"
+            >
+              {memberSummary}
+            </span>
+          )}
+          <Badge variant="secondary" className="text-xs">
+            {checks.length}
+          </Badge>
+        </div>
+      </div>
+
+      {!collapsed && (
+        <div className="border-t">
+          <ChecksTable
+            checks={checks}
+            org={org}
+            onDelete={onDeleteCheck}
+            onChangeGroup={onChangeGroup}
+            groups={groups}
+            checksByUid={checksByUid}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CheckRow({
   check,
@@ -328,6 +587,7 @@ function CheckGroupSection({
   isLoading,
   error,
   search,
+  isFiltering,
   isFirst,
   isLast,
   onMoveUp,
@@ -344,6 +604,12 @@ function CheckGroupSection({
   isLoading: boolean;
   error: unknown;
   search: string;
+  /** True when any of the four filter dimensions (search/status/labels/
+   * internal) is active — see spec 2026-08-02-07. While true, the header
+   * shows the count of *matching* checks (bucket length) instead of the
+   * unfiltered group.checkCount/memberStatusCounts, so it never contradicts
+   * the filtered rows below it. */
+  isFiltering: boolean;
   isFirst: boolean;
   isLast: boolean;
   onMoveUp: () => void;
@@ -355,32 +621,90 @@ function CheckGroupSection({
   escalationPolicyByUid: Map<string, EscalationPolicy>;
 }) {
   const { t } = useTranslation("checks");
-  const [collapsed, setCollapsed] = useState(false);
 
-  // Expand when searching
-  useEffect(() => {
-    if (search) setCollapsed(false);
-  }, [search]);
+  // Manual toggles win over the status-based default and persist per org,
+  // keyed by group uid (see readCollapsedGroups/writeCollapsedGroup above).
+  // `null` means "no manual choice yet" — fall back to the default.
+  const [manualOverride, setManualOverride] = useState<boolean | null>(() => {
+    const stored = readCollapsedGroups(org)[group.uid];
+    return stored === undefined ? null : stored;
+  });
+  // Groups whose rollup status is "up" start collapsed — anything else
+  // (down/degraded/warning/validating/created) starts expanded so the
+  // failure that brought the user here is immediately visible.
+  const defaultCollapsed = group.status === "up";
+  // Searching always force-expands (without touching the persisted choice)
+  // so matches are never hidden behind a collapsed section.
+  const collapsed = search ? false : (manualOverride ?? defaultCollapsed);
+
+  const toggleCollapsed = () => {
+    const next = !collapsed;
+    setManualOverride(next);
+    writeCollapsedGroup(org, group.uid, next);
+  };
 
   const escalationPolicy = group.escalationPolicyUid
     ? escalationPolicyByUid.get(group.escalationPolicyUid)
     : undefined;
+  // While filtering, the unfiltered member-status breakdown would contradict
+  // the (filtered) rows shown below it, so it's dropped in favor of the plain
+  // matching count on the badge below.
+  const memberSummary = isFiltering
+    ? undefined
+    : formatMemberSummary(group.memberStatusCounts, t);
 
   return (
     <div className="border rounded-lg" data-testid="group-section">
       <div
-        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/50"
-        onClick={() => setCollapsed(!collapsed)}
+        className="flex items-center justify-between gap-2 px-4 py-3 cursor-pointer hover:bg-muted/50 flex-wrap"
+        onClick={toggleCollapsed}
+        role="button"
+        tabIndex={0}
+        aria-expanded={!collapsed}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggleCollapsed();
+          }
+        }}
+        data-testid="group-header"
       >
-        <div className="flex items-center gap-2">
-          {collapsed ? (
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          ) : (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className="inline-flex shrink-0"
+                data-testid="group-collapse-toggle"
+              >
+                {collapsed ? (
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {collapsed ? t("menu.expandGroup") : t("menu.collapseGroup")}
+            </TooltipContent>
+          </Tooltip>
+          <span className="font-semibold truncate" data-testid="group-name">{group.name}</span>
+          <span data-testid="group-status-badge">
+            <StatusBadge status={group.status} />
+          </span>
+          {memberSummary && (
+            <span
+              className="text-xs text-muted-foreground whitespace-nowrap"
+              data-testid="group-member-summary"
+            >
+              {memberSummary}
+            </span>
           )}
-          <span className="font-semibold" data-testid="group-name">{group.name}</span>
-          <Badge variant="secondary" className="text-xs">
-            {group.checkCount}
+          <Badge
+            variant="secondary"
+            className="text-xs"
+            data-testid="group-check-count"
+          >
+            {isFiltering ? checks.length : group.checkCount}
           </Badge>
           {group.escalationPolicyUid && (
             <Tooltip>
@@ -485,14 +809,18 @@ function CheckGroupSection({
 }
 
 // Presentational: renders the ungrouped bucket from the page-level batched
-// query. Hidden entirely when there is nothing ungrouped to show and no active
-// search (an empty "Ungrouped Checks" heading would just be noise).
+// query. Hidden entirely whenever there is nothing ungrouped to show (once the
+// stream has resolved) — regardless of whether that's because the org simply
+// has no ungrouped checks, or because the active filters (search/status/
+// labels/internal) narrowed the bucket to zero. An empty "Ungrouped Checks"
+// heading, or a "no matches" placeholder under it, would just be noise; the
+// group-hiding behavior above already gives the same "filtered to nothing"
+// feedback by omission. See spec 2026-08-02-07.
 function UngroupedChecksSection({
   org,
   checks,
   isLoading,
   error,
-  search,
   onDeleteCheck,
   onChangeGroup,
   groups,
@@ -502,7 +830,6 @@ function UngroupedChecksSection({
   checks: Check[];
   isLoading: boolean;
   error: unknown;
-  search: string;
   onDeleteCheck: (uid: string) => void;
   onChangeGroup: (check: Check) => void;
   groups: CheckGroup[];
@@ -510,7 +837,7 @@ function UngroupedChecksSection({
 }) {
   const { t } = useTranslation("checks");
 
-  if (!isLoading && !error && checks.length === 0 && !search) {
+  if (!isLoading && !error && checks.length === 0) {
     return null;
   }
 
@@ -534,10 +861,6 @@ function UngroupedChecksSection({
             <Skeleton key={i} className="h-10 rounded-lg" />
           ))}
         </div>
-      ) : search ? (
-        <div className="text-center py-6 text-muted-foreground text-sm">
-          {t("noUngroupedChecks")}
-        </div>
       ) : null}
     </div>
   );
@@ -547,18 +870,52 @@ function ChecksIndexPage() {
   const { t } = useTranslation("checks");
   const { t: tc } = useTranslation("common");
   const { org } = Route.useParams();
-  const { labels: labelsParam, status: statusParam } = Route.useSearch();
+  const { labels: labelsParam, status: statusParam, groupBy: groupByParam } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const labelFilters = parseLabelsParam(labelsParam);
   const queryClient = useQueryClient();
   const { user } = useAuth();
+
+  // The view mode ("Group by: Groups / Host") is the page's primary
+  // navigation, so — per this repo's convention (see web/dash0/CLAUDE.md,
+  // "A page's core navigation belongs in the URL", and jobs.index.tsx's
+  // `tab`) — it lives in the URL search param `groupBy` and is read directly
+  // via Route.useSearch(), with no local-state mirror: validateSearch already
+  // normalizes it to a safe default ("groups") on every render, including the
+  // first one on a deep link.
+  const groupBy = groupByParam ?? "groups";
+  const setGroupByMode = (mode: GroupByMode) => {
+    void navigate({
+      search: (prev) => ({ ...prev, groupBy: mode === "groups" ? undefined : mode }),
+    });
+  };
+
   const [search, setSearch] = useState("");
   const [internalFilter, setInternalFilter] = useState<string>("false");
   const [deleteCheckUid, setDeleteCheckUid] = useState<string | null>(null);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupSlug, setNewGroupSlug] = useState("");
+  const [newGroupSlugManuallyEdited, setNewGroupSlugManuallyEdited] =
+    useState(false);
+  const [newGroupSlugError, setNewGroupSlugError] = useState<
+    string | undefined
+  >(undefined);
   const [changeGroupCheck, setChangeGroupCheck] = useState<Check | null>(null);
   const debouncedSearch = useDebounce(search, 300);
+
+  // True when any of the four filter dimensions narrows the check list away
+  // from its default view: free-text search, the status select, the label
+  // filter, or a non-default internal-checks toggle ("false" is the default,
+  // user-facing view — "true"/"all" are the filtered ones). Drives hiding
+  // fully-filtered-out groups (and the ungrouped section) and swapping group
+  // headers to show matching counts instead of full-fleet counts. See spec
+  // 2026-08-02-07 (GitHub issue #171).
+  const isFiltering =
+    Boolean(debouncedSearch) ||
+    Boolean(statusParam) ||
+    Boolean(labelsParam) ||
+    internalFilter !== "false";
 
   // Live updates: `checks`/`results` hints invalidate both the flat
   // ["checks", org] root and the infinite ["checks", "infinite", org] root
@@ -605,10 +962,13 @@ function ChecksIndexPage() {
     labels: labelsParam,
     status: statusParam,
     limit: 100,
-    // Load the stream in the exact order the page renders it (group sortOrder
-    // asc, ungrouped last, created_at DESC within a bucket), so the top of the
-    // page fills first instead of arriving in unrelated created_at order.
-    sort: "group",
+    // Load the stream in the exact order the page renders it, so the top of
+    // the page fills first instead of arriving in unrelated created_at order:
+    // "group" sortOrder asc / ungrouped last in Groups mode, "targetHost"
+    // ascending / no-host last in Host mode. Distinct sort values give the two
+    // modes distinct query-cache entries (the queryKey includes this options
+    // object), so switching modes is a normal cache miss/hit, not a manual reset.
+    sort: groupBy === "host" ? "targetHost" : "group",
   });
 
   // A bucket that is still empty must read as *loading*, never as an empty
@@ -646,6 +1006,30 @@ function ChecksIndexPage() {
     return { checksByGroup: byGroup, ungroupedChecks: ungrouped, checksByUid: byUid };
   }, [checksData]);
 
+  // Host-mode bucketing (spec 2026-08-01-04): every loaded check bucketed by
+  // its derived targetHost, section order following first-appearance in the
+  // sort=targetHost stream (already host-ascending, so sections fill top to
+  // bottom as pages load) with the null (no derivable host) bucket forced to
+  // the end regardless — belt-and-suspenders alongside the server's own
+  // nulls-last ordering, since this is purely a client-side view with no
+  // server-side identity of its own.
+  const hostBuckets = useMemo(() => {
+    const buckets = new Map<string | null, Check[]>();
+    for (const page of checksData?.pages ?? []) {
+      for (const check of page.data ?? []) {
+        const key = check.targetHost ?? null;
+        const bucket = buckets.get(key);
+        if (bucket) bucket.push(check);
+        else buckets.set(key, [check]);
+      }
+    }
+
+    const entries = Array.from(buckets.entries());
+    const withHost = entries.filter(([key]) => key !== null);
+    const noHost = entries.find(([key]) => key === null);
+    return noHost ? [...withHost, noHost] : withHost;
+  }, [checksData]);
+
   // One page-level infinite-scroll sentinel (below the last section) instead of
   // one IntersectionObserver per group section.
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -672,15 +1056,22 @@ function ChecksIndexPage() {
     return () => observer.disconnect();
   }, [handleObserver]);
 
-  const [importPreview, setImportPreview] = useState<{
-    doc: ExportDocument;
-    result: ImportResult;
-  } | null>(null);
+  // Import flow: a source picker (SolidPing export, or one of the third-party
+  // converters) feeds the same dry-run preview dialog before anything is
+  // applied. The Better Stack token lives in component state for the duration
+  // of the import only — it is never persisted here or server-side.
+  const [importOpen, setImportOpen] = useState(false);
+  const [importSource, setImportSource] = useState<ImportSourceId>("solidping");
+  const [importText, setImportText] = useState("");
+  const [importToken, setImportToken] = useState("");
+  const [importFileName, setImportFileName] = useState("");
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const deleteCheck = useDeleteCheck(org);
   const createGroup = useCreateCheckGroup(org);
   const importChecks = useImportChecks(org);
+  const convertChecks = useConvertChecks(org);
 
   const handleDeleteCheck = async () => {
     if (!deleteCheckUid) return;
@@ -693,15 +1084,41 @@ function ChecksIndexPage() {
     }
   };
 
+  const closeNewGroupDialog = () => {
+    setShowNewGroup(false);
+    setNewGroupName("");
+    setNewGroupSlug("");
+    setNewGroupSlugManuallyEdited(false);
+    setNewGroupSlugError(undefined);
+  };
+
   const handleCreateGroup = async () => {
     if (!newGroupName.trim()) return;
+    const trimmedSlug = newGroupSlug.trim();
+    if (trimmedSlug && !groupSlugRegex.test(trimmedSlug)) {
+      setNewGroupSlugError(t("dialog.groupSlugInvalid"));
+      return;
+    }
     try {
-      await createGroup.mutateAsync({ name: newGroupName.trim() });
+      await createGroup.mutateAsync({
+        name: newGroupName.trim(),
+        // Untouched and empty keeps sending nothing so the server derives
+        // the slug from the name, exactly like before this field existed.
+        ...(trimmedSlug ? { slug: trimmedSlug } : {}),
+      });
       toast.success(t("toast.groupCreated"));
-      setNewGroupName("");
-      setShowNewGroup(false);
+      closeNewGroupDialog();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t("toast.groupCreateFailed"));
+      const fieldMessage = getApiErrorField(err, "slug");
+      if (fieldMessage && err instanceof ApiError) {
+        setNewGroupSlugError(
+          err.message.toLowerCase().includes("already exists")
+            ? t("dialog.groupSlugTaken")
+            : t("dialog.groupSlugInvalid"),
+        );
+      } else {
+        toast.error(err instanceof ApiError ? err.message : t("toast.groupCreateFailed"));
+      }
     }
   };
 
@@ -746,14 +1163,28 @@ function ChecksIndexPage() {
     }
   };
 
+  const openImportDialog = () => {
+    setImportSource("solidping");
+    setImportText("");
+    setImportToken("");
+    setImportFileName("");
+    setImportOpen(true);
+  };
+
+  const closeImportDialog = () => {
+    setImportOpen(false);
+    setImportText("");
+    // Never keep the Better Stack credential around after the dialog closes.
+    setImportToken("");
+    setImportFileName("");
+  };
+
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const text = await file.text();
-      const doc = JSON.parse(text) as ExportDocument;
-      const result = await importChecks.mutateAsync({ doc, dryRun: true });
-      setImportPreview({ doc, result });
+      setImportText(await file.text());
+      setImportFileName(file.name);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("toast.parseFailed"));
     }
@@ -761,12 +1192,56 @@ function ChecksIndexPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  // Runs the import (dry run first, then for real on confirm) for whichever
+  // source is selected. Returns the normalized preview shape.
+  const runImport = async (dryRun: boolean): Promise<ImportPreview> => {
+    if (importSource === "solidping") {
+      // Sent as raw text: /checks/import parses JSON *and* YAML server-side, so
+      // parsing here would narrow the accepted formats to JSON only.
+      const result = await importChecks.mutateAsync({ body: importText, dryRun });
+      return {
+        source: importSource,
+        created: result.created,
+        updated: result.updated,
+        errors: result.errors,
+        warnings: [],
+      };
+    }
+
+    const body =
+      importSource === "betterstack"
+        ? JSON.stringify({ token: importToken.trim() })
+        : importText;
+    const result = await convertChecks.mutateAsync({
+      source: importSource as ConvertSource,
+      body,
+      dryRun,
+    });
+    return {
+      source: importSource,
+      created: result.created,
+      updated: result.updated,
+      errors: result.errors,
+      warnings: result.warnings ?? [],
+    };
+  };
+
+  const handleImportPreview = async () => {
+    try {
+      setImportPreview(await runImport(true));
+      setImportOpen(false);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("toast.parseFailed"));
+    }
+  };
+
   const handleImportConfirm = async () => {
     if (!importPreview) return;
     try {
-      const result = await importChecks.mutateAsync({ doc: importPreview.doc });
+      const result = await runImport(false);
       toast.success(t("toast.importSuccess", { count: result.created + result.updated, created: result.created, updated: result.updated }));
       setImportPreview(null);
+      closeImportDialog();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : t("toast.importFailed"));
     }
@@ -796,20 +1271,13 @@ function ChecksIndexPage() {
             </Button>
             <Button
               variant="outline"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={openImportDialog}
               data-testid="import-button"
               className="hidden sm:inline-flex"
             >
               <Upload className="mr-2 h-4 w-4" />
               {t("import")}
             </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json"
-              className="hidden"
-              onChange={handleImportFile}
-            />
             <Button variant="outline" onClick={() => setShowNewGroup(true)} data-testid="new-group-button">
               <FolderPlus className="sm:mr-2 h-4 w-4" />
               <span className="hidden sm:inline">{t("newGroup")}</span>
@@ -834,6 +1302,36 @@ function ChecksIndexPage() {
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
           />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-muted-foreground">
+            {t("groupBy.label")}
+          </span>
+          <div className="inline-flex rounded-lg border p-0.5" role="group">
+            <Button
+              size="sm"
+              variant={groupBy === "groups" ? "secondary" : "ghost"}
+              onClick={() => setGroupByMode("groups")}
+              aria-pressed={groupBy === "groups"}
+              data-testid="group-by-groups"
+            >
+              {t("groupBy.groups")}
+            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant={groupBy === "host" ? "secondary" : "ghost"}
+                  onClick={() => setGroupByMode("host")}
+                  aria-pressed={groupBy === "host"}
+                  data-testid="group-by-host"
+                >
+                  {t("groupBy.host")}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t("hostBucketDescription")}</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
         {user?.isSuperAdmin && (
           <Select value={internalFilter} onValueChange={setInternalFilter}>
@@ -911,48 +1409,101 @@ function ChecksIndexPage() {
         </div>
       </div>
 
-      {groupsError ? (
-        <QueryErrorView error={groupsError} org={org} onRetry={() => refetchGroups()} />
-      ) : groupsLoading ? (
+      {groupBy === "groups" ? (
+        groupsError ? (
+          <QueryErrorView error={groupsError} org={org} onRetry={() => refetchGroups()} />
+        ) : groupsLoading ? (
+          <div className="space-y-2">
+            {[...Array(6)].map((_, i) => (
+              <Skeleton key={i} className="h-12 rounded-lg" />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {(groups || [])
+              .map((group, idx) => ({ group, idx }))
+              .filter(({ group }) => {
+                // While filtering, skip groups whose bucket has zero matches
+                // — but only once the stream has fully resolved
+                // (checksStreaming false), so a group never flickers out
+                // before its later pages have had a chance to load. Not
+                // filtering: keep today's behavior (empty groups stay
+                // visible with their placeholder, so users can find/manage
+                // them).
+                if (!isFiltering || checksStreaming) return true;
+                return (checksByGroup.get(group.uid)?.length ?? 0) > 0;
+              })
+              .map(({ group, idx }) => (
+                <CheckGroupSection
+                  key={group.uid}
+                  group={group}
+                  org={org}
+                  checks={checksByGroup.get(group.uid) ?? []}
+                  isLoading={checksStreaming}
+                  error={checksError}
+                  search={debouncedSearch}
+                  isFiltering={isFiltering}
+                  isFirst={idx === 0}
+                  isLast={idx === (groups?.length ?? 0) - 1}
+                  onMoveUp={() => handleMoveGroup(group, "up")}
+                  onMoveDown={() => handleMoveGroup(group, "down")}
+                  onDeleteCheck={setDeleteCheckUid}
+                  onChangeGroup={setChangeGroupCheck}
+                  groups={groups || []}
+                  checksByUid={checksByUid}
+                  escalationPolicyByUid={escalationPolicyByUid}
+                />
+              ))}
+
+            <UngroupedChecksSection
+              org={org}
+              checks={ungroupedChecks}
+              isLoading={checksStreaming}
+              error={checksError}
+              onDeleteCheck={setDeleteCheckUid}
+              onChangeGroup={setChangeGroupCheck}
+              groups={groups || []}
+              checksByUid={checksByUid}
+            />
+
+            {/* One page-level infinite-scroll sentinel for the whole list. */}
+            <div ref={sentinelRef} className="flex justify-center py-4">
+              {isFetchingNextPage && (
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              )}
+            </div>
+
+            {(!groups || groups.length === 0) && (
+              <NoChecksPlaceholder search={debouncedSearch} />
+            )}
+          </div>
+        )
+      ) : checksError && hostBuckets.length === 0 ? (
+        <QueryErrorView
+          error={checksError}
+          org={org}
+          onRetry={() => queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] })}
+        />
+      ) : checksLoading && hostBuckets.length === 0 ? (
         <div className="space-y-2">
           {[...Array(6)].map((_, i) => (
             <Skeleton key={i} className="h-12 rounded-lg" />
           ))}
         </div>
       ) : (
-        <div className="space-y-4">
-          {(groups || []).map((group, idx) => (
-            <CheckGroupSection
-              key={group.uid}
-              group={group}
+        <div className="space-y-4" data-testid="host-view">
+          {hostBuckets.map(([hostKey, checks]) => (
+            <HostSection
+              key={hostKey ?? "no-host"}
+              hostKey={hostKey}
+              checks={checks}
               org={org}
-              checks={checksByGroup.get(group.uid) ?? []}
-              isLoading={checksStreaming}
-              error={checksError}
-              search={debouncedSearch}
-              isFirst={idx === 0}
-              isLast={idx === (groups?.length ?? 0) - 1}
-              onMoveUp={() => handleMoveGroup(group, "up")}
-              onMoveDown={() => handleMoveGroup(group, "down")}
               onDeleteCheck={setDeleteCheckUid}
               onChangeGroup={setChangeGroupCheck}
               groups={groups || []}
               checksByUid={checksByUid}
-              escalationPolicyByUid={escalationPolicyByUid}
             />
           ))}
-
-          <UngroupedChecksSection
-            org={org}
-            checks={ungroupedChecks}
-            isLoading={checksStreaming}
-            error={checksError}
-            search={debouncedSearch}
-            onDeleteCheck={setDeleteCheckUid}
-            onChangeGroup={setChangeGroupCheck}
-            groups={groups || []}
-            checksByUid={checksByUid}
-          />
 
           {/* One page-level infinite-scroll sentinel for the whole list. */}
           <div ref={sentinelRef} className="flex justify-center py-4">
@@ -961,8 +1512,10 @@ function ChecksIndexPage() {
             )}
           </div>
 
-          {(!groups || groups.length === 0) && (
-            <NoChecksPlaceholder search={debouncedSearch} />
+          {hostBuckets.length === 0 && !checksStreaming && !isFiltering && (
+            <div className="text-center py-10 text-muted-foreground text-sm">
+              {t("noChecksAtAll")}
+            </div>
           )}
         </div>
       )}
@@ -989,7 +1542,16 @@ function ChecksIndexPage() {
       </AlertDialog>
 
       {/* New Group Dialog */}
-      <Dialog open={showNewGroup} onOpenChange={setShowNewGroup}>
+      <Dialog
+        open={showNewGroup}
+        onOpenChange={(open) => {
+          if (open) {
+            setShowNewGroup(true);
+          } else {
+            closeNewGroupDialog();
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("dialog.newGroupTitle")}</DialogTitle>
@@ -1001,7 +1563,12 @@ function ChecksIndexPage() {
                 id="group-name"
                 placeholder={t("dialog.groupNamePlaceholder")}
                 value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
+                onChange={(e) => {
+                  setNewGroupName(e.target.value);
+                  if (!newGroupSlugManuallyEdited) {
+                    setNewGroupSlug(slugify(e.target.value));
+                  }
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleCreateGroup();
                 }}
@@ -1009,9 +1576,40 @@ function ChecksIndexPage() {
                 data-testid="new-group-name-input"
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="group-slug">{t("dialog.groupSlug")}</Label>
+              <Input
+                id="group-slug"
+                placeholder="prod-eu-west"
+                value={newGroupSlug}
+                onChange={(e) => {
+                  setNewGroupSlug(e.target.value);
+                  setNewGroupSlugManuallyEdited(true);
+                  setNewGroupSlugError(undefined);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreateGroup();
+                }}
+                className={newGroupSlugError ? "border-destructive" : ""}
+                aria-invalid={!!newGroupSlugError}
+                data-testid="new-group-slug-input"
+              />
+              {newGroupSlugError ? (
+                <p
+                  className="text-xs text-destructive"
+                  data-testid="new-group-slug-error"
+                >
+                  {newGroupSlugError}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {t("dialog.groupSlugHelp")}
+                </p>
+              )}
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNewGroup(false)}>
+            <Button variant="outline" onClick={closeNewGroupDialog}>
               {tc("cancel")}
             </Button>
             <Button
@@ -1028,36 +1626,171 @@ function ChecksIndexPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Import Preview Dialog */}
-      <Dialog open={!!importPreview} onOpenChange={() => setImportPreview(null)}>
-        <DialogContent>
+      {/* Import source dialog: pick where the checks come from, then preview. */}
+      <Dialog open={importOpen} onOpenChange={(open) => (open ? setImportOpen(true) : closeImportDialog())}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("dialog.importTitle")}</DialogTitle>
           </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="import-source">{t("dialog.importSource")}</Label>
+              <Select
+                value={importSource}
+                onValueChange={(value) => {
+                  setImportSource(value as ImportSourceId);
+                  setImportText("");
+                  setImportToken("");
+                  setImportFileName("");
+                }}
+              >
+                <SelectTrigger id="import-source" data-testid="import-source">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {IMPORT_SOURCES.map((source) => (
+                    <SelectItem key={source} value={source} data-testid={`import-source-${source}`}>
+                      {t(`dialog.importSources.${source}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t(`dialog.importSourceHelp.${importSource}`)}
+              </p>
+            </div>
+
+            {FILE_IMPORT_SOURCES.includes(importSource) ? (
+              <div className="space-y-2">
+                <Label htmlFor="import-payload">{t("dialog.importPayload")}</Label>
+                <Textarea
+                  id="import-payload"
+                  data-testid="import-payload"
+                  rows={8}
+                  className="font-mono text-xs"
+                  value={importText}
+                  onChange={(e) => {
+                    setImportText(e.target.value);
+                    setImportFileName("");
+                  }}
+                  placeholder={t(`dialog.importPlaceholder.${importSource}`)}
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    data-testid="import-upload-button"
+                  >
+                    <Upload className="mr-2 h-4 w-4" />
+                    {t("dialog.importUpload")}
+                  </Button>
+                  {importFileName && (
+                    <span className="text-xs text-muted-foreground truncate">{importFileName}</span>
+                  )}
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={IMPORT_ACCEPT[importSource]}
+                  className="hidden"
+                  onChange={handleImportFile}
+                  data-testid="import-file-input"
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="import-token">{t("dialog.importToken")}</Label>
+                <PasswordInput
+                  id="import-token"
+                  data-testid="import-token"
+                  value={importToken}
+                  onChange={(e) => setImportToken(e.target.value)}
+                  placeholder="••••••••"
+                />
+                <Alert>
+                  <AlertTitle>{t("dialog.importTokenNoticeTitle")}</AlertTitle>
+                  <AlertDescription>{t("dialog.importTokenNotice")}</AlertDescription>
+                </Alert>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeImportDialog}>
+              {tc("cancel")}
+            </Button>
+            <Button
+              onClick={handleImportPreview}
+              data-testid="import-preview-button"
+              disabled={
+                importChecks.isPending ||
+                convertChecks.isPending ||
+                (FILE_IMPORT_SOURCES.includes(importSource)
+                  ? importText.trim() === ""
+                  : importToken.trim() === "")
+              }
+            >
+              {(importChecks.isPending || convertChecks.isPending) && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              {t("dialog.importPreview")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Preview Dialog */}
+      <Dialog open={!!importPreview} onOpenChange={() => setImportPreview(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t("dialog.importPreview")}</DialogTitle>
+          </DialogHeader>
           {importPreview && (
-            <div className="space-y-4 py-2">
+            <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto" data-testid="import-preview">
               <div className="grid grid-cols-3 gap-4 text-center">
                 <div>
-                  <div className="text-2xl font-bold text-green-600">{importPreview.result.created}</div>
+                  <div className="text-2xl font-bold text-green-600" data-testid="import-preview-created">
+                    {importPreview.created}
+                  </div>
                   <div className="text-sm text-muted-foreground">{t("dialog.toCreate")}</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-blue-600">{importPreview.result.updated}</div>
+                  <div className="text-2xl font-bold text-blue-600" data-testid="import-preview-updated">
+                    {importPreview.updated}
+                  </div>
                   <div className="text-sm text-muted-foreground">{t("dialog.toUpdate")}</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-red-600">{importPreview.result.errors.length}</div>
+                  <div className="text-2xl font-bold text-red-600">{importPreview.errors.length}</div>
                   <div className="text-sm text-muted-foreground">{t("dialog.errors")}</div>
                 </div>
               </div>
-              {importPreview.result.errors.length > 0 && (
+              {importPreview.errors.length > 0 && (
                 <div className="rounded-md bg-red-50 dark:bg-red-950 p-3 text-sm">
-                  {importPreview.result.errors.map((err) => (
+                  {importPreview.errors.map((err) => (
                     <div key={err.index} className="text-red-700 dark:text-red-300">
                       <span className="font-mono">{err.slug}</span>: {err.error}
                     </div>
                   ))}
                 </div>
+              )}
+              {importPreview.warnings.length > 0 && (
+                <Alert variant="warning" data-testid="import-preview-warnings">
+                  <AlertTitle>
+                    {t("dialog.importWarnings", { count: importPreview.warnings.length })}
+                  </AlertTitle>
+                  <AlertDescription>
+                    <ul className="list-disc space-y-1 pl-4">
+                      {importPreview.warnings.map((warning, index) => (
+                        <li key={`${warning.item ?? ""}-${warning.field ?? ""}-${index}`}>
+                          {warning.item && <span className="font-medium">{warning.item}: </span>}
+                          {warning.message}
+                        </li>
+                      ))}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
               )}
             </div>
           )}
@@ -1067,9 +1800,16 @@ function ChecksIndexPage() {
             </Button>
             <Button
               onClick={handleImportConfirm}
-              disabled={importChecks.isPending || (importPreview?.result.created === 0 && importPreview?.result.updated === 0)}
+              data-testid="import-confirm-button"
+              disabled={
+                importChecks.isPending ||
+                convertChecks.isPending ||
+                (importPreview?.created === 0 && importPreview?.updated === 0)
+              }
             >
-              {importChecks.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {(importChecks.isPending || convertChecks.isPending) && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
               {t("import")}
             </Button>
           </DialogFooter>

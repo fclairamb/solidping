@@ -19,6 +19,7 @@ import { LanguageSwitcher } from "./language-switcher";
 import { StatusUpdatesTimeline } from "./status-updates-timeline";
 import { SubscribeWidget } from "./subscribe-widget";
 import { statusStyle } from "@/lib/status-style";
+import { usePreviewCss } from "@/lib/preview-css";
 
 function getStatusColor(status: string) {
   return statusStyle(status).color;
@@ -31,6 +32,43 @@ function getStatusBadgeVariant(status: string) {
 function getStatusLabelKey(status: string) {
   return statusStyle(status).labelKey;
 }
+
+/**
+ * Marks a subtree as "never machine-translate this".
+ *
+ * Translation tools (Chrome auto-translate, the Google Translate widget,
+ * translating browser extensions) rewrite a text node by MOVING it into nested
+ * <font> wrappers. React's fiber still records the original parent, so the next
+ * commit that removes or reorders that text node calls
+ * `originalParent.removeChild(textNode)` and the DOM throws
+ *
+ *   NotFoundError: Failed to execute 'removeChild' on 'Node'
+ *
+ * which visitors see as "Something went wrong!". `index.html` already opts the
+ * whole document out, but that is a *hint*: a visitor who explicitly picks
+ * "Translate to…" — or any extension that ignores the document-level hint —
+ * still gets the rewrite. Element-level opt-outs are honoured even then
+ * (RESIDUAL ASSUMPTION: this is the behaviour the HTML spec defines for
+ * `translate="no"` and what Google Translate documents for `.notranslate`; it
+ * was NOT independently verified against a real Chrome translation in this
+ * work, and the E2E simulation honours it by policy, so the test proves the
+ * markers are on the DOM, not that Chrome obeys them).
+ *
+ * The rule for applying it: every element below whose TEXT CHANGES BETWEEN
+ * RENDERS while its element is reused — status labels, availability
+ * percentages, incident kinds, relative timestamps, the subscribe button.
+ * Operator-authored content (page name, description, section and resource
+ * names) deliberately does NOT carry it: that text is static for the lifetime
+ * of the page, so it is safe to translate and valuable to keep translatable.
+ * The version line is the one exception to "changes between renders" — it is
+ * fetched once (`useVersion` uses `staleTime: Infinity` and no
+ * `refetchInterval`, so it never refetches) and is opted out for consistency
+ * with the rest of the machine-generated chrome, not because it churns.
+ *
+ * e2e/translate-resilience.spec.ts asserts these markers are on the rendered
+ * DOM; see also the block comment in main.tsx.
+ */
+const NO_TRANSLATE = { translate: "no" } as const;
 
 function getOverallStatus(sections: StatusPageSection[]): string {
   let hasWarning = false;
@@ -72,10 +110,13 @@ function ResourceCard({
           <Tooltip>
             <TooltipTrigger>
               <span
+                data-testid="resource-status-dot"
                 className={`inline-block h-2.5 w-2.5 rounded-full ${getStatusColor(status)}`}
               />
             </TooltipTrigger>
-            <TooltipContent>{t(getStatusLabelKey(status))}</TooltipContent>
+            <TooltipContent {...NO_TRANSLATE}>
+              {t(getStatusLabelKey(status))}
+            </TooltipContent>
           </Tooltip>
           <span className="text-sm font-medium">{name}</span>
           {resource.check?.type && (
@@ -86,7 +127,11 @@ function ResourceCard({
         </div>
         <div className="flex items-center gap-2">
           {showAvailability && avail?.overallAvailabilityPct != null && (
-            <span className="text-sm font-medium text-green-600">
+            <span
+              className="text-sm font-medium text-green-600"
+              data-testid="resource-availability-pct"
+              {...NO_TRANSLATE}
+            >
               {avail.overallAvailabilityPct.toFixed(3)}%
             </span>
           )}
@@ -94,11 +139,16 @@ function ResourceCard({
             <Badge
               variant="warning"
               data-testid="resource-maintenance-badge"
+              {...NO_TRANSLATE}
             >
               {t("scheduledMaintenance")}
             </Badge>
           ) : (
-            <Badge variant={getStatusBadgeVariant(status)}>
+            <Badge
+              variant={getStatusBadgeVariant(status)}
+              data-testid="resource-status-badge"
+              {...NO_TRANSLATE}
+            >
               {t(getStatusLabelKey(status))}
             </Badge>
           )}
@@ -181,9 +231,18 @@ export function StatusPageView({
   const overallStatus = getOverallStatus(sections);
   const { data: versionInfo } = useVersion();
   const feedUrl = `/api/v1/status-pages/${org}/${page.slug}/feed.xml`;
+  // Outside preview mode this is just page.customCss; with ?preview=1 the
+  // dash0 appearance editor can drive it live over postMessage.
+  const customCss = usePreviewCss(page.customCss);
 
   return (
     <div className="min-h-screen">
+      {/* Operator-authored theme override. Rendered as a React TEXT CHILD, so
+          React escapes it and a "</style>" in the payload cannot break out of
+          the element — never dangerouslySetInnerHTML here. It sits first in
+          the tree and arrives in the same payload as the content, so the page
+          paints already themed (no flash of default styling). */}
+      {customCss ? <style>{customCss}</style> : null}
       {/* Brand bar — white surface with a brand-pink logo. The brand
           color is confined to the logo so the page reads as one
           continuous document; the status banner below uses status
@@ -191,8 +250,13 @@ export function StatusPageView({
       <header className="border-b border-border">
         <div className="mx-auto max-w-3xl px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
+            {/* `sp-logo` is added by <Logo> itself; `sp-page-name` here.
+                Both are documented custom-CSS hooks (public API) — see
+                web/docs/docs/features/status-pages.md. Do not rename. */}
             <Logo size={32} />
-            <span className="font-semibold text-base">{page.name}</span>
+            <span className="sp-page-name font-semibold text-base">
+              {page.name}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <LanguageSwitcher />
@@ -212,6 +276,8 @@ export function StatusPageView({
             <Badge
               variant={getStatusBadgeVariant(overallStatus)}
               className="text-sm px-4 py-1"
+              data-testid="overall-status-badge"
+              {...NO_TRANSLATE}
             >
               {overallStatus === "ok"
                 ? t("allSystemsOperational")
@@ -268,17 +334,28 @@ export function StatusPageView({
 
         {/* Footer — outbound brand link to solidping.io. text-brand
             (pink) signals "leaves this page" vs internal nav which
-            stays primary blue. */}
-        <div className="mt-12 text-center text-xs text-muted-foreground flex flex-col items-center gap-1">
+            stays primary blue.
+
+            `sp-footer` / `sp-powered-by` / `sp-version` are documented
+            custom-CSS hooks (public API) — see
+            web/docs/docs/features/status-pages.md. Do not rename. */}
+        <div className="sp-footer mt-12 text-center text-xs text-muted-foreground flex flex-col items-center gap-1">
           <a
             href="https://www.solidping.io"
             target="_blank"
             rel="noreferrer noopener"
-            className="text-brand hover:underline"
+            className="sp-powered-by text-brand hover:underline"
           >
             {t("poweredBy")}
           </a>
-          {versionInfo ? <span>v{versionInfo.version}</span> : null}
+          {versionInfo ? (
+            // Machine-generated chrome. Note this one does NOT churn (useVersion
+            // is staleTime: Infinity, never refetched) — opted out for
+            // consistency / defence in depth. See NO_TRANSLATE above.
+            <span className="sp-version" {...NO_TRANSLATE}>
+              v{versionInfo.version}
+            </span>
+          ) : null}
         </div>
       </div>
     </div>

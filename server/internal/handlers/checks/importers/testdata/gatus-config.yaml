@@ -1,0 +1,104 @@
+# A realistic Gatus config exercising every condition family we map.
+storage:
+  type: sqlite
+  path: /data/data.db
+
+endpoints:
+  - name: back-end
+    group: core
+    url: "https://example.org/health"
+    interval: 30s
+    method: POST
+    body: '{"probe":"solidping"}'
+    headers:
+      Accept: application/json
+      X-Tenant: acme
+    client:
+      timeout: 5s
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].status == UP"
+      - "[BODY].version != 0"
+      - "[RESPONSE_TIME] < 300"
+      - "[CERTIFICATE_EXPIRATION] > 48h"
+    alerts:
+      - type: slack
+
+  - name: marketing site
+    group: public
+    url: "https://www.example.org"
+    conditions:
+      - "[STATUS] == any(200, 301)"
+      - "[BODY] == pat(*Welcome*)"
+      - "has([BODY].errors) == false"
+      - "[DOMAIN_EXPIRATION] > 720h"
+    client:
+      insecure: true
+      ignore-redirect: true
+
+  - name: legacy soap
+    url: "https://legacy.example.org/soap"
+    enabled: false
+    client:
+      timeout: 45s
+    conditions:
+      - "[STATUS] == 2XX"
+      - "[BODY] != nope"
+      - "len([BODY].items) > 0"
+
+  - name: database port
+    group: core
+    url: "tcp://db.example.org:5432"
+    interval: 1m
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: secure relay
+    url: "starttls://smtp.example.org:587"
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: gateway ping
+    url: "icmp://gw.example.org"
+    interval: 2m
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: bastion
+    url: "ssh://bastion.example.org:22"
+    ssh:
+      username: monitor
+      password: hunter2
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: syslog relay
+    url: "udp://logs.example.org:514"
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: realtime feed
+    url: "wss://feed.example.org/socket"
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: dns lookup
+    group: core
+    url: "8.8.8.8"
+    interval: 5m
+    dns:
+      query-name: "example.org"
+      query-type: A
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+      - "[BODY] == 93.184.216.34"
+
+  - name: unsupported transport
+    url: "sctp://weird.example.org:9899"
+    conditions:
+      - "[CONNECTED] == true"
+
+external-endpoints:
+  - name: nightly-batch
+    group: jobs
+    token: "some-token"

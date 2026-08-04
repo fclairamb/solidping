@@ -294,7 +294,7 @@ func (s *Service) DeletePolicy(ctx context.Context, orgUID, uid string) error {
 // incident's check or check-group references this policy. Soft-deleted
 // incidents are excluded.
 func (s *Service) policyHasOpenIncidents(ctx context.Context, orgUID, policyUID string) (bool, error) {
-	incidents, err := s.db.ListIncidents(ctx, &models.ListIncidentsFilter{
+	incidents, _, err := s.db.ListIncidents(ctx, &models.ListIncidentsFilter{
 		OrganizationUID: orgUID,
 		States:          []models.IncidentState{models.IncidentStateActive},
 	})

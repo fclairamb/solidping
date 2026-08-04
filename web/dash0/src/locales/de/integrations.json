@@ -64,6 +64,7 @@
     "default": "Standard für neue Prüfungen",
     "defaultHelp": "Vorausgewählt bei neuen Prüfungen. Bestehende Prüfungen bleiben unverändert.",
     "webhookUrl": "Webhook-URL",
+    "msteamsWebhookHint": "Öffnen Sie in Teams Workflows → „In einem Kanal posten, wenn eine Webhook-Anfrage eingeht“, schließen Sie den Assistenten ab und fügen Sie hier die erhaltene Workflow-URL ein. Der veraltete „Incoming Webhook“-Connector ist abgeschaltet und funktioniert nicht mehr.",
     "recipients": "Empfänger",
     "recipientsPlaceholder": "ops@example.com, oncall@example.com",
     "recipientsHint": "Trennen Sie Adressen durch Leerzeichen, Komma, Semikolon oder Zeilenumbruch — oder fügen Sie eine Liste ein.",
@@ -89,7 +90,28 @@
     "twilioRemoveNumber": "{{n}} entfernen",
     "twilioToHint": "Direktkanal-Sendungen (Broadcast pro Check, Test) senden SMS an diese Nummern.",
     "slackOauthHint": "Slack-Kanäle werden über die Slack-OAuth-Installation konfiguriert. Der Bot füllt Workspace- und Kanalnamen nach Abschluss.",
-    "testNeedsSave": "Speichern Sie zuerst Ihre Änderungen — der Test verwendet die gespeicherten Einstellungen."
+    "testNeedsSave": "Speichern Sie zuerst Ihre Änderungen — der Test verwendet die gespeicherten Einstellungen.",
+    "msteamsBotCreateHint": "Erstellen Sie zuerst die Integration, installieren Sie dann das Teams-App-Paket und führen Sie den hier angezeigten Verknüpfungsbefehl aus, um Ihren Microsoft-365-Mandanten zu verbinden.",
+    "msteamsBotDisabledTitle": "Der Teams-Bot ist auf diesem Server deaktiviert",
+    "msteamsBotDisabledBody": "Aktivieren Sie ihn in den Servereinstellungen. Microsoft muss diese Instanz über öffentliches HTTPS erreichen können — eine Installation hinter einer Firewall kann den Teams-Bot nicht nutzen.",
+    "msteamsBotEndpointHint": "Microsoft muss diesen Messaging-Endpunkt über öffentliches HTTPS erreichen können:",
+    "msteamsBotDownloadApp": "Teams-App-Paket herunterladen",
+    "msteamsBotSideloadHint": "Öffnen Sie in Teams Apps → Ihre Apps verwalten → Benutzerdefinierte App hochladen, wählen Sie diese ZIP-Datei und fügen Sie SolidPing zu einem Team hinzu. Der Kanal, dem Sie es hinzufügen, wird zu einem Benachrichtigungsziel.",
+    "msteamsBotDestination": "Benachrichtigungskanal",
+    "msteamsBotUninstalled": "Die Teams-App wurde aus diesem Mandanten entfernt. Installieren Sie sie erneut, um Benachrichtigungen fortzusetzen.",
+    "msteamsBotLoading": "Wird geladen…",
+    "msteamsBotError": "Teams-Kanäle konnten nicht geladen werden.",
+    "msteamsBotNoDestinations": "Noch keine Teams-Kanäle. Fügen Sie SolidPing zu einem Kanal in Teams hinzu, dann erscheint er hier.",
+    "msteamsBotConnected": "Verbunden",
+    "msteamsBotTenantLabel": "Microsoft-365-Mandant",
+    "msteamsBotNotConnectedTitle": "Nicht mit Microsoft Teams verbunden",
+    "msteamsBotNotConnectedBody": "Installieren Sie das Teams-App-Paket und führen Sie dann den untenstehenden Verknüpfungsbefehl in einem Kanal aus, dem der Bot hinzugefügt wurde.",
+    "msteamsBotConnectButton": "Microsoft Teams verbinden",
+    "msteamsBotLinkCodeHint": "Senden Sie diese Nachricht in einem Teams-Kanal, dem SolidPing hinzugefügt wurde. Der Code ist einmalig gültig und läuft in 30 Minuten ab.",
+    "msteamsBotLinkFailed": "Verknüpfungscode konnte nicht erstellt werden",
+    "msteamsBotDownloadFailed": "Teams-App-Paket konnte nicht heruntergeladen werden",
+    "msteamsBotLinkFirst": "Verbinden Sie zuerst einen Microsoft-365-Mandanten — Kanäle erscheinen hier, sobald der Bot hinzugefügt wurde.",
+    "msteamsBotUninstalledTitle": "Die Teams-App wurde entfernt"
   },
   "kubernetes": {
     "name": "Kubernetes",
@@ -119,11 +141,13 @@
     "email": "An eine oder mehrere E-Mail-Adressen senden",
     "googlechat": "In Google-Chat-Bereich über eingehenden Webhook posten",
     "mattermost": "In Mattermost-Kanal über eingehenden Webhook posten",
+    "msteams": "In einem Microsoft-Teams-Kanal über einen Teams-Workflow posten",
     "ntfy": "Push-Benachrichtigungen über ntfy.sh",
     "opsgenie": "Bereitschaftsdienst über Opsgenie alarmieren",
     "pushover": "Mobile Push-Benachrichtigungen über Pushover",
     "twilio": "SMS senden und Sprachanrufe über Twilio tätigen",
     "webpush": "Browser-Benachrichtigungen auf abonnierten Geräten empfangen",
-    "kubernetes": "Replikat-Gesundheit von Kubernetes-Workloads überwachen (Deployments, ReplicaSets)"
+    "kubernetes": "Replikat-Gesundheit von Kubernetes-Workloads überwachen (Deployments, ReplicaSets)",
+    "msteams-bot": "Bidirektionaler Teams-Bot: Alarme, @Mention-Befehle und gebündelte Vorfall-Updates"
   }
 }

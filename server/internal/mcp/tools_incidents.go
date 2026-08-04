@@ -20,7 +20,7 @@ func listIncidentsDef() ToolDefinition {
 			"state, or time range. For triaging a specific check's incidents in one call, " +
 			"prefer diagnose_check.",
 		InputSchema: objectSchema(map[string]any{
-			"checkUid": stringProp(
+			propCheckUID: stringProp(
 				"Comma-separated check UIDs or slugs to filter by, e.g. \"api-prod,db-prod\".",
 			),
 			"state": stringProp(

@@ -376,7 +376,9 @@ func (m *mockDBService) FindRecentlyResolvedIncidentByCheckUID(
 	panic("not implemented")
 }
 
-func (m *mockDBService) ListIncidents(_ context.Context, _ *models.ListIncidentsFilter) ([]*models.Incident, error) {
+func (m *mockDBService) ListIncidents(
+	_ context.Context, _ *models.ListIncidentsFilter,
+) ([]*models.Incident, int64, error) {
 	panic("not implemented")
 }
 
@@ -748,6 +750,42 @@ func (m *mockDBService) GetAgent(_ context.Context, _ string) (*models.Agent, er
 	panic("not implemented")
 }
 
+func (m *mockDBService) UpsertSystemAgentEnrollmentToken(
+	_ context.Context, _ *models.AgentEnrollmentToken,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListSystemAgentEnrollmentTokens(
+	_ context.Context,
+) ([]*models.AgentEnrollmentToken, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) RevokeSystemAgentEnrollmentTokensExcept(
+	_ context.Context, _ []string,
+) (int64, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListStaleSystemAgents(_ context.Context, _ time.Time) ([]*models.Agent, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) RetireSystemAgent(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CheckAndStoreAgentNonce(
+	_ context.Context, _, _ string, _ time.Time, _ time.Duration,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) PruneAgentNonces(_ context.Context, _ time.Time) (int64, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) ListAgents(_ context.Context, _ string) ([]*models.Agent, error) {
 	panic("not implemented")
 }
@@ -1093,6 +1131,22 @@ func (m *mockDBService) DeleteCheckGroup(_ context.Context, _ string) error {
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetCheckGroupStatusCounts(
+	_ context.Context, _ string,
+) (map[string]map[models.CheckStatus]int, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetCheckStatusCounts(
+	_ context.Context, _ string,
+) ([]models.CheckStatusCount, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListCheckUIDsByGroup(_ context.Context, _, _ string) ([]string, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CreateMaintenanceWindow(_ context.Context, _ *models.MaintenanceWindow) error {
 	panic("not implemented")
 }
@@ -1132,6 +1186,12 @@ func (m *mockDBService) ListMaintenanceWindowChecks(
 }
 
 func (m *mockDBService) ListMaintenanceWindowsForCheck(
+	_ context.Context, _ string,
+) ([]*models.MaintenanceWindow, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListMaintenanceWindowsForCheckGroup(
 	_ context.Context, _ string,
 ) ([]*models.MaintenanceWindow, error) {
 	panic("not implemented")
@@ -1321,6 +1381,12 @@ func (m *mockDBService) CancelIncidentNotificationsForIncident(
 
 func (m *mockDBService) UpdateIncidentNotificationDeliveryByMessageID(
 	_ context.Context, _, _ string, _ *models.DeliveryDetails,
+) error {
+	return nil
+}
+
+func (m *mockDBService) UpdateIncidentNotificationDeliveryByMessageIDAnyOrg(
+	_ context.Context, _ string, _ *models.DeliveryDetails,
 ) error {
 	return nil
 }
@@ -1966,6 +2032,49 @@ func (m *mockDBService) GetAppSetting(_ context.Context, _ string) (string, erro
 }
 
 func (m *mockDBService) SetAppSetting(_ context.Context, _, _ string) error {
+	panic("not implemented")
+}
+
+// TLS asset storage (spec 2026-07-26-01) — never exercised by notification
+// tests; present only to satisfy db.Service.
+
+func (m *mockDBService) TLSStorageStore(_ context.Context, _ string, _ []byte) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) TLSStorageLoad(_ context.Context, _ string) ([]byte, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) TLSStorageDelete(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) TLSStorageExists(_ context.Context, _ string) (bool, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) TLSStorageList(_ context.Context, _ string) ([]models.TLSStorageKeyInfo, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) TLSStorageStat(_ context.Context, _ string) (models.TLSStorageKeyInfo, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) TLSStorageAcquireLock(
+	_ context.Context, _, _ string, _ time.Time,
+) (bool, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) TLSStorageRefreshLock(
+	_ context.Context, _, _ string, _ time.Time,
+) (bool, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) TLSStorageReleaseLock(_ context.Context, _, _ string) error {
 	panic("not implemented")
 }
 

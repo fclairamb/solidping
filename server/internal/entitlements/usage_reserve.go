@@ -16,6 +16,9 @@ import (
 const (
 	defaultSMSRunawayPerHour  = 30
 	defaultCallRunawayPerHour = 10
+	// defaultWhatsAppRunawayPerHour matches the SMS guard: WhatsApp is the
+	// cheaper channel but a runaway loop is just as unbounded.
+	defaultWhatsAppRunawayPerHour = 30
 )
 
 // ReserveSMS reserves one SMS send for the org: first the per-org hourly
@@ -28,6 +31,12 @@ func (s *Service) ReserveSMS(ctx context.Context, orgUID string) error {
 // ReserveCall reserves one voice call for the org (runaway guard + monthly cap).
 func (s *Service) ReserveCall(ctx context.Context, orgUID string) error {
 	return s.reserveUsage(ctx, orgUID, models.UsageCounterKindVoice)
+}
+
+// ReserveWhatsApp reserves one outbound WhatsApp template message for the org
+// (runaway guard + monthly cap).
+func (s *Service) ReserveWhatsApp(ctx context.Context, orgUID string) error {
+	return s.reserveUsage(ctx, orgUID, models.UsageCounterKindWhatsApp)
 }
 
 func (s *Service) reserveUsage(ctx context.Context, orgUID, kind string) error {
@@ -66,27 +75,36 @@ func (s *Service) reserveUsage(ctx context.Context, orgUID, kind string) error {
 }
 
 func (s *Service) runawayCapFor(kind string) int {
-	if kind == models.UsageCounterKindVoice {
+	switch kind {
+	case models.UsageCounterKindVoice:
 		return s.callRunawayPerHour
+	case models.UsageCounterKindWhatsApp:
+		return s.whatsAppRunawayPerHour
+	default:
+		return s.smsRunawayPerHour
 	}
-
-	return s.smsRunawayPerHour
 }
 
 func monthlyLimitFor(limits Limits, kind string) *int {
-	if kind == models.UsageCounterKindVoice {
+	switch kind {
+	case models.UsageCounterKindVoice:
 		return limits.MaxCallsPerMonth
+	case models.UsageCounterKindWhatsApp:
+		return limits.MaxWhatsappPerMonth
+	default:
+		return limits.MaxSmsPerMonth
 	}
-
-	return limits.MaxSmsPerMonth
 }
 
 func monthlyLimitName(kind string) string {
-	if kind == models.UsageCounterKindVoice {
+	switch kind {
+	case models.UsageCounterKindVoice:
 		return "MaxCallsPerMonth"
+	case models.UsageCounterKindWhatsApp:
+		return "MaxWhatsappPerMonth"
+	default:
+		return "MaxSmsPerMonth"
 	}
-
-	return "MaxSmsPerMonth"
 }
 
 // monthStart returns the first day of the UTC month of t as an ISO date string.

@@ -37,6 +37,10 @@ Query parameters:
 - `cursor` - pagination cursor
 - `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
 
+`pagination.total` is the count of incidents matching the request's filters
+(state, `checkUid`, `since`/`until`, `hideSuppressed`, `causedByIncidentUid`),
+ignoring `limit`/`cursor` — not the org-wide incident count.
+
 ### GET /api/v1/orgs/:org/incidents/:uid
 Get a single incident. Auth: required
 

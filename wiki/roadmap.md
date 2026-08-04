@@ -1,104 +1,187 @@
 # Features Roadmap
 
-> **Status**: Snapshot of priorities as of **May 2026**. Replaces the original Dec 2025 roadmap (Incidents + Email Alerts, Database Checks, Slack Alerts, OpenTelemetry — all shipped). Pull this file forward whenever priorities shift; don't archive it as historical reference.
->
-> ⚠️ **This file is stale as of 2026-07-20 and needs a rewrite.** The counts below
-> have been corrected, but the *priorities* have not. Several P-items already
-> shipped — P1.2 status-page subscriber notifications, P2.2 Terraform provider,
-> P2.3 automatic discovery (now network, Freebox, container **and** Kubernetes),
-> P4.3 (Web Push shipped), P4.6 heartbeat enhancements (partly). P1.3
-> screenshot capture is still open but its stated blocker, S3-compatible object
-> storage, is resolved. Genuinely still open: P1.1 (Telegram / MS Teams /
-> PagerDuty), P2.1 third-party importers, P3.3 subchecks.
-> Also absent entirely: deported agents, SSH tunnels, config-as-code, MCP OAuth
-> 2.1, scheduler lanes, realtime v2, LDAP/SAML.
+> **Status**: Snapshot of priorities as of **2026-07-28**. Replaces the May 2026
+> snapshot, which is now almost fully shipped. Pull this file forward whenever
+> priorities shift; don't archive it as historical reference.
 
 ## Where we are
 
-The original roadmap is fully shipped. SolidPing now has 38 public check types (39 registered, including the internal `sleep` synthetic type), 10 native notification channels, multi-region distributed workers, **deported agents (private locations)**, group-incident correlation, on-call schedules, escalation policies, credentials encryption at rest, labels, check templates, Slack Marketplace install, and an MCP server.
+Nearly everything from the May snapshot has shipped. SolidPing now has 38 public
+check types (39 registered, including the internal `sleep` type), **11 native
+notification channels** (including Twilio SMS + outbound voice wakeup calls with
+magic-link acknowledge), multi-region distributed workers with per-region periods
+and region spread, private locations — org-owned **and** platform-operated system
+agents — SSH tunnels for 18 check types, status pages with **custom domains
+(single CNAME + automatic Let's Encrypt TLS)**, custom CSS with live preview,
+double-opt-in email subscribers and an Atom feed, maintenance windows with
+recurrence, group-incident correlation, on-call schedules + multi-step escalation
+policies + severity-gated channel routing, ack/snooze/manual-resolve with
+magic-link ack, credentials encryption at rest, configuration as code (YAML
+export/import/apply), automatic discovery (network scan, Docker, Kubernetes,
+Freebox LAN) with promote-to-check, an MCP server with 39 tools, SSO (OIDC, SAML,
+LDAP + 6 OAuth providers), passkeys, a full OAuth 2.1 authorization server,
+realtime WebSocket updates, per-org entitlements with check-rate token buckets and
+plan-weighted scheduler fairness, and a 146-path public API.
 
-The product has crossed the bar where it can credibly replace **BetterStack + Opsgenie/PagerDuty** for self-hosted teams. The remaining work is about **closing the last competitive gaps** and **lowering switching cost** for users on other tools.
+Carried over from May and still genuinely open: **Telegram / MS Teams / PagerDuty
+channels**, **importers**, **screenshots**, **subchecks**.
 
-See `competitors/comparison.md` for the full ✅/❌ inventory against 8 competitors.
+The feature-matrix war is won — see `competitors/comparison/` for the full
+✅/❌ inventory against 8 competitors (`competitors/comparison/solidping-position.md`
+for the Tier 1/2/3 breakdown). The remaining gaps sort into three questions:
 
----
-
-## Priority 1: Close the alert-volume and channel-coverage gaps
-
-These ship together because they all touch the notification-fan-out path and amplify each other. Doing them in this order lets each one validate the design of the next.
-
-### 1.1 Telegram, Microsoft Teams, PagerDuty notification channels
-**Why P1**: These are the three channels every SaaS competitor ships and every prospective user asks for first. Specs are drafted (`../specs/ideas/2026-03-22-telegram-notifications.md`, `../specs/ideas/2026-03-22-notification-channels.md`). Discord and the chat-platform OAuth flow have already proven the pattern.
-
-**Order**: Telegram → Discord-style webhook (already done; informs Teams) → MS Teams → PagerDuty. PagerDuty last because it's the only one that uses a different routing-key model and an Events API v2 dedup key.
-
-**Dependencies**: None — uses the existing connection model.
-
-### 1.2 Status-page subscriber notifications
-**Why P1**: Once an outage hits the public status page, end users want to subscribe by email or RSS for the duration of the incident. UptimeRobot, Pingdom, Checkly, BetterStack all ship this. It's the single feature most asked for from public-status-page users.
-
-**Scope**: Email + RSS to start; SMS is a Tier 3 add-on. Per-incident subscription so users don't get blanket-paged across unrelated incidents. Reuses the existing email sender and the public status page domain model.
-
-**Dependencies**: None.
-
-### 1.3 Screenshot capture on HTTP failure
-**Why P1**: BetterStack uses this as a primary sales bullet ("see what your users saw when it broke"). Spec is ready in `../specs/ideas/2026-01-05-screenshots.md` — Rod was already chosen during the browser-checks work, and the screenshot service can be a thin Rod-based microservice deployed once per region.
-
-**Dependencies**: S3-compatible object storage (a single bucket per deployment). MinIO works for self-hosters.
+1. **Can an evaluating team switch?** — channels they already page with, importers.
+2. **Does the product feel finished?** — incidents that reach the status page by
+   themselves, status-page branding, failure diagnostics.
+3. **Will someone pay?** — white-label, SLA reporting, enterprise audit trail.
 
 ---
 
-## Priority 2: Lower switching cost
+## Priority 1: Adoption blockers
 
-### 2.1 Importers from BetterStack, UptimeRobot, Uptime Kuma
-**Why P2**: A user with 50 monitors elsewhere will not migrate by hand. An importer that ingests their existing config (via API key for SaaS, JSON export for Uptime Kuma) is the difference between "I'd love to switch" and "we did switch." Spec stub in `../specs/ideas/2025-12-28-importers.md`.
+### 1.1 PagerDuty, Microsoft Teams, Telegram notification channels
+**Why P1**: The only gap where every SaaS competitor ships something we don't.
+PagerDuty matters most strategically — a team evaluating SolidPing mid-migration
+won't drop their pager on day one, so the integration is the adoption bridge, not
+a nice-to-have. Specs are drafted (`../specs/ideas/2026-03-22-telegram-notifications.md`,
+`../specs/ideas/2026-03-22-notification-channels.md`); the Slack/Discord OAuth work
+proved the pattern and Google Chat/Mattermost proved the webhook-card pattern
+Teams needs.
 
-**Order**: Uptime Kuma (JSON export, simplest) → UptimeRobot (largest user base) → BetterStack (most complex but highest-value migration).
+**Order**: Telegram → MS Teams → PagerDuty. PagerDuty last because it's the only
+one with a different model (Events API v2 routing keys + dedup keys).
 
-### 2.2 Configuration as Code — Terraform provider
-**Why P2**: Gatus, Checkly, BetterStack, Pingdom all have one. DevOps teams that already manage infra with Terraform won't adopt a tool that doesn't fit their workflow. Lower-effort than it sounds because the REST API is already complete and well-tested — the provider is mostly schema mapping.
+**Dependencies**: None — senders plug into `server/internal/notifications/registry.go`.
 
-**Dependencies**: Stable v1 REST API (already done).
+### 1.2 Auto-publish incidents to status pages — the outage-vs-incident split
+**Why P1**: The biggest product-coherence gap. Automatic incidents never surface
+on the public status page — status updates are hand-authored, so when a check goes
+down at 3am the status page says everything is fine until a human writes an
+update. Every serious status-page competitor auto-displays outages.
 
-### 2.3 Automatic application discovery
-**Why P2 (and a differentiator)**: Spec in `../specs/ideas/2025-12-28-automatic-app-discovery.md`. When a user enters `metabase.example.com`, suggest `/api/health` automatically. **No competitor has this** — it's a small piece of code that produces an outsized "wow" moment in onboarding. Worth doing now because it directly shortens time-to-first-check.
+**Scope**: Implement the split from
+`../specs/backlog/2026/05/2026-05-08-04-outage-vs-incident-split.md` — operational
+**outages** (probe data, paging state, ack verbs, fast retention churn) separated
+from customer-facing **incidents** (edited title/timeline, status-page attachment,
+public URL). This also unlocks manual incident creation (there is currently no
+`POST /incidents`), postmortems, and clean public-vs-internal webhook events.
+Design input distilled in `research/alerting-patterns.md`.
+
+**Dependencies**: None, but it's a schema-level change — do it before piling more
+features onto the `incidents` table.
+
+### 1.3 Importers: Uptime Kuma → UptimeRobot → BetterStack
+**Why P1** (was P2): Nothing else converts existing users, and the config-as-code
+apply endpoint gives importers a natural target format. Uptime Kuma is at ~89k★
+on its 2.x line, and its users' top complaints — no REST API, no multi-location,
+no multi-user/SSO, no PostgreSQL — are exactly SolidPing's differentiators. A user
+with 50 monitors elsewhere will not migrate by hand.
+
+**Order**: Uptime Kuma (JSON export, simplest, largest self-hosted overlap) →
+UptimeRobot (largest SaaS user base, good API) → BetterStack (most complex,
+highest-value migration). Spec stub in `../specs/ideas/2025-12-28-importers.md`.
+
+**Dependencies**: None — emit config-as-code YAML and reuse `checks/apply`.
 
 ---
 
-## Priority 3: Operational maturity
+## Priority 2: Product completeness
 
-### 3.1 Org-level check rate limiting
-**Why P3**: Spec ready in `../specs/backlog/2026-03-30-org-check-rate-limit.md`. Today nothing prevents a single tenant from creating 1,000 30-second checks and saturating the worker pool. Proportional fair scaling is the right algorithm and the spec is concrete. This becomes critical the first time we stand up a multi-tenant SaaS.
+### 2.1 Status-page trust & branding
+**Why P2**: Three concrete holes that show up on every buyer's comparison
+checklist (Instatus, Hyperping, BetterStack all ship them):
+- **Logo/favicon upload** — theming is CSS-variables only today; the SolidPing
+  logo and "powered by solidping.io" footer are hardcoded in
+  `web/status0/src/components/shared/status-page-view.tsx`. White-label (remove
+  the badge) is a natural paid-tier entitlement for the SaaS.
+- **Password-protected pages** — `visibility: private` just 404s the public
+  endpoint, so there is no way to share a status page with customers privately.
+- **Subscription channels beyond email + Atom** — webhook and Slack subscribe are
+  the most-requested next steps.
 
-**Dependencies**: None.
+**Dependencies**: File storage for logo upload already exists (local FS / S3).
 
-### 3.2 Initial-result semantics cleanup
-**Why P3**: Spec in `../specs/backlog/2026-03-23-check-started-result.md`. The `initial` result already exists but its neutrality with respect to status, streaks, and incidents isn't consistently enforced everywhere. A small but high-value cleanup that fixes a class of edge-case bugs around re-enabled checks and config changes.
+### 2.2 Failure diagnostics — screenshots, then traceroute/MTR
+**Why P2**: BetterStack's primary sales bullet ("see what your users saw when it
+broke"). Unusually cheap for its demo impact: the spec is ready
+(`../specs/ideas/2026-01-05-screenshots.md`), Rod was chosen during the
+browser-checks work, and the stated blocker — S3-compatible object storage — has
+shipped. Traceroute/MTR capture on network-level failures is the natural
+follow-up (also a BetterStack differentiator).
 
-### 3.3 Subchecks
-**Why P3**: Spec stub in `../specs/ideas/2026-01-01-subchecks.md`. Auto-spawn an SSL/domain-expiration sub-check from a parent HTTP check (run daily, separate alerting). Reduces manual config when a user adds a new HTTPS endpoint and forgets the cert/domain checks.
+**Dependencies**: None remaining.
+
+### 2.3 SLA reporting — SLO targets, error budgets, scheduled uptime reports
+**Why P2**: Nothing exists today — no SLO concept, no scheduled reports — yet the
+data is already there: results are aggregated per period with min/max/avg/p95 and
+timezone-aware availability. A per-check/group SLO target ("99.9% monthly"), an
+error-budget readout, and a weekly/monthly emailed uptime report reach the
+manager who approves the invoice. No spec yet — needs one.
+
+**Dependencies**: None; builds on the existing aggregation + availability
+services and the email sender.
 
 ---
 
-## Priority 4: Differentiators (when ready)
+## Priority 3: Enterprise maturity & cleanups
 
-These don't have direct competitive pressure but expand the addressable market.
+### 3.1 Audit-log coverage for auth & config events
+The `events` table is check/incident-centric. ISO/SOC2-minded buyers will ask for
+login/SSO events, member and role changes, integration changes, and token
+lifecycle events. The entitlements audit trail already exists separately and can
+serve as the pattern.
 
-1. **Page speed / Core Web Vitals monitoring** — Pingdom, StatusCake. Different code path from health checks; needs Lighthouse or Rod-based metrics.
-2. **Real User Monitoring (RUM)** — Pingdom, Site24x7. Front-end JS snippet + ingestion endpoint. Whole different ingestion pipeline.
-3. **Mobile apps or installable PWA** — UptimeRobot, Pingdom. Alerts on the phone matter for on-call.
-4. **GitHub/GitLab issue integration** — Gatus. One-step "open an issue when an incident fires."
-5. **SMS / Voice escalations via Twilio** — every major SaaS. Useful for paid SaaS tier; less essential for self-hosters.
-6. **Heartbeat enhancements** — `/start` endpoint, exit codes, log attachment (Healthchecks.io's design). Matters to cron-monitoring users specifically.
-7. **AIOps / anomaly detection** on response-time series — Site24x7, Datadog. Big project; revisit when we have enough data per check to make it useful.
-8. **NATS notifier** — `../specs/ideas/2025-12-28-nats-notifier.md`. Replace pg LISTEN/NOTIFY with NATS for the worker fan-out. Only matters when scale demands it.
-9. **Drop SQLite** — `../specs/ideas/2025-12-28-drop-sqlite.md`. Open question; revisit if SQLite parity becomes a real maintenance drain.
+### 3.2 On-call maturity
+Business-hours restriction windows, layered/concurrent rotations, per-user quiet
+hours / holiday mode. Backlog spec:
+`../specs/backlog/2026/05/2026-05-08-05-on-call-multi-rotation-and-override-as-event.md`;
+design notes in `research/alerting-patterns.md` §5.
+
+### 3.3 Terraform provider import fixes
+The provider lives out of tree (`terraform-provider-solidping`); the API audit
+(`terraform-provider-api-audit.md`) found 2 of 5 resources are slug-only and
+break `terraform import org/uid`. Fix the API gaps here, then verify the
+provider's published state.
+
+### 3.4 Subchecks
+Auto-spawn SSL/domain-expiration sub-checks from a parent HTTP check. Spec stub
+in `../specs/ideas/2026-01-01-subchecks.md`.
+
+### 3.5 Initial-result semantics cleanup
+Carried over from May (`../specs/backlog/2026-03-23-check-started-result.md`) —
+the `initial` result's neutrality w.r.t. status, streaks, and incidents isn't
+consistently enforced. Small, fixes a class of edge-case bugs around re-enabled
+checks.
+
+---
+
+## Explicit non-priorities (for now)
+
+- **RUM, page speed / Core Web Vitals, AIOps anomaly detection** — different
+  ingestion pipelines, different competitors; none of them blocks a sale the way
+  P1/P2 items do.
+- **Native mobile apps** — the installable PWA + Web Push already cover phone
+  alerts; revisit only if push reliability on iOS becomes a complaint.
+- **Heartbeat enhancements** (`/start` endpoint, exit codes, log attachment) —
+  partially shipped (bearer auth, JSON body, caller metadata); the rest matters
+  to cron-power-users specifically, not to evaluations.
+- **NATS notifier / dropping SQLite** — revisit when scale or maintenance drain
+  demands it (`../specs/ideas/2025-12-28-nats-notifier.md`,
+  `../specs/ideas/2025-12-28-drop-sqlite.md`).
 
 ---
 
 ## Cross-cutting considerations
 
-- **The notification-channel pattern is the bottleneck for adding more.** Every new channel is ~250 lines + a sender + UI form + i18n. Worth investing in a tiny code-gen / template if we add more than two more.
-- **Group-incident correlation changed the calculus on alert storms.** Now that one outage = one alert per channel (not N), adding more channels is no longer dangerous from an alert-fatigue standpoint.
-- **Credentials encryption raised the bar for security claims.** Status-page subscriber notifications must respect the same opacity — subscribers' email addresses are PII and should be treated accordingly.
-- **Importers and Terraform provider both depend on a stable REST API.** The API is stable; new endpoints should follow the same shape (camelCase, `data` envelope, `$uid` paths) — see `../CLAUDE.md`.
+- **The notification-channel pattern is the bottleneck for adding more.** Every
+  new channel is ~250 lines + a sender + UI form + i18n. P1.1 adds three — invest
+  in a tiny code-gen/template as part of that work.
+- **Group-incident correlation changed the calculus on alert storms.** One outage
+  = one alert per channel (not N), so adding channels is no longer dangerous from
+  an alert-fatigue standpoint.
+- **Credentials encryption raised the bar for security claims.** Subscriber email
+  addresses are PII; new subscription channels (webhook, Slack) and uptime-report
+  recipients must be treated with the same opacity.
+- **Importers, SLA reports, and the Terraform provider all depend on a stable
+  REST API.** The API is stable; new endpoints follow the same shape (camelCase,
+  `data` envelope, `$uid` paths) — see `../CLAUDE.md`.

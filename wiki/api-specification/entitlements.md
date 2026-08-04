@@ -17,6 +17,16 @@ plus live `usage` counts and a `stale` flag, and `upgradeUrl` when
 `entitlements.upgrade_url_template` is configured. Auth: any authenticated
 org member.
 
+`usage` fields:
+
+| Field | Meaning |
+|---|---|
+| `usage.checks` | Non-internal, non-deleted checks. |
+| `usage.checksPerMinute` | Aggregate check-execution rate. |
+| `usage.ssoUsers` | Total member count (enforced against `limits.maxUsers`). |
+| `usage.agents` | Active deported (private-location) agents (enforced against `limits.maxDeportedAgents`). |
+| `usage.customDomains` | Live status pages with a custom domain set (enforced against `limits.maxCustomDomains`). |
+
 ### PUT /api/v1/orgs/:org/entitlements
 Replaces the entitlement row. Returns the resolved entitlements.
 
@@ -52,6 +62,9 @@ no-op-ing.
 | `limits.maxUsers` | int / null | null ⇒ unlimited |
 | `limits.maxChecksPerMinute` | int / null | null ⇒ unlimited |
 | `limits.maxDeportedAgents` | int / null | null ⇒ unlimited; caps active deported (private-location) agents across all private regions |
+| `limits.maxCustomDomains` | int / null | null ⇒ unlimited; caps status pages served on a customer-owned domain. Only the none→some transition is gated (soft cap: dropping below the cap keeps existing custom domains working) |
+| `limits.maxSmsPerMonth` | int / null | null ⇒ unlimited; caps outbound SMS per UTC calendar month |
+| `limits.maxCallsPerMonth` | int / null | null ⇒ unlimited; caps outbound voice calls per UTC calendar month |
 | `limits.maxSsoUsers` | int / null | **deprecated alias** for `maxUsers`; sending both is rejected (`ErrConflictingUserLimitKeys`) |
 | `source` | string | defaults to `billing` for a service token, `admin` for an admin JWT |
 | `displayName` | string | display-only plan name, e.g. `Team` |

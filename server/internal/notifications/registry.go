@@ -14,32 +14,34 @@ func GetSender(connType models.ConnectionType) (Sender, bool) {
 	}
 
 	// Non-notify types (e.g. freebox) are already handled by the CanNotify
-	// guard above; the default covers any unmapped notify type.
-	//nolint:exhaustive // non-notify types handled by the CanNotify guard above.
-	switch connType {
-	case models.ConnectionTypeSlack:
-		return &SlackSender{}, true
-	case models.ConnectionTypeDiscord:
-		return &DiscordSender{}, true
-	case models.ConnectionTypeWebhook:
-		return &WebhookSender{}, true
-	case models.ConnectionTypeEmail:
-		return &EmailSender{}, true
-	case models.ConnectionTypeGoogleChat:
-		return &GoogleChatSender{}, true
-	case models.ConnectionTypeMattermost:
-		return &MattermostSender{}, true
-	case models.ConnectionTypeNtfy:
-		return &NtfySender{}, true
-	case models.ConnectionTypeOpsgenie:
-		return &OpsgenieSender{}, true
-	case models.ConnectionTypePushover:
-		return &PushoverSender{}, true
-	case models.ConnectionTypeWebPush:
-		return &WebPushSender{}, true
-	case models.ConnectionTypeTwilio:
-		return &TwilioSender{}, true
-	default:
+	// guard above; an unmapped notify type resolves to (nil, false).
+	factory, ok := senderFactories()[connType]
+	if !ok {
 		return nil, false
+	}
+
+	return factory(), true
+}
+
+// senderFactories maps a connection type to its sender constructor. A table
+// rather than a switch: the list only ever grows, and a flat lookup keeps
+// GetSender's complexity constant as integrations are added. Rebuilt per call
+// (negligible cost) to satisfy gochecknoglobals, same as
+// severities.allowedChannels.
+func senderFactories() map[models.ConnectionType]func() Sender {
+	return map[models.ConnectionType]func() Sender{
+		models.ConnectionTypeSlack:      func() Sender { return &SlackSender{} },
+		models.ConnectionTypeDiscord:    func() Sender { return &DiscordSender{} },
+		models.ConnectionTypeWebhook:    func() Sender { return &WebhookSender{} },
+		models.ConnectionTypeEmail:      func() Sender { return &EmailSender{} },
+		models.ConnectionTypeGoogleChat: func() Sender { return &GoogleChatSender{} },
+		models.ConnectionTypeMattermost: func() Sender { return &MattermostSender{} },
+		models.ConnectionTypeMSTeams:    func() Sender { return &MSTeamsSender{} },
+		models.ConnectionTypeMSTeamsBot: func() Sender { return &MSTeamsBotSender{} },
+		models.ConnectionTypeNtfy:       func() Sender { return &NtfySender{} },
+		models.ConnectionTypeOpsgenie:   func() Sender { return &OpsgenieSender{} },
+		models.ConnectionTypePushover:   func() Sender { return &PushoverSender{} },
+		models.ConnectionTypeWebPush:    func() Sender { return &WebPushSender{} },
+		models.ConnectionTypeTwilio:     func() Sender { return &TwilioSender{} },
 	}
 }

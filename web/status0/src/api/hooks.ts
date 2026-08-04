@@ -40,7 +40,11 @@ export interface ResourceAvailabilityData {
 
 export interface StatusPageResource {
   uid: string;
-  checkUid: string;
+  // Exactly one of checkUid / checkGroupUid is set. A group resource renders as
+  // ONE component here — same shape as a check resource (name, status,
+  // availability series, maintenance flag) — and never exposes its members.
+  checkUid?: string;
+  checkGroupUid?: string;
   publicName?: string;
   explanation?: string;
   position: number;
@@ -83,6 +87,12 @@ export interface StatusPage {
   historyDays: number;
   historyPeriod: "24h" | "7d" | "30d" | "90d";
   language?: string;
+  /**
+   * Operator-authored stylesheet, rendered by StatusPageView as a <style> text
+   * child. Unlike the custom-domain fields it IS served on the public
+   * endpoint — this page is its only consumer.
+   */
+  customCss?: string;
   sections?: StatusPageSection[];
   recentUpdates?: StatusUpdatePublicResponse[];
   createdAt?: string;

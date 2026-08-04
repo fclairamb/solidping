@@ -57,5 +57,36 @@
     "connecting": "Verbindung wird hergestellt…",
     "reconnecting": "Wiederverbindung…",
     "unavailable": "Live-Updates nicht verfügbar"
+  },
+  "channels": {
+    "whatsapp": "WhatsApp",
+    "sms": "SMS",
+    "voice": "Sprachanruf",
+    "webpush": "Browser-Push",
+    "email": "E-Mail",
+    "msteams": "Microsoft Teams",
+    "msteams-bot": "Microsoft Teams",
+    "googlechat": "Google Chat",
+    "mattermost": "Mattermost",
+    "ntfy": "ntfy",
+    "opsgenie": "Opsgenie",
+    "pushover": "Pushover",
+    "slack": "Slack",
+    "discord": "Discord",
+    "webhook": "Webhook"
+  },
+  "notificationFailureReasons": {
+    "whatsapp_template_unavailable": "WhatsApp-Nachrichtenvorlage nicht verfügbar — bitten Sie einen Administrator, den Freigabestatus zu prüfen",
+    "whatsapp_recipient_not_on_whatsapp": "Empfänger ist nicht bei WhatsApp",
+    "whatsapp_rate_limited": "Von WhatsApp gedrosselt (Limit der Messaging-Stufe)",
+    "whatsapp_unsupported_message": "WhatsApp hat die gesendete Nachricht abgelehnt — bitten Sie einen Administrator, die Vorlagenkomponenten zu prüfen",
+    "whatsapp_session_window_closed": "Außerhalb des 24-Stunden-WhatsApp-Sitzungsfensters",
+    "whatsapp_token_expired": "WhatsApp-Zugangsdaten abgelaufen — bitten Sie einen Administrator, sie zu erneuern",
+    "whatsapp_not_configured": "WhatsApp ist auf dieser Instanz nicht konfiguriert",
+    "whatsapp_invalid_recipient": "Die WhatsApp-Nummer ist keine gültige E.164-Nummer",
+    "whatsapp_send_failed": "WhatsApp-Zustellung fehlgeschlagen",
+    "whatsapp_quota_exhausted": "Monatliches WhatsApp-Kontingent aufgebraucht",
+    "sms_quota_exhausted": "Monatliches SMS-Kontingent aufgebraucht",
+    "voice_quota_exhausted": "Monatliches Kontingent für Sprachanrufe aufgebraucht"
   }
 }

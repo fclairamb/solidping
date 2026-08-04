@@ -321,6 +321,41 @@ test.describe("Notification Channels", () => {
     // webpush (a notify-capable type) sits in the notify group, not sources.
     await expect(notifyGroup.getByTestId("pick-webpush")).toBeVisible();
     await expect(sourceGroup.getByTestId("pick-webpush")).toHaveCount(0);
+
+    // msteams (a notify-capable type) sits in the notify group, not sources.
+    await expect(notifyGroup.getByTestId("pick-msteams")).toBeVisible();
+    await expect(sourceGroup.getByTestId("pick-msteams")).toHaveCount(0);
+  });
+
+  test("create a Microsoft Teams channel via the form and persist its URL", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    await page.goto("orgs/test/integrations/new?type=msteams");
+    await page.waitForLoadState("networkidle");
+
+    const name = `E2E Teams ${Date.now()}`;
+    const workflowUrl = "https://example.logic.azure.com/workflows/abc123";
+    await page.getByLabel("Name").fill(name);
+    await page.getByLabel(/webhook url/i).fill(workflowUrl);
+
+    await page.getByRole("button", { name: /create integration/i }).click();
+    await page.waitForURL((url) =>
+      /\/integrations\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+        url.pathname,
+      ),
+    );
+    const uid = page.url().split("/").pop()!;
+
+    // Reload the edit page — the workflow URL persists (round-trips through
+    // the msteams webhook_url settings key on both save and reload).
+    await page.goto(`orgs/test/integrations/${uid}`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByLabel(/webhook url/i)).toHaveValue(workflowUrl);
+
+    await deleteConnection(page, token, uid);
   });
 
   test("webpush channel panel renders subscribe button and empty device list", async ({

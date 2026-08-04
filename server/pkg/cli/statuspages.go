@@ -25,6 +25,8 @@ const (
 
 	flagVisibility       = "visibility"
 	flagLanguage         = "language"
+	flagCustomCSS        = "custom-css"
+	flagCustomCSSFile    = "custom-css-file"
 	flagHistoryPeriod    = "history-period"
 	flagHistoryDays      = "history-days"
 	flagShowAvailability = "show-availability"
@@ -160,6 +162,35 @@ func renderStatusPage(page *client.StatusPage) {
 	output.PrintMessage(os.Stdout, "Default:     "+strconv.FormatBool(page.IsDefault))
 	output.PrintMessage(os.Stdout, "Enabled:     "+strconv.FormatBool(page.Enabled))
 	output.PrintMessage(os.Stdout, "History:     "+page.HistoryPeriod)
+
+	if page.CustomCss != nil && *page.CustomCss != "" {
+		// The stylesheet can be up to 64 KB — print its size, not its body.
+		output.PrintMessage(os.Stdout, "Custom CSS:  "+strconv.Itoa(len(*page.CustomCss))+" bytes")
+	}
+}
+
+// customCSSFlag resolves the mutually-exclusive --custom-css / --custom-css-file
+// pair into the request field. --custom-css-file reads the stylesheet from disk
+// (the realistic authoring workflow); --custom-css takes it inline, and an
+// explicit empty string clears the field on update. Neither flag set -> nil, so
+// the field is omitted and the stored stylesheet is left untouched.
+func customCSSFlag(cmd *cli.Command) (*string, error) {
+	if cmd.IsSet(flagCustomCSSFile) {
+		if cmd.IsSet(flagCustomCSS) {
+			return nil, cli.Exit("Error: --custom-css and --custom-css-file are mutually exclusive", 5)
+		}
+
+		data, err := os.ReadFile(cmd.String(flagCustomCSSFile))
+		if err != nil {
+			return nil, cli.Exit("Error: cannot read custom CSS file: "+err.Error(), 5)
+		}
+
+		css := string(data)
+
+		return &css, nil
+	}
+
+	return optString(cmd, flagCustomCSS), nil
 }
 
 // --- Status page CRUD ---
@@ -228,12 +259,18 @@ func statusPagesCreateAction(ctx context.Context, cmd *cli.Command) error {
 		return cli.Exit("Error: --name and --slug are required", 5)
 	}
 
+	customCSS, err := customCSSFlag(cmd)
+	if err != nil {
+		return err
+	}
+
 	body := client.CreateStatusPageJSONRequestBody{
 		Name:             name,
 		Slug:             slug,
 		Description:      optString(cmd, flagDescription),
 		Visibility:       optString(cmd, flagVisibility),
 		Language:         optString(cmd, flagLanguage),
+		CustomCss:        customCSS,
 		HistoryPeriod:    optString(cmd, flagHistoryPeriod),
 		HistoryDays:      optInt(cmd, flagHistoryDays),
 		ShowAvailability: boolPair(cmd, flagShowAvailability, flagHideAvailability),
@@ -318,12 +355,18 @@ func statusPagesUpdateAction(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
+	customCSS, err := customCSSFlag(cmd)
+	if err != nil {
+		return err
+	}
+
 	body := client.UpdateStatusPageJSONRequestBody{
 		Name:             optString(cmd, flagName),
 		Slug:             optString(cmd, keySlug),
 		Description:      optString(cmd, flagDescription),
 		Visibility:       optString(cmd, flagVisibility),
 		Language:         optString(cmd, flagLanguage),
+		CustomCss:        customCSS,
 		HistoryPeriod:    optString(cmd, flagHistoryPeriod),
 		HistoryDays:      optInt(cmd, flagHistoryDays),
 		IsDefault:        boolPair(cmd, flagDefault, flagNoDefault),
@@ -651,10 +694,24 @@ func statusPagesSectionsReorderAction(ctx context.Context, cmd *cli.Command) err
 
 // --- Resources ---
 
+// resourceTarget renders a resource's target for text output: the check UID, or
+// the check group UID prefixed with "group:" when the resource aggregates a
+// group (spec 2026-08-01-03). Exactly one of the two is ever set.
+func resourceTarget(resource *client.StatusPageResource) string {
+	switch {
+	case resource.CheckUid != nil:
+		return resource.CheckUid.String()
+	case resource.CheckGroupUid != nil:
+		return "group:" + resource.CheckGroupUid.String()
+	default:
+		return ""
+	}
+}
+
 // renderResource prints a single resource in text mode.
 func renderResource(resource *client.StatusPageResource) {
 	output.PrintMessage(os.Stdout, "UID:       "+resource.Uid.String())
-	output.PrintMessage(os.Stdout, "Check:     "+resource.CheckUid.String())
+	output.PrintMessage(os.Stdout, "Target:    "+resourceTarget(resource))
 	output.PrintMessage(os.Stdout, "Position:  "+strconv.Itoa(resource.Position))
 
 	if resource.PublicName != nil {
@@ -699,13 +756,13 @@ func statusPagesResourcesListAction(ctx context.Context, cmd *cli.Command) error
 	}
 
 	tbl := output.NewTable(os.Stdout)
-	tbl.AppendHeader(table.Row{colUID, colCheck, colPosition})
+	tbl.AppendHeader(table.Row{colUID, colTarget, colPosition})
 
 	for i := range *resp.JSON200.Data {
 		resource := &(*resp.JSON200.Data)[i]
 		tbl.AppendRow(table.Row{
 			resource.Uid.String(),
-			resource.CheckUid.String(),
+			resourceTarget(resource),
 			strconv.Itoa(resource.Position),
 		})
 	}
@@ -728,15 +785,24 @@ func statusPagesResourcesCreateAction(ctx context.Context, cmd *cli.Command) err
 	}
 
 	check := cmd.String(flagCheck)
-	if check == "" {
-		return cli.Exit("Error: --check is required", 5)
+	checkGroup := cmd.String(flagCheckGroup)
+
+	// A resource targets exactly one of a check or a check group (spec
+	// 2026-08-01-03) — the same XOR the API and the schema enforce.
+	if (check == "") == (checkGroup == "") {
+		return cli.Exit("Error: exactly one of --check or --check-group is required", 5)
 	}
 
 	body := client.CreateStatusPageResourceJSONRequestBody{
-		CheckUid:    check,
 		PublicName:  optString(cmd, flagPublicName),
 		Explanation: optString(cmd, flagExplanation),
 		Position:    optInt(cmd, flagPosition),
+	}
+
+	if check != "" {
+		body.CheckUid = &check
+	} else {
+		body.CheckGroupUid = &checkGroup
 	}
 
 	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
@@ -776,9 +842,15 @@ func statusPagesResourcesUpdateAction(ctx context.Context, cmd *cli.Command) err
 	}
 
 	body := client.UpdateStatusPageResourceJSONRequestBody{
-		PublicName:  optString(cmd, flagPublicName),
-		Explanation: optString(cmd, flagExplanation),
-		Position:    optInt(cmd, flagPosition),
+		PublicName:    optString(cmd, flagPublicName),
+		Explanation:   optString(cmd, flagExplanation),
+		Position:      optInt(cmd, flagPosition),
+		CheckUid:      optString(cmd, flagCheck),
+		CheckGroupUid: optString(cmd, flagCheckGroup),
+	}
+
+	if body.CheckUid != nil && body.CheckGroupUid != nil {
+		return cli.Exit("Error: --check and --check-group are mutually exclusive", 5)
 	}
 
 	apiClient, err := cliCtx.APIHelper.GetClient(ctx)

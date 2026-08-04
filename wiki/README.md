@@ -2,7 +2,7 @@
 
 ## Roadmap
 
-- [roadmap.md](roadmap.md) — Feature roadmap and priorities — **stale (May 2026 snapshot)**; counts corrected 2026-07-20 but priorities still need a rewrite, see the banner at the top of the file
+- [roadmap.md](roadmap.md) — Feature roadmap and priorities (rewritten 2026-07-28: adoption blockers → product completeness → enterprise maturity, plus explicit non-priorities)
 
 ## Architecture & Design
 
@@ -77,6 +77,7 @@ Project-wide standards and naming rules.
 Operational procedures for diagnosing the running system.
 
 - [runbooks/memory-profiling.md](runbooks/memory-profiling.md) — Memory profiling & leak detection: pprof heap/alloc/goroutine/block profiles per role, base-diffing, the off-heap (cgo/SQLite) rule, the `/api/mgmt/memory` snapshot + Prometheus surfaces, baseline/soak procedure, GC levers (`GOMEMLIMIT`/`GOGC`).
+- [runbooks/custom-domain-tls.md](runbooks/custom-domain-tls.md) — Custom-domain TLS: single-CNAME verification modes (`shared`/`token`), in-server ACME (`acme.*`) vs. an external TLS proxy, the k8xp SNI-passthrough / LoadBalancer prerequisite, the live acceptance checklist, and `tls_storage` handling rules.
 
 ## Testing
 
@@ -99,7 +100,17 @@ Operational procedures for diagnosing the running system.
 
 Market analysis of uptime monitoring services.
 
-- [competitors/comparison.md](competitors/comparison.md) — Comparison matrix and pricing across 9 competitors, with current SolidPing positioning (May 2026)
+- Cross-competitor comparison — [competitors/comparison/](competitors/comparison/)
+  - [comparison/README.md](competitors/comparison/README.md) — Index of the comparison set
+  - [comparison/overview.md](competitors/comparison/overview.md) — At-a-glance matrix across 7 uptime-first competitors, where SolidPing stands today, and the 2026-07 pricing/market-moves refresh
+  - [comparison/pricing.md](competitors/comparison/pricing.md) — Free, entry, mid-tier and 100-monitor pricing brackets with a winner per bracket
+  - [comparison/monitor-types.md](competitors/comparison/monitor-types.md) — Check-type matrix across 9 tools (HTTP → game servers, email inbox, custom JS)
+  - [comparison/api.md](competitors/comparison/api.md) — Auth, API design, rate limits and endpoint coverage (BetterStack / UptimeRobot / Pingdom)
+  - [comparison/features.md](competitors/comparison/features.md) — Monitoring capabilities, notification-channel matrix, advanced features, developer experience
+  - [comparison/pros-cons.md](competitors/comparison/pros-cons.md) — Pros, cons and "best for" verdicts per vendor
+  - [comparison/use-cases.md](competitors/comparison/use-cases.md) — What to learn from / avoid per vendor, and a recommendation per user type
+  - [comparison/solidping-position.md](competitors/comparison/solidping-position.md) — SolidPing advantages, Tier 1/2/3 feature inventory (✅ shipped, ❌ gaps), unique strengths, SaaS pricing proposal
+  - [comparison/verdict.md](competitors/comparison/verdict.md) — Summary table and winner-by-category verdict
 - [competitors/criteria.md](competitors/criteria.md) — Evaluation framework: pricing, features, protocols, deployment, support
 - [competitors/full-list.md](competitors/full-list.md) — Comprehensive directory of all monitoring services
 - [competitors/indie-watch.md](competitors/indie-watch.md) — Indie/OSS/emerging entrants surfaced by the marketing-listening pipeline (Peekaping, OneUptime, OpenStatus, failover.io, Status Harbor, exit1, and ~24 more), tracked vs. background

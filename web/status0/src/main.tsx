@@ -1,5 +1,5 @@
 import { StrictMode, useEffect } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -49,6 +49,40 @@ declare module "@tanstack/react-router" {
 // sees an `lang="en"` page rendered in another language and offers to translate
 // it — auto-translate wraps text nodes in <font> tags, which clashes with React
 // reconciliation and throws "removeChild on Node" on the next re-render.
+//
+//
+// Defence in depth against the "removeChild on Node" family of crashes. These
+// are three DISTINCT mechanisms — do not read any one of them as the
+// explanation for the others:
+//
+//   1. Document-level opt-out (pre-existing). index.html carries
+//      `translate="no"` + <meta name="google" content="notranslate">, and the
+//      <html lang> sync below removes the prompt that tempts a visitor to
+//      translate manually. Both are HINTS: a visitor who explicitly picks
+//      "Translate to…", or an extension that ignores them, still rewrites the
+//      DOM.
+//   2. Element-level opt-out (PRODUCTION hardening, spec 2026-08-01-05).
+//      Every element whose text changes between renders — status labels,
+//      availability percentages, incident kinds, relative timestamps, the
+//      subscribe button — is marked translate="no" (see NO_TRANSLATE in
+//      components/shared/status-page-view.tsx; the version line is opted out
+//      for consistency even though `useVersion` never refetches).
+//      Element-level opt-outs are honoured even by a forced translation — per
+//      the HTML spec, though not verified here against a real Chrome
+//      translation — so at exactly the sites where React rewrites or removes
+//      text on every 30 s poll there is no foreign <font> wrapper to trip over.
+//      HONESTY NOTE: no crash at these sites has been reproduced against a
+//      production build — driving a full forced-translation simulation through
+//      language switches and a background refetch did not throw. This is
+//      hardening of a real, well-documented failure class, not a fix for a
+//      demonstrated production repro.
+//   3. Single React root (DEV-ONLY fix). See the createRoot call at the bottom
+//      of this file. That one WAS a hard, 100%-reproducible crash — but only
+//      under `vite dev`, which is the only thing that re-executes this module.
+//      It cannot happen in the built bundle. It is fixed because engineers hit
+//      it on every local page load, not because end users did.
+//
+// e2e/translate-resilience.spec.ts guards 1-3.
 function useSyncHtmlLang() {
   useEffect(() => {
     const sync = () => {
@@ -74,7 +108,34 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(
+/**
+ * Mount exactly one React root per document.
+ *
+ * SCOPE: this is a DEV-SERVER fix. `vite dev` is the only thing that
+ * re-executes this module; the built bundle has no HMR runtime and evaluates it
+ * once, so the cache is a no-op in production. It is worth keeping because
+ * without it every single local page load crashed (see below) — it is NOT an
+ * explanation for any production report.
+ *
+ * Vite re-executes this entry module whenever something below it hot-updates
+ * and no intermediate module accepts the update — the generated
+ * `routeTree.gen.ts` does exactly that on the first request after the router
+ * plugin regenerates it. A second `createRoot()` on the same container does not
+ * replace the first tree, it mounts a SECOND one into #root: React warns
+ * ("createRoot() on a container that has already been passed to createRoot()"),
+ * and the original tree then dies on its next commit with
+ *
+ *   NotFoundError: Failed to execute 'removeChild' on 'Node'
+ *
+ * which the engineer sees as TanStack Router's "Something went wrong!" screen.
+ * Reusing the cached root — what React's own warning tells you to do — turns a
+ * hot update back into a plain re-render.
+ */
+type RootHost = Window & { __spStatus0Root?: Root };
+const host = window as RootHost;
+const container = document.getElementById("root")!;
+host.__spStatus0Root ??= createRoot(container);
+host.__spStatus0Root.render(
   <StrictMode>
     <App />
   </StrictMode>

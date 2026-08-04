@@ -563,6 +563,94 @@ func TestValidateLaneThresholds(t *testing.T) {
 	}
 }
 
+// TestValidateCustomDomainTLSConfig covers the two fail-fast rules guarding
+// custom-domain serving: an unknown CNAME verification mode must be rejected
+// loudly rather than silently downgraded to "shared" (which would nullify
+// token mode's takeover protection), and in-server ACME must not start without
+// the inputs it cannot invent.
+func TestValidateCustomDomainTLSConfig(t *testing.T) {
+	t.Parallel()
+
+	const email = "ops@solidping.io"
+
+	tests := []struct {
+		name    string
+		mode    string
+		acme    ACMEConfig
+		wantErr error
+	}{
+		{name: "defaults (acme off, empty mode)", mode: ""},
+		{name: "shared mode", mode: "shared"},
+		{name: "token mode", mode: "token"},
+		{name: "mode is case-insensitive", mode: "TOKEN"},
+		{
+			name:    "unknown mode rejected",
+			mode:    "dns-txt",
+			wantErr: ErrInvalidCNAMEMode,
+		},
+		{
+			name: "acme enabled with everything set",
+			mode: "shared",
+			acme: ACMEConfig{
+				Enabled: true, Email: email,
+				ListenHTTP: DefaultACMEListenHTTP, ListenHTTPS: DefaultACMEListenHTTPS,
+			},
+		},
+		{
+			name:    "acme enabled without an email rejected",
+			mode:    "shared",
+			acme:    ACMEConfig{Enabled: true, ListenHTTP: DefaultACMEListenHTTP, ListenHTTPS: DefaultACMEListenHTTPS},
+			wantErr: ErrACMEEmailRequired,
+		},
+		{
+			name: "acme enabled with a blank email rejected",
+			mode: "shared",
+			acme: ACMEConfig{
+				Enabled: true, Email: "   ",
+				ListenHTTP: DefaultACMEListenHTTP, ListenHTTPS: DefaultACMEListenHTTPS,
+			},
+			wantErr: ErrACMEEmailRequired,
+		},
+		{
+			name:    "acme enabled without the http listener rejected",
+			mode:    "shared",
+			acme:    ACMEConfig{Enabled: true, Email: email, ListenHTTPS: DefaultACMEListenHTTPS},
+			wantErr: ErrACMEListenRequired,
+		},
+		{
+			name:    "acme enabled without the https listener rejected",
+			mode:    "shared",
+			acme:    ACMEConfig{Enabled: true, Email: email, ListenHTTP: DefaultACMEListenHTTP},
+			wantErr: ErrACMEListenRequired,
+		},
+		{
+			// Disabled means "no behavior change at all", so an otherwise
+			// incomplete block must not block startup.
+			name: "acme disabled ignores its own fields",
+			mode: "shared",
+			acme: ACMEConfig{Enabled: false},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			server := ServerConfig{CustomDomainCNAMEMode: tt.mode}
+			acme := tt.acme
+
+			err := validateCustomDomainTLSConfig(&server, &acme)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
+}
+
 // TestApplyDatabasePoolEnv confirms the SP_DB_*_CONNS / SP_DB_CONN_MAX_LIFETIME /
 // SP_DB_CONN_MAX_IDLE_TIME pool knobs land on the snake_case-tagged
 // DatabaseConfig fields. Uses t.Setenv, which is incompatible with t.Parallel.

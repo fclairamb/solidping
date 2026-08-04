@@ -57,5 +57,36 @@
     "connecting": "Connexion…",
     "reconnecting": "Reconnexion…",
     "unavailable": "Mises à jour en direct indisponibles"
+  },
+  "channels": {
+    "whatsapp": "WhatsApp",
+    "sms": "SMS",
+    "voice": "Appel vocal",
+    "webpush": "Notification navigateur",
+    "email": "E-mail",
+    "msteams": "Microsoft Teams",
+    "msteams-bot": "Microsoft Teams",
+    "googlechat": "Google Chat",
+    "mattermost": "Mattermost",
+    "ntfy": "ntfy",
+    "opsgenie": "Opsgenie",
+    "pushover": "Pushover",
+    "slack": "Slack",
+    "discord": "Discord",
+    "webhook": "Webhook"
+  },
+  "notificationFailureReasons": {
+    "whatsapp_template_unavailable": "Modèle de message WhatsApp indisponible — demandez à un administrateur de vérifier son statut d’approbation",
+    "whatsapp_recipient_not_on_whatsapp": "Le destinataire n’est pas sur WhatsApp",
+    "whatsapp_rate_limited": "Limité par WhatsApp (plafond du palier de messagerie)",
+    "whatsapp_unsupported_message": "WhatsApp a rejeté le message envoyé — demandez à un administrateur de vérifier les composants du modèle",
+    "whatsapp_session_window_closed": "En dehors de la fenêtre de session WhatsApp de 24 heures",
+    "whatsapp_token_expired": "Identifiants WhatsApp expirés — demandez à un administrateur de les renouveler",
+    "whatsapp_not_configured": "WhatsApp n’est pas configuré sur cette instance",
+    "whatsapp_invalid_recipient": "Le numéro WhatsApp n’est pas un numéro E.164 valide",
+    "whatsapp_send_failed": "Échec de la remise WhatsApp",
+    "whatsapp_quota_exhausted": "Quota mensuel WhatsApp épuisé",
+    "sms_quota_exhausted": "Quota mensuel SMS épuisé",
+    "voice_quota_exhausted": "Quota mensuel d’appels vocaux épuisé"
   }
 }

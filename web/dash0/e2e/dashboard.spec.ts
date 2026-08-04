@@ -33,9 +33,61 @@ function hourlyResultsFor(checkUid: string, availabilityPct: number) {
   }));
 }
 
+interface MockCheckStats {
+  total: number;
+  enabled: number;
+  disabled: number;
+  byStatus: Record<string, number>;
+  down: number;
+  hardDown: number;
+}
+
+// Aggregate the mocked checks the same way the backend's GROUP BY would, so a
+// test that doesn't care about the stats endpoint keeps the counters it always
+// had. Tests that DO care pass an explicit `stats` override.
+function statsFromChecks(checks: MockCheck[]): MockCheckStats {
+  const byStatus: Record<string, number> = {
+    created: 0,
+    up: 0,
+    down: 0,
+    validating: 0,
+    degraded: 0,
+    warning: 0,
+    unknown: 0,
+  };
+  for (const c of checks) byStatus[c.status] = (byStatus[c.status] ?? 0) + 1;
+  const enabled = checks.filter((c) => c.enabled !== false).length;
+  return {
+    total: checks.length,
+    enabled,
+    disabled: checks.length - enabled,
+    byStatus,
+    down: byStatus.down,
+    hardDown: byStatus.down,
+  };
+}
+
 async function mockDashboard(
   page: Page,
-  opts: { checks: MockCheck[]; incidents?: unknown[]; events?: unknown[] },
+  opts: {
+    checks: MockCheck[];
+    incidents?: unknown[];
+    events?: unknown[];
+    /**
+     * Overrides for GET /checks/stats. Deliberately independent of `checks`:
+     * the dashboard's counters must come from this endpoint, never from the
+     * (page-clamped) checks list.
+     */
+    stats?: Partial<MockCheckStats>;
+    /**
+     * Overrides `pagination.total` on GET /incidents independently of
+     * `incidents.length` — the dashboard requests only `size: 5`, so a real
+     * org with more active incidents than that returns a truncated `data`
+     * array alongside the untruncated total. Defaults to `incidents.length`
+     * when omitted, matching a page that fits within one request.
+     */
+    incidentsTotal?: number;
+  },
 ) {
   const checks = opts.checks.map((c) => ({
     uid: c.uid,
@@ -48,6 +100,20 @@ async function mockDashboard(
       ? { status: c.status, time: c.lastStatusChangeTime }
       : undefined,
   }));
+
+  const stats: MockCheckStats = { ...statsFromChecks(opts.checks), ...opts.stats };
+
+  // Needs its own pattern: in Playwright URL globs a single `*` does not match
+  // `/`, so `**/checks*` matches `/checks?limit=…` but never `/checks/stats`.
+  // Without this route the dashboard's counters would come from the real
+  // server and the mocked list below would silently disagree with them.
+  await page.route("**/api/v1/orgs/*/checks/stats*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(stats),
+    }),
+  );
 
   await page.route("**/api/v1/orgs/*/checks*", (route) => {
     const url = route.request().url();
@@ -65,7 +131,7 @@ async function mockDashboard(
       contentType: "application/json",
       body: JSON.stringify({
         data: opts.incidents ?? [],
-        pagination: { total: (opts.incidents ?? []).length },
+        pagination: { total: opts.incidentsTotal ?? (opts.incidents ?? []).length },
       }),
     }),
   );
@@ -329,6 +395,62 @@ test.describe("Dashboard", () => {
     expect(page.url()).toMatch(/\/orgs\/test\/checks\/?$/);
   });
 
+  test("KPI counters come from /checks/stats, not from the clamped checks page", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // The scenario from GitHub issue #172: an org far larger than one page.
+    // The checks list serves 3 rows (a real one would serve at most 100);
+    // the stats endpoint reports the true fleet. Every counter on the page
+    // must read the latter — if any is still derived from the list, it shows
+    // 3 / 2 / 1 instead.
+    await mockDashboard(page, {
+      checks: [
+        { uid: "51111111-1111-1111-1111-111111111111", name: "Sample A", status: "up" },
+        { uid: "52222222-2222-2222-2222-222222222222", name: "Sample B", status: "up" },
+        { uid: "53333333-3333-3333-3333-333333333333", name: "Sample C", status: "down" },
+      ],
+      incidents: [],
+      stats: {
+        total: 262,
+        enabled: 250,
+        disabled: 12,
+        byStatus: {
+          created: 0,
+          up: 214,
+          down: 42,
+          validating: 0,
+          degraded: 6,
+          warning: 0,
+          unknown: 0,
+        },
+        down: 42,
+        hardDown: 42,
+      },
+    });
+
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    // "Monitored" tile shows the org-wide enabled count and the disabled sub.
+    const monitored = page.getByTestId("kpi-tile-monitored");
+    await expect(monitored).toBeVisible({ timeout: 10000 });
+    await expect(monitored).toContainText("250");
+    await expect(monitored).toContainText("12");
+
+    // "Down" tile shows the org-wide down count, not the 1 down row on screen.
+    const down = page.getByTestId("kpi-tile-down");
+    await expect(down).toContainText("42");
+
+    // The glance footer's total is the fleet size, not the page size.
+    const footer = page.getByTestId("checks-glance-footer");
+    await expect(footer).toContainText("262");
+
+    // The card itself still renders only the rows the list returned.
+    await expect(page.getByTestId("glance-row")).toHaveCount(3);
+  });
+
   test("a down check sorts first with a destructive badge and a since timestamp", async ({
     authenticatedPage,
   }) => {
@@ -436,6 +558,45 @@ test.describe("Dashboard", () => {
     expect(incidentBox).not.toBeNull();
     expect(glanceBox).not.toBeNull();
     expect(incidentBox!.y).toBeLessThan(glanceBox!.y);
+  });
+
+  test("active-incidents KPI shows the server-side total, not the truncated page", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // The dashboard requests the incidents list with `size: 5` — mock 5 rows
+    // (the page) but an org-wide active total of 9, mirroring the "GitHub
+    // issue #172" checks-stats scenario above. Before this fix, the KPI tile
+    // and banner both derived the count from `data.length` and would show 5.
+    const incidents = Array.from({ length: 5 }, (_, i) => ({
+      uid: `99999999-9999-9999-9999-99999999999${i}`,
+      title: `Incident ${i}`,
+      state: "active",
+      startedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    }));
+
+    await mockDashboard(page, {
+      checks: [
+        { uid: "61111111-1111-1111-1111-111111111111", name: "Sample A", status: "down" },
+      ],
+      incidents,
+      incidentsTotal: 9,
+    });
+
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    const incidentsTile = page.getByTestId("kpi-tile-incidents");
+    await expect(incidentsTile).toBeVisible({ timeout: 10000 });
+    await expect(incidentsTile).toContainText("9");
+    await expect(incidentsTile).not.toContainText("5");
+
+    // The card below the tile still renders only the 5 rows the list
+    // returned — only the tile number and banner copy read the total.
+    const incidentsCard = page.getByTestId("active-incidents");
+    await expect(incidentsCard).toBeVisible();
+    await expect(incidentsCard.getByText("Incident 0")).toBeVisible();
   });
 
   test("Recent activity row for an incident event shows both incident and check links", async ({

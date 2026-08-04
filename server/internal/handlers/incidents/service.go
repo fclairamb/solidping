@@ -1699,6 +1699,7 @@ type ListIncidentsResponse struct {
 
 // PaginationResponse represents pagination info.
 type PaginationResponse struct {
+	Total  int64  `json:"total"`
 	Cursor string `json:"cursor,omitempty"`
 	Size   int    `json:"size"`
 }
@@ -1895,7 +1896,7 @@ func (s *Service) ListIncidents(
 		if len(resolvedUIDs) == 0 {
 			return &ListIncidentsResponse{
 				Data:       []IncidentResponse{},
-				Pagination: PaginationResponse{Size: opts.Size},
+				Pagination: PaginationResponse{Size: opts.Size, Total: 0},
 			}, nil
 		}
 
@@ -1906,7 +1907,7 @@ func (s *Service) ListIncidents(
 
 	// TODO: Parse cursor
 
-	incidents, err := s.db.ListIncidents(ctx, filter)
+	incidents, total, err := s.db.ListIncidents(ctx, filter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list incidents: %w", err)
 	}
@@ -1924,7 +1925,8 @@ func (s *Service) ListIncidents(
 	response := &ListIncidentsResponse{
 		Data: make([]IncidentResponse, 0, len(incidents)),
 		Pagination: PaginationResponse{
-			Size: opts.Size,
+			Size:  opts.Size,
+			Total: total,
 		},
 	}
 

@@ -82,7 +82,14 @@ func (r *StartupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 
 	// Ensure the custom-domain re-verification job exists (global). It
 	// self-reschedules every 6h; this seeds the first run.
-	return r.ensureCustomDomainVerifyJob(ctx, jctx)
+	if err := r.ensureCustomDomainVerifyJob(ctx, jctx); err != nil {
+		return err
+	}
+
+	// Ensure the platform-agent GC job exists (global). It self-reschedules
+	// every 6h; this seeds the first run so an enroll-on-boot fleet's dead
+	// rows start being reaped.
+	return r.ensureAgentGCJob(ctx, jctx)
 }
 
 // ensureDefaultOrganization creates a default organization if none exists.
@@ -128,6 +135,10 @@ func (r *StartupJobRun) ensureDefaultOrganization(ctx context.Context, jctx *job
 	adminUser.PasswordHash = &passwordHash
 	adminUser.SuperAdmin = true
 
+	// Deliberately NOT captured as a user_signed_up product event (spec
+	// 2026-08-02-08): this is the install-bootstrap admin seeded on every
+	// fresh database, not a person signing up. Counting it would add one
+	// phantom signup per install and per test-mode database reset.
 	if createErr := jctx.DBService.CreateUser(ctx, adminUser); createErr != nil {
 		return fmt.Errorf("failed to create admin user: %w", createErr)
 	}
@@ -466,6 +477,30 @@ func (r *StartupJobRun) ensureCustomDomainVerifyJob(ctx context.Context, jctx *j
 		log.InfoContext(ctx, "Failed to create custom-domain verify job (non-fatal)", "error", err)
 	} else {
 		log.InfoContext(ctx, "Ensured custom-domain verify job exists")
+	}
+
+	return nil
+}
+
+// ensureAgentGCJob provisions the global platform-agent GC job. It reschedules
+// itself every 6h; this just ensures the very first one exists. CreateJob
+// dedupes on type+config+org+pending, so a restart won't stack a duplicate.
+func (r *StartupJobRun) ensureAgentGCJob(ctx context.Context, jctx *jobdef.JobContext) error {
+	log := jctx.Logger
+
+	if jctx.Services == nil || jctx.Services.Jobs == nil {
+		log.InfoContext(ctx, "Skipping agent GC provisioning (services not available)")
+
+		return nil
+	}
+
+	log.InfoContext(ctx, "Ensuring agent GC job exists")
+
+	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeAgentGC), nil, nil)
+	if err != nil {
+		log.InfoContext(ctx, "Failed to create agent GC job (non-fatal)", "error", err)
+	} else {
+		log.InfoContext(ctx, "Ensured agent GC job exists")
 	}
 
 	return nil

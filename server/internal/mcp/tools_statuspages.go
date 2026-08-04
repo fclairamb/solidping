@@ -19,6 +19,7 @@ const (
 	propShowResponseTime  = "showResponseTime"
 	propHistoryDays       = "historyDays"
 	propLanguage          = "language"
+	propCustomCSS         = "customCss"
 	propCheckUID          = "checkUid"
 )
 
@@ -84,6 +85,11 @@ func createStatusPageDef() ToolDefinition {
 			propShowResponseTime: boolProp("Display response-time charts on the public page."),
 			propHistoryDays:      intProp("Days of history to show on the page (default 90)."),
 			propLanguage:         stringProp("Language code, e.g. \"en\" or \"fr\"."),
+			propCustomCSS: stringProp(
+				"Custom CSS injected into the public page as a <style> element. Overrides the theme's CSS " +
+					"custom properties (--brand, --background, --foreground, --card, --border, the status " +
+					"colors, and the .dark variant). Max 64 KB; @import is rejected.",
+			),
 		}, []string{schemaKeyName, schemaKeySlug}),
 	}
 }
@@ -114,6 +120,12 @@ func (h *Handler) toolCreateStatusPage(ctx context.Context, orgSlug string, args
 	if v := getStringArg(args, propLanguage); v != "" {
 		req.Language = &v
 	}
+	// Presence-based, not emptiness-based: an explicit "" is a legitimate
+	// "no stylesheet" on create and a clear on update.
+	if _, ok := args[propCustomCSS]; ok {
+		v := getStringArg(args, propCustomCSS)
+		req.CustomCSS = &v
+	}
 	page, err := h.statusPagesSvc.CreateStatusPage(ctx, orgSlug, req)
 	if err != nil {
 		return errorResult(err.Error())
@@ -137,6 +149,10 @@ func updateStatusPageDef() ToolDefinition {
 			propShowResponseTime: boolProp("Toggle response-time charts on the public page."),
 			propHistoryDays:      intProp("Days of history to show on the page (default 90)."),
 			propLanguage:         stringProp("Language code, e.g. \"en\" or \"fr\"."),
+			propCustomCSS: stringProp(
+				"Custom CSS injected into the public page as a <style> element (see create_status_page). " +
+					"Max 64 KB; @import is rejected. Pass an empty string to clear it.",
+			),
 		}, []string{propIdentifier}),
 	}
 }
@@ -178,6 +194,10 @@ func buildUpdateStatusPageRequest(args map[string]any) *statuspages.UpdateStatus
 	}
 	if v := getStringArg(args, propLanguage); v != "" {
 		req.Language = &v
+	}
+	if _, ok := args[propCustomCSS]; ok {
+		v := getStringArg(args, propCustomCSS)
+		req.CustomCSS = &v
 	}
 	return req
 }
@@ -361,16 +381,21 @@ func (h *Handler) toolListStatusPageResources(
 
 func createStatusPageResourceDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "create_status_page_resource",
-		Description: "Pin a check to a status-page section as a publicly-displayed resource.",
+		Name: "create_status_page_resource",
+		Description: "Pin a check — or a whole check group, rendered as one aggregated component " +
+			"that never lists its members — to a status-page section as a publicly-displayed resource.",
 		InputSchema: objectSchema(map[string]any{
 			propPageIdentifier:    stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			propSectionIdentifier: stringProp("Status page section UID or URL-friendly slug, e.g. \"api\"."),
-			propCheckUID:          stringProp("Check UID or slug to pin (required)"),
-			propPublicName:        stringProp("Display name for the public page (defaults to the check name)"),
-			propExplanation:       stringProp("Short explanation rendered under the resource"),
-			propPosition:          intProp("Display position within the section"),
-		}, []string{propPageIdentifier, propSectionIdentifier, propCheckUID}),
+			propCheckUID: stringProp(
+				"Check UID or slug to pin. Mutually exclusive with checkGroupUid; exactly one is required."),
+			propCheckGroupUID: stringProp(
+				"Check group UID or slug to pin as one aggregated component. " +
+					"Mutually exclusive with checkUid; exactly one is required."),
+			propPublicName:  stringProp("Display name for the public page (defaults to the check or group name)"),
+			propExplanation: stringProp("Short explanation rendered under the resource"),
+			propPosition:    intProp("Display position within the section"),
+		}, []string{propPageIdentifier, propSectionIdentifier}),
 	}
 }
 
@@ -380,10 +405,17 @@ func (h *Handler) toolCreateStatusPageResource(
 	pageID := getStringArg(args, propPageIdentifier)
 	sectionID := getStringArg(args, propSectionIdentifier)
 	checkUID := getStringArg(args, propCheckUID)
-	if pageID == "" || sectionID == "" || checkUID == "" {
-		return errorResult("pageIdentifier, sectionIdentifier, and checkUid are required")
+	checkGroupUID := getStringArg(args, propCheckGroupUID)
+
+	if pageID == "" || sectionID == "" {
+		return errorResult("pageIdentifier and sectionIdentifier are required")
 	}
-	req := statuspages.CreateResourceRequest{CheckUID: checkUID}
+
+	if (checkUID == "") == (checkGroupUID == "") {
+		return errorResult("exactly one of checkUid or checkGroupUid is required")
+	}
+
+	req := statuspages.CreateResourceRequest{CheckUID: checkUID, CheckGroupUID: checkGroupUID}
 	if v := getStringArg(args, propPublicName); v != "" {
 		req.PublicName = &v
 	}

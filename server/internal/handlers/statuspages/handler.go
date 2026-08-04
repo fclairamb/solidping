@@ -18,15 +18,43 @@ import (
 const slugValidationMsg = "Slug must start with a lowercase letter, be 3-40 characters, " +
 	"and contain only lowercase letters, digits, or hyphens. UUIDs are not allowed."
 
+// visibilityPublic is the status_pages.visibility value that makes a page
+// world-readable. Shared across the package so the literal appears once.
+const visibilityPublic = "public"
+
 const (
 	fieldSlug          = "slug"
 	fieldBody          = "body"
 	fieldCustomDomain  = "customDomain"
 	fieldHistoryPeriod = "historyPeriod"
+	fieldCustomCSS     = "customCss"
+	fieldCheckUID      = "checkUid"
+	fieldCheckGroupUID = "checkGroupUid"
 	respKeyData        = "data"
 	msgInvalidJSON     = "Invalid JSON format"
 	historyPeriodMsg   = "History period must be one of: 24h, 7d, 30d, 90d"
+	customCSSSizeMsg   = "Custom CSS must be at most 64 KB"
+	customCSSImportMsg = "Custom CSS must not contain @import — inline the rules instead " +
+		"(external url() references are allowed)"
 )
+
+// mapCustomCSSError maps the customCss validation errors to a VALIDATION_ERROR
+// response. Returns handled=false when err is not one of them so the caller can
+// fall through to its own switch.
+func (h *Handler) mapCustomCSSError(writer http.ResponseWriter, err error) (bool, error) {
+	switch {
+	case errors.Is(err, ErrCustomCSSTooLarge):
+		return true, h.WriteValidationError(writer, "Custom CSS is too large", []base.ValidationErrorField{
+			{Name: fieldCustomCSS, Message: customCSSSizeMsg},
+		})
+	case errors.Is(err, ErrCustomCSSImport):
+		return true, h.WriteValidationError(writer, "Custom CSS contains @import", []base.ValidationErrorField{
+			{Name: fieldCustomCSS, Message: customCSSImportMsg},
+		})
+	default:
+		return false, nil
+	}
+}
 
 // Handler provides HTTP handlers for status page management endpoints.
 type Handler struct {
@@ -74,6 +102,9 @@ func (h *Handler) CreateStatusPage(writer http.ResponseWriter, req *http.Request
 		return h.handleCreatePageError(writer, err)
 	}
 
+	// No analytics capture here on purpose: status_page_published is emitted by
+	// Service.CreateStatusPage / Service.UpdateStatusPage, so the MCP tools go
+	// through the same code path (spec 2026-08-02-08).
 	return h.WriteJSON(writer, http.StatusCreated, page)
 }
 
@@ -298,7 +329,7 @@ func (h *Handler) CreateResource(writer http.ResponseWriter, req *http.Request) 
 
 	resource, err := h.svc.CreateResource(req.Context(), orgSlug, pageIdentifier, sectionIdentifier, createReq)
 	if err != nil {
-		return h.handleCreateResourceError(writer, err)
+		return h.handleResourceError(writer, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, resource)
@@ -322,7 +353,7 @@ func (h *Handler) UpdateResource(writer http.ResponseWriter, req *http.Request) 
 		req.Context(), orgSlug, pageIdentifier, sectionIdentifier, resourceUID, updateReq,
 	)
 	if err != nil {
-		return h.handleSectionError(writer, err)
+		return h.handleResourceError(writer, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resource)
@@ -517,6 +548,10 @@ func (h *Handler) handleCreatePageError(writer http.ResponseWriter, err error) e
 		return result
 	}
 
+	if handled, result := h.mapCustomCSSError(writer, err); handled {
+		return result
+	}
+
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
@@ -540,6 +575,10 @@ func (h *Handler) handleCreatePageError(writer http.ResponseWriter, err error) e
 
 func (h *Handler) handleUpdatePageError(writer http.ResponseWriter, err error) error {
 	if handled, result := h.mapCustomDomainError(writer, err); handled {
+		return result
+	}
+
+	if handled, result := h.mapCustomCSSError(writer, err); handled {
 		return result
 	}
 
@@ -628,7 +667,7 @@ func (h *Handler) handleUpdateSectionError(writer http.ResponseWriter, err error
 	}
 }
 
-func (h *Handler) handleCreateResourceError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleResourceError(writer http.ResponseWriter, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
@@ -642,9 +681,27 @@ func (h *Handler) handleCreateResourceError(writer http.ResponseWriter, err erro
 	case errors.Is(err, ErrCheckNotFound):
 		return h.WriteErrorErr(
 			writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+	case errors.Is(err, ErrCheckGroupNotFound):
+		return h.WriteErrorErr(
+			writer, http.StatusNotFound, base.ErrorCodeCheckGroupNotFound, "Check group not found", err)
+	case errors.Is(err, ErrResourceTargetInvalid):
+		return h.writeResourceTargetError(writer)
 	default:
 		return h.WriteInternalError(writer, err)
 	}
+}
+
+// resourceTargetMsg names BOTH fields so the caller can see which pair is
+// mutually exclusive, whether it sent zero or two of them.
+const resourceTargetMsg = "Exactly one of checkUid or checkGroupUid must be set"
+
+// writeResourceTargetError renders the checkUid-XOR-checkGroupUid violation as
+// a VALIDATION_ERROR naming both fields (spec 2026-08-01-03).
+func (h *Handler) writeResourceTargetError(writer http.ResponseWriter) error {
+	return h.WriteValidationError(writer, resourceTargetMsg, []base.ValidationErrorField{
+		{Name: fieldCheckUID, Message: resourceTargetMsg},
+		{Name: fieldCheckGroupUID, Message: resourceTargetMsg},
+	})
 }
 
 func (h *Handler) handlePublicError(writer http.ResponseWriter, err error) error {

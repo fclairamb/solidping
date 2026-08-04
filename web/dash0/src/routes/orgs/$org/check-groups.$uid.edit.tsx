@@ -9,7 +9,7 @@ import {
   useUpdateCheckGroup,
   type CheckGroup,
 } from "@/api/hooks";
-import { ApiError } from "@/api/client";
+import { ApiError, getApiErrorField } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -110,22 +110,15 @@ function CheckGroupEditPage() {
         isPending={updateGroup.isPending}
         onCancel={goBack}
         onDelete={() => setConfirmDelete(true)}
-        onSubmit={async ({ name, description, escalationPolicyUid }) => {
-          try {
-            await updateGroup.mutateAsync({
-              name,
-              description,
-              escalationPolicyUid,
-            });
-            toast.success(t("toast.groupUpdated"));
-            goBack();
-          } catch (err) {
-            toast.error(
-              err instanceof ApiError
-                ? err.message
-                : t("toast.groupUpdateFailed"),
-            );
-          }
+        onSubmit={async ({ name, description, escalationPolicyUid, slug }) => {
+          await updateGroup.mutateAsync({
+            name,
+            description,
+            escalationPolicyUid,
+            slug,
+          });
+          toast.success(t("toast.groupUpdated"));
+          goBack();
         }}
       />
 
@@ -158,7 +151,14 @@ interface CheckGroupEditFormSubmit {
   description: string;
   /** "" clears the group's escalation policy, a UID assigns one. */
   escalationPolicyUid: string;
+  slug: string;
 }
+
+// Group slugs are 3-40 chars: a lowercase letter followed by 2-39 lowercase
+// letters/digits/hyphens. This mirrors slugRegex in
+// server/internal/handlers/checkgroups/service.go — deliberately NOT the
+// check form's 3-50 rule (check-form.tsx), which is a different resource.
+const groupSlugRegex = /^[a-z][a-z0-9-]{2,39}$/;
 
 function CheckGroupEditForm({
   org,
@@ -173,7 +173,7 @@ function CheckGroupEditForm({
   isPending: boolean;
   onCancel: () => void;
   onDelete: () => void;
-  onSubmit: (data: CheckGroupEditFormSubmit) => void;
+  onSubmit: (data: CheckGroupEditFormSubmit) => Promise<void>;
 }) {
   const { t } = useTranslation("checks");
   const [name, setName] = useState(group.name);
@@ -181,10 +181,48 @@ function CheckGroupEditForm({
   const [escalationPolicyUid, setEscalationPolicyUid] = useState(
     group.escalationPolicyUid ?? "",
   );
+  // Editing an *existing* group: the slug is already user-owned, so renaming
+  // the group must never silently rewrite it. Unlike the create dialog, this
+  // field never auto-derives from `name` edits.
+  const [slug, setSlug] = useState(group.slug);
+  const [slugServerError, setSlugServerError] = useState<string | undefined>(
+    undefined,
+  );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const slugClientError = !groupSlugRegex.test(slug)
+    ? t("groupForm.slugInvalid")
+    : undefined;
+  const slugError = slugClientError ?? slugServerError;
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ name: name.trim() || group.name, description, escalationPolicyUid });
+    if (slugClientError) return;
+    setSlugServerError(undefined);
+    try {
+      await onSubmit({
+        name: name.trim() || group.name,
+        description,
+        escalationPolicyUid,
+        slug,
+      });
+    } catch (err) {
+      const fieldMessage = getApiErrorField(err, "slug");
+      if (fieldMessage && err instanceof ApiError) {
+        // Both a duplicate slug and an invalid format come back as a
+        // VALIDATION_ERROR with a "slug" field entry (handler.go); the
+        // top-level title is the only thing that tells them apart, so use it
+        // to pick the localized message shown inline on the field.
+        setSlugServerError(
+          err.message.toLowerCase().includes("already exists")
+            ? t("groupForm.slugTaken")
+            : t("groupForm.slugInvalid"),
+        );
+      } else {
+        toast.error(
+          err instanceof ApiError ? err.message : t("toast.groupUpdateFailed"),
+        );
+      }
+    }
   };
 
   return (
@@ -231,6 +269,35 @@ function CheckGroupEditForm({
               placeholder={t("dialog.groupNamePlaceholder")}
               required
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="group-edit-slug">{t("groupForm.slug")}</Label>
+            <Input
+              id="group-edit-slug"
+              data-testid="group-edit-slug-input"
+              value={slug}
+              onChange={(e) => {
+                setSlug(e.target.value);
+                setSlugServerError(undefined);
+              }}
+              placeholder="prod-eu-west"
+              className={slugError ? "border-destructive" : ""}
+              aria-invalid={!!slugError}
+              required
+            />
+            {slugError ? (
+              <p
+                className="text-xs text-destructive"
+                data-testid="group-edit-slug-error"
+              >
+                {slugError}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {t("groupForm.slugHelp")}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">

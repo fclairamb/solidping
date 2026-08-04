@@ -11,7 +11,8 @@
     "hashing": "Passwort-Hashing",
     "performance": "Leistung",
     "aggregation": "Aggregation",
-    "slack": "Slack"
+    "slack": "Slack",
+    "analytics": "Analyse"
   },
   "aggregation": {
     "title": "Aggregation",
@@ -272,5 +273,26 @@
       "noError": "—",
       "never": "nie"
     }
+  },
+  "analytics": {
+    "title": "Produktanalyse",
+    "description": "Optionale PostHog-Integration. Die Analyse ist vollständig aus, solange kein Projekt-API-Schlüssel hinterlegt ist: ohne Schlüssel sendet der Server nichts und das Dashboard lädt keinerlei Analyse-Code.",
+    "statusOn": "Analyse ist aktiv",
+    "statusOff": "Analyse ist aus",
+    "statusOffHelp": "Es ist kein Projekt-API-Schlüssel konfiguriert, daher wird nichts erfasst und im Browser kein Analyse-Code geladen.",
+    "enabled": "Analyse aktivieren",
+    "enabledHelp": "Notausschalter. Das Einschalten allein aktiviert nichts — zusätzlich ist ein Projekt-API-Schlüssel erforderlich.",
+    "projectApiKey": "Projekt-API-Schlüssel",
+    "projectApiKeyPlaceholder": "phc_...",
+    "projectApiKeyHelp": "Der öffentliche PostHog-Browser-Schlüssel. Er wird bewusst an das Dashboard ausgeliefert. Leer lassen, um die Analyse vollständig deaktiviert zu halten.",
+    "host": "Host",
+    "hostPlaceholder": "https://eu.i.posthog.com",
+    "hostHelp": "PostHog-Ingestion-Endpunkt. Unterstützt selbst gehostetes PostHog und Reverse Proxies.",
+    "personalApiKey": "Persönlicher API-Schlüssel",
+    "personalApiKeyPlaceholder": "Neuen persönlichen API-Schlüssel eingeben",
+    "personalApiKeyHelp": "Optionaler serverseitiger Schlüssel. Wird als Secret gespeichert und nie an den Browser gesendet.",
+    "envOverride": "Per Umgebung gesetzt",
+    "envOverrideHelp": "Dieser Wert stammt aus einer Umgebungsvariablen, die Vorrang vor allem hier Gespeicherten hat.",
+    "whatIsSent": "Was gesendet wird: fünf Produktereignisse (Organisation erstellt, Benutzer registriert, Check erstellt, Integration verbunden, Statusseite veröffentlicht), identifiziert über Organisations- und Benutzer-UUIDs. Nie gesendet: E-Mail-Adressen, Check-Ziele, Hostnamen, URLs, Vorfallinhalte oder von Ihnen eingegebener Text."
   }
 }

@@ -18,6 +18,8 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/providers/structs"
 	"github.com/knadh/koanf/v2"
+
+	"github.com/fclairamb/solidping/server/internal/domainverify"
 )
 
 // Node role constants.
@@ -102,6 +104,17 @@ var (
 	ErrInvalidLaneThresholds = errors.New(
 		"scheduling lane thresholds must satisfy 0 <= lane_fast_threshold_ms < lane_slow_threshold_ms",
 	)
+	// ErrInvalidCNAMEMode is returned when server.custom_domain_cname_mode is
+	// not one of "shared" / "token". Failing fast matters: silently falling back
+	// to "shared" would drop the token-mode takeover protection.
+	ErrInvalidCNAMEMode = errors.New("custom domain CNAME mode must be 'shared' or 'token'")
+	// ErrACMEEmailRequired is returned when acme.enabled is true without an
+	// account contact address — Let's Encrypt requires one for expiry notices.
+	ErrACMEEmailRequired = errors.New("acme.email is required when acme.enabled is true")
+	// ErrACMEListenRequired is returned when ACME is enabled but one of its
+	// listen addresses was blanked out; both listeners are mandatory (HTTP-01
+	// needs :80, TLS-ALPN-01 and serving need :443).
+	ErrACMEListenRequired = errors.New("acme.listen_http and acme.listen_https are required when acme.enabled is true")
 )
 
 // Supported password-hashing algorithm identifiers.
@@ -229,6 +242,52 @@ type SentryConfig struct {
 	Debug            bool    `koanf:"debug"`              // Enable Sentry debug logging
 }
 
+// PostHogConfig holds the product-analytics (PostHog) settings.
+//
+// The integration is *entirely inert* unless an operator configures it: with no
+// ProjectAPIKey nothing is instantiated server-side, nothing is advertised to
+// the browser through GET /api/v1/config, and the dashboard never loads any
+// analytics code. Enabled is a kill switch that does NOT enable anything on its
+// own — see Active, which is the single enablement rule shared verbatim by the
+// backend, the public config endpoint and the dashboard.
+type PostHogConfig struct {
+	// Enabled is the kill switch (SP_POSTHOG_ENABLED, default true). It only
+	// ever turns the feature *off*: a key is still required to turn it on.
+	Enabled bool `koanf:"enabled"`
+	// Host is the PostHog ingestion endpoint (SP_POSTHOG_HOST). Defaults to
+	// the EU cloud; supports self-hosted PostHog and reverse proxies.
+	Host string `koanf:"host"`
+	// ProjectAPIKey is the `phc_…` client key (SP_POSTHOG_PROJECT_API_KEY).
+	// Public by design — it is shipped to the browser. Empty = feature off.
+	ProjectAPIKey string `koanf:"project_api_key"`
+	// PersonalAPIKey is an optional server-side key
+	// (SP_POSTHOG_PERSONAL_API_KEY). SECRET: it is never returned by any API
+	// and never reaches the browser. When empty the backend captures with the
+	// project key.
+	PersonalAPIKey string `koanf:"personal_api_key"`
+}
+
+// DefaultPostHogHost is the ingestion endpoint used when none is configured.
+const DefaultPostHogHost = "https://eu.i.posthog.com"
+
+// Active reports whether PostHog is on. This is THE enablement rule, applied
+// identically by the backend analytics client, the public config endpoint and
+// the dashboard: `enabled == true && project_api_key != ""`. Anything else is
+// off — in particular a key with Enabled=false, and Enabled=true with no key.
+func (c PostHogConfig) Active() bool {
+	return c.Enabled && strings.TrimSpace(c.ProjectAPIKey) != ""
+}
+
+// ResolvedHost returns the ingestion host, falling back to the default when the
+// operator left it empty.
+func (c PostHogConfig) ResolvedHost() string {
+	if h := strings.TrimSpace(c.Host); h != "" {
+		return h
+	}
+
+	return DefaultPostHogHost
+}
+
 // WebPushConfig holds VAPID credentials for Web Push notifications.
 // Keys are auto-generated at first startup when not pre-provisioned.
 type WebPushConfig struct {
@@ -246,6 +305,8 @@ type Config struct {
 	Encryption   EncryptionConfig     `koanf:"encryption"`
 	Email        EmailConfig          `koanf:"email"`
 	Slack        SlackConfig          `koanf:"slack"`
+	MSTeams      MSTeamsConfig        `koanf:"msteams"`
+	WhatsApp     WhatsAppConfig       `koanf:"whatsapp"`
 	Google       GoogleOAuthConfig    `koanf:"google"`
 	GitHub       GitHubOAuthConfig    `koanf:"github"`
 	Microsoft    MicrosoftOAuthConfig `koanf:"microsoft"`
@@ -269,11 +330,54 @@ type Config struct {
 	App          AppConfig            `koanf:"app"`
 	Deployment   DeploymentConfig     `koanf:"deployment"`
 	WebPush      WebPushConfig        `koanf:"webpush"`
+	PostHog      PostHogConfig        `koanf:"posthog"`
 	Entitlements EntitlementsConfig   `koanf:"entitlements"`
+	ACME         ACMEConfig           `koanf:"acme"`
 	RunMode      string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
 	UserAgent    string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
 	LogLevel     slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
 }
+
+// ACMEConfig turns on in-server TLS: certmagic obtains and renews Let's Encrypt
+// certificates on demand for the instance's own hosts and for verified custom
+// domains, storing them in the database (tls_storage) so a cluster shares them
+// and a restart never re-issues. Off by default — with acme.enabled false the
+// server behaves exactly as before and TLS stays with an external proxy (the
+// GET /api/v1/public/custom-domains/allowed contract is unaffected either way).
+//
+// Every key except enabled/email contains an underscore, which koanf's env
+// loader would turn into a dot (acme.ca.url), so those are read by hand in
+// applyACMEEnv. See project_koanf_env_quirk.
+type ACMEConfig struct {
+	// Enabled is the master switch (SP_ACME_ENABLED). false = zero behavior
+	// change: no extra listeners, no CA traffic, no storage writes.
+	Enabled bool `koanf:"enabled"`
+	// Email is the ACME account contact (SP_ACME_EMAIL). Required when enabled.
+	Email string `koanf:"email"`
+	// CAURL is the ACME directory URL (SP_ACME_CA_URL). Empty uses certmagic's
+	// default (Let's Encrypt production); override for LE staging or a Pebble
+	// test CA.
+	CAURL string `koanf:"ca_url"`
+	// ListenHTTP is the challenge + redirect listener (SP_ACME_LISTEN_HTTP,
+	// default ":80"). It serves /.well-known/acme-challenge/ and 308-redirects
+	// everything else to https.
+	ListenHTTP string `koanf:"listen_http"`
+	// ListenHTTPS is the TLS listener (SP_ACME_LISTEN_HTTPS, default ":443").
+	// Requests flow into the same handler chain as the plain listener, so
+	// custom-host routing applies unchanged.
+	ListenHTTPS string `koanf:"listen_https"`
+}
+
+// Default listen addresses for in-server ACME. Remap them when the process
+// cannot bind privileged ports and something forwards to it instead.
+const (
+	// DefaultACMEListenHTTP is where the HTTP-01 challenge + redirect listener
+	// binds; a CA always starts HTTP-01 validation on port 80.
+	DefaultACMEListenHTTP = ":80"
+	// DefaultACMEListenHTTPS is where the TLS listener binds; a CA always starts
+	// TLS-ALPN-01 validation on port 443.
+	DefaultACMEListenHTTPS = ":443"
+)
 
 // DeploymentConfig picks per-org entitlement defaults. SP_DEPLOYMENT_MODE
 // drives Mode; "self-hosted" (default) caps SSO membership at 30,
@@ -293,6 +397,10 @@ type EntitlementsConfig struct {
 	SMSRunawayPerHour int `koanf:"sms_runaway_per_hour"`
 	// CallRunawayPerHour caps outbound voice calls per org per hour (default 10).
 	CallRunawayPerHour int `koanf:"call_runaway_per_hour"`
+	// WhatsAppRunawayPerHour caps outbound WhatsApp template messages per org
+	// per hour (default 30). Unlike SMS this is instance-billed even for
+	// self-hosters, so the guard matters just as much.
+	WhatsAppRunawayPerHour int `koanf:"whatsapp_runaway_per_hour"`
 }
 
 // NodeConfig contains node role configuration.
@@ -366,6 +474,16 @@ func (c *Config) CustomDomainCNAMETarget() string {
 	}
 
 	return ""
+}
+
+// CustomDomainCNAMEMode resolves the configured CNAME verification mode,
+// falling back to domainverify.ModeShared for an empty or unrecognized value
+// (Validate rejects unrecognized values at startup, so a bad value never
+// reaches here in a live server).
+func (c *Config) CustomDomainCNAMEMode() domainverify.Mode {
+	mode, _ := domainverify.ParseMode(c.Server.CustomDomainCNAMEMode)
+
+	return mode
 }
 
 // EmailConfig contains SMTP email configuration.
@@ -510,6 +628,134 @@ type SlackConfig struct {
 	AppToken          string `koanf:"app_token"` // xapp-... App-Level Token used for Socket Mode connection
 }
 
+// MSTeamsConfig contains the Microsoft Teams **bot** (Azure Bot / Bot
+// Framework) integration configuration — the two-way `msteams-bot` connection
+// type. It has nothing to do with the one-way `msteams` Workflow webhook,
+// which needs no instance-level credential at all.
+//
+// Mirrors SlackConfig. Default Enabled:false — unlike Slack Socket Mode, Bot
+// Framework has no outbound-dialing transport, so Microsoft must be able to
+// reach this instance's messaging endpoint over public HTTPS. A self-hosted
+// instance behind a firewall cannot use the bot, which is why it stays off
+// until an operator explicitly turns it on.
+//
+// SaaS: one multi-tenant Entra app owned by SolidPing; TenantID stays empty so
+// any installing tenant is accepted and the per-org connection is keyed by the
+// tenant id captured at install. Self-hosted single-tenant: set TenantID to
+// pin the allow-list to the operator's own tenant.
+type MSTeamsConfig struct {
+	Enabled   bool   `koanf:"enabled"`
+	AppID     string `koanf:"app_id"`
+	AppSecret string `koanf:"app_secret"`
+	TenantID  string `koanf:"tenant_id"`
+}
+
+// WhatsApp defaults. Exported so the client package and tests share one source
+// of truth for the pinned Graph API version and the template names.
+const (
+	// DefaultWhatsAppAPIVersion pins the Graph API version. Pinned rather than
+	// floating so a Meta version rollout can never silently change payload
+	// semantics under a running deployment; operators bump it deliberately via
+	// SP_WHATSAPP_API_VERSION once they have re-tested.
+	DefaultWhatsAppAPIVersion = "v23.0"
+	// DefaultWhatsAppAlertTemplate is the Meta-approved *utility* template used
+	// for incident alerts. One template covers down/escalate/resolve because the
+	// new state is a body variable.
+	DefaultWhatsAppAlertTemplate = "solidping_alert"
+	// DefaultWhatsAppVerifyTemplate is the Meta-approved *authentication*
+	// template used for the contact verification code.
+	DefaultWhatsAppVerifyTemplate = "solidping_verify"
+	// DefaultWhatsAppTemplateLanguage is the template language/locale code.
+	DefaultWhatsAppTemplateLanguage = "en"
+)
+
+// WhatsAppConfig contains the instance-level WhatsApp Business Cloud API
+// credentials. Mirrors SlackConfig: one deployment-wide identity, no per-org
+// bring-your-own WABA in v1. SaaS supplies SP_WHATSAPP_* in its deployment env;
+// a self-hoster does exactly the same with their own Meta app and WABA — no
+// code path differs between the two.
+//
+// Default Enabled:false. AccessToken and AppSecret are SECRETS: env/SSM only,
+// never logged, never returned by any API, never sent to a browser.
+type WhatsAppConfig struct {
+	// Enabled is the kill switch (SP_WHATSAPP_ENABLED). It only ever turns the
+	// feature off — credentials are still required to turn it on (see Active).
+	Enabled bool `koanf:"enabled"`
+	// AccessToken is the permanent system-user token carrying the
+	// whatsapp_business_messaging permission. SECRET.
+	AccessToken string `koanf:"access_token"`
+	// PhoneNumberID is the WABA phone-number id messages are sent from (the
+	// numeric id, not the phone number itself).
+	PhoneNumberID string `koanf:"phone_number_id"`
+	// WABAID is the WhatsApp Business Account id. Not needed to send; kept for
+	// operator diagnostics and future template-management calls.
+	WABAID string `koanf:"waba_id"`
+	// AppSecret signs inbound webhooks (X-Hub-Signature-256). SECRET.
+	AppSecret string `koanf:"app_secret"`
+	// WebhookVerifyToken is the shared string Meta echoes during the GET
+	// webhook handshake. SECRET-ish: it is an authenticator, never logged.
+	WebhookVerifyToken string `koanf:"webhook_verify_token"`
+	// APIVersion is the pinned Graph API version segment (e.g. "v23.0").
+	APIVersion string `koanf:"api_version"`
+	// AlertTemplate / VerifyTemplate are the approved template names.
+	AlertTemplate  string `koanf:"alert_template"`
+	VerifyTemplate string `koanf:"verify_template"`
+	// TemplateLanguage is the template language code both templates use.
+	TemplateLanguage string `koanf:"template_language"`
+	// BaseURL overrides the Graph API base (SP_WHATSAPP_BASE_URL). Empty means
+	// the real graph.facebook.com. Exists so an operator can front Meta with an
+	// egress proxy, and so test mode / E2E can point the whole feature at a
+	// fake Graph API without any code path differing.
+	BaseURL string `koanf:"base_url"`
+}
+
+// Active reports whether WhatsApp can actually send. This is THE enablement
+// rule, applied identically by the sender, the escalation dispatcher, the
+// verification flow and the public config endpoint: the kill switch must be on
+// AND the two credentials a send cannot work without must be present. Anything
+// else is off — in particular Enabled=true with no token.
+func (c *WhatsAppConfig) Active() bool {
+	return c.Enabled &&
+		strings.TrimSpace(c.AccessToken) != "" &&
+		strings.TrimSpace(c.PhoneNumberID) != ""
+}
+
+// ResolvedAPIVersion returns the configured Graph API version or the default.
+func (c *WhatsAppConfig) ResolvedAPIVersion() string {
+	if v := strings.TrimSpace(c.APIVersion); v != "" {
+		return v
+	}
+
+	return DefaultWhatsAppAPIVersion
+}
+
+// ResolvedAlertTemplate returns the configured alert template name or the default.
+func (c *WhatsAppConfig) ResolvedAlertTemplate() string {
+	if v := strings.TrimSpace(c.AlertTemplate); v != "" {
+		return v
+	}
+
+	return DefaultWhatsAppAlertTemplate
+}
+
+// ResolvedVerifyTemplate returns the configured verify template name or the default.
+func (c *WhatsAppConfig) ResolvedVerifyTemplate() string {
+	if v := strings.TrimSpace(c.VerifyTemplate); v != "" {
+		return v
+	}
+
+	return DefaultWhatsAppVerifyTemplate
+}
+
+// ResolvedTemplateLanguage returns the configured template language or the default.
+func (c *WhatsAppConfig) ResolvedTemplateLanguage() string {
+	if v := strings.TrimSpace(c.TemplateLanguage); v != "" {
+		return v
+	}
+
+	return DefaultWhatsAppTemplateLanguage
+}
+
 // JobWorkerConfig contains job worker configuration.
 type JobWorkerConfig struct {
 	FetchMaxAhead time.Duration `koanf:"fetch_max_ahead"` // Max time ahead to look for jobs
@@ -639,6 +885,15 @@ type ServerConfig struct {
 	// (SP_CUSTOM_DOMAIN_CNAME_TARGET / SP_SERVER_CUSTOM_DOMAIN_CNAME_TARGET), not
 	// the auto env loader. Resolve through Config.CustomDomainCNAMETarget().
 	CustomDomainCNAMETarget string `koanf:"custom_domain_cname_target"`
+	// CustomDomainCNAMEMode selects how a customer's single CNAME is verified:
+	// "shared" (default) points at CustomDomainCNAMETarget directly, "token"
+	// points at the page-specific "<token>.cname.<target>" host and therefore
+	// survives a dangling-CNAME takeover attempt. Token mode requires a
+	// wildcard A/AAAA (or ALIAS — never a CNAME) record for
+	// "*.cname.<target>". Multi-word koanf key → read via applyServerEnv
+	// (SP_CUSTOM_DOMAIN_CNAME_MODE / SP_SERVER_CUSTOM_DOMAIN_CNAME_MODE).
+	// Resolve through Config.CustomDomainCNAMEMode().
+	CustomDomainCNAMEMode string `koanf:"custom_domain_cname_mode"`
 	// Scheduling holds the cost-aware, plan-weighted check-scheduling knobs.
 	// Multi-word keys → read via applySchedulingEnv. See project_koanf_env_quirk.
 	Scheduling SchedulingConfig `koanf:"scheduling"`
@@ -787,6 +1042,16 @@ func Load() (*Config, error) {
 				FastLaneReserved:    5,
 			},
 			RateLimiting: DefaultRateLimitConfig(),
+			// One CNAME, pointing at the plain instance target. See
+			// ServerConfig.CustomDomainCNAMEMode for the token-mode trade-off.
+			CustomDomainCNAMEMode: string(domainverify.ModeShared),
+		},
+		// In-server ACME is opt-in; the listen addresses are pre-filled so
+		// enabling it is a one-flag change on a host with :80/:443 free.
+		ACME: ACMEConfig{
+			Enabled:     false,
+			ListenHTTP:  DefaultACMEListenHTTP,
+			ListenHTTPS: DefaultACMEListenHTTPS,
 		},
 		Database: DatabaseConfig{
 			Type:            DatabaseTypeSQLite,
@@ -848,10 +1113,24 @@ func Load() (*Config, error) {
 		GitLab:    GitLabOAuthConfig{Enabled: false},
 		Microsoft: MicrosoftOAuthConfig{Enabled: false},
 		Slack:     SlackConfig{Enabled: false},
-		Discord:   DiscordOAuthConfig{Enabled: false},
-		OIDC:      OIDCOAuthConfig{Enabled: false},
-		SAML:      SAMLConfig{Enabled: false},
-		LDAP:      LDAPConfig{Enabled: false},
+		MSTeams:   MSTeamsConfig{Enabled: false},
+		// Off by default. Credentials are instance-level and must be supplied
+		// explicitly; the template/version defaults only matter once they are.
+		WhatsApp: WhatsAppConfig{
+			Enabled:          false,
+			APIVersion:       DefaultWhatsAppAPIVersion,
+			AlertTemplate:    DefaultWhatsAppAlertTemplate,
+			VerifyTemplate:   DefaultWhatsAppVerifyTemplate,
+			TemplateLanguage: DefaultWhatsAppTemplateLanguage,
+		},
+		// Enabled defaults to true but is inert on its own: PostHogConfig.Active
+		// additionally requires a project API key, which self-hosted installs
+		// never have unless the operator sets one.
+		PostHog: PostHogConfig{Enabled: true, Host: DefaultPostHogHost},
+		Discord: DiscordOAuthConfig{Enabled: false},
+		OIDC:    OIDCOAuthConfig{Enabled: false},
+		SAML:    SAMLConfig{Enabled: false},
+		LDAP:    LDAPConfig{Enabled: false},
 		Node: NodeConfig{
 			Role:   NodeRoleAll,
 			Region: "",
@@ -944,12 +1223,7 @@ func Load() (*Config, error) {
 	// Manually read the entitlements runaway caps — the underscores in these
 	// key segments are converted to dots by the env TransformFunc, so they
 	// never reach the koanf `*_per_hour` tags automatically.
-	if v := envInt("SP_ENTITLEMENTS_SMS_RUNAWAY_PER_HOUR"); v > 0 {
-		cfg.Entitlements.SMSRunawayPerHour = v
-	}
-	if v := envInt("SP_ENTITLEMENTS_CALL_RUNAWAY_PER_HOUR"); v > 0 {
-		cfg.Entitlements.CallRunawayPerHour = v
-	}
+	applyEntitlementsEnv(&cfg.Entitlements)
 
 	// If node region is set, also set the check worker region if not already set
 	if cfg.Node.Region != "" && cfg.Server.CheckWorker.Region == "" {
@@ -983,9 +1257,12 @@ func Load() (*Config, error) {
 	applyPasswordHashingEnv(&cfg.Auth.Password)
 	applyFileStorageEnv(&cfg.FileStorage)
 	applyWebPushEnv(&cfg.WebPush)
+	applyPostHogEnv(&cfg.PostHog)
+	applyWhatsAppEnv(&cfg.WhatsApp)
 	applyJobsEnv(&cfg.Jobs)
 	applyServerEnv(&cfg.Server)
 	applySchedulingEnv(&cfg.Server.Scheduling)
+	applyACMEEnv(&cfg.ACME)
 	applyProfilerEnv(&cfg.Profiler)
 	applyRuntimeEnv(&cfg.Runtime)
 	applyRealtimeEnv(&cfg.Realtime)
@@ -1248,6 +1525,30 @@ func applyServerEnv(cfg *ServerConfig) {
 	} else if v := os.Getenv("SP_CUSTOM_DOMAIN_CNAME_TARGET"); v != "" {
 		cfg.CustomDomainCNAMETarget = v
 	}
+
+	if v := os.Getenv("SP_SERVER_CUSTOM_DOMAIN_CNAME_MODE"); v != "" {
+		cfg.CustomDomainCNAMEMode = v
+	} else if v := os.Getenv("SP_CUSTOM_DOMAIN_CNAME_MODE"); v != "" {
+		cfg.CustomDomainCNAMEMode = v
+	}
+}
+
+// applyACMEEnv reads the multi-word SP_ACME_* keys koanf's env loader cannot
+// bind (it collapses underscores to dots, so acme.ca_url would become
+// acme.ca.url). acme.enabled and acme.email are single-word and are bound by
+// the auto loader. See project_koanf_env_quirk.
+func applyACMEEnv(cfg *ACMEConfig) {
+	if v := os.Getenv("SP_ACME_CA_URL"); v != "" {
+		cfg.CAURL = v
+	}
+
+	if v := os.Getenv("SP_ACME_LISTEN_HTTP"); v != "" {
+		cfg.ListenHTTP = v
+	}
+
+	if v := os.Getenv("SP_ACME_LISTEN_HTTPS"); v != "" {
+		cfg.ListenHTTPS = v
+	}
 }
 
 // applySchedulingEnv reads the multi-word SP_SCHEDULING_* knobs koanf's env
@@ -1431,6 +1732,89 @@ func applyWebPushEnv(cfg *WebPushConfig) {
 	}
 }
 
+// applyPostHogEnv reads SP_POSTHOG_* into cfg. posthog.enabled and posthog.host
+// are koanf-reachable (single-word segments) and already bound by the env
+// provider, but posthog.project_api_key / posthog.personal_api_key have
+// snake_case segments that koanf's underscore→dot collapsing can never reach,
+// so they are read by hand here. Keep in sync with manualReaderPlatformEnvVars.
+func applyPostHogEnv(cfg *PostHogConfig) {
+	if v := os.Getenv("SP_POSTHOG_PROJECT_API_KEY"); v != "" {
+		cfg.ProjectAPIKey = strings.TrimSpace(v)
+	}
+
+	if v := os.Getenv("SP_POSTHOG_PERSONAL_API_KEY"); v != "" {
+		cfg.PersonalAPIKey = strings.TrimSpace(v)
+	}
+}
+
+// SP_WHATSAPP_* environment variable names. Declared once and referenced from
+// both the manual reader below and the RecognizedEnvVars list in envvars.go, so
+// the two can never drift apart.
+const (
+	EnvWhatsAppAccessToken        = "SP_WHATSAPP_ACCESS_TOKEN"
+	EnvWhatsAppPhoneNumberID      = "SP_WHATSAPP_PHONE_NUMBER_ID"
+	EnvWhatsAppWABAID             = "SP_WHATSAPP_WABA_ID"
+	EnvWhatsAppAppSecret          = "SP_WHATSAPP_APP_SECRET"
+	EnvWhatsAppWebhookVerifyToken = "SP_WHATSAPP_WEBHOOK_VERIFY_TOKEN"
+	EnvWhatsAppAPIVersion         = "SP_WHATSAPP_API_VERSION"
+	EnvWhatsAppAlertTemplate      = "SP_WHATSAPP_ALERT_TEMPLATE"
+	EnvWhatsAppVerifyTemplate     = "SP_WHATSAPP_VERIFY_TEMPLATE"
+	EnvWhatsAppTemplateLanguage   = "SP_WHATSAPP_TEMPLATE_LANGUAGE"
+	EnvWhatsAppBaseURL            = "SP_WHATSAPP_BASE_URL"
+	// EnvEntitlementsWhatsAppRunaway caps outbound WhatsApp messages per org
+	// per hour, independently of the billing-driven monthly quota.
+	EnvEntitlementsWhatsAppRunaway = "SP_ENTITLEMENTS_WHATSAPP_RUNAWAY_PER_HOUR"
+)
+
+// WhatsAppEnvVarNames lists every manually-read SP_WHATSAPP_* name, in the
+// order they are bound.
+func WhatsAppEnvVarNames() []string {
+	return []string{
+		EnvWhatsAppAccessToken, EnvWhatsAppPhoneNumberID, EnvWhatsAppWABAID,
+		EnvWhatsAppAppSecret, EnvWhatsAppWebhookVerifyToken, EnvWhatsAppAPIVersion,
+		EnvWhatsAppAlertTemplate, EnvWhatsAppVerifyTemplate,
+		EnvWhatsAppTemplateLanguage, EnvWhatsAppBaseURL,
+	}
+}
+
+// applyEntitlementsEnv reads the per-org hourly runaway caps. Every key has a
+// snake_case segment koanf's env provider cannot reach, so they are read here.
+// Keep in sync with manualReaderEnvVars.
+func applyEntitlementsEnv(cfg *EntitlementsConfig) {
+	if v := envInt("SP_ENTITLEMENTS_SMS_RUNAWAY_PER_HOUR"); v > 0 {
+		cfg.SMSRunawayPerHour = v
+	}
+
+	if v := envInt("SP_ENTITLEMENTS_CALL_RUNAWAY_PER_HOUR"); v > 0 {
+		cfg.CallRunawayPerHour = v
+	}
+
+	if v := envInt(EnvEntitlementsWhatsAppRunaway); v > 0 {
+		cfg.WhatsAppRunawayPerHour = v
+	}
+}
+
+// applyWhatsAppEnv reads SP_WHATSAPP_* into cfg. Only whatsapp.enabled is
+// koanf-reachable (single-word segment); every other key has a snake_case
+// segment that koanf's underscore→dot collapsing can never reach
+// (SP_WHATSAPP_PHONE_NUMBER_ID would land on whatsapp.phone.number.id), so they
+// are read by hand here — the same quirk as rate_limiting and posthog.
+// Keep in sync with manualReaderPlatformEnvVars.
+func applyWhatsAppEnv(cfg *WhatsAppConfig) {
+	targets := []*string{
+		&cfg.AccessToken, &cfg.PhoneNumberID, &cfg.WABAID,
+		&cfg.AppSecret, &cfg.WebhookVerifyToken, &cfg.APIVersion,
+		&cfg.AlertTemplate, &cfg.VerifyTemplate,
+		&cfg.TemplateLanguage, &cfg.BaseURL,
+	}
+
+	for i, name := range WhatsAppEnvVarNames() {
+		if v := strings.TrimSpace(os.Getenv(name)); v != "" {
+			*targets[i] = v
+		}
+	}
+}
+
 // ComputeBugReportEnabled returns true iff a GitHub PAT and repo are configured.
 // Used at startup and after a system-parameter reload of app.github.* keys.
 func ComputeBugReportEnabled(gh *AppGitHubConfig) bool {
@@ -1484,6 +1868,41 @@ func (c *Config) Validate() error {
 
 	if err := validateLaneThresholds(&c.Server.Scheduling); err != nil {
 		return err
+	}
+
+	if err := validateCustomDomainTLSConfig(&c.Server, &c.ACME); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateCustomDomainTLSConfig validates everything custom-domain serving
+// depends on: the CNAME verification mode and, when in-server TLS is enabled,
+// the ACME block.
+func validateCustomDomainTLSConfig(server *ServerConfig, acme *ACMEConfig) error {
+	if _, ok := domainverify.ParseMode(server.CustomDomainCNAMEMode); !ok {
+		return fmt.Errorf("%w, got '%s'", ErrInvalidCNAMEMode, server.CustomDomainCNAMEMode)
+	}
+
+	return validateACMEConfig(acme)
+}
+
+// validateACMEConfig fails fast when in-server TLS is switched on without the
+// inputs it cannot invent: Let's Encrypt refuses an account with no contact
+// address, and both listeners are mandatory (HTTP-01 needs the :80 listener,
+// TLS-ALPN-01 and actually serving need the :443 one).
+func validateACMEConfig(cfg *ACMEConfig) error {
+	if !cfg.Enabled {
+		return nil
+	}
+
+	if strings.TrimSpace(cfg.Email) == "" {
+		return ErrACMEEmailRequired
+	}
+
+	if strings.TrimSpace(cfg.ListenHTTP) == "" || strings.TrimSpace(cfg.ListenHTTPS) == "" {
+		return ErrACMEListenRequired
 	}
 
 	return nil

@@ -14,6 +14,13 @@
   "allChecks": "Todas las comprobaciones",
   "internal": "Interna",
   "ungroupedChecks": "Comprobaciones sin grupo",
+  "groupBy": {
+    "label": "Agrupar por:",
+    "groups": "Grupos",
+    "host": "Host"
+  },
+  "noHostBucket": "Sin host",
+  "hostBucketDescription": "Derivado de la configuración de cada comprobación: renombrar un host lo mueve a otra sección.",
   "status": {
     "validating": "Validando",
     "up": "Activo",
@@ -21,6 +28,16 @@
     "warning": "Advertencia",
     "degraded": "Degradado",
     "unknown": "Desconocido"
+  },
+  "groupSummary": {
+    "allUp": "{{count}}/{{count}} activos",
+    "part": "{{count}} {{label}}",
+    "up": "activos",
+    "down": "caídos",
+    "warning": "advertencia",
+    "degraded": "degradados",
+    "validating": "validando",
+    "created": "pendientes"
   },
   "table": {
     "name": "Nombre",
@@ -37,7 +54,9 @@
     "delete": "Eliminar",
     "moveUp": "Mover arriba",
     "moveDown": "Mover abajo",
-    "deleteGroup": "Eliminar grupo"
+    "deleteGroup": "Eliminar grupo",
+    "expandGroup": "Expandir grupo",
+    "collapseGroup": "Contraer grupo"
   },
   "dialog": {
     "deleteTitle": "Eliminar comprobación",
@@ -47,6 +66,10 @@
     "newGroupTitle": "Nuevo grupo",
     "groupName": "Nombre del grupo",
     "groupNamePlaceholder": "Introduzca el nombre del grupo",
+    "groupSlug": "Slug (opcional)",
+    "groupSlugHelp": "Se usa para identificar este grupo en la API y en scripts. Se genera automáticamente a partir del nombre si se deja en blanco.",
+    "groupSlugInvalid": "El slug debe empezar con una letra minúscula, tener entre 3 y 40 caracteres y contener solo letras minúsculas, dígitos o guiones.",
+    "groupSlugTaken": "Ya existe un grupo de comprobaciones con este slug en esta organización.",
     "changeGroupTitle": "Cambiar de grupo",
     "selectGroup": "Seleccione un grupo",
     "noGroup": "Sin grupo",
@@ -62,12 +85,40 @@
     "toCreate": "Por crear",
     "toUpdate": "Por actualizar",
     "moveCheckDescription": "Mover <strong>{{name}}</strong> a otro grupo.",
-    "group": "Grupo"
+    "group": "Grupo",
+    "importSource": "Origen",
+    "importSources": {
+      "solidping": "Exportación de SolidPing (JSON/YAML)",
+      "gatus": "Gatus (config.yaml)",
+      "betterstack": "Better Stack (token de API)",
+      "uptime-kuma": "Uptime Kuma (copia de seguridad JSON)"
+    },
+    "importSourceHelp": {
+      "solidping": "Un documento generado con el botón Exportar, en JSON o YAML.",
+      "gatus": "Pega o sube tu config.yaml de Gatus: la lista endpoints: se convierte en checks.",
+      "betterstack": "Leemos tus monitores y heartbeats desde la API de Better Stack y los convertimos.",
+      "uptime-kuma": "Uptime Kuma 1.x: Ajustes → Copia de seguridad → Exportar JSON. La versión 2.x ya no ofrece esta exportación."
+    },
+    "importPlaceholder": {
+      "solidping": "Pega el documento JSON o YAML exportado…",
+      "gatus": "Pega tu config.yaml de Gatus…",
+      "uptime-kuma": "Pega la copia de seguridad JSON de Uptime Kuma…"
+    },
+    "importPayload": "Configuración",
+    "importUpload": "Subir un archivo",
+    "importToken": "Token de API de Better Stack",
+    "importTokenNoticeTitle": "El token no se almacena",
+    "importTokenNotice": "Se envía una sola vez para leer tus monitores y heartbeats, y SolidPing nunca lo guarda.",
+    "importWarnings": "{{count}} elemento(s) no se convirtieron de forma exacta"
   },
   "groupForm": {
     "title": "Editar grupo",
     "detailsTitle": "Detalles",
-    "detailsDescription": "Nombre y descripción de este grupo de comprobaciones.",
+    "detailsDescription": "Nombre, slug y descripción de este grupo de comprobaciones.",
+    "slug": "Slug",
+    "slugHelp": "Se usa para identificar este grupo en la API y en scripts (por ejemplo, checkGroupSlug en los incidentes). Cambiarlo rompe las referencias existentes.",
+    "slugInvalid": "El slug debe empezar con una letra minúscula, tener entre 3 y 40 caracteres y contener solo letras minúsculas, dígitos o guiones.",
+    "slugTaken": "Ya existe un grupo de comprobaciones con este slug en esta organización.",
     "description": "Descripción",
     "descriptionPlaceholder": "¿Para qué sirve este grupo de comprobaciones?",
     "escalationTitle": "Política de escalado",

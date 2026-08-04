@@ -225,7 +225,7 @@ func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *Ch
 		fastLaneReserved = poolSize - 1
 	}
 
-	schedParams := schedulingParamsFromConfig(cfg.Server.Scheduling)
+	schedParams := scheduling.ParamsFromConfig(cfg.Server.Scheduling)
 
 	return &CheckWorker{
 		backend:     workerBackend,
@@ -265,26 +265,6 @@ func laneLimits(free, poolSize, fastReserved, busySlow int) (int, int) {
 	}
 
 	return free, slowLimit
-}
-
-// schedulingParamsFromConfig converts the koanf SchedulingConfig (seconds / ms
-// scalars) into the worker's scheduling.Params (typed durations). Every zero
-// value maps to "feature off", so the default config reproduces pure-FIFO,
-// flat-30s behavior.
-func schedulingParamsFromConfig(cfg config.SchedulingConfig) scheduling.Params {
-	secs := func(seconds float64) time.Duration { return time.Duration(seconds * float64(time.Second)) }
-	millis := func(ms float64) time.Duration { return time.Duration(ms * float64(time.Millisecond)) }
-
-	return scheduling.Params{
-		SlowThresholdMs:     cfg.SlowThresholdMs,
-		CheckTimeout:        millis(cfg.CheckTimeoutMs),
-		TierCreditPerWeight: secs(cfg.TierCreditSeconds),
-		TierCreditMax:       secs(cfg.TierCreditMaxSeconds),
-		CostTimeoutFactor:   cfg.CostTimeoutFactor,
-		CostTimeoutFloor:    millis(cfg.CostTimeoutFloorMs),
-		LaneSlowThresholdMs: cfg.LaneSlowThresholdMs,
-		LaneFastThresholdMs: cfg.LaneFastThresholdMs,
-	}
 }
 
 // Run starts the runner loop (blocking).
@@ -1189,18 +1169,6 @@ func (r *CheckWorker) abandonCheckerExecution(
 	}, nil
 }
 
-// costSampleMs derives the cost sample (ms) to fold into the EWMA from a result.
-// A timeout is pinned to the execution ceiling so a perpetually-timing-out check
-// converges to the maximum cost (and stays slow-classified) rather than being
-// scored by the partial duration measured before the deadline fired.
-func (r *CheckWorker) costSampleMs(result checkerdef.Result) float64 {
-	if result.Status == checkerdef.StatusTimeout {
-		return float64(r.schedParams.EffectiveCheckTimeout().Milliseconds())
-	}
-
-	return float64(result.Duration.Milliseconds())
-}
-
 // buildSubmitRequest assembles the terminal backend write for an
 // actively-probed check: the result row fields plus the scheduling-state
 // release folding the new cost and delay EWMAs, the recomputed
@@ -1216,10 +1184,18 @@ func (r *CheckWorker) buildSubmitRequest(
 	execStart time.Time,
 ) *backend.SubmitResultRequest {
 	nextScheduledAt := r.calculateNextScheduledAt(checkJob)
-	newCost := scheduling.UpdateEWMA(checkJob.CostEWMAMs, r.costSampleMs(result))
-	newDelay := scheduling.UpdateEWMA(checkJob.DelayEWMAMs, r.delaySampleMs(checkJob, execStart))
-	effective := r.schedParams.EffectiveScheduledAt(nextScheduledAt, newCost, checkJob.PlanWeight)
-	newLane := scheduling.ClassifyLane(checkJob.Lane, newCost, r.schedParams)
+	state := r.schedParams.PostExec(&scheduling.PostExecInput{
+		PrevCostEWMAMs:       checkJob.CostEWMAMs,
+		PrevDelayEWMAMs:      checkJob.DelayEWMAMs,
+		PrevLane:             checkJob.Lane,
+		PlanWeight:           checkJob.PlanWeight,
+		ScheduledAt:          checkJob.ScheduledAt,
+		EffectiveScheduledAt: checkJob.EffectiveScheduledAt,
+		DurationMs:           float64(result.Duration.Milliseconds()),
+		TimedOut:             result.Status == checkerdef.StatusTimeout,
+		ExecStart:            &execStart,
+		NextScheduledAt:      nextScheduledAt,
+	})
 
 	return &backend.SubmitResultRequest{
 		Status:          int(result.Status),
@@ -1228,11 +1204,12 @@ func (r *CheckWorker) buildSubmitRequest(
 		Output:          result.Output,
 		Region:          r.resolveResultRegion(checkJob),
 		NextScheduledAt: nextScheduledAt,
+		ExecStart:       execStart,
 		Sched: &backend.SchedulingState{
-			CostEWMAMs:           newCost,
-			DelayEWMAMs:          newDelay,
-			EffectiveScheduledAt: effective,
-			Lane:                 newLane,
+			CostEWMAMs:           state.CostEWMAMs,
+			DelayEWMAMs:          state.DelayEWMAMs,
+			EffectiveScheduledAt: state.EffectiveScheduledAt,
+			Lane:                 state.Lane,
 		},
 	}
 }
@@ -1245,32 +1222,6 @@ func (r *CheckWorker) resolveResultRegion(checkJob *models.CheckJob) *string {
 	}
 
 	return r.getWorker().Region
-}
-
-// delaySampleMs is the scheduling-delay sample (ms) folded into the delay EWMA:
-// how far past the job's real scheduled_at the probe actually started, floored
-// at 0 — true start lateness vs the schedule the user configured (spec
-// 2026-07-01-02 D4). The runner sleeps until scheduled_at, so under spare
-// capacity the probe starts on time and this is 0; it only goes positive when
-// contention pushes the start past the schedule. Pure telemetry: it feeds the
-// cost-distribution endpoint and the lane-split go/no-go, never the claim
-// order, so there is no feedback loop. Falls back to effective_scheduled_at
-// when the row has no scheduled_at (should not happen in practice).
-func (r *CheckWorker) delaySampleMs(checkJob *models.CheckJob, execStart time.Time) float64 {
-	ref := checkJob.ScheduledAt
-	if ref == nil {
-		ref = checkJob.EffectiveScheduledAt
-	}
-	if ref == nil {
-		return 0
-	}
-
-	lateness := execStart.Sub(*ref)
-	if lateness < 0 {
-		return 0
-	}
-
-	return float64(lateness.Milliseconds())
 }
 
 // saveErrorResult submits an error result (with a plain lease release) when

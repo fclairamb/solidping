@@ -38,6 +38,11 @@ jobs:
           mkdir -p internal/app/dash0res && echo "placeholder" > internal/app/dash0res/index.html
           mkdir -p internal/app/status0res && echo "placeholder" > internal/app/status0res/index.html
           mkdir -p internal/app/docsres && echo "placeholder" > internal/app/docsres/index.html
+          # docusaurus-plugin-llms emits these into the real docs build; the
+          # root /llms.txt and /llms-full.txt routes resolve them out of the
+          # embedded FS, so they must exist here too or those tests 404.
+          echo "placeholder" > internal/app/docsres/llms.txt
+          echo "placeholder" > internal/app/docsres/llms-full.txt
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9.3.0
@@ -332,6 +337,23 @@ jobs:
         run: bun run test:e2e
         env:
           CI: "true"
+
+      # status0's public status page has its own Playwright suite. Only the
+      # translate-resilience spec runs here: it is the regression guard for the
+      # recurring "Failed to execute 'removeChild' on 'Node'" crash (spec
+      # 2026-08-01-05) and resolves its own org, so it works against this
+      # SP_RUNMODE=test server. The older status0 specs still assume the
+      # `default` org that `make dev` seeds, so they would fail here.
+      - name: Run status0 translate-resilience E2E test
+        working-directory: web/status0
+        run: |
+          bun install
+          bunx playwright install chromium
+          bunx playwright test translate-resilience.spec.ts --reporter=list
+        env:
+          CI: "true"
+          E2E_BASE_URL: "http://localhost:4000"
+          E2E_ORG: "test"
 
       # session-continuity.spec.ts's access-token-expiry tests need a server
       # started with a short SP_AUTH_ACCESS_TOKEN_EXPIRY — the main server
