@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/fclairamb/solidping/compare/v0.7.1...v0.7.2) (2026-08-05)
+
+
+### Bug Fixes
+
+* **checkers:** retry transient DNS failures instead of burning the whole check budget ([#194](https://github.com/fclairamb/solidping/issues/194)) ([deda12e](https://github.com/fclairamb/solidping/commit/deda12e480e1f0ccab08793afa6b79136912827d))
+
 ## [0.7.1](https://github.com/fclairamb/solidping/compare/v0.7.0...v0.7.1) (2026-08-04)
 
 
