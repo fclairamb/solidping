@@ -277,13 +277,14 @@ func GetCommands() []*cli.Command {
 					Action: checksUpsertAction,
 				},
 				{
-					Name:  "validate",
-					Usage: "Validate a check definition without persisting it",
+					Name:      "validate",
+					Usage:     "Validate a check definition or a whole export document (offline, no token/network for a document)",
+					ArgsUsage: "[file]",
 					Flags: []cli.Flag{
 						&cli.StringFlag{
 							Name:    flagFile,
 							Aliases: []string{"f"},
-							Usage:   "Check definition file (JSON or YAML); reads stdin if omitted",
+							Usage:   "Check definition or export document (JSON or YAML); reads stdin if omitted",
 						},
 					},
 					Action: checksValidateAction,

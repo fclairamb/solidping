@@ -13,6 +13,7 @@ import (
 	"github.com/urfave/cli/v3"
 	"gopkg.in/yaml.v3"
 
+	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/pkg/cli/output"
 	"github.com/fclairamb/solidping/server/pkg/client"
 )
@@ -23,13 +24,10 @@ var errValidateInputEmpty = errors.New("no check definition provided (use --file
 // defaultAvailabilityPeriods is the period set used when --periods is omitted.
 const defaultAvailabilityPeriods = "24h,7d,30d,90d"
 
-// readCheckDefinition reads a check definition (type/slug/config/dependsOn) from
+// readValidateInputRaw reads the raw bytes for `sp checks validate` from
 // --file (or the first positional arg), falling back to stdin when neither is
-// given. Accepts JSON or YAML; YAML is round-tripped through JSON so the
-// generated struct's json tags (e.g. dependsOn) resolve correctly.
-func readCheckDefinition(cmd *cli.Command) (client.ValidateCheckRequest, error) {
-	var req client.ValidateCheckRequest
-
+// given.
+func readValidateInputRaw(cmd *cli.Command) ([]byte, error) {
 	file := cmd.String(flagFile)
 	if file == "" && cmd.Args().Len() > 0 {
 		file = cmd.Args().Get(0)
@@ -47,12 +45,39 @@ func readCheckDefinition(cmd *cli.Command) (client.ValidateCheckRequest, error) 
 	}
 
 	if err != nil {
-		return req, fmt.Errorf("read check definition: %w", err)
+		return nil, fmt.Errorf("read check definition: %w", err)
 	}
 
 	if len(raw) == 0 {
-		return req, errValidateInputEmpty
+		return nil, errValidateInputEmpty
 	}
+
+	return raw, nil
+}
+
+// isExportDocumentShape reports whether raw parses (as JSON or YAML) into a
+// mapping with a top-level `checks` array — the shape of a whole export/
+// manifest document, as opposed to a single check definition. Used to route
+// `sp checks validate` between the offline whole-document path and the
+// existing online single-check path.
+func isExportDocumentShape(raw []byte) bool {
+	var generic map[string]any
+	if jsonErr := json.Unmarshal(raw, &generic); jsonErr != nil {
+		if yamlErr := yaml.Unmarshal(raw, &generic); yamlErr != nil {
+			return false
+		}
+	}
+
+	_, ok := generic["checks"].([]any)
+
+	return ok
+}
+
+// readCheckDefinition parses raw check-definition bytes (JSON or YAML) into a
+// ValidateCheckRequest. YAML is round-tripped through JSON so the generated
+// struct's json tags (e.g. dependsOn) resolve correctly.
+func readCheckDefinition(raw []byte) (client.ValidateCheckRequest, error) {
+	var req client.ValidateCheckRequest
 
 	// Parse into a generic map first (JSON, then YAML), then re-encode to JSON so
 	// the typed struct's json tags apply regardless of the source format.
@@ -75,14 +100,30 @@ func readCheckDefinition(cmd *cli.Command) (client.ValidateCheckRequest, error) 
 	return req, nil
 }
 
-// checksValidateAction implements `sp checks validate [--file <f>]` (or stdin).
+// checksValidateAction implements `sp checks validate [--file <f>|<file>]` (or
+// stdin). Two modes, auto-detected from the input's shape:
+//
+//   - A whole export/manifest document (top-level `checks` array): validated
+//     fully offline against the generic format rules (ValidateDocument) — no
+//     token, no network. This is Proposal 4's `sp checks validate <file>`.
+//   - A single check definition (type/slug/config/dependsOn): validated
+//     against the live server, unchanged from the original behavior.
 func checksValidateAction(ctx context.Context, cmd *cli.Command) error {
 	cliCtx, err := NewCLIContext(cmd)
 	if err != nil {
 		return err
 	}
 
-	req, err := readCheckDefinition(cmd)
+	raw, err := readValidateInputRaw(cmd)
+	if err != nil {
+		return cli.Exit("Error: "+err.Error(), 5)
+	}
+
+	if isExportDocumentShape(raw) {
+		return checksValidateDocumentAction(cliCtx, raw)
+	}
+
+	req, err := readCheckDefinition(raw)
 	if err != nil {
 		return cli.Exit("Error: "+err.Error(), 5)
 	}
@@ -119,6 +160,40 @@ func checksValidateAction(ctx context.Context, cmd *cli.Command) error {
 		for i := range fields {
 			output.PrintMessage(os.Stdout, "  "+fields[i].Name+": "+fields[i].Message)
 		}
+	}
+
+	return cli.Exit("", 1)
+}
+
+// checksValidateDocumentAction validates a whole export/manifest document
+// fully offline: no token, no network. Parsing reuses
+// checks.ParseManifest (the same JSON/YAML-sniffing, v1/v2-aware decoder the
+// server's import/apply endpoints use); rule checking reuses
+// checks.ValidateDocument (the generic format rules).
+func checksValidateDocumentAction(cliCtx *Context, raw []byte) error {
+	doc, err := checks.ParseManifest(raw, "")
+	if err != nil {
+		return cli.Exit(fmt.Sprintf("Error: cannot parse document: %v", err), 5)
+	}
+
+	issues := checks.ValidateDocument(doc)
+
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(map[string]any{
+			"valid":  len(issues) == 0,
+			"issues": issues,
+		})
+	}
+
+	if len(issues) == 0 {
+		output.PrintSuccess(os.Stdout, fmt.Sprintf("Document is valid (%d check(s))", len(doc.Checks)))
+
+		return nil
+	}
+
+	output.PrintError(os.Stdout, fmt.Sprintf("Document is invalid: %d problem(s)", len(issues)))
+	for _, issue := range issues {
+		output.PrintMessage(os.Stdout, fmt.Sprintf("  [%s] %s", issue.Where, issue.Message))
 	}
 
 	return cli.Exit("", 1)
