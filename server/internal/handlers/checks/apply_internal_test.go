@@ -33,10 +33,10 @@ checks:
     enabled: true
 `)
 
-	fromJSON, err := parseManifest(jsonBody, "application/json")
+	fromJSON, err := ParseManifest(jsonBody, "application/json")
 	r.NoError(err)
 
-	fromYAML, err := parseManifest(yamlBody, "application/yaml")
+	fromYAML, err := ParseManifest(yamlBody, "application/yaml")
 	r.NoError(err)
 
 	r.Equal(fromJSON, fromYAML, "JSON and YAML manifests must parse to the same document")
@@ -55,7 +55,7 @@ func TestParseManifestContentTypeSniffing(t *testing.T) {
 
 	// Leading whitespace before the JSON object, no content type.
 	jsonBody := []byte("   \n  {\"version\":1,\"checks\":[{\"slug\":\"a\",\"type\":\"http\",\"config\":{}}]}")
-	doc, err := parseManifest(jsonBody, "")
+	doc, err := ParseManifest(jsonBody, "")
 	r.NoError(err)
 	r.Equal(1, doc.Version)
 	r.Equal("a", doc.Checks[0].Slug)
@@ -66,10 +66,10 @@ func TestParseManifestInvalid(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	_, err := parseManifest([]byte("{not json"), "application/json")
+	_, err := ParseManifest([]byte("{not json"), "application/json")
 	r.Error(err)
 
-	_, err = parseManifest([]byte(":\n  - : :"), "application/yaml")
+	_, err = ParseManifest([]byte(":\n  - : :"), "application/yaml")
 	r.Error(err)
 }
 
