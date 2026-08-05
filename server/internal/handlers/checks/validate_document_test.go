@@ -62,8 +62,6 @@ func TestValidateDocumentKnownGood(t *testing.T) {
 // exactly one violation, mirroring the reference workflow's
 // test_validate_config.py table (spec test area: "validate against documents
 // violating each generic rule").
-//
-//nolint:funlen // one table entry per generic rule under test
 func TestValidateDocumentGenericRuleViolations(t *testing.T) {
 	t.Parallel()
 

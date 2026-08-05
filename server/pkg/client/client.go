@@ -678,10 +678,12 @@ func (c *SolidPingClient) ExportChecks(ctx context.Context, org string) (json.Ra
 	return doc, nil
 }
 
-// ImportChecks posts an export document to the import endpoint. dryRun previews
-// without mutating. The body is sent verbatim (JSON).
+// ImportChecks posts an export document to the import endpoint. dryRun
+// previews without mutating. contentType selects the server's parse path
+// (JSON or YAML) and is sent verbatim as the request Content-Type; the body
+// itself is sent unmodified.
 func (c *SolidPingClient) ImportChecks(
-	ctx context.Context, org string, body []byte, dryRun bool,
+	ctx context.Context, org string, body []byte, contentType string, dryRun bool,
 ) (json.RawMessage, error) {
 	path := fmt.Sprintf("/api/v1/orgs/%s/checks/import", org)
 	if dryRun {
@@ -689,7 +691,7 @@ func (c *SolidPingClient) ImportChecks(
 	}
 
 	var result json.RawMessage
-	if err := c.rawRequestBytes(ctx, http.MethodPost, path, "application/json", body, &result); err != nil {
+	if err := c.rawRequestBytes(ctx, http.MethodPost, path, contentType, body, &result); err != nil {
 		return nil, err
 	}
 

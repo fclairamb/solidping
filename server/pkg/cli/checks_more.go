@@ -192,7 +192,8 @@ func checksValidateDocumentAction(cliCtx *Context, raw []byte) error {
 	}
 
 	output.PrintError(os.Stdout, fmt.Sprintf("Document is invalid: %d problem(s)", len(issues)))
-	for _, issue := range issues {
+	for i := range issues {
+		issue := &issues[i]
 		output.PrintMessage(os.Stdout, fmt.Sprintf("  [%s] %s", issue.Where, issue.Message))
 	}
 

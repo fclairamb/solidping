@@ -13,12 +13,21 @@ import (
 )
 
 // DocumentIssue is one generic-format problem found in an export/manifest
-// document by ValidateDocument. Where is the check slug (or "document" for
+// document by ValidateDocument. Where is the check slug (or docWhere for
 // document-level problems); Message is human-readable.
 type DocumentIssue struct {
 	Where   string
 	Message string
 }
+
+// docWhere is the DocumentIssue.Where value used for document-level (not
+// per-check) problems.
+const docWhere = "document"
+
+// issueDuplicateSlug is the message used for a repeated slug — factored out
+// since it's asserted on by name in tests and would otherwise appear
+// literally three times.
+const issueDuplicateSlug = "duplicate slug"
 
 // labelKeyRegex matches a lowercase, kebab/dotted label key (mirrors the
 // reference workflow's LABEL_KEY_RE).
@@ -31,14 +40,16 @@ var regionRegex = regexp.MustCompile(`^(?:[a-z0-9-]+|@[a-z0-9-]+/[a-z0-9-]+)$`)
 // secretConfigHints are substrings that, found in a config key, suggest a
 // credential was inlined instead of using a secret store / ${env:}/${param:}
 // reference. Mirrors the reference workflow's SECRET_CONFIG_HINTS.
-var secretConfigHints = []string{"user", "pass", "token", "secret", "auth", "credential", "apikey"}
+func secretConfigHints() []string {
+	return []string{"user", "pass", "token", "secret", "auth", "credential", "apikey"}
+}
 
-// expectedStatusConfigKeys are the camelCase/snake_case spellings of the
-// legacy and superseding HTTP status fields; a config must not set both.
-var (
-	expectedStatusKeys      = []string{"expectedStatus", "expected_status"}
-	expectedStatusCodesKeys = []string{"expectedStatusCodes", "expected_status_codes"}
-)
+// expectedStatusFieldKeys are the camelCase/snake_case spellings of the
+// legacy expectedStatus field and its superseding expectedStatusCodes field;
+// a config must not set both.
+func expectedStatusFieldKeys() ([]string, []string) {
+	return []string{"expectedStatus", "expected_status"}, []string{"expectedStatusCodes", "expected_status_codes"}
+}
 
 // ValidateDocument checks an already-parsed export/manifest document against
 // the *generic* format rules shared by every SolidPing org: document shape,
@@ -50,24 +61,47 @@ var (
 // rules (stack topology, RabbitMQ per-env symmetry, etc.) are out of scope by
 // design; they belong to the workflow that owns those conventions, not to the
 // document format.
-//
-//nolint:cyclop,funlen,gocognit // one pass over every generic document rule
 func ValidateDocument(doc *ExportDocument) []DocumentIssue {
+	issues := validateDocumentShape(doc)
+	if len(doc.Checks) == 0 {
+		return issues
+	}
+
+	knownSlugs := make(map[string]struct{}, len(doc.Checks))
+	for i := range doc.Checks {
+		if doc.Checks[i].Slug != "" {
+			knownSlugs[doc.Checks[i].Slug] = struct{}{}
+		}
+	}
+
+	seenSlugs := make(map[string]struct{}, len(doc.Checks))
+	for i := range doc.Checks {
+		issues = append(issues, validateSingleCheck(&doc.Checks[i], i, seenSlugs)...)
+	}
+
+	issues = append(issues, validateDependencyGraph(doc.Checks, knownSlugs)...)
+
+	return issues
+}
+
+// validateDocumentShape validates the document-level fields: version,
+// organization, secrets marker, and a non-empty checks list.
+func validateDocumentShape(doc *ExportDocument) []DocumentIssue {
 	var issues []DocumentIssue
 
 	if !isSupportedExportVersion(doc.Version) {
 		issues = append(issues, DocumentIssue{
-			Where: "document", Message: fmt.Sprintf("version must be 1 or 2, got %d", doc.Version),
+			Where: docWhere, Message: fmt.Sprintf("version must be 1 or 2, got %d", doc.Version),
 		})
 	}
 
 	if doc.Organization == "" {
-		issues = append(issues, DocumentIssue{Where: "document", Message: "organization is missing"})
+		issues = append(issues, DocumentIssue{Where: docWhere, Message: "organization is missing"})
 	}
 
 	if doc.Secrets != "" && doc.Secrets != SecretsMarkerStripped {
 		issues = append(issues, DocumentIssue{
-			Where: "document",
+			Where: docWhere,
 			Message: fmt.Sprintf(
 				"secrets must stay %q, got %q — never commit a raw export that still carries credentials",
 				SecretsMarkerStripped, doc.Secrets),
@@ -75,50 +109,42 @@ func ValidateDocument(doc *ExportDocument) []DocumentIssue {
 	}
 
 	if len(doc.Checks) == 0 {
-		issues = append(issues, DocumentIssue{Where: "document", Message: "checks must be a non-empty list"})
-
-		return issues
+		issues = append(issues, DocumentIssue{Where: docWhere, Message: "checks must be a non-empty list"})
 	}
 
-	seenSlugs := make(map[string]struct{}, len(doc.Checks))
-	knownSlugs := make(map[string]struct{}, len(doc.Checks))
+	return issues
+}
 
-	for i := range doc.Checks {
-		check := &doc.Checks[i]
-		if check.Slug != "" {
-			knownSlugs[check.Slug] = struct{}{}
-		}
+// validateSingleCheck validates one check's own fields (name, slug,
+// uniqueness, type, config, formats) — everything except the dependency
+// graph, which needs the whole document at once.
+func validateSingleCheck(check *ExportCheck, index int, seenSlugs map[string]struct{}) []DocumentIssue {
+	var issues []DocumentIssue
+
+	where := check.Slug
+	if where == "" {
+		where = fmt.Sprintf("<check %d>", index)
 	}
 
-	for i := range doc.Checks {
-		check := &doc.Checks[i]
-		where := check.Slug
-		if where == "" {
-			where = fmt.Sprintf("<check %d>", i)
-		}
-
-		if check.Name == "" {
-			issues = append(issues, DocumentIssue{Where: where, Message: "missing required field \"name\""})
-		}
-
-		if check.Slug == "" {
-			issues = append(issues, DocumentIssue{Where: where, Message: "missing required field \"slug\""})
-		} else if err := validateSlug(check.Slug); err != nil {
-			issues = append(issues, DocumentIssue{Where: where, Message: err.Error()})
-		}
-
-		if check.Slug != "" {
-			if _, dup := seenSlugs[check.Slug]; dup {
-				issues = append(issues, DocumentIssue{Where: where, Message: "duplicate slug"})
-			}
-			seenSlugs[check.Slug] = struct{}{}
-		}
-
-		issues = append(issues, validateCheckType(where, check)...)
-		issues = append(issues, validateCheckFormats(where, check)...)
+	if check.Name == "" {
+		issues = append(issues, DocumentIssue{Where: where, Message: "missing required field \"name\""})
 	}
 
-	issues = append(issues, validateDependencyGraph(doc.Checks, knownSlugs)...)
+	if check.Slug == "" {
+		issues = append(issues, DocumentIssue{Where: where, Message: "missing required field \"slug\""})
+	} else if err := validateSlug(check.Slug); err != nil {
+		issues = append(issues, DocumentIssue{Where: where, Message: err.Error()})
+	}
+
+	if check.Slug != "" {
+		if _, dup := seenSlugs[check.Slug]; dup {
+			issues = append(issues, DocumentIssue{Where: where, Message: issueDuplicateSlug})
+		}
+		seenSlugs[check.Slug] = struct{}{}
+	}
+
+	issues = append(issues, validateCheckType(where, check)...)
+	issues = append(issues, validateCheckFormats(where, check)...)
 
 	return issues
 }
@@ -174,7 +200,7 @@ func validateNoInlinedCredentials(where string, config map[string]any) []Documen
 
 	for _, key := range keys {
 		lower := strings.ToLower(key)
-		for _, hint := range secretConfigHints {
+		for _, hint := range secretConfigHints() {
 			if strings.Contains(lower, hint) {
 				issues = append(issues, DocumentIssue{
 					Where: where,
@@ -204,7 +230,8 @@ func validateStatusFieldExclusivity(where string, config map[string]any) []Docum
 		return false
 	}
 
-	if hasAny(expectedStatusKeys) && hasAny(expectedStatusCodesKeys) {
+	statusKeys, statusCodesKeys := expectedStatusFieldKeys()
+	if hasAny(statusKeys) && hasAny(statusCodesKeys) {
 		return []DocumentIssue{{
 			Where: where,
 			Message: "config sets both expectedStatus and expectedStatusCodes — the latter supersedes " +
@@ -232,10 +259,14 @@ func validateCheckFormats(where string, check *ExportCheck) []DocumentIssue {
 
 	for key, value := range check.Labels {
 		if !labelKeyRegex.MatchString(key) {
-			issues = append(issues, DocumentIssue{Where: where, Message: fmt.Sprintf("label key %q must be lowercase kebab/dotted", key)})
+			issues = append(issues, DocumentIssue{
+				Where: where, Message: fmt.Sprintf("label key %q must be lowercase kebab/dotted", key),
+			})
 		}
 		if value == "" {
-			issues = append(issues, DocumentIssue{Where: where, Message: fmt.Sprintf("label %q must have a non-empty string value", key)})
+			issues = append(issues, DocumentIssue{
+				Where: where, Message: fmt.Sprintf("label %q must have a non-empty string value", key),
+			})
 		}
 	}
 
@@ -268,17 +299,20 @@ func validateDependencyGraph(checks []ExportCheck, knownSlugs map[string]struct{
 		seenParents := make(map[string]struct{}, len(check.DependsOn))
 		parents := make([]string, 0, len(check.DependsOn))
 
-		for _, dep := range check.DependsOn {
+		for depIdx := range check.DependsOn {
+			dep := &check.DependsOn[depIdx]
 			if !models.CheckDependencyKind(dep.Kind).IsValid() {
 				issues = append(issues, DocumentIssue{
-					Where: where, Message: fmt.Sprintf("dependsOn %q has kind %q, expected \"hard\" or \"soft\"", dep.ParentSlug, dep.Kind),
+					Where: where,
+					Message: fmt.Sprintf(
+						"dependsOn %q has kind %q, expected \"hard\" or \"soft\"", dep.ParentSlug, dep.Kind),
 				})
 			}
 
-			switch {
-			case dep.ParentSlug == "":
+			switch dep.ParentSlug {
+			case "":
 				issues = append(issues, DocumentIssue{Where: where, Message: "dependsOn entry is missing parentSlug"})
-			case dep.ParentSlug == check.Slug:
+			case check.Slug:
 				issues = append(issues, DocumentIssue{Where: where, Message: "check depends on itself"})
 			default:
 				if _, ok := knownSlugs[dep.ParentSlug]; !ok {
@@ -289,7 +323,9 @@ func validateDependencyGraph(checks []ExportCheck, knownSlugs map[string]struct{
 					continue
 				}
 				if _, dup := seenParents[dep.ParentSlug]; dup {
-					issues = append(issues, DocumentIssue{Where: where, Message: fmt.Sprintf("dependsOn lists %q twice", dep.ParentSlug)})
+					issues = append(issues, DocumentIssue{
+						Where: where, Message: fmt.Sprintf("dependsOn lists %q twice", dep.ParentSlug),
+					})
 
 					continue
 				}
@@ -306,11 +342,11 @@ func validateDependencyGraph(checks []ExportCheck, knownSlugs map[string]struct{
 	return issues
 }
 
-// dfs colour marks for cycle detection.
+// dfs color marks for cycle detection.
 const (
-	colourWhite = 0
-	colourGrey  = 1
-	colourBlack = 2
+	colorWhite = 0
+	colorGrey  = 1
+	colorBlack = 2
 )
 
 // findDependencyCycles runs a DFS over the parent edges, reporting each cycle
@@ -318,7 +354,7 @@ const (
 func findDependencyCycles(edges map[string][]string) []DocumentIssue {
 	var issues []DocumentIssue
 
-	colour := make(map[string]int, len(edges))
+	color := make(map[string]int, len(edges))
 	seenCycles := make(map[string]struct{})
 
 	nodes := make([]string, 0, len(edges))
@@ -329,12 +365,12 @@ func findDependencyCycles(edges map[string][]string) []DocumentIssue {
 
 	var walk func(node string, path []string)
 	walk = func(node string, path []string) {
-		colour[node] = colourGrey
+		color[node] = colorGrey
 		path = append(path, node)
 
 		for _, parent := range edges[node] {
-			switch colour[parent] {
-			case colourGrey:
+			switch color[parent] {
+			case colorGrey:
 				idx := indexOf(path, parent)
 				cycle := append(append([]string{}, path[idx:]...), parent)
 				key := cycleKey(cycle)
@@ -344,16 +380,16 @@ func findDependencyCycles(edges map[string][]string) []DocumentIssue {
 						Where: node, Message: "dependency cycle: " + strings.Join(cycle, " -> "),
 					})
 				}
-			case colourWhite:
+			case colorWhite:
 				walk(parent, path)
 			}
 		}
 
-		colour[node] = colourBlack
+		color[node] = colorBlack
 	}
 
 	for _, node := range nodes {
-		if colour[node] == colourWhite {
+		if color[node] == colorWhite {
 			walk(node, nil)
 		}
 	}
