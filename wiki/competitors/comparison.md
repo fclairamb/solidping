@@ -279,9 +279,30 @@ SolidPing ships config importers for three competitors, in
 | Gatus | `gatus.go` | parses YAML endpoints; defaults to `60s` when interval is unset |
 | Better Stack | `betterstack.go` | — |
 
-This covers the #1 and #2 self-hosted incumbents by stars (Uptime Kuma ~89k★,
-Gatus ~11.5k★) plus one major SaaS, and is the operational answer whenever a
+This covers the #1 and #2 self-hosted incumbents by stars (Uptime Kuma ~89.9k★,
+Gatus ~11.7k★) plus one major SaaS, and is the operational answer whenever a
 migration pool opens up (Freshping's 2026-03 shutdown, Peekaping's stall).
+
+Input formats differ, and it matters:
+
+- **Better Stack** — authenticates to the live Better Stack API with a
+  user-supplied token and pulls monitors *and* heartbeats directly (paginated,
+  bounded at 200 pages / 60s). No export file needed. This is the strongest of
+  the three from a migration-friction standpoint.
+- **Gatus** — reads the YAML endpoint config.
+- **Uptime Kuma** — reads the **1.x backup JSON** (Settings → Backup → Export).
+  Kuma's own API is socket.io with session auth, so it is not practically
+  fetchable server-side.
+
+> ⚠️ **Product signal, raised 2026-08-05: the Kuma on-ramp is degrading.**
+> **Kuma 2.x dropped the JSON backup export**, and Kuma is now at v2.5.0
+> (2026-08-01). Our importer's only input format is therefore one that new Kuma
+> users can no longer produce — a 2.x user must first obtain a 1.x-compatible
+> export. As 2.x adoption grows, the migration lever we lean on for the largest
+> self-hosted incumbent quietly stops working for most of its users. Worth an
+> engineering look at a 2.x-compatible input path (DB read, or the 2.x
+> API/socket.io route). Raised by marketing, not actioned — sizing is
+> engineering's call.
 
 ### Alerting & Notifications
 
