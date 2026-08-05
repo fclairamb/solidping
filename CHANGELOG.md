@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.8.0](https://github.com/fclairamb/solidping/compare/v0.7.1...v0.8.0) (2026-08-05)
+
+
+### Features
+
+* **status pages:** per-page availability colour thresholds. Each status page can now set its own green/amber floors instead of everything being judged against a hardcoded 99.9/99.0, via a new typed `settings` JSONB column on `status_pages`. The public payload always exposes the resolved effective values, so consumers never need to know the defaults. Badges deliberately stay on the global defaults — they are check-scoped and have no page context ([#196](https://github.com/fclairamb/solidping/issues/196))
+* **status pages:** small-bucket availability calibration. A bucket with exactly one failed sample now renders at worst amber, never red; red requires at least two failures. This fixes the cliff where a single failed minute painted a whole hour red on 1-minute checks, so bar harshness reflects incident severity rather than check frequency ([#196](https://github.com/fclairamb/solidping/issues/196))
+* **dash0:** list-page search boxes sync to the URL as `?q=`. Filtered views on checks, status updates, status pages, maintenance windows, integrations, escalation policies and dependencies are now shareable and bookmarkable, and survive a reload or back-navigation ([#196](https://github.com/fclairamb/solidping/issues/196))
+* **agents:** fleet-wide Agents view on the server page, backed by a new superadmin `GET /api/v1/system/agents`. Platform-operated `kind='system'` agents belong to no organization and were previously listed nowhere — visible only by querying the database by hand. Includes a staleness cue for agents unheard-from for more than five minutes, since the GC only retires them after seven days ([#196](https://github.com/fclairamb/solidping/issues/196))
+* **slugs:** entity slug maximum raised from 20/40/50 to 100 characters, consistently across checks, check groups, status pages and severities. Long descriptive names are no longer rejected or silently truncated. Organization slugs (a URL path segment and JWT claim) and private region slugs are deliberately unchanged ([#196](https://github.com/fclairamb/solidping/issues/196))
+
+
+### Bug Fixes
+
+* **checkers:** retry transient DNS failures instead of burning the whole check budget ([#194](https://github.com/fclairamb/solidping/issues/194)) ([deda12e](https://github.com/fclairamb/solidping/commit/deda12e480e1f0ccab08793afa6b79136912827d))
+* **db:** widen the slug length CHECK constraints that shadowed the application-level limit. Both dialects capped slugs at 40/50 characters in the database, so a longer slug passed validation and then failed at write time ([#196](https://github.com/fclairamb/solidping/issues/196))
+* **dash0:** stop the new `?q=` write-back from looping on a logged-out deep link, which nested `returnTo` one level deeper on each pass until the renderer hung ([#196](https://github.com/fclairamb/solidping/issues/196))
+
+
+### Miscellaneous Chores
+
+* **fly:** deployment config for the Tokyo (`jp-1`) platform check agent, with identity pinned via `SP_AGENT_KEYS` so the agent row stays stable across deploys ([#196](https://github.com/fclairamb/solidping/issues/196))
+
 ## [0.7.1](https://github.com/fclairamb/solidping/compare/v0.7.0...v0.7.1) (2026-08-04)
 
 
