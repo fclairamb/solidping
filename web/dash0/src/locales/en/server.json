@@ -10,6 +10,7 @@
     "authentication": "Authentication",
     "hashing": "Password Hashing",
     "performance": "Performance",
+    "agents": "Agents",
     "aggregation": "Aggregation",
     "slack": "Slack",
     "analytics": "Analytics"
@@ -196,6 +197,23 @@
     "delaySumCol": "Σ delay",
     "dutyCol": "Duty",
     "overloaded": "Overloaded"
+  },
+  "agents": {
+    "title": "Agents",
+    "description": "Every deployed agent across the instance — org-enrolled and platform-operated system agents alike. Read-only: revoke an org agent from its organization's Private Locations page; a system agent is retired by removing its enrollment token.",
+    "empty": "No agents enrolled anywhere yet.",
+    "kind": "Kind",
+    "kindOrg": "Org",
+    "kindSystem": "System",
+    "org": "Org",
+    "noOrg": "—",
+    "name": "Name",
+    "region": "Region",
+    "fingerprint": "Fingerprint",
+    "lastSeen": "Last seen",
+    "never": "never",
+    "status": "Status",
+    "stale": "Stale"
   },
   "emailInbox": {
     "title": "Email Inbox",

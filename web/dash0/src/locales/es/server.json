@@ -10,6 +10,7 @@
     "authentication": "Autenticación",
     "hashing": "Hash de contraseñas",
     "performance": "Rendimiento",
+    "agents": "Agentes",
     "aggregation": "Agregación",
     "slack": "Slack",
     "analytics": "Analítica"
@@ -196,6 +197,23 @@
     "delaySumCol": "Σ retraso",
     "dutyCol": "Duty",
     "overloaded": "Sobrecargado"
+  },
+  "agents": {
+    "title": "Agentes",
+    "description": "Todos los agentes desplegados en la instancia: agentes vinculados a una organización y agentes de sistema operados por la plataforma. Solo lectura: revoque un agente de organización desde la página Ubicaciones privadas de esa organización; un agente de sistema se retira eliminando su token de inscripción.",
+    "empty": "Todavía no hay agentes inscritos en ningún lugar.",
+    "kind": "Tipo",
+    "kindOrg": "Organización",
+    "kindSystem": "Sistema",
+    "org": "Organización",
+    "noOrg": "—",
+    "name": "Nombre",
+    "region": "Región",
+    "fingerprint": "Huella",
+    "lastSeen": "Visto por última vez",
+    "never": "nunca",
+    "status": "Estado",
+    "stale": "Obsoleto"
   },
   "emailInbox": {
     "title": "Bandeja de entrada",

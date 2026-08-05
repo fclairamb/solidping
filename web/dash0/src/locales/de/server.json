@@ -10,6 +10,7 @@
     "authentication": "Authentifizierung",
     "hashing": "Passwort-Hashing",
     "performance": "Leistung",
+    "agents": "Agenten",
     "aggregation": "Aggregation",
     "slack": "Slack",
     "analytics": "Analyse"
@@ -196,6 +197,23 @@
     "delaySumCol": "Σ Verzögerung",
     "dutyCol": "Duty",
     "overloaded": "Überlastet"
+  },
+  "agents": {
+    "title": "Agenten",
+    "description": "Alle bereitgestellten Agenten der gesamten Instanz — organisationsgebundene und von der Plattform betriebene Systemagenten. Nur Lesezugriff: Einen Organisationsagenten widerrufen Sie auf der Seite „Private Standorte“ der jeweiligen Organisation; ein Systemagent wird durch Entfernen seines Registrierungstokens stillgelegt.",
+    "empty": "Bisher sind nirgendwo Agenten registriert.",
+    "kind": "Art",
+    "kindOrg": "Organisation",
+    "kindSystem": "System",
+    "org": "Organisation",
+    "noOrg": "—",
+    "name": "Name",
+    "region": "Region",
+    "fingerprint": "Fingerabdruck",
+    "lastSeen": "Zuletzt gesehen",
+    "never": "nie",
+    "status": "Status",
+    "stale": "Veraltet"
   },
   "emailInbox": {
     "title": "E-Mail-Posteingang",
