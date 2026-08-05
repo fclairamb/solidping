@@ -154,11 +154,12 @@ interface CheckGroupEditFormSubmit {
   slug: string;
 }
 
-// Group slugs are 3-40 chars: a lowercase letter followed by 2-39 lowercase
+// Group slugs are 3-100 chars: a lowercase letter followed by 2-99 lowercase
 // letters/digits/hyphens. This mirrors slugRegex in
-// server/internal/handlers/checkgroups/service.go — deliberately NOT the
-// check form's 3-50 rule (check-form.tsx), which is a different resource.
-const groupSlugRegex = /^[a-z][a-z0-9-]{2,39}$/;
+// server/internal/handlers/checkgroups/service.go — same 3-100 rule as the
+// check form's slugRegex (check-form.tsx), which validates a different
+// resource.
+const groupSlugRegex = /^[a-z][a-z0-9-]{2,99}$/;
 
 function CheckGroupEditForm({
   org,

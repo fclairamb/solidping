@@ -158,8 +158,8 @@ export function StatusPageForm({
               }}
               placeholder="production-services"
               required
-              pattern="^[a-z][a-z0-9-]{2,39}$"
-              title="3-40 characters, lowercase letters, digits, and hyphens"
+              pattern="^[a-z][a-z0-9-]{2,99}$"
+              title="3-100 characters, lowercase letters, digits, and hyphens"
             />
             <p className="text-xs text-muted-foreground">
               Used in the public URL. Lowercase letters, digits, and hyphens only.
