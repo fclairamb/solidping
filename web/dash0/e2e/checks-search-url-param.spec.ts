@@ -150,3 +150,38 @@ test.describe("Checks search box syncs to ?q=", () => {
     }
   });
 });
+
+// The `?q=` write-back is anchored to its own route via `navigate({ from })`.
+// If it fires unconditionally on mount, a logged-out deep link deadlocks: the
+// auth guard bounces to /login, the still-mounted list page navigates back to
+// itself carrying login's own search params, the guard bounces again with a
+// returnTo nested one level deeper, and the URL grows without bound until the
+// renderer hangs. Uses a plain (logged-out) `page` on purpose.
+test.describe("Logged-out deep link to a ?q= list page", () => {
+  for (const path of [
+    "orgs/test/checks?status=down",
+    "orgs/test/status-pages",
+    "orgs/test/integrations",
+  ]) {
+    test(`bounces to login exactly once from /${path}`, async ({ page }) => {
+      await page.goto(path);
+      await page.waitForLoadState("networkidle");
+
+      // The page must still be alive — a hung renderer has no body at all.
+      await expect(page.locator("body")).toBeAttached({ timeout: 5000 });
+      await expect(page).toHaveURL(/\/orgs\/test\/login/);
+
+      // Exactly one bounce: returnTo points at the original deep link and does
+      // not itself contain a nested returnTo.
+      const returnTo = new URL(page.url()).searchParams.get("returnTo") ?? "";
+      expect(returnTo).toContain(path.split("?")[0]);
+      expect(returnTo).not.toContain("returnTo");
+      expect(returnTo).not.toContain("session_expired");
+
+      // And it stays settled rather than creeping onward.
+      const settled = page.url();
+      await page.waitForTimeout(1500);
+      expect(page.url()).toBe(settled);
+    });
+  }
+});

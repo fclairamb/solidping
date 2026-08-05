@@ -149,11 +149,21 @@ function MaintenanceWindowsIndexPage() {
   const [search, setSearch] = useState(() => qParam ?? "");
   const debouncedSearch = useDebounce(search, 300);
   useEffect(() => {
+    const next = debouncedSearch || undefined;
+    // Skip the no-op write-back that would otherwise fire on every mount.
+    // `navigate` is anchored to this route (`from`), so a redundant call
+    // re-targets it from wherever the router has since moved — on a
+    // logged-out deep link the guard has already bounced to /login, and
+    // navigating back re-enters the guard with login's own search params
+    // (session_expired/returnTo) folded in. That nests returnTo one level
+    // deeper on every pass: an unbounded redirect loop that grows the URL
+    // until the renderer hangs. Only write when the URL is actually stale.
+    if (next === qParam) return;
     void navigate({
-      search: (prev) => ({ ...prev, q: debouncedSearch || undefined }),
+      search: (prev) => ({ ...prev, q: next }),
       replace: true,
     });
-  }, [debouncedSearch, navigate]);
+  }, [debouncedSearch, qParam, navigate]);
   const [deleteUid, setDeleteUid] = useState<string | null>(null);
 
   const {
