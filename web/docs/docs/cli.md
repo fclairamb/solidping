@@ -27,6 +27,7 @@ sp auth logout
 | `sp checks add` / `update` / `upsert` | Create or modify checks |
 | `sp checks deps` | Manage check dependencies |
 | `sp checks remove <uid>` | Delete a check |
+| `sp checks export` / `import` / `diff` / `validate` | Config-as-code: see below |
 | `sp results list` | List check results (with filters) |
 | `sp incidents list` / `get` | Inspect incidents and their events |
 | `sp events list` | Browse the audit event log |
@@ -35,6 +36,37 @@ sp auth logout
 | `sp jobs list` / `get` / `create` / `cancel` | Manage background jobs |
 | `sp system get` / `set` / `delete` | Read and write system parameters |
 | `sp server health` / `version` | Check server status |
+
+## Config as Code
+
+`sp checks` supports a full export → edit → validate → dry-run → import → re-export loop for managing a whole organization's checks as one tracked YAML (or JSON) file — the same shape the dashboard's export produces (`{version, exportedAt, organization, secrets, defaults, checks}`).
+
+```bash
+# 1. Export the current state (writes YAML because of the .yaml extension;
+#    pass --format explicitly to override, or write .json for the raw JSON).
+sp checks export --file config.yaml
+
+# 2. Edit config.yaml by hand (or with a script) — add/rename/tune checks.
+
+# 3. Validate the file offline: no token, no network call. Checks document
+#    shape, slug/config formats, and the dependency graph.
+sp checks validate config.yaml
+
+# 4. Preview what would change against the live organization.
+sp checks import config.yaml --dry-run
+
+# 5. Apply it for real.
+sp checks import config.yaml
+
+# 6. Re-export and commit, so the tracked file matches live state again.
+sp checks export --file config.yaml
+```
+
+`sp checks diff config.yaml` reports whether the tracked file has drifted from what SolidPing currently holds — useful as a CI check after every merge. It exits `0` when there's no drift, `1` when the file and the live org disagree, and `2`+ on errors (missing file, auth failure, ...); the `exportedAt` timestamp is ignored on both sides since it always differs.
+
+**Import never deletes.** `sp checks import` is an idempotent upsert keyed on each check's `slug`: a check present in SolidPing but absent from the file is left untouched. If a check was removed from the file on purpose, delete it explicitly with `sp checks remove`, or use `sp apply --prune` (a separate, declarative-reconcile command) for delete-by-absence semantics. Always start from a fresh `sp checks export` before hand-editing so the file reflects live state.
+
+`sp checks export` picks its output format from `--format yaml|json`, defaulting to the `--file` extension (`.yaml`/`.yml` → YAML, everything else including stdout → JSON). YAML output preserves the document's field order — two exports of unchanged live state produce byte-identical files, so diffs in version control only ever show real changes.
 
 ## Output Formats
 
