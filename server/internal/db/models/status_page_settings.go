@@ -48,28 +48,29 @@ type AvailabilitySettings struct {
 // nil) AvailabilitySettings, falling back to the package defaults for a nil
 // receiver or nil fields. Never returns a value that needs further nil
 // checking by the caller.
-func (a *AvailabilitySettings) EffectiveThresholds() (up, degraded float64) {
-	up, degraded = DefaultAvailabilityThresholdUp, DefaultAvailabilityThresholdDegraded
+func (a *AvailabilitySettings) EffectiveThresholds() (float64, float64) {
+	thresholdUp := DefaultAvailabilityThresholdUp
+	thresholdDegraded := DefaultAvailabilityThresholdDegraded
 
 	if a == nil {
-		return up, degraded
+		return thresholdUp, thresholdDegraded
 	}
 
 	if a.ThresholdUp != nil {
-		up = *a.ThresholdUp
+		thresholdUp = *a.ThresholdUp
 	}
 
 	if a.ThresholdDegraded != nil {
-		degraded = *a.ThresholdDegraded
+		thresholdDegraded = *a.ThresholdDegraded
 	}
 
-	return up, degraded
+	return thresholdUp, thresholdDegraded
 }
 
 // EffectiveThresholds resolves the page's effective availability thresholds,
 // nil-safe on the Availability section (StatusPageSettings itself is always a
 // value, never nil, since it is stored NOT NULL DEFAULT '{}').
-func (s StatusPageSettings) EffectiveThresholds() (up, degraded float64) {
+func (s StatusPageSettings) EffectiveThresholds() (float64, float64) {
 	return s.Availability.EffectiveThresholds()
 }
 

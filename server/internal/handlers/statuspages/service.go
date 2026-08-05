@@ -604,11 +604,23 @@ func applyCreateFields(page *models.StatusPage, req *CreateStatusPageRequest) {
 	// No PATCH merge semantics at create time (nothing to merge against): a
 	// given "availability" object sets the section directly; an explicit null
 	// or an omitted key both leave it at the zero value (defaults).
-	if req.Settings != nil && req.Settings.Availability != nil {
-		page.Settings.Availability = &models.AvailabilitySettings{
-			ThresholdUp:       req.Settings.Availability.ThresholdUp,
-			ThresholdDegraded: req.Settings.Availability.ThresholdDegraded,
-		}
+	if avail := createRequestAvailability(req); avail != nil {
+		page.Settings.Availability = avail
+	}
+}
+
+// createRequestAvailability copies the create request's availability section
+// (if a non-null object was given) into a fresh models.AvailabilitySettings,
+// or nil when absent/explicit-null (both mean "use the defaults" at create
+// time, since there's no prior value to preserve).
+func createRequestAvailability(req *CreateStatusPageRequest) *models.AvailabilitySettings {
+	if req.Settings == nil || req.Settings.Availability == nil {
+		return nil
+	}
+
+	return &models.AvailabilitySettings{
+		ThresholdUp:       req.Settings.Availability.ThresholdUp,
+		ThresholdDegraded: req.Settings.Availability.ThresholdDegraded,
 	}
 }
 
@@ -651,15 +663,7 @@ func (s *Service) CreateStatusPage(
 		return StatusPageResponse{}, errCSS
 	}
 
-	var reqAvailability *models.AvailabilitySettings
-	if req.Settings != nil && req.Settings.Availability != nil {
-		reqAvailability = &models.AvailabilitySettings{
-			ThresholdUp:       req.Settings.Availability.ThresholdUp,
-			ThresholdDegraded: req.Settings.Availability.ThresholdDegraded,
-		}
-	}
-
-	if errThresholds := validateAvailabilitySettings(reqAvailability); errThresholds != nil {
+	if errThresholds := validateAvailabilitySettings(createRequestAvailability(req)); errThresholds != nil {
 		return StatusPageResponse{}, errThresholds
 	}
 
@@ -757,6 +761,30 @@ func (s *Service) GetStatusPage(
 	return response, nil
 }
 
+// validateStatusPageUpdate runs every pre-write validation for an update
+// request (slug conflict, history period enum, custom CSS, settings PATCH
+// semantics + effective-threshold check) and returns the resolved settings
+// value to persist (nil = leave the column untouched). Bundled into one
+// function so UpdateStatusPage itself stays under the cyclomatic-complexity
+// budget.
+func (s *Service) validateStatusPageUpdate(
+	ctx context.Context, orgUID string, page *models.StatusPage, req *UpdateStatusPageRequest,
+) (*models.StatusPageSettings, error) {
+	if err := s.validatePageSlugChange(ctx, orgUID, page.Slug, req.Slug); err != nil {
+		return nil, err
+	}
+
+	if err := validateHistoryPeriod(req.HistoryPeriod); err != nil {
+		return nil, err
+	}
+
+	if err := validateCustomCSS(req.CustomCSS); err != nil {
+		return nil, err
+	}
+
+	return resolveSettingsUpdate(page.Settings, req)
+}
+
 // UpdateStatusPage updates an existing status page.
 func (s *Service) UpdateStatusPage(
 	ctx context.Context, orgSlug, identifier string, req *UpdateStatusPageRequest,
@@ -771,21 +799,9 @@ func (s *Service) UpdateStatusPage(
 		return StatusPageResponse{}, ErrStatusPageNotFound
 	}
 
-	if errVal := s.validatePageSlugChange(ctx, org.UID, page.Slug, req.Slug); errVal != nil {
+	newSettings, errVal := s.validateStatusPageUpdate(ctx, org.UID, page, req)
+	if errVal != nil {
 		return StatusPageResponse{}, errVal
-	}
-
-	if errPeriod := validateHistoryPeriod(req.HistoryPeriod); errPeriod != nil {
-		return StatusPageResponse{}, errPeriod
-	}
-
-	if errCSS := validateCustomCSS(req.CustomCSS); errCSS != nil {
-		return StatusPageResponse{}, errCSS
-	}
-
-	newSettings, errSettings := resolveSettingsUpdate(page.Settings, req)
-	if errSettings != nil {
-		return StatusPageResponse{}, errSettings
 	}
 
 	// Handle default toggle
@@ -2122,7 +2138,7 @@ func anyWindowActive(windows []*models.MaintenanceWindow) bool {
 }
 
 func convertPageToResponse(page *models.StatusPage) StatusPageResponse {
-	up, degraded := page.Settings.EffectiveThresholds()
+	thresholdUp, thresholdDegraded := page.Settings.EffectiveThresholds()
 
 	return StatusPageResponse{
 		UID:              page.UID,
@@ -2141,8 +2157,8 @@ func convertPageToResponse(page *models.StatusPage) StatusPageResponse {
 		CreatedAt:        &page.CreatedAt,
 		Settings:         convertSettingsToResponse(page.Settings),
 		AvailabilityThresholds: AvailabilityThresholdsResponse{
-			ThresholdUp:       up,
-			ThresholdDegraded: degraded,
+			ThresholdUp:       thresholdUp,
+			ThresholdDegraded: thresholdDegraded,
 		},
 	}
 }

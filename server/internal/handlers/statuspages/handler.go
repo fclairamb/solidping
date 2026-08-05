@@ -52,7 +52,7 @@ const (
 // all. present=false means the caller must leave status_pages.settings
 // untouched (PATCH semantics). A present-but-null "settings" returns
 // (nil, true, nil) — no sections to inspect.
-func parseSettingsField(body []byte) (settings *SettingsInput, present bool, err error) {
+func parseSettingsField(body []byte) (*SettingsInput, bool, error) {
 	var top map[string]json.RawMessage
 	if uErr := json.Unmarshal(body, &top); uErr != nil {
 		return nil, false, uErr
@@ -75,14 +75,14 @@ func parseSettingsField(body []byte) (settings *SettingsInput, present bool, err
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
 	dec.DisallowUnknownFields()
 
-	var s SettingsInput
-	if dErr := dec.Decode(&s); dErr != nil {
+	var settingsInput SettingsInput
+	if dErr := dec.Decode(&settingsInput); dErr != nil {
 		return nil, true, fmt.Errorf("%w: %s", ErrSettingsUnknownField, dErr.Error())
 	}
 
-	_, s.AvailabilitySet = sectionPresence["availability"]
+	_, settingsInput.AvailabilitySet = sectionPresence["availability"]
 
-	return &s, true, nil
+	return &settingsInput, true, nil
 }
 
 // mapAvailabilityThresholdsError maps the availability-thresholds validation
