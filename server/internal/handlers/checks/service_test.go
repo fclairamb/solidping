@@ -126,8 +126,13 @@ func TestValidateSlug(t *testing.T) {
 			shouldErr: false,
 		},
 		{
-			name:      "too long (51 chars)",
-			slug:      "a" + strings.Repeat("b", 50),
+			name:      "max-length valid slug (100 chars)",
+			slug:      "a" + strings.Repeat("b", 99),
+			shouldErr: false,
+		},
+		{
+			name:      "too long (101 chars)",
+			slug:      "a" + strings.Repeat("b", 100),
 			shouldErr: true,
 		},
 	}

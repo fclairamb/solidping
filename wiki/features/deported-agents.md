@@ -325,9 +325,15 @@ packages.
    **closed** (spec `2026-07-27-01`): `workers.Service.SubmitResult` runs the
    shared `scheduling.Params.PostExec` and releases the lease with the recomputed
    state, using the `execStart` the agent now sends.
-5. System agents have no management surface: they are listed nowhere and are
-   reaped only by the `agent_gc` job. A `mgmt` read view is deliberately out of
-   scope so far.
+5. ~~System agents have no management surface~~ — **closed** (spec
+   `2026-08-05-01`): `GET /api/v1/system/agents` (superadmin-only) plus the
+   dash0 server-page **Agents** tab give a fleet-wide, read-only view across
+   every org agent and every platform-operated system agent — the latter
+   otherwise invisible to any org-scoped endpoint. It flags an agent whose
+   `last_seen_at` is stale (> 5 min while `active`) since the `agent_gc` job
+   only reaps a silent system agent after 7 days. Revoking a system agent from
+   this view is still out of scope — that stays the
+   `SP_SYSTEM_AGENT_ENROLLMENT_TOKENS` removal path.
 6. Out of scope so far, no spec yet: client-side (browser) sealing, **peer
    re-wrap** (asking an online agent to add a recipient to a sealed-only blob),
    agent auto-update.

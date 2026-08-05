@@ -386,8 +386,34 @@ test.describe("Live dashboard updates", () => {
       // live too. The open invalidation just armed the per-scope refetch damper
       // (LIVE_INVALIDATE_MIN_INTERVAL_MS = 3s in LiveEventsContext), so this
       // resolve — sent right after the open — is coalesced into a trailing-edge
-      // refetch ~3s later; allow headroom over that deferral plus CI latency.
+      // refetch ~3s later.
       await sendHeartbeat(page, check, "up");
+
+      // Wait for the server to actually resolve the incident BEFORE asserting
+      // on the UI. Resolution is asynchronous, so a single UI-only budget had
+      // to cover server processing AND the 3s damper AND the refetch at once —
+      // under CI load that raced and flaked (the row stayed visible for the
+      // whole window). Splitting the wait keeps the UI assertion measuring the
+      // thing this test is actually about: that the live path delivers a
+      // server-side change without a reload.
+      await expect
+        .poll(
+          async () => {
+            const resp = await page.request.get(
+              `${API_BASE}/api/v1/orgs/test/incidents?checkUid=${check.uid}&state=active`,
+              { headers: { Authorization: `Bearer ${token}` } },
+            );
+            const body = await resp.json();
+            return ((body.data ?? []) as unknown[]).length;
+          },
+          {
+            timeout: 20_000,
+            message: "the recovery heartbeat must resolve the incident server-side",
+          },
+        )
+        .toBe(0);
+
+      // Now the live path has a budget of its own: damper + refetch only.
       await expect(
         page.getByTestId("incident-row").filter({ hasText: incidentTitle }),
       ).toBeHidden({ timeout: 15_000 });

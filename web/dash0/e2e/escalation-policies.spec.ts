@@ -91,6 +91,23 @@ async function createEscalationPolicy(
   return resp.json();
 }
 
+// Clicking Save fires a PATCH from the SPA without a document navigation, so
+// `waitForLoadState("networkidle")` right after the click can resolve before
+// the request is even issued — reloading then races the write and re-renders
+// the *previous* server state. Wait for the PATCH response itself instead.
+async function saveAndReload(page: Page, policyUid: string) {
+  const saved = page.waitForResponse(
+    (r) =>
+      r.url().includes(`/escalation-policies/${policyUid}`) &&
+      r.request().method() === "PATCH",
+  );
+  await page.getByRole("button", { name: /save/i }).click();
+  const resp = await saved;
+  expect(resp.ok()).toBeTruthy();
+  await page.reload();
+  await page.waitForLoadState("networkidle");
+}
+
 test.describe("Escalation policy editor", () => {
   test("step targets seeded via API appear selected in the edit UI and survive a re-save", async ({
     authenticatedPage,
@@ -150,10 +167,7 @@ test.describe("Escalation policy editor", () => {
       await expect(secondaryCombobox).toContainText(channel.name);
 
       // Save without changes, then reload and verify selection is still there.
-      await page.getByRole("button", { name: /save/i }).click();
-      await page.waitForLoadState("networkidle");
-      await page.reload();
-      await page.waitForLoadState("networkidle");
+      await saveAndReload(page, policy.uid);
 
       await expect(page.getByRole("combobox").first()).toContainText(
         "Notification connection",
@@ -163,10 +177,7 @@ test.describe("Escalation policy editor", () => {
       // Swap to "All admins" via the UI, save, reload, verify.
       await page.getByRole("combobox").first().click();
       await page.getByRole("option", { name: "All admins" }).click();
-      await page.getByRole("button", { name: /save/i }).click();
-      await page.waitForLoadState("networkidle");
-      await page.reload();
-      await page.waitForLoadState("networkidle");
+      await saveAndReload(page, policy.uid);
 
       await expect(page.getByRole("combobox").first()).toContainText("All admins");
       // No secondary combobox for all_admins.
@@ -187,10 +198,7 @@ test.describe("Escalation policy editor", () => {
       // The closed trigger inherits the option's content, so it must show
       // the email too.
       await expect(userCombobox).toContainText(userEmail);
-      await page.getByRole("button", { name: /save/i }).click();
-      await page.waitForLoadState("networkidle");
-      await page.reload();
-      await page.waitForLoadState("networkidle");
+      await saveAndReload(page, policy.uid);
 
       await expect(page.getByRole("combobox").first()).toContainText("User");
       // The secondary must show the member (not empty).
@@ -203,10 +211,7 @@ test.describe("Escalation policy editor", () => {
       await page.getByRole("option", { name: "On-call schedule" }).click();
       await page.getByRole("combobox").nth(1).click();
       await page.getByRole("option", { name: `E2E Sched ${stamp}` }).click();
-      await page.getByRole("button", { name: /save/i }).click();
-      await page.waitForLoadState("networkidle");
-      await page.reload();
-      await page.waitForLoadState("networkidle");
+      await saveAndReload(page, policy.uid);
 
       await expect(page.getByRole("combobox").first()).toContainText("On-call schedule");
       await expect(page.getByRole("combobox").nth(1)).toContainText(

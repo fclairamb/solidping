@@ -69,9 +69,9 @@ const dependsOnFieldName = "dependsOn"
 // configFieldName is the JSON/validation field name for the config payload.
 const configFieldName = "config"
 
-// slugRegex validates slug format: lowercase letter, then 2-19 lowercase letters/digits/hyphens.
-// Total length: 3-20 characters.
-var slugRegex = regexp.MustCompile(`^[a-z][a-z0-9-]{2,49}$`)
+// slugRegex validates slug format: lowercase letter, then 2-99 lowercase letters/digits/hyphens.
+// Total length: 3-100 characters.
+var slugRegex = regexp.MustCompile(`^[a-z][a-z0-9-]{2,99}$`)
 
 // slugInvalidCharsRegex matches characters that are not valid in a slug.
 var slugInvalidCharsRegex = regexp.MustCompile(`[^a-z0-9-]`)
@@ -286,8 +286,8 @@ func validateFlappingFields(windowSeconds, backoffFactor, maxRecoveryMult *int) 
 }
 
 // validateSlug validates that a slug has a valid format.
-// Valid slugs: start with lowercase letter, followed by 2-49 lowercase letters, digits, or hyphens.
-// Total length: 3-50 characters. Must not look like a UUID.
+// Valid slugs: start with lowercase letter, followed by 2-99 lowercase letters, digits, or hyphens.
+// Total length: 3-100 characters. Must not look like a UUID.
 func validateSlug(slug string) error {
 	if slug == "" {
 		return nil // Empty slug is allowed (will be auto-generated)

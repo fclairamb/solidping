@@ -3933,6 +3933,12 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 		}
 	}
 
+	if update.Settings != nil {
+		// The service layer has already applied the no-deep-merge
+		// section-replace-or-reset semantics; this is a whole-column overwrite.
+		query = query.Set("settings = ?", *update.Settings)
+	}
+
 	_, err := query.Exec(ctx)
 
 	return err

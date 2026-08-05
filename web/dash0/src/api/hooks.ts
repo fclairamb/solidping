@@ -1593,6 +1593,28 @@ export type CustomDomainStatus = "unverified" | "verified";
 // external proxy) or the domain is not verified yet.
 export type CustomDomainCertStatus = "none" | "issued" | "error";
 
+// AvailabilitySettings customizes a status page's green/amber/red
+// availability thresholds. A nil/omitted field means "use the platform
+// default" (99.9 / 99.0) — see AvailabilityThresholds for the resolved
+// values.
+export interface AvailabilitySettings {
+  thresholdUp?: number;
+  thresholdDegraded?: number;
+}
+
+// StatusPageSettings mirrors the API's storage shape: an omitted section
+// means "using the defaults".
+export interface StatusPageSettings {
+  availability?: AvailabilitySettings;
+}
+
+// AvailabilityThresholds carries the RESOLVED effective thresholds (never
+// undefined) so the UI never needs to know the platform defaults itself.
+export interface AvailabilityThresholds {
+  thresholdUp: number;
+  thresholdDegraded: number;
+}
+
 export interface StatusPage {
   uid: string;
   name: string;
@@ -1614,6 +1636,10 @@ export interface StatusPage {
   customDomainStatus?: CustomDomainStatus;
   customDomainCertStatus?: CustomDomainCertStatus;
   customDomainRecords?: DnsRecord[];
+  // Settings mirrors the storage shape (an unset section means "using the
+  // default"); AvailabilityThresholds is always the resolved, non-nil pair.
+  settings?: StatusPageSettings;
+  availabilityThresholds: AvailabilityThresholds;
   sections?: StatusPageSection[];
   createdAt?: string;
 }
@@ -1679,6 +1705,10 @@ export interface UpdateStatusPageRequest {
   // null clears the custom domain; a non-empty string sets it; omit to leave
   // it unchanged.
   customDomain?: string | null;
+  // No deep merge: omit to leave settings untouched; when present, each
+  // section provided (e.g. availability) replaces that section wholly, and
+  // an explicit `{ availability: null }` resets it to defaults.
+  settings?: { availability?: AvailabilitySettings | null } | null;
 }
 
 export interface CreateSectionRequest {
@@ -4826,6 +4856,11 @@ export interface PrivateRegion {
 export interface AgentInfo {
   uid: string;
   name: string;
+  /** Only populated on the fleet-wide view (useAllAgents) — "org" or "system". */
+  kind?: "org" | "system";
+  /** Owning org slug, only populated on the fleet-wide view. Absent/null for
+   * system agents, which have no owning organization. */
+  org?: string | null;
   region: string;
   fingerprint: string;
   status: "active" | "revoked";
@@ -4910,6 +4945,20 @@ export function useAgents(
       return response.data || [];
     },
     enabled: (options?.enabled ?? true) && !!org,
+    refetchInterval: options?.refetchInterval ?? 30_000,
+  });
+}
+
+/** Fleet-wide agent list (superadmin only): every org agent plus every
+ * platform-operated system agent, across all organizations. */
+export function useAllAgents(options?: { refetchInterval?: number; enabled?: boolean }) {
+  return useQuery({
+    queryKey: ["system-agents"],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: AgentInfo[] }>(`/api/v1/system/agents`);
+      return response.data || [];
+    },
+    enabled: options?.enabled ?? true,
     refetchInterval: options?.refetchInterval ?? 30_000,
   });
 }

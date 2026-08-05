@@ -399,8 +399,15 @@ func (s *Service) DeleteEnrollmentToken(ctx context.Context, orgSlug, uid string
 // AgentResponse is an agent as returned by the API. Only public key material is
 // exposed, and only as a short fingerprint.
 type AgentResponse struct {
-	UID         string     `json:"uid"`
-	Name        string     `json:"name"`
+	UID  string `json:"uid"`
+	Name string `json:"name"`
+	// Kind is "org" or "system". Only populated on the fleet-wide view
+	// (ListAllAgents); the org-scoped ListAgents response omits it since every
+	// row there is implicitly "org".
+	Kind string `json:"kind,omitempty"`
+	// Org is the owning org slug, populated only on the fleet-wide view. Null
+	// for system agents, which have no owning organization.
+	Org         *string    `json:"org,omitempty"`
 	Region      string     `json:"region"`
 	Fingerprint string     `json:"fingerprint"`
 	Status      string     `json:"status"`
@@ -431,6 +438,51 @@ func (s *Service) ListAgents(ctx context.Context, orgSlug string) (*ListAgentsRe
 		data = append(data, AgentResponse{
 			UID:         row.UID,
 			Name:        row.Name,
+			Region:      row.Region,
+			Fingerprint: row.Fingerprint,
+			Status:      row.Status,
+			LastSeenAt:  row.LastSeenAt,
+			EnrolledAt:  row.EnrolledAt,
+			RevokedAt:   row.RevokedAt,
+		})
+	}
+
+	return &ListAgentsResponse{Data: data}, nil
+}
+
+// ListAllAgents returns every non-deleted agent across all organizations, both
+// org and system kind, for the fleet-wide superadmin view. Org agents carry
+// their owning org's slug; system agents carry a nil org.
+func (s *Service) ListAllAgents(ctx context.Context) (*ListAgentsResponse, error) {
+	rows, err := s.db.ListAllAgents(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	orgs, err := s.db.ListOrganizations(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	slugByUID := make(map[string]string, len(orgs))
+	for _, org := range orgs {
+		slugByUID[org.UID] = org.Slug
+	}
+
+	data := make([]AgentResponse, 0, len(rows))
+	for _, row := range rows {
+		var orgSlug *string
+		if row.OrganizationUID != nil {
+			if slug, ok := slugByUID[*row.OrganizationUID]; ok {
+				orgSlug = &slug
+			}
+		}
+
+		data = append(data, AgentResponse{
+			UID:         row.UID,
+			Name:        row.Name,
+			Kind:        row.Kind,
+			Org:         orgSlug,
 			Region:      row.Region,
 			Fingerprint: row.Fingerprint,
 			Status:      row.Status,

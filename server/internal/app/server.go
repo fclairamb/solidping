@@ -1082,6 +1082,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	systemActions.POST("/email-inbox/sync", systemHandler.EmailInboxSync)
 	systemActions.GET("/activation", systemHandler.ListActivationFunnel)
 	systemActions.GET("/scheduling/lane-load", systemHandler.LaneLoad)
+	// Fleet-wide agent view (spec 2026-08-05-01): org agents are already
+	// listed per-org, but system agents (kind='system', no owning org) are
+	// otherwise visible nowhere short of querying the DB by hand.
+	systemActions.GET("/agents", agentsAdminHandler.ListAllAgents)
 
 	// Org entitlements routes. The handler does its own auth gating
 	// (service token preferred for SaaS billing service; admin user

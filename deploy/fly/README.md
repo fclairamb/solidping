@@ -34,6 +34,7 @@ another way to staff a region you already have.
 | `sjc` | San Jose, California | your US-West slug |
 | `lhr` | London, UK | your UK slug, if you define one |
 | `fra` | Frankfurt, Germany | your EU-Central slug, if you define one |
+| `nrt` | Tokyo, Japan | `jp-1` on the k8xp dev deployment — see [`fly.nrt.toml`](fly.nrt.toml) |
 | `sin` | Singapore | your APAC slug |
 | `syd` | Sydney, Australia | your AU slug |
 | `gru` | São Paulo, Brazil | your South-America slug |
@@ -113,20 +114,24 @@ fly deploy -c fly.cdg.toml
 | `SP_NODE_ROLE` | `fly.toml` `[env]` | `agent` |
 | `SP_AGENT_SERVER_URL` | fly secret | the API base URL the agent dials |
 | `SP_AGENT_ENROLLMENT_TOKEN` | fly secret | the region's **multi-use system** token |
-| `SP_AGENT_NAME` | runtime | `$FLY_MACHINE_ID` — see below |
+| `SP_AGENT_NAME` | **unset — do not set it** | falls back to the machine ID, see below |
 | `SP_AGENT_KEYS_FILE` | `fly.toml` `[env]` | `/data/agent-keys.json` (per-machine volume) |
 
-`SP_AGENT_NAME` must be per-machine, and fly secrets are **app-wide**, so it
-cannot be a secret. Set it from fly's own runtime variable, e.g. with a wrapper
-entrypoint:
+**Leave `SP_AGENT_NAME` unset.** The agent already defaults its name to
+`os.Hostname()` ([`agentmode.go`](../../server/internal/agentmode/agentmode.go)),
+which on a fly machine is the machine ID — so the agents list lines up with
+`fly machine list` with no configuration at all. (The default is verified in
+code; the resulting name is not directly observable — system agents are
+`organization_uid = NULL` and the only listing route is the org-scoped
+`/orgs/:org/agents`. Confirm platform-side if it matters.)
 
-```dockerfile
-ENTRYPOINT ["/bin/sh", "-c", "SP_AGENT_NAME=\"${FLY_MACHINE_ID}\" exec /solidping serve"]
-```
+Setting it in `fly.toml` `[env]` (or as a secret) would actively make things
+worse: both are **app-wide**, so every machine in the region would report the
+same name. And the wrapper-entrypoint trick this README used to recommend
+cannot work against the published image — it is built `FROM
+gcr.io/distroless/base-debian13:nonroot`, which ships no `/bin/sh`.
 
-or by templating it into the machine config at deploy time. The name is
-cosmetic — identity is the keypair — but it is what makes the agents list line
-up with `fly machine list`.
+The name is cosmetic in any case: identity is the keypair, not the name.
 
 ## The multi-machine story
 

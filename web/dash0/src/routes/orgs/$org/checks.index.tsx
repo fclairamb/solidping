@@ -114,13 +114,15 @@ interface ChecksIndexSearch {
   labels?: string;
   status?: string;
   groupBy?: GroupByMode;
+  q?: string;
 }
 
-// Group slugs are 3-40 chars: a lowercase letter followed by 2-39 lowercase
+// Group slugs are 3-100 chars: a lowercase letter followed by 2-99 lowercase
 // letters/digits/hyphens. This mirrors slugRegex in
-// server/internal/handlers/checkgroups/service.go — deliberately NOT the
-// check form's 3-50 rule (check-form.tsx), which is a different resource.
-const groupSlugRegex = /^[a-z][a-z0-9-]{2,39}$/;
+// server/internal/handlers/checkgroups/service.go — same 3-100 rule as the
+// check form's slugRegex (check-form.tsx), which validates a different
+// resource.
+const groupSlugRegex = /^[a-z][a-z0-9-]{2,99}$/;
 
 // Import sources offered by the checks-list import flow: the native SolidPing
 // export document, plus the third-party converters served by
@@ -157,6 +159,7 @@ export const Route = createFileRoute("/orgs/$org/checks/")({
     groupBy: GROUP_BY_MODES.includes(search.groupBy as GroupByMode)
       ? (search.groupBy as GroupByMode)
       : undefined,
+    q: typeof search.q === "string" && search.q ? search.q : undefined,
   }),
 });
 
@@ -870,7 +873,12 @@ function ChecksIndexPage() {
   const { t } = useTranslation("checks");
   const { t: tc } = useTranslation("common");
   const { org } = Route.useParams();
-  const { labels: labelsParam, status: statusParam, groupBy: groupByParam } = Route.useSearch();
+  const {
+    labels: labelsParam,
+    status: statusParam,
+    groupBy: groupByParam,
+    q: qParam,
+  } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const labelFilters = parseLabelsParam(labelsParam);
   const queryClient = useQueryClient();
@@ -890,7 +898,14 @@ function ChecksIndexPage() {
     });
   };
 
-  const [search, setSearch] = useState("");
+  // The free-text search box mirrors `?q=` in the URL so a filtered view is
+  // bookmarkable/shareable and survives a reload. We seed local state from the
+  // URL once on mount via a lazy initializer (the layout route otherwise races
+  // a second search-validation pass that can drop the param on a cold load —
+  // same pitfall/fix as discovery.new.tsx's `type` state) and write the
+  // debounced value back to the URL on every change so the URL stays the
+  // source of truth.
+  const [search, setSearch] = useState(() => qParam ?? "");
   const [internalFilter, setInternalFilter] = useState<string>("false");
   const [deleteCheckUid, setDeleteCheckUid] = useState<string | null>(null);
   const [showNewGroup, setShowNewGroup] = useState(false);
@@ -903,6 +918,23 @@ function ChecksIndexPage() {
   >(undefined);
   const [changeGroupCheck, setChangeGroupCheck] = useState<Check | null>(null);
   const debouncedSearch = useDebounce(search, 300);
+
+  useEffect(() => {
+    const next = debouncedSearch || undefined;
+    // Skip the no-op write-back that would otherwise fire on every mount.
+    // `navigate` is anchored to this route (`from`), so a redundant call
+    // re-targets it from wherever the router has since moved — on a
+    // logged-out deep link the guard has already bounced to /login, and
+    // navigating back re-enters the guard with login's own search params
+    // (session_expired/returnTo) folded in. That nests returnTo one level
+    // deeper on every pass: an unbounded redirect loop that grows the URL
+    // until the renderer hangs. Only write when the URL is actually stale.
+    if (next === qParam) return;
+    void navigate({
+      search: (prev) => ({ ...prev, q: next }),
+      replace: true,
+    });
+  }, [debouncedSearch, qParam, navigate]);
 
   // True when any of the four filter dimensions narrows the check list away
   // from its default view: free-text search, the status select, the label
@@ -1301,6 +1333,7 @@ function ChecksIndexPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
+            data-testid="checks-search-input"
           />
         </div>
         <div className="flex items-center gap-2">

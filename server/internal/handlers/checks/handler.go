@@ -712,7 +712,7 @@ func (h *Handler) handleCreateError(writer http.ResponseWriter, err error) error
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
 			{
 				Name: fieldSlug,
-				Message: "Slug must start with a lowercase letter, be 3-20 characters, " +
+				Message: "Slug must start with a lowercase letter, be 3-100 characters, " +
 					"and contain only lowercase letters, digits, or hyphens. UUIDs are not allowed.",
 			},
 		})
@@ -775,7 +775,7 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, err error) error
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
 			{
 				Name: fieldSlug,
-				Message: "Slug must start with a lowercase letter, be 3-20 characters, " +
+				Message: "Slug must start with a lowercase letter, be 3-100 characters, " +
 					"and contain only lowercase letters, digits, or hyphens. UUIDs are not allowed.",
 			},
 		})
@@ -875,7 +875,7 @@ func (h *Handler) handleCloneError(writer http.ResponseWriter, err error) error 
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
 			{
 				Name: fieldSlug,
-				Message: "Slug must start with a lowercase letter, be 3-20 characters, " +
+				Message: "Slug must start with a lowercase letter, be 3-100 characters, " +
 					"and contain only lowercase letters, digits, or hyphens. UUIDs are not allowed.",
 			},
 		})

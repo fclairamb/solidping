@@ -3,6 +3,7 @@ package statuspages
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,7 +52,8 @@ func TestBuildAvailabilityData_UTCBucketing(t *testing.T) {
 		yesterdayUTC: {Up: 1440, Total: 1440},
 	}
 
-	out := buildAvailabilityData(byBucket, nil, todayUTC, 7, true, false)
+	out := buildAvailabilityData(byBucket, nil, todayUTC, 7, true, false,
+		models.DefaultAvailabilityThresholdUp, models.DefaultAvailabilityThresholdDegraded)
 	r.NotNil(out)
 	r.Len(out.DailyAvailability, 7)
 
@@ -461,7 +463,8 @@ func TestBuildHourlyAvailabilityData_Builds24Buckets(t *testing.T) {
 		currentHour: {Up: 60, Total: 60},
 	}
 
-	out := buildHourlyAvailabilityData(byBucket, nil, bucketStart, true, false)
+	out := buildHourlyAvailabilityData(byBucket, nil, bucketStart, true, false,
+		models.DefaultAvailabilityThresholdUp, models.DefaultAvailabilityThresholdDegraded)
 	r.NotNil(out)
 	r.Len(out.DailyAvailability, 24, "24h renders 24 hourly buckets")
 
@@ -728,6 +731,19 @@ func TestBadgeStatusPageParity_SameBucketsForSameData(t *testing.T) {
 	r.InDelta(66.6667, curPct, 0.01)
 	prevPct, _ := badgeBuckets[prevHour].AvailabilityPct()
 	r.InDelta(50.0, prevPct, 0.01)
+}
+
+// TestValidateSlugLengthBoundaries pins the 3-100 char slug length window
+// (raised from 3-40): 2 chars rejected, 3 accepted, 100 accepted, 101
+// rejected.
+func TestValidateSlugLengthBoundaries(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.ErrorIs(validateSlug("ab"), ErrInvalidSlugFormat, "2-char slug must be rejected")
+	r.NoError(validateSlug("abc"), "3-char slug must be accepted")
+	r.NoError(validateSlug("a"+strings.Repeat("b", 99)), "100-char slug must be accepted")
+	r.ErrorIs(validateSlug("a"+strings.Repeat("b", 100)), ErrInvalidSlugFormat, "101-char slug must be rejected")
 }
 
 func strPtr(s string) *string { return &s }

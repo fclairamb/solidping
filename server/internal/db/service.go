@@ -199,6 +199,9 @@ type Service interface {
 	GetAgent(ctx context.Context, uid string) (*models.Agent, error)
 	// ListAgents lists an org's agents (active and revoked, not deleted).
 	ListAgents(ctx context.Context, orgUID string) ([]*models.Agent, error)
+	// ListAllAgents lists every non-deleted agent across all organizations, both
+	// org and system kind, for the fleet-wide operator view.
+	ListAllAgents(ctx context.Context) ([]*models.Agent, error)
 	// ListActiveAgentsByRegion returns the active agents bound to a fully-qualified
 	// private region — the recipients credentials are sealed to.
 	ListActiveAgentsByRegion(ctx context.Context, orgUID, region string) ([]*models.Agent, error)

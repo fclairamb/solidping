@@ -1,6 +1,7 @@
 package severities_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -93,6 +94,42 @@ func TestCreateRejectsBadSlug(t *testing.T) {
 		Channels: []string{"email"},
 	})
 	r.ErrorIs(err, severities.ErrInvalidSlug)
+}
+
+// TestSlugLengthBoundaries pins the 3-100 char slug length window (raised
+// from 3-40): 2 chars rejected, 3 accepted, 100 accepted, 101 rejected.
+func TestSlugLengthBoundaries(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	s := newSetup(t)
+
+	_, err := s.svc.CreateSeverity(t.Context(), s.org.Slug, severities.CreateSeverityRequest{
+		Slug:     "ab",
+		Name:     "Too Short",
+		Channels: []string{"email"},
+	})
+	r.ErrorIs(err, severities.ErrInvalidSlug, "2-char slug must be rejected")
+
+	_, err = s.svc.CreateSeverity(t.Context(), s.org.Slug, severities.CreateSeverityRequest{
+		Slug:     "abc",
+		Name:     "Min Length",
+		Channels: []string{"email"},
+	})
+	r.NoError(err, "3-char slug must be accepted")
+
+	_, err = s.svc.CreateSeverity(t.Context(), s.org.Slug, severities.CreateSeverityRequest{
+		Slug:     "a" + strings.Repeat("b", 99),
+		Name:     "Max Length",
+		Channels: []string{"email"},
+	})
+	r.NoError(err, "100-char slug must be accepted")
+
+	_, err = s.svc.CreateSeverity(t.Context(), s.org.Slug, severities.CreateSeverityRequest{
+		Slug:     "a" + strings.Repeat("b", 100),
+		Name:     "Too Long",
+		Channels: []string{"email"},
+	})
+	r.ErrorIs(err, severities.ErrInvalidSlug, "101-char slug must be rejected")
 }
 
 // TestCreateRejectsDuplicateSlug pins the org-scoped slug uniqueness.

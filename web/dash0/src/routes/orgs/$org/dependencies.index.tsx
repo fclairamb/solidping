@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { GitBranch, RefreshCw, Search } from "lucide-react";
 
@@ -18,9 +18,17 @@ import {
 } from "@/components/ui/table";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { PageHeader } from "@/components/shared/page-header";
+import { useDebounce } from "@/lib/use-debounce";
+
+interface DependenciesIndexSearch {
+  q?: string;
+}
 
 export const Route = createFileRoute("/orgs/$org/dependencies/")({
   component: DependenciesIndexPage,
+  validateSearch: (search: Record<string, unknown>): DependenciesIndexSearch => ({
+    q: typeof search.q === "string" && search.q ? search.q : undefined,
+  }),
 });
 
 function DependenciesIndexPage() {
@@ -28,7 +36,32 @@ function DependenciesIndexPage() {
   const { org } = Route.useParams();
   const { data: graph, isLoading, isRefetching, error, refetch } =
     useDependencyGraph(org);
-  const [filter, setFilter] = useState("");
+  const { q: qParam } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  // Seeded from the URL once on mount via a lazy initializer — the layout
+  // route otherwise races a second search-validation pass that can drop the
+  // param on a cold load (known dash0 pitfall, see checks.index.tsx). The
+  // debounced value is written back below so the URL stays in sync. Renamed
+  // from `filter` to `search`/`setSearch` to match the common pattern used
+  // across the other list routes (spec 2026-08-04-02).
+  const [search, setSearch] = useState(() => qParam ?? "");
+  const debouncedSearch = useDebounce(search, 300);
+  useEffect(() => {
+    const next = debouncedSearch || undefined;
+    // Skip the no-op write-back that would otherwise fire on every mount.
+    // `navigate` is anchored to this route (`from`), so a redundant call
+    // re-targets it from wherever the router has since moved — on a
+    // logged-out deep link the guard has already bounced to /login, and
+    // navigating back re-enters the guard with login's own search params
+    // (session_expired/returnTo) folded in. That nests returnTo one level
+    // deeper on every pass: an unbounded redirect loop that grows the URL
+    // until the renderer hangs. Only write when the URL is actually stale.
+    if (next === qParam) return;
+    void navigate({
+      search: (prev) => ({ ...prev, q: next }),
+      replace: true,
+    });
+  }, [debouncedSearch, qParam, navigate]);
 
   const nameByUid = useMemo(() => {
     const m = new Map<string, { name: string; slug: string; uid: string }>();
@@ -40,7 +73,7 @@ function DependenciesIndexPage() {
 
   const rows = useMemo(() => {
     if (!graph) return [];
-    const lower = filter.trim().toLowerCase();
+    const lower = search.trim().toLowerCase();
     const matches = graph.edges.map((e) => ({
       uid: e.uid,
       kind: e.kind as DependencyKind,
@@ -60,7 +93,7 @@ function DependenciesIndexPage() {
         .toLowerCase();
       return haystack.includes(lower);
     });
-  }, [graph, filter, nameByUid]);
+  }, [graph, search, nameByUid]);
 
   if (error) {
     return (
@@ -86,8 +119,8 @@ function DependenciesIndexPage() {
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             placeholder={t("dependencies:list.filter")}
             className="pl-9"
             data-testid="dependencies-filter"

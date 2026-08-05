@@ -80,6 +80,7 @@ function StatusPageEditPage() {
             showAvailability: data.showAvailability,
             showResponseTime: data.showResponseTime,
             historyPeriod: data.historyPeriod,
+            settings: data.settings,
           });
           toast.success(t("toast.updated"));
           navigate({

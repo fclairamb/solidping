@@ -213,6 +213,24 @@ func (s *Service) ListAgents(ctx context.Context, orgUID string) ([]*models.Agen
 	return agents, nil
 }
 
+// ListAllAgents lists every non-deleted agent across all organizations, both
+// org and system kind (active and revoked), for the fleet-wide operator view.
+// Ordered by kind, region, name for a stable, grouped listing.
+func (s *Service) ListAllAgents(ctx context.Context) ([]*models.Agent, error) {
+	var agents []*models.Agent
+
+	err := s.db.NewSelect().
+		Model(&agents).
+		Where("deleted_at IS NULL").
+		Order("kind ASC", "region ASC", "name ASC").
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list all agents: %w", err)
+	}
+
+	return agents, nil
+}
+
 // ListActiveAgentsByRegion returns the active agents bound to a private region.
 func (s *Service) ListActiveAgentsByRegion(
 	ctx context.Context, orgUID, region string,

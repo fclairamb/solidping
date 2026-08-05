@@ -106,7 +106,7 @@ func (h *Handler) handleErr(writer http.ResponseWriter, err error) error {
 		})
 	case errors.Is(err, ErrInvalidSlug):
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
-			{Name: "slug", Message: "Slug must be 3-40 lowercase letters/digits/hyphens, starting with a letter"},
+			{Name: "slug", Message: "Slug must be 3-100 lowercase letters/digits/hyphens, starting with a letter"},
 		})
 	case errors.Is(err, ErrInvalidChannel):
 		return h.WriteValidationError(writer, "Invalid channel type", []base.ValidationErrorField{

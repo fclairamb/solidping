@@ -10,6 +10,7 @@
     "authentication": "Authentification",
     "hashing": "Hachage des mots de passe",
     "performance": "Performances",
+    "agents": "Agents",
     "aggregation": "Agrégation",
     "slack": "Slack",
     "analytics": "Analytique"
@@ -196,6 +197,23 @@
     "delaySumCol": "Σ délai",
     "dutyCol": "Duty",
     "overloaded": "Surchargé"
+  },
+  "agents": {
+    "title": "Agents",
+    "description": "Tous les agents déployés sur l'instance — agents rattachés à une organisation et agents système exploités par la plateforme. Lecture seule : révoquez un agent d'organisation depuis la page Emplacements privés de son organisation ; un agent système est retiré en supprimant son jeton d'inscription.",
+    "empty": "Aucun agent inscrit nulle part pour l'instant.",
+    "kind": "Type",
+    "kindOrg": "Organisation",
+    "kindSystem": "Système",
+    "org": "Organisation",
+    "noOrg": "—",
+    "name": "Nom",
+    "region": "Région",
+    "fingerprint": "Empreinte",
+    "lastSeen": "Vu pour la dernière fois",
+    "never": "jamais",
+    "status": "Statut",
+    "stale": "Obsolète"
   },
   "emailInbox": {
     "title": "Boîte de réception e-mail",
