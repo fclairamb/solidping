@@ -118,6 +118,18 @@ func (h *Handler) ListAgents(writer http.ResponseWriter, req *http.Request) erro
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
 
+// ListAllAgents handles GET /api/v1/system/agents. Superadmin only: returns
+// every agent across all orgs plus platform-operated system agents, which are
+// otherwise invisible to any org-scoped view.
+func (h *Handler) ListAllAgents(writer http.ResponseWriter, req *http.Request) error {
+	resp, err := h.svc.ListAllAgents(req.Context())
+	if err != nil {
+		return h.writeServiceError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
 // RevokeAgent handles DELETE /api/v1/orgs/:org/agents/:uid.
 func (h *Handler) RevokeAgent(writer http.ResponseWriter, req *http.Request) error {
 	if err := h.svc.RevokeAgent(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid")); err != nil {
