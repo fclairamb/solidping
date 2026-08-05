@@ -53,14 +53,41 @@ read.
 2. The operator starts the agent with `SP_AGENT_ENROLLMENT_TOKEN=spe_…`.
 3. The agent generates **two keypairs locally** — Ed25519 (identity) and
    X25519/age (credential decryption) — and persists them to
-   `SP_AGENT_KEYS_FILE`.
+   `SP_AGENT_KEYS_FILE` (mode `0600`). It logs only the *path*, never the keys.
 4. It connects with `Authorization: Bearer spe_…`. The token is validated
    **before** the WebSocket upgrade
    ([`handlers/agentws/handler.go`](../../server/internal/handlers/agentws/handler.go)),
    then the agent sends an `enroll` frame carrying both **public** keys. The
    server atomically creates the `agents` row and marks the token used.
 
-The private keys never leave the agent. The server stores public keys only.
+The private keys never leave the agent. The server stores public keys only, and
+the agent never logs its own keys — not at INFO, not at DEBUG. The single
+exception is opt-in and deliberate: `SP_AGENT_PRINT_KEYS=true` prints the base64
+identity to stdout inside a `!!! PRIVATE KEY MATERIAL … !!!` banner (see
+[Bootstrapping `SP_AGENT_KEYS`](#bootstrapping-sp_agent_keys)).
+
+#### Bootstrapping `SP_AGENT_KEYS`
+
+Env-only deployments (Kubernetes Secret, fly app-wide secret) pin the identity
+with `SP_AGENT_KEYS`. Get that value by **reading the file the agent already
+wrote** — never from the logs:
+
+```bash
+# docker
+docker exec <container> base64 -w0 /data/agent-keys.json
+# fly
+fly ssh console -a solidping-agent-nrt -C "base64 -w0 /data/agent-keys.json"
+# kubernetes (first run with a temporary PVC)
+kubectl exec deploy/solidping-agent -- base64 -w0 /data/agent-keys.json
+```
+
+If there is genuinely no readable file (no writable volume, no shell), start the
+agent once with `SP_AGENT_PRINT_KEYS=true`, copy the banner-wrapped value into
+your secret store, then **unset the variable and restart**. Anything printed
+that way is captured by your log drain — treat that agent as compromised and
+re-enroll it if the output was retained. The flag is honoured on every start,
+not just at enrollment, so an already-enrolled agent's value can be recovered
+without shell access.
 
 ### 2. Reconnection (every time after)
 
@@ -148,6 +175,7 @@ No separate binary. Same container, different role:
 | `SP_AGENT_KEYS_FILE` | `/data/agent-keys.json` (falls back to `./agent-keys.json`) | Identity persistence |
 | `SP_AGENT_KEYS` | — | Base64 identity JSON; wins over the file (Kubernetes secret) |
 | `SP_AGENT_NAME` | hostname | Display name |
+| `SP_AGENT_PRINT_KEYS` | `false` | **Prints private key material to stdout** — opt-in bootstrap only, honoured on every start; unset it again afterwards |
 
 > These are read by a hand-rolled reader rather than koanf, because koanf
 > collapses underscores to dots and `SP_AGENT_KEYS_FILE` would collide with

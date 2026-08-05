@@ -116,6 +116,19 @@ fly deploy -c fly.cdg.toml
 | `SP_AGENT_ENROLLMENT_TOKEN` | fly secret | the region's **multi-use system** token |
 | `SP_AGENT_NAME` | **unset — do not set it** | falls back to the machine ID, see below |
 | `SP_AGENT_KEYS_FILE` | `fly.toml` `[env]` | `/data/agent-keys.json` (per-machine volume) |
+| `SP_AGENT_KEYS` | **unset — do not set it** | fly secrets are app-wide; one identity shared by every machine is not usable for a multi-machine agent app |
+| `SP_AGENT_PRINT_KEYS` | **unset** | opt-in printing of **private key material** to stdout — and fly aggregates stdout, so anything printed lands in `fly logs` |
+
+**Never set `SP_AGENT_KEYS` on a fly agent app.** fly secrets are app-wide, so
+every machine would boot with the same identity; each machine enrolls itself and
+keeps its own keys on its own volume instead (see
+`specs/done/2026/07/2026-07-27-01-fly-io-system-agents.md`). If you ever do need
+the base64 for a single-machine app, read it from the volume rather than the
+logs:
+
+```bash
+fly ssh console -a solidping-agent-cdg -C "base64 -w0 /data/agent-keys.json"
+```
 
 **Leave `SP_AGENT_NAME` unset.** The agent already defaults its name to
 `os.Hostname()` ([`agentmode.go`](../../server/internal/agentmode/agentmode.go)),
@@ -180,6 +193,30 @@ credentials, and never silently skipped.
 ```bash
 fly logs -a solidping-agent-cdg           # expect "enrolled" then claim/result traffic
 ```
+
+The logs must show `Agent identity persisted path=/data/agent-keys.json` and
+**no base64 blob**: an agent never prints its own private keys unless
+`SP_AGENT_PRINT_KEYS` is set. If you do see one, that identity is exposed in
+fly's log stream — follow the rotation checklist below.
+
+### Rotating an exposed agent identity
+
+> **Operator action (not automated).** Required for any agent that ran a build
+> before this fix — notably `solidping-agent-nrt` (region `jp-1`), whose
+> identity was published to fly's log stream on 2026-08-04.
+
+1. Revoke the agent from the dashboard (Private locations → agents → revoke) so
+   its Ed25519 public key can no longer authenticate.
+2. Destroy the machine **and its volume** (`fly volumes destroy …`) — the volume
+   carries `/data/agent-keys.json`, so a machine-only rebuild would re-enroll
+   with the leaked keypair.
+3. Mint a fresh enrollment token, redeploy, and confirm the new agent enrolls
+   and that its logs contain the path line and no base64.
+4. **Rotate the credentials themselves.** Every check credential sealed to the
+   old X25519 identity must be treated as exposed: anyone holding the leaked
+   identity could have decrypted it. Re-sealing to the new agent happens
+   automatically on the next claim, but that only protects future traffic — the
+   underlying secrets must be rotated by their owner.
 
 Server side, the region's jobs should show `worker_uid` values belonging to
 `ag-…`-slugged workers, and results should keep arriving with the normal

@@ -651,7 +651,7 @@ spec:
               <p className="mb-2 text-xs text-muted-foreground">
                 {t(
                   "privateLocations.wizard.step3.k8sNote",
-                  "This first run persists the identity on a PVC, exactly like the docker run volume. For a no-persistent-volume setup, copy the SP_AGENT_KEYS value the agent logs on first start into a Secret — see the docs link below.",
+                  "This first run persists the identity on a PVC, exactly like the docker run volume. For a no-persistent-volume setup, read the value out of the file the agent wrote (kubectl exec deploy/solidping-agent -- base64 -w0 /data/agent-keys.json) and store it as SP_AGENT_KEYS in a Secret. The agent never prints its private keys to the logs — see the docs link below.",
                 )}
               </p>
               <CopyableCode code={kubernetes} data-testid="wizard-snippet-kubernetes" />

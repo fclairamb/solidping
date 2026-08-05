@@ -59,12 +59,36 @@ On first start the agent:
    and an **X25519 encryption keypair** (credentials are sealed to it),
 2. connects with the enrollment token and enrolls (the token is consumed
    atomically — it can never enroll a second agent),
-3. persists its identity to `/data/agent-keys.json` (`SP_AGENT_KEYS_FILE`),
-   **and** logs the same JSON base64-encoded so you can run env-only instead.
+3. persists its identity to `/data/agent-keys.json` (`SP_AGENT_KEYS_FILE`,
+   mode `0600`).
+
+The agent logs the *path* it wrote, never the keys themselves: that file holds
+the private key material that authenticates the agent and decrypts every
+credential sealed to it, and container stdout ends up in your log aggregator.
 
 Every later connection authenticates with an Ed25519 signature over
 `method|path|timestamp|nonce` (±5 minutes of clock skew, replay-protected) —
 there is no bearer token to steal, and the database only ever holds public keys.
+
+### Getting the `SP_AGENT_KEYS` value
+
+To run an agent from the environment alone, read the file the agent already
+wrote:
+
+```bash
+# docker
+docker exec <container> base64 -w0 /data/agent-keys.json
+# fly
+fly ssh console -a <app> -C "base64 -w0 /data/agent-keys.json"
+# kubernetes (first run with a temporary volume)
+kubectl exec deploy/solidping-agent -- base64 -w0 /data/agent-keys.json
+```
+
+If the agent has no readable file at all (no writable volume, no shell), start
+it once with `SP_AGENT_PRINT_KEYS=true`. It then prints the base64 to stdout
+inside a `!!! PRIVATE KEY MATERIAL !!!` banner. Copy it into your secret store,
+then unset the variable and restart — and treat the agent as compromised (revoke
+and re-enroll it) if that output was retained by a log drain.
 
 ### Environment variables
 
@@ -76,11 +100,14 @@ there is no bearer token to steal, and the database only ever holds public keys.
 | `SP_AGENT_KEYS_FILE` | `/data/agent-keys.json` | Where the identity JSON is persisted |
 | `SP_AGENT_KEYS` | — | Base64 identity JSON for env-only deployments (wins over the file) |
 | `SP_AGENT_NAME` | hostname | Display name shown in the dashboard |
+| `SP_AGENT_PRINT_KEYS` | `false` | Prints the agent's **private key material** to stdout — opt-in bootstrap only (honoured on every start); unset it again afterwards |
 
 ### Kubernetes (env-only keys)
 
-After the first enrollment, copy the `SP_AGENT_KEYS` value from the agent's
-logs into a Secret — the pod then needs no persistent volume:
+After the first enrollment, read the `SP_AGENT_KEYS` value out of the agent's
+keys file (`kubectl exec deploy/solidping-agent -- base64 -w0
+/data/agent-keys.json`) and store it in a Secret — the pod then needs no
+persistent volume:
 
 ```yaml
 apiVersion: apps/v1
