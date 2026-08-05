@@ -400,3 +400,35 @@ projects, content-farm SEO, and paid templates. Not head-to-head rivals.
   shared-fate counter that applies to Temps applies to its uptime half too if the
   monitor runs beside the app it watches. Re-check for a repo, licence and pricing;
   flip to `track: true` only on external probing plus real traction.
+
+
+### Overcheck — github.com/overcheck/overcheck
+Self-hosted uptime monitoring, TypeScript, AGPL-3.0, created 2026-07-07, last
+push 2026-07-20, **0★**, no repo description. Show HN launch surfaced 2026-08-05
+— i.e. the repo was already two weeks stale at its own launch. `track: false`;
+no traction to speak of.
+Notable only for its feature selection: the Show HN headline is "self-hosted
+uptime monitoring, **API and multi-user access**", which is two of the three
+things SolidPing leads with against Uptime Kuma. Kuma's single-user ceiling is
+now common knowledge, and new entrants aim straight at it — that shared target
+is worth more than this particular project.
+
+### Sentivel — https://www.sentivel.com
+SaaS status pages with uptime monitoring built in, plus **dependency tracking**:
+it watches the upstream providers you build on and surfaces their incidents on
+your own status page. Positioning line: "Bad days happen. Have a good page." /
+"Customers will forgive an outage. They won't forgive silence." Free tier, no
+card required. Show HN launch surfaced 2026-08-05. `track: false` — SaaS-only,
+brand new, traction unverified.
+
+**Why it is worth more attention than its star count.** Every notable entrant
+since late June crowded an axis SolidPing already occupied — multi-region
+consensus (Vigilmon, UptimeMonitoring.com, UpWatch), bundling (Temps, Tindra),
+MCP (Kuvasz). Sentivel is the first in weeks to open a *different* question:
+not "is my service up" but "is anything I depend on down". Nobody else in this
+catalogue does upstream-dependency status aggregation, and for a team sitting on
+a stack of managed services it is a real question.
+If it gains traction, the strategic call for SolidPing is whether
+upstream-dependency awareness belongs in the product at all or is honestly a
+different product. Recording the angle now so the decision is not made under
+time pressure later.

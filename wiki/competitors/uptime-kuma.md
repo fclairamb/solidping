@@ -2,7 +2,7 @@
 
 ## Overview
 
-Uptime Kuma is a fancy, self-hosted monitoring tool created by Louis Lam in 2021. It has become the most popular open-source uptime monitoring solution with over 80,000+ GitHub stars, making it the clear community favorite for self-hosted monitoring.
+Uptime Kuma is a fancy, self-hosted monitoring tool created by Louis Lam in 2021. It has become the most popular open-source uptime monitoring solution with **~89,900 GitHub stars** (verified 2026-08-05; latest release **v2.5.0**, 2026-08-01), making it the clear community favorite for self-hosted monitoring.
 
 **GitHub**: https://github.com/louislam/uptime-kuma
 
@@ -40,12 +40,23 @@ Uptime Kuma is a fancy, self-hosted monitoring tool created by Louis Lam in 2021
 10. **Docker Container** - Container health checks
 11. **Database** - Direct database connection monitoring
 12. **Domain Expiration** - WHOIS-based domain expiry monitoring (v2.1+)
+13. **NTP** - Network Time Protocol monitoring (v2.5.0+, PR #7214)
 
-**Notable**: 12 monitor types covering web, network, protocol, and specialized monitoring
+**Notable**: 13 monitor types covering web, network, protocol, and specialized monitoring
 
-### Recent Additions (v2.0-v2.1)
+### Recent Additions (v2.0-v2.5)
 - **v2.0** (Oct 2025): MariaDB support, rootless Docker images, refreshed UI
 - **v2.1** (Feb 2026): Globalping support for worldwide probes, domain expiry monitoring, SSL/STARTTLS options for TCP monitors, multi-number notification support
+- **v2.5.0** (2026-08-01): **NTP monitor type** (#7214), unlimited check interval
+  rather than a 24-day cap (#7607), `next-rootless` Docker tag (#7645), PM2
+  picker for the system-service monitor (#7114), new notification providers
+  (Plivo SMS + voice, Ooredoo Maldives, WxPusher, Flowtriq DDoS), extra SMTP
+  headers, rybbit analytics on status pages
+
+> **Cadence note (2026-08-05):** the monitor-type count moved 12 → 13 on
+> 2026-08-01. Any comparison asset that hard-codes this number must be
+> re-verified at publish time, not at authoring time — marketing drafts carried
+> "12" for three months and would have shipped it.
 
 ### Monitoring Features
 
