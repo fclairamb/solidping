@@ -28,7 +28,7 @@ func baseValidDocument() *ExportDocument {
 				Slug:   "http-api-stonal-io",
 				Type:   "http",
 				Config: map[string]any{"expectedStatus": 401, "url": "https://api.stonal.io"},
-				Labels: map[string]string{"env": "prod", "stack": "prod"},
+				Labels: map[string]string{"environment": "prod", "stack": "prod"},
 			},
 			{
 				Name: "api.stonal.io/datalake (http)",
@@ -37,7 +37,7 @@ func baseValidDocument() *ExportDocument {
 				Config: map[string]any{
 					"url": "https://api.stonal.io/datalake/mgmt/version",
 				},
-				Labels: map[string]string{"app": "datalake", "env": "prod", "stack": "prod"},
+				Labels: map[string]string{"app": "datalake", "environment": "prod", "stack": "prod"},
 				DependsOn: []ExportedDependency{
 					{ParentSlug: "http-api-stonal-io", Kind: "hard"},
 					{ParentSlug: "rabbitmq-aws-prod", Kind: "hard"},
