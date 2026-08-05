@@ -58,6 +58,36 @@ func TestValidateDocumentKnownGood(t *testing.T) {
 	r.Empty(issues, "%+v", issues)
 }
 
+// TestValidateDocumentDoesNotMutateInput is a regression test: checker.Validate
+// is documented as read-only, but the heartbeat and email checkers mutate
+// spec.Config in place to auto-generate a "token" when one is absent (correct
+// for the live create/update path). ValidateDocument must never let that
+// mutation leak into the caller's document — both because it claims to be a
+// pure offline function, and because a mutated config would make its own
+// no-inlined-credentials check flag the token it just caused to be generated.
+func TestValidateDocumentDoesNotMutateInput(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	doc := &ExportDocument{
+		Version:      ExportVersionV2,
+		Organization: "acme",
+		Secrets:      SecretsMarkerStripped,
+		Checks: []ExportCheck{
+			{Name: "Heartbeat", Slug: "heartbeat-check", Type: "heartbeat", Config: map[string]any{}},
+			{Name: "Email", Slug: "email-check", Type: "email", Config: map[string]any{}},
+		},
+	}
+
+	r.NotContains(doc.Checks[0].Config, "token", "config must not carry a token before validation")
+	r.NotContains(doc.Checks[1].Config, "token", "config must not carry a token before validation")
+
+	_ = ValidateDocument(doc)
+
+	r.Empty(doc.Checks[0].Config, "heartbeat check's config must be untouched by ValidateDocument")
+	r.Empty(doc.Checks[1].Config, "email check's config must be untouched by ValidateDocument")
+}
+
 // TestValidateDocumentGenericRuleViolations exercises each generic rule with
 // exactly one violation, mirroring the reference workflow's
 // test_validate_config.py table (spec test area: "validate against documents

@@ -100,6 +100,65 @@ func normalizeYAMLValue(value any) any {
 	}
 }
 
+// diffOutcome is the pure result of comparing a local document against the
+// live export: whether it drifted, and (when it did) the rendered unified
+// diff text. Kept separate from any I/O so the 0/1/>=2 exit-code contract is
+// directly unit-testable, the same way formatImportSummary factors out
+// import's summary/exit-code contract.
+type diffOutcome struct {
+	Drift bool
+	Delta string
+}
+
+// computeDiffOutcome normalizes both documents (JSON or YAML, exportedAt
+// stripped, sorted-key JSON lines) and, when they differ, renders a unified
+// diff. Pure: no I/O, no network — everything checksDiffAction needs to
+// decide what to print and which exit code to use.
+func computeDiffOutcome(localRaw, liveRaw []byte, fromFile string) (diffOutcome, error) {
+	localLines, err := normalizeForDiff(localRaw)
+	if err != nil {
+		return diffOutcome{}, fmt.Errorf("%s: %w", fromFile, err)
+	}
+
+	liveLines, err := normalizeForDiff(liveRaw)
+	if err != nil {
+		return diffOutcome{}, fmt.Errorf("cannot parse live export: %w", err)
+	}
+
+	if equalLines(localLines, liveLines) {
+		return diffOutcome{Drift: false}, nil
+	}
+
+	delta, err := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
+		A:        localLines,
+		B:        liveLines,
+		FromFile: fromFile,
+		ToFile:   "solidping (live)",
+		Context:  3,
+	})
+	if err != nil {
+		return diffOutcome{}, fmt.Errorf("cannot compute diff: %w", err)
+	}
+
+	return diffOutcome{Drift: true, Delta: delta}, nil
+}
+
+// diffExitCode maps a diff outcome (and any error from computing it) to the
+// CI-friendly contract Proposal 3 requires: 0 = no drift, 1 = drift,
+// >=2 = errors.
+const diffExitCodeError = 2
+
+func diffExitCode(outcome diffOutcome, err error) int {
+	switch {
+	case err != nil:
+		return diffExitCodeError
+	case outcome.Drift:
+		return 1
+	default:
+		return 0
+	}
+}
+
 // checksDiffAction implements `sp checks diff <file>`: fetches the live
 // export, loads the local file, strips exportedAt from both, and prints a
 // unified diff. Exit 0 (no drift) / 1 (drift) / >=2 (errors) — CI-friendly,
@@ -130,43 +189,27 @@ func checksDiffAction(ctx context.Context, cmd *cli.Command) error {
 		return cliCtx.HandleError("Failed to export checks", exportErr)
 	}
 
-	localLines, err := normalizeForDiff(localRaw)
-	if err != nil {
-		return cli.Exit(fmt.Sprintf("Error: %s: %v", file, err), 5)
-	}
+	outcome, computeErr := computeDiffOutcome(localRaw, liveRaw, file)
+	exitCode := diffExitCode(outcome, computeErr)
 
-	liveLines, err := normalizeForDiff(liveRaw)
-	if err != nil {
-		return cli.Exit(fmt.Sprintf("Error: cannot parse live export: %v", err), 5)
+	if computeErr != nil {
+		return cli.Exit(fmt.Sprintf("Error: %v", computeErr), exitCode)
 	}
 
 	if !cliCtx.IsText() {
-		drift := !equalLines(localLines, liveLines)
-
-		return cliCtx.Outputter.Print(map[string]any{"drift": drift, "file": file})
+		return cliCtx.Outputter.Print(map[string]any{"drift": outcome.Drift, "file": file})
 	}
 
-	if equalLines(localLines, liveLines) {
+	if !outcome.Drift {
 		output.PrintSuccess(os.Stdout, fmt.Sprintf("No drift: %s matches SolidPing", file))
 
 		return nil
 	}
 
-	delta, diffErr := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
-		A:        localLines,
-		B:        liveLines,
-		FromFile: file,
-		ToFile:   "solidping (live)",
-		Context:  3,
-	})
-	if diffErr != nil {
-		return cli.Exit(fmt.Sprintf("Error: cannot compute diff: %v", diffErr), 5)
-	}
-
-	_, _ = os.Stdout.WriteString(delta)
+	_, _ = os.Stdout.WriteString(outcome.Delta)
 	output.PrintError(os.Stdout, fmt.Sprintf("Drift: %s does not match SolidPing", file))
 
-	return cli.Exit("", 1)
+	return cli.Exit("", exitCode)
 }
 
 func equalLines(a, b []string) bool {

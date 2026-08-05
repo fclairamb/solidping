@@ -1,6 +1,7 @@
 package checks
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
@@ -57,7 +58,10 @@ func expectedStatusFieldKeys() ([]string, []string) {
 // checker's own offline Validate), duration/label/region formats, no inlined
 // credentials, expectedStatusCodes/expectedStatus exclusivity, and dependency
 // graph soundness (parents exist, no self-edges, no cycles). It performs no
-// I/O — safe to run with no token and no network. Org-specific convention
+// I/O — safe to run with no token and no network — and never mutates doc:
+// each check's Config is deep-copied before being handed to a checker's
+// Validate, since some checkers (heartbeat, email) mutate their input config
+// in place to auto-generate a token when one is absent. Org-specific convention
 // rules (stack topology, RabbitMQ per-env symmetry, etc.) are out of scope by
 // design; they belong to the workflow that owns those conventions, not to the
 // document format.
@@ -176,14 +180,55 @@ func validateCheckType(where string, check *ExportCheck) []DocumentIssue {
 		return issues
 	}
 
-	if err := checker.Validate(&checkerdef.CheckSpec{Config: check.Config}); err != nil {
+	// checker.Validate is documented as read-only ("shall not perform any
+	// network operations") but at least two checkers (heartbeat, email)
+	// mutate spec.Config in place to auto-generate a token when one is
+	// absent — correct for the live create/update path, wrong for an
+	// offline validator that must never change the document it's checking.
+	// Pass a deep copy so ValidateDocument stays pure regardless of what an
+	// individual checker's Validate does to the map it's handed.
+	configCopy, copyErr := deepCopyConfig(check.Config)
+	if copyErr != nil {
+		issues = append(issues, DocumentIssue{
+			Where: where, Message: fmt.Sprintf("config is not representable as JSON: %v", copyErr),
+		})
+
+		return issues
+	}
+
+	if err := checker.Validate(&checkerdef.CheckSpec{Config: configCopy}); err != nil {
 		issues = append(issues, DocumentIssue{Where: where, Message: err.Error()})
 	}
 
+	// Credential/status-field checks run on the caller's original config —
+	// never on configCopy, which a checker may have mutated.
 	issues = append(issues, validateNoInlinedCredentials(where, check.Config)...)
 	issues = append(issues, validateStatusFieldExclusivity(where, check.Config)...)
 
 	return issues
+}
+
+// deepCopyConfig returns an independent copy of a check config map so it can
+// be handed to a checker's Validate without risking a mutation leaking back
+// into the caller's document. Config values always originate from decoding
+// JSON (an export/manifest document), so a JSON marshal/unmarshal round trip
+// is a correct and simple deep copy.
+func deepCopyConfig(config map[string]any) (map[string]any, error) {
+	if config == nil {
+		return nil, nil //nolint:nilnil // nil config is a valid "no copy needed" case, not an error
+	}
+
+	raw, err := json.Marshal(config)
+	if err != nil {
+		return nil, fmt.Errorf("marshal config: %w", err)
+	}
+
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("unmarshal config: %w", err)
+	}
+
+	return out, nil
 }
 
 // validateNoInlinedCredentials flags config keys that look like a literal

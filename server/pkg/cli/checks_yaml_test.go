@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 // nonAlphabeticalJSON deliberately orders keys so alphabetical (map-based)
@@ -53,43 +54,77 @@ func TestJSONToYAMLDeterministic(t *testing.T) {
 	r.Equal(string(first), string(second))
 }
 
-// TestJSONToYAMLRoundTripStable verifies the order-stable round trip: YAML
-// produced from JSON, parsed back into a generic ordered document and
-// re-transcoded (via the same JSON source), reproduces identical bytes — no
-// ordering churn on repeated export.
-func TestJSONToYAMLRoundTripStable(t *testing.T) {
+// sampleExportJSON is a small export document whose key order deliberately
+// doesn't match alphabetical order (version, exportedAt, organization,
+// secrets, defaults, checks — not the alphabetical checks, defaults,
+// exportedAt, organization, secrets, version), so an ordering regression
+// would be visible.
+const sampleExportJSON = `{
+	"version": 2,
+	"exportedAt": "2026-08-05T00:00:00Z",
+	"organization": "acme",
+	"secrets": "stripped",
+	"defaults": {"regions": ["default"], "period": "1m"},
+	"checks": [
+		{"name": "Google", "slug": "google", "type": "http", "config": {"url": "https://google.com"}}
+	]
+}`
+
+// TestJSONToYAMLKeyOrderMatchesWireOrder verifies the document's top-level
+// key order in the produced YAML matches the JSON's wire order, not
+// alphabetical order.
+func TestJSONToYAMLKeyOrderMatchesWireOrder(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	sample := `{
-		"version": 2,
-		"exportedAt": "2026-08-05T00:00:00Z",
-		"organization": "acme",
-		"secrets": "stripped",
-		"defaults": {"regions": ["default"], "period": "1m"},
-		"checks": [
-			{"name": "Google", "slug": "google", "type": "http", "config": {"url": "https://google.com"}}
-		]
-	}`
-
-	first, err := jsonToYAML([]byte(sample))
+	out, err := jsonToYAML([]byte(sampleExportJSON))
 	r.NoError(err)
 
-	// Re-exporting the same live JSON a second time must reproduce the exact
-	// same YAML bytes.
-	second, err := jsonToYAML([]byte(sample))
-	r.NoError(err)
-	r.Equal(string(first), string(second))
-
-	// The document's top-level key order in the YAML matches the JSON's wire
-	// order (version, exportedAt, organization, secrets, defaults, checks) —
-	// not alphabetical (checks, defaults, exportedAt, organization, ...).
-	yamlStr := string(first)
+	yamlStr := string(out)
 	versionIdx := strings.Index(yamlStr, "version:")
 	checksIdx := strings.Index(yamlStr, "checks:")
 	r.GreaterOrEqual(versionIdx, 0)
 	r.GreaterOrEqual(checksIdx, 0)
 	r.Less(versionIdx, checksIdx)
+}
+
+// TestJSONToYAMLRoundTripStable verifies the real "export -> parse ->
+// re-export identical" round trip Proposal 1 requires: the YAML jsonToYAML
+// produces is parsed back by an actual YAML parser (into an order-preserving
+// yaml.Node, not a map) and re-rendered with the same encoder settings, and
+// that reproduces byte-identical output. This is what "no ordering churn on
+// repeated export" actually rests on — TestJSONToYAMLDeterministic only
+// proves the transcode step itself is deterministic; it doesn't parse
+// anything back.
+func TestJSONToYAMLRoundTripStable(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	exported, err := jsonToYAML([]byte(sampleExportJSON))
+	r.NoError(err)
+
+	var node yaml.Node
+	r.NoError(yaml.Unmarshal(exported, &node), "the produced YAML must itself be valid YAML")
+
+	reExported := reEncodeYAMLNode(t, &node)
+
+	r.Equal(string(exported), reExported,
+		"parsing the exported YAML back and re-rendering it must reproduce identical bytes")
+}
+
+// reEncodeYAMLNode re-renders a parsed yaml.Node with the same indent
+// jsonToYAML uses, so re-exporting an already-round-tripped document doesn't
+// introduce ordering or formatting churn.
+func reEncodeYAMLNode(t *testing.T, node *yaml.Node) string {
+	t.Helper()
+
+	var buf strings.Builder
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(yamlIndent)
+	require.NoError(t, enc.Encode(node))
+	require.NoError(t, enc.Close())
+
+	return buf.String()
 }
 
 // TestExportFormatFromFlags covers the --format / extension-inference matrix.
