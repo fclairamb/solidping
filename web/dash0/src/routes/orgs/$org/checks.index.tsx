@@ -1323,6 +1323,7 @@ function ChecksIndexPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
+            data-testid="checks-search-input"
           />
         </div>
         <div className="flex items-center gap-2">
