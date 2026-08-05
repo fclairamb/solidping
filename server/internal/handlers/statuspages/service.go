@@ -23,7 +23,7 @@ import (
 )
 
 // slugRegex validates slug format: lowercase letter, then 2-39 lowercase letters/digits/hyphens.
-var slugRegex = regexp.MustCompile(`^[a-z][a-z0-9-]{2,39}$`)
+var slugRegex = regexp.MustCompile(`^[a-z][a-z0-9-]{2,99}$`)
 
 var (
 	// ErrOrganizationNotFound is returned when an organization is not found.

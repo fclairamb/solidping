@@ -38,7 +38,7 @@ var (
 
 // slugRegex mirrors the check-group / channel slug format: lowercase
 // kebab-case, 3–40 characters, must start with a letter.
-var slugRegex = regexp.MustCompile(`^[a-z][a-z0-9-]{2,39}$`)
+var slugRegex = regexp.MustCompile(`^[a-z][a-z0-9-]{2,99}$`)
 
 // allowedChannels returns the validation enum: ConnectionType values plus
 // the synthetic direct-channel types. Function rather than var to satisfy
