@@ -166,6 +166,13 @@ type AgentConfig struct {
 	// Name is the agent display name sent at enrollment — SP_AGENT_NAME
 	// (default: hostname).
 	Name string `koanf:"name"`
+	// PrintKeys opts into printing the base64 identity (private key material!)
+	// to stdout — SP_AGENT_PRINT_KEYS. Off by default: the agent never emits
+	// its own private keys unless an operator explicitly asks for them, because
+	// stdout is aggregated by fly/Kubernetes/Docker/journald log drains. Use it
+	// only to bootstrap an env-only (SP_AGENT_KEYS) deployment that has no
+	// writable volume to read the keys file from, then unset it.
+	PrintKeys bool `koanf:"print_keys"`
 }
 
 // OTelConfig contains OpenTelemetry configuration.
@@ -1486,6 +1493,12 @@ func applyAgentEnv(cfg *AgentConfig) {
 
 	if v := os.Getenv("SP_AGENT_NAME"); v != "" {
 		cfg.Name = v
+	}
+
+	if v := os.Getenv("SP_AGENT_PRINT_KEYS"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.PrintKeys = b
+		}
 	}
 }
 
