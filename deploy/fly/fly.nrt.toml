@@ -53,9 +53,18 @@ primary_region = "nrt"
 #     takes the RECONNECT path, not the enroll path. `fly deploy` recreates
 #     machines, and with a volume each recreation enrolled a NEW agent, leaving
 #     rows for the 7-day agent_gc. Now the agent row is stable across deploys.
-#   - persistIdentity() — which logs the private keys in the clear at INFO —
-#     is only reached from the enrollment path (onIdentityChange, ws.go). A
-#     pre-enrolled identity therefore never re-logs its keys.
+#   - A pre-enrolled identity skips persistIdentity() entirely (it is only
+#     reached from the enrollment path, onIdentityChange in ws.go), so there is
+#     no per-deploy identity churn to reconcile.
+#
+# (Historical note: the agent used to log its identity — private keys included —
+# in the clear at INFO on every enrollment, and this pinned-identity setup
+# doubled as the mitigation. It no longer does: keys are never logged at any
+# level unless SP_AGENT_PRINT_KEYS is explicitly set. Get the SP_AGENT_KEYS
+# value from the volume instead:
+#   fly ssh console -a <app> -C "base64 -w0 /data/agent-keys.json"
+# Any machine that enrolled before that fix has its keys in fly's log stream —
+# see "Rotating an exposed agent identity" in deploy/fly/README.md.)
 #
 # !! THE TRADE-OFF, READ BEFORE SCALING !!
 # fly secrets are APP-WIDE, so every machine in this app now shares ONE private

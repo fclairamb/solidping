@@ -261,3 +261,65 @@ exposed agent identity"):
 4. **Rotate the underlying check credentials** sealed to the old x25519 identity.
    Automatic re-sealing to the new agent protects only future traffic; anyone holding
    the leaked identity could already have decrypted the existing secrets.
+
+### Audit-sweep CORRECTION (post-audit round 2)
+
+**The sweep table above recorded a FALSE NEGATIVE.** It stated that the
+enrollment-token mint path was clean and that "malformed-entry errors log the
+region only". That was wrong, and it took the coordinator's independent audit to
+catch it. `server/internal/app/systemagents.go` had a **real `spe_` token leak**:
+
+- `strings.Cut(entry, "=")` returns the **whole entry** as `region` when the
+  entry contains no `=`. An operator setting
+  `SP_SYSTEM_AGENT_ENROLLMENT_TOKENS=spe_abc…` (forgetting the `region=` prefix)
+  had the live, multi-use system enrollment token written to the boot log at
+  ERROR — while the function's own doc comment asserted "It never logs the token
+  itself".
+- Implementing the fix surfaced a **second instance the audit had not named**:
+  the invalid-region ERROR logged `"error", err`, and
+  `regions.ValidateWorkerRegion` embeds the offending value verbatim in its
+  message — so a `spe_…=spe_…` entry leaked the token through the *error* field
+  even after the `region` field was redacted. Found by the new test, not by
+  reading.
+
+Fix: the malformed branch now logs the entry **index** only, never entry
+content; the remaining branches pass every logged value (region *and* error
+text) through `redactTokenish`, a regexp that replaces any `spe_…`-shaped run
+with `[redacted]` wherever it appears. Covered by
+`TestParseSystemAgentTokenEntryNeverLogsTheToken` and
+`TestSeedSystemAgentEnrollmentTokensNeverLogsTokens` (end-to-end through
+`SeedSystemAgentEnrollmentTokens`), each with a positive control
+(`…LogCaptureWorks`, `…LogsRegions`, `…ValidEntry`) proving the capture buffer
+really does see logged content and that the happy path still parses.
+
+Revised verdict for that row: **enrollment-token mint path — one leak found and
+fixed**; the rest of the table (agentmode, agents, checkworker/backend,
+crypto/credentials) stands.
+
+### Also fixed in round 2
+
+- `deploy/fly/fly.nrt.toml` (tracked) still documented the old behaviour —
+  "persistIdentity() — which logs the private keys in the clear at INFO" — and
+  presented identity-pinning as the mitigation. Rewritten to describe the
+  current behaviour, with a historical note and a pointer to the volume-read
+  recipe and the rotation checklist. A re-grep of **tracked** files for any
+  other always-log/harvest-from-the-logs wording now comes back empty.
+
+### FOLLOW-UP FOR THE OWNER OF THE UNTRACKED CLOUDFLARE WORK
+
+`deploy/cloudflare/` is **untracked, uncommitted work belonging to another
+actor**, so this implementation deliberately did not edit, stage or delete it.
+Two places in it are now factually wrong and describe a **broken bootstrap
+recipe**:
+
+- `deploy/cloudflare/README.md:147-171` — instructs `wrangler tail  # grab the
+  base64 identity blob from the enroll log`. That blob is no longer emitted;
+  the agent will never print it unless `SP_AGENT_PRINT_KEYS=true` is set.
+- `deploy/cloudflare/src/index.ts:76-78` — asserts that `persistIdentity()` logs
+  the keys at INFO.
+
+Both need the same treatment as the other docs: read the value from the keys
+file the agent wrote (`base64 -w0 /data/agent-keys.json`), or, where there is no
+readable file, start once with `SP_AGENT_PRINT_KEYS=true` and unset it
+afterwards. See `wiki/features/deported-agents.md` →
+"Bootstrapping `SP_AGENT_KEYS`".
