@@ -137,8 +137,11 @@ here"*.
    session it asserts on cannot have been evicted by unrelated login churn
    elsewhere in the suite. `:80` ("revoking another session") targets the
    session it just created (by uid, read from `otherPage`'s own
-   `GET /api/v1/auth/sessions` response) instead of "the first non-current
-   row".
+   `GET /api/v1/orgs/test/tokens?type=refresh` response — the same endpoint
+   the sessions page itself uses, per `useSessions` in `src/api/hooks.ts`;
+   corrected from an earlier draft of this plan that named
+   `GET /api/v1/auth/sessions`, which isn't a real route) instead of "the
+   first non-current row".
 3. **Fix `mcp-oauth-consent.spec.ts`**: the two tests that assert on the
    shared session actually holding a live cookie/refresh-token
    (`:141` "authenticated session with a valid cookie…", `:156` "SPA session
@@ -197,8 +200,8 @@ cached **access token** (a self-contained JWT, independently valid until its
 own 1h expiry) keeps working for ordinary API calls even after the
 **refresh-token row** backing it is gone — `ValidateToken` never checks that
 the row still exists. Only code paths that specifically touch the
-refresh-token row break: `GET /api/v1/auth/sessions` (which can't find a row
-matching `Claims.RefreshUID` to flag `isCurrent`) and an actual
+refresh-token row break: `GET /api/v1/orgs/:org/tokens?type=refresh` (which
+can't find a row matching `Claims.RefreshUID` to flag `isCurrent`) and an actual
 `/auth/refresh` call (which 401s once the row is gone) — exactly
 `sessions.spec.ts:4` and `mcp-oauth-consent.spec.ts:156`'s "SPA session
 without the access_token cookie" bounce-through-login path (needs a working
@@ -220,3 +223,123 @@ alive (and therefore never refreshed) for the run's full duration. The
 correct fix is for the handful of tests that actually depend on that
 refresh-token row surviving to stop depending on the long-lived shared
 session and mint their own, disposable one instead.
+
+### Verification (Proposal 4)
+
+Ran the full suite (`--retries=0`, single worker, side-car server on
+`:4321`, `SP_DB_RESET=true` on every start) three times total: one pre-fix
+baseline (reproduction) and two post-fix confirmation runs, each preceded by
+`make build-dash0 copy-dash0 build-backend` so the embedded frontend was
+never stale.
+
+| Run | Command | Total tests | Passed | Failed | Skipped | `sessions.spec.ts:4` | `mcp-oauth-consent.spec.ts:156` |
+|---|---|---|---|---|---|---|---|
+| Baseline (pre-fix) | `E2E_BASE_URL=http://localhost:4321/dash0/ CI=true bunx playwright test --retries=0` | 429 | 417 | 3 | 9 | **FAIL** (`session-current-badge` not found) | PASS (test #275, ran before the shared session's eviction point) |
+| Post-fix run 1 | same | 429 | 418 | 1 | 10 (session-continuity, opt-in only) | **PASS** | PASS |
+| Post-fix run 2 | same | 429 | 418 | 1 | 10 | **PASS** | PASS |
+
+`sessions.spec.ts:4` — the test this spec exists for — failed on the baseline's
+first (and only, `--retries=0`) attempt and passed cleanly on both post-fix
+attempts. That satisfies Proposal 4's stated acceptance criterion for this
+test: a clean first attempt, repeated (twice) after the fix.
+
+#### Gap 2 — reconciling the baseline's other two failures
+
+The baseline run had **three** failures, not one:
+`discovery.spec.ts:357`, `kubernetes-clusters.spec.ts:36`, and
+`sessions.spec.ts:4`. A run with three failures is not "clean" by Proposal
+4's literal wording, so here is the honest breakdown of the other two —
+neither is attributable to this spec's fix, but for different, verified
+reasons:
+
+- **`kubernetes-clusters.spec.ts:36`** failed in **all three** runs
+  (baseline and both post-fix), so it is unaffected by the fix either way —
+  but the *symptom* differed between runs, and that difference is itself
+  fully explained and unrelated to sessions:
+  - The file hardcodes its own base URL independently of the rest of the
+    suite: `const API_BASE = process.env.E2E_API_BASE ?? "http://localhost:4000"`
+    (`kubernetes-clusters.spec.ts:3`) — a different env var
+    (`E2E_API_BASE`) than the one this whole side-car recipe sets
+    (`E2E_BASE_URL`, which `fixtures.ts`'s `API_BASE` correctly reads). So
+    `getAuthToken()`'s `page.request.post` in this file never actually hits
+    the `:4321` side-car server at all, regardless of the fix.
+  - In the **baseline** run, a stray, unrelated `solidping serve` process
+    happened to already be listening on `:4000` (visible in `ps aux` at the
+    time, PID 60187, running since before this session started) — the
+    test's misdirected request landed there instead, against a different
+    server/DB, producing a confusing but unrelated failure
+    (`expect(detail.type).toBe("kubernetes")` → `undefined`, i.e. the
+    integration it just "created" against the wrong server didn't read back
+    the way it expected).
+  - By the **post-fix** runs that stray process was gone (killed while
+    restarting the side-car server between runs), so the same
+    wrong-base-URL defect surfaced as a clean
+    `connect ECONNREFUSED ::1:4000` instead.
+  - Both symptoms trace to the same single pre-existing bug — the file
+    doesn't respect `E2E_BASE_URL` — which has nothing to do with
+    `enforceSessionCap`, `/auth/sessions`, or `/auth/refresh`: the test's
+    own login call (line 6-10) always *succeeds* in every run; the failure
+    is always downstream, in the integration create/read step, against the
+    wrong server. Out of scope for this spec; worth its own follow-up
+    (`kubernetes-clusters.spec.ts` should import `API_BASE` from
+    `fixtures.ts` like every other file does).
+  - This failure means both post-fix runs are "clean modulo
+    `kubernetes-clusters.spec.ts:36`" — not unconditionally clean. That
+    caveat is real and is recorded here rather than glossed over.
+- **`discovery.spec.ts:357`** failed only in the baseline run and **passed
+  in both post-fix runs**. It doesn't touch auth, sessions, or logins at
+  all (`orgs/test/discovery/new`, asserting the Kubernetes scan-method
+  option is hidden), so there's no mechanism connecting it to this spec's
+  fix either way. It is most likely an unrelated one-off flake (possibly a
+  combobox-render timing race), not a reproducible pre-existing failure the
+  way `kubernetes-clusters.spec.ts:36` is — one data point isn't enough to
+  call it "proven pre-existing," and it is flagged here rather than quietly
+  waved off. If it recurs on CI it warrants its own spec; this spec doesn't
+  fix or explain it.
+
+Net: both post-fix runs are clean **except** for the pre-existing,
+independently-verified `kubernetes-clusters.spec.ts:36` (wrong-base-URL bug,
+unrelated to auth/sessions). `discovery.spec.ts:357` did not recur post-fix.
+
+#### Gap 3 — `mcp-oauth-consent.spec.ts:156` was never reproduced locally
+
+Proposal 4's second half — "confirm `mcp-oauth-consent.spec.ts:156` also
+stops needing its retry; if it doesn't, the diagnosis needs revisiting" —
+presumes `:156` was failing to begin with. Locally it never was: per the
+table above, `:156` **passed** in the baseline (pre-fix) run at test order
+#275, well before `sessions.spec.ts:4` (order #330) hit the eviction. A
+post-fix local pass for a test that already passed pre-fix proves nothing
+about whether the fix changed its behavior — **this half of Proposal 4's
+acceptance criterion is unverified locally and can only be confirmed on
+CI**, where the original bug report (`30956813484`, `30967654986`) showed
+`:156` actually failing and retrying. That is a genuine gap in local
+coverage, not one this spec can close without CI.
+
+Checking whether the theory still holds despite not reproducing `:156`
+locally: counting `POST /api/v1/auth/login` in the captured baseline server
+log, **107** had landed before `:156`'s `registerClient` call (00:13:59.671)
+and **120** before `sessions.spec.ts:4` (00:15:15.685) — both numbers are
+"well past 10" taken at face value, which *would* be evidence against the
+theory for `:156` if the cap were global. It isn't: `enforceSessionCap` is
+scoped **per user** (`userUID` argument), and the raw login count mixes in
+other identities the suite creates along the way (new registrations in
+`create-org.spec.ts`, invited members in `invitations.spec.ts`, etc.) that
+don't compete for `test@test.com`'s cap slot at all. Access-log lines don't
+carry request bodies, so the raw count can't be attributed by user directly;
+instead, auditing the spec files that run before `mcp-oauth-consent.spec.ts`
+for an actual `test@test.com` password-login flow (UI `login-submit` clicks:
+`discovery-promote.spec.ts`, `discovery-scan-method.spec.ts`,
+`discovery.spec.ts`, `jobs.spec.ts` — one each — plus several in
+`login.spec.ts`, some of which are deliberate-failure/invalid-credential
+tests that never mint a session) puts the real `test@test.com` session count
+at roughly the cap boundary (≈10-12) by the time `:156` runs, not
+"well past" it. That is consistent with the theory: `:156` running right at
+the boundary, before or right as the shared session tips over, while
+`sessions.spec.ts:4` — running after several more `test@test.com` logins
+land in `notification-detail.spec.ts`, `oncall-edit.spec.ts`,
+`private-locations.spec.ts`, and `refresh-button-responsive.spec.ts` (all of
+which log in via the API directly with `test@test.com`/`test`, confirmed by
+reading each file) — runs well past it. This is a plausible reconciliation,
+not a proof: the exact boundary depends on timing/ordering details this
+local run's evidence can't fully pin down, and the theory for `:156`
+specifically remains **CI-confirmable, not CI-proven, as of this commit**.
