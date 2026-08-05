@@ -218,3 +218,46 @@ checklist for the operator.
    `solidping-agent-nrt` in this spec and in `deploy/fly/README.md`; no fly CLI
    actions are performed here.
 7. **QA** — `make build-backend lint-back test`; dash0 gate for the copy change.
+
+## Follow-up notes (implementation)
+
+### Audit sweep (Proposal §4) — result: CLEAN, one finding fixed
+
+Swept for any log/print of a private key, an `AGE-SECRET-KEY-1…` value, an
+`spe_` enrollment token, or a decrypted credential, at **any** level:
+
+| Area | Result |
+|---|---|
+| `server/internal/agentmode/` | **The one real leak** — `persistIdentity`'s unconditional INFO line. Fixed. Remaining log lines carry only the path, the agent UID and the region. |
+| `server/internal/agents/` (`crypto.go`, `protocol.go`, `nonce.go`) | Clean — no logger at all. Enrollment tokens are minted and returned, never logged; only the SHA-256 is persisted (`db/models/agent.go` comments this explicitly). Errors wrap causes, never key bytes. |
+| `server/internal/checkworker/backend/` | Clean — `direct.go:140` and `ws.go:258` log decrypt/unseal *failures* with check/job/org UIDs and the error only; the comment at `direct.go:136` already states the never-log-a-config-value contract. `ws.go:708` logs `agent_uid` + region. |
+| `server/internal/crypto/credentials/` | Clean — the package imports no logger and prints nothing. |
+| Enrollment-token mint path (`handlers/agents/`, `handlers/agentws/`, `app/systemagents.go`) | Clean — `systemagents.go:104` explicitly notes it never logs the token; malformed-entry errors log the region only. Auth failures return static messages, never the presented token. |
+
+Repo-wide negative control: `grep -rn "PrivateKey\|X25519Identity\|AGE-SECRET"`
+intersected with any logging/printing call returns **zero** non-test hits.
+
+### CHANGELOG (Open question 2)
+
+`CHANGELOG.md` is generated end-to-end by release-please (`release-please-config.json`,
+`release-type: simple`) — there is no `Unreleased` section to hand-edit, and a manual
+entry would be overwritten by the next release PR. The fix therefore ships as a
+`fix(agent):` commit so it lands under **Bug Fixes** in the release notes; the release
+PR's changelog polish step should phrase it as: *the agent no longer logs its private
+keys; rotate any agent enrolled before this version*. No `Security` heading is
+configured in `changelog-sections` — adding one would be a separate config change.
+
+### Operator checklist — rotate the exposed fly agent (Proposal §6) — NOT DONE
+
+**No fly CLI operation was performed by this implementation.** `solidping-agent-nrt`
+(region `jp-1`) published its identity to fly's log stream on 2026-08-04 and is still
+exposed. The full checklist now also lives in `deploy/fly/README.md` ("Rotating an
+exposed agent identity"):
+
+1. Revoke the agent (dashboard → Private locations → agents → revoke).
+2. Destroy the machine **and its volume** — the volume carries `/data/agent-keys.json`.
+3. Mint a fresh enrollment token, redeploy, confirm the new agent enrolls and that its
+   logs show the path line and no base64.
+4. **Rotate the underlying check credentials** sealed to the old x25519 identity.
+   Automatic re-sealing to the new agent protects only future traffic; anyone holding
+   the leaked identity could already have decrypted the existing secrets.
