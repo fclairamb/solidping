@@ -234,5 +234,6 @@ func printKeyMaterial(
 
 	encoded := base64.StdEncoding.EncodeToString(raw)
 
-	fmt.Fprintf(out, "\n%s\nSP_AGENT_KEYS=%s\n%s\n\n", keyMaterialBanner, encoded, keyMaterialBanner)
+	// Best effort: a failed write to stdout is not worth failing the agent for.
+	_, _ = fmt.Fprintf(out, "\n%s\nSP_AGENT_KEYS=%s\n%s\n\n", keyMaterialBanner, encoded, keyMaterialBanner)
 }
