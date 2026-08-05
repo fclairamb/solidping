@@ -4856,6 +4856,11 @@ export interface PrivateRegion {
 export interface AgentInfo {
   uid: string;
   name: string;
+  /** Only populated on the fleet-wide view (useAllAgents) — "org" or "system". */
+  kind?: "org" | "system";
+  /** Owning org slug, only populated on the fleet-wide view. Absent/null for
+   * system agents, which have no owning organization. */
+  org?: string | null;
   region: string;
   fingerprint: string;
   status: "active" | "revoked";
@@ -4940,6 +4945,20 @@ export function useAgents(
       return response.data || [];
     },
     enabled: (options?.enabled ?? true) && !!org,
+    refetchInterval: options?.refetchInterval ?? 30_000,
+  });
+}
+
+/** Fleet-wide agent list (superadmin only): every org agent plus every
+ * platform-operated system agent, across all organizations. */
+export function useAllAgents(options?: { refetchInterval?: number; enabled?: boolean }) {
+  return useQuery({
+    queryKey: ["system-agents"],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: AgentInfo[] }>(`/api/v1/system/agents`);
+      return response.data || [];
+    },
+    enabled: options?.enabled ?? true,
     refetchInterval: options?.refetchInterval ?? 30_000,
   });
 }
