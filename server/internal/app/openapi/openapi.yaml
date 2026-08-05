@@ -7716,6 +7716,7 @@ components:
         - showResponseTime
         - historyDays
         - historyPeriod
+        - availabilityThresholds
       properties:
         uid:
           type: string
@@ -7786,6 +7787,19 @@ components:
             removed. Authenticated endpoints only.
           items:
             $ref: "#/components/schemas/DnsRecord"
+        settings:
+          $ref: "#/components/schemas/StatusPageSettings"
+          nullable: true
+          description: >-
+            Per-page display customization, mirroring the storage shape.
+            An unset section (e.g. availability absent) means "using the
+            default". Present on both admin and public payloads.
+        availabilityThresholds:
+          $ref: "#/components/schemas/AvailabilityThresholds"
+          description: >-
+            The RESOLVED effective availability thresholds (submitted value,
+            or the platform default when unset) — never null, so consumers
+            never need to know the defaults themselves.
         sections:
           type: array
           items:
@@ -7797,6 +7811,46 @@ components:
         createdAt:
           type: string
           format: date-time
+
+    AvailabilitySettings:
+      type: object
+      description: >-
+        Customizes the green/amber/red availability thresholds rendered on a
+        status page's bars. Omitted fields fall back to the platform defaults
+        (thresholdUp 99.9, thresholdDegraded 99.0).
+      properties:
+        thresholdUp:
+          type: number
+          format: double
+          description: Green floor — pct >= this renders "up". Default 99.9.
+        thresholdDegraded:
+          type: number
+          format: double
+          description: >-
+            Amber floor — pct >= this (and < thresholdUp) renders "degraded";
+            below it renders "down", subject to the small-bucket calibration
+            guard (a single failed sample never renders down). Default 99.0.
+
+    StatusPageSettings:
+      type: object
+      description: >-
+        Per-page display customization. Typed rather than a free-form map;
+        unknown keys are rejected on write (VALIDATION_ERROR).
+      properties:
+        availability:
+          $ref: "#/components/schemas/AvailabilitySettings"
+          nullable: true
+
+    AvailabilityThresholds:
+      type: object
+      required: [thresholdUp, thresholdDegraded]
+      properties:
+        thresholdUp:
+          type: number
+          format: double
+        thresholdDegraded:
+          type: number
+          format: double
 
     DnsRecord:
       type: object
@@ -7856,6 +7910,13 @@ components:
             Optional customer-owned hostname to bind to the new page. A fresh
             verification token is generated; verify it afterward via the
             custom-domain verify endpoint.
+        settings:
+          $ref: "#/components/schemas/StatusPageSettings"
+          description: >-
+            Optional page settings (e.g. availability thresholds) at create
+            time. Unknown keys are rejected (VALIDATION_ERROR). The effective
+            thresholds (submitted or default) must satisfy
+            0 < thresholdDegraded < thresholdUp <= 100.
 
     UpdateStatusPageRequest:
       type: object
@@ -7895,6 +7956,17 @@ components:
             Set/change the custom domain (non-empty), or clear it (null or "").
             Omit the field to leave the domain unchanged. Setting a new domain
             generates a fresh verification token and resets verification.
+        settings:
+          $ref: "#/components/schemas/StatusPageSettings"
+          nullable: true
+          description: >-
+            No deep merge. Omit the field to leave settings untouched entirely.
+            When present, each top-level section provided (e.g. availability)
+            replaces that section wholly (not a field-by-field merge); an
+            explicit `null` section resets it to defaults; a section not
+            mentioned is left untouched. Unknown keys are rejected
+            (VALIDATION_ERROR). The effective thresholds (submitted or
+            default) must satisfy 0 < thresholdDegraded < thresholdUp <= 100.
 
     StatusPageSection:
       type: object

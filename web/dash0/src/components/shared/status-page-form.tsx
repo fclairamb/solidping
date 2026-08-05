@@ -20,7 +20,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { StatusPage, StatusPagePeriod } from "@/api/hooks";
+import type { AvailabilitySettings, StatusPage, StatusPagePeriod } from "@/api/hooks";
 
 interface StatusPageFormData {
   name: string;
@@ -32,6 +32,10 @@ interface StatusPageFormData {
   showAvailability: boolean;
   showResponseTime: boolean;
   historyPeriod: StatusPagePeriod;
+  // Edit mode only (see StatusPageForm's mode==="edit" gate below). No deep
+  // merge: null resets the section to the platform defaults (99.9/99.0),
+  // an object replaces it wholly.
+  settings?: { availability: AvailabilitySettings | null };
 }
 
 export function StatusPageForm({
@@ -61,6 +65,15 @@ export function StatusPageForm({
   const [historyPeriod, setHistoryPeriod] = useState<StatusPagePeriod>(
     initialData?.historyPeriod ?? "90d"
   );
+  // Availability thresholds (edit mode only — defaults are right for a new
+  // page). Kept as raw strings so an empty field can mean "use the default"
+  // without fighting a numeric input's own empty-value coercion.
+  const [thresholdUpInput, setThresholdUpInput] = useState(
+    initialData?.settings?.availability?.thresholdUp?.toString() ?? ""
+  );
+  const [thresholdDegradedInput, setThresholdDegradedInput] = useState(
+    initialData?.settings?.availability?.thresholdDegraded?.toString() ?? ""
+  );
 
   useEffect(() => {
     if (!slugManuallyEdited && mode === "create") {
@@ -70,7 +83,36 @@ export function StatusPageForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onSubmit({ name, slug, description, visibility, isDefault, enabled, showAvailability, showResponseTime, historyPeriod });
+
+    const settings =
+      mode === "edit"
+        ? {
+            availability:
+              thresholdUpInput.trim() === "" && thresholdDegradedInput.trim() === ""
+                ? null
+                : {
+                    thresholdUp:
+                      thresholdUpInput.trim() === "" ? undefined : Number(thresholdUpInput),
+                    thresholdDegraded:
+                      thresholdDegradedInput.trim() === ""
+                        ? undefined
+                        : Number(thresholdDegradedInput),
+                  },
+          }
+        : undefined;
+
+    await onSubmit({
+      name,
+      slug,
+      description,
+      visibility,
+      isDefault,
+      enabled,
+      showAvailability,
+      showResponseTime,
+      historyPeriod,
+      settings,
+    });
   };
 
   return (
@@ -189,6 +231,44 @@ export function StatusPageForm({
             </div>
             <Switch checked={showAvailability} onCheckedChange={setShowAvailability} />
           </div>
+
+          {mode === "edit" && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2" data-testid="availability-thresholds">
+              <div className="space-y-2">
+                <Label htmlFor="thresholdUp">Up threshold (%)</Label>
+                <Input
+                  id="thresholdUp"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="any"
+                  inputMode="decimal"
+                  value={thresholdUpInput}
+                  onChange={(e) => setThresholdUpInput(e.target.value)}
+                  placeholder="99.9 (default)"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="thresholdDegraded">Degraded threshold (%)</Label>
+                <Input
+                  id="thresholdDegraded"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="any"
+                  inputMode="decimal"
+                  value={thresholdDegradedInput}
+                  onChange={(e) => setThresholdDegradedInput(e.target.value)}
+                  placeholder="99.0 (default)"
+                />
+                <p className="text-xs text-muted-foreground sm:col-span-2">
+                  Availability bars render green at or above the up threshold, amber
+                  between the two, and red below the degraded threshold. Leave a field
+                  empty to use the platform default.
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
