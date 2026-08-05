@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Plus, Search, RefreshCw, Pencil, Trash2, Wrench } from "lucide-react";
 import { toast } from "sonner";
@@ -40,9 +40,17 @@ import {
   maintenanceStatusBadgeVariant,
 } from "@/lib/maintenance-window-status";
 import { describeSchedule } from "@/lib/maintenance-window-schedule";
+import { useDebounce } from "@/lib/use-debounce";
+
+interface MaintenanceWindowsIndexSearch {
+  q?: string;
+}
 
 export const Route = createFileRoute("/orgs/$org/maintenance-windows/")({
   component: MaintenanceWindowsIndexPage,
+  validateSearch: (search: Record<string, unknown>): MaintenanceWindowsIndexSearch => ({
+    q: typeof search.q === "string" && search.q ? search.q : undefined,
+  }),
 });
 
 function ChecksCountCell({ org, uid }: { org: string; uid: string }) {
@@ -132,7 +140,20 @@ function MaintenanceWindowRow({
 function MaintenanceWindowsIndexPage() {
   const { t } = useTranslation(["maintenanceWindows", "common"]);
   const { org } = Route.useParams();
-  const [search, setSearch] = useState("");
+  const { q: qParam } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  // Seeded from the URL once on mount via a lazy initializer — the layout
+  // route otherwise races a second search-validation pass that can drop the
+  // param on a cold load (known dash0 pitfall, see checks.index.tsx). The
+  // debounced value is written back below so the URL stays in sync.
+  const [search, setSearch] = useState(() => qParam ?? "");
+  const debouncedSearch = useDebounce(search, 300);
+  useEffect(() => {
+    void navigate({
+      search: (prev) => ({ ...prev, q: debouncedSearch || undefined }),
+      replace: true,
+    });
+  }, [debouncedSearch, navigate]);
   const [deleteUid, setDeleteUid] = useState<string | null>(null);
 
   const {

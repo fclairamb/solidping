@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   Megaphone,
   Plus,
@@ -47,9 +47,17 @@ import {
 } from "@/components/ui/alert-dialog";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { PageHeader } from "@/components/shared/page-header";
+import { useDebounce } from "@/lib/use-debounce";
+
+interface StatusUpdatesIndexSearch {
+  q?: string;
+}
 
 export const Route = createFileRoute("/orgs/$org/status-updates/")({
   component: StatusUpdatesIndexPage,
+  validateSearch: (search: Record<string, unknown>): StatusUpdatesIndexSearch => ({
+    q: typeof search.q === "string" && search.q ? search.q : undefined,
+  }),
 });
 
 const STATUS_UPDATE_KINDS = [
@@ -168,7 +176,20 @@ function StatusUpdateRow({
 
 function StatusUpdatesIndexPage() {
   const { org } = Route.useParams();
-  const [search, setSearch] = useState("");
+  const { q: qParam } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  // Seeded from the URL once on mount via a lazy initializer — the layout
+  // route otherwise races a second search-validation pass that can drop the
+  // param on a cold load (known dash0 pitfall, see checks.index.tsx). The
+  // debounced value is written back below so the URL stays in sync.
+  const [search, setSearch] = useState(() => qParam ?? "");
+  const debouncedSearch = useDebounce(search, 300);
+  useEffect(() => {
+    void navigate({
+      search: (prev) => ({ ...prev, q: debouncedSearch || undefined }),
+      replace: true,
+    });
+  }, [debouncedSearch, navigate]);
   const [filterPageUid, setFilterPageUid] = useState<string>("all");
   const [filterSectionUid, setFilterSectionUid] = useState<string>("all");
   const [filterCheckUid, setFilterCheckUid] = useState<string>("all");
