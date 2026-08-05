@@ -176,3 +176,69 @@ test.describe("Status pages list header", () => {
     ).toHaveCount(0);
   });
 });
+
+test.describe("Status page availability thresholds", () => {
+  test("thresholds round-trip: set, save, reload, values persist", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Create a fresh status page.
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Status Pages" }).click();
+    await page.waitForURL(/\/status-pages$/);
+    await page.waitForLoadState("networkidle");
+
+    await page.getByRole("link", { name: "New Status Page" }).first().click();
+    await page.waitForURL(/\/status-pages\/new/);
+    await page.waitForLoadState("networkidle");
+
+    const suffix = Date.now().toString().slice(-9);
+    const name = `e2e-thresholds-${suffix}`;
+    await page.locator("#name").fill(name);
+    await page.locator("#slug").fill(`e2e-thresholds-${suffix}`.slice(0, 40));
+    await page.getByRole("button", { name: "Create Status Page" }).click();
+
+    // Not offered on the create form — only the edit form has these inputs.
+    await expect(page.getByTestId("availability-thresholds")).toHaveCount(0);
+
+    await page.waitForURL(/\/status-pages\/(?!new$)[^/]+$/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+
+    const statusPageUrl = page.url();
+    await page.goto(`${statusPageUrl}/edit`);
+    await page.waitForLoadState("networkidle");
+
+    // Empty by default (page thresholds unset ⇒ platform defaults).
+    const thresholdsSection = page.getByTestId("availability-thresholds");
+    await expect(thresholdsSection).toBeVisible();
+    const upInput = page.locator("#thresholdUp");
+    const degradedInput = page.locator("#thresholdDegraded");
+    await expect(upInput).toHaveValue("");
+    await expect(degradedInput).toHaveValue("");
+
+    // Set custom thresholds and save.
+    await upInput.fill("99.5");
+    await degradedInput.fill("98");
+    await page.getByRole("button", { name: "Save Changes" }).click();
+    await page.waitForURL(/\/status-pages\/(?!new$)[^/]+$/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+
+    // Reload the edit page — the custom thresholds must persist.
+    await page.goto(`${statusPageUrl}/edit`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.locator("#thresholdUp")).toHaveValue("99.5");
+    await expect(page.locator("#thresholdDegraded")).toHaveValue("98");
+
+    // Clearing both fields and saving resets to the platform defaults.
+    await page.locator("#thresholdUp").fill("");
+    await page.locator("#thresholdDegraded").fill("");
+    await page.getByRole("button", { name: "Save Changes" }).click();
+    await page.waitForURL(/\/status-pages\/(?!new$)[^/]+$/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+
+    await page.goto(`${statusPageUrl}/edit`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.locator("#thresholdUp")).toHaveValue("");
+    await expect(page.locator("#thresholdDegraded")).toHaveValue("");
+  });
+});
