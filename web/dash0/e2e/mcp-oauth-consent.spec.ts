@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
-import { test, API_BASE } from "./fixtures";
+import { test, API_BASE, freshLogin } from "./fixtures";
 
 /**
  * MCP OAuth 2.1 consent flow (spec 2026-06-20-03) — the browser legs an MCP
@@ -139,8 +139,14 @@ async function exchangeAndCallMCP(
 
 test.describe("MCP OAuth consent flow", () => {
   test("authenticated session with a valid cookie goes straight to consent", async ({
-    authenticatedPage: page,
+    page,
   }) => {
+    // Dedicated login rather than the shared worker session: this test
+    // exercises the real cookie a fresh login sets, and (like ":156" below)
+    // the shared session can be evicted by unrelated login churn elsewhere
+    // in the suite well before this file runs — see spec 2026-08-05-02.
+    await freshLogin(page);
+
     const clientId = await registerClient(page);
     const pkce = newPkcePair();
 
@@ -154,7 +160,7 @@ test.describe("MCP OAuth consent flow", () => {
   });
 
   test("SPA session without the access_token cookie resumes via the login bounce", async ({
-    authenticatedPage: page,
+    page,
   }) => {
     // THE regression case: localStorage holds a live session (as after an SSO
     // login or once the short-lived cookie lapsed on an idle tab) but the
@@ -162,6 +168,14 @@ test.describe("MCP OAuth consent flow", () => {
     // must bounce through /dash0/login, which refreshes the cookie and
     // resumes the authorize returnTo — instead of dead-ending on the
     // dashboard.
+    //
+    // Dedicated login rather than the shared worker session: this bounce
+    // needs a working `/auth/refresh`, which requires the session's
+    // refresh-token row to still exist. The shared session can be evicted
+    // by unrelated login churn elsewhere in the suite well before this file
+    // runs — see spec 2026-08-05-02.
+    await freshLogin(page);
+
     const clientId = await registerClient(page);
     const pkce = newPkcePair();
 

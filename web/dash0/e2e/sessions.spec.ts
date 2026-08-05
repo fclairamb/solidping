@@ -1,16 +1,28 @@
-import { test, expect } from "./fixtures";
+import { test, expect, freshLogin } from "./fixtures";
 
+// Every test here gets its own dedicated login instead of the shared
+// `authenticatedPage`/`authWorkerStorageState` fixture. That shared session
+// is minted once at worker start and never refreshed, so
+// `enforceSessionCap` (server/internal/handlers/auth/service.go) — which
+// prunes a user's `refresh` sessions down to 10 on every fresh login
+// elsewhere in the suite (login.spec.ts, mcp-oauth-consent.spec.ts,
+// membership-requests.spec.ts, this file's own "other session" contexts,
+// etc.) — eventually evicts it as the least-recently-active row well before
+// this file runs (60+ fresh logins land before this file starts in a full
+// suite run). This file specifically asserts on the session's own
+// `user_tokens` row surviving (isCurrent flag, an explicit refresh), so it
+// cannot ride the shared session. See spec 2026-08-05-02.
 test.describe("Sessions", () => {
   test("lists the current session with the current-session badge", async ({
-    authenticatedPage,
+    page,
   }) => {
-    const page = authenticatedPage;
+    await freshLogin(page);
 
     await page.goto("orgs/test/account/sessions");
     await page.waitForLoadState("networkidle");
 
-    // The login the fixture just performed is this page's own session — it
-    // must show up, and be flagged current.
+    // The login above is this page's own session — it must show up, and be
+    // flagged current.
     const currentBadge = page.getByTestId("session-current-badge");
     await expect(currentBadge).toBeVisible();
 
@@ -23,25 +35,16 @@ test.describe("Sessions", () => {
   });
 
   test("sign out other sessions deletes every session but the caller's own", async ({
-    authenticatedPage,
+    page,
     browser,
   }) => {
-    const page = authenticatedPage;
+    await freshLogin(page);
 
     // Open a second, independent session (its own browser context, separate
     // cookie/localStorage jar) so there's an "other" session to sign out.
     const otherContext = await browser.newContext();
     const otherPage = await otherContext.newPage();
-    await otherPage.goto("orgs/test/login");
-    await otherPage.waitForLoadState("networkidle");
-    await otherPage.getByTestId("login-title").waitFor({ state: "visible", timeout: 10000 });
-    await otherPage.getByTestId("login-email").fill("test@test.com");
-    await otherPage.getByTestId("login-password").fill("test");
-    await otherPage.getByTestId("login-submit").click();
-    await otherPage.waitForURL((url) => !url.pathname.includes("login"), {
-      timeout: 10000,
-    });
-    await otherPage.waitForLoadState("networkidle");
+    await freshLogin(otherPage);
 
     await page.goto("orgs/test/account/sessions");
     await page.waitForLoadState("networkidle");
@@ -78,23 +81,30 @@ test.describe("Sessions", () => {
   });
 
   test("revoking another session removes it from the list", async ({
-    authenticatedPage,
+    page,
     browser,
   }) => {
-    const page = authenticatedPage;
+    await freshLogin(page);
 
     const otherContext = await browser.newContext();
     const otherPage = await otherContext.newPage();
-    await otherPage.goto("orgs/test/login");
-    await otherPage.waitForLoadState("networkidle");
-    await otherPage.getByTestId("login-title").waitFor({ state: "visible", timeout: 10000 });
-    await otherPage.getByTestId("login-email").fill("test@test.com");
-    await otherPage.getByTestId("login-password").fill("test");
-    await otherPage.getByTestId("login-submit").click();
-    await otherPage.waitForURL((url) => !url.pathname.includes("login"), {
-      timeout: 10000,
-    });
-    await otherPage.waitForLoadState("networkidle");
+    await freshLogin(otherPage);
+
+    // Identify the session `otherPage` just created by uid (its own
+    // "current" row), rather than picking "the first non-current row" from
+    // the caller's list — that row is whichever stale session happens to
+    // sort first, which is not deterministic once sessions accumulate
+    // across a run (see spec 2026-08-05-02).
+    const otherSessionsResponse = await otherPage.request.get(
+      "/api/v1/orgs/test/tokens?type=refresh"
+    );
+    expect(otherSessionsResponse.status()).toBe(200);
+    const otherSessions = (await otherSessionsResponse.json()).data as Array<{
+      uid: string;
+      isCurrent?: boolean;
+    }>;
+    const otherSessionUid = otherSessions.find((s) => s.isCurrent)?.uid;
+    expect(otherSessionUid).toBeTruthy();
 
     await page.goto("orgs/test/account/sessions");
     await page.waitForLoadState("networkidle");
@@ -104,11 +114,7 @@ test.describe("Sessions", () => {
       .count();
     expect(rowCountBefore).toBeGreaterThanOrEqual(2);
 
-    // Find a non-current row and revoke it.
-    const otherRow = page
-      .locator("[data-testid^='session-row-']")
-      .filter({ hasNot: page.getByTestId("session-current-badge") })
-      .first();
+    const otherRow = page.getByTestId(`session-row-${otherSessionUid}`);
     await expect(otherRow).toBeVisible();
     await otherRow.locator("[data-testid^='session-revoke-button-']").click();
     await page.getByTestId("session-revoke-confirm").click();
@@ -117,6 +123,9 @@ test.describe("Sessions", () => {
     await expect(
       page.locator("[data-testid^='session-row-']")
     ).toHaveCount(rowCountBefore - 1);
+    await expect(
+      page.getByTestId(`session-row-${otherSessionUid}`)
+    ).toHaveCount(0);
 
     // Revocation invalidates the session's refresh token immediately — its
     // already-issued access token stays valid until natural expiry (that's
@@ -136,10 +145,8 @@ test.describe("Sessions", () => {
     await otherContext.close();
   });
 
-  test("the API tokens page never lists a session row", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
+  test("the API tokens page never lists a session row", async ({ page }) => {
+    await freshLogin(page);
 
     await page.goto("orgs/test/account/tokens");
     await page.waitForLoadState("networkidle");
