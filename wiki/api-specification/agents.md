@@ -63,3 +63,17 @@ heartbeat.
 
 ### DELETE /api/v1/orgs/:org/agents/:uid
 Deregister an agent. Its key is invalidated and further connects are refused.
+
+## Fleet-wide agent view
+
+Auth: **superadmin** (not org-scoped — this is the only surface that can see
+system agents, which have no owning org).
+
+### GET /api/v1/system/agents
+List every non-deleted agent across every organization, both org-enrolled and
+platform-operated `kind=system` agents. Each row carries `kind` (`org` |
+`system`) and `org` (owning org slug, `null` for system agents) in addition to
+the fields returned by the org-scoped list above. Read-only: there is no
+revoke action here — an org agent is revoked from its own org, and a system
+agent is retired by removing its token from
+`SP_SYSTEM_AGENT_ENROLLMENT_TOKENS`.
