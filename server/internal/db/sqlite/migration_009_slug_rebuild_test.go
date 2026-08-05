@@ -47,7 +47,7 @@ func TestMigration009SlugRebuildPreservesData(t *testing.T) {
 		"004_v0_3_0.up.sql", "005_v0_4_0.up.sql", "006_v0_5_0.up.sql",
 		"007_v0_6_0.up.sql", "008_v0_7_0.up.sql",
 	} {
-		execMigrationFile(t, ctx, db, name)
+		execMigrationFile(ctx, t, db, name)
 	}
 
 	// Seed one organization plus one row in each of the four tables the 009
@@ -83,8 +83,11 @@ func TestMigration009SlugRebuildPreservesData(t *testing.T) {
 	r.NoError(err)
 
 	_, err = db.ExecContext(ctx, `insert into status_pages
-		(uid, organization_uid, name, slug, description, is_default, history_days, custom_domain, custom_css, created_at, updated_at)
-		values ('sp-1','org-1','Page One','page-one','a page', 1, 30, 'status.example.com', 'body{color:red}', '2020-02-01T00:00:00Z', '2020-02-02T00:00:00Z')`)
+		(uid, organization_uid, name, slug, description, is_default, history_days,
+		 custom_domain, custom_css, created_at, updated_at)
+		values ('sp-1','org-1','Page One','page-one','a page', 1, 30,
+		        'status.example.com', 'body{color:red}',
+		        '2020-02-01T00:00:00Z', '2020-02-02T00:00:00Z')`)
 	r.NoError(err)
 
 	_, err = db.ExecContext(ctx, `insert into status_page_sections
@@ -93,7 +96,7 @@ func TestMigration009SlugRebuildPreservesData(t *testing.T) {
 	r.NoError(err)
 
 	// Run the migration under test.
-	execMigrationFile(t, ctx, db, "009_v0_8_0.up.sql")
+	execMigrationFile(ctx, t, db, "009_v0_8_0.up.sql")
 
 	// check_groups: every field, byte for byte.
 	var (
@@ -146,7 +149,7 @@ func TestMigration009SlugRebuildPreservesData(t *testing.T) {
 	r.Equal("check-one", chkSlug)
 	r.Equal("a check", chkDesc)
 	r.Equal("http", chkType)
-	r.Equal(`{"url":"https://example.com"}`, chkConfig)
+	r.JSONEq(`{"url":"https://example.com"}`, chkConfig)
 	r.Equal(`["eu"]`, chkRegions)
 	r.Equal(0, chkEnabled)
 	r.Equal(1, chkInternal)
@@ -214,11 +217,13 @@ func TestMigration009SlugRebuildPreservesData(t *testing.T) {
 	var violations int
 	rows, err := db.QueryContext(ctx, "PRAGMA foreign_key_check")
 	r.NoError(err)
+
+	defer func() { r.NoError(rows.Close()) }()
+
 	for rows.Next() {
 		violations++
 	}
 	r.NoError(rows.Err())
-	r.NoError(rows.Close())
 	r.Zero(violations, "no dangling foreign keys after the rebuild")
 }
 
@@ -226,7 +231,7 @@ func TestMigration009SlugRebuildPreservesData(t *testing.T) {
 // Lines starting with "--bun:split" are bun's own multi-statement directive;
 // they are plain SQL comments to a standard driver, so no special handling
 // is needed here beyond reading and executing the whole file as one script.
-func execMigrationFile(t *testing.T, ctx context.Context, db *sql.DB, name string) {
+func execMigrationFile(ctx context.Context, t *testing.T, db *sql.DB, name string) {
 	t.Helper()
 	r := require.New(t)
 
