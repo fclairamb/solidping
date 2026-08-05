@@ -3,6 +3,7 @@ package statuspages
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -730,6 +731,19 @@ func TestBadgeStatusPageParity_SameBucketsForSameData(t *testing.T) {
 	r.InDelta(66.6667, curPct, 0.01)
 	prevPct, _ := badgeBuckets[prevHour].AvailabilityPct()
 	r.InDelta(50.0, prevPct, 0.01)
+}
+
+// TestValidateSlugLengthBoundaries pins the 3-100 char slug length window
+// (raised from 3-40): 2 chars rejected, 3 accepted, 100 accepted, 101
+// rejected.
+func TestValidateSlugLengthBoundaries(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.ErrorIs(validateSlug("ab"), ErrInvalidSlugFormat, "2-char slug must be rejected")
+	r.NoError(validateSlug("abc"), "3-char slug must be accepted")
+	r.NoError(validateSlug("a"+strings.Repeat("b", 99)), "100-char slug must be accepted")
+	r.ErrorIs(validateSlug("a"+strings.Repeat("b", 100)), ErrInvalidSlugFormat, "101-char slug must be rejected")
 }
 
 func strPtr(s string) *string { return &s }

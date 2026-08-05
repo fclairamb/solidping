@@ -8,6 +8,7 @@ package checkgroups_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -87,4 +88,49 @@ func TestUpdateCheckGroupSlug(t *testing.T) {
 	stillCurrent, err := svc.GetCheckGroup(ctx, org.Slug, created.UID)
 	require.NoError(t, err)
 	require.Equal(t, newSlug, stillCurrent.Slug)
+}
+
+// TestCheckGroupSlugLengthBoundaries pins the 3-100 char slug length window
+// (raised from 3-40): 2 chars rejected, 3 accepted, 100 accepted, 101
+// rejected.
+func TestCheckGroupSlugLengthBoundaries(t *testing.T) {
+	t.Parallel()
+
+	dbSvc, err := sqlite.New(t.Context(), sqlite.Config{InMemory: true})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dbSvc.Close() })
+	require.NoError(t, dbSvc.Initialize(t.Context()))
+
+	ctx := context.Background()
+	org := models.NewOrganization("cg-slug-len", "")
+	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+	svc := checkgroups.NewService(dbSvc)
+
+	_, err = svc.CreateCheckGroup(ctx, org.Slug, checkgroups.CreateCheckGroupRequest{
+		Name: "Too Short",
+		Slug: "ab",
+	})
+	require.ErrorIs(t, err, checkgroups.ErrInvalidSlugFormat, "2-char slug must be rejected")
+
+	minGroup, err := svc.CreateCheckGroup(ctx, org.Slug, checkgroups.CreateCheckGroupRequest{
+		Name: "Min Length",
+		Slug: "abc",
+	})
+	require.NoError(t, err, "3-char slug must be accepted")
+	require.Equal(t, "abc", minGroup.Slug)
+
+	maxSlug := "a" + strings.Repeat("b", 99)
+	maxGroup, err := svc.CreateCheckGroup(ctx, org.Slug, checkgroups.CreateCheckGroupRequest{
+		Name: "Max Length",
+		Slug: maxSlug,
+	})
+	require.NoError(t, err, "100-char slug must be accepted")
+	require.Equal(t, maxSlug, maxGroup.Slug)
+
+	_, err = svc.CreateCheckGroup(ctx, org.Slug, checkgroups.CreateCheckGroupRequest{
+		Name: "Too Long",
+		Slug: "a" + strings.Repeat("b", 100),
+	})
+	require.ErrorIs(t, err, checkgroups.ErrInvalidSlugFormat, "101-char slug must be rejected")
 }

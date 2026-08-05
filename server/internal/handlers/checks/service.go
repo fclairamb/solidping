@@ -286,8 +286,8 @@ func validateFlappingFields(windowSeconds, backoffFactor, maxRecoveryMult *int) 
 }
 
 // validateSlug validates that a slug has a valid format.
-// Valid slugs: start with lowercase letter, followed by 2-49 lowercase letters, digits, or hyphens.
-// Total length: 3-50 characters. Must not look like a UUID.
+// Valid slugs: start with lowercase letter, followed by 2-99 lowercase letters, digits, or hyphens.
+// Total length: 3-100 characters. Must not look like a UUID.
 func validateSlug(slug string) error {
 	if slug == "" {
 		return nil // Empty slug is allowed (will be auto-generated)
