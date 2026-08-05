@@ -790,6 +790,10 @@ func (m *mockDBService) ListAgents(_ context.Context, _ string) ([]*models.Agent
 	panic("not implemented")
 }
 
+func (m *mockDBService) ListAllAgents(_ context.Context) ([]*models.Agent, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) ListActiveAgentsByRegion(
 	_ context.Context, _, _ string,
 ) ([]*models.Agent, error) {
