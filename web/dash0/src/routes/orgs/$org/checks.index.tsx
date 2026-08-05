@@ -114,6 +114,7 @@ interface ChecksIndexSearch {
   labels?: string;
   status?: string;
   groupBy?: GroupByMode;
+  q?: string;
 }
 
 // Group slugs are 3-100 chars: a lowercase letter followed by 2-99 lowercase
@@ -158,6 +159,7 @@ export const Route = createFileRoute("/orgs/$org/checks/")({
     groupBy: GROUP_BY_MODES.includes(search.groupBy as GroupByMode)
       ? (search.groupBy as GroupByMode)
       : undefined,
+    q: typeof search.q === "string" && search.q ? search.q : undefined,
   }),
 });
 
@@ -871,7 +873,12 @@ function ChecksIndexPage() {
   const { t } = useTranslation("checks");
   const { t: tc } = useTranslation("common");
   const { org } = Route.useParams();
-  const { labels: labelsParam, status: statusParam, groupBy: groupByParam } = Route.useSearch();
+  const {
+    labels: labelsParam,
+    status: statusParam,
+    groupBy: groupByParam,
+    q: qParam,
+  } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const labelFilters = parseLabelsParam(labelsParam);
   const queryClient = useQueryClient();
@@ -891,7 +898,14 @@ function ChecksIndexPage() {
     });
   };
 
-  const [search, setSearch] = useState("");
+  // The free-text search box mirrors `?q=` in the URL so a filtered view is
+  // bookmarkable/shareable and survives a reload. We seed local state from the
+  // URL once on mount via a lazy initializer (the layout route otherwise races
+  // a second search-validation pass that can drop the param on a cold load —
+  // same pitfall/fix as discovery.new.tsx's `type` state) and write the
+  // debounced value back to the URL on every change so the URL stays the
+  // source of truth.
+  const [search, setSearch] = useState(() => qParam ?? "");
   const [internalFilter, setInternalFilter] = useState<string>("false");
   const [deleteCheckUid, setDeleteCheckUid] = useState<string | null>(null);
   const [showNewGroup, setShowNewGroup] = useState(false);
@@ -904,6 +918,13 @@ function ChecksIndexPage() {
   >(undefined);
   const [changeGroupCheck, setChangeGroupCheck] = useState<Check | null>(null);
   const debouncedSearch = useDebounce(search, 300);
+
+  useEffect(() => {
+    void navigate({
+      search: (prev) => ({ ...prev, q: debouncedSearch || undefined }),
+      replace: true,
+    });
+  }, [debouncedSearch, navigate]);
 
   // True when any of the four filter dimensions narrows the check list away
   // from its default view: free-text search, the status select, the label
