@@ -98,6 +98,47 @@ open feature branches (`feat/incidents`, `feature/ha`, `feat/teams`, …) that m
 mean work is happening off the default branch without being pushed. Re-verify the
 release feed before treating this as durable.
 
+**Re-verified 2026-08-01 — unchanged.** Still 0.0.46 (2026-04-10), last push
+still 2026-05-24, open issues 90, stars 1,157 → **1,165**. The gap is now ~3.7
+months without a release and ~2.3 months without a commit, with inbound interest
+still growing. The 2026-07-26 condition for acting on this was "if the gap holds
+for ~a month"; six days is not that. `track: true` retained, still not used in
+copy — a solo maintainer's quiet stretch is not a shutdown. Re-check next poll.
+
+### Kuvasz — https://kuvasz-uptime.dev  ·  github.com/kuvasz-uptime/kuvasz
+Self-hosted OSS uptime **and SSL** monitor, Kotlin, AGPL-3.0, **571★** / 34 forks,
+created 2020-07 and still shipping (v4.0.1 2026-06-17, **v4.1.0 2026-07-14**, repo
+pushed the day it was surfaced). A mature rival the listening pipeline had simply
+never surfaced before 2026-07-28 — it predates most of this page.
+**Ships:** HTTP monitoring (adjustable intervals, custom headers, keyword matching,
+expected status codes, response-time thresholds); daily SSL-certificate expiry
+checks; push/"cron" heartbeat monitors; ICMP ping monitors — **4 check types**.
+Per-monitor notification routing across email / Slack / Discord / Telegram /
+PagerDuty / custom webhooks. Public **and private** brandable status pages,
+maintenance windows, full REST API, monitors declared as YAML (IaC), **Prometheus
+and OTLP** metric exporters, official Home Assistant integration, live demo.
+**Ships an MCP server** (built in since v4.0.0; experimental, disabled by default):
+query monitor status, view incidents, create/toggle monitors from Claude, Cursor,
+or any MCP client.
+**Significance — this is the entry that changes a positioning line.** On 2026-07-21
+(UptimeMonitoring.com) the "AI-native" claim was narrowed to *self-hosted* MCP on
+the reasoning that every MCP-shipping rival was SaaS. Kuvasz is a 571★ AGPL
+self-hosted monitor with an MCP server, so the qualifier no longer separates us:
+MCP belongs in the feature list, not in the positioning. Same arc as multi-probe
+consensus (UpWatch, 2026-07-27) — two candidate differentiators commoditised in
+five weeks.
+**Where SolidPing holds:** 38 check types vs 4; distributed multi-region workers
+and private/deported locations (Kuvasz probes only from the single node it runs
+on — no cross-region confirmation); built-in on-call schedules and multi-step
+escalation (Kuvasz hands off to PagerDuty).
+**Parity worth noticing:** config-as-code. Kuvasz puts YAML-declared monitors on
+its homepage; SolidPing has YAML export/import/apply via API + CLI and says so
+almost nowhere. Kuvasz is genuinely ahead only on OTLP export (we expose
+Prometheus) and the Home Assistant integration.
+*Watch:* multi-node / remote probing (would close our last structural gap), and
+the MCP server leaving experimental. Surfaced 2026-07-28 via @selfhosted_bot
+Mastodon repost (bot-announced → intel, not a lead).
+
 ### OneUptime — https://oneuptime.com
 Open-source observability platform (uptime + APM + status pages + incident mgmt +
 on-call), both SaaS and self-hostable. Likely the closest **functional** rival:
@@ -105,6 +146,20 @@ broader scope than SolidPing (APM, logs, sessions), heavier deploy footprint tha
 the single binary. Actively producing "Uptime Kuma vs OneUptime" SEO content —
 tracking their moves maps where "uptime kuma alternative" demand lives. Surfaced
 2026-05-05 via OneUptime/blog#93.
+
+**Advertised vs shipped, self-hosted (2026-08-01).** OneUptime's product page
+advertises **1-second check intervals**; a self-hosted install (v11.7.3, Docker
+Compose, `oneuptime/probe:release`) floors at **1 minute**
+([#2937](https://github.com/OneUptime/oneuptime/issues/2937), open since
+2026-07-30, 0 replies). The reporter's stated workarounds are to "continue using
+Uptime Kuma for 20-second checks" or "maintain a custom patched OneUptime Probe".
+Two things follow. (1) A factual data point for the interval table in
+`comparison.md` — SolidPing's verified floor is 10s self-hosted, unpaywalled.
+(2) A caution that generalises past OneUptime: **advertised intervals in this
+market are frequently SaaS-only figures**, so verify against implementations
+before entering any competitor's number into a comparison. Do not turn this into
+attack copy (§9 — no trashing competitors); it is a self-hosted-parity gap in a
+peer OSS project, and the honest use is our own verified number.
 
 ### OpenStatus — https://www.openstatus.dev
 Open-source status page + uptime monitoring (OSS + paid SaaS), 8k+★, SOC2-ready
@@ -287,7 +342,7 @@ projects, content-farm SEO, and paid templates. Not head-to-head rivals.
   — **no email**. Surfaced 2026-07-21 (Show HN 48919840, 3 pts / 0 comments,
   author `luciandan`). Significance: first rival built MCP-FIRST (not a bolt-on
   MCP endpoint like Tickstem/Uptime.com/exit1.dev) — confirms MCP is now contested
-  table-stakes. SolidPing's edge holds on 32 check types (vs HTTP-only), OSS
+  table-stakes. SolidPing's edge holds on 38 check types (vs HTTP-only), OSS
   self-host (vs SaaS-only + hosted MCP), and built-in on-call. Watch: paid pricing
   and whether it adds non-HTTP check types.
 - **Watchpost** (github.com/brod-dev/watchpost) — "Tiny self-hosted uptime monitor
@@ -333,3 +388,47 @@ projects, content-farm SEO, and paid templates. Not head-to-head rivals.
   platform claims to already do. Flip to `track: true` if Temps ships genuine
   off-host probing or starts ranking for "uptime monitoring" queries.
   Surfaced 2026-07-27 via its own PR #446.
+- **Tindra** (tindra.dev, @blendbyte) — EU/German self-hosted Sentry alternative
+  bundling "errors, performance, uptime and cron monitoring in a single Go binary
+  + Postgres", self-host or vendor-hosted in the EU. Pitch is anti-Sentry
+  operational weight: "Sentry's self-hosted docker-compose.yml defines 71 services
+  by default. We wanted one." Surfaced 2026-07-28 (mastodon.social self-promo).
+  Traction unverified — no public repo found, licence unstated, homepage is
+  JS-rendered and was not extracted. Second **bundler** in two days (after Temps)
+  and the second entrant in three days to reuse the "one Go binary" hook (after
+  Watchpost): monitoring keeps arriving as a feature of something else. The
+  shared-fate counter that applies to Temps applies to its uptime half too if the
+  monitor runs beside the app it watches. Re-check for a repo, licence and pricing;
+  flip to `track: true` only on external probing plus real traction.
+
+
+### Overcheck — github.com/overcheck/overcheck
+Self-hosted uptime monitoring, TypeScript, AGPL-3.0, created 2026-07-07, last
+push 2026-07-20, **0★**, no repo description. Show HN launch surfaced 2026-08-05
+— i.e. the repo was already two weeks stale at its own launch. `track: false`;
+no traction to speak of.
+Notable only for its feature selection: the Show HN headline is "self-hosted
+uptime monitoring, **API and multi-user access**", which is two of the three
+things SolidPing leads with against Uptime Kuma. Kuma's single-user ceiling is
+now common knowledge, and new entrants aim straight at it — that shared target
+is worth more than this particular project.
+
+### Sentivel — https://www.sentivel.com
+SaaS status pages with uptime monitoring built in, plus **dependency tracking**:
+it watches the upstream providers you build on and surfaces their incidents on
+your own status page. Positioning line: "Bad days happen. Have a good page." /
+"Customers will forgive an outage. They won't forgive silence." Free tier, no
+card required. Show HN launch surfaced 2026-08-05. `track: false` — SaaS-only,
+brand new, traction unverified.
+
+**Why it is worth more attention than its star count.** Every notable entrant
+since late June crowded an axis SolidPing already occupied — multi-region
+consensus (Vigilmon, UptimeMonitoring.com, UpWatch), bundling (Temps, Tindra),
+MCP (Kuvasz). Sentivel is the first in weeks to open a *different* question:
+not "is my service up" but "is anything I depend on down". Nobody else in this
+catalogue does upstream-dependency status aggregation, and for a team sitting on
+a stack of managed services it is a real question.
+If it gains traction, the strategic call for SolidPing is whether
+upstream-dependency awareness belongs in the product at all or is honestly a
+different product. Recording the angle now so the decision is not made under
+time pressure later.

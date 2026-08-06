@@ -83,10 +83,21 @@ headline built on "we confirm from several places" as no longer distinguishing,
 and lead instead with the half none of them can copy: **the probes run inside the
 customer's own network, self-hosted**.
 
+**Axis 4 — "our monitor talks to your AI agent" (MCP, 2026-07-28).**
+Tickstem, Uptime.com and exit1.dev bolted MCP endpoints on; UptimeMonitoring.com
+was built MCP-first (2026-07-21); **Kuvasz now ships an MCP server in a 571★ AGPL
+self-hosted binary** (v4.0.0, experimental). That closes the last gap in the
+sequence — MCP exists on both the SaaS and the self-hosted side of the market, so
+neither "AI-native" nor "self-hosted MCP" distinguishes SolidPing any more. Third
+axis to commoditise in five weeks (after consensus, Axis 2). Ship it, list it,
+don't lead with it.
+
 **Axis 3 — "your platform already monitors your apps" (bundling, 2026-07-27).**
 The self-hoster segment is increasingly served monitoring as a bundled feature of
 something else: Temps (563★ Rust PaaS, README sells it as replacing "Better Uptime
-/ Pingdom ($20+/mo)" at $0), plus the Coolify / Dokploy / Zoraxy built-ins. This is
+/ Pingdom ($20+/mo)" at $0), Tindra (2026-07-28 — errors + performance + uptime +
+cron in one Go binary, EU-hosted or self-hosted), plus the Coolify / Dokploy /
+Zoraxy built-ins. This is
 a distribution threat, not a capability one — nobody installs a second tool for
 something their platform claims to already do.
 *Counter (honest, no trashing):* bundled monitors are **platform-internal** — they
@@ -102,7 +113,7 @@ head-on on the self-hoster page; it does not deserve a `/vs/` page.
 - *Axis 2:* real distributed workers across regions for consensus + private-network
   probing, built in — not a paid add-on tier. And self-hosted: the consensus
   vantage points can be *yours*, which no SaaS on this list offers.
-- *Axis 3:* an external observer with its own fate, plus 32 check types — the two
+- *Axis 3:* an external observer with its own fate, plus 38 check types — the two
   things a platform built-in structurally cannot provide.
 
 **Recommendation:** pair both axes in a single headline, because no single
@@ -118,6 +129,47 @@ against the closest same-lane project.
 2026-03-06 — a free-tier incumbent left the market, and its users need a new home.
 This is a concrete, time-boxed displacement window: lead with "self-host it and it
 can't be sunset on you," plus a low-friction import path. See messaging hook #10.
+
+> **The import path is not hypothetical (verified 2026-08-01):** SolidPing ships
+> importers for Uptime Kuma, Gatus and Better Stack
+> (`server/internal/handlers/checks/importers/`). Every displacement window in
+> this document — Freshping's shutdown, Peekaping's stall — has a concrete
+> operational answer we have so far failed to mention in copy. See
+> `comparison.md` § Migration importers.
+
+### Axis 5 — check frequency, and a rule for telling axes apart (2026-08-01)
+
+By 2026-07-28, three of the axes tracked above had stopped distinguishing
+SolidPing at all: multi-region consensus (three rivals headlined it inside five
+weeks), bundling, and MCP (Kuvasz, a 571★ AGPL *self-hosted* monitor, shipped an
+MCP server six days after we had narrowed our claim to "self-hosted MCP"
+precisely because every MCP rival until then was SaaS).
+
+**Axis 5 is check frequency, and it is a different kind of axis.** SolidPing's
+floor is 10 seconds, self-hosted, unlimited, not tier-gated — verified in source
+(`GlobalMinPeriod`, `checkerdef/types.go:240`), not in marketing.
+
+**The rule worth extracting: sort positioning claims by what stops a competitor
+from writing the same sentence next week.**
+
+- If the answer is "nothing", it is a *feature-list item*, not a positioning
+  line. Consensus, bundling and MCP were all in this category — each is a
+  sentence on a landing page, and each was duplicated within weeks.
+- If the answer is an implementation cost or an architectural property, it can
+  carry positioning. Protocol breadth (38 check types vs Kuvasz's 4) means
+  building 34 checkers. In-customer-network probing is an architecture. A check
+  interval floor is a property of the results/aggregation model.
+
+The cleanest demonstration in the whole registry: **OneUptime advertises
+1-second checks on its product page and ships a 1-minute floor self-hosted**
+([#2937](https://github.com/OneUptime/oneuptime/issues/2937), open, 2026-07-30).
+The claim cost nothing; the capability was not there. Applying the rule above at
+the time would have caught the "self-hosted MCP" line before it expired.
+
+**Copy discipline for Axis 5:** state the four-part combination — sub-minute,
+self-hosted, unlimited, unpaywalled. Do **not** claim "fastest": SaaS vendors
+sell 1-second checks and Uptime Kuma reaches ~20 seconds. The combination is
+what nobody else offers; the superlative is false and checkable.
 
 ---
 
@@ -151,8 +203,15 @@ targets:
    *Caveat (2026-07-21): UptimeMonitoring.com (Monitive) launched MCP-FIRST —
    the whole product is "create/manage monitors by asking Claude/ChatGPT/Cursor."
    MCP is now contested table-stakes, not a differentiator. Hold the line on
-   "self-hosted MCP" AND pair it with the real moat (32 check types vs their
+   "self-hosted MCP" AND pair it with the real moat (38 check types vs their
    HTTP-only, OSS self-host vs SaaS-only, built-in on-call).*
+   **Caveat (2026-07-28) — retire this hook as a headline.** Kuvasz
+   (571★, AGPL, self-hosted, Kotlin) ships a built-in MCP server since v4.0.0.
+   The 2026-07-21 fallback assumed every MCP rival was SaaS, so "self-hosted MCP"
+   still separated us; it no longer does. MCP moves to the **feature list**
+   ("MCP server included, self-hosted") and out of the positioning line. What
+   remains defensible is protocol breadth (38 vs 4) and probes that run inside
+   the customer's own network. See indie-watch.md → Kuvasz.
 10. **"Freshping shut down. Land somewhere you own."**
    → Freshping (Freshworks) closed 2026-03-06; its free-tier users are actively
    looking for a home. Lead with self-host (nothing to shut down on you) + a free
