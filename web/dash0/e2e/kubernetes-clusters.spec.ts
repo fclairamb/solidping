@@ -62,55 +62,67 @@ test.describe("Kubernetes cluster connections", () => {
     );
     const clusterUid = page.url().split("/").pop()!;
 
-    // 2. The public apiServer setting is stored and queryable. (The token is
-    //    split into the encrypted private side when encryption is enabled —
-    //    covered by the backend unit test TestCreateKubernetesConnectionEncryptsToken;
-    //    the e2e server may run with encryption disabled, so we assert only the
-    //    always-true public side here.)
-    const detail = await page.request
-      .get(`${API_BASE}/api/v1/orgs/test/integrations/${clusterUid}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      .then((r) => r.json());
-    expect(detail.type).toBe("kubernetes");
-    expect(detail.settings?.apiServer).toBe("https://10.0.0.1:6443");
+    // Everything from here on must guarantee cleanup even if an assertion
+    // throws mid-test: this test creates a REAL kubernetes integration in
+    // the shared "test" org via the UI, and other specs (e.g.
+    // discovery.spec.ts's "Kubernetes method option is hidden when no
+    // cluster connection exists") assert that org has none. A failure
+    // partway through — before the UI delete step below — used to abort the
+    // test and leak the connection, which then intermittently failed that
+    // unrelated discovery.spec.ts assertion whenever it ran later against
+    // the same server/DB (see spec 2026-08-06-01, resolved open question 2).
+    try {
+      // 2. The public apiServer setting is stored and queryable. (The token is
+      //    split into the encrypted private side when encryption is enabled —
+      //    covered by the backend unit test TestCreateKubernetesConnectionEncryptsToken;
+      //    the e2e server may run with encryption disabled, so we assert only the
+      //    always-true public side here.)
+      const detail = await page.request
+        .get(`${API_BASE}/api/v1/orgs/test/integrations/${clusterUid}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        .then((r) => r.json());
+      expect(detail.type).toBe("kubernetes");
+      expect(detail.settings?.apiServer).toBe("https://10.0.0.1:6443");
 
-    // 3. Test connection (mock the probe so it never hits a real cluster).
-    await page.waitForLoadState("networkidle");
-    await page.route(
-      `**/api/v1/orgs/test/integrations/${clusterUid}/test`,
-      async (route) => {
-        if (route.request().method() === "POST") {
-          await route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify({
-              success: true,
-              statusCode: 200,
-              durationMs: 34,
-              detail: "Connected to cluster v1.30.0",
-            }),
-          });
-          return;
-        }
-        await route.continue();
-      },
-    );
+      // 3. Test connection (mock the probe so it never hits a real cluster).
+      await page.waitForLoadState("networkidle");
+      await page.route(
+        `**/api/v1/orgs/test/integrations/${clusterUid}/test`,
+        async (route) => {
+          if (route.request().method() === "POST") {
+            await route.fulfill({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({
+                success: true,
+                statusCode: 200,
+                durationMs: 34,
+                detail: "Connected to cluster v1.30.0",
+              }),
+            });
+            return;
+          }
+          await route.continue();
+        },
+      );
 
-    await page.getByTestId("kubernetes-send-test").click();
-    const badge = page.getByTestId("kubernetes-test-result");
-    await expect(badge).toBeVisible();
-    await expect(badge).toContainText("v1.30.0");
+      await page.getByTestId("kubernetes-send-test").click();
+      const badge = page.getByTestId("kubernetes-test-result");
+      await expect(badge).toBeVisible();
+      await expect(badge).toContainText("v1.30.0");
 
-    // 4. Delete via the UI.
-    await page.getByRole("button", { name: /delete integration/i }).click();
-    const dialog = page.getByRole("alertdialog");
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: /delete/i }).click();
-    await page.waitForURL((url) => url.pathname.endsWith("/integrations"));
-
-    // Defensive cleanup if the UI delete somehow didn't land.
-    await deleteConnection(page, token, clusterUid);
+      // 4. Delete via the UI.
+      await page.getByRole("button", { name: /delete integration/i }).click();
+      const dialog = page.getByRole("alertdialog");
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole("button", { name: /delete/i }).click();
+      await page.waitForURL((url) => url.pathname.endsWith("/integrations"));
+    } finally {
+      // Defensive cleanup if the UI delete somehow didn't land, or an
+      // earlier assertion threw before reaching it.
+      await deleteConnection(page, token, clusterUid);
+    }
   });
 
   test("in-cluster auth mode hides credential fields", async ({
