@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/fclairamb/solidping/compare/v0.8.0...v0.9.0) (2026-08-07)
+
+
+### Features
+
+* config-as-code CLI, SP_NODE_NAME worker identity, docs showcase media, and agent key redaction ([#198](https://github.com/fclairamb/solidping/issues/198)) ([ec971d6](https://github.com/fclairamb/solidping/commit/ec971d676c3a120b89803bfedd8f87c45ed38396))
+
 ## [Unreleased]
 
 ### Features
