@@ -28,12 +28,18 @@ const WorkerHostnameMaxLen = 15
 
 var workerSlugRegexp = regexp.MustCompile(WorkerSlugPattern)
 
+// unknownHostname is the placeholder used when os.Hostname() fails. Historic
+// value, preserved so the derived slug is unchanged.
+const unknownHostname = "unknown"
+
 // ErrInvalidWorkerSlug is returned when the effective worker slug (override or
 // hostname-derived) cannot satisfy the database CHECK constraint.
 var ErrInvalidWorkerSlug = errors.New("invalid worker slug")
 
 // osHostname is indirected so tests can drive the hostname-derived path
 // deterministically.
+//
+//nolint:gochecknoglobals // test seam, never mutated outside _test.go files
 var osHostname = os.Hostname
 
 // WorkerIdentity is the slug/name pair a `solidping` process registers its
@@ -72,7 +78,7 @@ func resolveWorkerIdentity(override string, hostnameFn func() (string, error)) W
 
 	hostname, err := hostnameFn()
 	if err != nil {
-		hostname = "unknown"
+		hostname = unknownHostname
 	}
 
 	raw := hostname
@@ -121,7 +127,8 @@ func (i WorkerIdentity) WarnIfTruncated(ctx context.Context, logger *slog.Logger
 	}
 
 	logger.WarnContext(ctx,
-		"Worker hostname truncated to build the worker slug; hosts sharing this prefix will collapse onto the same workers row — set SP_NODE_NAME to pin an explicit identity",
+		"Worker hostname truncated to build the worker slug; hosts sharing this "+
+			"prefix collapse onto the same workers row — set SP_NODE_NAME to pin an identity",
 		"hostname", i.Hostname,
 		"slug", i.Slug,
 		"maxLength", WorkerHostnameMaxLen,

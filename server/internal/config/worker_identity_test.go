@@ -3,9 +3,8 @@ package config
 import (
 	"bytes"
 	"context"
-	"errors"
 	"log/slog"
-	"strings"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -61,12 +60,10 @@ func TestResolveWorkerIdentity_Override(t *testing.T) {
 }
 
 // TestResolveWorkerIdentity_HostnameFallback: with no override, the historic
-// behaviour is preserved byte-for-byte — 15-char truncation, lowercased slug,
+// behavior is preserved byte-for-byte — 15-char truncation, lowercased slug,
 // raw-case name, and "unknown" when os.Hostname() errors.
 func TestResolveWorkerIdentity_HostnameFallback(t *testing.T) {
 	t.Parallel()
-
-	hostnameErr := errors.New("no hostname")
 
 	cases := []struct {
 		name          string
@@ -103,9 +100,9 @@ func TestResolveWorkerIdentity_HostnameFallback(t *testing.T) {
 		},
 		{
 			name:         "hostname error falls back to unknown",
-			hostnameFn:   func() (string, error) { return "", hostnameErr },
-			wantSlug:     "unknown",
-			wantWorkName: "unknown",
+			hostnameFn:   func() (string, error) { return "", os.ErrNotExist },
+			wantSlug:     unknownHostname,
+			wantWorkName: unknownHostname,
 		},
 	}
 
@@ -155,8 +152,8 @@ func TestWorkerIdentityValidate_Invalid(t *testing.T) {
 		},
 		{
 			name:     "override with uppercase",
-			override: "SolidPing",
-			wantIn:   []string{"SolidPing", "SP_NODE_NAME"},
+			override: "Worker-EU2",
+			wantIn:   []string{"Worker-EU2", "SP_NODE_NAME"},
 		},
 		{
 			name:     "override too short",
@@ -318,5 +315,5 @@ func TestWorkerSlugPatternMatchesMigration(t *testing.T) {
 
 	r := require.New(t)
 	r.Equal(`^[a-z][a-z0-9-]{2,20}$`, WorkerSlugPattern)
-	r.False(strings.Contains(WorkerSlugPattern, " "))
+	r.NotContains(WorkerSlugPattern, " ")
 }

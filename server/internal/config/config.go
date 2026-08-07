@@ -416,7 +416,7 @@ type NodeConfig struct {
 	Region string `koanf:"region"` // Node region (required for checks role)
 	// Name overrides the worker slug/name this process registers under
 	// (SP_NODE_NAME). Empty means "derive it from os.Hostname()", which is the
-	// historic behaviour. Set it wherever the hostname is not stable, not
+	// historic behavior. Set it wherever the hostname is not stable, not
 	// unique within the first 15 characters, or not slug-legal — most notably
 	// Kubernetes pods running with `hostNetwork: true`, where the host UTS
 	// namespace makes os.Hostname() return the (dotted) node name.
@@ -1847,30 +1847,8 @@ func (c *Config) Validate() error {
 		return err
 	}
 
-	// Validate node role
-	if !slices.Contains(ValidNodeRoles(), c.Node.Role) {
-		return fmt.Errorf("%w, got '%s'", ErrInvalidNodeRole, c.Node.Role)
-	}
-
-	// Validate checks role requires region
-	if c.Node.Role == NodeRoleChecks && c.Node.Region == "" {
-		return ErrRegionRequiredForChecks
-	}
-
-	// Validate agent role requires a server URL (the enrollment token is only
-	// needed on the very first run — a persisted identity replaces it).
-	if c.Node.Role == NodeRoleAgent && c.Agent.ServerURL == "" {
-		return ErrAgentServerURLRequired
-	}
-
-	// Validate the worker identity for any node that registers a `workers` row
-	// (check worker and/or job worker). Doing it here turns an opaque
-	// SQLSTATE=23514 CHECK violation at INSERT time into a startup error naming
-	// the offending value and SP_NODE_NAME.
-	if c.ShouldRunChecks() || c.ShouldRunJobs() {
-		if err := c.WorkerIdentity().Validate(); err != nil {
-			return err
-		}
+	if err := c.validateNodeConfig(); err != nil {
+		return err
 	}
 
 	// Validate aggregation retention values are positive
@@ -1902,6 +1880,38 @@ func (c *Config) Validate() error {
 
 	if err := validateCustomDomainTLSConfig(&c.Server, &c.ACME); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// validateNodeConfig validates the node block: the role itself, the
+// role-specific requirements, and the worker identity this process would
+// register under.
+func (c *Config) validateNodeConfig() error {
+	if !slices.Contains(ValidNodeRoles(), c.Node.Role) {
+		return fmt.Errorf("%w, got '%s'", ErrInvalidNodeRole, c.Node.Role)
+	}
+
+	// The checks role needs a region.
+	if c.Node.Role == NodeRoleChecks && c.Node.Region == "" {
+		return ErrRegionRequiredForChecks
+	}
+
+	// The agent role needs a server URL (the enrollment token is only needed on
+	// the very first run — a persisted identity replaces it).
+	if c.Node.Role == NodeRoleAgent && c.Agent.ServerURL == "" {
+		return ErrAgentServerURLRequired
+	}
+
+	// Any node that registers a `workers` row (check worker and/or job worker)
+	// must carry a slug the database CHECK constraint accepts. Validating here
+	// turns an opaque SQLSTATE=23514 at INSERT time into a startup error naming
+	// the offending value and SP_NODE_NAME.
+	if c.ShouldRunChecks() || c.ShouldRunJobs() {
+		if err := c.WorkerIdentity().Validate(); err != nil {
+			return err
+		}
 	}
 
 	return nil
