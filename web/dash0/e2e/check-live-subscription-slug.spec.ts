@@ -1,5 +1,5 @@
 import type { WebSocket } from "@playwright/test";
-import { test, expect, type Page } from "./fixtures";
+import { test, expect, type Page, API_BASE } from "./fixtures";
 
 // Regression coverage for the bug where the check detail page subscribed to
 // the realtime WS scope with the raw `$checkUid` route param, which may be a
@@ -10,10 +10,6 @@ import { test, expect, type Page } from "./fixtures";
 // broken). The fix: the page now always subscribes with `check.uid` from
 // the already-loaded check response, and any WS subscription error is
 // surfaced via a visible, non-blocking badge instead of being dropped.
-
-const API_BASE = (
-  process.env.E2E_BASE_URL ?? "http://localhost:4000/dash0/"
-).replace(/\/dash0\/?$/, "");
 
 async function getAuthToken(page: Page): Promise<string> {
   const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {

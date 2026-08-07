@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "./fixtures";
+import { test, expect, type Page, API_BASE } from "./fixtures";
 
 // Regression coverage for issue #127 / spec 2026-07-14-03: the check detail
 // page fires `GET /incidents?checkUid=$checkUid` using the raw route param,
@@ -14,10 +14,6 @@ import { test, expect, type Page } from "./fixtures";
 // durable fix, covered by the Go regression tests in
 // server/internal/handlers/incidents/list_by_slug_test.go and
 // list_by_slug_postgres_test.go).
-
-const API_BASE = (
-  process.env.E2E_BASE_URL ?? "http://localhost:4000/dash0/"
-).replace(/\/dash0\/?$/, "");
 
 async function getAuthToken(page: Page): Promise<string> {
   const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {

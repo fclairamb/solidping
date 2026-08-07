@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { API_BASE } from "./fixtures";
 
 test.describe("Login Flow", () => {
   test("should display login page", async ({ page }) => {
@@ -221,10 +222,7 @@ const LAST_AUTH_METHOD_KEY = "solidping_last_auth_method";
 async function fetchAuthCapabilities(
   baseURL: string | undefined,
 ): Promise<{ providers: { type: string; name: string }[]; passkeysEnabled: boolean }> {
-  const root = (baseURL ?? "http://localhost:4000/dash0/").replace(
-    /\/dash0\/?$/,
-    "",
-  );
+  const root = baseURL ? new URL(baseURL).origin : API_BASE;
   const res = await fetch(`${root}/api/v1/auth/providers`);
   const body = (await res.json()) as {
     data?: { type: string; name: string }[];

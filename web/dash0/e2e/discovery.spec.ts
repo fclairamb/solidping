@@ -1,10 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-
-// Honor E2E_BASE_URL (side-car test server) like playwright.config.ts does;
-// fall back to the CI default.
-const API_BASE = process.env.E2E_BASE_URL
-  ? new URL(process.env.E2E_BASE_URL).origin
-  : "http://localhost:4000";
+import { API_BASE } from "./fixtures";
 
 // The backend serializes discovery scans per org (409 DISCOVERY_ALREADY_RUNNING
 // while any plan or chunk job is live), so a test that starts a scan must wait

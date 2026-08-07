@@ -1,6 +1,4 @@
-import { test, expect, type Page } from "./fixtures";
-
-const API_BASE = process.env.E2E_API_BASE ?? "http://localhost:4000";
+import { test, expect, type Page, API_BASE } from "./fixtures";
 
 async function getAuthToken(page: Page): Promise<string> {
   const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {

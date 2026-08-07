@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { API_BASE } from "./fixtures";
 
 /**
  * LOCAL-ONLY end-to-end coverage for the discovery scan-method form.
@@ -20,10 +21,6 @@ import { test, expect } from "@playwright/test";
 // there. They run on any local `bun run test:e2e` (CI unset), and can be
 // force-run against an already-running server with `CI=true E2E_LOCAL=1`.
 const SKIP_IN_CI = !!process.env.CI && !process.env.E2E_LOCAL;
-
-// REST base for direct login/cleanup calls; override when the server isn't on
-// the default port (e.g. a side-car test server).
-const API_BASE = process.env.E2E_API_BASE ?? "http://localhost:4000";
 
 test.describe("Discovery scan-method routing + kubernetes enablement (local-only)", () => {
   test.skip(SKIP_IN_CI, "local-only: excluded from CI");
