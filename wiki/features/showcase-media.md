@@ -15,12 +15,26 @@ them up). Full details: [`web/dash0/showcase/README.md`](../../web/dash0/showcas
 Run it with:
 
 ```bash
-# side-car server, leaving a `make dev` loop on :4000 undisturbed.
+# Disposable side-car server. Use one — the pipeline writes to whatever server
+# it is pointed at, and the org it creates is permanent (see below).
 # DEFAULT run mode on purpose — see "Nothing on camera is a fixture" below.
 PORT=4321 SP_DB_RESET=true SP_DB_TYPE=sqlite SP_DB_URL=/tmp/showcase.db \
   ./solidping serve &
 E2E_BASE_URL=http://localhost:4321/dash0/ make showcase
 ```
+
+### What a run leaves behind in the target database
+
+Run this against your dev server and it *will* leave a mark. Specifically:
+
+| Effect | Persists? |
+|---|---|
+| The `northwind` / "Northwind Systems" org | **Yes, forever.** Created on the first run, reused (not recreated) afterwards; there is no delete-org endpoint. It will appear in that database's org switcher from then on. |
+| The demo checks inside it | No — the org is emptied at the end of each run and wiped clean again at the start of the next. |
+| The bootstrap account's display name | No — read before the recording, set to `Alex Rivera` for its duration, restored in the `finally`. `PATCH /api/v1/auth/me` writes the *global* user row (`OrganizationMember` has no per-org name), so that restore is what stops a media run from renaming someone's admin account everywhere. A hard-killed run skips it. |
+
+This is the real reason to use the disposable side-car above, not merely a
+port-conflict argument.
 
 ## Nothing on camera is a fixture
 

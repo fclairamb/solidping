@@ -55,8 +55,9 @@ brew install ffmpeg                  # macOS
 sudo apt-get install -y ffmpeg       # Debian/Ubuntu
 ```
 
-Against a side-car server (recommended — leaves a `make dev` loop on :4000
-alone). Note: **default** run mode, no `SP_RUNMODE=test`:
+Against a **disposable side-car server** — the recommended way, for data-safety
+reasons as much as to leave a `make dev` loop on :4000 alone (see the warning
+below). Note: **default** run mode, no `SP_RUNMODE=test`:
 
 ```bash
 PORT=4321 SP_DB_RESET=true SP_DB_TYPE=sqlite SP_DB_URL=/tmp/showcase.db \
@@ -69,6 +70,29 @@ Against whatever is on :4000:
 ```bash
 make showcase
 ```
+
+> ### ⚠️ What a run leaves behind in the target database
+>
+> The pipeline **writes to whatever server you point it at**, and one of those
+> writes is permanent:
+>
+> - **The `northwind` / "Northwind Systems" organization persists.** It is
+>   created on the first run and never deleted — there is no delete-org
+>   endpoint, and reruns deliberately reuse it. Point the pipeline at your dev
+>   database and that org is in your org switcher from then on.
+> - Its checks do *not* persist: the org is emptied at the end of every run and
+>   wiped clean again at the start of the next one.
+> - The bootstrap account's **display name is borrowed, not kept**: it is read
+>   before the recording, set to `SHOWCASE_USER_NAME` for the duration, and
+>   restored in the recording's `finally` block. A completed run leaves the
+>   user record exactly as it found it. (`PATCH /api/v1/auth/me` writes the
+>   *global* user row — `OrganizationMember` has no per-org display name — so
+>   without that restore a run would rename the account everywhere. If a run is
+>   hard-killed mid-recording, the restore never happens; check the account's
+>   name before assuming it did.)
+>
+> Use the disposable side-car above and none of this touches anything you care
+> about.
 
 Useful knobs:
 

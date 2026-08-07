@@ -3,6 +3,8 @@ import {
   expect,
   apiLogin,
   ensureCleanShowcaseOrg,
+  applyShowcaseIdentity,
+  restoreShowcaseIdentity,
   seedDemoData,
   deleteAllChecks,
   still,
@@ -28,11 +30,15 @@ test("create an HTTP check", async ({ page }) => {
   // content this pipeline put there.
   const bootstrapToken = await apiLogin(page);
   const token = await ensureCleanShowcaseOrg(page, bootstrapToken);
-  await seedDemoData(page, token);
 
-  await uiLogin(page);
+  // Borrowed, not permanent: /auth/me writes the global user row, so the
+  // previous display name is restored in the finally below.
+  const previousUserName = await applyShowcaseIdentity(page, token);
 
   try {
+    await seedDemoData(page, token);
+    await uiLogin(page);
+
     // 1. The checks list — the starting point, with realistic demo data.
     await page.goto(`orgs/${SHOWCASE_ORG}/checks`);
     await page.waitForLoadState("networkidle");
@@ -101,5 +107,8 @@ test("create an HTTP check", async ({ page }) => {
   } finally {
     // Leave the showcase org empty; the next run wipes it clean anyway.
     await deleteAllChecks(page, token);
+    // And give the account its own name back — recording media must not
+    // permanently rename anybody's admin user.
+    await restoreShowcaseIdentity(page, token, previousUserName);
   }
 });

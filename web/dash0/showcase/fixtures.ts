@@ -18,8 +18,12 @@ import { fileURLToPath } from "node:url";
  * Administrator` sidebar identity. So the pipeline instead **provisions its
  * own organization** through the public API (`POST /api/v1/orgs`) and records
  * there: a fresh org contains no fixture data at all, and its name is ours to
- * choose. The account's display name is set through
- * `PATCH /api/v1/auth/me` so the sidebar reads as a person, not a role label.
+ * choose. The account's display name is set through `PATCH /api/v1/auth/me` so
+ * the sidebar reads as a person, not a role label — and, because that endpoint
+ * writes the **global** user record rather than an org-scoped profile
+ * (`OrganizationMember` carries no name of its own), the original value is read
+ * first and restored in the recording's `finally` path. A completed run leaves
+ * the user record exactly as it found it.
  *
  * The recommended run mode is therefore the DEFAULT one (not `test`), whose
  * out-of-the-box account is `admin@solidping.com` / `solidpass` — an identity
@@ -156,27 +160,93 @@ export async function ensureCleanShowcaseOrg(
   // Wipe anything left over so only staged demo data ends up on camera.
   await deleteAllChecks(page, orgToken);
 
-  // Make the sidebar identity read as a person rather than a role label.
-  await page.request.patch(`${API_BASE}/api/v1/auth/me`, {
-    headers: { Authorization: `Bearer ${orgToken}` },
-    data: { name: SHOWCASE_USER_NAME },
-  });
-
   return orgToken;
 }
 
-/** Deletes every check in the showcase org. */
+/**
+ * Reads the authenticated user's current display name (empty string when unset).
+ */
+async function readProfileName(page: Page, token: string): Promise<string> {
+  const resp = await page.request.get(`${API_BASE}/api/v1/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok()) {
+    throw new Error(
+      `Could not read the current profile (GET /api/v1/auth/me → ${resp.status()}). ` +
+        "Refusing to overwrite a display name we cannot restore.",
+    );
+  }
+  const body = (await resp.json()) as { user?: { name?: string | null } };
+  return body.user?.name ?? "";
+}
+
+async function writeProfileName(
+  page: Page,
+  token: string,
+  name: string,
+): Promise<void> {
+  await page.request.patch(`${API_BASE}/api/v1/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { name },
+  });
+}
+
+/**
+ * Temporarily gives the recording account a human display name, so the sidebar
+ * footer reads "Alex Rivera" instead of "Administrator".
+ *
+ * `PATCH /api/v1/auth/me` writes the GLOBAL user row (see
+ * `server/internal/handlers/auth/service.go` → `UpdateProfile`), so this is a
+ * borrowed change, never a permanent one: the caller MUST pass the returned
+ * value to {@link restoreShowcaseIdentity} in a `finally` block. Without that,
+ * recording against someone's dev server would silently rename their admin
+ * account forever.
+ */
+export async function applyShowcaseIdentity(
+  page: Page,
+  token: string,
+): Promise<string> {
+  const previousName = await readProfileName(page, token);
+  await writeProfileName(page, token, SHOWCASE_USER_NAME);
+  return previousName;
+}
+
+/**
+ * Puts the account's display name back exactly as it was. Best-effort: a
+ * failure here must never mask whatever failure sent us into the `finally`.
+ */
+export async function restoreShowcaseIdentity(
+  page: Page,
+  token: string,
+  previousName: string,
+): Promise<void> {
+  try {
+    await writeProfileName(page, token, previousName);
+  } catch {
+    console.warn(
+      `showcase: could not restore the account display name to ` +
+        `"${previousName}" — it may still read "${SHOWCASE_USER_NAME}".`,
+    );
+  }
+}
+
+/**
+ * Deletes every check in the showcase org.
+ *
+ * Entirely throw-safe, including the initial listing: this runs in the
+ * recording's `finally` block, where a rejection (e.g. the server died
+ * mid-run) would mask the original failure.
+ */
 export async function deleteAllChecks(
   page: Page,
   token: string,
 ): Promise<void> {
   const headers = { Authorization: `Bearer ${token}` };
-  const listResp = await page.request.get(
-    `${API_BASE}/api/v1/orgs/${SHOWCASE_ORG}/checks?limit=500`,
-    { headers },
-  );
-  if (!listResp.ok()) return;
-  const checks: Json[] = (await listResp.json()).data ?? [];
+  const listResp = await page.request
+    .get(`${API_BASE}/api/v1/orgs/${SHOWCASE_ORG}/checks?limit=500`, { headers })
+    .catch(() => null);
+  if (!listResp?.ok()) return;
+  const checks: Json[] = (await listResp.json().catch(() => ({}))).data ?? [];
   for (const check of checks) {
     await page.request
       .delete(
