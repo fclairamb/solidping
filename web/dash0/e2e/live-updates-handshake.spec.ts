@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "./fixtures";
+import { test, expect, type Page, API_BASE } from "./fixtures";
 
 // Regression coverage for the "live updates silently unavailable" incident
 // (spec 2026-07-10-03), updated for spec 2026-07-14-04 which moved WS auth to
@@ -16,10 +16,6 @@ import { test, expect, type Page } from "./fixtures";
 //   2. Regression — a valid cookie scoped to a DIFFERENT org is closed by the
 //      server (no `hello`), and the sidebar live-status dot lands on the
 //      terminal "disabled" state (the badge the incident showed), never "live".
-
-const API_BASE = (
-  process.env.E2E_BASE_URL ?? "http://localhost:4000/dash0/"
-).replace(/\/dash0\/?$/, "");
 
 async function getAuthToken(page: Page): Promise<string> {
   const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {

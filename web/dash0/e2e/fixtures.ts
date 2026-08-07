@@ -96,4 +96,30 @@ export const test = base.extend<
   },
 });
 
+/**
+ * Drives the real login form on `page` with the standard test credentials
+ * and waits for the post-login landing state — the same flow
+ * `authWorkerStorageState` performs once per worker, factored out for tests
+ * that need a *dedicated*, disposable session instead of the shared
+ * worker-cached one (see spec 2026-08-05-02: the shared session is minted
+ * once and never refreshed, so `enforceSessionCap`
+ * (server/internal/handlers/auth/service.go) — which prunes a user's
+ * `refresh` sessions down to 10 on every fresh login elsewhere in the
+ * suite — eventually evicts it as the least-recently-active row. Tests that
+ * assert on the session's own `user_tokens` row surviving (the sessions
+ * list, an explicit `/auth/refresh`) must not rely on that shared session).
+ */
+export async function freshLogin(page: Page): Promise<void> {
+  await page.goto("orgs/test/login");
+  await page.waitForLoadState("networkidle");
+  await page.getByTestId("login-title").waitFor({ state: "visible", timeout: 10000 });
+  await page.getByTestId("login-email").fill("test@test.com");
+  await page.getByTestId("login-password").fill("test");
+  await page.getByTestId("login-submit").click();
+  await page.waitForURL((url) => !url.pathname.includes("login"), {
+    timeout: 10000,
+  });
+  await page.waitForLoadState("networkidle");
+}
+
 export { expect, type Page };

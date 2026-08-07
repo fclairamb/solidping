@@ -893,7 +893,9 @@ func defaultPasswordConfig() PasswordConfig {
 func validBaseConfig() *Config {
 	return &Config{
 		Database: DatabaseConfig{Type: DatabaseTypeSQLite, Dir: "."},
-		Node:     NodeConfig{Role: NodeRoleAll},
+		// Node.Name is pinned so Validate()'s worker-identity check never
+		// depends on the machine's real hostname.
+		Node: NodeConfig{Role: NodeRoleAll, Name: "test-node"},
 		Aggregation: AggregationConfig{
 			RetentionRaw:  24,
 			RetentionHour: 7,
@@ -1134,4 +1136,41 @@ func TestIsPasswordParameterKey(t *testing.T) {
 
 	r.False(IsPasswordParameterKey("server.base_url"))
 	r.False(IsPasswordParameterKey("auth.jwt_secret"))
+}
+
+// TestApplyAgentEnv pins the manual SP_AGENT_* reader, including the
+// SP_AGENT_PRINT_KEYS opt-in whose koanf path (agent.print_keys) is snake_case
+// and therefore unreachable by koanf's env loader. Uses t.Setenv, which is
+// incompatible with t.Parallel.
+func TestApplyAgentEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_AGENT_SERVER_URL", "https://master.example.com")
+	t.Setenv("SP_AGENT_KEYS_FILE", "/data/agent-keys.json")
+	t.Setenv("SP_AGENT_PRINT_KEYS", "true")
+
+	cfg := AgentConfig{}
+	applyAgentEnv(&cfg)
+
+	r.Equal("https://master.example.com", cfg.ServerURL)
+	r.Equal("/data/agent-keys.json", cfg.KeysFile)
+	r.True(cfg.PrintKeys)
+}
+
+// TestApplyAgentEnvPrintKeysDefaultsOff asserts the safe default: absent or
+// unparseable SP_AGENT_PRINT_KEYS never turns key printing on.
+func TestApplyAgentEnvPrintKeysDefaultsOff(t *testing.T) {
+	r := require.New(t)
+
+	cfg := AgentConfig{}
+	applyAgentEnv(&cfg)
+	r.False(cfg.PrintKeys)
+
+	t.Setenv("SP_AGENT_PRINT_KEYS", "yes-please")
+	applyAgentEnv(&cfg)
+	r.False(cfg.PrintKeys)
+
+	t.Setenv("SP_AGENT_PRINT_KEYS", "false")
+	applyAgentEnv(&cfg)
+	r.False(cfg.PrintKeys)
 }

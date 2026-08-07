@@ -1,7 +1,9 @@
 package app
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"testing"
 	"time"
@@ -176,4 +178,142 @@ func TestSeedSystemAgentEnrollmentTokens(t *testing.T) {
 		r.Len(live, 1)
 		r.Contains(live, "eu-west-1")
 	})
+}
+
+// captureSlog swaps the default slog logger for one writing into a buffer and
+// restores it when the test ends. Not safe for parallel tests.
+func captureSlog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+
+	buf := &bytes.Buffer{}
+	previous := slog.Default()
+
+	slog.SetDefault(slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	return buf
+}
+
+// TestParseSystemAgentTokenEntryNeverLogsTheToken pins the leak that made this
+// worth a test: strings.Cut returns the WHOLE entry as the "region" when the
+// entry has no `=`, so an operator who sets
+// SP_SYSTEM_AGENT_ENROLLMENT_TOKENS=spe_… (forgetting the `region=` prefix)
+// used to have a live multi-use enrollment token written to the boot log.
+// Not parallel: it swaps the process-wide default slog logger.
+func TestParseSystemAgentTokenEntryNeverLogsTheToken(t *testing.T) { //nolint:paralleltest // slog.SetDefault
+	const secret = "spe_deadbeefcafebabe0123456789abcdef"
+
+	cases := []struct {
+		name  string
+		entry string
+	}{
+		{"no region prefix at all", secret},
+		{"empty region", "=" + secret},
+		{"trailing separator", secret + "="},
+	}
+
+	for _, tc := range cases { //nolint:paralleltest // slog.SetDefault forbids parallel subtests
+		t.Run(tc.name, func(t *testing.T) {
+			r := require.New(t)
+			buf := captureSlog(t)
+
+			region, token, ok := parseSystemAgentTokenEntry(context.Background(), 3, tc.entry)
+
+			r.False(ok)
+			r.Empty(region)
+			r.Empty(token)
+
+			logged := buf.String()
+			r.NotEmpty(logged, "the malformed entry must still be reported")
+			r.NotContains(logged, secret, "the enrollment token must never reach the logs")
+			r.NotContains(logged, "deadbeef", "not even a substring of the token")
+			r.Contains(logged, "entry_index=3", "the entry is identified by position instead")
+		})
+	}
+}
+
+// TestParseSystemAgentTokenEntryLogCaptureWorks is the POSITIVE CONTROL for the
+// test above: the same capture plumbing must be able to see a legitimately
+// logged, non-secret value (the region), otherwise the NotContains assertions
+// would pass trivially on an empty buffer.
+// Not parallel: it swaps the process-wide default slog logger.
+func TestParseSystemAgentTokenEntryLogCaptureWorks(t *testing.T) { //nolint:paralleltest // slog.SetDefault
+	r := require.New(t)
+	buf := captureSlog(t)
+
+	region, token, ok := parseSystemAgentTokenEntry(context.Background(), 1, "eu-west-1=not-a-token")
+
+	r.False(ok)
+	r.Empty(region)
+	r.Empty(token)
+
+	logged := buf.String()
+	r.Contains(logged, "eu-west-1", "positive control: a non-secret region IS logged and IS captured")
+	r.Contains(logged, "missing the "+agentcrypto.EnrollmentTokenPrefix+" prefix")
+}
+
+// TestParseSystemAgentTokenEntryValidEntry is the second positive control: a
+// well-formed entry still parses, so the redaction did not break the happy path
+// and the secret used above is a realistic token value.
+// Not parallel: it swaps the process-wide default slog logger.
+func TestParseSystemAgentTokenEntryValidEntry(t *testing.T) { //nolint:paralleltest // slog.SetDefault
+	r := require.New(t)
+	buf := captureSlog(t)
+
+	const token = "spe_deadbeefcafebabe0123456789abcdef"
+
+	region, parsed, ok := parseSystemAgentTokenEntry(context.Background(), 0, " eu-west-1 = "+token+" ")
+
+	r.True(ok)
+	r.Equal("eu-west-1", region)
+	r.Equal(token, parsed)
+	r.Empty(buf.String(), "a valid entry logs nothing at all")
+}
+
+// TestSeedSystemAgentEnrollmentTokensNeverLogsTokens is the end-to-end proof
+// for the whole seeding path: whatever an operator mistypes into
+// SP_SYSTEM_AGENT_ENROLLMENT_TOKENS, no live token text reaches the boot log —
+// including the `spe_…=spe_…` shape, which parses cleanly and is only rejected
+// later by region validation (whose "region" field would otherwise carry the
+// pasted token). Not parallel: t.Setenv and slog.SetDefault.
+func TestSeedSystemAgentEnrollmentTokensNeverLogsTokens(t *testing.T) { //nolint:paralleltest // env + slog
+	ctx := context.Background()
+
+	const secret = "spe_" + "cccccccccccccccccccccccccccccccc"
+
+	for _, raw := range []string{
+		secret,                     // forgot the `region=` prefix entirely
+		secret + "=" + secret,      // token pasted on both sides
+		"nrt-1=" + secret + "=x",   // stray separator
+		"unknown-region=" + secret, // valid shape, region not in the catalog
+	} {
+		r := require.New(t)
+		srv := newSystemAgentSeedServer(ctx, t)
+		buf := captureSlog(t)
+
+		t.Setenv(envSystemAgentEnrollmentTokens, raw)
+		r.NoError(srv.SeedSystemAgentEnrollmentTokens(ctx))
+
+		logged := buf.String()
+		r.NotContains(logged, secret, "no enrollment token may reach the logs for entry %q", raw)
+		r.NotContains(logged, "cccccccc", "not even a substring of the token")
+		r.Empty(liveSystemTokens(ctx, t, srv), "nothing malformed may be seeded")
+	}
+}
+
+// TestSeedSystemAgentEnrollmentTokensLogsRegions is the positive control for
+// the test above: a rejected but non-secret region IS logged and IS captured,
+// so the NotContains assertions cannot pass on an empty buffer.
+// Not parallel: t.Setenv and slog.SetDefault.
+func TestSeedSystemAgentEnrollmentTokensLogsRegions(t *testing.T) {
+	ctx := context.Background()
+	r := require.New(t)
+	srv := newSystemAgentSeedServer(ctx, t)
+	buf := captureSlog(t)
+
+	t.Setenv(envSystemAgentEnrollmentTokens, "not-a-known-region=spe_"+"dddddddddddddddddddddddddddddddd")
+	r.NoError(srv.SeedSystemAgentEnrollmentTokens(ctx))
+
+	r.Contains(buf.String(), "not-a-known-region", "positive control: a plain region is logged and captured")
+	r.Contains(buf.String(), "invalid region")
 }

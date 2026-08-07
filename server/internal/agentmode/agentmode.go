@@ -6,9 +6,19 @@
 // Identity/keys lifecycle: on first run the agent generates its two keypairs
 // (Ed25519 identity + X25519/age encryption), enrolls with the one-shot
 // SP_AGENT_ENROLLMENT_TOKEN, and persists the resulting identity JSON to
-// SP_AGENT_KEYS_FILE when writable. It ALWAYS logs the base64 of the same JSON
-// so env-only deployments (k8s secrets) can pin it via SP_AGENT_KEYS instead —
-// both persistence modes are first-class.
+// SP_AGENT_KEYS_FILE when writable. It NEVER logs that JSON or its base64: the
+// file holds private key material (the Ed25519 key is the agent's whole
+// authentication, the X25519 identity decrypts every credential sealed to it),
+// and stdout is aggregated by fly/Kubernetes/Docker/journald log drains.
+//
+// Env-only deployments (k8s secrets) pin the identity via SP_AGENT_KEYS; the
+// documented way to obtain that value is to read the file the agent already
+// wrote (e.g. `base64 -w0 /data/agent-keys.json`). When there is no readable
+// file at all, the operator can opt in — deliberately, once — with
+// SP_AGENT_PRINT_KEYS=true, which prints the base64 to stdout inside a loud
+// banner and logs a key-free WARN that it did so. That flag is honored on every
+// start, not only at enrollment, so an already-running agent's value can be
+// recovered without shell access.
 package agentmode
 
 import (
@@ -17,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -59,6 +70,12 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 		identity = &backend.Identity{AgentKeys: *keys}
 		logger.InfoContext(ctx, "Generated fresh agent keypairs (Ed25519 identity + X25519 encryption)")
+	} else if cfg.Agent.PrintKeys {
+		// Honor the opt-in on every start, not only at enrollment, so an
+		// operator can recover the value from an already-enrolled agent
+		// without shell access. The enrollment path prints via persist below,
+		// and the two are mutually exclusive (no double print).
+		printIdentityKeys(ctx, cfg, identity, logger, os.Stdout)
 	}
 
 	name := cfg.Agent.Name
@@ -71,7 +88,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 
 	persist := func(id *backend.Identity) {
-		persistIdentity(ctx, cfg, id, fromEnv, logger)
+		persistIdentity(ctx, cfg, id, fromEnv, logger, os.Stdout)
 	}
 
 	wsBackend := backend.NewWSBackend(
@@ -129,11 +146,20 @@ func loadIdentity(cfg *config.Config) (*backend.Identity, bool, error) {
 	return nil, false, nil
 }
 
+// keyMaterialBanner delimits the SP_AGENT_PRINT_KEYS output so an operator
+// cannot mistake private key material for routine startup noise.
+const keyMaterialBanner = "!!! PRIVATE KEY MATERIAL — this will be captured by your log aggregator !!!"
+
 // persistIdentity writes the identity JSON to the keys file (best effort,
-// falling back next to the binary) and ALWAYS logs the base64 for env-only
-// (SP_AGENT_KEYS) deployments.
+// falling back next to the binary). It never logs the identity or its base64;
+// the base64 is printed to out only when SP_AGENT_PRINT_KEYS is set.
 func persistIdentity(
-	ctx context.Context, cfg *config.Config, identity *backend.Identity, fromEnv bool, logger *slog.Logger,
+	ctx context.Context,
+	cfg *config.Config,
+	identity *backend.Identity,
+	fromEnv bool,
+	logger *slog.Logger,
+	out io.Writer,
 ) {
 	raw, err := json.MarshalIndent(identity, "", "  ")
 	if err != nil {
@@ -141,8 +167,6 @@ func persistIdentity(
 
 		return
 	}
-
-	encoded := base64.StdEncoding.EncodeToString(raw)
 
 	if !fromEnv {
 		written := false
@@ -165,12 +189,51 @@ func persistIdentity(
 
 		if !written {
 			logger.WarnContext(ctx,
-				"Could not write the agent keys file anywhere — set SP_AGENT_KEYS to survive restarts")
+				"Could not write the agent keys file anywhere — this identity will be lost on restart. "+
+					"Mount a writable volume, or start once with SP_AGENT_PRINT_KEYS=true to print the "+
+					"SP_AGENT_KEYS value and store it as a secret")
 		}
 	}
 
-	// Env-based operation is always possible: the same JSON, base64-encoded.
-	logger.InfoContext(ctx,
-		"To run this agent from environment only (e.g. a Kubernetes secret), set SP_AGENT_KEYS to the value below",
-		"SP_AGENT_KEYS", encoded)
+	printKeyMaterial(ctx, cfg, raw, logger, out)
+}
+
+// printIdentityKeys serializes an already-loaded identity and hands it to
+// printKeyMaterial (which no-ops unless SP_AGENT_PRINT_KEYS is set).
+func printIdentityKeys(
+	ctx context.Context, cfg *config.Config, identity *backend.Identity, logger *slog.Logger, out io.Writer,
+) {
+	raw, err := json.MarshalIndent(identity, "", "  ")
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to serialize agent identity", "error", err)
+
+		return
+	}
+
+	printKeyMaterial(ctx, cfg, raw, logger, out)
+}
+
+// printKeyMaterial emits the base64 identity to out — and only to out, never
+// through slog — when the operator explicitly opted in with
+// SP_AGENT_PRINT_KEYS. The accompanying WARN carries no key material.
+func printKeyMaterial(
+	ctx context.Context, cfg *config.Config, raw []byte, logger *slog.Logger, out io.Writer,
+) {
+	if !cfg.Agent.PrintKeys {
+		return
+	}
+
+	logger.WarnContext(ctx,
+		"SP_AGENT_PRINT_KEYS is set: this agent's private key material was printed to stdout. "+
+			"Store it as a secret, then unset the variable and rotate this agent if the output was "+
+			"captured by a log aggregator")
+
+	if out == nil {
+		return
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(raw)
+
+	// Best effort: a failed write to stdout is not worth failing the agent for.
+	_, _ = fmt.Fprintf(out, "\n%s\nSP_AGENT_KEYS=%s\n%s\n\n", keyMaterialBanner, encoded, keyMaterialBanner)
 }

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { test as authTest } from "./fixtures";
+import { test as authTest, API_BASE } from "./fixtures";
 
 /**
  * E2E for the WhatsApp notification-contact flow.
@@ -213,7 +213,7 @@ authTest.describe("Account Notifications — WhatsApp", () => {
 // A plain (unauthenticated) test: the public config document must never leak a
 // WhatsApp credential, only the resolved boolean.
 test("public config exposes only a WhatsApp boolean", async ({ request, baseURL }) => {
-  const origin = new URL(baseURL ?? "http://localhost:4000").origin;
+  const origin = baseURL ? new URL(baseURL).origin : API_BASE;
   const response = await request.get(`${origin}/api/v1/config`);
 
   expect(response.ok()).toBe(true);

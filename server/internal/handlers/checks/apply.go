@@ -480,10 +480,10 @@ func (s *Service) stampManagedLabels(doc *ExportDocument, manifest string) {
 	}
 }
 
-// parseManifest unmarshals a manifest body that may be JSON or YAML into an
+// ParseManifest unmarshals a manifest body that may be JSON or YAML into an
 // ExportDocument. YAML is converted to JSON first so the struct's json tags are
 // honored uniformly.
-func parseManifest(body []byte, contentType string) (*ExportDocument, error) {
+func ParseManifest(body []byte, contentType string) (*ExportDocument, error) {
 	trimmed := strings.TrimLeft(string(body), " \t\r\n")
 
 	isJSON := strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") ||

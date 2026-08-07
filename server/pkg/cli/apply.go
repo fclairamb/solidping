@@ -209,7 +209,7 @@ func applyAction(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-// checksExportAction implements `sp checks export [-o <file>]`.
+// checksExportAction implements `sp checks export [--file <f>] [--format yaml|json]`.
 func checksExportAction(ctx context.Context, cmd *cli.Command) error {
 	cliCtx, err := NewCLIContext(cmd)
 	if err != nil {
@@ -226,23 +226,37 @@ func checksExportAction(ctx context.Context, cmd *cli.Command) error {
 		return cliCtx.HandleError("Failed to export checks", err)
 	}
 
-	// Pretty-print the JSON document.
-	var pretty interface{}
-	if jsonErr := json.Unmarshal(doc, &pretty); jsonErr == nil {
-		if formatted, mErr := json.MarshalIndent(pretty, "", "  "); mErr == nil {
-			doc = formatted
+	outFile := cmd.String(flagFile)
+	format := exportFormatFromFlags(cmd.String(flagFormat), outFile)
+
+	var rendered []byte
+
+	switch format {
+	case "yaml", "yml":
+		rendered, err = jsonToYAML(doc)
+		if err != nil {
+			return cli.Exit(fmt.Sprintf("Error: cannot render yaml: %v", err), 5)
+		}
+	default:
+		// Pretty-print the JSON document.
+		rendered = doc
+
+		var pretty interface{}
+		if jsonErr := json.Unmarshal(doc, &pretty); jsonErr == nil {
+			if formatted, mErr := json.MarshalIndent(pretty, "", "  "); mErr == nil {
+				rendered = formatted
+			}
 		}
 	}
 
-	outFile := cmd.String(flagFile)
 	if outFile == "" {
-		_, _ = os.Stdout.Write(doc)
+		_, _ = os.Stdout.Write(rendered)
 		_, _ = fmt.Fprintln(os.Stdout)
 
 		return nil
 	}
 
-	if writeErr := os.WriteFile(outFile, doc, 0o600); writeErr != nil {
+	if writeErr := os.WriteFile(outFile, rendered, 0o600); writeErr != nil {
 		return cli.Exit(fmt.Sprintf("Error: cannot write %s: %v", outFile, writeErr), 5)
 	}
 
@@ -251,7 +265,23 @@ func checksExportAction(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-// checksImportAction implements `sp checks import <file> [--dry-run]`.
+// importResultSummary mirrors the server's checks.ImportResult for
+// text-mode reporting.
+type importResultSummary struct {
+	Created int `json:"created"`
+	Updated int `json:"updated"`
+	Skipped int `json:"skipped"`
+	Errors  []struct {
+		Index int    `json:"index"`
+		Slug  string `json:"slug"`
+		Error string `json:"error"`
+	} `json:"errors"`
+}
+
+// checksImportAction implements `sp checks import <file> [--dry-run]`. The
+// file's Content-Type is inferred from its extension (reusing
+// detectContentType, the same helper `sp apply` uses) so a hand-authored YAML
+// file parses correctly server-side.
 func checksImportAction(ctx context.Context, cmd *cli.Command) error {
 	cliCtx, err := NewCLIContext(cmd)
 	if err != nil {
@@ -273,26 +303,70 @@ func checksImportAction(ctx context.Context, cmd *cli.Command) error {
 		return cliCtx.HandleAuthError(err)
 	}
 
-	resultRaw, importErr := apiClient.ImportChecks(ctx, cliCtx.GetOrg(), body, cmd.Bool("dry-run"))
+	contentType := detectContentType(file)
+	dryRun := cmd.Bool("dry-run")
+
+	resultRaw, importErr := apiClient.ImportChecks(ctx, cliCtx.GetOrg(), body, contentType, dryRun)
 	if importErr != nil {
 		return cliCtx.HandleError("Failed to import checks", importErr)
 	}
 
-	var pretty interface{}
-	_ = json.Unmarshal(resultRaw, &pretty)
+	var result importResultSummary
+	if jsonErr := json.Unmarshal(resultRaw, &result); jsonErr != nil {
+		return cliCtx.HandleError("Failed to parse import result", jsonErr)
+	}
 
 	if !cliCtx.IsText() {
-		return cliCtx.Outputter.Print(pretty)
+		return cliCtx.Outputter.Print(result)
 	}
 
-	// Re-indent the server's JSON response for readability. The bytes already
-	// came back as valid JSON, so a marshal failure here is non-fatal.
-	formatted, marshalErr := json.MarshalIndent(pretty, "", "  ")
-	if marshalErr != nil {
-		formatted = resultRaw
+	summary := formatImportSummary(result, dryRun)
+	output.PrintMessage(os.Stdout, summary.headline)
+
+	if len(summary.errorLines) > 0 {
+		output.PrintError(os.Stdout, fmt.Sprintf("%d error(s):", len(summary.errorLines)))
+		for _, line := range summary.errorLines {
+			output.PrintMessage(os.Stdout, "  "+line)
+		}
+
+		return cli.Exit("", summary.exitCode)
 	}
-	_, _ = os.Stdout.Write(formatted)
-	_, _ = fmt.Fprintln(os.Stdout)
 
 	return nil
+}
+
+// importSummaryText is the text-mode rendering of an import result: the
+// headline created/updated/skipped counts, per-item error lines, and the exit
+// code — matching the reference workflow's do_import contract (created=N
+// updated=N skipped=N; non-zero exit when any item failed).
+type importSummaryText struct {
+	headline   string
+	errorLines []string
+	exitCode   int
+}
+
+// formatImportSummary is the pure (network-free) core of checksImportAction's
+// text-mode output, split out so the summary/exit-code contract is directly
+// unit-testable without a live server.
+func formatImportSummary(result importResultSummary, dryRun bool) importSummaryText {
+	mode := "IMPORT"
+	if dryRun {
+		mode = "DRY RUN"
+	}
+
+	summary := importSummaryText{
+		headline: fmt.Sprintf(
+			"%s: created=%d updated=%d skipped=%d", mode, result.Created, result.Updated, result.Skipped),
+	}
+
+	for i := range result.Errors {
+		e := &result.Errors[i]
+		summary.errorLines = append(summary.errorLines, fmt.Sprintf("[%d] %s: %s", e.Index, e.Slug, e.Error))
+	}
+
+	if len(summary.errorLines) > 0 {
+		summary.exitCode = 1
+	}
+
+	return summary
 }

@@ -166,6 +166,13 @@ type AgentConfig struct {
 	// Name is the agent display name sent at enrollment — SP_AGENT_NAME
 	// (default: hostname).
 	Name string `koanf:"name"`
+	// PrintKeys opts into printing the base64 identity (private key material!)
+	// to stdout — SP_AGENT_PRINT_KEYS. Off by default: the agent never emits
+	// its own private keys unless an operator explicitly asks for them, because
+	// stdout is aggregated by fly/Kubernetes/Docker/journald log drains. Use it
+	// only to bootstrap an env-only (SP_AGENT_KEYS) deployment that has no
+	// writable volume to read the keys file from, then unset it.
+	PrintKeys bool `koanf:"print_keys"`
 }
 
 // OTelConfig contains OpenTelemetry configuration.
@@ -407,6 +414,13 @@ type EntitlementsConfig struct {
 type NodeConfig struct {
 	Role   string `koanf:"role"`   // Node role: all, api, jobs, checks
 	Region string `koanf:"region"` // Node region (required for checks role)
+	// Name overrides the worker slug/name this process registers under
+	// (SP_NODE_NAME). Empty means "derive it from os.Hostname()", which is the
+	// historic behavior. Set it wherever the hostname is not stable, not
+	// unique within the first 15 characters, or not slug-legal — most notably
+	// Kubernetes pods running with `hostNetwork: true`, where the host UTS
+	// namespace makes os.Hostname() return the (dotted) node name.
+	Name string `koanf:"name"`
 }
 
 // ProfilerConfig contains pprof profiler server configuration.
@@ -1487,6 +1501,12 @@ func applyAgentEnv(cfg *AgentConfig) {
 	if v := os.Getenv("SP_AGENT_NAME"); v != "" {
 		cfg.Name = v
 	}
+
+	if v := os.Getenv("SP_AGENT_PRINT_KEYS"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.PrintKeys = b
+		}
+	}
 }
 
 // applyAuthEnv reads the multi-word SP_AUTH_* token-lifetime knobs koanf's
@@ -1827,20 +1847,8 @@ func (c *Config) Validate() error {
 		return err
 	}
 
-	// Validate node role
-	if !slices.Contains(ValidNodeRoles(), c.Node.Role) {
-		return fmt.Errorf("%w, got '%s'", ErrInvalidNodeRole, c.Node.Role)
-	}
-
-	// Validate checks role requires region
-	if c.Node.Role == NodeRoleChecks && c.Node.Region == "" {
-		return ErrRegionRequiredForChecks
-	}
-
-	// Validate agent role requires a server URL (the enrollment token is only
-	// needed on the very first run — a persisted identity replaces it).
-	if c.Node.Role == NodeRoleAgent && c.Agent.ServerURL == "" {
-		return ErrAgentServerURLRequired
+	if err := c.validateNodeConfig(); err != nil {
+		return err
 	}
 
 	// Validate aggregation retention values are positive
@@ -1872,6 +1880,38 @@ func (c *Config) Validate() error {
 
 	if err := validateCustomDomainTLSConfig(&c.Server, &c.ACME); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// validateNodeConfig validates the node block: the role itself, the
+// role-specific requirements, and the worker identity this process would
+// register under.
+func (c *Config) validateNodeConfig() error {
+	if !slices.Contains(ValidNodeRoles(), c.Node.Role) {
+		return fmt.Errorf("%w, got '%s'", ErrInvalidNodeRole, c.Node.Role)
+	}
+
+	// The checks role needs a region.
+	if c.Node.Role == NodeRoleChecks && c.Node.Region == "" {
+		return ErrRegionRequiredForChecks
+	}
+
+	// The agent role needs a server URL (the enrollment token is only needed on
+	// the very first run — a persisted identity replaces it).
+	if c.Node.Role == NodeRoleAgent && c.Agent.ServerURL == "" {
+		return ErrAgentServerURLRequired
+	}
+
+	// Any node that registers a `workers` row (check worker and/or job worker)
+	// must carry a slug the database CHECK constraint accepts. Validating here
+	// turns an opaque SQLSTATE=23514 at INSERT time into a startup error naming
+	// the offending value and SP_NODE_NAME.
+	if c.ShouldRunChecks() || c.ShouldRunJobs() {
+		if err := c.WorkerIdentity().Validate(); err != nil {
+			return err
+		}
 	}
 
 	return nil

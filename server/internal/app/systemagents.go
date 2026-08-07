@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -67,15 +68,16 @@ func (s *Server) SeedSystemAgentEnrollmentTokens(ctx context.Context) error {
 	expiresAt := time.Now().Add(systemAgentTokenTTL)
 	keepHashes := make([]string, 0, strings.Count(raw, ",")+1)
 
-	for _, entry := range strings.Split(raw, ",") {
-		region, token, ok := parseSystemAgentTokenEntry(ctx, entry)
+	for index, entry := range strings.Split(raw, ",") {
+		region, token, ok := parseSystemAgentTokenEntry(ctx, index, entry)
 		if !ok {
 			continue
 		}
 
 		if err := regionSvc.ValidateWorkerRegion(ctx, region); err != nil {
 			slog.ErrorContext(ctx, "Ignoring "+envSystemAgentEnrollmentTokens+" entry: invalid region",
-				"region", region, "error", err)
+				"entry_index", index, "region", redactTokenish(region),
+				"error", redactTokenish(err.Error()))
 
 			continue
 		}
@@ -101,12 +103,31 @@ func (s *Server) SeedSystemAgentEnrollmentTokens(ctx context.Context) error {
 	return nil
 }
 
-// parseSystemAgentTokenEntry splits one `region=spe_…` entry. It never logs the
-// token itself — only the region and the reason — so a boot log can be shared
-// without leaking enrollment material. An empty entry (trailing comma, or the
-// whole variable set to "") is skipped silently: "no tokens" is a legitimate,
-// deliberate configuration meaning "revoke everything".
-func parseSystemAgentTokenEntry(ctx context.Context, entry string) (string, string, bool) {
+// redactedValue replaces any logged value that could be enrollment material.
+const redactedValue = "[redacted]"
+
+// tokenishPattern matches anything shaped like an enrollment token, wherever it
+// turns up in a string that is about to be logged — including inside a wrapped
+// validation error, which embeds the offending value verbatim.
+var tokenishPattern = regexp.MustCompile(regexp.QuoteMeta(agentcrypto.EnrollmentTokenPrefix) + `[A-Za-z0-9_\-]*`)
+
+// redactTokenish makes a value safe to log. An operator who pastes a token
+// where a region belongs (`SP_SYSTEM_AGENT_ENROLLMENT_TOKENS=spe_…=spe_…`)
+// would otherwise have the token echoed into the boot log — as the "region"
+// field, or quoted inside the region-validation error.
+func redactTokenish(value string) string {
+	return tokenishPattern.ReplaceAllString(value, redactedValue)
+}
+
+// parseSystemAgentTokenEntry splits one `region=spe_…` entry. It never logs any
+// part of the entry that could be the token — a malformed entry is identified
+// by its position only, because strings.Cut returns the WHOLE entry as the
+// region when there is no `=`, and an operator who forgets the `region=` prefix
+// would otherwise put a live multi-use enrollment token into the log drain.
+// An empty entry (trailing comma, or the whole variable set to "") is skipped
+// silently: "no tokens" is a legitimate, deliberate configuration meaning
+// "revoke everything".
+func parseSystemAgentTokenEntry(ctx context.Context, index int, entry string) (string, string, bool) {
 	entry = strings.TrimSpace(entry)
 	if entry == "" {
 		return "", "", false
@@ -118,13 +139,16 @@ func parseSystemAgentTokenEntry(ctx context.Context, entry string) (string, stri
 
 	switch {
 	case !found || region == "" || token == "":
+		// No entry content whatsoever: without a `=` the "region" here IS the
+		// whole entry, which is very often the token itself.
 		slog.ErrorContext(ctx, "Ignoring malformed "+envSystemAgentEnrollmentTokens+
-			" entry (expected `region=spe_…`)", "region", region)
+			" entry (expected `region=spe_…`)", "entry_index", index)
 
 		return "", "", false
 	case !strings.HasPrefix(token, agentcrypto.EnrollmentTokenPrefix):
 		slog.ErrorContext(ctx, "Ignoring "+envSystemAgentEnrollmentTokens+
-			" entry: token is missing the "+agentcrypto.EnrollmentTokenPrefix+" prefix", "region", region)
+			" entry: token is missing the "+agentcrypto.EnrollmentTokenPrefix+" prefix",
+			"entry_index", index, "region", redactTokenish(region))
 
 		return "", "", false
 	}

@@ -144,6 +144,7 @@ func manualReaderServerEnvVars() []string {
 		"SP_AGENT_KEYS_FILE",
 		"SP_AGENT_KEYS",
 		"SP_AGENT_NAME",
+		"SP_AGENT_PRINT_KEYS",
 		// applyAuthEnv
 		"SP_AUTH_ACCESS_TOKEN_EXPIRY",
 		"SP_AUTH_REFRESH_TOKEN_EXPIRY",

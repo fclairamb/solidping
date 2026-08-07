@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+
+* **cli:** config-as-code for checks. `sp checks export` / `import` round-trip a whole check catalog as YAML, `sp checks diff` shows what an import would change before it runs, and `sp checks validate` accepts a complete export document offline — no server, no credentials — so a catalog can be linted in CI
+* **config:** `SP_NODE_NAME` overrides a worker's identity instead of deriving it from `os.Hostname()`. Worker identity is now a deployment decision rather than an accident of the container's UTS namespace, which unblocks running check workers under Kubernetes `hostNetwork: true` (where the pod's `spec.hostname` is ignored and the node name — dots and all — is rejected by the `workers.slug` constraint). It also fixes silent slug collisions: two workers whose hostnames shared their first 15 characters previously collapsed onto one `workers` row and fought over it. Both the check worker and the job worker share the logic, the effective slug is now validated at startup with an actionable message instead of surfacing as an opaque Postgres constraint violation after the worker has already started, and a truncated hostname logs a warning naming the resulting slug
+* **docs:** a Tour page showing the product in motion. A regenerable Playwright pipeline (`make showcase`) drives the real dashboard to produce screenshots and an AV1 screen recording of the create-an-HTTP-check flow, so the docs site finally shows what SolidPing looks like instead of only describing it. The media regenerates on demand rather than rotting as the UI changes
+
+### Bug Fixes
+
+* **agents:** agent private keys are never written to logs or stdout. Key material was previously echoed during agent bootstrap; printing it now requires opting in explicitly with `SP_AGENT_PRINT_KEYS`. A malformed `SP_SYSTEM_AGENT_ENROLLMENT_TOKENS` entry is no longer echoed into the logs either
+* **checks:** `ValidateDocument` no longer mutates the document it was handed, so validating an export could alter it before import
+* **e2e:** end-to-end specs no longer silently test the wrong server. Specs across the dashboard and public status page read a dead `E2E_API_BASE` variable or hardcoded `localhost:4000`, so they hit the local dev loop regardless of `E2E_BASE_URL` — meaning a suite pointed at a test server was quietly validating something else. Both suites now derive their origin from a shared fixtures module, with a lint guard in each config so it cannot regress
+* **e2e:** session-sensitive tests get a dedicated login instead of mutating the shared worker session, removing a source of cross-test flakiness
+* **e2e:** the `kubernetes-cluster` spec now cleans up after itself when an assertion fails, instead of leaking state into later tests
+
 ## [0.8.0](https://github.com/fclairamb/solidping/compare/v0.7.1...v0.8.0) (2026-08-05)
 
 

@@ -43,11 +43,7 @@ import {
  *     documented failure class, not as proof a live bug was fixed.
  */
 
-// Honors E2E_BASE_URL so this can be pointed at a side-car / CI server rather
-// than only the :4000 dev loop.
-const BASE = process.env.E2E_BASE_URL
-  ? new URL(process.env.E2E_BASE_URL).origin
-  : "http://localhost:4000";
+import { API_BASE as BASE } from "./fixtures";
 
 /** TanStack Router's default error boundary copy. */
 const ERROR_BOUNDARY_TEXT = "Something went wrong!";

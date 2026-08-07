@@ -1,5 +1,5 @@
 import type { WebSocket } from "@playwright/test";
-import { test, expect, type Page } from "./fixtures";
+import { test, expect, type Page, API_BASE } from "./fixtures";
 
 // Live dashboard updates via org-scoped hint events (WebSocket v2).
 //
@@ -7,10 +7,6 @@ import { test, expect, type Page } from "./fixtures";
 // and assert the dashboard reflects the change without any reload, within a
 // couple of seconds — far quicker than the 30s/60s fallback polls, so a pass
 // can only come from the live hint path.
-
-const API_BASE = (
-  process.env.E2E_BASE_URL ?? "http://localhost:4000/dash0/"
-).replace(/\/dash0\/?$/, "");
 
 async function getAuthToken(page: Page): Promise<string> {
   const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {

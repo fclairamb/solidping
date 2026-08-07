@@ -9,8 +9,7 @@
  * it appears on the public status page.
  */
 import { test, expect } from "@playwright/test";
-
-const BASE = "http://localhost:4000";
+import { API_BASE as BASE } from "./fixtures";
 
 /** Obtain a JWT token for the test org. */
 async function getToken(): Promise<string> {

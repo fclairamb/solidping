@@ -576,7 +576,7 @@ func (h *Handler) ImportChecks(writer http.ResponseWriter, req *http.Request) er
 		})
 	}
 
-	doc, err := parseManifest(body, req.Header.Get("Content-Type"))
+	doc, err := ParseManifest(body, req.Header.Get("Content-Type"))
 	if err != nil {
 		return h.WriteValidationError(writer, "Invalid document", []base.ValidationErrorField{
 			{Name: fieldBody, Message: msgInvalidJSON},
@@ -614,7 +614,7 @@ func (h *Handler) ApplyChecks(writer http.ResponseWriter, req *http.Request) err
 		})
 	}
 
-	doc, err := parseManifest(body, req.Header.Get("Content-Type"))
+	doc, err := ParseManifest(body, req.Header.Get("Content-Type"))
 	if err != nil {
 		return h.WriteValidationError(writer, "Invalid manifest", []base.ValidationErrorField{
 			{Name: fieldBody, Message: err.Error()},

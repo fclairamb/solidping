@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -322,19 +321,11 @@ func (r *CheckWorker) Run(ctx context.Context) error {
 
 // registerWorker registers or updates the worker in the database.
 func (r *CheckWorker) registerWorker(ctx context.Context) error {
-	hostname, err := os.Hostname()
-	if err != nil {
-		hostname = "unknown"
-	}
-
-	// Limit hostname to ensure slug doesn't exceed 20 characters (slug = hostname-cr-X)
-	// Reserve 5 chars for "-cr-X", leaving 15 for hostname
-	if len(hostname) > 15 {
-		hostname = hostname[:15]
-	}
-
-	slug := strings.ToLower(hostname)
-	name := hostname
+	// Identity is SP_NODE_NAME when set, otherwise the lowercased OS hostname
+	// truncated to config.WorkerHostnameMaxLen. Config.Validate() has already
+	// rejected a slug the database CHECK constraint would refuse.
+	identity := r.config.WorkerIdentity()
+	identity.WarnIfTruncated(ctx, r.logger)
 
 	region := "default"
 	if r.config.Server.CheckWorker.Region != "" {
@@ -343,8 +334,8 @@ func (r *CheckWorker) registerWorker(ctx context.Context) error {
 
 	worker := &models.Worker{
 		UID:    uuid.New().String(),
-		Slug:   slug,
-		Name:   name,
+		Slug:   identity.Slug,
+		Name:   identity.Name,
 		Region: &region,
 	}
 

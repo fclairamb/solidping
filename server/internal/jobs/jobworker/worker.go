@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -447,15 +445,7 @@ func (w *JobWorker) createJobContext(
 
 // setupSelfStats configures self-stats reporting for the worker.
 func (w *JobWorker) setupSelfStats(ctx context.Context) error {
-	// Generate worker slug from hostname
-	hostname, err := os.Hostname()
-	if err != nil {
-		hostname = "unknown"
-	}
-	if len(hostname) > 15 {
-		hostname = hostname[:15]
-	}
-	w.workerSlug = strings.ToLower(hostname)
+	w.resolveWorkerSlug(ctx)
 
 	// Get the default organization
 	org, err := w.dbService.GetOrganizationBySlug(ctx, "default")
@@ -479,6 +469,17 @@ func (w *JobWorker) setupSelfStats(ctx context.Context) error {
 		"internal_check_uid", w.internalCheckUID)
 
 	return nil
+}
+
+// resolveWorkerSlug sets this worker's identity: SP_NODE_NAME when configured,
+// otherwise the lowercased OS hostname truncated to
+// config.WorkerHostnameMaxLen. It is the exact same resolution the check worker
+// uses (config.Config.WorkerIdentity), so both agree on who this process is,
+// and it emits the truncation WARN for the same reason.
+func (w *JobWorker) resolveWorkerSlug(ctx context.Context) {
+	identity := w.config.WorkerIdentity()
+	identity.WarnIfTruncated(ctx, w.logger)
+	w.workerSlug = identity.Slug
 }
 
 // createInternalCheck creates or retrieves the internal check for this worker.

@@ -30,6 +30,63 @@ own runner pool.
 Splitting roles across processes is optional. A single `all` process is the
 normal deployment.
 
+## Worker identity (`SP_NODE_NAME`)
+
+Every process that runs check or job runners registers one `workers` row. Its
+`slug` and `name` come from:
+
+1. `SP_NODE_NAME`, used **verbatim** when set — no truncation, no lowercasing,
+   and the OS hostname is never read.
+2. Otherwise `os.Hostname()`, lowercased for the slug and cut to the first
+   **15 characters**.
+
+The slug must satisfy the database CHECK constraint
+`^[a-z][a-z0-9-]{2,20}$` (see `001_v0_1_0.up.sql`). It is validated at
+**startup** — an invalid value aborts the process with a message naming the
+offending slug and `SP_NODE_NAME`, instead of surfacing later as an opaque
+`SQLSTATE=23514` on INSERT. The resolution lives in one place,
+`config.Config.WorkerIdentity()` (`server/internal/config/worker_identity.go`),
+shared by the check worker and the job worker.
+
+Registration is an **upsert by slug**, so two processes with the same effective
+slug collapse onto a single row and fight over it. Set `SP_NODE_NAME` on any
+orchestrator where the hostname is not stable, not unique within its first 15
+characters, or not slug-legal.
+
+### Kubernetes `hostNetwork: true` — the reason this knob exists
+
+A pod with `hostNetwork: true` shares the host UTS namespace, so `spec.hostname`
+is silently ignored and `os.Hostname()` returns the **node** name. Node names
+are usually dotted (`eu2.example.com`), which fails the slug pattern: the worker
+never registers and the deployment runs no checks.
+
+That matters because `hostNetwork` is the practical way to give check workers
+IPv6 egress on a single-stack (IPv4-only) cluster — a k3s/flannel cluster
+cannot be switched to dual-stack after creation, and without it an IPv6-only
+target simply cannot be reached. So the recipe is: `hostNetwork: true` **plus**
+an explicit `SP_NODE_NAME` (keep the value the workers already registered under,
+to avoid stranding a stale `workers` row):
+
+```yaml
+      hostNetwork: true
+      containers:
+        - env:
+            - name: SP_NODE_NAME
+              value: "solidping-eu2"
+```
+
+### Truncation collisions
+
+Kubernetes pod names are `<deployment>-<hash>-<rand>`, so
+`solidping-checks-eu2-…` and `solidping-checks-us1-…` both truncate to
+`solidping-check`. When the hostname is cut, the worker logs a WARN naming the
+resulting slug and pointing at `SP_NODE_NAME`, so the collision is visible
+rather than silent.
+
+Note this also changes the self-monitoring check names below: they are
+`int-checks-<slug>` / `int-jobs-<slug>`, where `<slug>` is the effective worker
+slug — so pinning `SP_NODE_NAME` also pins those check slugs.
+
 ## Check runners
 
 Check runners execute the active monitoring checks (HTTP, TCP, DNS, SSL,
@@ -66,7 +123,7 @@ Pick the value based on:
 
 If runners are saturated, fresh jobs simply wait — they don't fail, they just
 run late. The `free_runners` self-stat (reported as the
-`int-checks-<hostname>` internal check) tells you whether the pool has
+`int-checks-<slug>` internal check) tells you whether the pool has
 headroom.
 
 ### Fetching architecture
@@ -151,9 +208,9 @@ operators know what to expect:
 Each running worker registers an internal check that publishes its own
 stats as regular results:
 
-- `int-checks-<hostname>` — check runner pool stats (job runs, free runners,
+- `int-checks-<slug>` — check runner pool stats (job runs, free runners,
   average duration, average delay)
-- `int-jobs-<hostname>` — job runner pool stats (same fields)
+- `int-jobs-<slug>` — job runner pool stats (same fields)
 
 These show up in the `default` organization and are the easiest way to tell
 whether a pool is sized correctly: if `free_runners` is consistently `0`

@@ -1,10 +1,4 @@
-import { test, expect } from "./fixtures";
-
-// Honor E2E_BASE_URL (side-car test server) like playwright.config.ts does;
-// fall back to the CI default.
-const API_BASE = process.env.E2E_BASE_URL
-  ? new URL(process.env.E2E_BASE_URL).origin
-  : "http://localhost:4000";
+import { test, expect, API_BASE } from "./fixtures";
 
 test.describe("Web Push Foundation", () => {
   test("service worker registers at /dash0/sw.js", async ({

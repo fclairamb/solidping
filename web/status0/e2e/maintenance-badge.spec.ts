@@ -1,6 +1,5 @@
 import { test, expect } from "@playwright/test";
-
-const BASE = "http://localhost:4000";
+import { API_BASE as BASE } from "./fixtures";
 
 /**
  * Verifies the "Scheduled Maintenance" badge on the public status page.

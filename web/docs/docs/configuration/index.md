@@ -58,6 +58,7 @@ own edge. See [Custom Domains](/features/custom-domains) for the full setup.
 |----------|---------|-------------|
 | `SP_NODE_ROLE` | `all` | Node role: `all`, `api`, `jobs`, `checks` |
 | `SP_NODE_REGION` | - | Worker region (required when role=`checks`) |
+| `SP_NODE_NAME` | hostname | Worker identity (`workers.slug` and `workers.name`) — overrides the OS hostname |
 | `SP_REGIONS` | - | Region display definitions, as a JSON list of `{slug, emoji, name}` |
 
 Use `SP_NODE_ROLE` to run SolidPing in a distributed configuration:
@@ -65,6 +66,33 @@ Use `SP_NODE_ROLE` to run SolidPing in a distributed configuration:
 - `api` - Only serve the API and dashboard
 - `jobs` - Only run background jobs (scheduling, cleanup)
 - `checks` - Only execute health checks (worker mode)
+
+`SP_NODE_NAME` pins the identity a node registers under. By default the slug
+is the OS hostname, lowercased and cut to 15 characters, and it must match
+`^[a-z][a-z0-9-]{2,20}$`. Registration is an upsert on that slug, so set
+`SP_NODE_NAME` whenever the hostname is not stable, not unique within its
+first 15 characters, or not slug-legal:
+
+```bash
+SP_NODE_NAME=solidping-eu2
+```
+
+Two cases where it is required rather than nice to have:
+
+- **Kubernetes with `hostNetwork: true`.** The pod shares the host UTS
+  namespace, so `spec.hostname` is ignored and the container sees the node
+  name — typically dotted (`eu2.example.com`), which the slug pattern
+  rejects. This is the setup you need to give check workers the node's IPv6
+  stack on a single-stack (IPv4-only) cluster, so an IPv6-only target can be
+  checked at all.
+- **Pod names that collide in the first 15 characters.** Deployment-generated
+  names such as `solidping-checks-eu2-…` and `solidping-checks-us1-…` both cut
+  down to `solidping-check`, and the two workers then silently share one
+  `workers` row. A truncated hostname logs a WARN naming the resulting slug.
+
+An invalid effective slug (override or hostname-derived) aborts startup with a
+message naming the offending value, rather than failing later against the
+database constraint.
 
 `SP_REGIONS` names your regions declaratively: the dashboard renders
 `{emoji} {name}` wherever a region appears (check form, results, worker

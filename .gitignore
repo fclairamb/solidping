@@ -28,6 +28,11 @@ server/internal/app/docsres/
 test-results/
 playwright-report/
 
+# Showcase media pipeline scratch: raw Playwright .webm recordings, traces and
+# untrimmed stills. Only the post-processed assets under
+# web/docs/static/showcase/ are committed. See web/dash0/showcase/README.md.
+web/dash0/showcase/output/
+
 # Bench artefacts (loadgen + bench-checks)
 bench-data/
 bench-results/

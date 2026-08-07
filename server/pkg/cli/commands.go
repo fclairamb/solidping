@@ -277,13 +277,14 @@ func GetCommands() []*cli.Command {
 					Action: checksUpsertAction,
 				},
 				{
-					Name:  "validate",
-					Usage: "Validate a check definition without persisting it",
+					Name:      "validate",
+					Usage:     "Validate a check definition or a whole export document (offline, no token/network for a document)",
+					ArgsUsage: "[file]",
 					Flags: []cli.Flag{
 						&cli.StringFlag{
 							Name:    flagFile,
 							Aliases: []string{"f"},
-							Usage:   "Check definition file (JSON or YAML); reads stdin if omitted",
+							Usage:   "Check definition or export document (JSON or YAML); reads stdin if omitted",
 						},
 					},
 					Action: checksValidateAction,
@@ -459,18 +460,27 @@ func GetCommands() []*cli.Command {
 				},
 				{
 					Name:  "export",
-					Usage: "Export all checks as a portable JSON document (admin-only)",
+					Usage: "Export all checks as a portable JSON or YAML document (admin-only)",
 					Flags: []cli.Flag{
 						&cli.StringFlag{
 							Name:  flagFile,
 							Usage: "Write the export to a file instead of stdout",
 						},
+						&cli.StringFlag{
+							Name: flagFormat,
+							Usage: "Output format: yaml or json (default: inferred from --file's " +
+								"extension, else json)",
+						},
 					},
 					Action: checksExportAction,
 				},
 				{
-					Name:      "import",
-					Usage:     "Import checks from an export document (idempotent upsert, admin-only)",
+					Name:  "import",
+					Usage: "Import checks from an export document (idempotent upsert on slug, never deletes, admin-only)",
+					Description: "Loads a JSON or YAML export document and upserts each check by slug. " +
+						"This never deletes: a check removed from the file simply stays untouched. Always " +
+						"start from a fresh `sp checks export` before hand-editing, and use `sp apply --prune` " +
+						"instead if you need delete-by-absence.",
 					ArgsUsage: "<file>",
 					Flags: []cli.Flag{
 						&cli.BoolFlag{
@@ -479,6 +489,12 @@ func GetCommands() []*cli.Command {
 						},
 					},
 					Action: checksImportAction,
+				},
+				{
+					Name:      "diff",
+					Usage:     "Show how a local export file differs from what SolidPing currently holds",
+					ArgsUsage: "<file>",
+					Action:    checksDiffAction,
 				},
 			},
 		},

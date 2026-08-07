@@ -1,8 +1,4 @@
-import { test, expect, type Page } from "./fixtures";
-
-const API_BASE = (
-  process.env.E2E_BASE_URL ?? "http://localhost:4000/dash0/"
-).replace(/\/dash0\/?$/, "");
+import { test, expect, type Page, API_BASE } from "./fixtures";
 
 // --- Helpers for the "Checks at a glance" tests -------------------------------
 // These tests mock the dashboard's data endpoints so the glance card is
