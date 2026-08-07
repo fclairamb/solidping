@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -447,15 +445,12 @@ func (w *JobWorker) createJobContext(
 
 // setupSelfStats configures self-stats reporting for the worker.
 func (w *JobWorker) setupSelfStats(ctx context.Context) error {
-	// Generate worker slug from hostname
-	hostname, err := os.Hostname()
-	if err != nil {
-		hostname = "unknown"
-	}
-	if len(hostname) > 15 {
-		hostname = hostname[:15]
-	}
-	w.workerSlug = strings.ToLower(hostname)
+	// Worker identity: SP_NODE_NAME when set, otherwise the lowercased OS
+	// hostname truncated to config.WorkerHostnameMaxLen — the exact same
+	// resolution the check worker uses.
+	identity := w.config.WorkerIdentity()
+	identity.WarnIfTruncated(ctx, w.logger)
+	w.workerSlug = identity.Slug
 
 	// Get the default organization
 	org, err := w.dbService.GetOrganizationBySlug(ctx, "default")

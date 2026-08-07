@@ -414,6 +414,13 @@ type EntitlementsConfig struct {
 type NodeConfig struct {
 	Role   string `koanf:"role"`   // Node role: all, api, jobs, checks
 	Region string `koanf:"region"` // Node region (required for checks role)
+	// Name overrides the worker slug/name this process registers under
+	// (SP_NODE_NAME). Empty means "derive it from os.Hostname()", which is the
+	// historic behaviour. Set it wherever the hostname is not stable, not
+	// unique within the first 15 characters, or not slug-legal — most notably
+	// Kubernetes pods running with `hostNetwork: true`, where the host UTS
+	// namespace makes os.Hostname() return the (dotted) node name.
+	Name string `koanf:"name"`
 }
 
 // ProfilerConfig contains pprof profiler server configuration.
@@ -1854,6 +1861,16 @@ func (c *Config) Validate() error {
 	// needed on the very first run — a persisted identity replaces it).
 	if c.Node.Role == NodeRoleAgent && c.Agent.ServerURL == "" {
 		return ErrAgentServerURLRequired
+	}
+
+	// Validate the worker identity for any node that registers a `workers` row
+	// (check worker and/or job worker). Doing it here turns an opaque
+	// SQLSTATE=23514 CHECK violation at INSERT time into a startup error naming
+	// the offending value and SP_NODE_NAME.
+	if c.ShouldRunChecks() || c.ShouldRunJobs() {
+		if err := c.WorkerIdentity().Validate(); err != nil {
+			return err
+		}
 	}
 
 	// Validate aggregation retention values are positive

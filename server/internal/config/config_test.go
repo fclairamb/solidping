@@ -893,7 +893,9 @@ func defaultPasswordConfig() PasswordConfig {
 func validBaseConfig() *Config {
 	return &Config{
 		Database: DatabaseConfig{Type: DatabaseTypeSQLite, Dir: "."},
-		Node:     NodeConfig{Role: NodeRoleAll},
+		// Node.Name is pinned so Validate()'s worker-identity check never
+		// depends on the machine's real hostname.
+		Node: NodeConfig{Role: NodeRoleAll, Name: "test-node"},
 		Aggregation: AggregationConfig{
 			RetentionRaw:  24,
 			RetentionHour: 7,
