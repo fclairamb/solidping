@@ -15,10 +15,27 @@ them up). Full details: [`web/dash0/showcase/README.md`](../../web/dash0/showcas
 Run it with:
 
 ```bash
-# side-car test server, leaving a `make dev` loop on :4000 undisturbed
-PORT=4321 SP_RUNMODE=test SP_DB_RESET=true ./solidping serve &
+# side-car server, leaving a `make dev` loop on :4000 undisturbed.
+# DEFAULT run mode on purpose — see "Nothing on camera is a fixture" below.
+PORT=4321 SP_DB_RESET=true SP_DB_TYPE=sqlite SP_DB_URL=/tmp/showcase.db \
+  ./solidping serve &
 E2E_BASE_URL=http://localhost:4321/dash0/ make showcase
 ```
+
+## Nothing on camera is a fixture
+
+The frames are published marketing assets, so the pipeline never films an
+existing org. It provisions its own through the public API
+(`POST /api/v1/orgs` → **Northwind Systems** / `northwind`), wipes it clean on
+reruns (the `409` path switches into it and deletes every check first), and
+sets the account display name via `PATCH /api/v1/auth/me` so the sidebar reads
+**Alex Rivera**, not "Administrator".
+
+That is also why `SP_RUNMODE=test` is *not* used for recording: its identity is
+`test@test.com` and its seeded fixtures (e.g. "Notified Check →
+https://example.com") would appear in the sidebar and the checks list. Default
+run mode's `admin@solidping.com` / `solidpass` reads plausibly instead. All of
+it is inside `make showcase` — no manual setup step.
 
 `make showcase` is **manual only** — there is no CI job and no scheduled
 regeneration. That is a deliberate decision (spec 2026-08-07-02): CI

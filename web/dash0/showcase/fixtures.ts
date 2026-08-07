@@ -7,17 +7,48 @@ import { fileURLToPath } from "node:url";
  * Showcase fixtures.
  *
  * Mirrors `web/dash0/e2e/fixtures.ts`: the server origin is derived from
- * `E2E_BASE_URL` so a side-car test server on another port can be targeted
- * without disturbing a dev server on :4000, and never hardcoded.
+ * `E2E_BASE_URL` so a side-car server on another port can be targeted without
+ * disturbing a dev server on :4000, and never hardcoded.
+ *
+ * ## Why this does NOT record in the e2e fixture org
+ *
+ * These frames are published marketing assets. Recording in the
+ * `SP_RUNMODE=test` org would put the test fixtures on camera — the seeded
+ * "Notified Check → https://example.com" row and a `test@test.com /
+ * Administrator` sidebar identity. So the pipeline instead **provisions its
+ * own organization** through the public API (`POST /api/v1/orgs`) and records
+ * there: a fresh org contains no fixture data at all, and its name is ours to
+ * choose. The account's display name is set through
+ * `PATCH /api/v1/auth/me` so the sidebar reads as a person, not a role label.
+ *
+ * The recommended run mode is therefore the DEFAULT one (not `test`), whose
+ * out-of-the-box account is `admin@solidping.com` / `solidpass` — an identity
+ * that reads plausibly on camera. See `showcase/README.md`.
  */
 export const API_BASE = process.env.E2E_BASE_URL
   ? new URL(process.env.E2E_BASE_URL).origin
   : "http://localhost:4000";
 
-/** Credentials used for the recording. Defaults match `SP_RUNMODE=test`. */
-export const SHOWCASE_ORG = process.env.SHOWCASE_ORG ?? "test";
-const SHOWCASE_EMAIL = process.env.SHOWCASE_EMAIL ?? "test@test.com";
-const SHOWCASE_PASSWORD = process.env.SHOWCASE_PASSWORD ?? "test";
+/**
+ * Credentials used to bootstrap the recording. Defaults match a default-run-mode
+ * server (`admin@solidping.com` / `solidpass`, org `default`). Override for a
+ * server seeded differently.
+ */
+export const BOOTSTRAP_ORG = process.env.SHOWCASE_BOOTSTRAP_ORG ?? "default";
+const BOOTSTRAP_EMAIL =
+  process.env.SHOWCASE_EMAIL ?? "admin@solidping.com";
+const BOOTSTRAP_PASSWORD = process.env.SHOWCASE_PASSWORD ?? "solidpass";
+
+/**
+ * The dedicated org the recording actually happens in — created on first run,
+ * reused (and wiped clean) on later runs. Slug rules: 3-20 chars, lowercase
+ * alphanumeric plus hyphens.
+ */
+export const SHOWCASE_ORG = process.env.SHOWCASE_ORG ?? "northwind";
+const SHOWCASE_ORG_NAME = process.env.SHOWCASE_ORG_NAME ?? "Northwind Systems";
+
+/** Display name shown in the dashboard sidebar during the recording. */
+const SHOWCASE_USER_NAME = process.env.SHOWCASE_USER_NAME ?? "Alex Rivera";
 
 const showcaseDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -26,7 +57,7 @@ export const STILLS_DIR = path.join(showcaseDir, "output", "stills");
 
 /**
  * Realistic demo data staged before the recording so the UI on camera looks
- * like a real account rather than the e2e fixtures' throwaway rows.
+ * like a real account.
  */
 export const DEMO_CHECKS = [
   {
@@ -52,25 +83,111 @@ export const FEATURED_CHECK = {
   url: "https://api.solidping.io/v1/health",
 };
 
+interface Json {
+  [key: string]: unknown;
+}
+
+/** Logs in through the API against the bootstrap org. */
 export async function apiLogin(page: Page): Promise<string> {
   const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
     data: {
-      org: SHOWCASE_ORG,
-      email: SHOWCASE_EMAIL,
-      password: SHOWCASE_PASSWORD,
+      org: BOOTSTRAP_ORG,
+      email: BOOTSTRAP_EMAIL,
+      password: BOOTSTRAP_PASSWORD,
     },
   });
   if (!resp.ok()) {
     throw new Error(
-      `Showcase login failed (${resp.status()}) against ${API_BASE}. ` +
-        `Is a SolidPing server running there? Override credentials with ` +
-        `SHOWCASE_ORG / SHOWCASE_EMAIL / SHOWCASE_PASSWORD.`,
+      `Showcase bootstrap login failed (${resp.status()}) as ${BOOTSTRAP_EMAIL} ` +
+        `in org "${BOOTSTRAP_ORG}" against ${API_BASE}. Is a SolidPing server ` +
+        `running there? Override with SHOWCASE_BOOTSTRAP_ORG / SHOWCASE_EMAIL / ` +
+        `SHOWCASE_PASSWORD.`,
     );
   }
   return (await resp.json()).accessToken;
 }
 
-/** Seeds the staged demo checks; returns their uids for later cleanup. */
+/**
+ * Ensures the dedicated showcase org exists and contains nothing but the demo
+ * data this pipeline stages.
+ *
+ * - First run: `POST /api/v1/orgs` creates it (the caller becomes its admin).
+ * - Later runs: the 409 is expected; every check already in the org is deleted
+ *   so the recording never picks up leftovers from a previous run.
+ *
+ * Returns an access token scoped to the showcase org.
+ */
+export async function ensureCleanShowcaseOrg(
+  page: Page,
+  bootstrapToken: string,
+): Promise<string> {
+  const auth = { Authorization: `Bearer ${bootstrapToken}` };
+
+  const createResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
+    headers: auth,
+    data: { name: SHOWCASE_ORG_NAME, slug: SHOWCASE_ORG },
+  });
+  if (createResp.status() !== 201 && createResp.status() !== 409) {
+    throw new Error(
+      `Could not provision the showcase org "${SHOWCASE_ORG}" ` +
+        `(POST /api/v1/orgs → ${createResp.status()}): ${await createResp.text()}`,
+    );
+  }
+
+  // Creating an org mints a session scoped to it; on a rerun (409) switch into
+  // the existing one instead.
+  let orgToken: string;
+  if (createResp.status() === 201) {
+    orgToken = (await createResp.json()).accessToken;
+  } else {
+    const switchResp = await page.request.post(
+      `${API_BASE}/api/v1/auth/switch-org`,
+      { headers: auth, data: { org: SHOWCASE_ORG } },
+    );
+    if (!switchResp.ok()) {
+      throw new Error(
+        `The showcase org "${SHOWCASE_ORG}" already exists but could not be ` +
+          `switched into (${switchResp.status()}): ${await switchResp.text()}`,
+      );
+    }
+    orgToken = (await switchResp.json()).accessToken;
+  }
+
+  // Wipe anything left over so only staged demo data ends up on camera.
+  await deleteAllChecks(page, orgToken);
+
+  // Make the sidebar identity read as a person rather than a role label.
+  await page.request.patch(`${API_BASE}/api/v1/auth/me`, {
+    headers: { Authorization: `Bearer ${orgToken}` },
+    data: { name: SHOWCASE_USER_NAME },
+  });
+
+  return orgToken;
+}
+
+/** Deletes every check in the showcase org. */
+export async function deleteAllChecks(
+  page: Page,
+  token: string,
+): Promise<void> {
+  const headers = { Authorization: `Bearer ${token}` };
+  const listResp = await page.request.get(
+    `${API_BASE}/api/v1/orgs/${SHOWCASE_ORG}/checks?limit=500`,
+    { headers },
+  );
+  if (!listResp.ok()) return;
+  const checks: Json[] = (await listResp.json()).data ?? [];
+  for (const check of checks) {
+    await page.request
+      .delete(
+        `${API_BASE}/api/v1/orgs/${SHOWCASE_ORG}/checks/${String(check.uid)}`,
+        { headers },
+      )
+      .catch(() => undefined);
+  }
+}
+
+/** Seeds the staged demo checks into the showcase org. */
 export async function seedDemoData(
   page: Page,
   token: string,
@@ -91,21 +208,6 @@ export async function seedDemoData(
   return uids;
 }
 
-/** Removes everything the recording created, so the org is clean afterwards. */
-export async function cleanupDemoData(
-  page: Page,
-  token: string,
-  uids: string[],
-): Promise<void> {
-  for (const uid of uids) {
-    await page.request
-      .delete(`${API_BASE}/api/v1/orgs/${SHOWCASE_ORG}/checks/${uid}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      .catch(() => undefined);
-  }
-}
-
 /** Writes a named still frame into the predictable stills directory. */
 export async function still(page: Page, name: string): Promise<void> {
   await mkdir(STILLS_DIR, { recursive: true });
@@ -117,13 +219,15 @@ export async function beat(page: Page, ms = 1200): Promise<void> {
   await page.waitForTimeout(ms);
 }
 
-/** Logs in through the real form — the first thing the viewer sees working. */
+/** Logs in through the real form, into the showcase org. */
 export async function uiLogin(page: Page): Promise<void> {
   await page.goto(`orgs/${SHOWCASE_ORG}/login`);
   await page.waitForLoadState("networkidle");
-  await page.getByTestId("login-title").waitFor({ state: "visible", timeout: 15000 });
-  await page.getByTestId("login-email").fill(SHOWCASE_EMAIL);
-  await page.getByTestId("login-password").fill(SHOWCASE_PASSWORD);
+  await page
+    .getByTestId("login-title")
+    .waitFor({ state: "visible", timeout: 15000 });
+  await page.getByTestId("login-email").fill(BOOTSTRAP_EMAIL);
+  await page.getByTestId("login-password").fill(BOOTSTRAP_PASSWORD);
   await page.getByTestId("login-submit").click();
   await page.waitForURL((url) => !url.pathname.includes("login"), {
     timeout: 15000,

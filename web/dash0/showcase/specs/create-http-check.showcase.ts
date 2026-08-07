@@ -2,8 +2,9 @@ import {
   test,
   expect,
   apiLogin,
+  ensureCleanShowcaseOrg,
   seedDemoData,
-  cleanupDemoData,
+  deleteAllChecks,
   still,
   beat,
   uiLogin,
@@ -22,10 +23,14 @@ import {
  * the way for the docs page to embed.
  */
 test("create an HTTP check", async ({ page }) => {
+  // Provision (or wipe clean) a dedicated org and stage the demo data BEFORE
+  // anything is filmed, so the only content that ever reaches the camera is
+  // content this pipeline put there.
+  const bootstrapToken = await apiLogin(page);
+  const token = await ensureCleanShowcaseOrg(page, bootstrapToken);
+  await seedDemoData(page, token);
+
   await uiLogin(page);
-  const token = await apiLogin(page);
-  const seeded = await seedDemoData(page, token);
-  let createdUid: string | null = null;
 
   try {
     // 1. The checks list — the starting point, with realistic demo data.
@@ -88,16 +93,13 @@ test("create an HTTP check", async ({ page }) => {
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 20000 });
     await page.waitForLoadState("networkidle");
-    createdUid = page.url().match(/\/checks\/([0-9a-f-]{36})/)?.[1] ?? null;
 
     // 8. Let the detail page settle so the first results have a chance to land.
     await beat(page, 4000);
     await still(page, "03-check-detail");
     await beat(page, 1500);
   } finally {
-    await cleanupDemoData(page, token, [
-      ...seeded,
-      ...(createdUid ? [createdUid] : []),
-    ]);
+    // Leave the showcase org empty; the next run wipes it clean anyway.
+    await deleteAllChecks(page, token);
   }
 });
