@@ -60,10 +60,20 @@ reasons as much as to leave a `make dev` loop on :4000 alone (see the warning
 below). Note: **default** run mode, no `SP_RUNMODE=test`:
 
 ```bash
-PORT=4321 SP_DB_RESET=true SP_DB_TYPE=sqlite SP_DB_URL=/tmp/showcase.db \
-  ./solidping serve &
+mkdir -p /tmp/showcase-db
+PORT=4321 SP_DB_TYPE=sqlite SP_DB_DIR=/tmp/showcase-db ./solidping serve &
 E2E_BASE_URL=http://localhost:4321/dash0/ make showcase
 ```
+
+`SP_DB_DIR` is the knob that actually isolates the database — the SQLite file
+is written to `$SP_DB_DIR/solidping.db` and `SP_DB_DIR` defaults to `.`, so
+**omitting it puts the side-car on the repo-root `./solidping.db`, i.e. your dev
+database**. `SP_DB_URL` will not do it: that is the PostgreSQL DSN and is inert
+when `SP_DB_TYPE=sqlite`. Deleting the scratch directory between runs is what
+gives you a fresh database; `SP_DB_RESET` will not, because it is honored only
+in `test`/`demo` run modes (`server/internal/db/sqlite/sqlite.go`, and the same
+gate in the Postgres driver) and this recipe deliberately runs in the default
+one.
 
 Against whatever is on :4000:
 

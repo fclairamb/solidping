@@ -159,4 +159,8 @@ until the flows have proven stable.
 
 QA: `make build-dash0` + `cd web/dash0 && bun run lint` (no NEW errors),
 `make build-docs`, and one real end-to-end run of `make showcase` against a
-side-car `SP_RUNMODE=test` server on a non-default port.
+side-car server on a non-default port with an isolated database
+(`PORT=4321 SP_DB_TYPE=sqlite SP_DB_DIR=<scratch dir>`). Note: **default** run
+mode, not `SP_RUNMODE=test` — test mode's fixtures and `test@test.com` identity
+would end up in frame. `SP_DB_DIR` (not `SP_DB_URL`, which is the PostgreSQL
+DSN) is what moves the SQLite file off the repo root.

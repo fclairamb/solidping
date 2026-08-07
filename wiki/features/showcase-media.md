@@ -18,10 +18,19 @@ Run it with:
 # Disposable side-car server. Use one — the pipeline writes to whatever server
 # it is pointed at, and the org it creates is permanent (see below).
 # DEFAULT run mode on purpose — see "Nothing on camera is a fixture" below.
-PORT=4321 SP_DB_RESET=true SP_DB_TYPE=sqlite SP_DB_URL=/tmp/showcase.db \
-  ./solidping serve &
+mkdir -p /tmp/showcase-db
+PORT=4321 SP_DB_TYPE=sqlite SP_DB_DIR=/tmp/showcase-db ./solidping serve &
 E2E_BASE_URL=http://localhost:4321/dash0/ make showcase
 ```
+
+**`SP_DB_DIR` is load-bearing.** The SQLite file is written to
+`$SP_DB_DIR/solidping.db` and `SP_DB_DIR` defaults to `.`, so a side-car started
+without it lands on the repo-root `./solidping.db` — the dev database this
+recipe exists to protect. `SP_DB_URL` does *not* substitute: it is the
+PostgreSQL DSN and is inert under `SP_DB_TYPE=sqlite`. Nor does `SP_DB_RESET`
+give you a fresh database here — it is gated on `test`/`demo` run modes
+(`server/internal/db/sqlite/sqlite.go`, mirrored in the Postgres driver) and
+this recipe runs in the default mode; delete the scratch directory instead.
 
 ### What a run leaves behind in the target database
 
