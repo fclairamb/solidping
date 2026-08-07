@@ -1,6 +1,5 @@
 import { test, expect } from "@playwright/test";
-
-const BASE = "http://localhost:4000";
+import { API_BASE as BASE } from "./fixtures";
 
 test.describe("Public status page", () => {
   test("default org URL renders status page (not blank)", async ({ page }) => {

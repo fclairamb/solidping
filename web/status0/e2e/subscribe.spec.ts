@@ -1,6 +1,5 @@
 import { test, expect } from "@playwright/test";
-
-const BASE = "http://localhost:4000";
+import { API_BASE as BASE } from "./fixtures";
 
 test.describe("Status page subscribe widget", () => {
   test("subscribe widget submits and shows check-your-inbox state", async ({
