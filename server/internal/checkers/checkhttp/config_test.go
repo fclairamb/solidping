@@ -228,8 +228,6 @@ func TestHTTPConfigVerifySslFollowRedirects_RoundTrip(t *testing.T) {
 	r.True(roundTripped.SkipRedirects())
 }
 
-func boolPtr(b bool) *bool { return &b }
-
 func TestHTTPConfigSecretHeaders_RoundTrip(t *testing.T) {
 	t.Parallel()
 

@@ -6409,6 +6409,14 @@ components:
           enum: [http, tcp, icmp, dns, ssl, domain]
         config:
           type: object
+          description: >-
+            Check-specific configuration; the fields accepted depend on
+            `type`. HTTP checks additionally accept `verifySsl` (boolean,
+            default true — set false to skip TLS certificate verification)
+            and `followRedirects` (boolean, default true — set false to stop
+            at the first response instead of following redirects). See
+            wiki/conventions/checker-config.md for the full per-type field
+            reference.
         targetHost:
           type: string
           nullable: true
@@ -6669,7 +6677,11 @@ components:
           description: Check type (auto-inferred from URL if not provided)
         config:
           type: object
-          description: Check-specific configuration (e.g., url, port, timeout)
+          description: >-
+            Check-specific configuration (e.g., url, port, timeout). HTTP
+            checks additionally accept `verifySsl` and `followRedirects`
+            (both booleans, default true) — see the Check schema above for
+            details.
         enabled:
           type: boolean
           default: true
@@ -6805,7 +6817,10 @@ components:
           description: Check type (auto-inferred from URL if not provided)
         config:
           type: object
-          description: Check-specific configuration
+          description: >-
+            Check-specific configuration. HTTP checks additionally accept
+            `verifySsl` and `followRedirects` (both booleans, default true)
+            — see the Check schema above for details.
         enabled:
           type: boolean
           default: true
