@@ -1126,15 +1126,23 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	systemActions.GET("/agents", agentsAdminHandler.ListAllAgents)
 
 	// Org entitlements routes. The handler does its own auth gating
-	// (service token preferred for SaaS billing service; admin user
-	// fallback gated by entitlements.admin_writes_enabled). The billing
-	// service authenticates with the entitlements.service_token shared
-	// secret (not a JWT). ServiceTokenBypass marks a matching request as a
-	// trusted service so the following RequireAuth + RequireOrgAccess become
-	// no-ops (cross-org writes); every other caller authenticates normally.
+	// (trusted service preferred for the SaaS billing service; admin user
+	// fallback gated by entitlements.admin_writes_enabled).
+	//
+	// The billing service proves identity by SIGNING the request
+	// (X-SP-Signature over <timestamp>.<method>.<path>.<sha256 body>, keys in
+	// entitlements.service_signing_keys) — ServiceSignature verifies it.
+	// ServiceTokenBypass stays behind it for the legacy static bearer, gated
+	// by entitlements.allow_legacy_service_token (default true) so the
+	// cross-repo migration is a parameter flip rather than a lockstep restart.
+	// Either one marks the request as a trusted service, so the following
+	// RequireAuth + RequireOrgAccess become no-ops (cross-org writes); every
+	// other caller authenticates normally.
 	entitlementsHandler := entitlements.NewHandler(s.services.Entitlements, s.dbService, s.config)
 	orgEntitlements := api.NewGroup("/orgs/:org/entitlements").
-		Use(authMiddleware.ServiceTokenBypass(entitlements.ParamServiceToken)).
+		Use(authMiddleware.ServiceSignature(entitlements.ParamServiceSigningKeys)).
+		Use(authMiddleware.ServiceTokenBypass(
+			entitlements.ParamServiceToken, entitlements.ParamAllowLegacyServiceToken)).
 		Use(authMiddleware.RequireAuth).
 		Use(authMiddleware.RequireOrgAccess)
 	orgEntitlements.GET("", entitlementsHandler.Get)

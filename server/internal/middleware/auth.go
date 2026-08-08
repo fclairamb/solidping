@@ -2,11 +2,15 @@
 package middleware
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
+	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -15,6 +19,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/oauth"
+	"github.com/fclairamb/solidping/server/internal/servicesig"
 )
 
 // Use context keys from base package to avoid import cycles.
@@ -198,6 +203,100 @@ func (m *AuthMiddleware) RequireOrgAccess(next httpx.HandlerFunc) httpx.HandlerF
 // requests as already trusted and skip their user-centric checks.
 type serviceAuthContextKey struct{}
 
+// ServiceSignature authorizes a request as a trusted internal service when it
+// carries a valid X-SP-Signature / X-SP-Timestamp / X-SP-Key-Id triple signed
+// with one of the keys held in the named system parameter (see
+// internal/servicesig for the scheme).
+//
+// It is the replacement for ServiceTokenBypass's static bearer: a signature is
+// bound to the timestamp, method, path and exact body bytes, so a captured
+// request can neither be replayed outside the skew window nor resent with a
+// different payload.
+//
+// Behavior:
+//
+//   - No signature header at all → pass through untouched, so the legacy
+//     bearer path and ordinary user authentication still apply. This is what
+//     makes the migration a parameter flip rather than a coordinated restart.
+//   - Valid signature → set the same serviceAuthContextKey ServiceTokenBypass
+//     sets, so the downstream RequireAuth + RequireOrgAccess become no-ops
+//     (billing writes cross-org by design) and the handler attributes the call.
+//   - Signature present but invalid → one generic 401. The reason (unknown key
+//     id, skew, mismatch) is logged, never returned.
+//
+// Verifying the body hash means the raw bytes must be read here and handed
+// back to the handler, so the body is buffered and restored.
+//
+// Place this before ServiceTokenBypass and RequireAuth on the group.
+func (m *AuthMiddleware) ServiceSignature(
+	keysParamKey string,
+) func(httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(next httpx.HandlerFunc) httpx.HandlerFunc {
+		return func(writer http.ResponseWriter, req *http.Request) error {
+			if !servicesig.HasSignature(req) {
+				return next(writer, req)
+			}
+
+			keys, err := servicesig.LoadKeySet(req.Context(), m.dbService, keysParamKey)
+			if err != nil {
+				slog.ErrorContext(req.Context(), "service signature: cannot load signing keys",
+					"param", keysParamKey, "error", err)
+
+				return m.writeServiceAuthDenied(writer)
+			}
+
+			body, err := readAndRestoreBody(req)
+			if err != nil {
+				slog.WarnContext(req.Context(), "service signature: cannot read request body",
+					"path", req.URL.Path, "error", err)
+
+				return m.writeServiceAuthDenied(writer)
+			}
+
+			key, err := servicesig.VerifyRequest(req, keys, body, time.Now())
+			if err != nil {
+				slog.WarnContext(req.Context(), "service signature rejected",
+					"path", req.URL.Path, "keyId", req.Header.Get(servicesig.HeaderKeyID),
+					"reason", err.Error())
+
+				return m.writeServiceAuthDenied(writer)
+			}
+
+			slog.DebugContext(req.Context(), "service signature accepted",
+				"path", req.URL.Path, "keyId", key.ID)
+
+			ctx := context.WithValue(req.Context(), serviceAuthContextKey{}, true)
+
+			return next(writer, req.WithContext(ctx))
+		}
+	}
+}
+
+// writeServiceAuthDenied is the single generic 401 every signature rejection
+// collapses into — the specific reason only ever reaches the log.
+func (m *AuthMiddleware) writeServiceAuthDenied(writer http.ResponseWriter) error {
+	return m.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
+}
+
+// readAndRestoreBody consumes the request body so it can be hashed, then puts
+// it back for the handler to decode.
+func readAndRestoreBody(req *http.Request) ([]byte, error) {
+	if req.Body == nil {
+		return nil, nil
+	}
+
+	body, err := io.ReadAll(req.Body)
+	_ = req.Body.Close()
+
+	if err != nil {
+		return nil, err
+	}
+
+	req.Body = io.NopCloser(bytes.NewReader(body))
+
+	return body, nil
+}
+
 // ServiceTokenBypass authorizes a request as a trusted internal service when
 // its bearer token matches the secret stored in the named system parameter
 // (e.g. the billing service's entitlements.service_token). It records that on
@@ -206,16 +305,42 @@ type serviceAuthContextKey struct{}
 // finer-grained gating. Every other request passes through untouched and is
 // authenticated normally. Place this before RequireAuth on the group.
 //
-// The parameter key is passed in rather than imported to avoid an import
-// cycle with the handler package that owns it.
+// This is the LEGACY path, superseded by ServiceSignature. It is gated by the
+// boolean system parameter named by allowLegacyParamKey (default true when
+// unset, so nothing breaks before the billing service starts signing) and logs
+// a deprecation warning on every use, so operators can watch the legacy channel
+// go quiet before flipping the parameter to false. Once it is off everywhere,
+// this middleware and its parameter can be deleted.
+//
+// The parameter keys are passed in rather than imported to avoid an import
+// cycle with the handler package that owns them.
 func (m *AuthMiddleware) ServiceTokenBypass(
-	paramKey string,
+	paramKey, allowLegacyParamKey string,
 ) func(httpx.HandlerFunc) httpx.HandlerFunc {
 	return func(next httpx.HandlerFunc) httpx.HandlerFunc {
 		return func(writer http.ResponseWriter, req *http.Request) error {
+			// A signature already authorized this request; nothing to do.
+			if isServiceAuthorized(req.Context()) {
+				return next(writer, req)
+			}
+
 			if token := extractToken(req); token != "" {
 				expected := m.systemParamString(req.Context(), paramKey)
 				if expected != "" && subtle.ConstantTimeCompare([]byte(token), []byte(expected)) == 1 {
+					if !m.systemParamBool(req.Context(), allowLegacyParamKey, true) {
+						slog.WarnContext(req.Context(),
+							"legacy service token presented but disabled; falling through to normal auth",
+							"path", req.URL.Path, "param", allowLegacyParamKey)
+
+						return next(writer, req)
+					}
+
+					slog.WarnContext(req.Context(),
+						"DEPRECATED: request authorized by the static service token; "+
+							"the caller should sign it instead (X-SP-Signature)",
+						"path", req.URL.Path, "method", req.Method,
+						"remoteAddr", req.RemoteAddr, "userAgent", req.UserAgent())
+
 					ctx := context.WithValue(req.Context(), serviceAuthContextKey{}, true)
 
 					return next(writer, req.WithContext(ctx))
@@ -227,12 +352,18 @@ func (m *AuthMiddleware) ServiceTokenBypass(
 	}
 }
 
-// isServiceAuthorized reports whether ServiceTokenBypass already authorized
-// this request as a trusted internal service.
+// isServiceAuthorized reports whether ServiceSignature or ServiceTokenBypass
+// already authorized this request as a trusted internal service.
 func isServiceAuthorized(ctx context.Context) bool {
 	v, _ := ctx.Value(serviceAuthContextKey{}).(bool)
 
 	return v
+}
+
+// IsServiceAuthorized is the exported form of isServiceAuthorized, for handlers
+// that need to attribute a call to the trusted service principal.
+func IsServiceAuthorized(ctx context.Context) bool {
+	return isServiceAuthorized(ctx)
 }
 
 // systemParamString reads a string-valued system parameter, returning "" when
@@ -248,6 +379,30 @@ func (m *AuthMiddleware) systemParamString(ctx context.Context, key string) stri
 	}
 
 	return ""
+}
+
+// systemParamBool reads a boolean-valued system parameter, returning def when
+// absent, unreadable or unparsable. Both a JSON bool and a stringly-typed
+// "true"/"false" are accepted, matching how these parameters get seeded.
+func (m *AuthMiddleware) systemParamBool(ctx context.Context, key string, def bool) bool {
+	param, err := m.dbService.GetSystemParameter(ctx, key)
+	if err != nil || param == nil {
+		return def
+	}
+
+	switch v := param.Value["value"].(type) {
+	case bool:
+		return v
+	case string:
+		parsed, parseErr := strconv.ParseBool(v)
+		if parseErr != nil {
+			return def
+		}
+
+		return parsed
+	default:
+		return def
+	}
 }
 
 // extractToken extracts the authentication token from the request.
