@@ -92,7 +92,7 @@ func TestSignMatchesAnIndependentHMAC(t *testing.T) {
 func signedRequest(t *testing.T, keys servicesig.KeySet, body []byte, now time.Time) *http.Request {
 	t.Helper()
 
-	req := httptest.NewRequest(http.MethodPut, testPath, nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, testPath, nil)
 	require.NoError(t, servicesig.SignRequest(req, keys, body, now))
 
 	return req
@@ -138,13 +138,14 @@ func TestVerifyRejectsATamperedMethodOrPath(t *testing.T) {
 	req := signedRequest(t, testKeys(), body, now)
 
 	// Replay the same headers against a different org's path.
-	replay := httptest.NewRequest(http.MethodPut, "/api/v1/orgs/victim/entitlements", nil)
+	replay := httptest.NewRequestWithContext(
+		t.Context(), http.MethodPut, "/api/v1/orgs/victim/entitlements", nil)
 	replay.Header = req.Header.Clone()
 	_, err := servicesig.VerifyRequest(replay, testKeys(), body, now)
 	r.ErrorIs(err, servicesig.ErrBadSignature)
 
 	// Same path, different method.
-	replay2 := httptest.NewRequest(http.MethodPatch, testPath, nil)
+	replay2 := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, testPath, nil)
 	replay2.Header = req.Header.Clone()
 	_, err = servicesig.VerifyRequest(replay2, testKeys(), body, now)
 	r.ErrorIs(err, servicesig.ErrBadSignature)
@@ -254,7 +255,7 @@ func TestVerifyWithNoHeadersAtAll(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	req := httptest.NewRequest(http.MethodPut, testPath, nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, testPath, nil)
 	_, err := servicesig.VerifyRequest(req, testKeys(), nil, time.Now())
 	r.ErrorIs(err, servicesig.ErrNoSignature)
 	r.False(servicesig.HasSignature(req))
@@ -275,7 +276,7 @@ func TestSignRequestWithoutKeys(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	req := httptest.NewRequest(http.MethodPut, testPath, nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, testPath, nil)
 	r.ErrorIs(servicesig.SignRequest(req, nil, nil, time.Now()), servicesig.ErrNoKeysDefined)
 	r.Empty(req.Header.Get(servicesig.HeaderSignature))
 }

@@ -98,16 +98,24 @@ func (s *Server) SeedSaaSEntitlements(ctx context.Context) error {
 // parameter stays unset and the readers default it to true. Turning it off is
 // step 3 of the cross-repo migration and must be a deliberate operator action.
 func (s *Server) seedSigningKeys(ctx context.Context) error {
-	for _, keySet := range []struct {
+	keySets := []struct {
 		env      string
 		param    string
 		describe string
 	}{
-		{envEntitlementsServiceSigningKeys, entitlements.ParamServiceSigningKeys,
-			"inbound (verify the billing entitlements push)"},
-		{envEntitlementsOutboundSigningKeys, entitlements.ParamOutboundSigningKeys,
-			"outbound (sign our calls to billing)"},
-	} {
+		{
+			envEntitlementsServiceSigningKeys, entitlements.ParamServiceSigningKeys,
+			"inbound (verify the billing entitlements push)",
+		},
+		{
+			envEntitlementsOutboundSigningKeys, entitlements.ParamOutboundSigningKeys,
+			"outbound (sign our calls to billing)",
+		},
+	}
+
+	for i := range keySets {
+		keySet := &keySets[i]
+
 		raw := os.Getenv(keySet.env)
 		if raw == "" {
 			continue

@@ -67,6 +67,8 @@ var (
 	ErrSkew          = errors.New("timestamp outside the accepted skew window")
 	ErrBadSignature  = errors.New("signature mismatch")
 	ErrNoKeysDefined = errors.New("no signing keys configured")
+	// ErrInvalidKeySet reports a key set that could not be used as configured.
+	ErrInvalidKeySet = errors.New("invalid signing key set")
 )
 
 // Key is one shared secret and the id the signer advertises for it.
@@ -93,9 +95,9 @@ func (ks KeySet) Current() (Key, bool) {
 
 // find returns the key advertised under id.
 func (ks KeySet) find(id string) (Key, bool) {
-	for _, k := range ks {
-		if k.ID == id {
-			return k, true
+	for i := range ks {
+		if ks[i].ID == id {
+			return ks[i], true
 		}
 	}
 
@@ -121,14 +123,17 @@ func ParseKeySet(raw string) (KeySet, error) {
 	}
 
 	seen := make(map[string]bool, len(keys))
-	for i, k := range keys {
-		if k.ID == "" || k.Secret == "" {
-			return nil, fmt.Errorf("signing key #%d: both id and secret are required", i)
+
+	for i := range keys {
+		if keys[i].ID == "" || keys[i].Secret == "" {
+			return nil, fmt.Errorf("%w: key #%d needs both an id and a secret", ErrInvalidKeySet, i)
 		}
-		if seen[k.ID] {
-			return nil, fmt.Errorf("signing key #%d: duplicate id %q", i, k.ID)
+
+		if seen[keys[i].ID] {
+			return nil, fmt.Errorf("%w: key #%d repeats id %q", ErrInvalidKeySet, i, keys[i].ID)
 		}
-		seen[k.ID] = true
+
+		seen[keys[i].ID] = true
 	}
 
 	return keys, nil
@@ -157,6 +162,12 @@ func Sign(key Key, timestamp int64, method, path string, body []byte) string {
 // SignRequest sets the three signature headers on req using the current key of
 // ks. body must be the exact bytes that will be sent (nil for an empty body).
 // It never sets an Authorization header: signatures replace static bearers.
+//
+// The X-SP-* spelling is the cross-repo wire contract; net/http canonicalizes
+// header names on both Set and Get, so the linter's preferred X-Sp-* form is
+// the same header — the documented spelling is kept.
+//
+//nolint:canonicalheader // documented cross-repo header names, canonicalized by net/http anyway
 func SignRequest(req *http.Request, keys KeySet, body []byte, now time.Time) error {
 	key, ok := keys.Current()
 	if !ok {
@@ -173,6 +184,8 @@ func SignRequest(req *http.Request, keys KeySet, body []byte, now time.Time) err
 
 // HasSignature reports whether the request carries a signature header at all.
 // A request without one is left to the legacy bearer / user-auth path.
+//
+//nolint:canonicalheader // documented cross-repo header names, canonicalized by net/http anyway
 func HasSignature(req *http.Request) bool {
 	return req.Header.Get(HeaderSignature) != ""
 }
@@ -182,6 +195,8 @@ func HasSignature(req *http.Request) bool {
 //
 // Rejection order matches the spec: absent/unknown key id, then clock skew,
 // then signature mismatch. The comparison is constant time.
+//
+//nolint:canonicalheader // documented cross-repo header names, canonicalized by net/http anyway
 func VerifyRequest(req *http.Request, keys KeySet, body []byte, now time.Time) (Key, error) {
 	return Verify(
 		keys,

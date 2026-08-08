@@ -101,10 +101,13 @@ func (s *signedSetup) withSigningKeys(t *testing.T, keys servicesig.KeySet) {
 		t.Context(), enthandler.ParamServiceSigningKeys, string(raw), true))
 }
 
-func (s *signedSetup) withLegacyToken(t *testing.T, token string, allowed bool) {
+// withLegacyToken configures the deprecated static bearer and whether it is
+// still accepted.
+func (s *signedSetup) withLegacyToken(t *testing.T, allowed bool) {
 	t.Helper()
 
-	require.NoError(t, s.db.SetSystemParameter(t.Context(), enthandler.ParamServiceToken, token, true))
+	require.NoError(t, s.db.SetSystemParameter(
+		t.Context(), enthandler.ParamServiceToken, legacyBearer, true))
 	require.NoError(t, s.db.SetSystemParameter(
 		t.Context(), enthandler.ParamAllowLegacyServiceToken, allowed, false))
 }
@@ -351,7 +354,7 @@ func TestLegacyBearerHonorsTheEscapeHatch(t *testing.T) {
 
 		logs := captureLogs(t)
 		setup := newSignedSetup(t)
-		setup.withLegacyToken(t, legacyBearer, true)
+		setup.withLegacyToken(t, true)
 
 		code, respBody := setup.put(t, setup.orgA.Slug, limitsBody(3), withBearer)
 		r.Equal(http.StatusOK, code, respBody)
@@ -365,7 +368,7 @@ func TestLegacyBearerHonorsTheEscapeHatch(t *testing.T) {
 		r := require.New(t)
 
 		setup := newSignedSetup(t)
-		setup.withLegacyToken(t, legacyBearer, false)
+		setup.withLegacyToken(t, false)
 
 		code, _ := setup.put(t, setup.orgA.Slug, limitsBody(3), withBearer)
 		r.Equal(http.StatusUnauthorized, code)
@@ -377,7 +380,7 @@ func TestLegacyBearerHonorsTheEscapeHatch(t *testing.T) {
 		r := require.New(t)
 
 		setup := newSignedSetup(t)
-		setup.withLegacyToken(t, legacyBearer, true)
+		setup.withLegacyToken(t, true)
 
 		code, _ := setup.put(t, setup.orgA.Slug, limitsBody(3), func(req *http.Request) {
 			req.Header.Set("Authorization", "Bearer "+legacyBearer+"x")
@@ -395,7 +398,7 @@ func TestLegacyDisabledStillAcceptsSignatures(t *testing.T) {
 
 	setup := newSignedSetup(t)
 	setup.withSigningKeys(t, servicesig.KeySet{currentKey()})
-	setup.withLegacyToken(t, legacyBearer, false)
+	setup.withLegacyToken(t, false)
 
 	body := limitsBody(21)
 	code, respBody := setup.put(t, setup.orgA.Slug, body, signWith(currentKey(), body, time.Now()))
