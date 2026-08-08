@@ -16,9 +16,13 @@ func GetCommands() []*cli.Command {
 			Commands: []*cli.Command{
 				{
 					Name: "login",
-					Usage: "Login via browser (default), or with --email/--password " +
-						"or a pasted --token",
+					Usage: "Login by approving a one-time code in any browser (default), " +
+						"or with --with-password / --email / --password, or a pasted --token",
 					Flags: []cli.Flag{
+						&cli.BoolFlag{
+							Name:  "with-password",
+							Usage: "Log in with email and password instead of the device flow",
+						},
 						&cli.StringFlag{
 							Name:    "email",
 							Aliases: []string{"e"},

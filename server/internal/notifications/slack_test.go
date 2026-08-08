@@ -697,7 +697,7 @@ func (m *mockDBService) GetDeviceAuthRequestByDeviceCode(
 }
 
 func (m *mockDBService) ResolveDeviceAuthRequest(
-	_ context.Context, _ string, _ models.DeviceAuthResolution,
+	_ context.Context, _ string, _ *models.DeviceAuthResolution,
 ) (bool, error) {
 	panic("not implemented")
 }

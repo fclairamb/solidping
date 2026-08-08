@@ -17,8 +17,11 @@ import (
 	"github.com/fclairamb/solidping/server/pkg/client"
 )
 
-// authLoginAction handles the login command. Browser OAuth login is the default;
-// --email/--password and --token are explicit non-interactive fallbacks.
+// authLoginAction handles the login command. The OAuth 2.0 device
+// authorization flow (RFC 8628) is the default — it is the only browser flow
+// that also works over SSH, in containers and on headless boxes.
+// --with-password / --email / --password and --token are the explicit
+// non-browser fallbacks.
 func authLoginAction(ctx context.Context, cmd *cli.Command) error {
 	cliCtx, err := NewCLIContext(cmd)
 	if err != nil {
@@ -28,17 +31,19 @@ func authLoginAction(ctx context.Context, cmd *cli.Command) error {
 	email := cmd.String("email")
 	password := cmd.String("password")
 	token := strings.TrimSpace(cmd.String("token"))
+	withPassword := cmd.Bool("with-password")
 
 	switch {
 	case token != "":
 		// Headless: the human pasted a PAT created on the dashboard.
 		return authLoginWithToken(ctx, cliCtx, token)
-	case email != "" || password != "":
-		// Non-interactive credentials (scripts, self-hosted without SSO).
+	case withPassword || email != "" || password != "":
+		// Classic credentials (scripts, self-hosted without SSO).
 		return authLoginWithPassword(ctx, cliCtx, email, password)
 	default:
-		// Default: open a browser, approve, end up holding only a named PAT.
-		return authLoginWithBrowser(ctx, cliCtx)
+		// Default: device flow — approve in any browser, end up holding only
+		// a named PAT.
+		return authLoginWithDevice(ctx, cliCtx)
 	}
 }
 
@@ -122,9 +127,10 @@ func authLoginWithToken(ctx context.Context, cliCtx *Context, token string) erro
 	})
 }
 
-// authLoginWithBrowser runs the loopback browser OAuth flow and reports success.
-func authLoginWithBrowser(ctx context.Context, cliCtx *Context) error {
-	result, err := authBrowserLogin(ctx, cliCtx)
+// authLoginWithDevice runs the RFC 8628 device authorization flow and reports
+// success.
+func authLoginWithDevice(ctx context.Context, cliCtx *Context) error {
+	result, err := authDeviceLogin(ctx, cliCtx)
 	if err != nil {
 		if !cliCtx.IsText() {
 			return cliCtx.Outputter.PrintError(fmt.Errorf("login failed: %w", err))

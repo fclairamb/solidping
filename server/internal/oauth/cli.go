@@ -1,10 +1,15 @@
 package oauth
 
-// Well-known identifiers for the first-party SolidPing CLI OAuth client. The CLI
-// (server/pkg/cli) opens the system browser at /authorize with this client_id
-// and spins up an ephemeral loopback listener for the redirect. The client is
-// seeded idempotently at server startup (see app.SeedCLIOAuthClient) so no
-// dynamic registration is needed for the CLI.
+// Well-known identifiers for the first-party SolidPing CLI OAuth client: a
+// pre-registered public client with a loopback redirect, seeded idempotently at
+// server startup (see app.SeedCLIOAuthClient) so no dynamic registration is
+// needed.
+//
+// `sp auth login` no longer uses it: since spec 2026-08-08-02 the CLI logs in
+// through the RFC 8628 device authorization flow (/api/v1/auth/device), which
+// also works over SSH and on headless machines where a loopback redirect cannot
+// reach the CLI. The registration is kept for any other native client that
+// still drives the loopback authorization-code flow against /oauth/authorize.
 const (
 	// CLIClientID is the pre-registered public client_id used by `sp auth login`.
 	CLIClientID = "solidping-cli"

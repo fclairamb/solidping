@@ -12,11 +12,25 @@ SolidPing ships a command-line client, `sp`, for managing your monitoring from t
 Log in once and the client stores your session:
 
 ```bash
-sp auth login          # prompts for org, email, password
-sp auth me             # show the current user
-sp auth switch-org      # change active organization
+sp auth login                  # device flow: approve a one-time code in any browser
+sp auth login --with-password  # classic email + password
+sp auth login --token pat_...  # save a Personal Access Token created in the dashboard
+sp auth me                     # show the current user
+sp auth switch-org             # change active organization
 sp auth logout
 ```
+
+`sp auth login` uses the OAuth 2.0 Device Authorization Grant (RFC 8628): it
+prints a short one-time code and a verification URL, tries to open your browser
+at that URL, and waits while you approve the login in any browser where you are
+already signed in — including your phone. Because nothing has to come back to
+the machine running the CLI, this works over SSH, inside containers and on
+headless servers.
+
+On the consent page you pick which organization the login is for (when you
+belong to more than one); approving mints a named Personal Access Token scoped
+to that organization, valid for 90 days, which you can review and revoke from
+**Account → Tokens**.
 
 ## Common Commands
 
