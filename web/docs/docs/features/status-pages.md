@@ -290,7 +290,11 @@ Customization is entirely by data-attribute:
 | `data-mode` | `inline`, `floating` | `inline` |
 | `data-position` | `bottom-right`, `bottom-left` (floating only) | `bottom-right` |
 | `data-theme` | `light`, `dark`, `auto` (follows `prefers-color-scheme`) | `auto` |
+| `data-size` | `sm`, `md`, `lg` | `md` |
 | `data-label-operational`<br/>`data-label-degraded`<br/>`data-label-down`<br/>`data-label-maintenance`<br/>`data-label-unknown` | any text | built-in English labels |
+| `data-force-status` | `operational`, `degraded`, `down`, `maintenance`, `unknown` | — (normal polling) |
+
+`data-force-status` skips polling entirely and renders that status statically, with no link — mainly useful for previewing the widget (the dashboard's snippet generator uses it) or for a demo/staging page that isn't backed by a real status page yet. An unrecognized value is ignored and normal polling resumes.
 
 Everything under `/embed/v1/` is a **frozen contract**: once you've pasted the snippet it will keep working, and any future behavior change ships under `/embed/v2/` instead. The script is served with `Cache-Control: public, max-age=3600`.
 
