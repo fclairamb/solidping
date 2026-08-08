@@ -394,3 +394,40 @@ func TestGoogleCallbackRefusesNonMatchingEmail(t *testing.T) {
 	require.NoError(t, reqErr)
 	require.Equal(t, models.MembershipRequestStatusPending, request.Status)
 }
+
+// TestFinishProviderCallbackPendingRedirect exercises the handler tail every
+// provider callback now shares: a pending result must send the browser to the
+// no-org request-access surface, NOT to the success redirect the login flow
+// originally asked for (which is the org dashboard).
+func TestFinishProviderCallbackPendingRedirect(t *testing.T) {
+	t.Parallel()
+
+	t.Run("pending goes to the no-org surface", func(t *testing.T) {
+		t.Parallel()
+
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequestWithContext(
+			t.Context(), http.MethodGet, "/api/v1/auth/microsoft/callback", nil)
+
+		require.NoError(t, finishProviderCallback(
+			recorder, req, "/dash0/orgs/acme?access_token=at", "acme", "at", 3600, true))
+
+		location := recorder.Header().Get("Location")
+		require.Contains(t, location, noOrgPath)
+		require.NotContains(t, location, "/dash0/orgs/acme")
+		require.Contains(t, location, pendingMembershipParam+"=acme")
+	})
+
+	t.Run("admitted keeps the success redirect", func(t *testing.T) {
+		t.Parallel()
+
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequestWithContext(
+			t.Context(), http.MethodGet, "/api/v1/auth/microsoft/callback", nil)
+
+		require.NoError(t, finishProviderCallback(
+			recorder, req, "/dash0/orgs/acme?access_token=at", "acme", "at", 3600, false))
+
+		require.Equal(t, "/dash0/orgs/acme?access_token=at", recorder.Header().Get("Location"))
+	})
+}

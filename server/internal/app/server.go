@@ -352,7 +352,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	svcList.Entitlements = entitlementsService
 
 	// Create auth service. The entitlements service gates SSO membership
-	// caps inside ensureMembership (every OAuth callback) and inside
+	// caps inside JoinOrgViaLogin (every OAuth/SAML/LDAP callback) and inside
 	// autoJoinMatchingOrgs.
 	authService := auth.NewService(dbService, cfg.Auth, cfg, jobService, entitlementsService)
 
