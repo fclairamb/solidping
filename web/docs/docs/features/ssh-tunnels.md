@@ -47,7 +47,7 @@ Every TCP-based check type can run through a tunnel — the classic bastion use
 cases (a database or message broker on a private network) are all covered:
 
 - **Web & network:** `http`, `tcp`, `ssl`, `websocket`, `grpc`
-- **Databases:** `postgresql`, `mysql`, `mssql`, `oracle`, `redis`, `mongodb`
+- **Databases:** `postgresql`, `mysql`, `mssql`, `oracle`, `clickhouse`, `redis`, `mongodb`
 - **Message brokers:** `rabbitmq`, `kafka`, `mqtt`
 - **Mail:** `smtp`, `imap`, `pop3`
 - **File transfer:** `ftp`

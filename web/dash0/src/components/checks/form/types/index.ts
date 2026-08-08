@@ -39,6 +39,7 @@ import {
   mongodbModule,
   rabbitmqModule,
 } from "./database";
+import { clickhouseModule } from "./clickhouse";
 import { grpcModule, kafkaModule, mqttModule } from "./messaging";
 import { a2sModule, minecraftModule } from "./game";
 import { snmpModule, dockerModule, freeboxLineModule } from "./infra";
@@ -78,6 +79,7 @@ const modules: CheckTypeModule[] = [
   entry(redisModule),
   entry(mongodbModule),
   entry(rabbitmqModule),
+  entry(clickhouseModule),
   entry(grpcModule),
   entry(kafkaModule),
   entry(mqttModule),

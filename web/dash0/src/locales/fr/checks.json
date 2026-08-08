@@ -241,6 +241,8 @@
     "mssqlDescription": "Vérifier la santé de Microsoft SQL Server",
     "oracle": "Oracle",
     "oracleDescription": "Vérifier la santé de la base de données Oracle",
+    "clickhouse": "ClickHouse",
+    "clickhouseDescription": "Vérifier la santé de la base de données ClickHouse",
     "grpc": "gRPC",
     "grpcDescription": "Vérifier la santé du service gRPC",
     "kafka": "Kafka",
