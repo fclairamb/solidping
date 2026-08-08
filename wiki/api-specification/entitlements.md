@@ -30,12 +30,32 @@ org member.
 ### PUT /api/v1/orgs/:org/entitlements
 Replaces the entitlement row. Returns the resolved entitlements.
 
-Auth: a plain `Authorization: Bearer <entitlements.service_token>` (preferred
-for SaaS) OR an org admin JWT when `entitlements.admin_writes_enabled` is true
-(the default in self-hosted). The service token is a shared secret, **not** a
-JWT — it is let through by the `ServiceTokenBypass` middleware
-(`internal/middleware/auth.go`) ahead of the normal `RequireAuth` chain. There
-is no `X-Entitlement-Token` header.
+Auth, in order of preference:
+
+1. **A signed request** (the supported service path). The billing service signs
+   with HMAC-SHA256 over
+   `<timestamp>.<METHOD>.<path>.<hex sha256 of the raw body>` and sends:
+
+   | Header | Value |
+   |---|---|
+   | `X-SP-Signature` | `v1,<base64 HMAC>` |
+   | `X-SP-Timestamp` | Unix seconds (part of the signed string) |
+   | `X-SP-Key-Id` | Which key of `entitlements.service_signing_keys` signed it |
+
+   The `ServiceSignature` middleware (`internal/middleware/auth.go`, scheme in
+   `internal/servicesig`) verifies it ahead of the normal `RequireAuth` chain
+   and marks the request service-authorized, so cross-org writes work exactly
+   as they did with the static bearer. Rejections — unknown key id, clock skew
+   over 300s, signature mismatch — all return one generic 401; the reason is
+   logged only.
+2. **LEGACY**: a plain `Authorization: Bearer <entitlements.service_token>`,
+   accepted only while `entitlements.allow_legacy_service_token` is true (its
+   default) and logged as deprecated on every use. It is a shared secret, not a
+   JWT, which is why it needs the `ServiceTokenBypass` middleware.
+3. **An org admin JWT**, when `entitlements.admin_writes_enabled` is true (the
+   default in self-hosted).
+
+There is no `X-Entitlement-Token` header.
 
 Optional `X-Entitlements-Reason` header is recorded on the audit log.
 
@@ -99,8 +119,21 @@ resend both on every PATCH, or use PUT.
 
 ## System parameters
 
-- `entitlements.service_token` — secret bearer token for the billing
-  service. Unset in self-hosted by default.
+- `entitlements.service_signing_keys` — ordered JSON array of
+  `{"id","secret"}` (newest first) used to **verify** signed requests from the
+  billing service. The signer uses the first entry; verification accepts any,
+  which is what makes rotation overlap-safe. Mirrors the billing service's
+  `BILLING_SIGNING_KEYS_OUTBOUND`.
+- `entitlements.outbound_signing_keys` — the same shape, used to **sign** our
+  own calls to the billing service's `/api/v1/*` endpoints. Mirrors its
+  `BILLING_SIGNING_KEYS_INBOUND`. One set per direction, so a leak of one
+  cannot forge the other.
+- `entitlements.allow_legacy_service_token` — boolean, **default true**:
+  whether the legacy static bearer below is still accepted. Flip it to false
+  only once the billing service has stopped sending it; it is a parameter
+  change, not a deploy.
+- `entitlements.service_token` — LEGACY secret bearer token for the billing
+  service. Unset in self-hosted by default. Superseded by the signing keys.
 - `entitlements.admin_writes_enabled` — boolean, default true in
   self-hosted, set to false in SaaS to lock writes to the service token.
 - `entitlements.upgrade_url_template` — template URL with `{org}` placed

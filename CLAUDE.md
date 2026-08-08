@@ -49,14 +49,30 @@ deprecated decode-only alias, `maxChecksPerMinute`) plus display-only plan ident
 `displayEmoji`, e.g. "🚀 Team") — both shown on the org **Usage** page
 (`/orgs/$org/organization/usage`).
 
-The billing service writes entitlements via `PUT /api/v1/orgs/:org/entitlements`,
-authenticated with the `entitlements.service_token` system parameter. That
-token is a shared secret, not a JWT, so the route uses the `ServiceTokenBypass`
-middleware (`internal/middleware/auth.go`) to let it through ahead of the normal
-`RequireAuth` chain. `make dev-saas` seeds the SaaS system parameters from
-`SP_ENTITLEMENTS_SERVICE_TOKEN` and `SP_ENTITLEMENTS_UPGRADE_URL_TEMPLATE` (the
-dashboard "Upgrade" link target); run it alongside `../solidping-billing`
-`make dev` for the full upgrade loop. See `server/internal/app/saas.go`.
+The billing service writes entitlements via `PUT /api/v1/orgs/:org/entitlements`.
+It proves identity by **signing** the request — HMAC-SHA256 over
+`<timestamp>.<METHOD>.<path>.<sha256 body>`, sent as `X-SP-Signature: v1,<b64>` /
+`X-SP-Timestamp` / `X-SP-Key-Id` — verified by the `ServiceSignature` middleware
+(`internal/middleware/auth.go`, scheme in `internal/servicesig`) ahead of the
+normal `RequireAuth` chain, so cross-org writes stay possible. Keys live in two
+independent ordered `{id, secret}` sets, one per direction:
+`entitlements.service_signing_keys` (verify the inbound push) and
+`entitlements.outbound_signing_keys` (sign our calls to billing). Rotation is
+"add the new key to both sides, then drop the old" — no lockstep restart.
+
+The original static bearer (`entitlements.service_token`, let through by
+`ServiceTokenBypass`) is **legacy**: still accepted while
+`entitlements.allow_legacy_service_token` is true (the default) and logged as
+deprecated on every use, so retiring it is a parameter flip rather than a
+coordinated deploy. See `wiki/features/entitlements.md` for the migration order.
+
+`make dev-saas` seeds the SaaS system parameters from
+`SP_ENTITLEMENTS_SERVICE_TOKEN`, `SP_ENTITLEMENTS_SERVICE_SIGNING_KEYS`,
+`SP_ENTITLEMENTS_OUTBOUND_SIGNING_KEYS`,
+`SP_ENTITLEMENTS_ALLOW_LEGACY_SERVICE_TOKEN` and
+`SP_ENTITLEMENTS_UPGRADE_URL_TEMPLATE` (the dashboard "Upgrade" link target);
+run it alongside `../solidping-billing` `make dev` for the full upgrade loop.
+See `server/internal/app/saas.go`.
 
 ## Frontend UI conventions
 

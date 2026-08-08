@@ -152,23 +152,79 @@ deliberate and persist.
 
 Two principals can write, both governed by system parameters:
 
-- **Service token** — set `entitlements.service_token` to a random opaque
-  string and send it as a normal **`Authorization: Bearer <token>`**. The
-  `ServiceTokenBypass` middleware ([`middleware/auth.go:211`](../../server/internal/middleware/auth.go))
-  compares it with `subtle.ConstantTimeCompare` and, on match, marks the request
-  service-authorized so the following `RequireAuth` + `RequireOrgAccess` become
-  no-ops. This is how the SaaS billing service writes. It is a shared secret,
-  not a JWT — which is why the route needs the bypass rather than the normal
-  auth chain.
+- **The billing service**, which **signs** each request (see below). The
+  `ServiceSignature` middleware ([`middleware/auth.go`](../../server/internal/middleware/auth.go))
+  verifies the signature and marks the request service-authorized, so the
+  following `RequireAuth` + `RequireOrgAccess` become no-ops — entitlements
+  writes are cross-org by design.
 - **Admin user** — when `entitlements.admin_writes_enabled` is true (default in
   self-hosted), an authenticated org admin may PUT/PATCH directly. SaaS leaves
   it off so customers cannot grant themselves a higher tier.
 
 GET reads use the standard auth surface (any authenticated org member).
 
-System parameters: `entitlements.service_token`,
-`entitlements.admin_writes_enabled`, `entitlements.upgrade_url_template`,
-`entitlements.stale_after_days`, `entitlements.billing_inbound_secret`.
+### Signed service requests
+
+The scheme lives in [`internal/servicesig`](../../server/internal/servicesig)
+and is used in both directions between SolidPing and `solidping-billing`.
+HMAC-SHA256 over the canonical string
+
+```
+<timestamp>.<METHOD>.<path>.<hex sha256 of the raw body>
+```
+
+carried as:
+
+| Header | Value |
+|---|---|
+| `X-SP-Signature` | `v1,<base64 HMAC>` — versioned so a v2 can coexist |
+| `X-SP-Timestamp` | Unix seconds, part of the signed string |
+| `X-SP-Key-Id` | Which shared key signed it |
+
+Because the body hash is signed, a captured request can neither be replayed
+outside the **300s** skew window nor resent with a rewritten payload — the two
+properties the static bearer never had. Rejections (unknown key id, skew,
+mismatch — checked in that order, with a constant-time compare) are all one
+generic 401; the reason goes to the log only. There is deliberately no nonce
+cache: entitlement pushes are idempotent, so replaying an *identical* body is a
+no-op, and body-binding is what actually matters.
+
+**Two key sets, one per direction.** Each is an ordered JSON array of
+`{"id","secret"}`, newest first: signers use the first entry, verifiers accept
+any.
+
+| Parameter | Direction | Billing-side mirror |
+|---|---|---|
+| `entitlements.service_signing_keys` | billing → SolidPing (entitlements push) | `BILLING_SIGNING_KEYS_OUTBOUND` |
+| `entitlements.outbound_signing_keys` | SolidPing → billing (`/api/v1/*`) | `BILLING_SIGNING_KEYS_INBOUND` |
+
+A leak of one direction's key therefore cannot be used to forge the other.
+
+**Rotation** is: add the new key to the front of both sides' sets → both start
+signing with it → drop the old entry. No lockstep restart, no window where
+writes fail.
+
+### Legacy static bearer (being retired)
+
+`entitlements.service_token` is the original shared bearer. It is still
+accepted while `entitlements.allow_legacy_service_token` is **true** (the
+default), and every request authorized by it logs a `DEPRECATED` warning naming
+the caller, so an operator can watch the legacy channel go quiet before
+flipping the parameter to false. The migration order across the two repos is:
+
+1. SolidPing verifies signatures, still accepting the legacy bearer *(here)*.
+2. Billing starts signing, still sending the legacy bearer too.
+3. SolidPing sets `allow_legacy_service_token=false` — a parameter flip, not a
+   deploy, and reversible the same way.
+4. Billing stops sending the bearer; `entitlements.service_token` becomes dead
+   config and the `ServiceTokenBypass` middleware can be deleted.
+
+System parameters: `entitlements.service_signing_keys`,
+`entitlements.outbound_signing_keys`,
+`entitlements.allow_legacy_service_token`, `entitlements.service_token`
+(legacy), `entitlements.admin_writes_enabled`,
+`entitlements.upgrade_url_template`, `entitlements.stale_after_days`,
+`entitlements.billing_inbound_secret`.
 
 ## Audit log
 
@@ -238,7 +294,10 @@ curl -s -X PATCH \
   -d '{"limits":{"maxChecks":50}}' \
   http://localhost:4000/api/v1/orgs/default/entitlements
 
-# Billing service replaces the whole row (service token is a plain bearer)
+# Billing service replaces the whole row. Real callers SIGN the request
+# (X-SP-Signature / X-SP-Timestamp / X-SP-Key-Id, see "Signed service
+# requests" above); the legacy static bearer below still works only while
+# entitlements.allow_legacy_service_token is true.
 curl -s -X PUT \
   -H "Authorization: Bearer $SP_ENTITLEMENTS_SERVICE_TOKEN" \
   -H 'Content-Type: application/json' \
