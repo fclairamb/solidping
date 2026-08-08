@@ -8,6 +8,8 @@
   "allSystemsOperational": "All Systems Operational",
   "someSystemsDegraded": "Some Systems Degraded",
   "systemOutage": "System Outage",
+  "underMaintenance": "Under Maintenance",
+  "statusUnknown": "Status Unknown",
   "noResourcesConfigured": "No resources configured",
   "noSectionsConfigured": "No sections configured yet",
   "poweredBy": "Powered by SolidPing",

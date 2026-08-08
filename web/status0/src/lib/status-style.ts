@@ -14,7 +14,8 @@ export type BadgeVariant =
   | "success"
   | "warning"
   | "destructive"
-  | "secondary";
+  | "secondary"
+  | "info";
 
 export interface StatusStyle {
   // Tailwind background class for solid swatches (dots, availability bars).
@@ -37,6 +38,7 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
   switch (status) {
     case "ok":
     case "up":
+    case "operational":
       return {
         color: "bg-green-500",
         chartColor: NEUTRAL_CHART,
@@ -69,7 +71,25 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
         labelKey: "outage",
         isDown: true,
       };
+    // Page-level rollup only (spec 2026-08-08-05) — no individual check ever
+    // reports this status itself, but the page-level overallStatus does when
+    // a resource is inside an active maintenance window. Blue/info, distinct
+    // from the amber warning/degraded treatment: maintenance is planned, not
+    // a fault.
+    case "maintenance":
+      return {
+        color: "bg-blue-500",
+        chartColor: NEUTRAL_CHART,
+        badgeVariant: "info",
+        labelKey: "underMaintenance",
+        isDown: false,
+      };
     default:
+      // Also covers the page-level "unknown" rollup (spec 2026-08-08-05,
+      // no resource has a usable status yet) — same muted/gray treatment as
+      // an individual resource with no live data. The hero renders its own
+      // "Status Unknown" label text; this default's labelKey stays
+      // "unknown" for the per-resource case.
       return {
         color: "bg-gray-400",
         chartColor: NEUTRAL_CHART,
