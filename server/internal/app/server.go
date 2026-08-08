@@ -1472,6 +1472,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	mainGroup.GET("/dash0", s.serveDash0Root)
 	mainGroup.GET("/dash0/*path", s.serveDash0Root)
 
+	// Embeddable status widget (spec 2026-08-08-08). Frozen public contract:
+	// customers paste this URL into their own sites, so it must keep working
+	// forever — new behavior goes to /embed/v2/widget.js, never here.
+	mainGroup.GET("/embed/v1/widget.js", s.serveEmbedWidgetV1)
+
 	// Status0 public status page (served at /status0/)
 	mainGroup.GET("/status0", s.serveStatus0Root)
 	mainGroup.GET("/status0/*path", s.serveStatus0Root)
@@ -1729,6 +1734,40 @@ func docsHostMatches(reqHost, docsHost string) bool {
 // the /docs prefix and serves the matching file from the embedded docs build.
 func (s *Server) serveDocsRoute(writer http.ResponseWriter, req *http.Request) error {
 	s.serveDocsFile(writer, strings.TrimPrefix(req.URL.Path, "/docs"))
+
+	return nil
+}
+
+// embedWidgetV1Path is where the status0 build emits the compiled embeddable
+// status widget (see web/status0/package.json's `build:widget` script), inside
+// the same dist that becomes the embedded status0res filesystem.
+const embedWidgetV1Path = "status0res/embed/v1/widget.js"
+
+// serveEmbedWidgetV1 serves the embeddable status widget (spec
+// 2026-08-08-08) at /embed/v1/widget.js — the script customers paste onto
+// their own sites:
+//
+//	<script async src="https://<host>/embed/v1/widget.js" data-page="org/slug"></script>
+//
+// EVERYTHING UNDER /embed/v1/ IS A FROZEN PUBLIC CONTRACT. Once a customer has
+// pasted the snippet we can never take the URL away or change what the script
+// does; a behavior change ships as a new /embed/v2/widget.js route alongside
+// this one. The long cache lifetime (1 h, versus 60 s for the summary data the
+// widget polls) is deliberate: the script is immutable within a version, only
+// the data behind it moves.
+func (s *Server) serveEmbedWidgetV1(writer http.ResponseWriter, req *http.Request) error {
+	data, err := fs.ReadFile(s.status0FSOrDefault(), embedWidgetV1Path)
+	if err != nil {
+		slog.ErrorContext(req.Context(), "Embed widget asset missing", "error", err)
+		http.Error(writer, "Not found", http.StatusNotFound)
+
+		return nil
+	}
+
+	writer.Header().Set("Content-Type", contentTypeJS+"; charset=utf-8")
+	writer.Header().Set("Cache-Control", "public, max-age=3600")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write(data)
 
 	return nil
 }

@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "build:no-check": "vite build",
+    "build": "tsc -b && vite build && bun run build:widget",
+    "build:no-check": "vite build && bun run build:widget",
+    "build:widget": "bun build src/embed/widget.ts --outfile=dist/embed/v1/widget.js --format=iife --minify --target=browser",
     "lint": "eslint .",
     "preview": "vite preview",
     "test:e2e": "playwright test",
