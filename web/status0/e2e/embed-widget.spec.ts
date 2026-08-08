@@ -18,6 +18,23 @@ import { API_BASE as BASE } from "./fixtures";
 const FIXTURE_ORIGIN = "http://widget-host.test";
 const FIXTURE_URL = `${FIXTURE_ORIGIN}/embed-fixture.html`;
 
+/**
+ * Chrome's Private/Local Network Access checks block a page on a public origin
+ * from touching a loopback address — an artifact of the SolidPing server
+ * living on localhost during tests, not of the widget. In production both the
+ * customer's site and the SolidPing host are ordinary public origins and PNA
+ * never applies. CORS itself stays fully enforced with these flags, which is
+ * the check that actually matters here: the positive tests below only pass
+ * because the API really does answer cross-origin.
+ */
+test.use({
+  launchOptions: {
+    args: [
+      "--disable-features=LocalNetworkAccessChecks,PrivateNetworkAccessChecks,BlockInsecurePrivateNetworkRequests",
+    ],
+  },
+});
+
 /** Credentials per seeded org: `make dev` seeds `default`, test mode `test`. */
 const ORG_LOGINS = [
   { org: "default", email: "admin@solidping.com", password: "solidpass" },
