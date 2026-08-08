@@ -88,7 +88,7 @@ test.describe("HTTP check verifySsl / followRedirects", () => {
     await page.getByTestId("check-verify-ssl-switch").click();
     await expect(page.getByTestId("check-verify-ssl-warning")).toBeVisible();
     await expect(page.getByTestId("check-verify-ssl-warning")).toContainText(
-      "certificate errors will be ignored",
+      "Certificate errors will be ignored",
     );
 
     await page.getByTestId("check-submit-button").click();
@@ -99,10 +99,11 @@ test.describe("HTTP check verifySsl / followRedirects", () => {
     expect(created.config.verifySsl).toBe(false);
     expect(created.config).not.toHaveProperty("followRedirects");
 
-    // Reload the edit page — the switch state and warning persist.
+    // Reload the edit page — the switch state and warning persist. The
+    // Advanced section auto-opens here (it holds a non-default value), so no
+    // click is needed to reveal it — unlike the fresh "new check" page above.
     await page.goto(`orgs/test/checks/${uid}/edit`);
     await page.waitForLoadState("networkidle");
-    await page.getByTestId("section-advanced-trigger").click();
     await expect(page.getByTestId("check-verify-ssl-switch")).toHaveAttribute(
       "aria-checked",
       "false",
