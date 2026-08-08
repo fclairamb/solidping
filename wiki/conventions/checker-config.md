@@ -26,6 +26,8 @@ Complete reference for all 30 checker types and their configuration fields. Fiel
 | `body_pattern_reject` | string | O | | Regex pattern that must NOT match in response body |
 | `headers_pattern` | map[string]string | O | | Map of header name to regex pattern; all must match |
 | `json_path_assertions` | object | O | | AST-based JSONPath assertions (see below) |
+| `verifySsl` | bool | O | true | Verify the TLS certificate. `false` skips verification (`InsecureSkipVerify`) and marks the result with `tls_verify_skipped: true`. Read fallback: `verify_ssl` |
+| `followRedirects` | bool | O | true | Follow HTTP redirects (up to 10). `false` stops at the first response, so status/body/header assertions run against the redirect itself (e.g. `expectedStatus: 301` + `headersPattern.Location`). Read fallback: `follow_redirects` |
 
 **JSONPath assertion node** (`json_path_assertions`):
 

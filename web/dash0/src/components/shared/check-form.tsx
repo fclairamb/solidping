@@ -43,7 +43,7 @@ import { Badge } from "@/components/ui/badge";
 import { NotifyViaSection } from "@/components/checks/form/sections/notifications";
 import { EscalationSelect } from "@/components/checks/form/sections/escalation";
 import { DependsOnFormSection } from "@/components/checks/form/sections/dependencies";
-import { checkTypeRegistry, authFieldsRegistry } from "@/components/checks/form/types";
+import { checkTypeRegistry, authFieldsRegistry, advancedFieldsRegistry } from "@/components/checks/form/types";
 import { CheckFormFieldsProvider } from "@/components/checks/form/types/context";
 import { TunnelSelect } from "@/components/checks/form/tunnel-select";
 import {
@@ -549,6 +549,9 @@ export function CheckForm({
   const ActiveFields = activeModule.Fields;
   const authSection = authFieldsRegistry[type];
   const AuthFields = authSection?.Fields;
+  const advancedSection = advancedFieldsRegistry[type];
+  const AdvancedTypeFields = advancedSection?.Fields;
+  const advancedTypeSummary = advancedSection?.summary(configState);
 
   // Serialize the active type's config ONCE (spec §3): the same object feeds the
   // live preview/validation AND the submitted payload, so they cannot drift. The
@@ -771,10 +774,15 @@ export function CheckForm({
 
   const timeoutError = getFieldError(fieldErrors, "timeout");
   const advancedCustomized =
-    timeoutSeconds.trim() !== "" || (supportsTunnel && tunnelCheckUid !== "");
-  const advancedSummary = advancedCustomized
-    ? `timeout ${timeoutSeconds}s`
-    : "timeout 15s (default)";
+    timeoutSeconds.trim() !== "" ||
+    (supportsTunnel && tunnelCheckUid !== "") ||
+    !!advancedTypeSummary?.customized;
+  const advancedSummary = [
+    timeoutSeconds.trim() !== "" ? `timeout ${timeoutSeconds}s` : "",
+    advancedTypeSummary?.customized ? advancedTypeSummary.text : "",
+  ]
+    .filter(Boolean)
+    .join(" · ") || "timeout 15s (default)";
   const showGroup = (checkGroups?.length ?? 0) > 0;
 
   // A section opens on load when it holds non-default values OR is the target of
@@ -1353,6 +1361,15 @@ export function CheckForm({
                       {getFieldError(fieldErrors, "tunnelCheckUid")}
                     </p>
                   )}
+                </div>
+              )}
+              {AdvancedTypeFields && (
+                <div className="mt-4">
+                  <AdvancedTypeFields
+                    state={configState}
+                    onChange={setConfigState}
+                    errors={fieldErrors}
+                  />
                 </div>
               )}
             </CollapsibleSection>

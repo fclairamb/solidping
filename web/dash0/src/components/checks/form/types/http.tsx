@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -34,6 +35,11 @@ export interface HttpState {
   username: string;
   password: string;
   secretHeaders: { key: string; value: string }[];
+  // Both default to true (today's behavior). false is the only value ever
+  // written to config — see toConfig — matching the server's omit-at-default
+  // GetConfig style.
+  verifySsl: boolean;
+  followRedirects: boolean;
   // Per-section dirty flags. Secrets are never returned by GET, so an untouched
   // section's inputs are empty and MUST NOT be serialized — omitting the keys is
   // what makes the server's preserve-absent-secrets merge keep the stored
@@ -73,6 +79,11 @@ function fromConfig(config: CheckConfig): HttpState {
     : [];
   const username = getConfigField(config, "username");
   const password = getConfigField(config, "password");
+  // Both keys are only ever stored at their non-default (false) value — see
+  // toConfig — so anything other than a literal `false` (absent, true, or a
+  // malformed value) means "on", matching the server's default.
+  const verifySsl = config.verifySsl !== false;
+  const followRedirects = config.followRedirects !== false;
   return {
     url: getConfigField(config, "url"),
     method: getConfigField(config, "method") || "GET",
@@ -80,6 +91,8 @@ function fromConfig(config: CheckConfig): HttpState {
     username,
     password,
     secretHeaders,
+    verifySsl,
+    followRedirects,
     // Seeding matters three ways: a legacy row's username is public and comes
     // back, so it round-trips and folds into `basicAuth` on save; a prefill link
     // (`?username=probe`) must submit what it prefilled; and on a deployment
@@ -123,6 +136,11 @@ function toConfig(state: HttpState): { config: CheckConfig; errors: FieldErrors 
     // entirely and the stored headers are preserved.
     cfg.secretHeaders = shMap;
   }
+  // Only the non-default (false) value is ever written, matching the
+  // server's GetConfig omit-at-default style — an unset/true config
+  // round-trips without ever writing the key.
+  if (!state.verifySsl) cfg.verifySsl = false;
+  if (!state.followRedirects) cfg.followRedirects = false;
   const errors: FieldErrors = [];
   if (!state.url) errors.push({ name: "url", message: "URL is required" });
   // Invalid chips block save with a field-scoped error, the same mechanism
@@ -358,6 +376,66 @@ export function HttpAuthFields({
       </div>
     </>
   );
+}
+
+// OptionsFields renders the "Advanced" section's HTTP-specific toggles:
+// TLS certificate verification and redirect following. Both default on
+// (today's hardcoded behavior).
+export function HttpOptionsFields({
+  state,
+  onChange,
+}: CheckTypeFieldsProps<HttpState>) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Switch
+          id="http-verify-ssl"
+          checked={state.verifySsl}
+          onCheckedChange={(verifySsl) => onChange({ ...state, verifySsl })}
+          data-testid="check-verify-ssl-switch"
+        />
+        <Label htmlFor="http-verify-ssl">Verify TLS certificate</Label>
+      </div>
+      {!state.verifySsl && (
+        <p
+          className="text-xs text-yellow-700 dark:text-yellow-400"
+          data-testid="check-verify-ssl-warning"
+        >
+          Certificate errors will be ignored — the check will report up even
+          for an invalid, expired, or self-signed certificate.
+        </p>
+      )}
+      <div className="flex items-center gap-2">
+        <Switch
+          id="http-follow-redirects"
+          checked={state.followRedirects}
+          onCheckedChange={(followRedirects) =>
+            onChange({ ...state, followRedirects })
+          }
+          data-testid="check-follow-redirects-switch"
+        />
+        <Label htmlFor="http-follow-redirects">Follow redirects</Label>
+      </div>
+      {!state.followRedirects && (
+        <p className="text-xs text-muted-foreground">
+          The check will evaluate the first response (e.g. a 3XX) instead of
+          following it to its destination.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// httpOptionsSummary drives the "Advanced" section's summary line/customized
+// flag for the HTTP-specific toggles above.
+export function httpOptionsSummary(state: HttpState): {
+  text: string;
+  customized: boolean;
+} {
+  const parts: string[] = [];
+  if (!state.verifySsl) parts.push("TLS verification off");
+  if (!state.followRedirects) parts.push("redirects not followed");
+  return { text: parts.join(" · "), customized: parts.length > 0 };
 }
 
 export const httpModule: CheckTypeModule<HttpState> = {
