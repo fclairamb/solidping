@@ -90,19 +90,9 @@ func (h *GitHubOAuthHandler) Callback(writer http.ResponseWriter, req *http.Requ
 	// Redirect with tokens. Also set the SPA session cookie so
 	// cookie-authenticated surfaces (the embedded MCP OAuth
 	// authorize/consent flow) work without a login-page refresh bounce.
-	redirectURL := h.buildSuccessRedirect(oauthState.RedirectURI, result)
-
-	// A login the org did not admit never lands on the org dashboard: the
-	// result carries an org-less session and a membership request is
-	// pending, so send the browser to the request-access surface instead.
-	if result.Pending {
-		redirectURL = pendingMembershipRedirect(result.OrgSlug, result.AccessToken, result.ExpiresIn)
-	}
-
-	setAccessTokenCookie(writer, result.AccessToken, result.ExpiresIn)
-	http.Redirect(writer, req, redirectURL, http.StatusFound)
-
-	return nil
+	return finishProviderCallback(writer, req,
+		h.buildSuccessRedirect(oauthState.RedirectURI, result),
+		result.OrgSlug, result.AccessToken, result.ExpiresIn, result.Pending)
 }
 
 // buildGitHubAuthURL constructs the GitHub authorization URL.

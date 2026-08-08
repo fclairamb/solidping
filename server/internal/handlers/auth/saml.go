@@ -100,19 +100,9 @@ func (h *SAMLHandler) ACS(writer http.ResponseWriter, req *http.Request) error {
 	// Redirect with tokens. Also set the SPA session cookie so
 	// cookie-authenticated surfaces (the embedded MCP OAuth
 	// authorize/consent flow) work without a login-page refresh bounce.
-	redirectURL := h.buildSuccessRedirect(state.RedirectURI, result)
-
-	// A login the org did not admit never lands on the org dashboard: the
-	// result carries an org-less session and a membership request is
-	// pending, so send the browser to the request-access surface instead.
-	if result.Pending {
-		redirectURL = pendingMembershipRedirect(result.OrgSlug, result.AccessToken, result.ExpiresIn)
-	}
-
-	setAccessTokenCookie(writer, result.AccessToken, result.ExpiresIn)
-	http.Redirect(writer, req, redirectURL, http.StatusFound)
-
-	return nil
+	return finishProviderCallback(writer, req,
+		h.buildSuccessRedirect(state.RedirectURI, result),
+		result.OrgSlug, result.AccessToken, result.ExpiresIn, result.Pending)
 }
 
 // Metadata serves this SP's own metadata document (entity ID, ACS URL,

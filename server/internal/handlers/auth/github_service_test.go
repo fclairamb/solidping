@@ -287,8 +287,10 @@ func TestGitHubHandleCallback(t *testing.T) {
 		user := models.NewUser("first@example.com")
 		require.NoError(t, svc.db.CreateUser(ctx, user))
 
-		member, err := svc.ensureMembership(ctx, org.UID, user.UID)
+		member, pending, err := svc.authService.JoinOrgViaLogin(ctx, org, user)
 		require.NoError(t, err)
+		require.False(t, pending)
+		require.NotNil(t, member)
 		assert.Equal(t, models.MemberRoleAdmin, member.Role)
 	})
 
@@ -302,15 +304,22 @@ func TestGitHubHandleCallback(t *testing.T) {
 		firstUser := models.NewUser("first@example.com")
 		require.NoError(t, svc.db.CreateUser(ctx, firstUser))
 
-		_, err := svc.ensureMembership(ctx, org.UID, firstUser.UID)
+		_, _, err := svc.authService.JoinOrgViaLogin(ctx, org, firstUser)
 		require.NoError(t, err)
 
-		// Second user should get user role
+		// The org admits @example.com, so the second user joins as a
+		// plain user (without the pattern they would be left pending —
+		// see TestJoinOrgViaLogin).
+		require.NoError(t, svc.db.SetOrgParameter(
+			ctx, org.UID, "registration.email_pattern", `@example\.com$`, false))
+
 		secondUser := models.NewUser("second@example.com")
 		require.NoError(t, svc.db.CreateUser(ctx, secondUser))
 
-		member, err := svc.ensureMembership(ctx, org.UID, secondUser.UID)
+		member, pending, err := svc.authService.JoinOrgViaLogin(ctx, org, secondUser)
 		require.NoError(t, err)
+		require.False(t, pending)
+		require.NotNil(t, member)
 		assert.Equal(t, models.MemberRoleUser, member.Role)
 	})
 
@@ -468,21 +477,19 @@ func (m *gitHubMockService) handleCallbackMocked(
 		return nil, err
 	}
 
-	member, err := m.ensureMembership(ctx, org.UID, user.UID)
-	if err != nil {
-		return nil, err
-	}
-
-	tokens, err := m.authService.GenerateTokensForOAuth(ctx, user, org, string(member.Role))
+	// Same shared admission + session tail the real HandleCallback runs.
+	login, err := m.authService.CompleteOrgLogin(ctx, org, user)
 	if err != nil {
 		return nil, err
 	}
 
 	return &GitHubOAuthResult{
-		AccessToken:  tokens.AccessToken,
-		RefreshToken: tokens.RefreshToken,
+		AccessToken:  login.AccessToken,
+		RefreshToken: login.RefreshToken,
+		ExpiresIn:    login.ExpiresIn,
 		OrgSlug:      org.Slug,
 		UserUID:      user.UID,
+		Pending:      login.Pending,
 	}, nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -303,7 +304,7 @@ func (s *Service) orgAutoJoinPattern(ctx context.Context, orgUID string) *regexp
 // request that represents "this authenticated user would like into this org".
 // A request already pending is left alone; a rejected one keeps its rejected
 // state (the admin's decision and its cooldown stand, and the no-org screen
-// surfaces rejected requests too); a cancelled one is re-opened.
+// surfaces rejected requests too); a canceled one is re-opened.
 func (s *Service) ensureMembershipRequestForLogin(
 	ctx context.Context, org *models.Organization, userUID string,
 ) error {
@@ -357,4 +358,24 @@ func pendingMembershipRedirect(orgSlug, accessToken string, expiresIn int) strin
 	query.Set(pendingMembershipParam, orgSlug)
 
 	return noOrgPath + "?" + query.Encode()
+}
+
+// finishProviderCallback is the shared redirect tail of every federated
+// callback handler. It hands the browser either the provider's normal success
+// redirect or — when the org did not admit the user — the pending
+// request-access surface, and sets the SPA session cookie in both cases (the
+// pending session is org-less, so it grants nothing org-scoped).
+func finishProviderCallback(
+	writer http.ResponseWriter, req *http.Request,
+	successURL, orgSlug, accessToken string, expiresIn int, pending bool,
+) error {
+	redirectURL := successURL
+	if pending {
+		redirectURL = pendingMembershipRedirect(orgSlug, accessToken, expiresIn)
+	}
+
+	setAccessTokenCookie(writer, accessToken, expiresIn)
+	http.Redirect(writer, req, redirectURL, http.StatusFound)
+
+	return nil
 }

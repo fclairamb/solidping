@@ -651,6 +651,12 @@ func TestLogin_LDAP_EnforcesMaxSSOUsers(t *testing.T) {
 	existingMember := models.NewOrganizationMember(org.UID, existing.UID, models.MemberRoleAdmin)
 	require.NoError(t, dbSvc.CreateOrganizationMember(ctx, existingMember))
 
+	// The org admits @example.com addresses, so the LDAP user qualifies for a
+	// membership on the merits — the cap is the only thing that can stop them.
+	// Without the pattern they would be left pending and the cap would never
+	// be consulted, which would make this test vacuous.
+	require.NoError(t, dbSvc.SetOrgParameter(ctx, org.UID, "registration.email_pattern", `@example\.com$`, false))
+
 	_, err := svc.Login(ctx, org.Slug, "quotauser@example.com", "correct-password", Context{})
 	require.Error(t, err)
 	require.ErrorIs(t, err, errLDAPSSOQuotaTest)
