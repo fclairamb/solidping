@@ -333,6 +333,20 @@ type StatusCountsResponse struct {
 	Unknown     int `json:"unknown"`
 }
 
+// StatusPageSummary is the lightweight page-level rollup a status page
+// resolves to (spec 2026-08-08-06). It carries just enough for the handler to
+// build the public summary response — the URL itself is built by the handler
+// since it needs the incoming request's scheme/host.
+type StatusPageSummary struct {
+	Status   models.PageStatus
+	Counts   models.PageStatusCounts
+	PageName string
+	PageSlug string
+	// CustomDomain is the verified, active custom domain for this page, or ""
+	// when the page is served path-based only.
+	CustomDomain string
+}
+
 // AvailabilitySettingsResponse mirrors models.AvailabilitySettings on the
 // wire — nil fields mean "using the default".
 type AvailabilitySettingsResponse struct {
@@ -1444,6 +1458,51 @@ func (s *Service) ViewDefaultStatusPage(
 	}
 
 	return s.ViewStatusPage(ctx, orgSlug, page.Slug)
+}
+
+// ViewStatusPageSummary returns the lightweight page-level rollup for a
+// status page (spec 2026-08-08-06) — the cheap "is it up?" companion to
+// ViewStatusPage. It applies the IDENTICAL visibility gate (disabled or
+// non-public → ErrStatusPageNotFound, same as ViewStatusPage) and computes the
+// rollup from the exact same live data via models.RollupPageStatus, but skips
+// the availability/response-time enrichment and recent-updates lookup that
+// make the full page view expensive.
+func (s *Service) ViewStatusPageSummary(
+	ctx context.Context, orgSlug, slug string,
+) (StatusPageSummary, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return StatusPageSummary{}, ErrOrganizationNotFound
+	}
+
+	page, err := s.db.GetStatusPageBySlug(ctx, org.UID, slug)
+	if err != nil || page == nil {
+		return StatusPageSummary{}, ErrStatusPageNotFound
+	}
+
+	if !page.Enabled || page.Visibility != visibilityPublic {
+		return StatusPageSummary{}, ErrStatusPageNotFound
+	}
+
+	sections, err := s.loadSectionsWithResources(ctx, page.UID)
+	if err != nil {
+		return StatusPageSummary{}, err
+	}
+
+	status, counts := s.enrichResourceInfo(ctx, org.UID, sections)
+
+	customDomain := ""
+	if page.CustomDomain != nil && page.CustomDomainVerifiedAt != nil {
+		customDomain = *page.CustomDomain
+	}
+
+	return StatusPageSummary{
+		Status:       status,
+		Counts:       counts,
+		PageName:     page.Name,
+		PageSlug:     page.Slug,
+		CustomDomain: customDomain,
+	}, nil
 }
 
 // --- Availability enrichment ---

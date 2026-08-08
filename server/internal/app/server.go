@@ -1270,6 +1270,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Public status page endpoints (no authentication)
 	api.GET("/status-pages/:org", statusPagesHandler.ViewDefaultStatusPage)
 	api.GET("/status-pages/:org/:slug", statusPagesHandler.ViewStatusPage)
+	// Lightweight "is it up?" rollup — cheap alternative to the full page view
+	// above, with a Cache-Control header the full view doesn't set (spec
+	// 2026-08-08-06).
+	api.GET("/status-pages/:org/:slug/summary", statusPagesHandler.ViewStatusPageSummary)
 	// Public Atom/RSS feed of the status-update timeline.
 	api.GET("/status-pages/:org/:slug/feed.xml", statusSubscribersHandler.Feed)
 
