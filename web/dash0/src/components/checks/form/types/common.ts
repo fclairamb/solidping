@@ -31,6 +31,7 @@ export type CheckType =
   | "js"
   | "mssql"
   | "oracle"
+  | "clickhouse"
   | "grpc"
   | "kafka"
   | "mqtt"

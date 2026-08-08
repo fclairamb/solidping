@@ -241,6 +241,8 @@
     "mssqlDescription": "Check Microsoft SQL Server health",
     "oracle": "Oracle",
     "oracleDescription": "Check Oracle Database health",
+    "clickhouse": "ClickHouse",
+    "clickhouseDescription": "Check ClickHouse database health",
     "grpc": "gRPC",
     "grpcDescription": "Check gRPC service health",
     "kafka": "Kafka",

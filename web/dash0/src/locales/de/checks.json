@@ -241,6 +241,8 @@
     "mssqlDescription": "Zustand des Microsoft SQL Servers prüfen",
     "oracle": "Oracle",
     "oracleDescription": "Oracle-Datenbankzustand prüfen",
+    "clickhouse": "ClickHouse",
+    "clickhouseDescription": "ClickHouse-Datenbankzustand prüfen",
     "grpc": "gRPC",
     "grpcDescription": "Zustand eines gRPC-Dienstes prüfen",
     "kafka": "Kafka",

@@ -175,6 +175,7 @@ solidping/
         checkmongodb/          # MongoDB database
         checkmssql/            # MSSQL database
         checkoracle/           # Oracle database
+        checkclickhouse/       # ClickHouse database (native protocol)
         checkredis/            # Redis cache
         checkkafka/            # Kafka message queue
         checkrabbitmq/         # RabbitMQ message queue
@@ -287,7 +288,7 @@ solidping/
 - Email (JMAP): Passive inbox monitoring — receive a known message via JMAP and assert delivery
 
 **Databases:**
-- PostgreSQL, MySQL, MongoDB, MSSQL, Oracle, Redis: Connection and query checks
+- PostgreSQL, MySQL, MongoDB, MSSQL, Oracle, ClickHouse, Redis: Connection and query checks
 
 **Message Queues:**
 - Kafka, RabbitMQ, MQTT: Broker connectivity and message checks

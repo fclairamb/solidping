@@ -1,6 +1,6 @@
 # Checker Configuration Reference
 
-Complete reference for all 30 checker types and their configuration fields. Field names shown are the JSON keys used in the `config` object of a check.
+Complete reference for all 39 checker types and their configuration fields. Field names shown are the JSON keys used in the `config` object of a check.
 
 **Legend**: (R) = required, (O) = optional. Duration fields accept Go duration strings (e.g., `"10s"`, `"1m"`).
 
@@ -314,6 +314,28 @@ Min period: 6 hours. Default period: 24 hours.
 | `sid` | string | O | | Oracle SID. Cannot combine with `serviceName` |
 | `timeout` | duration | O | 10s | Connection timeout (max: 60s) |
 | `query` | string | O | `SELECT 1 FROM DUAL` | Health check query. Must start with SELECT |
+
+---
+
+### `clickhouse` -- ClickHouse health (native protocol)
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `host` | string | R | | Database hostname |
+| `port` | int | O | 9000 (9440 when `secure`) | Native-protocol port. Validation: 1-65535 |
+| `username` | string | O | `default` | Database username |
+| `password` | string | O | | Database password |
+| `database` | string | O | `default` | Database name |
+| `secure` | bool | O | false | Native protocol over TLS (required by ClickHouse Cloud) |
+| `tls_verify` | bool | O | false | Verify the server certificate. Requires `secure` |
+| `timeout` | duration | O | 10s | Connection timeout (max: 30s) |
+| `query` | string | O | `SELECT 1` | Health check query. Must start with SELECT |
+
+Uses the native (binary) protocol via `clickhouse-go`, not the HTTP interface.
+The query result is rendered from the column's own scan type (ClickHouse is
+strictly typed — `SELECT 1` is a UInt8, not text). Output includes
+`server_version`; metrics are `connection_time_ms`, `query_time_ms`,
+`total_time_ms`.
 
 ---
 
