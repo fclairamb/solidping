@@ -19,6 +19,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/domainverify"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/handlers/badges"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
 
@@ -1503,6 +1504,77 @@ func (s *Service) ViewStatusPageSummary(
 		PageSlug:     page.Slug,
 		CustomDomain: customDomain,
 	}, nil
+}
+
+// --- Badge (spec 2026-08-08-07) ---
+
+// BadgeOptions are the caller-supplied rendering options for the page-level
+// SVG badge. Mirrors badges.BadgeOptions' Label/Style/MinWidth/Width shape so
+// the two badge surfaces stay consistent, but is defined locally to avoid the
+// statuspages package depending on badges' check-specific option set.
+type BadgeOptions struct {
+	Label    string // Custom left-side text (default: page name).
+	Style    string // "flat", "flat-square".
+	MinWidth int    // 0 = no minimum.
+	Width    int    // Alternative width knob; the page badge has no bar/graph
+	// rows, so this simply feeds the same single-row stretch as MinWidth
+	// (the larger of the two wins) — see badges.Service.GenerateBadge's
+	// text-only path for the sibling behavior.
+}
+
+// pageBadgeValueAndColor maps a page-level rollup status to the badge's
+// right-side text and fill color. English text in v1 (localization out of
+// scope, per spec).
+func pageBadgeValueAndColor(status models.PageStatus) (string, string) {
+	switch status {
+	case models.PageStatusOperational:
+		return "operational", badges.ColorGreen
+	case models.PageStatusDegraded:
+		return "degraded", badges.ColorYellow
+	case models.PageStatusDown:
+		return "down", badges.ColorRed
+	case models.PageStatusMaintenance:
+		return "maintenance", badges.ColorBlue
+	case models.PageStatusUnknown:
+		return "unknown", badges.ColorGray
+	default:
+		return "unknown", badges.ColorGray
+	}
+}
+
+// GenerateBadge renders the page-level SVG badge for a status page (spec
+// 2026-08-08-07): a shields.io-style "page name | rollup status" badge for
+// embedding in READMEs, wikis, or email footers. It resolves through
+// ViewStatusPageSummary, so it applies the IDENTICAL visibility gate
+// (disabled/non-public → ErrStatusPageNotFound) and the same
+// models.RollupPageStatus rollup as the summary endpoint and the full status
+// page — a badge that disagreed with either would be worse than no badge.
+// Rendering itself reuses badges.GenerateSVG/ComposeBadgeSVG rather than a
+// second SVG renderer.
+func (s *Service) GenerateBadge(ctx context.Context, orgSlug, slug string, opts BadgeOptions) (string, error) {
+	summary, err := s.ViewStatusPageSummary(ctx, orgSlug, slug)
+	if err != nil {
+		return "", err
+	}
+
+	label := opts.Label
+	if label == "" {
+		label = summary.PageName
+	}
+
+	style := opts.Style
+	if style == "" {
+		style = "flat"
+	}
+
+	minWidth := opts.MinWidth
+	if opts.Width > minWidth {
+		minWidth = opts.Width
+	}
+
+	value, color := pageBadgeValueAndColor(summary.Status)
+
+	return badges.GenerateSVG(label, value, color, style, minWidth), nil
 }
 
 // --- Availability enrichment ---

@@ -1274,6 +1274,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// above, with a Cache-Control header the full view doesn't set (spec
 	// 2026-08-08-06).
 	api.GET("/status-pages/:org/:slug/summary", statusPagesHandler.ViewStatusPageSummary)
+	// Public SVG badge (page-level rollup) — same sibling as the per-check
+	// badge under /orgs/:org/checks/:check/badges/:components (spec
+	// 2026-08-08-07).
+	api.GET("/status-pages/:org/:slug/badge", statusPagesHandler.GetBadge)
 	// Public Atom/RSS feed of the status-update timeline.
 	api.GET("/status-pages/:org/:slug/feed.xml", statusSubscribersHandler.Feed)
 

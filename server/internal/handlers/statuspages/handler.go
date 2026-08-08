@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -635,6 +636,67 @@ func publicPageURL(req *http.Request, orgSlug string, summary *StatusPageSummary
 	}
 
 	return requestOrigin(req) + "/status0/" + orgSlug + "/" + summary.PageSlug
+}
+
+// GetBadge handles GET /api/v1/status-pages/:org/:slug/badge — a public SVG
+// badge reflecting the page-level rollup status (spec 2026-08-08-07). It is
+// registered alongside the other public status-page routes and shares their
+// visibility gate via Service.GenerateBadge (which delegates to
+// ViewStatusPageSummary), so a private or disabled page 404s exactly like
+// ViewStatusPage/ViewStatusPageSummary — never leaking existence.
+func (h *Handler) GetBadge(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	slug := httpx.Param(req, "slug")
+
+	opts := BadgeOptions{
+		Label: req.URL.Query().Get("label"),
+		Style: req.URL.Query().Get("style"),
+	}
+
+	if minWidth, ok := parseBadgeIntParam(req.URL.Query().Get("minWidth"), 0, 800); ok {
+		opts.MinWidth = minWidth
+	}
+
+	if width, ok := parseBadgeIntParam(req.URL.Query().Get("width"), 60, 800); ok {
+		opts.Width = width
+	}
+
+	svg, err := h.svc.GenerateBadge(req.Context(), orgSlug, slug, opts)
+	if err != nil {
+		return h.handlePublicError(writer, err)
+	}
+
+	writer.Header().Set("Content-Type", "image/svg+xml")
+	writer.Header().Set("Cache-Control", "public, max-age=60")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write([]byte(svg))
+
+	return nil
+}
+
+// parseBadgeIntParam parses an integer query parameter, clamping it within
+// [minVal, maxVal]. Returns 0, false if the parameter is empty or invalid.
+// Mirrors badges.parseIntParam (unexported in its own package) so the two
+// badge endpoints clamp width/minWidth identically.
+func parseBadgeIntParam(raw string, minVal, maxVal int) (int, bool) {
+	if raw == "" {
+		return 0, false
+	}
+
+	parsed, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, false
+	}
+
+	if parsed < minVal {
+		parsed = minVal
+	}
+
+	if parsed > maxVal {
+		parsed = maxVal
+	}
+
+	return parsed, true
 }
 
 // requestScheme resolves the request scheme, preferring the first token of a
