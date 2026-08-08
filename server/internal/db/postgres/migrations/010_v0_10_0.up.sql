@@ -1,4 +1,4 @@
--- solidping v0.9.0 — consolidated release migration.
+-- solidping v0.10.0 — consolidated release migration.
 --
 -- Multiple features share this one release migration; each contributes a
 -- clearly separated block below. Append new blocks at the end.

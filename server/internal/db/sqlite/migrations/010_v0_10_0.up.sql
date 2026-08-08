@@ -1,4 +1,4 @@
--- solidping v0.9.0 — consolidated release migration.
+-- solidping v0.10.0 — consolidated release migration.
 -- SQLite mirror of the Postgres migration.
 --
 -- Multiple features share this one release migration; each contributes a
