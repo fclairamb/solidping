@@ -395,6 +395,15 @@ test.describe("Status page appearance editor", () => {
     expect(defaultSnippet).not.toContain("data-mode=");
     expect(defaultSnippet).not.toContain("data-theme=");
     expect(defaultSnippet).not.toContain("data-position=");
+    // The preview drives itself via data-force-status, but that must never
+    // leak into the snippet customers actually copy — otherwise every pasted
+    // pill would be permanently frozen on whatever state happened to be
+    // selected in the preview when it was copied.
+    expect(defaultSnippet).not.toContain("data-force-status");
+    // No empty data-label-* either: untouched label inputs must not emit an
+    // attribute at all.
+    expect(defaultSnippet).not.toContain('data-label-operational=""');
+    expect(defaultSnippet).not.toContain("data-label-");
 
     // The generated URL is live: the script it points at really is served.
     const scriptUrl = defaultSnippet.match(/src="([^"]+)"/)![1];
@@ -488,6 +497,42 @@ test.describe("Status page appearance editor", () => {
       .toBe("rgb(11, 18, 32)");
 
     expect(summaryRequested).toBe(false);
+  });
+
+  test("preview theme 'auto' (the default) follows dash0's own light/dark toggle", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const suffix = Date.now().toString().slice(-9);
+    await createStatusPage(page, suffix);
+    await openAppearance(page);
+
+    // Widget theme is "auto" by default — never touched in this test.
+    const previewFrame = page.frameLocator(
+      '[data-testid="status-page-widget-preview"]',
+    );
+    const previewBody = previewFrame.locator("body");
+    const backgroundColor = () =>
+      previewBody.evaluate((el) => getComputedStyle(el).backgroundColor);
+
+    await expect(previewFrame.locator('[data-testid="solidping-widget-pill"]')).toBeVisible({
+      timeout: 30000,
+    });
+
+    // A freshly restored session starts with no persisted theme preference,
+    // so dash0 falls back to the (light) system preference — the preview
+    // must mirror that starting point.
+    await expect.poll(backgroundColor).toBe("rgb(248, 250, 252)");
+
+    // Flipping dash0's own theme must flip the "auto" preview along with it,
+    // with no widget option touched — this is the MutationObserver-backed
+    // reactivity in useIsDashDark(), not a one-time read at mount.
+    await page.getByTestId("theme-toggle").click();
+    await expect.poll(backgroundColor).toBe("rgb(11, 18, 32)");
+
+    // And back again, proving it isn't a one-way/stuck transition.
+    await page.getByTestId("theme-toggle").click();
+    await expect.poll(backgroundColor).toBe("rgb(248, 250, 252)");
   });
 
   test("a customized label updates both the preview and the copyable snippet, escaped against quote-breakout", async ({

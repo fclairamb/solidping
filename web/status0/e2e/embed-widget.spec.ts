@@ -299,6 +299,15 @@ test.describe("Embeddable status widget", () => {
     const explicitMd = await measure();
     expect(explicitMd).toEqual(noAttr);
 
+    // An unrecognized value falls back to "md" — same as the doc-comment
+    // contract for every other enum attribute on this widget.
+    await gotoFixture(
+      page,
+      `data-page="any/thing" data-force-status="operational" data-size="xl"`,
+    );
+    const invalidSize = await measure();
+    expect(invalidSize).toEqual(noAttr);
+
     await gotoFixture(
       page,
       `data-page="any/thing" data-force-status="operational" data-size="sm"`,
