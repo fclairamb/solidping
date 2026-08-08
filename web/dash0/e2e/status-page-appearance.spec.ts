@@ -319,4 +319,55 @@ test.describe("Status page appearance editor", () => {
 
     await publicPage.close();
   });
+
+  // Spec 2026-08-08-07: the page-level SVG badge embed block on the same
+  // settings screen as the custom-CSS editor.
+  test("offers a copyable SVG badge embed pointing at the public badge endpoint", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const suffix = Date.now().toString().slice(-9);
+    const slug = await createStatusPage(page, suffix);
+
+    await openAppearance(page);
+
+    const card = page.getByTestId("status-page-badge-card");
+    await expect(card).toBeVisible();
+    await expect(page.getByTestId("status-page-badge-preview")).toBeVisible({
+      timeout: 15000,
+    });
+
+    const urlText = await page.getByTestId("badge-embed-url").textContent();
+    expect(urlText).toContain(`/api/v1/status-pages/test/${slug}/badge`);
+
+    const markdownText = await page
+      .getByTestId("badge-embed-markdown")
+      .textContent();
+    expect(markdownText).toContain(`(${urlText})`);
+
+    const htmlText = await page.getByTestId("badge-embed-html").textContent();
+    expect(htmlText).toContain(`src="${urlText}"`);
+
+    // The URL is live: it 200s with a real SVG carrying the rollup status —
+    // a freshly-created page has no resources, so it rolls up to "unknown".
+    const resp = await page.request.get(urlText!);
+    expect(resp.status()).toBe(200);
+    expect(resp.headers()["content-type"]).toContain("image/svg+xml");
+    const body = await resp.text();
+    expect(body).toContain("<svg");
+    expect(body).toContain(">unknown<");
+
+    // Customizing the label updates every embed snippet together.
+    await page.getByTestId("status-page-badge-label").fill("Custom Label");
+    await expect
+      .poll(() => page.getByTestId("badge-embed-url").textContent())
+      .toContain("label=Custom");
+    const customUrlText = await page
+      .getByTestId("badge-embed-url")
+      .textContent();
+    const customMarkdown = await page
+      .getByTestId("badge-embed-markdown")
+      .textContent();
+    expect(customMarkdown).toContain(`(${customUrlText})`);
+  });
 });

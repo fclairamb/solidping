@@ -1522,23 +1522,26 @@ type BadgeOptions struct {
 	// text-only path for the sibling behavior.
 }
 
-// pageBadgeValueAndColor maps a page-level rollup status to the badge's
-// right-side text and fill color. English text in v1 (localization out of
-// scope, per spec).
-func pageBadgeValueAndColor(status models.PageStatus) (string, string) {
+// pageBadgeColor maps a page-level rollup status to the badge's fill color.
+// The right-side text is the rollup status's own wire value (string(status)) —
+// reusing models.PageStatus's vocabulary directly rather than a parallel set
+// of string literals, so the badge's text can never drift from the
+// summary/full-page JSON. English text in v1 (localization out of scope, per
+// spec).
+func pageBadgeColor(status models.PageStatus) string {
 	switch status {
 	case models.PageStatusOperational:
-		return "operational", badges.ColorGreen
+		return badges.ColorGreen
 	case models.PageStatusDegraded:
-		return "degraded", badges.ColorYellow
+		return badges.ColorYellow
 	case models.PageStatusDown:
-		return "down", badges.ColorRed
+		return badges.ColorRed
 	case models.PageStatusMaintenance:
-		return "maintenance", badges.ColorBlue
+		return badges.ColorBlue
 	case models.PageStatusUnknown:
-		return "unknown", badges.ColorGray
+		return badges.ColorGray
 	default:
-		return "unknown", badges.ColorGray
+		return badges.ColorGray
 	}
 }
 
@@ -1572,7 +1575,8 @@ func (s *Service) GenerateBadge(ctx context.Context, orgSlug, slug string, opts 
 		minWidth = opts.Width
 	}
 
-	value, color := pageBadgeValueAndColor(summary.Status)
+	value := string(summary.Status)
+	color := pageBadgeColor(summary.Status)
 
 	return badges.GenerateSVG(label, value, color, style, minWidth), nil
 }
