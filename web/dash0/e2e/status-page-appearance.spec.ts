@@ -370,4 +370,59 @@ test.describe("Status page appearance editor", () => {
       .textContent();
     expect(customMarkdown).toContain(`(${customUrlText})`);
   });
+  // Spec 2026-08-08-08: the live-widget snippet generator, sharing the badge
+  // block's home on this screen.
+  test("generates a live widget <script> snippet that reflects mode, theme and position", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const suffix = Date.now().toString().slice(-9);
+    const slug = await createStatusPage(page, suffix);
+
+    await openAppearance(page);
+
+    const card = page.getByTestId("status-page-widget-card");
+    await expect(card).toBeVisible();
+
+    const snippet = page.getByTestId("widget-embed-snippet");
+    const defaultSnippet = (await snippet.textContent())!;
+    // The exact frozen v1 contract: async script + data-page="org/slug".
+    expect(defaultSnippet).toContain("/embed/v1/widget.js");
+    expect(defaultSnippet).toContain(`data-page="test/${slug}"`);
+    expect(defaultSnippet).toContain("<script async src=");
+    expect(defaultSnippet).toContain("></script>");
+    // Defaults are implicit — no redundant attributes in the pasted snippet.
+    expect(defaultSnippet).not.toContain("data-mode=");
+    expect(defaultSnippet).not.toContain("data-theme=");
+    expect(defaultSnippet).not.toContain("data-position=");
+
+    // The generated URL is live: the script it points at really is served.
+    const scriptUrl = defaultSnippet.match(/src="([^"]+)"/)![1];
+    const scriptResponse = await page.request.get(scriptUrl);
+    expect(scriptResponse.status()).toBe(200);
+    expect(scriptResponse.headers()["content-type"]).toContain(
+      "application/javascript",
+    );
+
+    // Floating mode reveals the position select and adds both attributes.
+    await page.getByTestId("status-page-widget-mode").click();
+    await page.getByRole("option", { name: /Floating/ }).click();
+    await expect(page.getByTestId("status-page-widget-position")).toBeVisible();
+    await expect
+      .poll(() => snippet.textContent())
+      .toContain('data-mode="floating"');
+    expect(await snippet.textContent()).toContain(
+      'data-position="bottom-right"',
+    );
+
+    await page.getByTestId("status-page-widget-position").click();
+    await page.getByRole("option", { name: /Bottom left/ }).click();
+    await expect
+      .poll(() => snippet.textContent())
+      .toContain('data-position="bottom-left"');
+
+    await page.getByTestId("status-page-widget-theme").click();
+    await page.getByRole("option", { name: /^Dark$/ }).click();
+    await expect.poll(() => snippet.textContent()).toContain('data-theme="dark"');
+  });
 });
