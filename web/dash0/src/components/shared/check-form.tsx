@@ -87,6 +87,7 @@ const checkTypes: { value: CheckType; label: string; description: string; synthe
   { value: "js", label: "JavaScript", description: "Run custom JavaScript monitoring scripts" },
   { value: "mssql", label: "MSSQL", description: "Check Microsoft SQL Server health" },
   { value: "oracle", label: "Oracle", description: "Check Oracle Database health" },
+  { value: "clickhouse", label: "ClickHouse", description: "Check ClickHouse database health" },
   { value: "grpc", label: "gRPC", description: "Check gRPC service health" },
   { value: "kafka", label: "Kafka", description: "Check Kafka cluster health" },
   { value: "mqtt", label: "MQTT", description: "Check MQTT broker connectivity" },

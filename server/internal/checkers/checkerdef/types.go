@@ -146,6 +146,9 @@ const (
 	CheckTypeMSSQL CheckType = "mssql"
 	// CheckTypeOracle performs Oracle Database health checks.
 	CheckTypeOracle CheckType = "oracle"
+	// CheckTypeClickHouse performs ClickHouse health checks over the native
+	// (binary) protocol.
+	CheckTypeClickHouse CheckType = "clickhouse"
 	// CheckTypeGRPC performs gRPC health checks.
 	CheckTypeGRPC CheckType = "grpc"
 	// CheckTypeKafka performs Kafka cluster health checks.
@@ -292,6 +295,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeJS, Labels: []string{labelUnsafe, labelReqScripting, labelCatOther}, Description: "Run custom JavaScript scripts", MinPeriod: 30 * time.Second, DefaultPeriod: time.Minute},
 	{Type: CheckTypeMSSQL, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check Microsoft SQL Server health", SupportsTunnel: true},
 	{Type: CheckTypeOracle, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check Oracle Database health", SupportsTunnel: true},
+	{Type: CheckTypeClickHouse, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check ClickHouse database health", SupportsTunnel: true},
 	{Type: CheckTypeGRPC, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check gRPC service health", SupportsTunnel: true},
 	{Type: CheckTypeKafka, Labels: []string{labelSafe, labelReqMessagingClient, labelCatMessaging}, Description: "Check Kafka cluster health", SupportsTunnel: true},
 	{Type: CheckTypeMQTT, Labels: []string{labelSafe, labelReqMessagingClient, labelCatMessaging}, Description: "Check MQTT broker connectivity", SupportsTunnel: true},
@@ -385,6 +389,7 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeMongoDB,
 		CheckTypeMSSQL,
 		CheckTypeOracle,
+		CheckTypeClickHouse,
 		CheckTypeGRPC,
 		CheckTypeKafka,
 		CheckTypeMQTT,

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.10.0](https://github.com/fclairamb/solidping/compare/v0.9.0...v0.10.0) (2026-08-08)
+
+
+### Features
+
+* **checkers:** ClickHouse health checks over the native protocol ([#203](https://github.com/fclairamb/solidping/issues/203)) ([57d6f67](https://github.com/fclairamb/solidping/commit/57d6f670484827a87164810007b3960e2926cc13))
+
+
+### Bug Fixes
+
+* **deps:** update dependency motion to v13 ([#202](https://github.com/fclairamb/solidping/issues/202)) ([5425dcf](https://github.com/fclairamb/solidping/commit/5425dcffee6413c491d5a09ba0ff0886cb19b96f))
+* **deps:** update github.com/dop251/goja digest to 493f220 ([#200](https://github.com/fclairamb/solidping/issues/200)) ([d029a09](https://github.com/fclairamb/solidping/commit/d029a092c129eaecb8b2a58b2278a74dfb887137))
+
 ## [0.9.0](https://github.com/fclairamb/solidping/compare/v0.8.0...v0.9.0) (2026-08-07)
 
 

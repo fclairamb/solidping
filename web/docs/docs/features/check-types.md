@@ -5,7 +5,7 @@ title: Check Types
 
 # Check Types
 
-SolidPing supports **38 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
+SolidPing supports **39 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
 
 ## Network Checks
 
@@ -315,6 +315,28 @@ oracle://user:password@hostname:1521/service
 | URL | Connection string | `oracle://user:pass@db:1521/orcl` |
 | Query | Optional test query | `SELECT 1 FROM DUAL` |
 | Timeout | Connection timeout | `10s` |
+
+### ClickHouse
+
+Monitor ClickHouse connectivity and query execution over the **native (binary)
+protocol** — not the HTTP interface — so the check exercises the same transport
+your analytics clients use.
+
+| Option | Description | Example |
+|--------|-------------|---------|
+| Host | Server hostname | `clickhouse.example.com` |
+| Port | Native port. Defaults to `9000`, or `9440` when TLS is on | `9000` |
+| Username | Optional, defaults to ClickHouse's `default` user | `monitor` |
+| Password | Optional password | |
+| Database | Optional, defaults to `default` | `metrics` |
+| Use TLS | Native protocol over TLS (required by ClickHouse Cloud) | `false` |
+| Verify TLS certificate | Validate the server certificate. Requires TLS | `false` |
+| Query | Optional test query, must start with `SELECT` | `SELECT 1` |
+| Timeout | Connection timeout (max `30s`) | `10s` |
+
+The check pings the server, then runs the query and reports its first cell. The
+server version is reported in the result output, and `connection_time_ms` /
+`query_time_ms` / `total_time_ms` are recorded as metrics.
 
 ## Email Services
 
@@ -837,8 +859,8 @@ Every **TCP-based** check type can dial its target through an
 an `ssh` check that has `expected_fingerprint` set, or pick it under **Advanced →
 Run through SSH tunnel** in the dashboard. This covers the classic bastion use
 cases (a database or broker on a private network): `http`, `tcp`, `ssl`,
-`websocket`, `grpc`, `postgresql`, `mysql`, `mssql`, `oracle`, `redis`,
-`mongodb`, `rabbitmq`, `kafka`, `mqtt`, `smtp`, `imap`, `pop3`, and `ftp`.
+`websocket`, `grpc`, `postgresql`, `mysql`, `mssql`, `oracle`,
+`clickhouse`, `redis`, `mongodb`, `rabbitmq`, `kafka`, `mqtt`, `smtp`, `imap`, `pop3`, and `ftp`.
 
 UDP- and ICMP-based types (`icmp`, `udp`, `ntp`, `snmp`, `dns`, `dnsbl`, `sip`,
 `a2s`) cannot tunnel — an SSH `direct-tcpip` forward is TCP only. The dashboard

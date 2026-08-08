@@ -4,6 +4,7 @@ package registry
 import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checka2s"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkclickhouse"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdns"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdnsbl"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdocker"
@@ -114,6 +115,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checkmssql.MSSQLChecker{}, true
 	case checkerdef.CheckTypeOracle:
 		return &checkoracle.OracleChecker{}, true
+	case checkerdef.CheckTypeClickHouse:
+		return &checkclickhouse.ClickHouseChecker{}, true
 	case checkerdef.CheckTypeGRPC:
 		return &checkgrpc.GRPCChecker{}, true
 	case checkerdef.CheckTypeKafka:
@@ -205,6 +208,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checkmssql.MSSQLConfig{}, true
 	case checkerdef.CheckTypeOracle:
 		return &checkoracle.OracleConfig{}, true
+	case checkerdef.CheckTypeClickHouse:
+		return &checkclickhouse.ClickHouseConfig{}, true
 	case checkerdef.CheckTypeGRPC:
 		return &checkgrpc.GRPCConfig{}, true
 	case checkerdef.CheckTypeKafka:
