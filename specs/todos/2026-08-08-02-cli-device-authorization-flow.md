@@ -114,3 +114,68 @@ flow and its `oauth/authorize` client plumbing in `server/pkg/cli/auth_browser.g
 Do not add a hidden or deprecated alias — an unknown-flag error is the intended
 behavior. `--with-password` stays. (The server-side `/oauth/authorize` endpoints
 stay too; the dashboard OAuth providers use them.)
+
+## Implementation Plan
+
+1. **Migrations** — `010_v0_9_0.{up,down}.sql` in both
+   `server/internal/db/postgres/migrations/` and
+   `server/internal/db/sqlite/migrations/`: a new `device_auth_requests` table
+   (`uid`, `device_code`, `user_code`, `client_name`, `status`,
+   `organization_uid`, `user_uid`, `token_uid`, `token_value`, `last_polled_at`,
+   `expires_at`, `created_at`, `updated_at`) with unique indexes on
+   `device_code` and `user_code`. New number, never a reuse of 009.
+
+2. **Model + store** — `internal/db/models/device_auth.go`
+   (`models.DeviceAuthRequest` + status constants + `NewDeviceAuthRequest`), new
+   methods on the `db.Service` interface implemented identically in
+   `internal/db/postgres/device_auth.go` and `internal/db/sqlite/device_auth.go`:
+   create, get-by-user-code (live only), get-by-device-code (live only),
+   compare-and-set resolve (pending → approved/denied, carrying user/org/PAT),
+   record-poll (for `slow_down`), consume (hard delete, gates exactly-once
+   delivery on `RowsAffected == 1`), and purge-expired. Cross-engine parity test
+   in `internal/db/device_auth_test.go` under the shared harness.
+
+3. **Service** — `internal/handlers/auth/device_service.go`: user-code
+   generation on the ambiguity-free alphabet with collision retry, 32-byte
+   device codes, normalization (`normalizeDeviceUserCode`) and display
+   formatting (`XXXX-XXXX`), consent lookup, approve (mints a named PAT via the
+   existing `CreatePAT` path with `cliPATTokenName()`-style naming and a 90-day
+   expiry, bound to the org **selected at approval**), deny, and polling with
+   `authorization_pending` / `slow_down` / `expired_token` / `access_denied`.
+
+4. **Handlers + routes** — `internal/handlers/auth/device_handler.go`:
+   `POST /api/v1/auth/device` (public), `POST /api/v1/auth/device/token`
+   (public, RFC 8628 grant type, RFC 6749 §5.2 error shape),
+   `GET /api/v1/auth/device/consent?userCode=…` and
+   `POST /api/v1/auth/device/consent` (both authenticated). RFC field names stay
+   snake_case on these endpoints, flagged in a code comment as an intentional
+   deviation from the house camelCase style. The consent lookup gets a
+   dedicated, stricter instance of the existing
+   `middleware.RateLimiter` — the user code is the brute-forceable surface.
+
+5. **OpenAPI** — add the four endpoints and their schemas to
+   `internal/app/openapi/openapi.yaml`, then `go generate ./pkg/client/...` so
+   the generated client stays in sync.
+
+6. **Dashboard** — org-less `/device` route (mirrors `/mcp`) that resolves the
+   org from the auth context and forwards to
+   `/orgs/$org/account/device`, which lives under the `/orgs/$org` layout and so
+   inherits the standard `?returnTo=` login redirect. The page pre-fills the code
+   from `?user_code=`, renders client name + expiry, an org picker
+   (pre-selected to the current org, read-only line when the user has exactly one
+   org), and Approve / Deny. Built exclusively from design-reference primitives,
+   mobile-first.
+
+7. **CLI** — `server/pkg/cli/auth_device.go` implements the device flow and
+   becomes the default of `sp auth login`; `--with-password` is added as the
+   explicit password-login switch (alongside the existing `--email`/`--password`
+   /`--token`), and `auth_browser.go` plus its loopback/PKCE/`oauth.authorize`
+   client plumbing and tests are removed outright (`openBrowser` and
+   `cliPATTokenName` survive in the new file).
+
+8. **Tests** — table-driven service/handler tests for the full lifecycle
+   (pending → approve → delivered exactly once, second poll after delivery does
+   not re-deliver; deny; expiry; wrong user code; poll-before-approve;
+   `slow_down`; org binding incl. the multi-org case), CLI unit tests for code
+   formatting/normalization and the polling loop, and a Playwright E2E covering
+   the consent page rendering and an approval producing a PAT in the tokens list.
