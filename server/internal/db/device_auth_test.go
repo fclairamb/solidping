@@ -58,7 +58,7 @@ func testDeviceAuthRequests(ctx context.Context, t *testing.T, svc db.Service) {
 	r.NotNil(afterPoll.LastPolledAt)
 
 	// --- Resolution is a compare-and-set ---
-	res := models.DeviceAuthResolution{
+	res := &models.DeviceAuthResolution{
 		Status:          models.DeviceAuthStatusApproved,
 		UserUID:         user.UID,
 		OrganizationUID: org.UID,

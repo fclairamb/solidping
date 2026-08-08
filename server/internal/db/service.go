@@ -144,7 +144,7 @@ type Service interface {
 	// approved/denied on a live row; it reports false when the request was
 	// already resolved or has expired, so two concurrent approvals cannot both
 	// mint a usable grant.
-	ResolveDeviceAuthRequest(ctx context.Context, uid string, res models.DeviceAuthResolution) (bool, error)
+	ResolveDeviceAuthRequest(ctx context.Context, uid string, res *models.DeviceAuthResolution) (bool, error)
 	// TouchDeviceAuthPoll records a poll timestamp so the token endpoint can
 	// enforce the advertised interval (RFC 8628 slow_down).
 	TouchDeviceAuthPoll(ctx context.Context, uid string, at time.Time) error

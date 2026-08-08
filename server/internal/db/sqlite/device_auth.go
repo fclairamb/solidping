@@ -14,7 +14,7 @@ import (
 // An empty string becomes SQL NULL rather than an empty text value:
 // organization_uid/user_uid are uuid columns on Postgres, where the empty
 // string is not a valid uuid literal.
-func applyDeviceAuthResolution(query *bun.UpdateQuery, res models.DeviceAuthResolution) {
+func applyDeviceAuthResolution(query *bun.UpdateQuery, res *models.DeviceAuthResolution) {
 	query.Set("user_uid = ?", nullableString(res.UserUID))
 	query.Set("organization_uid = ?", nullableString(res.OrganizationUID))
 	query.Set("token_uid = ?", nullableString(res.TokenUID))
@@ -81,7 +81,7 @@ func (s *Service) GetDeviceAuthRequestByDeviceCode(
 // The status predicate makes it a compare-and-set: a losing concurrent
 // responder gets false rather than overwriting the first decision.
 func (s *Service) ResolveDeviceAuthRequest(
-	ctx context.Context, uid string, res models.DeviceAuthResolution,
+	ctx context.Context, uid string, res *models.DeviceAuthResolution,
 ) (bool, error) {
 	query := s.db.NewUpdate().Model((*models.DeviceAuthRequest)(nil)).
 		Set("status = ?", res.Status).

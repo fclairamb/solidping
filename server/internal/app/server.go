@@ -415,6 +415,26 @@ func (s *Server) registerSubsystemMetrics(reg prometheus.Registerer) {
 	prommetrics.RegisterSubsystems(reg, sizes)
 }
 
+// deviceConsentRequestsPerMinute is the per-caller allowance for the RFC 8628
+// consent endpoints. A human approving a device login makes a handful of
+// requests; anything beyond this is someone walking the user-code space.
+const deviceConsentRequestsPerMinute = 20
+
+// deviceConsentRateLimitConfig derives a much stricter limiter config from the
+// server's own, keeping deployment-specific knobs (trusted proxy hops, token
+// bucket keying) while collapsing the allowance. RateQueue is left at zero so
+// an over-eager caller is rejected outright rather than parked in a waiting
+// room, and the concurrency limiter is disabled (the global one already
+// applies).
+func deviceConsentRateLimitConfig(base config.RateLimitConfig) config.RateLimitConfig {
+	return config.RateLimitConfig{
+		RequestsPerMinute: deviceConsentRequestsPerMinute,
+		Burst:             deviceConsentRequestsPerMinute / 2,
+		TrustedProxies:    base.TrustedProxies,
+		TokenBucketsPerIP: base.TokenBucketsPerIP,
+	}
+}
+
 // SetupRoutes builds the HTTP router and registers every handler. It must
 // be called after InitializeSystemConfig so handlers see the post-overlay
 // config (e.g. PasskeyService deriving its RP ID from cfg.Server.BaseURL,
@@ -473,6 +493,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	rootAuth.POST("/passkeys/login/begin", passkeyHandler.LoginBegin)
 	rootAuth.POST("/passkeys/login/finish", passkeyHandler.LoginFinish)
 
+	// OAuth 2.0 Device Authorization Grant, RFC 8628 (spec 2026-08-08-02).
+	// Both endpoints below are public: opening a request grants nothing until
+	// a logged-in human approves it, and the token endpoint is guarded by the
+	// device_code's 32 bytes of entropy plus its own slow_down interval — a
+	// legitimate client polls it every few seconds for the request's TTL, so a
+	// stricter per-IP limit would break the flow rather than protect it.
+	rootAuth.POST("/device", authHandler.StartDeviceAuthorization)
+	rootAuth.POST("/device/token", authHandler.PollDeviceToken)
+
 	// Root-level auth routes (protected, authentication required)
 	rootAuthProtected := rootAuth.Use(authMiddleware.RequireAuth)
 	rootAuthProtected.POST("/logout", authHandler.Logout)
@@ -495,6 +524,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	rootAuthProtected.GET("/passkeys", passkeyHandler.List)
 	rootAuthProtected.PATCH("/passkeys/:uid", passkeyHandler.Rename)
 	rootAuthProtected.DELETE("/passkeys/:uid", passkeyHandler.Delete)
+	// Device-authorization consent (RFC 8628 §3.3). Unlike the two public
+	// device endpoints, these are keyed by the SHORT user code — the
+	// brute-forceable surface — so they get a dedicated, much stricter
+	// instance of the same rate-limit middleware on top of the global one.
+	deviceConsentLimiter := middleware.NewRateLimiter(deviceConsentRateLimitConfig(s.config.Server.RateLimiting), ctx)
+	deviceConsent := rootAuthProtected.Use(deviceConsentLimiter.RateLimit)
+	deviceConsent.GET("/device/consent", authHandler.GetDeviceConsent)
+	deviceConsent.POST("/device/consent", authHandler.RespondToDeviceConsent)
+
 	rootAuthProtected.POST("/membership-requests", authHandler.CreateMembershipRequestHandler)
 	rootAuthProtected.GET("/membership-requests", authHandler.ListOwnMembershipRequestsHandler)
 	rootAuthProtected.DELETE("/membership-requests/:uid", authHandler.CancelMembershipRequestHandler)
