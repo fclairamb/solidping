@@ -26,7 +26,8 @@ import (
 // newSummaryRequest builds an httptest.Request with chi route params set the
 // way the real router would for GET /status-pages/{org}/{slug}/summary.
 func newSummaryRequest(orgSlug, slug string) (*http.Request, *httptest.ResponseRecorder) {
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/status-pages/"+orgSlug+"/"+slug+"/summary", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodGet, "/api/v1/status-pages/"+orgSlug+"/"+slug+"/summary", nil)
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("org", orgSlug)

@@ -612,7 +612,7 @@ func (h *Handler) ViewStatusPageSummary(writer http.ResponseWriter, req *http.Re
 		Page: StatusPageSummaryPageInfo{
 			Name: summary.PageName,
 			Slug: summary.PageSlug,
-			URL:  publicPageURL(req, orgSlug, summary),
+			URL:  publicPageURL(req, orgSlug, &summary),
 		},
 		GeneratedAt: time.Now().UTC(),
 	}
@@ -629,7 +629,7 @@ func (h *Handler) ViewStatusPageSummary(writer http.ResponseWriter, req *http.Re
 // (internal/app/status0_meta.go:requestOrigin/requestScheme). Duplicated here
 // rather than imported because that helper lives in the app package, which
 // this handler package must not depend on.
-func publicPageURL(req *http.Request, orgSlug string, summary StatusPageSummary) string {
+func publicPageURL(req *http.Request, orgSlug string, summary *StatusPageSummary) string {
 	if summary.CustomDomain != "" {
 		return "https://" + summary.CustomDomain + "/"
 	}
