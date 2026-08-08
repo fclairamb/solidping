@@ -425,4 +425,106 @@ test.describe("Status page appearance editor", () => {
     await page.getByRole("option", { name: /^Dark$/ }).click();
     await expect.poll(() => snippet.textContent()).toContain('data-theme="dark"');
   });
+
+  // Spec 2026-08-08-09: live preview + size/label customization.
+  test("shows a live preview of the real widget and updates it as preview state/size/theme change", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const suffix = Date.now().toString().slice(-9);
+    await createStatusPage(page, suffix);
+    await openAppearance(page);
+
+    // The preview never calls the summary endpoint — it drives its own state
+    // via data-force-status, so it must work even though this page has just
+    // been created (no real status history yet).
+    let summaryRequested = false;
+    page.on("request", (request) => {
+      if (request.url().includes("/summary")) {
+        summaryRequested = true;
+      }
+    });
+
+    const previewFrame = page.frameLocator(
+      '[data-testid="status-page-widget-preview"]',
+    );
+    const previewPill = previewFrame.locator(
+      '[data-testid="solidping-widget-pill"]',
+    );
+    const previewLabel = previewFrame.locator(
+      '[data-testid="solidping-widget-label"]',
+    );
+
+    await expect(previewPill).toBeVisible({ timeout: 30000 });
+    await expect(previewLabel).toHaveText("All systems operational");
+    // No link target: the preview never has real page data to link to.
+    expect(await previewPill.evaluate((el) => el.tagName)).toBe("SPAN");
+
+    // Preview-state picker switches the rendered pill without a save.
+    await page.getByTestId("status-page-widget-preview-status").click();
+    await page.getByRole("option", { name: /^Down$/ }).click();
+    await expect(previewLabel).toHaveText("Major outage");
+
+    const fontSize = () =>
+      previewPill.evaluate((el) => getComputedStyle(el).fontSize);
+    const mdFontSize = await fontSize();
+
+    await page.getByTestId("status-page-widget-size").click();
+    await page.getByRole("option", { name: /^Large$/ }).click();
+    await expect(previewPill).toBeVisible({ timeout: 30000 });
+    await expect
+      .poll(fontSize)
+      .not.toBe(mdFontSize);
+
+    await page.getByTestId("status-page-widget-theme").click();
+    await page.getByRole("option", { name: /^Dark$/ }).click();
+    await expect(previewFrame.locator("body")).toBeVisible({ timeout: 30000 });
+    await expect
+      .poll(() =>
+        previewFrame
+          .locator("body")
+          .evaluate((el) => getComputedStyle(el).backgroundColor),
+      )
+      .toBe("rgb(11, 18, 32)");
+
+    expect(summaryRequested).toBe(false);
+  });
+
+  test("a customized label updates both the preview and the copyable snippet, escaped against quote-breakout", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const suffix = Date.now().toString().slice(-9);
+    await createStatusPage(page, suffix);
+    await openAppearance(page);
+
+    await page.getByTestId("status-page-widget-customize-labels").click();
+
+    const hostile = `"><img src=x onerror="window.__pwned=1">`;
+    const labelInput = page.getByTestId("status-page-widget-label-operational");
+    await expect(labelInput).toBeVisible();
+    await labelInput.fill(hostile);
+
+    // The emitted (copyable) snippet must remain valid, single-attribute
+    // HTML: the quote is escaped rather than allowed to break out into a new
+    // attribute on the tag customers paste onto their own site.
+    const snippet = page.getByTestId("widget-embed-snippet");
+    await expect
+      .poll(() => snippet.textContent())
+      .toContain("&quot;&gt;&lt;img src=x onerror=&quot;window.__pwned=1&quot;&gt;");
+    expect(await snippet.textContent()).not.toContain(
+      `data-label-operational="${hostile}"`,
+    );
+
+    // The preview (same status: default is operational) renders the hostile
+    // value as inert text — no image element, no markup breakout.
+    const previewFrame = page.frameLocator(
+      '[data-testid="status-page-widget-preview"]',
+    );
+    const previewLabel = previewFrame.locator(
+      '[data-testid="solidping-widget-label"]',
+    );
+    await expect(previewLabel).toHaveText(hostile, { timeout: 30000 });
+    expect(await previewFrame.locator("img").count()).toBe(0);
+  });
 });
