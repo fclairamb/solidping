@@ -13,6 +13,7 @@ import { Route as NoOrgRouteImport } from './routes/no-org'
 import { Route as McpRouteImport } from './routes/mcp'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as DeviceRouteImport } from './routes/device'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResetPasswordTokenRouteImport } from './routes/reset-password.$token'
 import { Route as OrgsOrgRouteImport } from './routes/orgs/$org'
@@ -105,6 +106,7 @@ import { Route as OrgsOrgAccountSecurityRouteImport } from './routes/orgs/$org/a
 import { Route as OrgsOrgAccountProfileRouteImport } from './routes/orgs/$org/account.profile'
 import { Route as OrgsOrgAccountNotificationsRouteImport } from './routes/orgs/$org/account.notifications'
 import { Route as OrgsOrgAccountMcpRouteImport } from './routes/orgs/$org/account.mcp'
+import { Route as OrgsOrgAccountDeviceRouteImport } from './routes/orgs/$org/account.device'
 import { Route as OrgsOrgStatusPagesStatusPageUidIndexRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.index'
 import { Route as OrgsOrgOrganizationPrivateLocationsIndexRouteImport } from './routes/orgs/$org/organization.private-locations.index'
 import { Route as OrgsOrgOnCallUidIndexRouteImport } from './routes/orgs/$org/on-call.$uid.index'
@@ -141,6 +143,11 @@ const LoginRoute = LoginRouteImport.update({
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeviceRoute = DeviceRouteImport.update({
+  id: '/device',
+  path: '/device',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -630,6 +637,11 @@ const OrgsOrgAccountMcpRoute = OrgsOrgAccountMcpRouteImport.update({
   path: '/mcp',
   getParentRoute: () => OrgsOrgAccountRoute,
 } as any)
+const OrgsOrgAccountDeviceRoute = OrgsOrgAccountDeviceRouteImport.update({
+  id: '/device',
+  path: '/device',
+  getParentRoute: () => OrgsOrgAccountRoute,
+} as any)
 const OrgsOrgStatusPagesStatusPageUidIndexRoute =
   OrgsOrgStatusPagesStatusPageUidIndexRouteImport.update({
     id: '/',
@@ -733,6 +745,7 @@ const OrgsOrgChecksCheckUidResultsResultUidRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/device': typeof DeviceRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
@@ -764,6 +777,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/status-updates': typeof OrgsOrgStatusUpdatesRouteWithChildren
   '/orgs/$org/test': typeof OrgsOrgTestRouteWithChildren
   '/orgs/$org/': typeof OrgsOrgIndexRoute
+  '/orgs/$org/account/device': typeof OrgsOrgAccountDeviceRoute
   '/orgs/$org/account/mcp': typeof OrgsOrgAccountMcpRoute
   '/orgs/$org/account/notifications': typeof OrgsOrgAccountNotificationsRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
@@ -848,6 +862,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/device': typeof DeviceRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
@@ -864,6 +879,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/me': typeof OrgsOrgMeRouteWithChildren
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
   '/orgs/$org': typeof OrgsOrgIndexRoute
+  '/orgs/$org/account/device': typeof OrgsOrgAccountDeviceRoute
   '/orgs/$org/account/mcp': typeof OrgsOrgAccountMcpRoute
   '/orgs/$org/account/notifications': typeof OrgsOrgAccountNotificationsRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
@@ -943,6 +959,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/device': typeof DeviceRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
@@ -974,6 +991,7 @@ export interface FileRoutesById {
   '/orgs/$org/status-updates': typeof OrgsOrgStatusUpdatesRouteWithChildren
   '/orgs/$org/test': typeof OrgsOrgTestRouteWithChildren
   '/orgs/$org/': typeof OrgsOrgIndexRoute
+  '/orgs/$org/account/device': typeof OrgsOrgAccountDeviceRoute
   '/orgs/$org/account/mcp': typeof OrgsOrgAccountMcpRoute
   '/orgs/$org/account/notifications': typeof OrgsOrgAccountNotificationsRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
@@ -1060,6 +1078,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/device'
     | '/forgot-password'
     | '/login'
     | '/mcp'
@@ -1091,6 +1110,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-updates'
     | '/orgs/$org/test'
     | '/orgs/$org/'
+    | '/orgs/$org/account/device'
     | '/orgs/$org/account/mcp'
     | '/orgs/$org/account/notifications'
     | '/orgs/$org/account/profile'
@@ -1175,6 +1195,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/device'
     | '/forgot-password'
     | '/login'
     | '/mcp'
@@ -1191,6 +1212,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/me'
     | '/orgs/$org/register'
     | '/orgs/$org'
+    | '/orgs/$org/account/device'
     | '/orgs/$org/account/mcp'
     | '/orgs/$org/account/notifications'
     | '/orgs/$org/account/profile'
@@ -1269,6 +1291,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/device'
     | '/forgot-password'
     | '/login'
     | '/mcp'
@@ -1300,6 +1323,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-updates'
     | '/orgs/$org/test'
     | '/orgs/$org/'
+    | '/orgs/$org/account/device'
     | '/orgs/$org/account/mcp'
     | '/orgs/$org/account/notifications'
     | '/orgs/$org/account/profile'
@@ -1385,6 +1409,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DeviceRoute: typeof DeviceRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
   McpRoute: typeof McpRoute
@@ -1424,6 +1449,13 @@ declare module '@tanstack/react-router' {
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/device': {
+      id: '/device'
+      path: '/device'
+      fullPath: '/device'
+      preLoaderRoute: typeof DeviceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -2070,6 +2102,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgAccountMcpRouteImport
       parentRoute: typeof OrgsOrgAccountRoute
     }
+    '/orgs/$org/account/device': {
+      id: '/orgs/$org/account/device'
+      path: '/device'
+      fullPath: '/orgs/$org/account/device'
+      preLoaderRoute: typeof OrgsOrgAccountDeviceRouteImport
+      parentRoute: typeof OrgsOrgAccountRoute
+    }
     '/orgs/$org/status-pages/$statusPageUid/': {
       id: '/orgs/$org/status-pages/$statusPageUid/'
       path: '/'
@@ -2193,6 +2232,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface OrgsOrgAccountRouteChildren {
+  OrgsOrgAccountDeviceRoute: typeof OrgsOrgAccountDeviceRoute
   OrgsOrgAccountMcpRoute: typeof OrgsOrgAccountMcpRoute
   OrgsOrgAccountNotificationsRoute: typeof OrgsOrgAccountNotificationsRoute
   OrgsOrgAccountProfileRoute: typeof OrgsOrgAccountProfileRoute
@@ -2203,6 +2243,7 @@ interface OrgsOrgAccountRouteChildren {
 }
 
 const OrgsOrgAccountRouteChildren: OrgsOrgAccountRouteChildren = {
+  OrgsOrgAccountDeviceRoute: OrgsOrgAccountDeviceRoute,
   OrgsOrgAccountMcpRoute: OrgsOrgAccountMcpRoute,
   OrgsOrgAccountNotificationsRoute: OrgsOrgAccountNotificationsRoute,
   OrgsOrgAccountProfileRoute: OrgsOrgAccountProfileRoute,
@@ -2653,6 +2694,7 @@ const OrgsOrgRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DeviceRoute: DeviceRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
   McpRoute: McpRoute,

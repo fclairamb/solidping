@@ -1506,6 +1506,54 @@ export function useCreateToken(org: string) {
   });
 }
 
+// Device authorization (RFC 8628) — the consent side of `sp auth login`.
+// The CLI talks to /api/v1/auth/device and /auth/device/token directly; the
+// dashboard only ever sees the two consent endpoints below.
+export interface DeviceConsentInfo {
+  clientName: string;
+  userCode: string;
+  status: "pending" | "approved" | "denied";
+  expiresAt: string;
+}
+
+export interface DeviceConsentRequest {
+  userCode: string;
+  /** Slug of the org the approved token is scoped to. */
+  org?: string;
+  approve: boolean;
+}
+
+/** Looks up a pending device-authorization request by its short user code. */
+export function useDeviceConsent(userCode: string) {
+  return useQuery({
+    queryKey: ["device-consent", userCode],
+    queryFn: () =>
+      apiFetch<DeviceConsentInfo>(
+        `/api/v1/auth/device/consent?userCode=${encodeURIComponent(userCode)}`,
+      ),
+    enabled: !!userCode,
+    retry: false,
+  });
+}
+
+/** Approves or denies a pending device-authorization request. */
+export function useRespondToDeviceConsent() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: DeviceConsentRequest) =>
+      apiFetch<{ approved: boolean }>("/api/v1/auth/device/consent", {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      // An approval mints a PAT, so the tokens list is stale.
+      queryClient.invalidateQueries({ queryKey: ["tokens"] });
+      queryClient.invalidateQueries({ queryKey: ["device-consent"] });
+    },
+  });
+}
+
 export function useRevokeToken() {
   const queryClient = useQueryClient();
 
