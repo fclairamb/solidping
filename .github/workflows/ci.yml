@@ -43,6 +43,10 @@ jobs:
           # embedded FS, so they must exist here too or those tests 404.
           echo "placeholder" > internal/app/docsres/llms.txt
           echo "placeholder" > internal/app/docsres/llms-full.txt
+          # @easyops-cn/docusaurus-search-local emits this lunr index into the
+          # real docs build; TestEmbeddedDocsContainSearchIndex asserts it's
+          # present in the embedded FS, so it must exist here too.
+          echo '[]' > internal/app/docsres/search-index.json
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9.3.0
