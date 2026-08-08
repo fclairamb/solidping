@@ -134,6 +134,26 @@ type Service interface {
 	CreateOAuthClient(ctx context.Context, client *models.OAuthClient) error
 	GetOAuthClientByClientID(ctx context.Context, clientID string) (*models.OAuthClient, error)
 
+	// Device authorization operations (RFC 8628, spec 2026-08-08-02). The two
+	// lookups return only live (unexpired) rows, so an expired request is
+	// indistinguishable from an unknown one at the storage layer.
+	CreateDeviceAuthRequest(ctx context.Context, req *models.DeviceAuthRequest) error
+	GetDeviceAuthRequestByUserCode(ctx context.Context, userCode string) (*models.DeviceAuthRequest, error)
+	GetDeviceAuthRequestByDeviceCode(ctx context.Context, deviceCode string) (*models.DeviceAuthRequest, error)
+	// ResolveDeviceAuthRequest is a compare-and-set from pending to
+	// approved/denied on a live row; it reports false when the request was
+	// already resolved or has expired, so two concurrent approvals cannot both
+	// mint a usable grant.
+	ResolveDeviceAuthRequest(ctx context.Context, uid string, res models.DeviceAuthResolution) (bool, error)
+	// TouchDeviceAuthPoll records a poll timestamp so the token endpoint can
+	// enforce the advertised interval (RFC 8628 slow_down).
+	TouchDeviceAuthPoll(ctx context.Context, uid string, at time.Time) error
+	// ConsumeDeviceAuthRequest hard-deletes a request, reporting whether THIS
+	// caller won the delete. Exactly-once PAT delivery hangs off that boolean.
+	ConsumeDeviceAuthRequest(ctx context.Context, uid string) (bool, error)
+	// PurgeExpiredDeviceAuthRequests removes rows whose human never showed up.
+	PurgeExpiredDeviceAuthRequests(ctx context.Context, before time.Time) (int64, error)
+
 	// UserPasskey operations
 	CreateUserPasskey(ctx context.Context, passkey *models.UserPasskey) error
 	GetUserPasskey(ctx context.Context, uid string) (*models.UserPasskey, error)
