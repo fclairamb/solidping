@@ -151,6 +151,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "dns-record-row", label: "DNS record row" },
   { id: "collapsible-code", label: "Collapsible code" },
   { id: "collapsible-section", label: "Collapsible section" },
+  { id: "sandboxed-preview", label: "Sandboxed preview (iframe)" },
   { id: "stepper", label: "Stepper" },
   { id: "feedback", label: "Feedback" },
   { id: "label-filter", label: "Label filter" },
@@ -189,6 +190,7 @@ function DesignReferencePage() {
       <DnsRecordRowSection />
       <CollapsibleCodeSection />
       <CollapsibleSectionSection />
+      <SandboxedPreviewSection />
       <StepperSection />
       <FeedbackSection />
       <LabelFilterSection />
@@ -1732,6 +1734,72 @@ function CollapsibleSectionSection() {
         </div>
         <CodeSnippet
           code={`import { CollapsibleSection } from "@/components/ui/collapsible-section";\n\n<CollapsibleSection\n  id="flapping"\n  title="Flapping"\n  summary="window 6h, cooldown ×5 (defaults)"\n  customized={isCustomized}\n  defaultOpen={hasNonDefaults}\n  expandSignal={hasError ? submitNonce : 0}\n>\n  {/* fields */}\n</CollapsibleSection>`}
+        />
+      </div>
+    </Section>
+  );
+}
+
+/** Escapes a value for safe interpolation into a double-quoted HTML attribute
+ * — same helper `StatusPageWidgetCard` uses to build its preview `srcDoc`. */
+function demoEscapeHtmlAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function SandboxedPreviewSection() {
+  const [label, setLabel] = useState('Try: "><b>bold</b>');
+  const srcDoc = `<!doctype html><html><body style="margin:0;padding:16px;font-family:ui-sans-serif,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100%;box-sizing:border-box;">
+  <span data-label="${demoEscapeHtmlAttr(label)}" style="border:1px solid #d1d5db;border-radius:9999px;padding:6px 12px;">${demoEscapeHtmlAttr(label)}</span>
+</body></html>`;
+
+  return (
+    <Section
+      id="sandboxed-preview"
+      title="Sandboxed preview (iframe)"
+      description={
+        'Renders third-party or user-typed HTML byte-for-byte — not a React ' +
+        "replica that could drift — via a sandboxed <iframe srcDoc>. Two rules " +
+        'keep it safe: sandbox="allow-scripts" only (no allow-same-origin, so ' +
+        "the frame gets an opaque origin and can't reach the parent document " +
+        "or its storage), and every interpolated value is HTML-attribute-" +
+        "escaped before it goes into the srcDoc string — the preview parses " +
+        "user input as markup, so an unescaped quote could inject a new " +
+        "attribute or tag. Used by StatusPageWidgetCard to preview the real " +
+        "/embed/v1/widget.js script with the operator's own label overrides."
+      }
+    >
+      <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="demo-sandboxed-preview-input">
+              Label (try a quote-breakout attempt)
+            </Label>
+            <Input
+              id="demo-sandboxed-preview-input"
+              value={label}
+              onChange={(event) => setLabel(event.target.value)}
+            />
+          </div>
+          <div className="overflow-hidden rounded-lg border border-dashed">
+            <iframe
+              title="Sandboxed preview demo"
+              srcDoc={srcDoc}
+              sandbox="allow-scripts"
+              className="h-28 w-full"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            The typed value renders as inert text even when it contains
+            markup — escaping happens before the string ever reaches the
+            iframe's HTML parser.
+          </p>
+        </div>
+        <CodeSnippet
+          code={`function escapeHtmlAttr(value: string): string {\n  return value\n    .replace(/&/g, "&amp;")\n    .replace(/"/g, "&quot;")\n    .replace(/</g, "&lt;")\n    .replace(/>/g, "&gt;");\n}\n\nconst srcDoc = \`<!doctype html><html>...\n  <span>\${escapeHtmlAttr(userValue)}</span>\n...</html>\`;\n\n<iframe srcDoc={srcDoc} sandbox="allow-scripts" title="Preview" />`}
         />
       </div>
     </Section>

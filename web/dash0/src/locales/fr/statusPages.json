@@ -195,7 +195,37 @@
       "bottomRight": "En bas à droite",
       "bottomLeft": "En bas à gauche"
     },
-    "hint": "Collez cet extrait n'importe où dans le HTML de votre page. Le widget s'affiche dans un shadow root : le CSS de votre site ne peut ni l'altérer ni être altéré par lui."
+    "hint": "Collez cet extrait n'importe où dans le HTML de votre page. Le widget s'affiche dans un shadow root : le CSS de votre site ne peut ni l'altérer ni être altéré par lui.",
+    "size": "Taille",
+    "sizes": {
+      "sm": "Petite",
+      "md": "Moyenne",
+      "lg": "Grande"
+    },
+    "previewTitle": "Aperçu",
+    "previewState": "État de l'aperçu",
+    "previewStates": {
+      "operational": "Opérationnel",
+      "degraded": "Dégradé",
+      "down": "En panne",
+      "maintenance": "Maintenance",
+      "unknown": "Inconnu"
+    },
+    "customizeLabels": "Personnaliser les libellés",
+    "labelOverrides": {
+      "operational": "Libellé opérationnel",
+      "degraded": "Libellé dégradé",
+      "down": "Libellé panne",
+      "maintenance": "Libellé maintenance",
+      "unknown": "Libellé inconnu"
+    },
+    "labelPlaceholders": {
+      "operational": "Tous les systèmes sont opérationnels",
+      "degraded": "Performance dégradée",
+      "down": "Panne majeure",
+      "maintenance": "En maintenance",
+      "unknown": "Statut inconnu"
+    }
   },
   "toast": {
     "created": "Page de statut créée avec succès",

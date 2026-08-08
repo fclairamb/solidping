@@ -195,7 +195,37 @@
       "bottomRight": "Bottom right",
       "bottomLeft": "Bottom left"
     },
-    "hint": "Paste this snippet anywhere in your page's HTML. The widget renders in a shadow root, so it can't be affected by — or affect — your site's CSS."
+    "hint": "Paste this snippet anywhere in your page's HTML. The widget renders in a shadow root, so it can't be affected by — or affect — your site's CSS.",
+    "size": "Size",
+    "sizes": {
+      "sm": "Small",
+      "md": "Medium",
+      "lg": "Large"
+    },
+    "previewTitle": "Preview",
+    "previewState": "Preview state",
+    "previewStates": {
+      "operational": "Operational",
+      "degraded": "Degraded",
+      "down": "Down",
+      "maintenance": "Maintenance",
+      "unknown": "Unknown"
+    },
+    "customizeLabels": "Customize labels",
+    "labelOverrides": {
+      "operational": "Operational label",
+      "degraded": "Degraded label",
+      "down": "Down label",
+      "maintenance": "Maintenance label",
+      "unknown": "Unknown label"
+    },
+    "labelPlaceholders": {
+      "operational": "All systems operational",
+      "degraded": "Degraded performance",
+      "down": "Major outage",
+      "maintenance": "Under maintenance",
+      "unknown": "Status unknown"
+    }
   },
   "toast": {
     "created": "Status page created successfully",

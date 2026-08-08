@@ -195,7 +195,37 @@
       "bottomRight": "Unten rechts",
       "bottomLeft": "Unten links"
     },
-    "hint": "Fügen Sie dieses Snippet an beliebiger Stelle im HTML Ihrer Seite ein. Das Widget wird in einem Shadow Root gerendert, kann also weder vom CSS Ihrer Website beeinflusst werden noch dieses beeinflussen."
+    "hint": "Fügen Sie dieses Snippet an beliebiger Stelle im HTML Ihrer Seite ein. Das Widget wird in einem Shadow Root gerendert, kann also weder vom CSS Ihrer Website beeinflusst werden noch dieses beeinflussen.",
+    "size": "Größe",
+    "sizes": {
+      "sm": "Klein",
+      "md": "Mittel",
+      "lg": "Groß"
+    },
+    "previewTitle": "Vorschau",
+    "previewState": "Vorschau-Status",
+    "previewStates": {
+      "operational": "Betriebsbereit",
+      "degraded": "Beeinträchtigt",
+      "down": "Ausgefallen",
+      "maintenance": "Wartung",
+      "unknown": "Unbekannt"
+    },
+    "customizeLabels": "Beschriftungen anpassen",
+    "labelOverrides": {
+      "operational": "Beschriftung: Betriebsbereit",
+      "degraded": "Beschriftung: Beeinträchtigt",
+      "down": "Beschriftung: Ausgefallen",
+      "maintenance": "Beschriftung: Wartung",
+      "unknown": "Beschriftung: Unbekannt"
+    },
+    "labelPlaceholders": {
+      "operational": "Alle Systeme betriebsbereit",
+      "degraded": "Beeinträchtigte Leistung",
+      "down": "Größerer Ausfall",
+      "maintenance": "In Wartung",
+      "unknown": "Status unbekannt"
+    }
   },
   "toast": {
     "created": "Statusseite erfolgreich erstellt",

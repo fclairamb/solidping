@@ -195,7 +195,37 @@
       "bottomRight": "Abajo a la derecha",
       "bottomLeft": "Abajo a la izquierda"
     },
-    "hint": "Pega este fragmento en cualquier parte del HTML de tu página. El widget se renderiza en un shadow root, así que el CSS de tu sitio no puede afectarlo ni verse afectado por él."
+    "hint": "Pega este fragmento en cualquier parte del HTML de tu página. El widget se renderiza en un shadow root, así que el CSS de tu sitio no puede afectarlo ni verse afectado por él.",
+    "size": "Tamaño",
+    "sizes": {
+      "sm": "Pequeño",
+      "md": "Mediano",
+      "lg": "Grande"
+    },
+    "previewTitle": "Vista previa",
+    "previewState": "Estado de la vista previa",
+    "previewStates": {
+      "operational": "Operativo",
+      "degraded": "Degradado",
+      "down": "Caído",
+      "maintenance": "Mantenimiento",
+      "unknown": "Desconocido"
+    },
+    "customizeLabels": "Personalizar etiquetas",
+    "labelOverrides": {
+      "operational": "Etiqueta operativo",
+      "degraded": "Etiqueta degradado",
+      "down": "Etiqueta caído",
+      "maintenance": "Etiqueta mantenimiento",
+      "unknown": "Etiqueta desconocido"
+    },
+    "labelPlaceholders": {
+      "operational": "Todos los sistemas operativos",
+      "degraded": "Rendimiento degradado",
+      "down": "Interrupción importante",
+      "maintenance": "En mantenimiento",
+      "unknown": "Estado desconocido"
+    }
   },
   "toast": {
     "created": "Página de estado creada correctamente",
