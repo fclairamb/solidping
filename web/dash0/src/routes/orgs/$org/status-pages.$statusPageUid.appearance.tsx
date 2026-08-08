@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/card";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { StatusPageBadgeCard } from "@/components/shared/status-page-badge-card";
+import { StatusPageWidgetCard } from "@/components/shared/status-page-widget-card";
 import { useDebounce } from "@/lib/use-debounce";
 
 export const Route = createFileRoute(
@@ -336,6 +337,8 @@ function StatusPageAppearancePage() {
       </div>
 
       <StatusPageBadgeCard org={org} pageSlug={page.slug} pageName={page.name} />
+
+      <StatusPageWidgetCard org={org} pageSlug={page.slug} />
     </div>
   );
 }

@@ -176,6 +176,27 @@
     "description": "Incrusta una insignia de estado estática — la versión sin scripts del widget — en un README, wiki o pie de correo electrónico.",
     "labelPlaceholder": "Dejar vacío para usar el nombre de la página"
   },
+  "widget": {
+    "title": "Widget en vivo",
+    "description": "Inserta una píldora de estado en vivo en tu propio sitio: consulta el estado de esta página y enlaza de vuelta a ella.",
+    "mode": "Modo",
+    "modes": {
+      "inline": "En línea (donde está la etiqueta)",
+      "floating": "Flotante (esquina fija)"
+    },
+    "theme": "Tema",
+    "themes": {
+      "auto": "Automático (sigue el sistema del visitante)",
+      "light": "Claro",
+      "dark": "Oscuro"
+    },
+    "position": "Posición",
+    "positions": {
+      "bottomRight": "Abajo a la derecha",
+      "bottomLeft": "Abajo a la izquierda"
+    },
+    "hint": "Pega este fragmento en cualquier parte del HTML de tu página. El widget se renderiza en un shadow root, así que el CSS de tu sitio no puede afectarlo ni verse afectado por él."
+  },
   "toast": {
     "created": "Página de estado creada correctamente",
     "updated": "Página de estado actualizada correctamente",

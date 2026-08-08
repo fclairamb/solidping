@@ -176,6 +176,27 @@
     "description": "Betten Sie ein statisches Status-Badge ein — das skriptfreie Pendant zum Widget — in ein README, Wiki oder eine E-Mail-Fußzeile.",
     "labelPlaceholder": "Leer lassen für den Seitennamen"
   },
+  "widget": {
+    "title": "Live-Widget",
+    "description": "Binden Sie eine Live-Status-Pille auf Ihrer eigenen Website ein — sie fragt den Status dieser Seite ab und verlinkt darauf zurück.",
+    "mode": "Modus",
+    "modes": {
+      "inline": "Inline (an der Stelle des Tags)",
+      "floating": "Schwebend (feste Ecke)"
+    },
+    "theme": "Design",
+    "themes": {
+      "auto": "Automatisch (folgt dem System des Besuchers)",
+      "light": "Hell",
+      "dark": "Dunkel"
+    },
+    "position": "Position",
+    "positions": {
+      "bottomRight": "Unten rechts",
+      "bottomLeft": "Unten links"
+    },
+    "hint": "Fügen Sie dieses Snippet an beliebiger Stelle im HTML Ihrer Seite ein. Das Widget wird in einem Shadow Root gerendert, kann also weder vom CSS Ihrer Website beeinflusst werden noch dieses beeinflussen."
+  },
   "toast": {
     "created": "Statusseite erfolgreich erstellt",
     "updated": "Statusseite erfolgreich aktualisiert",
