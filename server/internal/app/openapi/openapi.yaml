@@ -5293,6 +5293,13 @@ paths:
       tags: [Entitlements]
       summary: Replace an organization's entitlements
       operationId: setEntitlements
+      description: |
+        Write access is granted to either the billing service or an org admin.
+        The billing service signs the request (HMAC-SHA256 over
+        `<timestamp>.<METHOD>.<path>.<sha256 of the raw body>`, sent as
+        `X-SP-Signature: v1,<base64>` plus `X-SP-Timestamp` and `X-SP-Key-Id`).
+        The legacy static bearer is still accepted while the
+        `entitlements.allow_legacy_service_token` system parameter is true.
       security:
         - bearerAuth: []
       parameters:
@@ -5322,6 +5329,13 @@ paths:
       tags: [Entitlements]
       summary: Partially update an organization's entitlements
       operationId: patchEntitlements
+      description: |
+        Write access is granted to either the billing service or an org admin.
+        The billing service signs the request (HMAC-SHA256 over
+        `<timestamp>.<METHOD>.<path>.<sha256 of the raw body>`, sent as
+        `X-SP-Signature: v1,<base64>` plus `X-SP-Timestamp` and `X-SP-Key-Id`).
+        The legacy static bearer is still accepted while the
+        `entitlements.allow_legacy_service_token` system parameter is true.
       security:
         - bearerAuth: []
       parameters:
