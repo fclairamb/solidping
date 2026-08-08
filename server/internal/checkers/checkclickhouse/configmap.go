@@ -10,11 +10,11 @@ import (
 // stays a loop rather than a wall of near-identical type assertions.
 func (c *ClickHouseConfig) stringFields() map[string]*string {
 	return map[string]*string{
-		"host":     &c.Host,
-		"username": &c.Username,
-		"password": &c.Password,
-		"database": &c.Database,
-		"query":    &c.Query,
+		"host":        &c.Host,
+		"username":    &c.Username,
+		fieldPassword: &c.Password,
+		fieldDatabase: &c.Database,
+		"query":       &c.Query,
 	}
 }
 

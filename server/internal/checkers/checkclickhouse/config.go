@@ -21,6 +21,12 @@ const (
 	maxPort         = 65535
 )
 
+// Config keys shared across the field tables, GetConfig and SecretFields.
+const (
+	fieldPassword = "password"
+	fieldDatabase = "database"
+)
+
 // ClickHouseConfig holds the configuration for ClickHouse database checks over
 // the native protocol.
 type ClickHouseConfig struct {
@@ -30,7 +36,7 @@ type ClickHouseConfig struct {
 	Password  string        `json:"password,omitempty"`
 	Database  string        `json:"database,omitempty"`
 	Secure    bool          `json:"secure,omitempty"`
-	TLSVerify bool          `json:"tls_verify,omitempty"`
+	TLSVerify bool          `json:"tls_verify,omitempty"` //nolint:tagliatelle // API uses snake_case
 	Timeout   time.Duration `json:"timeout,omitempty"`
 	Query     string        `json:"query,omitempty"`
 }
@@ -45,9 +51,9 @@ func (c *ClickHouseConfig) GetConfig() map[string]any {
 	}
 
 	optionalStrings := map[string]string{
-		"username": c.Username,
-		"password": c.Password,
-		"database": c.Database,
+		"username":    c.Username,
+		fieldPassword: c.Password,
+		fieldDatabase: c.Database,
 	}
 	for key, value := range optionalStrings {
 		if value != "" {

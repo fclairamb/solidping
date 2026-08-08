@@ -89,8 +89,8 @@ func TestExecuteAgainstClosedPortIsDown(t *testing.T) {
 	r.Equal(checkerdef.StatusDown, result.Status)
 }
 
-// An already-cancelled context must surface as a timeout, not as a down target.
-func TestExecuteWithCancelledContextIsTimeout(t *testing.T) {
+// An already-canceled context must surface as a timeout, not as a down target.
+func TestExecuteWithCanceledContextIsTimeout(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 

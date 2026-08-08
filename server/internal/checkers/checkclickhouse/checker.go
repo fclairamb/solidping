@@ -104,7 +104,7 @@ func (c *ClickHouseChecker) Execute(
 	output := map[string]any{
 		checkerdef.OutputKeyHost: cfg.Host,
 		checkerdef.OutputKeyPort: cfg.resolvedPort(),
-		"database":               cfg.resolvedDatabase(),
+		fieldDatabase:            cfg.resolvedDatabase(),
 		"secure":                 cfg.Secure,
 	}
 

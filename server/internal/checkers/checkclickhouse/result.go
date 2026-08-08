@@ -7,7 +7,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
-// failure builds the down/timeout result for a failed stage. A cancelled
+// failure builds the down/timeout result for a failed stage. A canceled
 // context means the deadline (not the server) ended the check, so it reports
 // timeoutMessage as StatusTimeout; anything else is a genuine failure of the
 // target and reports downMessage as StatusDown.
