@@ -107,3 +107,63 @@ this, and both outcomes are acceptable, so pick one and move on. Either document
 it in one line in the embed docs alongside the other data-attributes, or leave
 it undocumented as an internal preview affordance. Do not stop or escalate over
 this choice; state which you chose in your final report.
+
+## Implementation Plan
+
+1. **`web/status0/src/embed/widget.ts`** (additive to the frozen v1 contract):
+   - `data-force-status="operational|degraded|down|maintenance|unknown"`:
+     parsed in `boot()` before any network access; when valid, render that
+     status statically (label from `readLabels`, no title, no href) and
+     `return` — no `fetch`, no `setInterval`. Invalid/absent falls through to
+     the existing polling path unchanged.
+   - `data-size="sm"|"md"(default)|"lg"`: a `sizeClass()` helper mirroring
+     `themeClass()`; `"md"` maps to `""` (no extra class) so the existing
+     `.sp-pill`/`.sp-dot` rules stay untouched — pixel-identical by
+     construction. `sm`/`lg` add `.sp-size-sm`/`.sp-size-lg` root classes with
+     new scoped CSS rules for padding/font-size/gap/dot-size.
+   - Update the file's header doc comment to list both new attributes and note
+     they're additive (no `/embed/v2/` needed).
+2. **`web/status0/e2e/embed-widget.spec.ts`**: add cases — each `data-force-status`
+   value renders without any summary-endpoint request; `data-size="sm"|"lg"`
+   changes computed pill padding/font-size while default (`md`, and an
+   explicit unrecognized value) matches today's computed style; a hostile
+   label survives as text under `data-force-status` too (no network path to
+   race against).
+3. **dash0 `StatusPageWidgetCard`** (`web/dash0/src/components/shared/status-page-widget-card.tsx`):
+   - New `size` state (Select, default `md`) emitted as `data-size` only when
+     non-default.
+   - New `labels: Record<PageStatus, string>` state (5 inputs) behind a
+     `CollapsibleSection` ("Customize labels"); each non-empty value emits
+     `data-label-<status>` in the snippet, HTML-attribute-escaped (`"`, `&`,
+     `<`, `>`) so a value containing a quote can't break the tag customers
+     paste onto their own site.
+   - New `previewStatus` state (Select, default `operational`) driving a
+     sandboxed `<iframe sandbox="allow-scripts" srcDoc={...}>` preview: the
+     srcDoc embeds the exact script tag (all current attributes) plus
+     `data-force-status={previewStatus}`, so the preview never calls the
+     summary endpoint and works pre-publish. Body background follows the
+     selected widget theme (`light`/`dark` literal, `auto` mirrors dash0's
+     own `html.dark` class via a small `MutationObserver`-backed hook).
+   - Real (copied) snippet stays force-status-free — only the preview iframe
+     gets the extra attribute.
+4. **i18n**: add `widget.size`, `widget.sizes.{sm,md,lg}`,
+   `widget.previewTitle`, `widget.previewState`, `widget.previewStates.*`,
+   `widget.customizeLabels`, `widget.labelOverrides.*`,
+   `widget.labelPlaceholders.*` to `statusPages.json` in en/fr/de/es.
+5. **Design reference**: add a "Sandboxed preview (iframe)" pattern section
+   documenting the `srcDoc` + escape-then-interpolate + `sandbox="allow-scripts"`
+   approach, since this is a new reusable pattern (distinct from the existing
+   `src=`+`postMessage` custom-CSS preview iframe).
+6. **dash0 `status-page-appearance.spec.ts`**: extend the widget test — preview
+   iframe shows the pill by default; switching preview state/theme/size updates
+   the rendered pill; filling a label override updates both the preview and the
+   copyable snippet; a hostile label (quote-breakout attempt) still renders as
+   inert text inside the preview and appears escaped in the copied snippet.
+7. **Docs**: add `data-size` to the attribute table in
+   `web/docs/docs/features/status-pages.md` and the `openapi.yaml`
+   `getEmbedWidgetV1` description. `data-force-status` is documented too (one
+   line, framed as a preview/testing affordance) — see final report for the
+   "implementer's call" rationale.
+8. **Go**: no server-side code changes expected; only run
+   `TestEmbedWidgetJS` / `TestEmbedWidgetSourceIsXSSSafe` as a regression gate
+   because `widget.ts` changed.
