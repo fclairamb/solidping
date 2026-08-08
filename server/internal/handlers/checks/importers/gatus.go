@@ -259,7 +259,7 @@ func gatusCheckType(endpoint *gatusEndpoint) (checkerdef.CheckType, gatusTarget,
 
 	scheme := strings.ToLower(parsed.Scheme)
 	switch scheme {
-	case "http", "https":
+	case srcHTTP, "https":
 		return checkerdef.CheckTypeHTTP, gatusTarget{host: parsed.Hostname()}, nil
 	case "ws", "wss", "websocket":
 		return checkerdef.CheckTypeWebSocket, gatusTarget{host: parsed.Hostname()}, nil

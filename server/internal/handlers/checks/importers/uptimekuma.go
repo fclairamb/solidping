@@ -191,7 +191,7 @@ func (c *UptimeKumaConverter) convertMonitor(
 	var ok bool
 
 	switch monitor.Type {
-	case "http", srcKeyword, "json-query":
+	case srcHTTP, srcKeyword, srcJSONQuery:
 		check.Type = string(checkerdef.CheckTypeHTTP)
 		check.Config = c.httpConfig(monitor, timeout, warn)
 		ok = true
@@ -286,7 +286,7 @@ func (c *UptimeKumaConverter) warnUnmapped(monitor *kumaMonitor, name string, wa
 // httpConfig and so can carry verifySsl.
 func kumaIsHTTPType(monitorType string) bool {
 	switch monitorType {
-	case "http", srcKeyword, "json-query":
+	case srcHTTP, srcKeyword, srcJSONQuery:
 		return true
 	default:
 		return false
@@ -350,7 +350,7 @@ func (c *UptimeKumaConverter) httpConfig(monitor *kumaMonitor, timeout string, w
 		} else {
 			cfg["body_expect"] = monitor.Keyword
 		}
-	case "json-query":
+	case srcJSONQuery:
 		if monitor.JSONPath != "" {
 			cfg["json_path_assertions"] = assertionConfig(&checkhttp.AssertionNode{
 				Type:     checkhttp.NodeTypeAssertion,

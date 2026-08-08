@@ -290,7 +290,9 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		}
 
 		if skipTLSVerify {
-			transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in via verifySsl: false
+			// InsecureSkipVerify is only set when the operator explicitly
+			// opted out of verification via verifySsl: false.
+			transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 		}
 
 		client.Transport = transport

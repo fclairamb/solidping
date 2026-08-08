@@ -1617,24 +1617,23 @@ func TestHTTPChecker_Execute_VerifySsl(t *testing.T) {
 
 // newRedirectingServers builds a fresh final destination + 301-redirector
 // pair, plus a pointer that flips true when the final destination is hit.
-func newRedirectingServers(t *testing.T) (final, redirector *httptest.Server, finalHit *bool) {
+func newRedirectingServers(t *testing.T) (*httptest.Server, *httptest.Server, *bool) {
 	t.Helper()
 
 	hit := false
-	finalHit = &hit
 
-	final = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		*finalHit = true
+	final := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hit = true
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(final.Close)
 
-	redirector = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		http.Redirect(w, req, final.URL, http.StatusMovedPermanently)
 	}))
 	t.Cleanup(redirector.Close)
 
-	return final, redirector, finalHit
+	return final, redirector, &hit
 }
 
 // TestHTTPChecker_Execute_FollowRedirects covers both directions: by default

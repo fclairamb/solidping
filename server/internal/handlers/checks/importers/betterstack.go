@@ -395,13 +395,7 @@ func betterStackHTTPConfig(
 		cfg["method"] = strings.ToUpper(monitor.HTTPMethod)
 	}
 
-	if monitor.VerifySSL != nil && !*monitor.VerifySSL {
-		cfg["verifySsl"] = false
-	}
-
-	if monitor.FollowRedirects != nil && !*monitor.FollowRedirects {
-		cfg["followRedirects"] = false
-	}
+	betterStackApplyClientOptions(monitor, cfg)
 
 	if monitor.RequestBody != "" {
 		cfg["body"] = monitor.RequestBody
@@ -459,6 +453,18 @@ func betterStackHTTPConfig(
 	}
 
 	return cfg
+}
+
+// betterStackApplyClientOptions maps Better Stack's verify_ssl / follow_redirects
+// onto the http checker's verifySsl / followRedirects, mutating cfg in place.
+func betterStackApplyClientOptions(monitor *betterStackMonitor, cfg map[string]any) {
+	if monitor.VerifySSL != nil && !*monitor.VerifySSL {
+		cfg["verifySsl"] = false
+	}
+
+	if monitor.FollowRedirects != nil && !*monitor.FollowRedirects {
+		cfg["followRedirects"] = false
+	}
 }
 
 // betterStackIsSecretHeader reports whether a header name looks credential-bearing.

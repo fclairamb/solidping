@@ -54,6 +54,8 @@ const (
 	srcPortType  = "port"
 	srcRedis     = "redis"
 	srcSQLServer = "sqlserver"
+	srcHTTP      = "http"
+	srcJSONQuery = "json-query"
 )
 
 // ErrUnknownSource is returned when the requested source has no converter.
