@@ -32,9 +32,11 @@
             "200",
             "201"
           ],
+          "followRedirects": false,
           "method": "POST",
           "timeout": "15s",
-          "url": "https://api.example.org/v1/ping"
+          "url": "https://api.example.org/v1/ping",
+          "verifySsl": false
         },
         "enabled": true,
         "period": "1m"
@@ -170,16 +172,6 @@
       "item": "Main site",
       "field": "request_headers",
       "message": "1 credential-bearing header(s) were imported into the encrypted secretHeaders field"
-    },
-    {
-      "item": "API expected codes",
-      "field": "verify_ssl",
-      "message": "skipping TLS verification is not supported — the check verifies certificates"
-    },
-    {
-      "item": "API expected codes",
-      "field": "follow_redirects",
-      "message": "redirect handling is not configurable on SolidPing http checks (redirects are followed)"
     },
     {
       "item": "API expected codes",

@@ -137,12 +137,15 @@ func TestUptimeKumaConverterWarnsAndSkips(t *testing.T) {
 	r.True(warningMentions(result.Warnings, "connection string is empty"))
 	r.True(warningMentions(result.Warnings, "700-799"), "unmappable status ranges must warn")
 	r.True(warningMentions(result.Warnings, "upside-down"))
-	r.True(warningMentions(result.Warnings, "ignoring TLS errors"))
 	r.True(warningMentions(result.Warnings, "authentication credentials were deliberately not imported"))
 	r.True(warningMentions(result.Warnings, "MQTT password"))
 	r.True(warningMentions(result.Warnings, "database password"))
 	r.True(warningMentions(result.Warnings, "tags are not imported"))
 	r.True(warningMentions(result.Warnings, "ping URL changes"))
+
+	// ignoreTls maps to verifySsl: false on http-type monitors instead of warning.
+	authAPI := checkBySlug(t, result.Document, "authenticated-api")
+	r.Equal(false, authAPI.Config["verifySsl"], "ignoreTls: true maps to verifySsl: false")
 
 	// Group monitors never become checks, unsupported/invalid monitors are dropped.
 	for i := range result.Document.Checks {

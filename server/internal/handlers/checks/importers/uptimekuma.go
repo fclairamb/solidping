@@ -257,7 +257,10 @@ func (c *UptimeKumaConverter) convertMonitor(
 
 // warnUnmapped reports monitor-level settings with no SolidPing counterpart.
 func (c *UptimeKumaConverter) warnUnmapped(monitor *kumaMonitor, name string, warn *warnings) {
-	if monitor.IgnoreTLS {
+	// ignoreTls maps to verifySsl: false for http/keyword/json-query monitors
+	// (handled in httpConfig); for every other type there is no TLS
+	// verification toggle to map it onto.
+	if monitor.IgnoreTLS && !kumaIsHTTPType(monitor.Type) {
 		warn.addf(name, "ignoreTls", "ignoring TLS errors is not supported — the check verifies certificates")
 	}
 
@@ -275,6 +278,18 @@ func (c *UptimeKumaConverter) warnUnmapped(monitor *kumaMonitor, name string, wa
 
 	if len(monitor.Tags) > 0 {
 		warn.addf(name, "tags", "Uptime Kuma tags are not imported — add SolidPing labels manually")
+	}
+}
+
+// kumaIsHTTPType reports whether a Kuma monitor type maps to the SolidPing
+// http checker (see convertMonitor's dispatch), i.e. whether it goes through
+// httpConfig and so can carry verifySsl.
+func kumaIsHTTPType(monitorType string) bool {
+	switch monitorType {
+	case "http", srcKeyword, "json-query":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -322,6 +337,10 @@ func (c *UptimeKumaConverter) httpConfig(monitor *kumaMonitor, timeout string, w
 
 	if codes := kumaStatusCodes(monitor, warn); len(codes) > 0 {
 		cfg["expected_status_codes"] = codes
+	}
+
+	if monitor.IgnoreTLS {
+		cfg["verifySsl"] = false
 	}
 
 	switch monitor.Type {

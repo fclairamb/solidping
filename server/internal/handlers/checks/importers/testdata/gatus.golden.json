@@ -63,13 +63,15 @@
             "200",
             "301"
           ],
+          "followRedirects": false,
           "json_path_assertions": {
             "operator": "not_exists",
             "path": "$.errors",
             "type": "assertion"
           },
           "method": "GET",
-          "url": "https://www.example.org"
+          "url": "https://www.example.org",
+          "verifySsl": false
         },
         "enabled": true,
         "period": "1m",
@@ -210,16 +212,6 @@
       "item": "marketing site",
       "field": "conditions",
       "message": "condition \"[DOMAIN_EXPIRATION] \u003e 720h\" was split out into a dedicated domain check"
-    },
-    {
-      "item": "marketing site",
-      "field": "client.insecure",
-      "message": "skipping TLS verification is not supported by the SolidPing http checker"
-    },
-    {
-      "item": "marketing site",
-      "field": "client.ignore-redirect",
-      "message": "redirect handling is not configurable on SolidPing http checks (redirects are followed)"
     },
     {
       "item": "legacy soap",

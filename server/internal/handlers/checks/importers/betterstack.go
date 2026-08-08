@@ -361,15 +361,6 @@ func convertBetterStackMonitor(
 
 // betterStackWarnUnmapped reports monitor settings with no SolidPing counterpart.
 func betterStackWarnUnmapped(monitor *betterStackMonitor, name string, warn *warnings) {
-	if monitor.VerifySSL != nil && !*monitor.VerifySSL {
-		warn.addf(name, "verify_ssl", "skipping TLS verification is not supported — the check verifies certificates")
-	}
-
-	if monitor.FollowRedirects != nil && !*monitor.FollowRedirects {
-		warn.addf(name, "follow_redirects",
-			"redirect handling is not configurable on SolidPing http checks (redirects are followed)")
-	}
-
 	if monitor.AuthUsername != "" || monitor.AuthPassword != "" {
 		// checkhttp.HTTPConfig.BasicAuth would hold these; they are dropped as
 		// a deliberate security policy, not for lack of a field.
@@ -402,6 +393,14 @@ func betterStackHTTPConfig(
 
 	if monitor.HTTPMethod != "" {
 		cfg["method"] = strings.ToUpper(monitor.HTTPMethod)
+	}
+
+	if monitor.VerifySSL != nil && !*monitor.VerifySSL {
+		cfg["verifySsl"] = false
+	}
+
+	if monitor.FollowRedirects != nil && !*monitor.FollowRedirects {
+		cfg["followRedirects"] = false
 	}
 
 	if monitor.RequestBody != "" {

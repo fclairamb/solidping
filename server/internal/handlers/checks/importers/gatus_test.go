@@ -99,6 +99,8 @@ func TestGatusConverterMapsCoreFields(t *testing.T) {
 	site := checkBySlug(t, doc, "marketing-site")
 	r.Equal([]any{"200", "301"}, site.Config["expected_status_codes"])
 	r.Equal("^.*Welcome.*$", site.Config["body_pattern"])
+	r.Equal(false, site.Config["verifySsl"], "client.insecure maps to verifySsl: false")
+	r.Equal(false, site.Config["followRedirects"], "client.ignore-redirect maps to followRedirects: false")
 
 	legacy := checkBySlug(t, doc, "legacy-soap")
 	r.False(legacy.Enabled)
@@ -154,8 +156,6 @@ func TestGatusConverterWarnsOnUnmappableItems(t *testing.T) {
 	r.True(warningMentions(result.Warnings, "[RESPONSE_TIME]"), "response time condition must warn")
 	r.True(warningMentions(result.Warnings, "len()"), "len() condition must warn")
 	r.True(warningMentions(result.Warnings, "alerting/notification"), "alerts must warn")
-	r.True(warningMentions(result.Warnings, "client.insecure"), "insecure client must warn")
-	r.True(warningMentions(result.Warnings, "ignore-redirect"), "ignore-redirect must warn")
 	r.True(warningMentions(result.Warnings, "external-endpoint"), "external endpoints must warn")
 	r.True(warningMentions(result.Warnings, "sctp"), "unsupported scheme must warn")
 	r.True(warningMentions(result.Warnings, "SSH credentials were deliberately not imported"),

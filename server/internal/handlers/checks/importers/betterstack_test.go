@@ -180,6 +180,10 @@ func TestBetterStackConverterMapsMonitorTypes(t *testing.T) {
 	r.Equal([]any{"200", "201"}, api.Config["expected_status_codes"])
 	r.Equal("POST", api.Config["method"])
 	r.Equal(`{"probe":true}`, api.Config["body"])
+	r.Equal(false, api.Config["verifySsl"], "verify_ssl: false maps to verifySsl: false")
+	r.Equal(false, api.Config["followRedirects"], "follow_redirects: false maps to followRedirects: false")
+	r.NotContains(main.Config, "verifySsl", "verify_ssl: true is the default and is not emitted")
+	r.NotContains(main.Config, "followRedirects", "follow_redirects: true is the default and is not emitted")
 
 	shop := checkBySlug(t, doc, "shop-keyword")
 	r.False(shop.Enabled, "paused monitors import disabled")
@@ -210,8 +214,6 @@ func TestBetterStackConverterMapsMonitorTypes(t *testing.T) {
 	r.True(warningMentions(result.Warnings, `type "playwright"`))
 	r.True(warningMentions(result.Warnings, "basic-auth credentials were deliberately not imported"))
 	r.True(warningMentions(result.Warnings, "monitor groups are not imported"))
-	r.True(warningMentions(result.Warnings, "skipping TLS verification"))
-	r.True(warningMentions(result.Warnings, "redirect handling"))
 	r.True(warningMentions(result.Warnings, "certificate expiry"))
 	r.True(warningMentions(result.Warnings, "domain expiry"))
 }
