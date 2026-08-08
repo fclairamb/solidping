@@ -218,6 +218,135 @@ test.describe("Embeddable status widget", () => {
     });
   });
 
+  // --- Spec 2026-08-08-09: data-force-status and data-size. ---
+
+  test("data-force-status renders each state statically without ever polling the summary endpoint", async ({
+    page,
+  }) => {
+    const FORCED_LABELS: Record<string, string> = {
+      operational: "All systems operational",
+      degraded: "Degraded performance",
+      down: "Major outage",
+      maintenance: "Under maintenance",
+      unknown: "Status unknown",
+    };
+
+    for (const status of Object.keys(FORCED_LABELS)) {
+      let summaryRequested = false;
+      await page.route("**/api/v1/status-pages/**/summary", (route) => {
+        summaryRequested = true;
+        return route.abort();
+      });
+
+      await gotoFixture(
+        page,
+        `data-page="any/thing" data-force-status="${status}"`,
+      );
+
+      const pill = page.locator(PILL);
+      await expect(pill).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator(LABEL)).toHaveText(FORCED_LABELS[status]);
+      expect(await pill.getAttribute("href")).toBeNull();
+      expect(summaryRequested, `status=${status}`).toBe(false);
+
+      await page.unroute("**/api/v1/status-pages/**/summary");
+    }
+  });
+
+  test("ignores an invalid data-force-status and falls back to normal polling", async ({
+    page,
+    request,
+  }) => {
+    const { org, slug } = await seedPublicPage(request);
+
+    await gotoFixture(
+      page,
+      `data-page="${org}/${slug}" data-force-status="not-a-real-status"`,
+    );
+
+    // Falls through to the real poll, which resolves the seeded (resource-less)
+    // page to "unknown" — proof the invalid value was ignored rather than
+    // silently rendering nothing.
+    await expect(page.locator(LABEL)).toHaveText("Status unknown", {
+      timeout: 30_000,
+    });
+  });
+
+  test("data-size scales the pill and md stays pixel-identical to the default", async ({
+    page,
+  }) => {
+    const measure = async () => {
+      await expect(page.locator(PILL)).toBeVisible({ timeout: 30_000 });
+      return page.evaluate(() => {
+        const host = document.querySelector(
+          "[data-solidping-widget]",
+        ) as HTMLElement;
+        const pill = host.shadowRoot!.querySelector(
+          '[data-testid="solidping-widget-pill"]',
+        ) as HTMLElement;
+        const style = getComputedStyle(pill);
+        return { padding: style.padding, fontSize: style.fontSize };
+      });
+    };
+
+    await gotoFixture(page, `data-page="any/thing" data-force-status="operational"`);
+    const noAttr = await measure();
+
+    await gotoFixture(
+      page,
+      `data-page="any/thing" data-force-status="operational" data-size="md"`,
+    );
+    const explicitMd = await measure();
+    expect(explicitMd).toEqual(noAttr);
+
+    await gotoFixture(
+      page,
+      `data-page="any/thing" data-force-status="operational" data-size="sm"`,
+    );
+    const sm = await measure();
+    expect(sm).not.toEqual(noAttr);
+
+    await gotoFixture(
+      page,
+      `data-page="any/thing" data-force-status="operational" data-size="lg"`,
+    );
+    const lg = await measure();
+    expect(lg).not.toEqual(noAttr);
+    expect(lg).not.toEqual(sm);
+
+    // sm < default(md) < lg, confirmed via the parsed pixel font-size.
+    const px = (v: string) => parseFloat(v);
+    expect(px(sm.fontSize)).toBeLessThan(px(noAttr.fontSize));
+    expect(px(lg.fontSize)).toBeGreaterThan(px(noAttr.fontSize));
+  });
+
+  test("renders a hostile label as text under data-force-status, with no network path to race against", async ({
+    page,
+  }) => {
+    const hostile = `<img src=x onerror="window.__pwned=1">`;
+    await gotoFixture(
+      page,
+      `data-page="any/thing" data-force-status="down" data-label-down="${hostile.replace(/"/g, "&quot;")}"`,
+    );
+
+    const label = page.locator(LABEL);
+    await expect(label).toBeVisible({ timeout: 30_000 });
+    await expect(label).toHaveText(hostile);
+
+    const injected = await page.evaluate(() => {
+      const host = document.querySelector(
+        "[data-solidping-widget]",
+      ) as HTMLElement;
+
+      return {
+        images: host.shadowRoot!.querySelectorAll("img").length,
+        pwned: (window as unknown as { __pwned?: number }).__pwned ?? 0,
+      };
+    });
+    expect(injected.images).toBe(0);
+    expect(injected.pwned).toBe(0);
+  });
+
   test("renders nothing at all for an unknown page slug", async ({ page }) => {
     await gotoFixture(page, `data-page="nope-org/nope-slug"`);
 
