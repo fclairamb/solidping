@@ -1629,13 +1629,12 @@ paths:
       summary: Embeddable live status widget script
       description: >-
         Self-contained JavaScript (IIFE) that renders a live status pill on a
-        third-party site, configured entirely through data-attributes on its
-        own script tag:
-        `<script async src="/embed/v1/widget.js" data-page="org/slug"></script>`.
-        Optional attributes: data-mode (inline|floating), data-position
-        (bottom-right|bottom-left), data-theme (light|dark|auto), and per-state
-        label overrides data-label-operational|degraded|down|maintenance|unknown.
-        The widget polls the status page summary endpoint every 60 s with an
+        third-party site. It is loaded by an async script tag carrying
+        data-page="org/slug", and configured entirely through data-attributes:
+        data-mode (inline|floating), data-position (bottom-right|bottom-left),
+        data-theme (light|dark|auto), and per-state label overrides
+        data-label-operational|degraded|down|maintenance|unknown. The widget
+        polls the status page summary endpoint every 60 s with an
         uncredentialed request and renders into a shadow root; a failed request
         or an unknown page renders nothing. Everything under /embed/v1/ is a
         frozen public contract — behavior changes ship under /embed/v2/.
