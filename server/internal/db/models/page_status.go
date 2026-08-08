@@ -67,21 +67,21 @@ func RollupPageStatus(resources []PageResourceStatus) (PageStatus, PageStatusCou
 		hasUsable      bool
 	)
 
-	for _, r := range resources {
+	for _, resource := range resources {
 		switch {
-		case r.InMaintenance:
+		case resource.InMaintenance:
 			counts.Maintenance++
 
 			hasMaintenance = true
-		case r.Status == CheckStatusDown:
+		case resource.Status == CheckStatusDown:
 			counts.Down++
 
 			hasDown = true
-		case r.Status == CheckStatusDegraded || r.Status == CheckStatusWarning:
+		case resource.Status == CheckStatusDegraded || resource.Status == CheckStatusWarning:
 			counts.Degraded++
 
 			hasDegraded = true
-		case r.Status == CheckStatusUp || r.Status == CheckStatusValidating:
+		case resource.Status == CheckStatusUp || resource.Status == CheckStatusValidating:
 			counts.Operational++
 
 			hasUsable = true

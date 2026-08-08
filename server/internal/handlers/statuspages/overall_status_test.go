@@ -16,26 +16,34 @@ import (
 // overallStatus (and matching statusCounts), so status0 no longer has to
 // reimplement the rollup client-side.
 
+// resourceSpec is one resource to seed for a TestViewStatusPage_OverallStatus
+// test case: a check with the given status, optionally wrapped in an active
+// maintenance window.
+type resourceSpec struct {
+	slug          string
+	status        models.CheckStatus
+	inMaintenance bool
+}
+
 // seedResourceWithStatus creates a check with the given status, attaches it
 // to the section as a resource, and — if inMaintenance is true — wraps it in
 // an active maintenance window.
 func seedResourceWithStatus(
 	ctx context.Context, t *testing.T, svc *Service, orgUID, orgSlug string,
-	page StatusPageResponse, section StatusPageSectionResponse,
-	slug string, status models.CheckStatus, inMaintenance bool,
+	page StatusPageResponse, section StatusPageSectionResponse, spec resourceSpec,
 ) {
 	t.Helper()
 
 	r := require.New(t)
 
-	check := models.NewCheck(orgUID, slug, "http")
-	check.Status = status
+	check := models.NewCheck(orgUID, spec.slug, "http")
+	check.Status = spec.status
 	r.NoError(svc.db.CreateCheck(ctx, check))
 
 	_, err := svc.CreateResource(ctx, orgSlug, page.UID, section.UID, CreateResourceRequest{CheckUID: check.UID})
 	r.NoError(err)
 
-	if inMaintenance {
+	if spec.inMaintenance {
 		win := models.NewMaintenanceWindow(orgUID, "Planned", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 		r.NoError(svc.db.CreateMaintenanceWindow(ctx, win))
 		r.NoError(svc.db.SetMaintenanceWindowChecks(ctx, win.UID, []string{check.UID}, nil))
@@ -49,93 +57,92 @@ func TestViewStatusPage_OverallStatus(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name    string
-		seed    func(ctx context.Context, t *testing.T, svc *Service, orgUID, orgSlug string, page StatusPageResponse, section StatusPageSectionResponse)
-		want    string
-		wantCnt StatusCountsResponse
+		name      string
+		resources []resourceSpec
+		want      string
+		wantCnt   StatusCountsResponse
 	}{
 		{
-			name: "no resources at all -> unknown",
-			seed: func(context.Context, *testing.T, *Service, string, string, StatusPageResponse, StatusPageSectionResponse) {
-			},
-			want:    "unknown",
-			wantCnt: StatusCountsResponse{},
+			name:      "no resources at all -> unknown",
+			resources: nil,
+			want:      "unknown",
+			wantCnt:   StatusCountsResponse{},
 		},
 		{
 			name: "all resources unknown/created -> unknown",
-			seed: func(ctx context.Context, t *testing.T, svc *Service, orgUID, orgSlug string, page StatusPageResponse, section StatusPageSectionResponse) {
-				seedResourceWithStatus(ctx, t, svc, orgUID, orgSlug, page, section, "res-a", models.CheckStatusCreated, false)
-				seedResourceWithStatus(ctx, t, svc, orgUID, orgSlug, page, section, "res-b", models.CheckStatusCreated, false)
+			resources: []resourceSpec{
+				{slug: "res-a", status: models.CheckStatusCreated},
+				{slug: "res-b", status: models.CheckStatusCreated},
 			},
 			want:    "unknown",
 			wantCnt: StatusCountsResponse{Unknown: 2},
 		},
 		{
 			name: "positive control: one up among unknowns -> operational",
-			seed: func(ctx context.Context, t *testing.T, svc *Service, orgUID, orgSlug string, page StatusPageResponse, section StatusPageSectionResponse) {
-				seedResourceWithStatus(ctx, t, svc, orgUID, orgSlug, page, section, "res-a", models.CheckStatusCreated, false)
-				seedResourceWithStatus(ctx, t, svc, orgUID, orgSlug, page, section, "res-b", models.CheckStatusUp, false)
+			resources: []resourceSpec{
+				{slug: "res-a", status: models.CheckStatusCreated},
+				{slug: "res-b", status: models.CheckStatusUp},
 			},
 			want:    "operational",
 			wantCnt: StatusCountsResponse{Unknown: 1, Operational: 1},
 		},
 		{
 			name: "all up -> operational",
-			seed: func(ctx context.Context, t *testing.T, svc *Service, orgUID, orgSlug string, page StatusPageResponse, section StatusPageSectionResponse) {
-				seedResourceWithStatus(ctx, t, svc, orgUID, orgSlug, page, section, "res-a", models.CheckStatusUp, false)
+			resources: []resourceSpec{
+				{slug: "res-a", status: models.CheckStatusUp},
 			},
 			want:    "operational",
 			wantCnt: StatusCountsResponse{Operational: 1},
 		},
 		{
 			name: "one down -> down",
-			seed: func(ctx context.Context, t *testing.T, svc *Service, orgUID, orgSlug string, page StatusPageResponse, section StatusPageSectionResponse) {
-				seedResourceWithStatus(ctx, t, svc, orgUID, orgSlug, page, section, "res-a", models.CheckStatusUp, false)
-				seedResourceWithStatus(ctx, t, svc, orgUID, orgSlug, page, section, "res-b", models.CheckStatusDown, false)
+			resources: []resourceSpec{
+				{slug: "res-a", status: models.CheckStatusUp},
+				{slug: "res-b", status: models.CheckStatusDown},
 			},
 			want:    "down",
 			wantCnt: StatusCountsResponse{Operational: 1, Down: 1},
 		},
 		{
 			name: "one degraded, no down -> degraded",
-			seed: func(ctx context.Context, t *testing.T, svc *Service, orgUID, orgSlug string, page StatusPageResponse, section StatusPageSectionResponse) {
-				seedResourceWithStatus(ctx, t, svc, orgUID, orgSlug, page, section, "res-a", models.CheckStatusUp, false)
-				seedResourceWithStatus(ctx, t, svc, orgUID, orgSlug, page, section, "res-b", models.CheckStatusDegraded, false)
+			resources: []resourceSpec{
+				{slug: "res-a", status: models.CheckStatusUp},
+				{slug: "res-b", status: models.CheckStatusDegraded},
 			},
 			want:    "degraded",
 			wantCnt: StatusCountsResponse{Operational: 1, Degraded: 1},
 		},
 		{
 			name: "one warning, no down -> degraded",
-			seed: func(ctx context.Context, t *testing.T, svc *Service, orgUID, orgSlug string, page StatusPageResponse, section StatusPageSectionResponse) {
-				seedResourceWithStatus(ctx, t, svc, orgUID, orgSlug, page, section, "res-a", models.CheckStatusUp, false)
-				seedResourceWithStatus(ctx, t, svc, orgUID, orgSlug, page, section, "res-b", models.CheckStatusWarning, false)
+			resources: []resourceSpec{
+				{slug: "res-a", status: models.CheckStatusUp},
+				{slug: "res-b", status: models.CheckStatusWarning},
 			},
 			want:    "degraded",
 			wantCnt: StatusCountsResponse{Operational: 1, Degraded: 1},
 		},
 		{
 			name: "maintenance-masks-down: a resource down INSIDE its maintenance window never taints the page",
-			seed: func(ctx context.Context, t *testing.T, svc *Service, orgUID, orgSlug string, page StatusPageResponse, section StatusPageSectionResponse) {
-				seedResourceWithStatus(ctx, t, svc, orgUID, orgSlug, page, section, "res-a", models.CheckStatusDown, true)
+			resources: []resourceSpec{
+				{slug: "res-a", status: models.CheckStatusDown, inMaintenance: true},
 			},
 			want:    "maintenance",
 			wantCnt: StatusCountsResponse{Maintenance: 1},
 		},
 		{
 			name: "maintenance masks its own down resource, but a SEPARATE non-maintenance down resource still wins",
-			seed: func(ctx context.Context, t *testing.T, svc *Service, orgUID, orgSlug string, page StatusPageResponse, section StatusPageSectionResponse) {
-				seedResourceWithStatus(ctx, t, svc, orgUID, orgSlug, page, section, "res-a", models.CheckStatusDown, true)
-				seedResourceWithStatus(ctx, t, svc, orgUID, orgSlug, page, section, "res-b", models.CheckStatusDown, false)
+			resources: []resourceSpec{
+				{slug: "res-a", status: models.CheckStatusDown, inMaintenance: true},
+				{slug: "res-b", status: models.CheckStatusDown},
 			},
 			want:    "down",
 			wantCnt: StatusCountsResponse{Maintenance: 1, Down: 1},
 		},
 		{
 			name: "maintenance with otherwise-clean resources -> maintenance",
-			seed: func(ctx context.Context, t *testing.T, svc *Service, orgUID, orgSlug string, page StatusPageResponse, section StatusPageSectionResponse) {
-				seedResourceWithStatus(ctx, t, svc, orgUID, orgSlug, page, section, "res-a", models.CheckStatusUp, false)
-				seedResourceWithStatus(ctx, t, svc, orgUID, orgSlug, page, section, "res-b", models.CheckStatusUp, true)
+			resources: []resourceSpec{
+				{slug: "res-a", status: models.CheckStatusUp},
+				{slug: "res-b", status: models.CheckStatusUp, inMaintenance: true},
 			},
 			want:    "maintenance",
 			wantCnt: StatusCountsResponse{Operational: 1, Maintenance: 1},
@@ -150,7 +157,9 @@ func TestViewStatusPage_OverallStatus(t *testing.T) {
 			ctx, svc, org := setupStatusPagesTest(t)
 			page, section := seedPageWithSection(ctx, t, svc, org.Slug, "")
 
-			tc.seed(ctx, t, svc, org.UID, org.Slug, page, section)
+			for _, spec := range tc.resources {
+				seedResourceWithStatus(ctx, t, svc, org.UID, org.Slug, page, section, spec)
+			}
 
 			view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
 			r.NoError(err)
@@ -171,7 +180,8 @@ func TestViewDefaultStatusPage_OverallStatus(t *testing.T) {
 	page, section := seedPageWithSection(ctx, t, svc, org.Slug, "")
 	r.True(page.IsDefault, "the first page created for an org is the default page")
 
-	seedResourceWithStatus(ctx, t, svc, org.UID, org.Slug, page, section, "res-a", models.CheckStatusDown, false)
+	seedResourceWithStatus(ctx, t, svc, org.UID, org.Slug, page, section,
+		resourceSpec{slug: "res-a", status: models.CheckStatusDown})
 
 	view, err := svc.ViewDefaultStatusPage(ctx, org.Slug)
 	r.NoError(err)

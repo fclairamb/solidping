@@ -2126,7 +2126,9 @@ func publicCheckStatus(status models.CheckStatus) string {
 // the check's raw (pre-publicCheckStatus) models.CheckStatus — the latter is
 // the input the page-level rollup (models.RollupPageStatus) needs, since the
 // public status string is a lossier, display-only vocabulary.
-func (s *Service) getCheckInfo(ctx context.Context, orgUID, checkUID string) (*ResourceCheckInfo, models.CheckStatus, error) {
+func (s *Service) getCheckInfo(
+	ctx context.Context, orgUID, checkUID string,
+) (*ResourceCheckInfo, models.CheckStatus, error) {
 	check, err := s.db.GetCheck(ctx, orgUID, checkUID)
 	if err != nil {
 		return nil, models.CheckStatusCreated, err
