@@ -26,7 +26,9 @@ export const Route = createFileRoute("/no-org")({
   // no membership was created, a join request is awaiting an admin, and the
   // session handed over is org-less. It names that org so we can explain why
   // the user landed here instead of on its dashboard.
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { membershipPending?: string } => ({
     membershipPending:
       typeof search.membershipPending === "string" && search.membershipPending
         ? search.membershipPending
