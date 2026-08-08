@@ -9,7 +9,9 @@
  * FROZEN PUBLIC CONTRACT. Everything under `/embed/v1/` is pasted into pages
  * we do not control and can never be re-deployed by us. The attribute surface
  * below is deliberately minimal and MUST NOT change meaning: any behavior
- * change ships as `/embed/v2/widget.js` with its own route.
+ * change ships as `/embed/v2/widget.js` with its own route. New attributes MAY
+ * be added within v1 as long as they are additive — omitting them must leave
+ * existing pasted snippets behaving exactly as before (spec 2026-08-08-09).
  *
  * Supported data-attributes (all optional except `data-page`):
  *   data-page      "org/slug" — required, identifies the status page.
@@ -17,8 +19,18 @@
  *   data-position  "bottom-right" (default) | "bottom-left"  (floating only)
  *   data-theme     "light" | "dark" | "auto" (default; follows
  *                  prefers-color-scheme)
+ *   data-size      "sm" | "md" (default) | "lg" — scales font/padding/dot.
+ *                  "md" renders pixel-identical to the pre-2026-08-08-09
+ *                  widget.
  *   data-label-operational | -degraded | -down | -maintenance | -unknown
  *                  per-state label overrides; English defaults otherwise.
+ *   data-force-status "operational" | "degraded" | "down" | "maintenance" |
+ *                  "unknown" — skips polling entirely and renders that status
+ *                  statically (no title, no link). An invalid or absent value
+ *                  falls through to normal polling. Primarily a dash0 preview
+ *                  affordance, but usable standalone (a static pill can
+ *                  already be faked with plain HTML, so this adds no new
+ *                  capability a hostile page didn't already have).
  *
  * SECURITY. This code executes on customer sites, so every value that reaches
  * the DOM is treated as hostile: labels come from host-page attributes, and
@@ -137,6 +149,10 @@ a.sp-pill:hover { border-color: var(--sp-dot-color); }
   box-shadow: 0 0 0 3px var(--sp-dot-halo);
 }
 .sp-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-root.sp-size-sm .sp-pill { padding: 4px 9px; gap: 6px; font-size: 11px; }
+.sp-root.sp-size-sm .sp-dot { width: 7px; height: 7px; }
+.sp-root.sp-size-lg .sp-pill { padding: 8px 16px; gap: 10px; font-size: 15px; }
+.sp-root.sp-size-lg .sp-dot { width: 11px; height: 11px; }
 .sp-operational { --sp-dot-color: #16a34a; --sp-dot-halo: rgba(22,163,74,.18); }
 .sp-degraded    { --sp-dot-color: #d97706; --sp-dot-halo: rgba(217,119,6,.18); }
 .sp-down        { --sp-dot-color: #dc2626; --sp-dot-halo: rgba(220,38,38,.18); }
@@ -256,6 +272,42 @@ function themeClass(script: HTMLScriptElement): string {
   return "sp-auto";
 }
 
+/**
+ * `"md"` (default, and any unrecognized value) maps to the empty string so no
+ * extra class is added — the base `.sp-pill`/`.sp-dot` rules apply exactly as
+ * they did before this attribute existed, which is what keeps `md` pixel-
+ * identical to the pre-2026-08-08-09 widget.
+ */
+function sizeClass(script: HTMLScriptElement): string {
+  const size = (script.getAttribute("data-size") || "md").toLowerCase();
+  if (size === "sm") {
+    return "sp-size-sm";
+  }
+  if (size === "lg") {
+    return "sp-size-lg";
+  }
+
+  return "";
+}
+
+/**
+ * Reads `data-force-status`, returning a valid `PageStatus` only for an exact
+ * match against the known set — anything else (typo, empty, absent) yields
+ * `null` so the caller falls through to normal polling.
+ */
+function readForceStatus(script: HTMLScriptElement): PageStatus | null {
+  const raw = script.getAttribute("data-force-status");
+  if (typeof raw === "string") {
+    for (const known of STATUSES) {
+      if (raw === known) {
+        return known;
+      }
+    }
+  }
+
+  return null;
+}
+
 interface Widget {
   render(status: PageStatus, label: string, title: string, href: string | null): void;
 }
@@ -275,6 +327,7 @@ function createWidget(script: HTMLScriptElement): Widget {
       ? "sp-bottom-left"
       : "sp-bottom-right";
   const theme = themeClass(script);
+  const size = sizeClass(script);
 
   let host: HTMLElement | null = null;
   let root: HTMLElement | null = null;
@@ -304,7 +357,10 @@ function createWidget(script: HTMLScriptElement): Widget {
 
       root = document.createElement("div");
       root.className =
-        "sp-root " + theme + (floating ? " sp-floating " + position : "");
+        "sp-root " +
+        theme +
+        (size ? " " + size : "") +
+        (floating ? " sp-floating " + position : "");
       shadow.appendChild(root);
     }
 
@@ -369,6 +425,19 @@ function boot(script: HTMLScriptElement): void {
     return;
   }
 
+  const labels = readLabels(script);
+  const widget = createWidget(script);
+
+  // `data-force-status`: render statically and stop — deliberately checked
+  // before any URL/origin resolution so this path makes zero network calls,
+  // which is what lets the dash0 preview render before a status page is even
+  // published.
+  const forceStatus = readForceStatus(script);
+  if (forceStatus) {
+    widget.render(forceStatus, labels[forceStatus], "", null);
+    return;
+  }
+
   let origin: string;
   try {
     origin = new URL(script.src, window.location.href).origin;
@@ -380,9 +449,6 @@ function boot(script: HTMLScriptElement): void {
   if (!url) {
     return;
   }
-
-  const labels = readLabels(script);
-  const widget = createWidget(script);
 
   const poll = () => {
     // Uncredentialed by design: the endpoint is public and wildcard CORS
