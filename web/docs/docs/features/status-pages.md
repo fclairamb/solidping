@@ -262,6 +262,16 @@ For integrators who just want "is this service up right now?" without the full p
 
 It's public (no authentication), sets `Cache-Control: public, max-age=60`, and computes `status`/`counts` from the exact same server-side rollup as the full page view — so the two can never disagree.
 
+## Badge
+
+`GET /api/v1/status-pages/{org}/{slug}/badge` returns an SVG badge showing the page's overall status — the static, script-free counterpart to the JS embed widget, for places scripts can't run (a GitHub README, a wiki, an email footer):
+
+```markdown
+![Status](https://your-solidping-instance/api/v1/status-pages/default/main/badge)
+```
+
+It's public, sets `Cache-Control: public, max-age=60`, and applies the same visibility gate and rollup as the summary endpoint above, so the badge can never disagree with the status page. Colors follow the rollup status: green (operational), yellow (degraded), red (down), blue (maintenance), gray (unknown). Customize with `label`, `style` (`flat` or `flat-square`), `minWidth`, and `width` query parameters, matching the per-check badges.
+
 ## Accessing Status Pages
 
 Status pages are served directly by SolidPing at a dedicated URL path, making them easy to embed or link to from your own website. The default page is reachable at the organization root path, and named pages at their slug.

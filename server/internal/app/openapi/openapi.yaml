@@ -1571,6 +1571,58 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/status-pages/{org}/{slug}/badge:
+    get:
+      tags: [StatusPages, Badges]
+      summary: SVG badge for a status page's overall status
+      description: >-
+        Public SVG badge (shields.io style) reflecting the page-level rollup
+        status — the static, script-free sibling of the JS embed widget, for
+        contexts like GitHub READMEs where scripts can't run. Same visibility
+        gate as the full view and the summary endpoint: a disabled or
+        non-public page returns 404, identical to a page that doesn't exist.
+        Response carries Cache-Control: public, max-age=60. No authentication
+        required.
+      operationId: getStatusPageBadge
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: slug
+          in: path
+          required: true
+          description: Status page slug
+          schema:
+            type: string
+        - name: label
+          in: query
+          description: Custom left-side label (default the page name)
+          schema:
+            type: string
+        - name: style
+          in: query
+          description: Badge style
+          schema:
+            type: string
+            enum: [flat, flat-square]
+        - name: minWidth
+          in: query
+          description: Minimum badge width in pixels (0-800)
+          schema:
+            type: integer
+        - name: width
+          in: query
+          description: Badge width in pixels (60-800)
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: SVG badge image
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/status-pages/{org}/{slug}/feed.xml:
     get:
       tags: [StatusPages]

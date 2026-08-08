@@ -137,5 +137,25 @@ or the SVG badge. Sets `Cache-Control: public, max-age=60`.
 active, otherwise the absolute `/status0/{org}/{slug}` URL derived from the
 request host.
 
+### GET /api/v1/status-pages/:org/:slug/badge
+SVG badge (shields.io style) for the page's overall status — the static,
+script-free sibling of the JS embed widget, for contexts like GitHub READMEs
+where scripts can't run. Auth: public. Same visibility gate as the summary
+above, and reuses the same `RollupPageStatus` rollup, so it can never disagree
+with the summary or the full view. Reuses the per-check badges' SVG renderer
+(`internal/handlers/badges`). Sets `Cache-Control: public, max-age=60` and
+`Content-Type: image/svg+xml`.
+
+Query params (same bounds as the per-check badge endpoint):
+- `label` — left-side text, default the page name.
+- `style` — `flat` (default) or `flat-square`.
+- `minWidth` — minimum badge width in px, 0-800.
+- `width` — badge width in px, 60-800 (the page badge has no bar/graph rows,
+  so this behaves the same as `minWidth` — whichever is larger wins).
+
+Right-side text/color from the rollup status: `operational` → green,
+`degraded` → yellow, `down` → red, `maintenance` → blue, `unknown` → gray.
+English text in v1; localization out of scope.
+
 ### GET /api/v1/status-pages/:org/:slug/feed.xml
 RSS/Atom feed of the page's status updates. Auth: public
