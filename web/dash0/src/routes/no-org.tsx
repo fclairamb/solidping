@@ -20,6 +20,18 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 
 export const Route = createFileRoute("/no-org")({
+  // `membershipPending` is set by the backend's federated-login callbacks
+  // (see server/internal/handlers/auth/join_policy.go) when a social/SSO
+  // sign-in authenticated the user but the target org did not admit them:
+  // no membership was created, a join request is awaiting an admin, and the
+  // session handed over is org-less. It names that org so we can explain why
+  // the user landed here instead of on its dashboard.
+  validateSearch: (search: Record<string, unknown>) => ({
+    membershipPending:
+      typeof search.membershipPending === "string" && search.membershipPending
+        ? search.membershipPending
+        : undefined,
+  }),
   component: NoOrgPage,
 });
 
@@ -35,6 +47,7 @@ function NoOrgPage() {
   const { t } = useTranslation("auth");
   const navigate = useNavigate();
   const { logout } = useAuth();
+  const { membershipPending } = Route.useSearch();
 
   return (
     <div className="min-h-screen bg-background p-4 sm:p-8 flex flex-col items-center">
@@ -50,6 +63,15 @@ function NoOrgPage() {
             </p>
           </div>
         </AuroraPanel>
+
+        {membershipPending && (
+          <Alert data-testid="membership-pending-alert">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              {t("noOrg.membershipPending", { org: membershipPending })}
+            </AlertDescription>
+          </Alert>
+        )}
 
         <div className="grid gap-4 md:grid-cols-2">
           <CreateOrgCard />

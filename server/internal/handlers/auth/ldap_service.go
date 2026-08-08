@@ -397,9 +397,15 @@ func (s *Service) authenticateViaLDAP(ctx context.Context, orgSlug, identifier, 
 	// don't create a membership, and the generic resolveOrgPreference call
 	// in Login handles the resulting zero-membership case the same way it
 	// does for any other user.
+	//
+	// Admission itself goes through the shared JoinOrgViaLogin policy, exactly
+	// like every OAuth/SAML connector: a directory bind proves who the caller
+	// is, it does not prove the org wants them. A user the org does not admit
+	// gets a membership request instead of a membership, and Login's
+	// resolveOrgPreference then renders the usual no-org response.
 	if orgSlug != "" {
 		if org, orgErr := s.db.GetOrganizationBySlug(ctx, orgSlug); orgErr == nil {
-			if _, err := s.ensureLDAPMembership(ctx, org.UID, user.UID); err != nil {
+			if _, _, err := s.JoinOrgViaLogin(ctx, org, user); err != nil {
 				return nil, fmt.Errorf("failed to ensure membership: %w", err)
 			}
 		}
@@ -448,55 +454,4 @@ func (s *Service) findOrCreateLDAPUser(ctx context.Context, info *LDAPUserInfo) 
 	}
 
 	return user, nil
-}
-
-// ensureLDAPMembership ensures user is a member of the organization,
-// enforcing MaxUsers (CheckMembershipSlot) exactly like the OIDC/SAML
-// connectors' own ensureMembership. Kept as a separate copy (rather than a
-// shared helper) to match the existing per-provider pattern in
-// oidc_service.go/saml_service.go, and because Service.CheckMembershipSlot is
-// already directly reachable here (Login's LDAP fallback runs on Service
-// itself, unlike OIDC/SAML which are separate types holding an authService
-// reference).
-func (s *Service) ensureLDAPMembership(
-	ctx context.Context, orgUID, userUID string,
-) (*models.OrganizationMember, error) {
-	member, err := s.db.GetMemberByUserAndOrg(ctx, userUID, orgUID)
-	if err == nil {
-		return member, nil
-	}
-
-	if !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("failed to get member: %w", err)
-	}
-
-	// Determine role (first user = admin). Group/role mapping from LDAP is
-	// out of scope for this first pass (see spec open questions).
-	role := models.MemberRoleUser
-
-	members, err := s.db.ListMembersByOrg(ctx, orgUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list members: %w", err)
-	}
-
-	if len(members) == 0 {
-		role = models.MemberRoleAdmin
-	}
-
-	// Enforce MaxUsers before creating the membership. The very first
-	// member of an org bypasses any cap (count=0 < cap) so bootstrapping
-	// always succeeds.
-	if err := s.CheckMembershipSlot(ctx, orgUID); err != nil {
-		return nil, err
-	}
-
-	member = models.NewOrganizationMember(orgUID, userUID, role)
-	now := time.Now()
-	member.JoinedAt = &now
-
-	if err := s.db.CreateOrganizationMember(ctx, member); err != nil {
-		return nil, fmt.Errorf("failed to create member: %w", err)
-	}
-
-	return member, nil
 }

@@ -58,6 +58,10 @@ type MicrosoftOAuthResult struct {
 	ExpiresIn    int
 	OrgSlug      string
 	UserUID      string
+	// Pending is true when the login succeeded but the org did not admit
+	// the user: no membership was created, a membership request is awaiting
+	// admin approval, and the tokens above are an org-less session.
+	Pending bool
 }
 
 // MicrosoftOAuthService handles Microsoft OAuth authentication logic.
@@ -152,7 +156,17 @@ func (s *MicrosoftOAuthService) HandleCallback(
 		return nil, fmt.Errorf("%w: failed to fetch user info: %w", ErrMicrosoftAPI, err)
 	}
 
-	// Get email: prefer mail, fallback to userPrincipalName
+	// Get email: prefer mail, fallback to userPrincipalName.
+	//
+	// KNOWN LIMITATION (tracked separately, deliberately not fixed here): when
+	// Graph returns an empty `mail`, the UPN we fall back to is often the
+	// tenant's *.onmicrosoft.com form (alice@contoso.onmicrosoft.com) rather
+	// than the address the person actually uses (alice@contoso.com). Because
+	// findOrCreateUser links accounts by email, that mints a SECOND local user
+	// instead of linking the existing one — and, being a different domain, it
+	// is also the address the org's registration.email_pattern is matched
+	// against. Fixing it means resolving the real address (e.g. Graph
+	// otherMails / proxyAddresses) before the lookup; scope for another spec.
 	email := userInfo.Mail
 	if email == "" {
 		email = userInfo.UserPrincipalName
@@ -175,27 +189,21 @@ func (s *MicrosoftOAuthService) HandleCallback(
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
 	}
 
-	// Ensure organization membership
-	member, err := s.ensureMembership(ctx, org.UID, user.UID)
+	// Admission policy + session minting, shared by every connector
+	// (see Service.JoinOrgViaLogin). A user the org does not admit gets
+	// login.Pending and an org-less session instead of a membership.
+	login, err := s.authService.CompleteOrgLogin(ctx, org, user)
 	if err != nil {
-		return nil, fmt.Errorf("failed to ensure membership: %w", err)
-	}
-
-	// Auto-join matching orgs
-	s.authService.autoJoinMatchingOrgs(ctx, user.UID, user.Email)
-
-	// Generate tokens
-	tokens, err := s.authService.GenerateTokensForOAuth(ctx, user, org, string(member.Role))
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate tokens: %w", err)
+		return nil, err
 	}
 
 	return &MicrosoftOAuthResult{
-		AccessToken:  tokens.AccessToken,
-		RefreshToken: tokens.RefreshToken,
-		ExpiresIn:    tokens.ExpiresIn,
+		AccessToken:  login.AccessToken,
+		RefreshToken: login.RefreshToken,
+		ExpiresIn:    login.ExpiresIn,
 		OrgSlug:      org.Slug,
 		UserUID:      user.UID,
+		Pending:      login.Pending,
 	}, nil
 }
 
@@ -325,51 +333,6 @@ func (s *MicrosoftOAuthService) findOrCreateUser(
 	}
 
 	return user, nil
-}
-
-// ensureMembership ensures user is a member of the organization.
-func (s *MicrosoftOAuthService) ensureMembership(
-	ctx context.Context, orgUID, userUID string,
-) (*models.OrganizationMember, error) {
-	// Check existing membership
-	member, err := s.db.GetMemberByUserAndOrg(ctx, userUID, orgUID)
-	if err == nil {
-		return member, nil
-	}
-
-	if !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("failed to get member: %w", err)
-	}
-
-	// Determine role (first user = admin)
-	role := models.MemberRoleUser
-
-	members, err := s.db.ListMembersByOrg(ctx, orgUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list members: %w", err)
-	}
-
-	if len(members) == 0 {
-		role = models.MemberRoleAdmin
-	}
-
-	// Enforce MaxUsers before creating the membership. The very first
-	// member of an org bypasses any cap (count=0 < cap) so bootstrapping
-	// always succeeds.
-	if err := s.authService.CheckMembershipSlot(ctx, orgUID); err != nil {
-		return nil, err
-	}
-
-	// Create membership
-	member = models.NewOrganizationMember(orgUID, userUID, role)
-	now := time.Now()
-	member.JoinedAt = &now
-
-	if err := s.db.CreateOrganizationMember(ctx, member); err != nil {
-		return nil, fmt.Errorf("failed to create member: %w", err)
-	}
-
-	return member, nil
 }
 
 // getCallbackURL returns the OAuth callback URL for Microsoft.
