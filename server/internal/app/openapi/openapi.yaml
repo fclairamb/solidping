@@ -1489,6 +1489,115 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # Public status page views (no authentication). Disabled and private pages,
+  # and pages that don't exist, all return the same NotFound shape — existence
+  # is never leaked.
+  /api/v1/status-pages/{org}:
+    get:
+      tags: [StatusPages]
+      summary: View an organization's default public status page
+      description: >-
+        Renders the same payload as GET /api/v1/status-pages/{org}/{slug},
+        resolved to the organization's default page. No authentication
+        required.
+      operationId: viewDefaultStatusPage
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: The default status page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPage"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/status-pages/{org}/{slug}:
+    get:
+      tags: [StatusPages]
+      summary: View a public status page
+      description: >-
+        Full public rendering of a status page: sections, per-resource live
+        status, and (when enabled) availability/response-time history. A
+        disabled or non-public page returns 404, identical to a page that
+        doesn't exist. No authentication required.
+      operationId: viewStatusPage
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: slug
+          in: path
+          required: true
+          description: Status page slug
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The status page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPage"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/status-pages/{org}/{slug}/summary:
+    get:
+      tags: [StatusPages]
+      summary: Lightweight status summary for a status page
+      description: >-
+        Cheap "is it up?" companion to the full page view: overall status,
+        per-category counts, page identity, and the canonical public URL —
+        no sections, no per-resource history. Response carries
+        Cache-Control: public, max-age=60. Same visibility gate as the full
+        view: a disabled or non-public page returns 404, identical to a page
+        that doesn't exist. No authentication required.
+      operationId: viewStatusPageSummary
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: slug
+          in: path
+          required: true
+          description: Status page slug
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The status page summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageSummary"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/status-pages/{org}/{slug}/feed.xml:
+    get:
+      tags: [StatusPages]
+      summary: Atom feed of a status page's status-update timeline
+      description: >-
+        Public Atom/RSS feed of the page's recent status updates (incident
+        posts and manual updates). Same visibility gate as the full page
+        view. No authentication required.
+      operationId: statusPageFeed
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: slug
+          in: path
+          required: true
+          description: Status page slug
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Atom feed XML
+          content:
+            application/atom+xml:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # Results APIs
   /api/v1/orgs/{org}/results:
     get:
@@ -8045,6 +8154,67 @@ components:
           items:
             $ref: "#/components/schemas/StatusUpdatePublic"
         createdAt:
+          type: string
+          format: date-time
+        overallStatus:
+          type: string
+          enum: [operational, degraded, down, maintenance, unknown]
+          description: >-
+            Page-level rollup computed server-side from the live status of
+            every resource on the page, so the public views, the summary
+            endpoint, and the SVG badge always agree. Only populated on the
+            live public view paths (GET /api/v1/status-pages/{org} and
+            GET /api/v1/status-pages/{org}/{slug}) — omitted on the
+            authenticated admin listing, which doesn't load live resource data.
+        statusCounts:
+          $ref: "#/components/schemas/StatusCounts"
+          description: Same population rule as overallStatus.
+
+    StatusCounts:
+      type: object
+      required: [operational, degraded, down, maintenance, unknown]
+      description: Tallies the page's resources per overallStatus category.
+      properties:
+        operational:
+          type: integer
+        degraded:
+          type: integer
+        down:
+          type: integer
+        maintenance:
+          type: integer
+        unknown:
+          type: integer
+
+    StatusPageSummary:
+      type: object
+      required: [status, counts, page, generatedAt]
+      description: >-
+        The lightweight "is it up?" public rollup — a cheap alternative to the
+        full status page view (no sections, no per-resource availability/
+        response-time series).
+      properties:
+        status:
+          type: string
+          enum: [operational, degraded, down, maintenance, unknown]
+        counts:
+          $ref: "#/components/schemas/StatusCounts"
+        page:
+          type: object
+          required: [name, slug, url]
+          properties:
+            name:
+              type: string
+            slug:
+              type: string
+            url:
+              type: string
+              format: uri
+              description: >-
+                The canonical public URL: the verified custom domain when
+                active, otherwise the absolute /status0/{org}/{slug} URL
+                derived from the request host.
+        generatedAt:
           type: string
           format: date-time
 

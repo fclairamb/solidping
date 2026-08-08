@@ -103,11 +103,39 @@ Delete a status update.
 
 ## Public views
 
+A disabled or non-public page, and a page that doesn't exist, all return an
+identical `NOT_FOUND` — none of these routes leak page existence.
+
 ### GET /api/v1/status-pages/:org
-View the default status page for an organization. Auth: public
+View the default status page for an organization. Auth: public. Same payload
+shape as `GET /api/v1/status-pages/:org/:slug`, resolved to the org's default
+page.
 
 ### GET /api/v1/status-pages/:org/:slug
-View a specific status page by slug. Auth: public
+View a specific status page by slug. Auth: public. Full payload: sections,
+per-resource live status, and (when enabled) availability/response-time
+history. Also carries `overallStatus` and `statusCounts` — the page-level
+rollup computed server-side (see below) — but sets no `Cache-Control` header.
+
+### GET /api/v1/status-pages/:org/:slug/summary
+Lightweight "is it up?" companion to the full view above. Auth: public. Same
+visibility gate, and the rollup comes from the exact same live data via the
+shared `RollupPageStatus` helper, so it can never disagree with the full view
+or the SVG badge. Sets `Cache-Control: public, max-age=60`.
+
+```json
+{
+  "status": "operational",
+  "counts": { "operational": 12, "degraded": 1, "down": 0, "maintenance": 0, "unknown": 0 },
+  "page": { "name": "SolidPing", "slug": "main", "url": "https://status.example.com/" },
+  "generatedAt": "2026-08-08T12:00:00Z"
+}
+```
+
+`status` is one of `operational | degraded | down | maintenance | unknown`.
+`page.url` is the canonical public URL: the verified custom domain when
+active, otherwise the absolute `/status0/{org}/{slug}` URL derived from the
+request host.
 
 ### GET /api/v1/status-pages/:org/:slug/feed.xml
 RSS/Atom feed of the page's status updates. Auth: public

@@ -247,6 +247,21 @@ Visitors can subscribe to a status page to be notified of incidents by email:
 
 Each page also publishes an **Atom feed** (`/feed.xml`) of status updates, so users can follow along in a feed reader or pipe updates into other tools.
 
+## Summary endpoint
+
+For integrators who just want "is this service up right now?" without the full page payload, `GET /api/v1/status-pages/{org}/{slug}/summary` returns a lightweight JSON rollup:
+
+```json
+{
+  "status": "operational",
+  "counts": { "operational": 12, "degraded": 1, "down": 0, "maintenance": 0, "unknown": 0 },
+  "page": { "name": "SolidPing", "slug": "main", "url": "https://status.example.com/" },
+  "generatedAt": "2026-08-08T12:00:00Z"
+}
+```
+
+It's public (no authentication), sets `Cache-Control: public, max-age=60`, and computes `status`/`counts` from the exact same server-side rollup as the full page view — so the two can never disagree.
+
 ## Accessing Status Pages
 
 Status pages are served directly by SolidPing at a dedicated URL path, making them easy to embed or link to from your own website. The default page is reachable at the organization root path, and named pages at their slug.
