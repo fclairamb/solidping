@@ -37,11 +37,12 @@ import { Skeleton } from "@/components/ui/skeleton";
  * Consent page for the OAuth 2.0 Device Authorization Grant (RFC 8628,
  * spec 2026-08-08-02) — the browser half of `sp auth login`.
  *
- * The CLI prints a short code and the org-less `/dash0/device` URL; that route
- * forwards here, which sits under the `/orgs/$org` layout and therefore gets
- * the standard login-with-`returnTo` bounce for free. The code arrives in
- * `?user_code=` when the CLI's `verification_uri_complete` was followed, and is
- * typed by hand otherwise.
+ * The CLI prints a short code and the org-less `/dash0/device` URL. That route
+ * sends a logged-out visitor to /login with ITSELF as `returnTo` (org-less, so
+ * the code survives the round trip for any org slug — see
+ * `isDeviceVerificationReturnTo`), and forwards an authenticated one here, into
+ * the `/orgs/$org` layout. The code arrives in `?user_code=` when the CLI's
+ * `verification_uri_complete` was followed, and is typed by hand otherwise.
  *
  * Approving mints a Personal Access Token scoped to the organization SELECTED
  * here — not implicitly to the current session's org — so a member of several
@@ -82,9 +83,9 @@ function DeviceConsentPage() {
   const navigate = useNavigate();
   const { organizations } = useAuth();
 
-  // The URL is the source of truth for the code, so the login bounce
-  // (?returnTo=) and a plain refresh both restore it. `code` is only the input
-  // draft; it re-syncs whenever the URL changes, using React's
+  // The URL is the source of truth for the code, so both a plain refresh and
+  // the /device -> /login -> /device bounce restore it. `code` is only the
+  // input draft; it re-syncs whenever the URL changes, using React's
   // adjust-state-during-render pattern rather than an effect.
   const urlCode = formatUserCode(search.user_code ?? "");
   const [code, setCode] = useState(urlCode);

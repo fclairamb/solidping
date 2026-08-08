@@ -176,6 +176,52 @@ test.describe("Device authorization consent", () => {
     await expect(page.getByTestId("device-consent-card")).toHaveCount(0);
   });
 
+  // Regression guard for the flow the whole feature exists for: approving on a
+  // phone that is not signed in yet. The org-less /device route must bounce
+  // through /login and come back with the one-time code still pre-filled — for
+  // a real org slug ("test"), not just whatever slug the logged-out visitor was
+  // routed through. Deliberately uses the plain (unauthenticated) `page`
+  // fixture rather than `authenticatedPage`.
+  test("a logged-out visitor keeps the pre-filled code across login", async ({
+    page,
+  }) => {
+    const authz = await startDeviceAuthorization(
+      page,
+      `sp CLI loggedout ${Date.now()}`,
+    );
+
+    await page.goto(`device?user_code=${encodeURIComponent(authz.user_code)}`);
+
+    // Bounced to the login form (org-less /login forwards to an org login).
+    const loginTitle = page.getByTestId("login-title");
+    await loginTitle.waitFor({ state: "visible", timeout: 15000 });
+    await page.getByTestId("login-email").fill("test@test.com");
+    await page.getByTestId("login-password").fill("test");
+    await page.getByTestId("login-submit").click();
+
+    // This account belongs to several orgs, so the form may follow up with the
+    // org picker; picking one still routes through resolveDestination, which
+    // is the code path under test.
+    const picker = page.getByTestId("org-picker-test");
+    await Promise.race([
+      picker.waitFor({ state: "visible", timeout: 10000 }).catch(() => null),
+      page
+        .waitForURL(/\/orgs\/test\/account\/device/, { timeout: 10000 })
+        .catch(() => null),
+    ]);
+    if (await picker.isVisible().catch(() => false)) {
+      await picker.click();
+    }
+
+    // Back on the consent page, under the session's REAL org ("test"), with
+    // the code intact.
+    await page.waitForURL(/\/orgs\/test\/account\/device/, { timeout: 20000 });
+    await expect(page.getByTestId("device-user-code")).toHaveValue(
+      authz.user_code,
+    );
+    await expect(page.getByTestId("device-consent-card")).toBeVisible();
+  });
+
   test("the short /device URL forwards into the org consent page", async ({
     authenticatedPage,
   }) => {

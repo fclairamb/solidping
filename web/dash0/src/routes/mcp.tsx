@@ -11,8 +11,12 @@ type McpRedirectSearch = {
 // org (the request is unauthenticated), so this route — like the root
 // redirect in index.tsx — resolves the org from the auth context and
 // forwards to the Account MCP page, preserving the query string. Logged-out
-// users then go through the normal login-with-returnTo flow via the
-// /orgs/$org guard.
+// users then go through the login-with-returnTo flow via the /orgs/$org
+// guard — which drops the returnTo for anyone whose org is not the guessed
+// "default" slug (resolveDestination's org-match rule). Not fixed here (out of
+// scope); routes/device.tsx shows the mechanism if it ever needs to be:
+// bounce to /login with an org-less returnTo that resolveDestination honors
+// explicitly (isDeviceVerificationReturnTo).
 export const Route = createFileRoute("/mcp")({
   validateSearch: (search: Record<string, unknown>): McpRedirectSearch => ({
     from: typeof search.from === "string" ? search.from : undefined,

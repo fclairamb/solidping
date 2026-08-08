@@ -1,5 +1,6 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useAuth } from "@/contexts/AuthContext";
+import { deviceVerificationReturnTo } from "@/lib/login-destination";
 
 type DeviceRedirectSearch = {
   /**
@@ -16,11 +17,17 @@ type DeviceRedirectSearch = {
  * (spec 2026-08-08-02). This is the short, typeable `verification_uri` the CLI
  * prints (`{base}/dash0/device`), so it cannot carry an org segment: it
  * resolves the org from the auth context and forwards to the real consent page
- * under `/orgs/$org/...`, exactly as `/mcp` does.
+ * under `/orgs/$org/...`.
  *
- * Forwarding into the org layout is what gives a logged-out visitor the normal
- * login-with-`returnTo` bounce, so approving from a phone that is not signed in
- * yet lands back here after login instead of dead-ending.
+ * A logged-out visitor is sent to /login with THIS route (code and all) as
+ * `returnTo`, and `resolveDestination` honors that shape without applying its
+ * org-match rule — see `isDeviceVerificationReturnTo`. Bouncing through
+ * /orgs/<guess>/... instead would lose the code for every user whose org is
+ * not the guessed slug, which is exactly the approve-from-your-phone path the
+ * device grant exists for.
+ *
+ * (`/mcp` still forwards through the org guard and inherits that limitation;
+ * it is unrelated to this spec, but the mechanism above is how to fix it.)
  */
 export const Route = createFileRoute("/device")({
   validateSearch: (search: Record<string, unknown>): DeviceRedirectSearch => ({
@@ -31,13 +38,26 @@ export const Route = createFileRoute("/device")({
 });
 
 function DeviceRedirect() {
-  const { org, isLoading } = useAuth();
+  const { org, isAuthenticated, isLoading } = useAuth();
   const search = Route.useSearch();
 
   // Wait for auth to resolve so a logged-in user lands on their own org rather
-  // than the "default" fallback.
+  // than a guessed fallback, and so a returning session is not mistaken for a
+  // logged-out one.
   if (isLoading) {
     return null;
+  }
+
+  if (!isAuthenticated) {
+    const basepath = import.meta.env.VITE_BASE_URL || "";
+    return (
+      <Navigate
+        to="/login"
+        search={{
+          returnTo: deviceVerificationReturnTo(basepath, search.user_code),
+        }}
+      />
+    );
   }
 
   return (
