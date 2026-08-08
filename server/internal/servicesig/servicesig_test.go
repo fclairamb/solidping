@@ -1,10 +1,12 @@
 package servicesig_test
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/servicesig"
 )
 
@@ -328,4 +331,92 @@ func TestParseKeySet(t *testing.T) {
 			r.Error(err, "input %q must be rejected", raw)
 		}
 	})
+}
+
+// fakeParams is a SystemParamReader backed by a map, so the loader/signer can
+// be tested without a database.
+type fakeParams struct {
+	values map[string]any
+	err    error
+}
+
+func (f fakeParams) GetSystemParameter(_ context.Context, key string) (*models.Parameter, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+
+	value, ok := f.values[key]
+	if !ok {
+		return nil, nil //nolint:nilnil // absent parameter, matching db.Service
+	}
+
+	return &models.Parameter{Key: key, Value: models.JSONMap{"value": value}}, nil
+}
+
+func TestLoadKeySet(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	reader := fakeParams{values: map[string]any{
+		"ok":      `[{"id":"a","secret":"1"}]`,
+		"bad":     `[{"id":"a"}]`,
+		"notastr": 42,
+	}}
+
+	keys, err := servicesig.LoadKeySet(ctx, reader, "ok")
+	r.NoError(err)
+	r.Len(keys, 1)
+
+	_, err = servicesig.LoadKeySet(ctx, reader, "bad")
+	r.Error(err)
+
+	// Absent parameter and a non-string value both mean "not configured".
+	for _, key := range []string{"absent", "notastr"} {
+		keys, err = servicesig.LoadKeySet(ctx, reader, key)
+		r.NoError(err)
+		r.True(keys.Empty())
+	}
+
+	_, err = servicesig.LoadKeySet(ctx, fakeParams{err: errBoom}, "ok")
+	r.ErrorIs(err, errBoom)
+}
+
+var errBoom = errors.New("boom")
+
+// TestSignerSignsOutboundRequests covers the OSS -> billing direction: the
+// helper that exists so the future checkout/portal proxy client is signed from
+// its first commit instead of carrying a static bearer.
+func TestSignerSignsOutboundRequests(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	const paramKey = "entitlements.outbound_signing_keys"
+
+	outbound := servicesig.Key{ID: "out-1", Secret: "outbound-secret"}
+	reader := fakeParams{values: map[string]any{
+		paramKey: `[{"id":"out-1","secret":"outbound-secret"}]`,
+	}}
+	signer := servicesig.NewSigner(reader, paramKey)
+
+	body := []byte(`{"org":"acme"}`)
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/checkout", nil)
+	r.NoError(signer.Sign(ctx, req, body))
+
+	// The billing service verifies with the same key set.
+	key, err := servicesig.VerifyRequest(req, servicesig.KeySet{outbound}, body, time.Now())
+	r.NoError(err)
+	r.Equal("out-1", key.ID)
+
+	// The inbound key set must NOT validate an outbound-signed request: one
+	// key set per direction is the whole point.
+	_, err = servicesig.VerifyRequest(req, testKeys(), body, time.Now())
+	r.ErrorIs(err, servicesig.ErrUnknownKeyID)
+
+	// No outbound keys configured -> a clear error, not a silent unsigned call.
+	empty := servicesig.NewSigner(fakeParams{values: map[string]any{}}, paramKey)
+	bare := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/checkout", nil)
+	r.ErrorIs(empty.Sign(ctx, bare, body), servicesig.ErrNoKeysDefined)
+	r.Empty(bare.Header.Get(servicesig.HeaderSignature))
 }
