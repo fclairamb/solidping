@@ -272,6 +272,30 @@ It's public (no authentication), sets `Cache-Control: public, max-age=60`, and c
 
 It's public, sets `Cache-Control: public, max-age=60`, and applies the same visibility gate and rollup as the summary endpoint above, so the badge can never disagree with the status page. Colors follow the rollup status: green (operational), yellow (degraded), red (down), blue (maintenance), gray (unknown). Customize with `label`, `style` (`flat` or `flat-square`), `minWidth`, and `width` query parameters, matching the per-check badges.
 
+## Embeddable Live Widget
+
+`GET /embed/v1/widget.js` serves a small, self-contained script that renders a live status pill on **your own** site — the "⊙ All systems operational" badge that links back to your status page:
+
+```html
+<script async src="https://your-solidping-instance/embed/v1/widget.js" data-page="default/main"></script>
+```
+
+The pill renders where the tag sits, in a shadow root, so your site's CSS can neither break it nor be affected by it. It polls the [summary endpoint](#summary-endpoint) every 60 seconds with an uncredentialed request, and if that request fails — or the page doesn't exist, or is private — it renders **nothing at all**, never an error state on your site.
+
+Customization is entirely by data-attribute:
+
+| Attribute | Values | Default |
+|---|---|---|
+| `data-page` | `org/slug` — required | — |
+| `data-mode` | `inline`, `floating` | `inline` |
+| `data-position` | `bottom-right`, `bottom-left` (floating only) | `bottom-right` |
+| `data-theme` | `light`, `dark`, `auto` (follows `prefers-color-scheme`) | `auto` |
+| `data-label-operational`<br/>`data-label-degraded`<br/>`data-label-down`<br/>`data-label-maintenance`<br/>`data-label-unknown` | any text | built-in English labels |
+
+Everything under `/embed/v1/` is a **frozen contract**: once you've pasted the snippet it will keep working, and any future behavior change ships under `/embed/v2/` instead. The script is served with `Cache-Control: public, max-age=3600`.
+
+The dashboard generates the snippet for you under **Status Pages → (your page) → Appearance**.
+
 ## Accessing Status Pages
 
 Status pages are served directly by SolidPing at a dedicated URL path, making them easy to embed or link to from your own website. The default page is reachable at the organization root path, and named pages at their slug.
