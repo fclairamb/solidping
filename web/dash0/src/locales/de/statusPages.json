@@ -171,6 +171,11 @@
     "saveFailed": "Erscheinungsbild konnte nicht gespeichert werden",
     "rejected": "Das Stylesheet wurde abgelehnt — prüfen Sie Größe und @import-Regeln."
   },
+  "badge": {
+    "title": "Badge",
+    "description": "Betten Sie ein statisches Status-Badge ein — das skriptfreie Pendant zum Widget — in ein README, Wiki oder eine E-Mail-Fußzeile.",
+    "labelPlaceholder": "Leer lassen für den Seitennamen"
+  },
   "toast": {
     "created": "Statusseite erfolgreich erstellt",
     "updated": "Statusseite erfolgreich aktualisiert",

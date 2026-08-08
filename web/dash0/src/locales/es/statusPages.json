@@ -171,6 +171,11 @@
     "saveFailed": "No se pudo guardar la apariencia",
     "rejected": "La hoja de estilos fue rechazada: revisa el tamaño y las reglas @import."
   },
+  "badge": {
+    "title": "Insignia",
+    "description": "Incrusta una insignia de estado estática — la versión sin scripts del widget — en un README, wiki o pie de correo electrónico.",
+    "labelPlaceholder": "Dejar vacío para usar el nombre de la página"
+  },
   "toast": {
     "created": "Página de estado creada correctamente",
     "updated": "Página de estado actualizada correctamente",

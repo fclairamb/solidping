@@ -171,6 +171,11 @@
     "saveFailed": "Échec de l'enregistrement de l'apparence",
     "rejected": "Feuille de style refusée — vérifiez la taille et les règles @import."
   },
+  "badge": {
+    "title": "Badge",
+    "description": "Intégrez un badge de statut statique — le pendant sans script du widget — dans un README, un wiki ou un pied de page d'e-mail.",
+    "labelPlaceholder": "Laisser vide pour le nom de la page"
+  },
   "toast": {
     "created": "Page de statut créée avec succès",
     "updated": "Page de statut mise à jour avec succès",

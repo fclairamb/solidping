@@ -171,6 +171,11 @@
     "saveFailed": "Failed to save the appearance",
     "rejected": "The stylesheet was rejected — check the size and @import rules."
   },
+  "badge": {
+    "title": "Badge",
+    "description": "Embed a static status badge — the script-free sibling of the widget — in a README, wiki, or email footer.",
+    "labelPlaceholder": "Leave empty for page name"
+  },
   "toast": {
     "created": "Status page created successfully",
     "updated": "Status page updated successfully",
