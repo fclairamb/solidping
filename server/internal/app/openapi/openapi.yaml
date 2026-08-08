@@ -746,6 +746,106 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  # OAuth 2.0 Device Authorization Grant (RFC 8628) — `sp auth login`.
+  # Field names on the two public endpoints below are the RFC's snake_case
+  # spellings, not solidping's house camelCase: they are the interoperable
+  # OAuth contract every device-flow client expects.
+  /api/v1/auth/device:
+    post:
+      tags: [Authentication]
+      summary: Start a device authorization request (RFC 8628)
+      operationId: startDeviceAuthorization
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceAuthorizationRequest"
+      responses:
+        "200":
+          description: Device authorization request opened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceAuthorizationResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/auth/device/token:
+    post:
+      tags: [Authentication]
+      summary: Poll for the device authorization result (RFC 8628 token endpoint)
+      operationId: pollDeviceToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceTokenRequest"
+      responses:
+        "200":
+          description: The request was approved; the personal access token is delivered exactly once
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceTokenResponse"
+        "400":
+          description: >-
+            RFC 6749 §5.2 error envelope carrying an RFC 8628 error code
+            (authorization_pending, slow_down, expired_token, access_denied,
+            invalid_request, unsupported_grant_type)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceTokenError"
+
+  /api/v1/auth/device/consent:
+    get:
+      tags: [Authentication]
+      summary: Look up a pending device authorization request by user code
+      operationId: getDeviceConsent
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userCode
+          in: query
+          required: true
+          description: The short user code, in any spelling (case and dash insensitive)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The pending request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceConsentInfo"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Authentication]
+      summary: Approve or deny a pending device authorization request
+      operationId: respondToDeviceConsent
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceConsentRequest"
+      responses:
+        "200":
+          description: Decision recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceConsentResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The request was already approved or denied
+
   /api/v1/auth/tokens:
     get:
       tags: [Authentication]
@@ -6058,6 +6158,113 @@ components:
           enum: [ok]
 
     # Authentication schemas
+    DeviceAuthorizationRequest:
+      type: object
+      properties:
+        clientName:
+          type: string
+          maxLength: 200
+          description: Label shown to the approving user on the consent page
+        clientId:
+          type: string
+          description: Accepted for OAuth compatibility and ignored
+
+    DeviceAuthorizationResponse:
+      type: object
+      required: [device_code, user_code, verification_uri, verification_uri_complete, expires_in, interval]
+      properties:
+        device_code:
+          type: string
+          description: The client's secret — the real capability. Never displayed in a browser.
+        user_code:
+          type: string
+          description: Short human-typed code, displayed as XXXX-XXXX
+        verification_uri:
+          type: string
+        verification_uri_complete:
+          type: string
+        expires_in:
+          type: integer
+        interval:
+          type: integer
+          description: Minimum seconds between polls; polling faster earns slow_down
+
+    DeviceTokenRequest:
+      type: object
+      required: [grant_type, device_code]
+      properties:
+        grant_type:
+          type: string
+          enum: ["urn:ietf:params:oauth:grant-type:device_code"]
+        device_code:
+          type: string
+        client_id:
+          type: string
+
+    DeviceTokenResponse:
+      type: object
+      required: [access_token, token_type]
+      properties:
+        access_token:
+          type: string
+          description: A solidping personal access token, usable directly as a bearer credential
+        token_type:
+          type: string
+          enum: [Bearer]
+
+    DeviceTokenError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum:
+            [
+              authorization_pending,
+              slow_down,
+              expired_token,
+              access_denied,
+              invalid_request,
+              unsupported_grant_type,
+            ]
+        error_description:
+          type: string
+
+    DeviceConsentInfo:
+      type: object
+      required: [clientName, userCode, status, expiresAt]
+      properties:
+        clientName:
+          type: string
+        userCode:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, denied]
+        expiresAt:
+          type: string
+          format: date-time
+
+    DeviceConsentRequest:
+      type: object
+      required: [userCode]
+      properties:
+        userCode:
+          type: string
+        org:
+          type: string
+          description: >-
+            Slug of the organization the approved token is scoped to. Defaults to
+            the approving session's organization when omitted.
+        approve:
+          type: boolean
+
+    DeviceConsentResponse:
+      type: object
+      properties:
+        approved:
+          type: boolean
+
     LoginRequest:
       type: object
       required: [email, password]
