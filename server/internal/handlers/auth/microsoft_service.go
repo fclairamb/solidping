@@ -70,6 +70,15 @@ type MicrosoftOAuthService struct {
 	cfg         *config.Config
 	authService *Service
 	httpClient  *http.Client
+
+	// tokenURL / userURL override the Microsoft endpoints. Empty in
+	// production (the real login.microsoftonline.com / graph.microsoft.com
+	// URLs are used); tests point them at an httptest server so the REAL
+	// HandleCallback can be driven end to end instead of a re-implementation
+	// of it, which would not notice a regression reintroduced in the real
+	// code path.
+	tokenURL string
+	userURL  string
 }
 
 // NewMicrosoftOAuthService creates a new Microsoft OAuth service.
@@ -209,6 +218,10 @@ func (s *MicrosoftOAuthService) HandleCallback(
 
 // getTokenURL returns the Microsoft token endpoint URL for the configured tenant.
 func (s *MicrosoftOAuthService) getTokenURL() string {
+	if s.tokenURL != "" {
+		return s.tokenURL
+	}
+
 	tenant := s.cfg.Microsoft.TenantID
 	if tenant == "" {
 		tenant = "common"
@@ -260,7 +273,12 @@ func (s *MicrosoftOAuthService) exchangeCode(ctx context.Context, code string) (
 
 // fetchUserProfile fetches user profile from Microsoft Graph /me endpoint.
 func (s *MicrosoftOAuthService) fetchUserProfile(ctx context.Context, accessToken string) (*MicrosoftUserInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, microsoftUserURL, nil)
+	profileURL := microsoftUserURL
+	if s.userURL != "" {
+		profileURL = s.userURL
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, profileURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

@@ -311,8 +311,12 @@ func TestGoogleGetCallbackURL(t *testing.T) {
 	assert.Equal(t, "http://localhost:4000/api/v1/auth/google/callback", svc.getCallbackURL())
 }
 
-// testGoogleCallbackWithMockServers is a helper to test the full callback flow with mocked servers.
-// It patches the Google URLs temporarily and calls HandleCallback.
+// testGoogleCallbackWithMockServers drives the REAL HandleCallback against
+// httptest stand-ins for Google's token and userinfo endpoints. It must stay a
+// thin URL-injection shim: a test-local re-implementation of the callback body
+// would keep passing if someone reintroduced a direct membership creation in
+// the production path, which is exactly the regression the join-policy gate
+// exists to prevent.
 func testGoogleCallbackWithMockServers(
 	ctx context.Context,
 	t *testing.T,
@@ -321,7 +325,7 @@ func testGoogleCallbackWithMockServers(
 ) *GoogleOAuthResult {
 	t.Helper()
 
-	result, err := callbackWithMockedURLs(ctx, svc, orgSlug, tokenURL, userInfoURL)
+	result, err := testGoogleCallbackWithMockServersErr(ctx, t, svc, orgSlug, tokenURL, userInfoURL)
 	require.NoError(t, err)
 
 	return result
@@ -335,116 +339,8 @@ func testGoogleCallbackWithMockServersErr(
 ) (*GoogleOAuthResult, error) {
 	t.Helper()
 
-	return callbackWithMockedURLs(ctx, svc, orgSlug, tokenURL, userInfoURL)
-}
+	svc.tokenURL = tokenURL
+	svc.userInfoURL = userInfoURL
 
-// callbackWithMockedURLs performs the HandleCallback flow using mock Google endpoints.
-// It creates a temporary wrapper that overrides exchangeCode and fetchUserProfile.
-func callbackWithMockedURLs(
-	ctx context.Context,
-	svc *GoogleOAuthService,
-	orgSlug, tokenURL, userInfoURL string,
-) (*GoogleOAuthResult, error) {
-	// Create a service wrapper that uses mock URLs
-	mockSvc := &googleMockService{
-		GoogleOAuthService: svc,
-		tokenURL:           tokenURL,
-		userInfoURL:        userInfoURL,
-	}
-
-	return mockSvc.handleCallbackMocked(ctx, "mock-code", orgSlug)
-}
-
-// googleMockService wraps GoogleOAuthService to override HTTP endpoints for testing.
-type googleMockService struct {
-	*GoogleOAuthService
-	tokenURL    string
-	userInfoURL string
-}
-
-func (m *googleMockService) handleCallbackMocked(
-	ctx context.Context, code, orgSlug string,
-) (*GoogleOAuthResult, error) {
-	// Exchange code using mock token URL
-	tokenResp, err := m.exchangeCodeMocked(ctx, code)
-	if err != nil {
-		return nil, err
-	}
-
-	// Fetch user info using mock userinfo URL
-	userInfo, err := m.fetchUserProfileMocked(ctx, tokenResp.AccessToken)
-	if err != nil {
-		return nil, err
-	}
-
-	if userInfo.Email == "" || !userInfo.EmailVerified {
-		return nil, ErrEmailNotVerified
-	}
-
-	org, err := m.db.GetOrganizationBySlug(ctx, orgSlug)
-	if err != nil {
-		return nil, err
-	}
-
-	user, err := m.findOrCreateUser(ctx, userInfo)
-	if err != nil {
-		return nil, err
-	}
-
-	// Same shared admission + session tail the real HandleCallback runs.
-	login, err := m.authService.CompleteOrgLogin(ctx, org, user)
-	if err != nil {
-		return nil, err
-	}
-
-	return &GoogleOAuthResult{
-		AccessToken:  login.AccessToken,
-		RefreshToken: login.RefreshToken,
-		ExpiresIn:    login.ExpiresIn,
-		OrgSlug:      org.Slug,
-		UserUID:      user.UID,
-		Pending:      login.Pending,
-	}, nil
-}
-
-func (m *googleMockService) exchangeCodeMocked(ctx context.Context, _ string) (*GoogleTokenResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, m.tokenURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := m.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	var tokenResp GoogleTokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		return nil, err
-	}
-
-	return &tokenResp, nil
-}
-
-func (m *googleMockService) fetchUserProfileMocked(ctx context.Context, accessToken string) (*GoogleUserInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.userInfoURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	resp, err := m.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	var userInfo GoogleUserInfo
-	if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
-		return nil, err
-	}
-
-	return &userInfo, nil
+	return svc.HandleCallback(ctx, "mock-code", orgSlug)
 }

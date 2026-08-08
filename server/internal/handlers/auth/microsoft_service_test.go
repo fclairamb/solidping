@@ -400,7 +400,10 @@ func TestMicrosoftBuildAuthURL(t *testing.T) {
 	})
 }
 
-// testMicrosoftCallbackWithMockServers is a helper to test the full callback flow with mocked servers.
+// testMicrosoftCallbackWithMockServers drives the REAL HandleCallback against
+// httptest stand-ins for the Microsoft token and Graph endpoints — including
+// the mail-empty → userPrincipalName fallback, which therefore stays covered
+// by the production code rather than by a test-local copy of it.
 func testMicrosoftCallbackWithMockServers(
 	ctx context.Context,
 	t *testing.T,
@@ -409,7 +412,7 @@ func testMicrosoftCallbackWithMockServers(
 ) *MicrosoftOAuthResult {
 	t.Helper()
 
-	result, err := microsoftCallbackWithMockedURLs(ctx, svc, orgSlug, tokenURL, userURL)
+	result, err := testMicrosoftCallbackWithMockServersErr(ctx, t, svc, orgSlug, tokenURL, userURL)
 	require.NoError(t, err)
 
 	return result
@@ -423,122 +426,8 @@ func testMicrosoftCallbackWithMockServersErr(
 ) (*MicrosoftOAuthResult, error) {
 	t.Helper()
 
-	return microsoftCallbackWithMockedURLs(ctx, svc, orgSlug, tokenURL, userURL)
-}
+	svc.tokenURL = tokenURL
+	svc.userURL = userURL
 
-// microsoftCallbackWithMockedURLs performs the HandleCallback flow using mock Microsoft endpoints.
-func microsoftCallbackWithMockedURLs(
-	ctx context.Context,
-	svc *MicrosoftOAuthService,
-	orgSlug, tokenURL, userURL string,
-) (*MicrosoftOAuthResult, error) {
-	mockSvc := &microsoftMockService{
-		MicrosoftOAuthService: svc,
-		tokenURL:              tokenURL,
-		userURL:               userURL,
-	}
-
-	return mockSvc.handleCallbackMocked(ctx, "mock-code", orgSlug)
-}
-
-// microsoftMockService wraps MicrosoftOAuthService to override HTTP endpoints for testing.
-type microsoftMockService struct {
-	*MicrosoftOAuthService
-	tokenURL string
-	userURL  string
-}
-
-func (m *microsoftMockService) handleCallbackMocked(
-	ctx context.Context, code, orgSlug string,
-) (*MicrosoftOAuthResult, error) {
-	// Exchange code using mock token URL
-	tokenResp, err := m.exchangeCodeMocked(ctx, code)
-	if err != nil {
-		return nil, err
-	}
-
-	// Fetch user info using mock user URL
-	userInfo, err := m.fetchUserProfileMocked(ctx, tokenResp.AccessToken)
-	if err != nil {
-		return nil, err
-	}
-
-	// Get email: prefer mail, fallback to userPrincipalName
-	email := userInfo.Mail
-	if email == "" {
-		email = userInfo.UserPrincipalName
-	}
-
-	if email == "" {
-		return nil, ErrEmailNotVerified
-	}
-
-	org, err := m.db.GetOrganizationBySlug(ctx, orgSlug)
-	if err != nil {
-		return nil, err
-	}
-
-	user, err := m.findOrCreateUser(ctx, userInfo, email)
-	if err != nil {
-		return nil, err
-	}
-
-	// Same shared admission + session tail the real HandleCallback runs.
-	login, err := m.authService.CompleteOrgLogin(ctx, org, user)
-	if err != nil {
-		return nil, err
-	}
-
-	return &MicrosoftOAuthResult{
-		AccessToken:  login.AccessToken,
-		RefreshToken: login.RefreshToken,
-		ExpiresIn:    login.ExpiresIn,
-		OrgSlug:      org.Slug,
-		UserUID:      user.UID,
-		Pending:      login.Pending,
-	}, nil
-}
-
-func (m *microsoftMockService) exchangeCodeMocked(ctx context.Context, _ string) (*MicrosoftTokenResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, m.tokenURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := m.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	var tokenResp MicrosoftTokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		return nil, err
-	}
-
-	return &tokenResp, nil
-}
-
-func (m *microsoftMockService) fetchUserProfileMocked(
-	ctx context.Context, accessToken string,
-) (*MicrosoftUserInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.userURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	resp, err := m.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	var userInfo MicrosoftUserInfo
-	if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
-		return nil, err
-	}
-
-	return &userInfo, nil
+	return svc.HandleCallback(ctx, "mock-code", orgSlug)
 }

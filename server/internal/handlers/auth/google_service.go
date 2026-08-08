@@ -74,6 +74,13 @@ type GoogleOAuthService struct {
 	cfg         *config.Config
 	authService *Service
 	httpClient  *http.Client
+
+	// tokenURL / userInfoURL override the Google endpoints. Empty in
+	// production; tests point them at an httptest server so the REAL
+	// HandleCallback runs end to end (see microsoft_service.go for why a
+	// test-local re-implementation is not good enough).
+	tokenURL    string
+	userInfoURL string
 }
 
 // NewGoogleOAuthService creates a new Google OAuth service.
@@ -202,7 +209,7 @@ func (s *GoogleOAuthService) exchangeCode(ctx context.Context, code string) (*Go
 	data.Set("grant_type", "authorization_code")
 	data.Set("redirect_uri", s.getCallbackURL())
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, googleTokenURL, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.getTokenURL(), strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -233,9 +240,27 @@ func (s *GoogleOAuthService) exchangeCode(ctx context.Context, code string) (*Go
 	return &tokenResp, nil
 }
 
+// getTokenURL returns Google's token endpoint (test-overridable).
+func (s *GoogleOAuthService) getTokenURL() string {
+	if s.tokenURL != "" {
+		return s.tokenURL
+	}
+
+	return googleTokenURL
+}
+
+// getUserInfoURL returns Google's userinfo endpoint (test-overridable).
+func (s *GoogleOAuthService) getUserInfoURL() string {
+	if s.userInfoURL != "" {
+		return s.userInfoURL
+	}
+
+	return googleUserInfoURL
+}
+
 // fetchUserProfile fetches user profile from Google's userinfo endpoint.
 func (s *GoogleOAuthService) fetchUserProfile(ctx context.Context, accessToken string) (*GoogleUserInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, googleUserInfoURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.getUserInfoURL(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
