@@ -203,6 +203,11 @@ const (
 	OutputKeyDurationMs = "duration_ms"
 	OutputKeyDomain     = "domain"
 	OutputKeyRecordType = "record_type"
+
+	// OutputKeyTLSVerifySkipped marks a result whose request ran with TLS
+	// certificate verification disabled (checkhttp's verifySsl: false), so
+	// operators can see the reduced trust from the result details alone.
+	OutputKeyTLSVerifySkipped = "tls_verify_skipped"
 )
 
 // Check type labels.

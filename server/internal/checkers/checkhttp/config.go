@@ -98,6 +98,20 @@ type HTTPConfig struct {
 	// JSONPath assertions (AST-based validation of JSON response bodies)
 	JSONPathAssertions *AssertionNode `json:"json_path_assertions,omitempty"` //nolint:tagliatelle // API uses snake_case
 
+	// VerifySsl controls TLS certificate verification. nil (the vast majority
+	// of stored configs) means "unset", which behaves like true — today's
+	// hardcoded behavior. Only an explicit false disables verification, so
+	// this must stay a pointer: a plain bool would make the zero value
+	// indistinguishable from an explicit false.
+	VerifySsl *bool `json:"verifySsl,omitempty"`
+
+	// FollowRedirects controls whether the client follows HTTP redirects (up
+	// to maxRedirects). nil means "unset", which behaves like true — today's
+	// hardcoded behavior. Only an explicit false stops at the first
+	// redirect response, so this must stay a pointer for the same reason as
+	// VerifySsl.
+	FollowRedirects *bool `json:"followRedirects,omitempty"`
+
 	// Compiled regex patterns (not serialized, populated during validation)
 	bodyPatternRegex       *regexp.Regexp            `json:"-"`
 	bodyPatternRejectRegex *regexp.Regexp            `json:"-"`
@@ -292,6 +306,27 @@ func (c *HTTPConfig) FromMap(configMap map[string]any) error {
 		c.JSONPathAssertions = node
 	}
 
+	// Extract VerifySsl (optional). Presence-aware: only an explicit boolean
+	// value overrides the true default, so a value must be parsed into a
+	// pointer rather than a plain bool.
+	if v, key, ok := resolveKey(configMap, "verifySsl", "verify_ssl"); ok {
+		b, ok := v.(bool)
+		if !ok {
+			return checkerdef.NewConfigError(key, "must be a boolean")
+		}
+		c.VerifySsl = &b
+	}
+
+	// Extract FollowRedirects (optional). Presence-aware, same reasoning as
+	// VerifySsl.
+	if v, key, ok := resolveKey(configMap, "followRedirects", "follow_redirects"); ok {
+		b, ok := v.(bool)
+		if !ok {
+			return checkerdef.NewConfigError(key, "must be a boolean")
+		}
+		c.FollowRedirects = &b
+	}
+
 	return nil
 }
 
@@ -415,7 +450,30 @@ func (c *HTTPConfig) GetConfig() map[string]any {
 		}
 	}
 
+	// VerifySsl / FollowRedirects are only emitted at their non-default
+	// (false) value, matching the omit-empty style of the other fields — an
+	// unset/true config round-trips without ever writing the key.
+	if c.VerifySsl != nil && !*c.VerifySsl {
+		cfg["verifySsl"] = false
+	}
+
+	if c.FollowRedirects != nil && !*c.FollowRedirects {
+		cfg["followRedirects"] = false
+	}
+
 	return cfg
+}
+
+// SkipTLSVerify reports whether TLS certificate verification should be
+// skipped for this check. Defaults to false (verify) when unset.
+func (c *HTTPConfig) SkipTLSVerify() bool {
+	return c.VerifySsl != nil && !*c.VerifySsl
+}
+
+// SkipRedirects reports whether the client should stop at the first redirect
+// response instead of following it. Defaults to false (follow) when unset.
+func (c *HTTPConfig) SkipRedirects() bool {
+	return c.FollowRedirects != nil && !*c.FollowRedirects
 }
 
 // SecretFields declares which top-level config keys carry secrets and must

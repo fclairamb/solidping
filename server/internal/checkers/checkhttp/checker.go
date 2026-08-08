@@ -3,6 +3,7 @@ package checkhttp
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -248,8 +249,17 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	}
 
 	// Execute the request
+	skipRedirects := cfg.SkipRedirects()
+	skipTLSVerify := cfg.SkipTLSVerify()
+
 	client := &http.Client{
 		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
+			// followRedirects: false stops at the first response, regardless
+			// of maxRedirects.
+			if skipRedirects {
+				return http.ErrUseLastResponse
+			}
+
 			// Allow up to maxRedirects redirects
 			if len(via) >= maxRedirects {
 				return http.ErrUseLastResponse
@@ -266,8 +276,24 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	// keep verifying exactly as they do untunneled. Redirects, auth, headers:
 	// all unchanged. With no dialer on the context, client.Transport stays nil
 	// and net/http uses DefaultTransport as before.
-	if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
-		client.Transport = &http.Transport{DialContext: dialer.DialContext}
+	//
+	// verifySsl: false composes with the tunnel dialer on the same transport:
+	// whichever of DialContext/TLSClientConfig applies gets set on one shared
+	// http.Transport, so client.Transport stays nil only when neither is in
+	// play (preserving DefaultTransport's connection pooling in the common case).
+	dialer := checkerdef.TunnelDialerFrom(ctx)
+	if dialer != nil || skipTLSVerify {
+		transport := &http.Transport{}
+
+		if dialer != nil {
+			transport.DialContext = dialer.DialContext
+		}
+
+		if skipTLSVerify {
+			transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in via verifySsl: false
+		}
+
+		client.Transport = transport
 	}
 
 	resp, err := client.Do(req)
@@ -279,20 +305,20 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			return &checkerdef.Result{
 				Status:   checkerdef.StatusTimeout,
 				Duration: duration,
-				Output: map[string]any{
+				Output: withTLSVerifySkipped(map[string]any{
 					checkerdef.OutputKeyError: "request timed out",
 					checkerdef.OutputKeyURL:   cfg.URL,
-				},
+				}, skipTLSVerify),
 			}, nil
 		}
 
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusDown,
 			Duration: duration,
-			Output: map[string]any{
+			Output: withTLSVerifySkipped(map[string]any{
 				checkerdef.OutputKeyError: err.Error(),
 				checkerdef.OutputKeyURL:   cfg.URL,
-			},
+			}, skipTLSVerify),
 		}, nil
 	}
 
@@ -521,10 +547,21 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	return &checkerdef.Result{
 		Status:   status,
 		Duration: duration,
-		Output: map[string]any{
+		Output: withTLSVerifySkipped(map[string]any{
 			checkerdef.OutputKeyURL:        cfg.URL,
 			checkerdef.OutputKeyStatusCode: resp.StatusCode,
 			checkerdef.OutputKeyMethod:     method,
-		},
+		}, skipTLSVerify),
 	}, nil
+}
+
+// withTLSVerifySkipped adds the tls_verify_skipped marker to a result output
+// map when the check ran with certificate verification disabled, so the
+// reduced trust is visible in result details rather than only in config.
+func withTLSVerifySkipped(output map[string]any, skipped bool) map[string]any {
+	if skipped {
+		output[checkerdef.OutputKeyTLSVerifySkipped] = true
+	}
+
+	return output
 }
