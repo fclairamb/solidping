@@ -189,6 +189,291 @@ func TestJoinOrgViaLogin(t *testing.T) {
 	}
 }
 
+// linkSlackWorkspace links org to a Slack workspace (team ID) through
+// organization_providers — the same row the Slack sign-in and install flows
+// create, and the only thing the attestation rule trusts.
+func linkSlackWorkspace(
+	ctx context.Context, t *testing.T, dbSvc db.Service, orgUID, teamID string,
+) *models.OrganizationProvider {
+	t.Helper()
+
+	provider := models.NewOrganizationProvider(orgUID, models.ProviderTypeSlack, teamID)
+	require.NoError(t, dbSvc.CreateOrganizationProvider(ctx, provider))
+
+	return provider
+}
+
+// TestJoinOrgViaLoginSlackWorkspace is the admission-control table for the
+// Slack workspace attestation rule. Every negative is paired with a positive
+// control in the same table, so a rule that admitted nobody (or everybody)
+// fails here.
+func TestJoinOrgViaLoginSlackWorkspace(t *testing.T) {
+	t.Parallel()
+
+	const (
+		ourTeam   = "T-OURS"
+		otherTeam = "T-THEIRS"
+	)
+
+	tests := []struct {
+		name string
+		// linkTeam is the workspace this org is linked to ("" = the org has
+		// no Slack link at all).
+		linkTeam string
+		// revokeLink soft-deletes the org↔workspace link before the login.
+		revokeLink bool
+		// otherOrgTeam, when set, links a DIFFERENT org to that workspace —
+		// the cross-tenant setup.
+		otherOrgTeam string
+		// attestTeam is the workspace Slack attested for the user ("" = a
+		// non-Slack connector: no attestation at all).
+		attestTeam string
+		// optOut, when set, writes registration.slack_workspace_auto_join.
+		optOut *bool
+
+		wantPending bool
+		wantRole    models.MemberRole
+	}{
+		{
+			// POSITIVE CONTROL — the core fix: a fellow workspace member
+			// signing in to the org that workspace is linked to gets in.
+			name:       "member of the linked workspace joins as user",
+			linkTeam:   ourTeam,
+			attestTeam: ourTeam,
+			wantRole:   models.MemberRoleUser,
+		},
+		{
+			// NEGATIVE — attestation for a workspace that is not this org's.
+			// The org slug in the login URL is attacker-controlled, so the
+			// decision must follow the verified team ID.
+			name:        "attestation for another workspace is refused",
+			linkTeam:    ourTeam,
+			attestTeam:  otherTeam,
+			wantPending: true,
+		},
+		{
+			// NEGATIVE (cross-tenant) — the attested workspace really exists
+			// and really is linked... to somebody else's org.
+			name:         "workspace linked to another org does not admit here",
+			linkTeam:     ourTeam,
+			otherOrgTeam: otherTeam,
+			attestTeam:   otherTeam,
+			wantPending:  true,
+		},
+		{
+			// NEGATIVE — no Slack link on this org: nothing to attest against.
+			name:        "org with no slack link admits nobody",
+			linkTeam:    "",
+			attestTeam:  ourTeam,
+			wantPending: true,
+		},
+		{
+			// NEGATIVE — a revoked (soft-deleted) link is not a link.
+			name:        "revoked workspace link admits nobody",
+			linkTeam:    ourTeam,
+			revokeLink:  true,
+			attestTeam:  ourTeam,
+			wantPending: true,
+		},
+		{
+			// NEGATIVE — a connector with nothing to attest (Google, GitHub,
+			// SAML…) sees exactly today's behavior in a Slack-linked org.
+			name:        "federated login without attestation is unaffected",
+			linkTeam:    ourTeam,
+			attestTeam:  "",
+			wantPending: true,
+		},
+		{
+			// Opt-out honored: back to the pre-attestation behavior.
+			name:        "opted-out org falls back to a membership request",
+			linkTeam:    ourTeam,
+			attestTeam:  ourTeam,
+			optOut:      boolPtr(false),
+			wantPending: true,
+		},
+		{
+			// POSITIVE CONTROL for the opt-out: an explicit true behaves like
+			// the default.
+			name:       "explicit opt-in joins as user",
+			linkTeam:   ourTeam,
+			attestTeam: ourTeam,
+			optOut:     boolPtr(true),
+			wantRole:   models.MemberRoleUser,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, dbSvc, ctx := setupAuthTestService(t)
+			org := joinTestOrg(ctx, t, dbSvc, "slack-org", true)
+			user := joinTestUser(ctx, t, dbSvc, "member@workspace.example")
+
+			if tt.linkTeam != "" {
+				provider := linkSlackWorkspace(ctx, t, dbSvc, org.UID, tt.linkTeam)
+				if tt.revokeLink {
+					require.NoError(t, dbSvc.DeleteOrganizationProvider(ctx, provider.UID))
+				}
+			}
+
+			if tt.otherOrgTeam != "" {
+				otherOrg := joinTestOrg(ctx, t, dbSvc, "other-org", true)
+				linkSlackWorkspace(ctx, t, dbSvc, otherOrg.UID, tt.otherOrgTeam)
+			}
+
+			if tt.optOut != nil {
+				require.NoError(t, dbSvc.SetOrgParameter(
+					ctx, org.UID, registrationSlackAutoJoinKey, *tt.optOut, false))
+			}
+
+			var opts []LoginOption
+			if tt.attestTeam != "" {
+				opts = append(opts, WithSlackWorkspace(tt.attestTeam))
+			}
+
+			member, pending, err := svc.JoinOrgViaLogin(ctx, org, user, opts...)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantPending, pending)
+
+			if tt.wantPending {
+				require.Nil(t, member)
+
+				_, memberErr := dbSvc.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
+				require.Error(t, memberErr, "a refused login must leave no organization_members row")
+
+				request, reqErr := dbSvc.GetMembershipRequestByOrgAndUser(ctx, org.UID, user.UID)
+				require.NoError(t, reqErr)
+				require.NotNil(t, request)
+				require.Equal(t, models.MembershipRequestStatusPending, request.Status)
+
+				return
+			}
+
+			require.NotNil(t, member)
+			require.Equal(t, tt.wantRole, member.Role)
+
+			stored, memberErr := dbSvc.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
+			require.NoError(t, memberErr)
+			require.Equal(t, tt.wantRole, stored.Role)
+		})
+	}
+}
+
+// TestJoinOrgViaLoginSlackWorkspaceCrossTenantIsolation is the cross-tenant
+// negative stated as the property it protects: the SAME attested user, the
+// SAME two orgs, admitted to their own workspace's org and refused by the
+// other one — proving the rule follows the verified team ID rather than the
+// org slug the login URL asked for.
+func TestJoinOrgViaLoginSlackWorkspaceCrossTenantIsolation(t *testing.T) {
+	t.Parallel()
+
+	svc, dbSvc, ctx := setupAuthTestService(t)
+
+	orgA := joinTestOrg(ctx, t, dbSvc, "tenant-a", true)
+	orgB := joinTestOrg(ctx, t, dbSvc, "tenant-b", true)
+	linkSlackWorkspace(ctx, t, dbSvc, orgA.UID, "T-A")
+	linkSlackWorkspace(ctx, t, dbSvc, orgB.UID, "T-B")
+
+	user := joinTestUser(ctx, t, dbSvc, "alice@tenant-a.example")
+
+	// Asking for org B while Slack attested workspace A: refused.
+	member, pending, err := svc.JoinOrgViaLogin(ctx, orgB, user, WithSlackWorkspace("T-A"))
+	require.NoError(t, err)
+	require.True(t, pending, "workspace A must not open org B")
+	require.Nil(t, member)
+
+	_, memberErr := dbSvc.GetMemberByUserAndOrg(ctx, user.UID, orgB.UID)
+	require.Error(t, memberErr)
+
+	// Same user, same attestation, their own org: admitted.
+	member, pending, err = svc.JoinOrgViaLogin(ctx, orgA, user, WithSlackWorkspace("T-A"))
+	require.NoError(t, err)
+	require.False(t, pending)
+	require.NotNil(t, member)
+	require.Equal(t, models.MemberRoleUser, member.Role)
+}
+
+// TestJoinOrgViaLoginSlackWorkspaceRespectsMaxUsers proves the seat cap is not
+// bypassed by the attestation rule: a workspace member the rule would admit
+// gets a membership request instead when the org has no slot left, and no
+// membership row appears.
+func TestJoinOrgViaLoginSlackWorkspaceRespectsMaxUsers(t *testing.T) {
+	t.Parallel()
+
+	svc, dbSvc, ctx := setupAuthTestService(t)
+	svc.entitlements = &stubEntitlementsChecker{err: errLDAPSSOQuotaTest}
+
+	org := joinTestOrg(ctx, t, dbSvc, "capped-slack-org", true)
+	linkSlackWorkspace(ctx, t, dbSvc, org.UID, "T-CAPPED")
+	user := joinTestUser(ctx, t, dbSvc, "member@workspace.example")
+
+	member, pending, err := svc.JoinOrgViaLogin(ctx, org, user, WithSlackWorkspace("T-CAPPED"))
+	require.NoError(t, err, "a capped org must not fail the login, only refuse the membership")
+	require.True(t, pending)
+	require.Nil(t, member)
+
+	_, memberErr := dbSvc.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
+	require.Error(t, memberErr, "no membership may be created once the org is at its cap")
+
+	request, reqErr := dbSvc.GetMembershipRequestByOrgAndUser(ctx, org.UID, user.UID)
+	require.NoError(t, reqErr)
+	require.Equal(t, models.MembershipRequestStatusPending, request.Status)
+}
+
+// TestJoinOrgViaLoginSlackWorkspaceBootstrapStaysAdmin proves the attestation
+// rule sits BELOW the bootstrap rule: the first member of an empty linked org
+// still becomes its admin rather than a plain user.
+func TestJoinOrgViaLoginSlackWorkspaceBootstrapStaysAdmin(t *testing.T) {
+	t.Parallel()
+
+	svc, dbSvc, ctx := setupAuthTestService(t)
+	org := joinTestOrg(ctx, t, dbSvc, "fresh-slack-org", false)
+	linkSlackWorkspace(ctx, t, dbSvc, org.UID, "T-FRESH")
+	user := joinTestUser(ctx, t, dbSvc, "founder@workspace.example")
+
+	member, pending, err := svc.JoinOrgViaLogin(ctx, org, user, WithSlackWorkspace("T-FRESH"))
+	require.NoError(t, err)
+	require.False(t, pending)
+	require.NotNil(t, member)
+	require.Equal(t, models.MemberRoleAdmin, member.Role)
+}
+
+// TestParamBoolValue pins how the opt-out parameter is decoded: JSON(B)
+// round-trips can hand back a bool, a string or a number, and anything
+// unrecognized must keep the caller's default rather than silently disabling
+// (or enabling) the rule.
+func TestParamBoolValue(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		raw      any
+		fallback bool
+		want     bool
+	}{
+		{name: "bool false", raw: false, fallback: true, want: false},
+		{name: "bool true", raw: true, fallback: false, want: true},
+		{name: "string false", raw: "false", fallback: true, want: false},
+		{name: "padded string", raw: " true ", fallback: false, want: true},
+		{name: "number zero", raw: float64(0), fallback: true, want: false},
+		{name: "number one", raw: float64(1), fallback: false, want: true},
+		{name: "garbage keeps the default", raw: "maybe", fallback: true, want: true},
+		{name: "nil keeps the default", raw: nil, fallback: true, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, paramBoolValue(tt.raw, tt.fallback))
+		})
+	}
+}
+
+func boolPtr(value bool) *bool {
+	return &value
+}
+
 // TestJoinOrgViaLoginExistingMember proves a plain login by someone who is
 // already a member changes nothing — no re-join, no role change, no request.
 func TestJoinOrgViaLoginExistingMember(t *testing.T) {

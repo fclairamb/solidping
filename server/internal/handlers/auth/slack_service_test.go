@@ -2,12 +2,15 @@ package auth
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 )
 
@@ -44,6 +47,115 @@ func setupSlackTestService(t *testing.T) (*SlackOAuthService, context.Context) {
 	svc := NewSlackOAuthService(dbService, cfg, authService)
 
 	return svc, ctx
+}
+
+// fakeSlackEndpoints points the Slack sign-in service at httptest stand-ins
+// for oauth.v2.access and openid.connect.userInfo, so tests drive the REAL
+// HandleCallback (token exchange, user lookup, admission policy) instead of a
+// test-local re-implementation of it.
+func fakeSlackEndpoints(t *testing.T, svc *SlackOAuthService, teamID, teamName, email string) {
+	t.Helper()
+
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"access_token":"xoxb-bot","team":{"id":"` + teamID +
+			`","name":"` + teamName + `"},"authed_user":{"id":"U-1","access_token":"xoxp-user"}}`))
+	}))
+	t.Cleanup(tokenServer.Close)
+
+	userServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"sub":"U-1","email":"` + email +
+			`","email_verified":true,"name":"Workspace Member",` +
+			`"https://slack.com/team_name":"` + teamName + `","https://slack.com/team_domain":"acme"}`))
+	}))
+	t.Cleanup(userServer.Close)
+
+	svc.oauthURL = tokenServer.URL
+	svc.userInfoURL = userServer.URL
+}
+
+// TestSlackCallbackAdmitsWorkspaceMember is the end-to-end reproduction of the
+// bug this spec fixes, driven through the real HandleCallback: a member of the
+// workspace an existing org is linked to signs in and lands *inside* that org.
+// The opted-out sub-test is the control proving the admission is the new rule
+// (not a blanket "Slack always joins"), and the foreign-workspace sub-test is
+// the cross-tenant negative.
+func TestSlackCallbackAdmitsWorkspaceMember(t *testing.T) {
+	t.Parallel()
+
+	// setup builds an org already linked to workspace T-LINKED and past
+	// bootstrap (one seed member), then wires the fake Slack endpoints.
+	setup := func(t *testing.T, attestedTeam string) (*SlackOAuthService, *models.Organization, context.Context) {
+		t.Helper()
+
+		svc, ctx := setupSlackTestService(t)
+
+		org := models.NewOrganization("linked-org", "Acme")
+		require.NoError(t, svc.db.CreateOrganization(ctx, org))
+		require.NoError(t, svc.db.CreateOrganizationProvider(
+			ctx, models.NewOrganizationProvider(org.UID, models.ProviderTypeSlack, "T-LINKED")))
+
+		seed := models.NewUser("seed@acme.example")
+		require.NoError(t, svc.db.CreateUser(ctx, seed))
+		require.NoError(t, svc.db.CreateOrganizationMember(
+			ctx, models.NewOrganizationMember(org.UID, seed.UID, models.MemberRoleAdmin)))
+
+		fakeSlackEndpoints(t, svc, attestedTeam, "Acme", "member@acme.example")
+
+		return svc, org, ctx
+	}
+
+	t.Run("workspace member joins the linked org", func(t *testing.T) {
+		t.Parallel()
+
+		svc, org, ctx := setup(t, "T-LINKED")
+
+		result, err := svc.HandleCallback(ctx, "mock-code")
+		require.NoError(t, err)
+		require.False(t, result.Pending, "a member of the linked workspace must be admitted")
+		require.Equal(t, org.Slug, result.OrgSlug)
+		require.NotEmpty(t, result.RefreshToken, "an admitted user gets a full org-scoped session")
+
+		member, memberErr := svc.db.GetMemberByUserAndOrg(ctx, result.UserUID, org.UID)
+		require.NoError(t, memberErr)
+		require.Equal(t, models.MemberRoleUser, member.Role)
+	})
+
+	t.Run("opted-out org still yields a membership request", func(t *testing.T) {
+		t.Parallel()
+
+		svc, org, ctx := setup(t, "T-LINKED")
+		require.NoError(t, svc.db.SetOrgParameter(
+			ctx, org.UID, registrationSlackAutoJoinKey, false, false))
+
+		result, err := svc.HandleCallback(ctx, "mock-code")
+		require.NoError(t, err)
+		require.True(t, result.Pending)
+		require.Empty(t, result.RefreshToken, "no org-scoped session may be minted")
+
+		_, memberErr := svc.db.GetMemberByUserAndOrg(ctx, result.UserUID, org.UID)
+		require.Error(t, memberErr)
+
+		request, reqErr := svc.db.GetMembershipRequestByOrgAndUser(ctx, org.UID, result.UserUID)
+		require.NoError(t, reqErr)
+		require.Equal(t, models.MembershipRequestStatusPending, request.Status)
+	})
+
+	t.Run("another workspace does not reach the linked org", func(t *testing.T) {
+		t.Parallel()
+
+		// Slack attests workspace T-OTHER: the sign-in resolves (creates) that
+		// workspace's own org and must never touch the T-LINKED org.
+		svc, org, ctx := setup(t, "T-OTHER")
+
+		result, err := svc.HandleCallback(ctx, "mock-code")
+		require.NoError(t, err)
+		require.NotEqual(t, org.Slug, result.OrgSlug, "a foreign workspace must not resolve to the linked org")
+
+		_, memberErr := svc.db.GetMemberByUserAndOrg(ctx, result.UserUID, org.UID)
+		require.Error(t, memberErr, "no membership may appear in the org linked to another workspace")
+	})
 }
 
 // TestFindOrCreateOrganizationSlugFromWorkspace verifies that the org slug is
