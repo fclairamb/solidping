@@ -95,7 +95,8 @@
     "current": "Actual",
     "role": "Rol",
     "switch": "Cambiar",
-    "switchFailed": "No se pudo cambiar de organización"
+    "switchFailed": "No se pudo cambiar de organización",
+    "settings": "Configuración"
   },
   "notifications": {
     "verifyButton": "Verificar",

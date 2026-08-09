@@ -126,7 +126,8 @@
     "current": "Actuelle",
     "role": "Rôle",
     "switch": "Changer",
-    "switchFailed": "Échec du changement d'organisation"
+    "switchFailed": "Échec du changement d'organisation",
+    "settings": "Paramètres"
   },
   "notifications": {
     "verifyButton": "Vérifier",

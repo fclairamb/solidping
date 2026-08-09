@@ -126,7 +126,8 @@
     "current": "Current",
     "role": "Role",
     "switch": "Switch",
-    "switchFailed": "Failed to switch organization"
+    "switchFailed": "Failed to switch organization",
+    "settings": "Settings"
   },
   "notifications": {
     "verifyButton": "Verify",

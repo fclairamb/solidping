@@ -95,7 +95,8 @@
     "current": "Aktuell",
     "role": "Rolle",
     "switch": "Wechseln",
-    "switchFailed": "Organisation konnte nicht gewechselt werden"
+    "switchFailed": "Organisation konnte nicht gewechselt werden",
+    "settings": "Einstellungen"
   },
   "notifications": {
     "verifyButton": "Verifizieren",
