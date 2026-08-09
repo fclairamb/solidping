@@ -717,6 +717,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	s.mcpHandler = mcp.NewHandler(
 		s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService,
 		s.services.Credentials, s.services.Entitlements, s.services.Realtime,
+		s.config,
 	)
 	mcpGroup := api.NewGroup("/mcp")
 	// GET is deliberately outside RequireMCPAuth: a browser opening the

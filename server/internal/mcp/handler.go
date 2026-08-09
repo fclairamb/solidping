@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
@@ -97,7 +98,11 @@ type Handler struct {
 type toolFunc func(ctx context.Context, orgSlug string, args map[string]any) ToolCallResult
 
 // NewHandler creates a new MCP handler. rt may be nil (realtime disabled) —
-// hint publishing is a nil-safe no-op then.
+// hint publishing is a nil-safe no-op then. cfg is the app config; it is
+// threaded into integrationsSvc so that surface behaves identically to the
+// HTTP integrations handler — notably the Twilio credential-verification
+// test-run bypass (RunMode == "test"), which otherwise would make a live
+// Twilio call for every MCP-created Twilio connection regardless of run mode.
 func NewHandler(
 	dbService db.Service,
 	eventNotifier notifier.EventNotifier,
@@ -106,6 +111,7 @@ func NewHandler(
 	creds credentials.Service,
 	entSvc *entcore.Service,
 	rtPub *realtime.Publisher,
+	cfg *config.Config,
 ) *Handler {
 	handler := &Handler{
 		checksSvc:     checks.NewService(dbService, eventNotifier, creds, entSvc),
@@ -118,9 +124,11 @@ func NewHandler(
 		// defaults (see statuspages.Service.retentionHints).
 		statusPagesSvc: statuspages.NewService(dbService, nil, nil),
 		maintenanceSvc: maintenancewindows.NewService(dbService),
-		// nil registry/config: the MCP surface manages integrations but does
-		// not dispatch test notifications, which is the only path needing them.
-		integrationsSvc: integrations.NewService(dbService, creds, nil, nil),
+		// nil registry: the MCP surface manages integrations but does not
+		// dispatch test notifications, which is the only path needing it. cfg
+		// IS passed (see doc comment above) — integrations.Service uses it
+		// only for the Twilio test-run verification bypass today.
+		integrationsSvc: integrations.NewService(dbService, creds, nil, cfg),
 		checkGroupsSvc:  checkgroups.NewService(dbService),
 		regionsSvc:      regionshandler.NewService(dbService),
 		dbService:       dbService,
