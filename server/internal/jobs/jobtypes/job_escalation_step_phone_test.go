@@ -296,6 +296,55 @@ func TestDispatch_UnverifiedPhoneNeverContacted(t *testing.T) {
 	r.Equal(0, fake.callCount())
 }
 
+// TestDispatch_RegionResolvesRegionalBase proves the escalation SMS and voice
+// paths resolve the connection's region to the matching Twilio host. This
+// pins the negative that motivated the spec: before the region fix, both
+// paths silently pinned to twilio.DefaultBaseURL regardless of the
+// connection's configured region — a test covering only the notifications
+// sender would have passed the old, broken code for these two paths.
+//
+//nolint:paralleltest // mutates the package-level newTwilioClient seam.
+func TestDispatch_RegionResolvesRegionalBase(t *testing.T) {
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, true, "+15559990001")
+
+	channels, err := env.db.ListChannels(ctx, &models.ListIntegrationsFilter{OrganizationUID: env.org.UID})
+	r.NoError(err)
+	r.Len(channels, 1)
+	conn := channels[0]
+	conn.Settings["region"] = "ie1"
+	r.NoError(env.db.UpdateChannel(ctx, conn.UID, &models.IntegrationUpdate{Settings: &conn.Settings}))
+
+	fake, srv := newFakeTwilio(t)
+
+	var gotBaseURLs []string
+	prev := newTwilioClient
+	newTwilioClient = func(accountSID, authToken, baseURL string) *twilio.Client {
+		gotBaseURLs = append(gotBaseURLs, baseURL)
+		// Redirect to the fake server so the send still "succeeds" — only the
+		// resolved base URL argument is under test here.
+		return twilio.NewClientWithBaseURL(accountSID, authToken, srv.URL)
+	}
+	t.Cleanup(func() { newTwilioClient = prev })
+
+	run := newRun()
+	filter := map[string]bool{"sms": true, "voice": true}
+
+	sent := run.dispatchRoute(ctx, env.jctx, slog.Default(), env.incident, verifiedPhoneRoute(env.org.UID), filter)
+
+	r.Equal(2, sent, "sms + voice both fire")
+	r.Equal(1, fake.smsCount())
+	r.Equal(1, fake.callCount())
+	r.Len(gotBaseURLs, 2, "both the SMS and the voice call must resolve a base URL")
+
+	for _, u := range gotBaseURLs {
+		r.Equal("https://api.ie1.twilio.com", u,
+			"the escalation dispatcher must resolve the connection's region, not the default base")
+	}
+}
+
 // TestDispatch_MissingProviderDegradesToSkip proves that with no Twilio
 // connection the phone route quietly returns 0 (no panic, no error).
 //

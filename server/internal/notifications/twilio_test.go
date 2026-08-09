@@ -136,6 +136,27 @@ func TestTwilioSender_EmptyRecipientsErrors(t *testing.T) {
 	r.ErrorIs(err, ErrTwilioNoRecipients)
 }
 
+// TestTwilioSender_ResolveBaseURL pins the documented precedence: the test
+// override (BaseURL) wins when set, regardless of region, and the
+// connection's region decides only when BaseURL is empty — which is what
+// keeps a connection with no region behaving exactly as before this field
+// existed (both resolve to twilio.DefaultBaseURL).
+func TestTwilioSender_ResolveBaseURL(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	// BaseURL set: wins over any region, even a non-default one.
+	overridden := &TwilioSender{BaseURL: "http://fake.test"}
+	r.Equal("http://fake.test", overridden.resolveBaseURL(""))
+	r.Equal("http://fake.test", overridden.resolveBaseURL("ie1"))
+
+	// BaseURL empty: falls through to the region.
+	prod := &TwilioSender{}
+	r.Equal("https://api.twilio.com", prod.resolveBaseURL(""), "no region behaves exactly as before this field existed")
+	r.Equal("https://api.twilio.com", prod.resolveBaseURL("us1"))
+	r.Equal("https://api.ie1.twilio.com", prod.resolveBaseURL("ie1"))
+}
+
 func TestTwilioSender_MissingCredentialsErrors(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
