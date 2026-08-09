@@ -63,11 +63,15 @@ standard PATCH semantics; `logoUrl: null`/`""` clears the logo).
   responses (login/switch-org/org listings where the org object is
   serialized).
 
-Documented consequence (no silent magic): renaming the slug changes all
-`/orgs/:org/...` URLs, including the intentionally public ones — status-page
-links, SVG badges, embed widgets (`server/internal/app/server.go:548-549`).
-No redirect from the old slug. Custom-domain status pages are host-routed and
-unaffected. The UI must warn about this before saving.
+Documented consequence (no silent magic): renaming the slug changes the
+canonical form of every `/orgs/:org/...` URL, including the intentionally
+public ones — status-page links, SVG badges, embed widgets
+(`server/internal/app/server.go:548-549`). **Old links keep working**: the
+previous slug is remembered and redirects (301 for safe methods, 308 for the
+rest) to the current one — see `## Resolved open questions`, which is
+authoritative on this point. That guarantee lasts only until another
+organization claims the freed slug, so the UI must still warn before saving.
+Custom-domain status pages are host-routed and unaffected.
 
 ### 2. Logo upload: `POST /api/v1/orgs/:org/logo` (owner-gated)
 
@@ -112,8 +116,8 @@ top, visible/editable for owners only:
 
 ## Open questions
 
-- Should the old slug 404 or 410 after a rename? Spec assumes plain 404
-  (org lookup by slug simply misses), no tombstone.
+- ~~Should the old slug 404 or 410 after a rename?~~ Resolved below: neither —
+  the old slug keeps resolving and redirects to the current one.
 
 ## Resolved open questions
 
@@ -163,3 +167,101 @@ is XSS.
   correct content type by the existing files handler (verify it doesn't
   serve inline-executable SVG with a sniffable type; set
   `Content-Disposition`/`X-Content-Type-Options` if needed).
+
+## Implementation Plan
+
+### 1. Migration `012_org_profile` (both dialects)
+
+`server/internal/db/{postgres,sqlite}/migrations/012_org_profile.{up,down}.sql` —
+scratch migration for the in-flight v0.10.0 cycle (`wiki/conventions/database.md`),
+never appended to `011_owner_role`:
+
+- `organizations` gains `logo_url text` and `logo_file_uid` (nullable, FK to
+  `files(uid) on delete set null` in Postgres; plain column in SQLite, which
+  cannot `add column ... references` retroactively without a table rebuild —
+  the rebuild is not worth it for a nullable pointer, so SQLite gets a plain
+  column and the app enforces the link).
+- new table `organization_previous_slugs (uid, organization_uid, slug,
+  created_at, deleted_at)` + partial unique index on `slug where deleted_at is
+  null` + index on `organization_uid`.
+
+### 2. DB layer
+
+- `models.Organization` gains `LogoURL *string` / `LogoFileUID *string`;
+  `models.OrganizationUpdate` gains `LogoURL`, `ClearLogoURL`, `LogoFileUID`,
+  `ClearLogoFileUID`.
+- New `models.OrganizationPreviousSlug`.
+- New `db.Service` methods (implemented in both `sqlite` and `postgres`):
+  - `AddOrganizationPreviousSlug(ctx, orgUID, slug)`
+  - `GetOrganizationByPreviousSlug(ctx, slug)` — joins `organizations` and
+    filters `organizations.deleted_at IS NULL`, so a **soft-deleted org can
+    never resolve through an alias** (the cross-spec boundary with
+    `2026-08-08-11`).
+  - `ReleaseOrganizationPreviousSlug(ctx, slug)` — soft-deletes every alias row
+    for that slug, whichever org holds it.
+  - `ReleaseOrganizationPreviousSlugsForOrg(ctx, orgUID)`
+  - `GetOrganizationByLogoFileUID(ctx, fileUID)`
+
+### 3. Slug resolution + redirect
+
+- `auth.Service.ResolveOrgSlug` is not needed; resolution is a middleware:
+  `middleware.OrgSlugRedirect` (`server/internal/middleware/orgslug.go`).
+  - live org wins → pass through (an alias **never** shadows a live org);
+  - miss + alias hit on a live org → `301` (GET/HEAD) / `308` (other methods)
+    to the same URL with the `{org}` segment replaced by the canonical slug.
+    The `{org}` segment is located through the matched chi route pattern, not
+    by string matching, so a check named like the org is never rewritten.
+  - miss + no alias → pass through, downstream 404s as before.
+- Wired ahead of `RequireAuth`/`RequireOrgAccess` on the `orgGroup` helper (so
+  the redirect happens before the token-scope 403 in
+  `auth.AuthorizeOrgAccess`), on `orgOwnerGroup`, and on the public surfaces
+  registered directly on `api`: per-check badge, heartbeat, magic-link ack,
+  status-page subscribe, and the four public `/status-pages/:org/...` routes
+  (view, summary, badge, feed) — the last of which is what the `/embed/v1`
+  widget polls, so the widget follows the redirect transparently.
+- SPA URLs: `app.orgSlugRedirectForSPA` handles `/status0/<org>/...` and
+  `/dash0/orgs/<org>/...` in `serveStatus0Root` / `serveDash0Root`.
+- The realtime WS (`/orgs/:org/events/ws`) cannot redirect (no HTTP redirect in
+  a handshake) and is left alone — documented.
+
+### 4. `PATCH /api/v1/orgs/:org` (owner-gated)
+
+`auth.Service.UpdateOrgProfile` in `server/internal/handlers/auth/org_profile.go`:
+name / slug / logoUrl, `orgSlugRegex` + availability, and on rename:
+persist the old slug as an alias, release any alias on the *new* slug, and mint
+a fresh org-scoped session for the new slug (mirroring CreateOrg/SwitchOrg).
+`CreateOrg` releases any alias holding the slug it just claimed, and `DeleteOrg`
+releases all of the deleted org's aliases.
+
+### 5. Logo
+
+- `POST /api/v1/orgs/:org/logo` (owner-gated, multipart `logo`): allowlist
+  `image/png|jpeg|webp|svg+xml|gif`, 1 MB cap, `files.Service.CreateFile`,
+  soft-delete the previous uploaded logo file.
+- `DELETE /api/v1/orgs/:org/logo` clears it.
+- Public serving: `GET /pub/org-logos/:uid` — unsigned but validated (the file
+  must be the *current* logo of a live org), because `/pub/files/:uid` requires
+  an expiring signed URL and a logo needs a stable one.
+- **Security hardening (binding):** `files.writeFileContent` now always sets
+  `X-Content-Type-Options: nosniff` and only serves `Content-Disposition:
+  inline` for a safe raster allowlist — everything else, `image/svg+xml`
+  included, is `attachment`. `<img src>` still renders an SVG logo; top-level
+  navigation to it can no longer execute script on our origin.
+
+### 6. Dashboard (dash0)
+
+Owner-only **Organization profile** card in
+`web/dash0/src/routes/orgs/$org/organization.settings.tsx` (above the existing
+danger zone, untouched): name+slug pair with a rename warning stating that old
+links redirect until someone else claims the slug, logo preview + URL field +
+upload/clear. On rename, adopt the returned tokens and navigate to the new slug.
+Org logo shown in `AppSidebar`.
+
+### 7. Docs & tests
+
+OpenAPI (`openapi.yaml` + regenerated `pkg/client`), `wiki/api-specification/`.
+Backend tests: rename→alias 301 across API/status-page/badge/embed surfaces
+(with the new slug 200 as the positive control), alias never shadows a live org,
+CreateOrg claims an alias and the alias stops resolving, rename+delete → both
+slugs 404, slug validation/uniqueness, owner gating, logo type/size validation
+and the SVG content-type hardening. Playwright E2E for the profile card.
