@@ -2641,10 +2641,18 @@ type OrgResponse struct {
 
 var orgSlugRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$`)
 
-// CreateOrg creates a new organization, makes the user an admin, and mints a
+// CreateOrg creates a new organization, makes the caller its OWNER, and mints a
 // session scoped to the new org — mirroring SwitchOrg, since this is
 // structurally the same "hand the caller a token for an org other than the
 // one in their current claims" problem.
+//
+// The org is always created for the authenticated caller: userUID comes from
+// the validated JWT claims, never from the request body, so there is no way to
+// create an org on somebody else's behalf.
+//
+// Slug availability is decided by GetOrganizationBySlug, which filters
+// `deleted_at IS NULL` — so a deleted org's slug is free for reuse, matching
+// the partial unique index on organizations(slug).
 func (s *Service) CreateOrg(
 	ctx context.Context, userUID string, req CreateOrgRequest, authContext Context,
 ) (*OrgResponse, error) {
@@ -2677,8 +2685,11 @@ func (s *Service) CreateOrg(
 		return nil, fmt.Errorf("failed to create organization: %w", createOrgErr)
 	}
 
-	// Make user admin
-	member := models.NewOrganizationMember(org.UID, userUID, models.MemberRoleAdmin)
+	// The creator owns the org they just created: owner outranks admin, and
+	// only an owner may delete the org or grant/revoke ownership (spec
+	// 2026-08-08-11). Without this the creator becomes indistinguishable from
+	// any admin they later promote.
+	member := models.NewOrganizationMember(org.UID, userUID, models.MemberRoleOwner)
 	member.JoinedAt = &now
 
 	if createMemberErr := s.db.CreateOrganizationMember(ctx, member); createMemberErr != nil {
@@ -2713,7 +2724,7 @@ func (s *Service) CreateOrg(
 
 	s.enforceSessionCap(ctx, userUID)
 
-	accessToken, err := s.generateAccessToken(userUID, org.Slug, string(models.MemberRoleAdmin), refreshToken.UID)
+	accessToken, err := s.generateAccessToken(userUID, org.Slug, string(models.MemberRoleOwner), refreshToken.UID)
 	if err != nil {
 		return nil, err
 	}

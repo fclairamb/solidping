@@ -446,41 +446,61 @@ func GetClaimsFromContext(ctx context.Context) (*auth.Claims, bool) {
 	return claims, claimsOK
 }
 
-// RequireOrgAdmin is a middleware that requires the authenticated user to be an
-// admin of the organization (member with role "admin") or a super admin.
-// Must be used after RequireAuth and RequireOrgAccess (it relies on the
-// organization being resolved into the context).
+// RequireOrgAdmin is a middleware that requires the authenticated user to hold
+// at least the admin role in the organization (so an owner passes too) or to be
+// a super admin. Must be used after RequireAuth and RequireOrgAccess (it relies
+// on the organization being resolved into the context).
 func (m *AuthMiddleware) RequireOrgAdmin(next httpx.HandlerFunc) httpx.HandlerFunc {
-	return func(writer http.ResponseWriter, req *http.Request) error {
-		user, userOK := GetUserFromContext(req.Context())
-		if !userOK {
-			return m.WriteError(
-				writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
-		}
+	return m.requireOrgRole(models.MemberRoleAdmin, "Admin access required")(next)
+}
 
-		// Super admins are always allowed.
-		if user.SuperAdmin {
+// RequireOrgOwner is a middleware that requires the authenticated user to be an
+// owner of the organization (or a super admin). It guards the irreversible
+// org-lifecycle operations — today, deleting the organization.
+// Must be used after RequireAuth and RequireOrgAccess.
+func (m *AuthMiddleware) RequireOrgOwner(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return m.requireOrgRole(models.MemberRoleOwner, "Owner access required")(next)
+}
+
+// requireOrgRole builds a middleware enforcing a minimum org role. The check is
+// hierarchical (models.MemberRole.AtLeast), never an equality test: with owner
+// sitting above admin, an equality test would lock owners out of every admin
+// surface.
+func (m *AuthMiddleware) requireOrgRole(
+	minRole models.MemberRole, denyMessage string,
+) func(httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(next httpx.HandlerFunc) httpx.HandlerFunc {
+		return func(writer http.ResponseWriter, req *http.Request) error {
+			user, userOK := GetUserFromContext(req.Context())
+			if !userOK {
+				return m.WriteError(
+					writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
+			}
+
+			// Super admins are always allowed.
+			if user.SuperAdmin {
+				return next(writer, req)
+			}
+
+			org, orgOK := GetOrganizationFromContext(req.Context())
+			if !orgOK {
+				return m.WriteError(
+					writer, http.StatusForbidden, base.ErrorCodeForbidden, "Organization context missing")
+			}
+
+			member, err := m.dbService.GetMemberByUserAndOrg(req.Context(), user.UID, org.UID)
+			if err != nil {
+				return m.WriteError(
+					writer, http.StatusForbidden, base.ErrorCodeForbidden, denyMessage)
+			}
+
+			if !member.Role.AtLeast(minRole) {
+				return m.WriteError(
+					writer, http.StatusForbidden, base.ErrorCodeForbidden, denyMessage)
+			}
+
 			return next(writer, req)
 		}
-
-		org, orgOK := GetOrganizationFromContext(req.Context())
-		if !orgOK {
-			return m.WriteError(
-				writer, http.StatusForbidden, base.ErrorCodeForbidden, "Organization context missing")
-		}
-
-		member, err := m.dbService.GetMemberByUserAndOrg(req.Context(), user.UID, org.UID)
-		if err != nil {
-			return m.WriteError(
-				writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin access required")
-		}
-
-		if member.Role != models.MemberRoleAdmin {
-			return m.WriteError(
-				writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin access required")
-		}
-
-		return next(writer, req)
 	}
 }
 

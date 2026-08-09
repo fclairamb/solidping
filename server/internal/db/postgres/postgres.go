@@ -762,11 +762,28 @@ func (s *Service) DeleteOrganizationMember(ctx context.Context, uid string) erro
 	return err
 }
 
+// CountAdminsByOrg counts the members who hold at least the admin role. Owners
+// are included deliberately: they outrank admins, so an org whose only
+// privileged member is its owner must not read as "zero admins" to the
+// last-admin guards.
 func (s *Service) CountAdminsByOrg(ctx context.Context, orgUID string) (int, error) {
 	count, err := s.db.NewSelect().
 		Model((*models.OrganizationMember)(nil)).
 		Where("organization_uid = ?", orgUID).
-		Where("role = ?", models.MemberRoleAdmin).
+		Where("role IN (?)", bun.In([]models.MemberRole{models.MemberRoleOwner, models.MemberRoleAdmin})).
+		Where("deleted_at IS NULL").
+		Where("joined_at IS NOT NULL").
+		Count(ctx)
+
+	return count, err
+}
+
+// CountOwnersByOrg counts the org's live owners. Used by the last-owner guard.
+func (s *Service) CountOwnersByOrg(ctx context.Context, orgUID string) (int, error) {
+	count, err := s.db.NewSelect().
+		Model((*models.OrganizationMember)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("role = ?", models.MemberRoleOwner).
 		Where("deleted_at IS NULL").
 		Where("joined_at IS NOT NULL").
 		Count(ctx)
@@ -885,6 +902,29 @@ func (s *Service) DeleteUserToken(ctx context.Context, uid string) (bool, error)
 	}
 
 	return affected > 0, nil
+}
+
+// DeleteUserTokensByOrg soft-deletes every token scoped to an organization
+// (refresh tokens, PATs, OAuth grants) and returns how many rows it killed.
+// Called when an organization is deleted so no surviving session can keep
+// talking to it. Org-less tokens (organization_uid IS NULL) are untouched.
+func (s *Service) DeleteUserTokensByOrg(ctx context.Context, orgUID string) (int, error) {
+	res, err := s.db.NewUpdate().
+		Model((*models.UserToken)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Set("deleted_at = ?", time.Now()).
+		Exec(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to read delete org tokens result: %w", err)
+	}
+
+	return int(affected), nil
 }
 
 // UserPasskey operations

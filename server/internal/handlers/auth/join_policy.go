@@ -99,7 +99,8 @@ func resolveLoginOptions(opts []LoginOption) loginOptions {
 //
 //  0. Super admin      → no membership row, implicit access (member is nil).
 //  1. Existing member  → returned as-is (pure login, nothing changes).
-//  2. Zero-member org  → joins as admin (bootstrap / self-hosted onboarding).
+//  2. Zero-member org  → joins as OWNER (bootstrap / self-hosted onboarding);
+//     whoever brings an org into existence owns it.
 //  3. Pending invite for the email → joins with the invited role, invite consumed.
 //  4. Slack workspace attestation for the workspace THIS org is linked to →
 //     joins as user (see slackWorkspaceAdmits).
@@ -132,14 +133,20 @@ func (s *Service) JoinOrgViaLogin(
 		return nil, false, nil
 	}
 
-	// Rule 2: bootstrap. The first ever member of an org becomes its admin.
+	// Rule 2: bootstrap. The first ever member of an org becomes its OWNER.
+	//
+	// This is the connector org-creation path: Slack/Discord/OIDC
+	// findOrCreateOrganization mints an empty org and then funnels through
+	// here, so "whoever caused the org to exist owns it" holds for every
+	// connector without each one growing its own membership code (spec
+	// 2026-08-08-11). It matches CreateOrg, which makes its caller the owner.
 	members, err := s.db.ListMembersByOrg(ctx, org.UID)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to list members: %w", err)
 	}
 
 	if len(members) == 0 {
-		created, createErr := s.createLoginMembership(ctx, org.UID, user.UID, models.MemberRoleAdmin, "")
+		created, createErr := s.createLoginMembership(ctx, org.UID, user.UID, models.MemberRoleOwner, "")
 		return created, false, createErr
 	}
 

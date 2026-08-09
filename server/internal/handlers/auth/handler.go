@@ -8,6 +8,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
@@ -15,8 +16,6 @@ import (
 
 // CookieAuthToken is the name of the cookie used for storing the access token.
 const CookieAuthToken = "access_token"
-
-const roleAdmin = "admin"
 
 const (
 	roleUser            = "user"
@@ -707,7 +706,7 @@ func (h *Handler) CreateInvitation(writer http.ResponseWriter, req *http.Request
 	}
 
 	// Admin check
-	if claims.Role != roleAdmin && claims.Role != RoleSuperAdmin {
+	if !claims.HasOrgRole(models.MemberRoleAdmin) {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin access required")
 	}
 
@@ -753,7 +752,7 @@ func (h *Handler) ListInvitations(writer http.ResponseWriter, req *http.Request)
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	if claims.Role != roleAdmin && claims.Role != RoleSuperAdmin {
+	if !claims.HasOrgRole(models.MemberRoleAdmin) {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin access required")
 	}
 
@@ -774,7 +773,7 @@ func (h *Handler) RevokeInvitation(writer http.ResponseWriter, req *http.Request
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	if claims.Role != roleAdmin && claims.Role != RoleSuperAdmin {
+	if !claims.HasOrgRole(models.MemberRoleAdmin) {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin access required")
 	}
 
@@ -842,7 +841,7 @@ func (h *Handler) GetOrgSettings(writer http.ResponseWriter, req *http.Request) 
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	if claims.Role != roleAdmin && claims.Role != RoleSuperAdmin {
+	if !claims.HasOrgRole(models.MemberRoleAdmin) {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin access required")
 	}
 
@@ -863,7 +862,7 @@ func (h *Handler) UpdateOrgSettings(writer http.ResponseWriter, req *http.Reques
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	if claims.Role != roleAdmin && claims.Role != RoleSuperAdmin {
+	if !claims.HasOrgRole(models.MemberRoleAdmin) {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin access required")
 	}
 

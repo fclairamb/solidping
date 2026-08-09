@@ -127,7 +127,7 @@ func (h *Handler) authorize(req *http.Request, requireWrite bool) (*principal, e
 	}
 
 	claims, _ := middleware.GetClaimsFromContext(req.Context())
-	isAdmin := claims != nil && (claims.Role == "admin" || claims.Role == "superadmin")
+	isAdmin := claims.HasOrgRole(models.MemberRoleAdmin)
 
 	if requireWrite {
 		writesEnabled, _ := h.adminWritesEnabled(req.Context())

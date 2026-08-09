@@ -30,7 +30,7 @@ func isAdmin(req *http.Request) bool {
 		return false
 	}
 
-	return claims.Role == "admin" || claims.IsSuperAdmin()
+	return claims.HasOrgRole(models.MemberRoleAdmin)
 }
 
 // Handler provides HTTP handlers for network discovery endpoints.

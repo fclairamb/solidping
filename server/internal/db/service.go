@@ -109,7 +109,11 @@ type Service interface {
 	ListMembersByUser(ctx context.Context, userUID string) ([]*models.OrganizationMember, error)
 	UpdateOrganizationMember(ctx context.Context, uid string, update models.OrganizationMemberUpdate) error
 	DeleteOrganizationMember(ctx context.Context, uid string) error
+	// CountAdminsByOrg counts members holding at least the admin role (owners
+	// included — they outrank admins).
 	CountAdminsByOrg(ctx context.Context, orgUID string) (int, error)
+	// CountOwnersByOrg counts the organization's live owners.
+	CountOwnersByOrg(ctx context.Context, orgUID string) (int, error)
 
 	// UserToken operations
 	CreateUserToken(ctx context.Context, token *models.UserToken) error
@@ -124,6 +128,10 @@ type Service interface {
 	// exchange) use the bool to detect a replay racing a concurrent
 	// redemption; plain revocation callers may ignore it.
 	DeleteUserToken(ctx context.Context, uid string) (bool, error)
+	// DeleteUserTokensByOrg soft-deletes every token scoped to an organization
+	// and returns the number of rows killed. Used when an organization is
+	// deleted so no surviving session keeps org-scoped access.
+	DeleteUserTokensByOrg(ctx context.Context, orgUID string) (int, error)
 
 	// OAuth (MCP authorization server) operations. Only the client registry
 	// has dedicated storage: authorization codes are issued/redeemed through

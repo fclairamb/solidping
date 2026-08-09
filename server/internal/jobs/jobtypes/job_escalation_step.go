@@ -1022,7 +1022,7 @@ func (r *EscalationStepJobRun) pageAllAdmins(
 
 	count := 0
 	for _, member := range members {
-		if member.Role != models.MemberRoleAdmin || member.User == nil {
+		if !member.Role.AtLeast(models.MemberRoleAdmin) || member.User == nil {
 			continue
 		}
 

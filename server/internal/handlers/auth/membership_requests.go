@@ -387,7 +387,7 @@ func (s *Service) notifyAdminsOfMembershipRequest(
 		s.fullCfg.Server.BaseURL, org.Slug)
 
 	for _, member := range members {
-		if member.Role != models.MemberRoleAdmin || member.User == nil || member.User.Email == "" {
+		if !member.Role.AtLeast(models.MemberRoleAdmin) || member.User == nil || member.User.Email == "" {
 			continue
 		}
 

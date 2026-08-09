@@ -145,14 +145,17 @@ func (r *StartupJobRun) ensureDefaultOrganization(ctx context.Context, jctx *job
 
 	log.InfoContext(ctx, "Created admin user", "uid", adminUser.UID, "email", adminEmail)
 
-	// Create admin membership for default organization
-	membership := models.NewOrganizationMember(defaultOrg.UID, adminUser.UID, models.MemberRoleAdmin)
+	// Create the owner membership for the default organization. The seeded
+	// admin is the org's founder, so it gets `owner` — the same role
+	// CreateOrg and the login-path bootstrap hand whoever brings an org into
+	// existence (spec 2026-08-08-11).
+	membership := models.NewOrganizationMember(defaultOrg.UID, adminUser.UID, models.MemberRoleOwner)
 
 	if createErr := jctx.DBService.CreateOrganizationMember(ctx, membership); createErr != nil {
 		return fmt.Errorf("failed to create admin membership: %w", createErr)
 	}
 
-	log.InfoContext(ctx, "Created admin membership for default organization", "memberUID", membership.UID)
+	log.InfoContext(ctx, "Created owner membership for default organization", "memberUID", membership.UID)
 
 	// Load sample checks if SP_RUN_MODE is not set to "test"
 	if err := r.loadSampleChecks(ctx, jctx, defaultOrg.UID); err != nil {
