@@ -27,6 +27,17 @@ type ipVersionCase struct {
 	checkType checkerdef.CheckType
 	// config builds a config pointing at the given host literal.
 	config func(host string, port int) map[string]any
+	// wantMessage is the substring the "family unavailable" failure must carry.
+	// Every address-picking type shares the cataloged wording; dnsbl is the one
+	// exception, since a DNSBL zone is queried by reversed IPv4 octets and an
+	// IPv6 lookup is a different, unimplemented feature.
+	wantMessage string
+	// wantStatus is the status that failure must report. It is asserted (not
+	// just the message) because the whole point of the shared verdict is that
+	// the SAME condition reports the SAME status on every check type — Down and
+	// Error account differently for availability, so a divergence here silently
+	// changes a user'"'"'s uptime number depending on which type they picked.
+	wantStatus checkerdef.Status
 }
 
 // hostPortConfig is the shape almost every address-picking checker uses.
@@ -34,34 +45,51 @@ func hostPortConfig(host string, port int) map[string]any {
 	return map[string]any{"host": host, "port": port, "timeout": "2s"}
 }
 
+// cataloged is the shared "target has no address of the requested family"
+// wording, and the status it must always report: the target really is
+// unreachable over that family, which is a failure OF THE TARGET, not an
+// internal error.
+const cataloged = "no address of the requested IP version"
+
 func ipVersionCases() []ipVersionCase {
+	shared := func(checkType checkerdef.CheckType, config func(string, int) map[string]any) ipVersionCase {
+		return ipVersionCase{
+			checkType:   checkType,
+			config:      config,
+			wantMessage: cataloged,
+			wantStatus:  checkerdef.StatusDown,
+		}
+	}
+
 	return []ipVersionCase{
-		{checkType: checkerdef.CheckTypeTCP, config: hostPortConfig},
-		{checkType: checkerdef.CheckTypeUDP, config: hostPortConfig},
-		{checkType: checkerdef.CheckTypeSSH, config: hostPortConfig},
-		{checkType: checkerdef.CheckTypeSMTP, config: hostPortConfig},
-		{checkType: checkerdef.CheckTypeIMAP, config: hostPortConfig},
-		{checkType: checkerdef.CheckTypePOP3, config: hostPortConfig},
+		shared(checkerdef.CheckTypeTCP, hostPortConfig),
+		shared(checkerdef.CheckTypeUDP, hostPortConfig),
+		shared(checkerdef.CheckTypeSSH, hostPortConfig),
+		shared(checkerdef.CheckTypeSMTP, hostPortConfig),
+		shared(checkerdef.CheckTypeIMAP, hostPortConfig),
+		shared(checkerdef.CheckTypePOP3, hostPortConfig),
+		shared(checkerdef.CheckTypeSSL, hostPortConfig),
+		shared(checkerdef.CheckTypeICMP, func(host string, _ int) map[string]any {
+			return map[string]any{"host": host, "count": 1, "timeout": "2s"}
+		}),
+		shared(checkerdef.CheckTypeHTTP, func(host string, port int) map[string]any {
+			return map[string]any{
+				"url":     "http://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/",
+				"timeout": "2s",
+			}
+		}),
 		{
-			checkType: checkerdef.CheckTypeICMP,
+			// dnsbl is the tenth ipVersion-capable type and the one that cannot
+			// honor ipv6 at all: DNSBL zones are indexed by reversed IPv4
+			// octets. It is rejected at write time, so the runtime guard is for
+			// hand-edited rows — and it must still say WHY rather than dying in
+			// a reverse-octet helper.
+			checkType: checkerdef.CheckTypeDNSBL,
 			config: func(host string, _ int) map[string]any {
-				return map[string]any{"host": host, "count": 1, "timeout": "2s"}
+				return map[string]any{"target": host, "zones": []any{"zen.spamhaus.org"}}
 			},
-		},
-		{
-			checkType: checkerdef.CheckTypeSSL,
-			config: func(host string, port int) map[string]any {
-				return map[string]any{"host": host, "port": port, "timeout": "2s"}
-			},
-		},
-		{
-			checkType: checkerdef.CheckTypeHTTP,
-			config: func(host string, port int) map[string]any {
-				return map[string]any{
-					"url":     "http://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/",
-					"timeout": "2s",
-				}
-			},
+			wantMessage: "IPv4 blocklists only",
+			wantStatus:  checkerdef.StatusError,
 		},
 	}
 }
@@ -130,8 +158,15 @@ func TestPinnedFamilyUnavailable_IsCataloged(t *testing.T) {
 			r.Contains(message, "127.0.0.1", "the error must name the host")
 			r.Contains(message, "IPv6", "the error must name the requested family")
 			r.Contains(
-				message, "no address of the requested IP version",
+				message, tc.wantMessage,
 				"the error must be the cataloged one, not a generic dial failure",
+			)
+
+			// The status matters as much as the wording: Down and Error account
+			// differently for availability, so every type must agree.
+			r.Equal(
+				tc.wantStatus, result.Status,
+				"the same condition must report the same status on every check type",
 			)
 		})
 	}
@@ -153,9 +188,10 @@ func TestPinnedFamilyAvailable_IsHonored(t *testing.T) {
 			result := runCheck(t, tc.checkType, tc.config("127.0.0.1", 9), checkerdef.IPVersionIPv4)
 
 			r.NotContains(
-				resultError(t, result), "no address of the requested IP version",
+				resultError(t, result), cataloged,
 				"an ipv4 pin on an IPv4 host must not raise the family error",
 			)
+			r.NotContains(resultError(t, result), "IPv4 blocklists only")
 		})
 	}
 }
@@ -175,8 +211,9 @@ func TestAutoNeverRaisesTheFamilyError(t *testing.T) {
 
 			for _, host := range []string{"127.0.0.1", "::1"} {
 				result := runCheck(t, tc.checkType, tc.config(host, 9), checkerdef.IPVersionAuto)
-				r.NotContains(resultError(t, result), "no address of the requested IP version")
+				r.NotContains(resultError(t, result), cataloged)
 				r.NotContains(resultError(t, result), "worker has no egress")
+				r.NotContains(resultError(t, result), "IPv4 blocklists only")
 			}
 		})
 	}
@@ -222,6 +259,40 @@ func TestReportedIPVersionMatchesThePin(t *testing.T) {
 
 				r.Equal(string(tc.version), reported, "host %s", tc.host)
 			}
+		})
+	}
+}
+
+// TestGenuineResolveFailureKeepsItsStatus is the other half of the status
+// unification: only the address-family case was re-verdicted. A hostname that
+// simply does not resolve must still report exactly what each checker reported
+// before — otherwise "make the family case consistent" would have quietly
+// reclassified every NXDOMAIN on four check types.
+func TestGenuineResolveFailureKeepsItsStatus(t *testing.T) {
+	t.Parallel()
+
+	// The four types whose resolve path changed. `.invalid` is reserved by RFC
+	// 2606 and never resolves.
+	for _, checkType := range []checkerdef.CheckType{
+		checkerdef.CheckTypeSSL, checkerdef.CheckTypeSMTP,
+		checkerdef.CheckTypeIMAP, checkerdef.CheckTypePOP3,
+	} {
+		t.Run(string(checkType), func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			result := runCheck(
+				t, checkType,
+				hostPortConfig("no-such-host.invalid", 9),
+				checkerdef.IPVersionAuto,
+			)
+
+			r.Equal(
+				checkerdef.StatusError, result.Status,
+				"a plain resolve failure must keep its historical status",
+			)
+			r.NotContains(resultError(t, result), cataloged)
 		})
 	}
 }

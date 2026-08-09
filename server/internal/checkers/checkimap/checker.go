@@ -129,8 +129,11 @@ func (c *IMAPChecker) Execute(
 	} else {
 		targetIP, resErr := resolveHost(ctx, params.host)
 		if resErr != nil {
+			// A genuine resolve failure stays StatusError, as it always has; an
+			// address-family failure gets the shared verdict so it reads the
+			// same here as on a tcp/http check.
 			return &checkerdef.Result{
-				Status:   checkerdef.StatusError,
+				Status:   checkerdef.ResolveFailureStatus(resErr, checkerdef.StatusError),
 				Duration: time.Since(start),
 				Output:   map[string]any{checkerdef.OutputKeyError: resErr.Error()},
 			}, nil

@@ -609,9 +609,9 @@ const (
 // TUNNEL × ipVersion: a tunneled check is resolved and dialed on the far side of
 // the bastion — the worker never sees an address, so the family is the tunnel's
 // business and not something this check can pin. That combination is rejected at
-// write time (checkerdef.ValidateIPVersionConfig); should a hand-edited row
-// carry both anyway, the tunnel wins here and the family is ignored rather than
-// silently breaking the tunnel.
+// write time (by the checks service's validateIPVersionConfig); should a
+// hand-edited row carry both anyway, the tunnel wins here and the family is
+// ignored rather than silently breaking the tunnel.
 func buildTransport(
 	dialer checkerdef.ContextDialer, skipTLSVerify bool, version checkerdef.IPVersion,
 ) http.RoundTripper {

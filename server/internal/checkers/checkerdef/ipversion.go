@@ -57,6 +57,10 @@ const (
 	OutputKeyIPVersion = "ip_version"
 )
 
+// The two sentinels below are run-time check failures, cataloged in ERRORS.md
+// alongside the status each one reports. Keep that table in step with any
+// change to their wording or their verdict.
+
 // ErrInvalidIPVersion is returned for a value that is not auto/ipv4/ipv6.
 var ErrInvalidIPVersion = errors.New("invalid ipVersion")
 
@@ -238,12 +242,34 @@ func IPVersionOf(ip net.IP) IPVersion {
 // monitored — an IPv6 user cannot reach it — so it is StatusDown. "This worker
 // has no IPv6 egress" is our own infrastructure gap and must not be recorded as
 // the target being down, so it is StatusError.
+//
+// Use this at sites where the error can only ever come from SelectIPAddr. Where
+// the same error path also carries genuine resolve failures (a DNS lookup that
+// failed, a name with no addresses at all), use ResolveFailureStatus so those
+// keep the status the checker has always reported for them.
 func IPVersionFailureStatus(err error) Status {
-	if errors.Is(err, ErrWorkerNoEgress) {
-		return StatusError
-	}
+	return ResolveFailureStatus(err, StatusDown)
+}
 
-	return StatusDown
+// ResolveFailureStatus maps a resolve-or-select failure to a status, falling
+// back to the checker's historical status for anything that is not an
+// address-family failure.
+//
+// This exists so the SAME user-visible condition reports the SAME status on
+// every check type. "example.com has no AAAA record" must not be Down on a tcp
+// check and Error on an ssl check — Down and Error account differently for
+// availability, so a user's uptime number would depend on which check type they
+// happened to pick. The fallback keeps genuine resolve failures (NXDOMAIN, a
+// dead resolver) reporting exactly what that checker reported before.
+func ResolveFailureStatus(err error, fallback Status) Status {
+	switch {
+	case errors.Is(err, ErrWorkerNoEgress):
+		return StatusError
+	case errors.Is(err, ErrNoAddressForFamily):
+		return StatusDown
+	default:
+		return fallback
+	}
 }
 
 // EgressProbe reports whether this worker can originate traffic of the given

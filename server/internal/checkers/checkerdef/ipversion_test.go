@@ -3,6 +3,7 @@ package checkerdef_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"strings"
 	"testing"
@@ -413,6 +414,44 @@ func wrapNoEgress(t *testing.T) error {
 	t.Skip("host accepts every UDP route lookup; cannot exercise the no-egress branch here")
 
 	return nil
+}
+
+// TestResolveFailureStatus pins the shared verdict AND its fallback: the two
+// address-family sentinels always map to the same status regardless of check
+// type (Down and Error account differently for availability, so a divergence
+// changes a user's uptime number depending on which type they picked), while
+// anything else keeps whatever status that checker has always reported for a
+// resolve failure.
+func TestResolveFailureStatus(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	noAddress := fmt.Errorf("%w: nope", checkerdef.ErrNoAddressForFamily)
+	noEgress := fmt.Errorf("%w: nope", checkerdef.ErrWorkerNoEgress)
+
+	// The family verdict ignores the fallback entirely — that is what makes it
+	// identical on every check type.
+	for _, fallback := range []checkerdef.Status{checkerdef.StatusError, checkerdef.StatusDown} {
+		r.Equal(checkerdef.StatusDown, checkerdef.ResolveFailureStatus(noAddress, fallback))
+		r.Equal(checkerdef.StatusError, checkerdef.ResolveFailureStatus(noEgress, fallback))
+	}
+
+	// A genuine resolve failure keeps the checker's historical status, so
+	// unifying the family case did not silently reclassify NXDOMAIN.
+	r.Equal(
+		checkerdef.StatusError,
+		checkerdef.ResolveFailureStatus(errNotAnEgressFailure, checkerdef.StatusError),
+	)
+	r.Equal(
+		checkerdef.StatusDown,
+		checkerdef.ResolveFailureStatus(errNotAnEgressFailure, checkerdef.StatusDown),
+	)
+
+	// IPVersionFailureStatus is the same verdict with a Down fallback, for the
+	// sites where the error can only come from SelectIPAddr.
+	r.Equal(checkerdef.StatusDown, checkerdef.IPVersionFailureStatus(noAddress))
+	r.Equal(checkerdef.StatusError, checkerdef.IPVersionFailureStatus(noEgress))
 }
 
 func TestDialEgressProbe_AutoIsNoop(t *testing.T) {
