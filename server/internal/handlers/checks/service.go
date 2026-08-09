@@ -430,6 +430,12 @@ func (s *Service) ValidateCheck(
 		return s.formatValidateError(timeoutErr), nil
 	}
 
+	// Uniform per-check address-family rule (spec 2026-08-09-02), same
+	// reasoning: the form must see the same verdict the write path will give.
+	if versionErr := validateIPVersionConfig(req.Type, req.Config); versionErr != nil {
+		return s.formatValidateError(versionErr), nil
+	}
+
 	// Tunnel reference rules (existence, type, fingerprint, chaining, and the
 	// region rules of spec 2026-07-18-07) so the form's selector can show the
 	// error inline before the user hits save. Needs the org to resolve the
@@ -1200,6 +1206,13 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	if req.Config != nil {
 		if timeoutErr := validateConfigTimeout(req.Config); timeoutErr != nil {
 			return CheckResponse{}, timeoutErr
+		}
+
+		// Uniform per-check address-family rule (spec 2026-08-09-02): rejects an
+		// unknown value, the option on a type that cannot honor it, and the
+		// tunnel × ipVersion combination.
+		if versionErr := validateIPVersionConfig(req.Type, req.Config); versionErr != nil {
+			return CheckResponse{}, versionErr
 		}
 	}
 
@@ -3717,6 +3730,13 @@ func (s *Service) applyConfigUpdate(
 	// the merged config so a PATCH cannot smuggle in an over-cap value.
 	if timeoutErr := validateConfigTimeout(merged); timeoutErr != nil {
 		return timeoutErr
+	}
+
+	// Same reasoning for the address family: validated on the merged config so a
+	// PATCH cannot smuggle in an invalid value, the option on a type that cannot
+	// honor it, or an ipVersion onto an already-tunneled check.
+	if versionErr := validateIPVersionConfig(check.Type, merged); versionErr != nil {
+		return versionErr
 	}
 
 	// Same reasoning for the tunnel reference: validated on the merged config so

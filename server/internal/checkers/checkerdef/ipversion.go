@@ -147,7 +147,8 @@ func ParseIPVersion(raw string) (IPVersion, error) {
 	case IPVersionIPv4, IPVersionIPv6:
 		return normalized, nil
 	default:
-		return IPVersionAuto, fmt.Errorf("%w: %q (expected auto, ipv4 or ipv6)", ErrInvalidIPVersion, raw)
+		return IPVersionAuto, fmt.Errorf(
+			"%w: must be one of auto, ipv4 or ipv6, got %q", ErrInvalidIPVersion, raw)
 	}
 }
 
@@ -164,7 +165,8 @@ func IPVersionFromConfig(configMap map[string]any) (IPVersion, error) {
 
 		str, ok := raw.(string)
 		if !ok {
-			return IPVersionAuto, fmt.Errorf("%w: must be a string", ErrInvalidIPVersion)
+			return IPVersionAuto, fmt.Errorf(
+				"%w: must be a string (auto, ipv4 or ipv6), got %T", ErrInvalidIPVersion, raw)
 		}
 
 		return ParseIPVersion(str)

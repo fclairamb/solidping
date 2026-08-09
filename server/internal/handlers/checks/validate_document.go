@@ -200,6 +200,11 @@ func validateCheckType(where string, check *ExportCheck) []DocumentIssue {
 		issues = append(issues, DocumentIssue{Where: where, Message: err.Error()})
 	}
 
+	// Shared, type-agnostic config keys the per-type Validate never sees.
+	if err := validateIPVersionConfig(check.Type, check.Config); err != nil {
+		issues = append(issues, DocumentIssue{Where: where, Message: err.Error()})
+	}
+
 	// Credential/status-field checks run on the caller's original config —
 	// never on configCopy, which a checker may have mutated.
 	issues = append(issues, validateNoInlinedCredentials(where, check.Config)...)
