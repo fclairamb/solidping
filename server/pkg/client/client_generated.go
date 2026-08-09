@@ -21,6 +21,7 @@ import (
 // Defines values for AddMemberRequestRole.
 const (
 	AddMemberRequestRoleAdmin  AddMemberRequestRole = "admin"
+	AddMemberRequestRoleOwner  AddMemberRequestRole = "owner"
 	AddMemberRequestRoleUser   AddMemberRequestRole = "user"
 	AddMemberRequestRoleViewer AddMemberRequestRole = "viewer"
 )
@@ -29,6 +30,8 @@ const (
 func (e AddMemberRequestRole) Valid() bool {
 	switch e {
 	case AddMemberRequestRoleAdmin:
+		return true
+	case AddMemberRequestRoleOwner:
 		return true
 	case AddMemberRequestRoleUser:
 		return true
@@ -825,6 +828,7 @@ func (e LoginResponseLoginAction) Valid() bool {
 // Defines values for MemberRole.
 const (
 	MemberRoleAdmin  MemberRole = "admin"
+	MemberRoleOwner  MemberRole = "owner"
 	MemberRoleUser   MemberRole = "user"
 	MemberRoleViewer MemberRole = "viewer"
 )
@@ -833,6 +837,8 @@ const (
 func (e MemberRole) Valid() bool {
 	switch e {
 	case MemberRoleAdmin:
+		return true
+	case MemberRoleOwner:
 		return true
 	case MemberRoleUser:
 		return true
@@ -915,6 +921,7 @@ func (e OrgResultStatus) Valid() bool {
 // Defines values for OrganizationMemberSummaryRole.
 const (
 	OrganizationMemberSummaryRoleAdmin  OrganizationMemberSummaryRole = "admin"
+	OrganizationMemberSummaryRoleOwner  OrganizationMemberSummaryRole = "owner"
 	OrganizationMemberSummaryRoleUser   OrganizationMemberSummaryRole = "user"
 	OrganizationMemberSummaryRoleViewer OrganizationMemberSummaryRole = "viewer"
 )
@@ -923,6 +930,8 @@ const (
 func (e OrganizationMemberSummaryRole) Valid() bool {
 	switch e {
 	case OrganizationMemberSummaryRoleAdmin:
+		return true
+	case OrganizationMemberSummaryRoleOwner:
 		return true
 	case OrganizationMemberSummaryRoleUser:
 		return true
@@ -1068,6 +1077,7 @@ func (e UpdateDependencyRequestKind) Valid() bool {
 // Defines values for UpdateMemberRequestRole.
 const (
 	UpdateMemberRequestRoleAdmin  UpdateMemberRequestRole = "admin"
+	UpdateMemberRequestRoleOwner  UpdateMemberRequestRole = "owner"
 	UpdateMemberRequestRoleUser   UpdateMemberRequestRole = "user"
 	UpdateMemberRequestRoleViewer UpdateMemberRequestRole = "viewer"
 )
@@ -1076,6 +1086,8 @@ const (
 func (e UpdateMemberRequestRole) Valid() bool {
 	switch e {
 	case UpdateMemberRequestRoleAdmin:
+		return true
+	case UpdateMemberRequestRoleOwner:
 		return true
 	case UpdateMemberRequestRoleUser:
 		return true
@@ -1119,6 +1131,7 @@ func (e UpsertCheckRequestType) Valid() bool {
 // Defines values for UserSummaryRole.
 const (
 	UserSummaryRoleAdmin  UserSummaryRole = "admin"
+	UserSummaryRoleOwner  UserSummaryRole = "owner"
 	UserSummaryRoleUser   UserSummaryRole = "user"
 	UserSummaryRoleViewer UserSummaryRole = "viewer"
 )
@@ -1127,6 +1140,8 @@ const (
 func (e UserSummaryRole) Valid() bool {
 	switch e {
 	case UserSummaryRoleAdmin:
+		return true
+	case UserSummaryRoleOwner:
 		return true
 	case UserSummaryRoleUser:
 		return true
@@ -1292,11 +1307,13 @@ type ActivationFunnelRow struct {
 
 // AddMemberRequest defines model for AddMemberRequest.
 type AddMemberRequest struct {
-	Email openapi_types.Email  `json:"email"`
-	Role  AddMemberRequestRole `json:"role"`
+	Email openapi_types.Email `json:"email"`
+
+	// Role Member role. `owner` may only be granted by a caller who is already an owner of the organization; anybody else gets 403 FORBIDDEN.
+	Role AddMemberRequestRole `json:"role"`
 }
 
-// AddMemberRequestRole defines model for AddMemberRequest.Role.
+// AddMemberRequestRole Member role. `owner` may only be granted by a caller who is already an owner of the organization; anybody else gets 403 FORBIDDEN.
 type AddMemberRequestRole string
 
 // AddNotificationContactRequest defines model for AddNotificationContactRequest.
@@ -2079,6 +2096,12 @@ type CursorPagination struct {
 	Cursor *string `json:"cursor,omitempty"`
 	Size   *int    `json:"size,omitempty"`
 	Total  *int    `json:"total,omitempty"`
+}
+
+// DeleteOrgRequest defines model for DeleteOrgRequest.
+type DeleteOrgRequest struct {
+	// Slug The organization's own slug, retyped as confirmation. Must match the `org` path parameter exactly.
+	Slug string `json:"slug"`
 }
 
 // Dependency defines model for Dependency.
@@ -3870,10 +3893,11 @@ type UpdateMaintenanceWindowRequest struct {
 
 // UpdateMemberRequest defines model for UpdateMemberRequest.
 type UpdateMemberRequest struct {
+	// Role New member role. Granting `owner`, or changing the role of a member who currently IS an owner, requires the caller to be an owner (403 FORBIDDEN otherwise). The organization's last owner can never be demoted (409 CONFLICT) — transfer ownership by promoting a second owner first, then demoting yourself.
 	Role *UpdateMemberRequestRole `json:"role,omitempty"`
 }
 
-// UpdateMemberRequestRole defines model for UpdateMemberRequest.Role.
+// UpdateMemberRequestRole New member role. Granting `owner`, or changing the role of a member who currently IS an owner, requires the caller to be an owner (403 FORBIDDEN otherwise). The organization's last owner can never be demoted (409 CONFLICT) — transfer ownership by promoting a second owner first, then demoting yourself.
 type UpdateMemberRequestRole string
 
 // UpdateNotificationRouteRequest Toggle the enabled flag and/or reorder the full route list.
@@ -4684,6 +4708,9 @@ type SwitchOrgJSONRequestBody = SwitchOrgRequest
 // CreateOrgJSONRequestBody defines body for CreateOrg for application/json ContentType.
 type CreateOrgJSONRequestBody = CreateOrgRequest
 
+// DeleteOrgJSONRequestBody defines body for DeleteOrg for application/json ContentType.
+type DeleteOrgJSONRequestBody = DeleteOrgRequest
+
 // CreateChannelJSONRequestBody defines body for CreateChannel for application/json ContentType.
 type CreateChannelJSONRequestBody = CreateChannelRequest
 
@@ -5211,7 +5238,7 @@ type ClientInterface interface {
 
 	// CreateOrgWithBody Create a new organization
 	//
-	// Creates a new organization, makes the caller its admin, and returns a session scoped to the new org.
+	// Creates a new organization, makes the caller its OWNER, and returns a session scoped to the new org. Any authenticated user may create an organization; it is always created for the caller (the owner is taken from the access token, never from the request body). A slug freed by a previously deleted organization may be claimed again.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5220,12 +5247,34 @@ type ClientInterface interface {
 
 	// CreateOrg Create a new organization
 	//
-	// Creates a new organization, makes the caller its admin, and returns a session scoped to the new org.
+	// Creates a new organization, makes the caller its OWNER, and returns a session scoped to the new org. Any authenticated user may create an organization; it is always created for the caller (the owner is taken from the access token, never from the request body). A slug freed by a previously deleted organization may be claimed again.
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/orgs (the `CreateOrg` operationId).
 	CreateOrg(ctx context.Context, body CreateOrgJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteOrgWithBody Delete an organization
+	//
+	// Permanently deletes the organization. **Owner only** — an admin is refused with 403 FORBIDDEN. The request body must repeat the organization slug as an explicit confirmation; a mismatch is a 422 VALIDATION_ERROR.
+	//
+	// Deletion stops every check, revokes every organization-scoped session (including the caller's own), and makes the slug 404 immediately on every surface: the dashboard API, public status pages, badges and the embed widget. The slug is released and may be claimed by a new organization. There is no restore endpoint.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org} (the `DeleteOrg` operationId).
+	DeleteOrgWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteOrg Delete an organization
+	//
+	// Permanently deletes the organization. **Owner only** — an admin is refused with 403 FORBIDDEN. The request body must repeat the organization slug as an explicit confirmation; a mismatch is a 422 VALIDATION_ERROR.
+	//
+	// Deletion stops every check, revokes every organization-scoped session (including the caller's own), and makes the slug 404 immediately on every surface: the dashboard API, public status pages, badges and the embed widget. The slug is released and may be claimed by a new organization. There is no restore endpoint.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org} (the `DeleteOrg` operationId).
+	DeleteOrg(ctx context.Context, org OrgPath, body DeleteOrgJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAdminJobs List background jobs (admin)
 	//
@@ -6781,7 +6830,7 @@ type ClientInterface interface {
 
 	// GetEmbedWidgetV1 Embeddable live status widget script
 	//
-	// Self-contained JavaScript (IIFE) that renders a live status pill on a third-party site. It is loaded by an async script tag carrying data-page="org/slug", and configured entirely through data-attributes: data-mode (inline|floating), data-position (bottom-right|bottom-left), data-theme (light|dark|auto), and per-state label overrides data-label-operational|degraded|down|maintenance|unknown. The widget polls the status page summary endpoint every 60 s with an uncredentialed request and renders into a shadow root; a failed request or an unknown page renders nothing. Everything under /embed/v1/ is a frozen public contract — behavior changes ship under /embed/v2/. Response carries Cache-Control: public, max-age=3600. No authentication required.
+	// Self-contained JavaScript (IIFE) that renders a live status pill on a third-party site. It is loaded by an async script tag carrying data-page="org/slug", and configured entirely through data-attributes: data-mode (inline|floating), data-position (bottom-right|bottom-left), data-theme (light|dark|auto), data-size (sm|md|lg), per-state label overrides data-label-operational|degraded|down|maintenance|unknown, and data-force-status (operational|degraded|down|maintenance|unknown) to render a status statically without polling. The widget polls the status page summary endpoint every 60 s with an uncredentialed request and renders into a shadow root; a failed request or an unknown page renders nothing. Everything under /embed/v1/ is a frozen public contract — behavior changes ship under /embed/v2/, but additive, backward-compatible data-attributes may land within v1. Response carries Cache-Control: public, max-age=3600. No authentication required.
 	//
 	// Corresponds with GET /embed/v1/widget.js (the `GetEmbedWidgetV1` operationId).
 	GetEmbedWidgetV1(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -7521,7 +7570,7 @@ func (c *Client) GetPublicConfig(ctx context.Context, reqEditors ...RequestEdito
 
 // CreateOrgWithBody Create a new organization
 //
-// Creates a new organization, makes the caller its admin, and returns a session scoped to the new org.
+// Creates a new organization, makes the caller its OWNER, and returns a session scoped to the new org. Any authenticated user may create an organization; it is always created for the caller (the owner is taken from the access token, never from the request body). A slug freed by a previously deleted organization may be claimed again.
 //
 // Takes any type of body and a specified content type.
 //
@@ -7540,13 +7589,55 @@ func (c *Client) CreateOrgWithBody(ctx context.Context, contentType string, body
 
 // CreateOrg Create a new organization
 //
-// Creates a new organization, makes the caller its admin, and returns a session scoped to the new org.
+// Creates a new organization, makes the caller its OWNER, and returns a session scoped to the new org. Any authenticated user may create an organization; it is always created for the caller (the owner is taken from the access token, never from the request body). A slug freed by a previously deleted organization may be claimed again.
 //
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/orgs (the `CreateOrg` operationId).
 func (c *Client) CreateOrg(ctx context.Context, body CreateOrgJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateOrgRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteOrgWithBody Delete an organization
+//
+// Permanently deletes the organization. **Owner only** — an admin is refused with 403 FORBIDDEN. The request body must repeat the organization slug as an explicit confirmation; a mismatch is a 422 VALIDATION_ERROR.
+//
+// Deletion stops every check, revokes every organization-scoped session (including the caller's own), and makes the slug 404 immediately on every surface: the dashboard API, public status pages, badges and the embed widget. The slug is released and may be claimed by a new organization. There is no restore endpoint.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with DELETE /api/v1/orgs/{org} (the `DeleteOrg` operationId).
+func (c *Client) DeleteOrgWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteOrgRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteOrg Delete an organization
+//
+// Permanently deletes the organization. **Owner only** — an admin is refused with 403 FORBIDDEN. The request body must repeat the organization slug as an explicit confirmation; a mismatch is a 422 VALIDATION_ERROR.
+//
+// Deletion stops every check, revokes every organization-scoped session (including the caller's own), and makes the slug 404 immediately on every surface: the dashboard API, public status pages, badges and the embed widget. The slug is released and may be claimed by a new organization. There is no restore endpoint.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with DELETE /api/v1/orgs/{org} (the `DeleteOrg` operationId).
+func (c *Client) DeleteOrg(ctx context.Context, org OrgPath, body DeleteOrgJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteOrgRequest(c.Server, org, body)
 	if err != nil {
 		return nil, err
 	}
@@ -11451,7 +11542,7 @@ func (c *Client) SendTestEmail(ctx context.Context, body SendTestEmailJSONReques
 
 // GetEmbedWidgetV1 Embeddable live status widget script
 //
-// Self-contained JavaScript (IIFE) that renders a live status pill on a third-party site. It is loaded by an async script tag carrying data-page="org/slug", and configured entirely through data-attributes: data-mode (inline|floating), data-position (bottom-right|bottom-left), data-theme (light|dark|auto), and per-state label overrides data-label-operational|degraded|down|maintenance|unknown. The widget polls the status page summary endpoint every 60 s with an uncredentialed request and renders into a shadow root; a failed request or an unknown page renders nothing. Everything under /embed/v1/ is a frozen public contract — behavior changes ship under /embed/v2/. Response carries Cache-Control: public, max-age=3600. No authentication required.
+// Self-contained JavaScript (IIFE) that renders a live status pill on a third-party site. It is loaded by an async script tag carrying data-page="org/slug", and configured entirely through data-attributes: data-mode (inline|floating), data-position (bottom-right|bottom-left), data-theme (light|dark|auto), data-size (sm|md|lg), per-state label overrides data-label-operational|degraded|down|maintenance|unknown, and data-force-status (operational|degraded|down|maintenance|unknown) to render a status statically without polling. The widget polls the status page summary endpoint every 60 s with an uncredentialed request and renders into a shadow root; a failed request or an unknown page renders nothing. Everything under /embed/v1/ is a frozen public contract — behavior changes ship under /embed/v2/, but additive, backward-compatible data-attributes may land within v1. Response carries Cache-Control: public, max-age=3600. No authentication required.
 //
 // Corresponds with GET /embed/v1/widget.js (the `GetEmbedWidgetV1` operationId).
 func (c *Client) GetEmbedWidgetV1(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -12614,6 +12705,53 @@ func NewCreateOrgRequestWithBody(server string, contentType string, body io.Read
 	}
 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteOrgRequest calls the generic DeleteOrg builder with application/json body
+func NewDeleteOrgRequest(server string, org OrgPath, body DeleteOrgJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDeleteOrgRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewDeleteOrgRequestWithBody constructs an http.Request for the DeleteOrg method, with any body, and a specified content type
+func NewDeleteOrgRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -22300,7 +22438,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateOrgWithBodyWithResponse Create a new organization
 	//
-	// Creates a new organization, makes the caller its admin, and returns a session scoped to the new org.
+	// Creates a new organization, makes the caller its OWNER, and returns a session scoped to the new org. Any authenticated user may create an organization; it is always created for the caller (the owner is taken from the access token, never from the request body). A slug freed by a previously deleted organization may be claimed again.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -22309,12 +22447,34 @@ type ClientWithResponsesInterface interface {
 
 	// CreateOrgWithResponse Create a new organization
 	//
-	// Creates a new organization, makes the caller its admin, and returns a session scoped to the new org.
+	// Creates a new organization, makes the caller its OWNER, and returns a session scoped to the new org. Any authenticated user may create an organization; it is always created for the caller (the owner is taken from the access token, never from the request body). A slug freed by a previously deleted organization may be claimed again.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/orgs (the `CreateOrg` operationId).
 	CreateOrgWithResponse(ctx context.Context, body CreateOrgJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateOrgResult, error)
+
+	// DeleteOrgWithBodyWithResponse Delete an organization
+	//
+	// Permanently deletes the organization. **Owner only** — an admin is refused with 403 FORBIDDEN. The request body must repeat the organization slug as an explicit confirmation; a mismatch is a 422 VALIDATION_ERROR.
+	//
+	// Deletion stops every check, revokes every organization-scoped session (including the caller's own), and makes the slug 404 immediately on every surface: the dashboard API, public status pages, badges and the embed widget. The slug is released and may be claimed by a new organization. There is no restore endpoint.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org} (the `DeleteOrg` operationId).
+	DeleteOrgWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteOrgResult, error)
+
+	// DeleteOrgWithResponse Delete an organization
+	//
+	// Permanently deletes the organization. **Owner only** — an admin is refused with 403 FORBIDDEN. The request body must repeat the organization slug as an explicit confirmation; a mismatch is a 422 VALIDATION_ERROR.
+	//
+	// Deletion stops every check, revokes every organization-scoped session (including the caller's own), and makes the slug 404 immediately on every surface: the dashboard API, public status pages, badges and the embed widget. The slug is released and may be claimed by a new organization. There is no restore endpoint.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org} (the `DeleteOrg` operationId).
+	DeleteOrgWithResponse(ctx context.Context, org OrgPath, body DeleteOrgJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteOrgResult, error)
 
 	// ListAdminJobsWithResponse List background jobs (admin)
 	//
@@ -24126,7 +24286,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetEmbedWidgetV1WithResponse Embeddable live status widget script
 	//
-	// Self-contained JavaScript (IIFE) that renders a live status pill on a third-party site. It is loaded by an async script tag carrying data-page="org/slug", and configured entirely through data-attributes: data-mode (inline|floating), data-position (bottom-right|bottom-left), data-theme (light|dark|auto), and per-state label overrides data-label-operational|degraded|down|maintenance|unknown. The widget polls the status page summary endpoint every 60 s with an uncredentialed request and renders into a shadow root; a failed request or an unknown page renders nothing. Everything under /embed/v1/ is a frozen public contract — behavior changes ship under /embed/v2/. Response carries Cache-Control: public, max-age=3600. No authentication required.
+	// Self-contained JavaScript (IIFE) that renders a live status pill on a third-party site. It is loaded by an async script tag carrying data-page="org/slug", and configured entirely through data-attributes: data-mode (inline|floating), data-position (bottom-right|bottom-left), data-theme (light|dark|auto), data-size (sm|md|lg), per-state label overrides data-label-operational|degraded|down|maintenance|unknown, and data-force-status (operational|degraded|down|maintenance|unknown) to render a status statically without polling. The widget polls the status page summary endpoint every 60 s with an uncredentialed request and renders into a shadow root; a failed request or an unknown page renders nothing. Everything under /embed/v1/ is a frozen public contract — behavior changes ship under /embed/v2/, but additive, backward-compatible data-attributes may land within v1. Response carries Cache-Control: public, max-age=3600. No authentication required.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -25616,6 +25776,68 @@ func (r CreateOrgResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r CreateOrgResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteOrgResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ValidationError
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteOrgResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeleteOrgResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteOrgResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r DeleteOrgResult) GetJSON422() *ValidationError {
+	return r.JSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteOrgResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteOrgResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteOrgResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteOrgResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -36255,7 +36477,7 @@ func (c *ClientWithResponses) GetPublicConfigWithResponse(ctx context.Context, r
 
 // CreateOrgWithBodyWithResponse Create a new organization
 //
-// Creates a new organization, makes the caller its admin, and returns a session scoped to the new org.
+// Creates a new organization, makes the caller its OWNER, and returns a session scoped to the new org. Any authenticated user may create an organization; it is always created for the caller (the owner is taken from the access token, never from the request body). A slug freed by a previously deleted organization may be claimed again.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -36270,7 +36492,7 @@ func (c *ClientWithResponses) CreateOrgWithBodyWithResponse(ctx context.Context,
 
 // CreateOrgWithResponse Create a new organization
 //
-// Creates a new organization, makes the caller its admin, and returns a session scoped to the new org.
+// Creates a new organization, makes the caller its OWNER, and returns a session scoped to the new org. Any authenticated user may create an organization; it is always created for the caller (the owner is taken from the access token, never from the request body). A slug freed by a previously deleted organization may be claimed again.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -36281,6 +36503,40 @@ func (c *ClientWithResponses) CreateOrgWithResponse(ctx context.Context, body Cr
 		return nil, err
 	}
 	return ParseCreateOrgResult(rsp)
+}
+
+// DeleteOrgWithBodyWithResponse Delete an organization
+//
+// Permanently deletes the organization. **Owner only** — an admin is refused with 403 FORBIDDEN. The request body must repeat the organization slug as an explicit confirmation; a mismatch is a 422 VALIDATION_ERROR.
+//
+// Deletion stops every check, revokes every organization-scoped session (including the caller's own), and makes the slug 404 immediately on every surface: the dashboard API, public status pages, badges and the embed widget. The slug is released and may be claimed by a new organization. There is no restore endpoint.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/orgs/{org} (the `DeleteOrg` operationId).
+func (c *ClientWithResponses) DeleteOrgWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteOrgResult, error) {
+	rsp, err := c.DeleteOrgWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteOrgResult(rsp)
+}
+
+// DeleteOrgWithResponse Delete an organization
+//
+// Permanently deletes the organization. **Owner only** — an admin is refused with 403 FORBIDDEN. The request body must repeat the organization slug as an explicit confirmation; a mismatch is a 422 VALIDATION_ERROR.
+//
+// Deletion stops every check, revokes every organization-scoped session (including the caller's own), and makes the slug 404 immediately on every surface: the dashboard API, public status pages, badges and the embed widget. The slug is released and may be claimed by a new organization. There is no restore endpoint.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/orgs/{org} (the `DeleteOrg` operationId).
+func (c *ClientWithResponses) DeleteOrgWithResponse(ctx context.Context, org OrgPath, body DeleteOrgJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteOrgResult, error) {
+	rsp, err := c.DeleteOrg(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteOrgResult(rsp)
 }
 
 // ListAdminJobsWithResponse List background jobs (admin)
@@ -39497,7 +39753,7 @@ func (c *ClientWithResponses) SendTestEmailWithResponse(ctx context.Context, bod
 
 // GetEmbedWidgetV1WithResponse Embeddable live status widget script
 //
-// Self-contained JavaScript (IIFE) that renders a live status pill on a third-party site. It is loaded by an async script tag carrying data-page="org/slug", and configured entirely through data-attributes: data-mode (inline|floating), data-position (bottom-right|bottom-left), data-theme (light|dark|auto), and per-state label overrides data-label-operational|degraded|down|maintenance|unknown. The widget polls the status page summary endpoint every 60 s with an uncredentialed request and renders into a shadow root; a failed request or an unknown page renders nothing. Everything under /embed/v1/ is a frozen public contract — behavior changes ship under /embed/v2/. Response carries Cache-Control: public, max-age=3600. No authentication required.
+// Self-contained JavaScript (IIFE) that renders a live status pill on a third-party site. It is loaded by an async script tag carrying data-page="org/slug", and configured entirely through data-attributes: data-mode (inline|floating), data-position (bottom-right|bottom-left), data-theme (light|dark|auto), data-size (sm|md|lg), per-state label overrides data-label-operational|degraded|down|maintenance|unknown, and data-force-status (operational|degraded|down|maintenance|unknown) to render a status statically without polling. The widget polls the status page summary endpoint every 60 s with an uncredentialed request and renders into a shadow root; a failed request or an unknown page renders nothing. Everything under /embed/v1/ is a frozen public contract — behavior changes ship under /embed/v2/, but additive, backward-compatible data-attributes may land within v1. Response carries Cache-Control: public, max-age=3600. No authentication required.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -40529,6 +40785,56 @@ func ParseCreateOrgResult(rsp *http.Response) (*CreateOrgResult, error) {
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteOrgResult parses an HTTP response from a DeleteOrgWithResponse call
+func ParseDeleteOrgResult(rsp *http.Response) (*DeleteOrgResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteOrgResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ValidationError
