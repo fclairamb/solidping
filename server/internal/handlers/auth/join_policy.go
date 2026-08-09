@@ -20,6 +20,13 @@ import (
 // decides which email addresses may join the org on their own.
 const registrationEmailPatternKey = "registration.email_pattern"
 
+// registrationSlackAutoJoinKey is the org parameter that switches off the
+// Slack workspace attestation rule. Absent means enabled: an org that exists
+// *because* a Slack workspace was linked to it should let that workspace's
+// members in by default. Set it to false to fall back to the pre-attestation
+// behavior (email pattern / membership request).
+const registrationSlackAutoJoinKey = "registration.slack_workspace_auto_join"
+
 // pendingMembershipParam is the query flag the dashboard's no-org page reads
 // to explain why a completed social login did not land in the org.
 const pendingMembershipParam = "membershipPending"
@@ -42,6 +49,44 @@ type ProviderLoginResult struct {
 	Pending bool
 }
 
+// LoginOption carries a provider-verified fact about the login being
+// completed into the shared admission policy. Connectors that have nothing to
+// attest pass none, which leaves every attestation-driven rule inert.
+type LoginOption func(*loginOptions)
+
+// loginOptions is the resolved set of attestations for one login.
+type loginOptions struct {
+	// slackTeamID is the Slack workspace ID Slack itself returned in the
+	// OAuth token exchange. It is an *attestation*: the exchange (and the
+	// openid.connect.userInfo call that follows it) can only succeed for a
+	// member of that workspace, so its presence proves workspace membership.
+	// It never comes from a query parameter, a form field, or any other
+	// browser-supplied value.
+	slackTeamID string
+}
+
+// WithSlackWorkspace attests that the user completing this login is a member
+// of the given Slack workspace (team ID), as proven by a Slack OAuth token
+// exchange this server performed itself.
+func WithSlackWorkspace(teamID string) LoginOption {
+	return func(o *loginOptions) {
+		o.slackTeamID = teamID
+	}
+}
+
+// resolveLoginOptions folds the variadic options into one struct.
+func resolveLoginOptions(opts []LoginOption) loginOptions {
+	var resolved loginOptions
+
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&resolved)
+		}
+	}
+
+	return resolved
+}
+
 // JoinOrgViaLogin decides what an authenticated user gets when they complete a
 // login flow that was initiated from org's login page. It is the single
 // admission chokepoint for every federated connector (Microsoft, Google,
@@ -56,8 +101,10 @@ type ProviderLoginResult struct {
 //  1. Existing member  → returned as-is (pure login, nothing changes).
 //  2. Zero-member org  → joins as admin (bootstrap / self-hosted onboarding).
 //  3. Pending invite for the email → joins with the invited role, invite consumed.
-//  4. Email matches registration.email_pattern → joins as user.
-//  5. Otherwise        → NO membership; a membership_requests row is created or
+//  4. Slack workspace attestation for the workspace THIS org is linked to →
+//     joins as user (see slackWorkspaceAdmits).
+//  5. Email matches registration.email_pattern → joins as user.
+//  6. Otherwise        → NO membership; a membership_requests row is created or
 //     re-opened and pending=true is returned.
 //
 // The MaxUsers cap (CheckMembershipSlot) is enforced here, once, ahead of any
@@ -66,7 +113,7 @@ type ProviderLoginResult struct {
 // A nil member with pending=false means "no membership row is needed" — only
 // the super-admin case produces that.
 func (s *Service) JoinOrgViaLogin(
-	ctx context.Context, org *models.Organization, user *models.User,
+	ctx context.Context, org *models.Organization, user *models.User, opts ...LoginOption,
 ) (*models.OrganizationMember, bool, error) {
 	// Rule 1 first: an existing membership always wins, super admin or not.
 	member, err := s.db.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
@@ -112,13 +159,29 @@ func (s *Service) JoinOrgViaLogin(
 		return created, false, nil
 	}
 
-	// Rule 4: the org's own auto-join pattern.
+	// Rule 4: the identity provider attested that this user belongs to the
+	// external workspace this very org is linked to.
+	if s.slackWorkspaceAdmits(ctx, org, resolveLoginOptions(opts).slackTeamID) {
+		// The seat cap is checked first so a capped org falls through to the
+		// remaining rules (and ultimately to a membership request) instead of
+		// failing the whole login — but it is never bypassed.
+		if slotErr := s.CheckMembershipSlot(ctx, org.UID); slotErr != nil {
+			slog.WarnContext(ctx, "slack workspace auto-join blocked by the membership cap",
+				"orgUID", org.UID, "userUID", user.UID, "error", slotErr)
+		} else {
+			created, createErr := s.createLoginMembership(ctx, org.UID, user.UID, models.MemberRoleUser, "")
+
+			return created, false, createErr
+		}
+	}
+
+	// Rule 5: the org's own auto-join pattern.
 	if pattern := s.orgAutoJoinPattern(ctx, org.UID); pattern != nil && pattern.MatchString(user.Email) {
 		created, createErr := s.createLoginMembership(ctx, org.UID, user.UID, models.MemberRoleUser, "")
 		return created, false, createErr
 	}
 
-	// Rule 5: not admitted. Fall back to the membership-request flow.
+	// Rule 6: not admitted. Fall back to the membership-request flow.
 	slog.InfoContext(ctx, "federated login did not qualify for org membership",
 		"orgUID", org.UID, "userUID", user.UID)
 
@@ -135,9 +198,9 @@ func (s *Service) JoinOrgViaLogin(
 // refresh token) so the dashboard can show the request-access surface without
 // ever granting org-scoped API access.
 func (s *Service) CompleteOrgLogin(
-	ctx context.Context, org *models.Organization, user *models.User,
+	ctx context.Context, org *models.Organization, user *models.User, opts ...LoginOption,
 ) (*ProviderLoginResult, error) {
-	member, pending, err := s.JoinOrgViaLogin(ctx, org, user)
+	member, pending, err := s.JoinOrgViaLogin(ctx, org, user, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure membership: %w", err)
 	}
@@ -300,6 +363,114 @@ func (s *Service) orgAutoJoinPattern(ctx context.Context, orgUID string) *regexp
 	return compiled
 }
 
+// slackWorkspaceAdmits answers the one question rule 4 asks: did Slack just
+// attest that this user belongs to the workspace THIS organization is linked
+// to?
+//
+// Everything about the decision is server-side:
+//
+//   - teamID is the workspace ID returned by the Slack OAuth token exchange
+//     this server performed. Slack only completes that exchange (and the
+//     openid.connect.userInfo call after it) for a member of that workspace,
+//     so it is an attestation of membership — not a claim the browser made.
+//     An empty teamID means "no attestation": every non-Slack connector.
+//   - The org↔workspace link is read from organization_providers, the single
+//     source of truth for that mapping. The lookup filters soft-deleted rows,
+//     so a revoked/unlinked workspace admits nobody.
+//   - The resolved link must point at the org actually being joined. The org
+//     slug in the login URL is attacker-controlled, so a member of workspace
+//     A presenting that attestation while asking for org B (linked to
+//     workspace B, or to nothing) is refused here and falls through to the
+//     membership-request path.
+//   - An org can opt out entirely via registration.slack_workspace_auto_join.
+//
+// Slack guests (single/multi-channel) pass the OAuth exactly like full
+// members and openid.connect.userInfo does not expose guest status, so V1
+// admits them; a users.info-based downgrade is a documented follow-up.
+func (s *Service) slackWorkspaceAdmits(
+	ctx context.Context, org *models.Organization, teamID string,
+) bool {
+	if teamID == "" {
+		return false
+	}
+
+	if !s.slackWorkspaceAutoJoinEnabled(ctx, org.UID) {
+		slog.InfoContext(ctx, "slack workspace auto-join disabled for org",
+			"orgUID", org.UID, "teamID", teamID)
+
+		return false
+	}
+
+	provider, err := s.db.GetOrganizationProviderByProviderID(ctx, models.ProviderTypeSlack, teamID)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			slog.WarnContext(ctx, "failed to resolve slack workspace link during login",
+				"orgUID", org.UID, "teamID", teamID, "error", err)
+		}
+
+		return false
+	}
+
+	if provider == nil {
+		return false
+	}
+
+	if provider.OrganizationUID != org.UID {
+		// Cross-tenant attempt (or simply an org that is linked to another
+		// workspace): the attestation proves membership of a workspace that is
+		// not this org's.
+		slog.WarnContext(ctx, "slack workspace attestation does not belong to the org being joined",
+			"orgUID", org.UID, "attestedOrgUID", provider.OrganizationUID, "teamID", teamID)
+
+		return false
+	}
+
+	return true
+}
+
+// slackWorkspaceAutoJoinEnabled reads the org's opt-out switch. Absent,
+// unreadable or unparseable means enabled — the org exists because of its
+// Slack workspace link, so admitting that workspace's members is the
+// documented default; only an explicit false turns the rule off.
+func (s *Service) slackWorkspaceAutoJoinEnabled(ctx context.Context, orgUID string) bool {
+	param, err := s.db.GetOrgParameter(ctx, orgUID, registrationSlackAutoJoinKey)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to read slack workspace auto-join parameter",
+			"orgUID", orgUID, "error", err)
+
+		return true
+	}
+
+	if param == nil {
+		return true
+	}
+
+	return paramBoolValue(param.Value["value"], true)
+}
+
+// paramBoolValue reads a boolean org parameter. Values round-trip through
+// JSON(B) and may arrive as a real bool, as a string ("false", "0", …) or as a
+// number, so all three are accepted; anything unrecognized yields fallback.
+func paramBoolValue(raw any, fallback bool) bool {
+	switch value := raw.(type) {
+	case bool:
+		return value
+	case string:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+		if err != nil {
+			return fallback
+		}
+
+		return parsed
+	case float64:
+		return value != 0
+	case int:
+		return value != 0
+	default:
+		return fallback
+	}
+}
+
 // ensureMembershipRequestForLogin creates — or re-opens — the membership
 // request that represents "this authenticated user would like into this org".
 // A request already pending is left alone; a rejected one keeps its rejected
@@ -358,6 +529,22 @@ func pendingMembershipRedirect(orgSlug, accessToken string, expiresIn int) strin
 	query.Set(pendingMembershipParam, orgSlug)
 
 	return noOrgPath + "?" + query.Encode()
+}
+
+// RedirectPendingMembership sends a browser whose login completed WITHOUT
+// admission to the shared request-access surface, carrying the org-less
+// session — the same treatment finishProviderCallback gives a pending
+// federated login, exported for callbacks that live outside this package (the
+// Slack app-install callback). baseURL, when set, makes the target absolute;
+// callers that redirect within the same origin can pass "".
+func RedirectPendingMembership(
+	writer http.ResponseWriter, req *http.Request,
+	baseURL, orgSlug, accessToken string, expiresIn int,
+) {
+	setAccessTokenCookie(writer, accessToken, expiresIn)
+	http.Redirect(writer, req,
+		baseURL+pendingMembershipRedirect(orgSlug, accessToken, expiresIn),
+		http.StatusFound)
 }
 
 // finishProviderCallback is the shared redirect tail of every federated
