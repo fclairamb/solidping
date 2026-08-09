@@ -31639,6 +31639,8 @@ type AddMemberResult struct {
 	JSON201 *Member
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *ValidationError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *NotFound
 	// JSON409 the response for an HTTP 409 `application/json` response
@@ -31653,6 +31655,11 @@ func (r AddMemberResult) GetJSON201() *Member {
 // GetJSON400 returns the response for an HTTP 400 `application/json` response
 func (r AddMemberResult) GetJSON400() *ValidationError {
 	return r.JSON400
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r AddMemberResult) GetJSON403() *Forbidden {
+	return r.JSON403
 }
 
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
@@ -31697,10 +31704,17 @@ func (r AddMemberResult) ContentType() string {
 type RemoveMemberResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *NotFound
 	// JSON409 the response for an HTTP 409 `application/json` response
 	JSON409 *Error
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r RemoveMemberResult) GetJSON403() *Forbidden {
+	return r.JSON403
 }
 
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
@@ -31795,6 +31809,8 @@ type UpdateMemberResult struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *Member
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *NotFound
 	// JSON409 the response for an HTTP 409 `application/json` response
@@ -31804,6 +31820,11 @@ type UpdateMemberResult struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r UpdateMemberResult) GetJSON200() *Member {
 	return r.JSON200
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r UpdateMemberResult) GetJSON403() *Forbidden {
+	return r.JSON403
 }
 
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
@@ -45528,6 +45549,13 @@ func ParseAddMemberResult(rsp *http.Response) (*AddMemberResult, error) {
 		}
 		response.JSON400 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -45563,6 +45591,13 @@ func ParseRemoveMemberResult(rsp *http.Response) (*RemoveMemberResult, error) {
 	switch {
 	case rsp.StatusCode == 204:
 		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound
@@ -45636,6 +45671,13 @@ func ParseUpdateMemberResult(rsp *http.Response) (*UpdateMemberResult, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound

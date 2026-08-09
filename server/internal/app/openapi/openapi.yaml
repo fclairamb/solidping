@@ -2895,6 +2895,8 @@ paths:
                 $ref: "#/components/schemas/Member"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -2945,6 +2947,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Member"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -2965,6 +2969,8 @@ paths:
       responses:
         "204":
           description: Member removed
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
