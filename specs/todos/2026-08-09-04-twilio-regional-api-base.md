@@ -178,3 +178,97 @@ require network access, and the existing tests that create Twilio connections
 must keep passing without reaching the internet. Cover both branches: a stub
 that accepts, and a stub that rejects, asserting the connection is **not**
 persisted in the reject case.
+
+## Implementation Plan
+
+### 1. `twilio` package (`server/internal/integrations/twilio/client.go`)
+- `regionPattern = ^[a-z]{2}[0-9]+$`; `ValidRegion(region string) bool` — empty
+  or matches the pattern.
+- `BaseURLForRegion(region string) string` — `""`/`"us1"` → `DefaultBaseURL`,
+  else `https://api.<region>.twilio.com`. No validation inside — callers must
+  only ever pass an already-validated region (guaranteed by
+  `validateTwilioSettings` gating what gets persisted), which is what keeps
+  the format check doing the SSRF-guard work described in the resolved
+  question.
+- `VerifyCredentials(ctx, accountSID, authToken, baseURL string) error` — GET
+  `/2010-04-01/Accounts/{accountSID}.json` with basic auth, no body. 2xx → nil.
+  401/403 → `ErrCredentialsRejected`. Anything else (network error, timeout,
+  5xx, unexpected status) → `ErrCredentialsUnverifiable`. Both are sentinel
+  errors so callers can `errors.Is`.
+
+### 2. `models.TwilioSettings` (`server/internal/db/models/integration.go`)
+- Add `Region string \`json:"region,omitempty"\`` next to the other public
+  fields.
+
+### 3. `handlers/integrations/service.go`
+- `validateTwilioSettings`: reject a malformed region (`twilio.ValidRegion`)
+  as `ErrInvalidSettings` (`VALIDATION_ERROR`).
+- New seam `var verifyTwilioCredentials = twilio.VerifyCredentials`.
+- New helper `verifyTwilioWrite(ctx, parsed *models.TwilioSettings) error`:
+  skips the live call when `s.appConfig != nil && s.appConfig.RunMode ==
+  "test"` (dev-test / Playwright E2E run with placeholder credentials and no
+  real Twilio account — see below), otherwise resolves
+  `twilio.BaseURLForRegion(parsed.Region)` and calls the seam, translating
+  `ErrCredentialsRejected`/`ErrCredentialsUnverifiable` into two distinctly
+  worded `ErrInvalidSettings` errors that name the region.
+- `CreateIntegration`: for a Twilio connection, call `verifyTwilioWrite` after
+  `validateConnectionType` and before `s.db.CreateChannel` — a POST always
+  "sets" SID/token/region, so it always verifies.
+- `applyUpdateSettings`: after the existing `validateTwilioSettings(merged)`
+  call, if `reqSettings` (the raw incoming PATCH map) contains any of
+  `account_sid` / `auth_token` / `region`, call `verifyTwilioWrite` with the
+  merged settings before falling through to the encrypt/write path — a PATCH
+  that touches none of the three fields must not call it at all.
+- `handler.go`: `handleError` currently has no case for `ErrInvalidSettings` —
+  it silently falls to `WriteInternalError` (500). Add a case mapping it to
+  `400 VALIDATION_ERROR` with `err.Error()` as the message (pre-existing gap
+  this spec's format/credential errors would otherwise hit).
+
+### 4. Three client-construction call sites
+- `job_escalation_step.go` / `job_escalation_step_phone_test.go` and
+  `usernotifications/verify.go` / `verify_test.go`: change the
+  `newTwilioClient` seam to `twilio.NewClientWithBaseURL` (3-arg: SID, token,
+  baseURL) and pass `twilio.BaseURLForRegion(settings.Region)` at each call
+  site (`sendPhoneSMS`, `placePhoneCall`, `sendVerificationSMS`). Update the
+  two test files' seam overrides to the new 3-arg signature (they can ignore
+  the passed baseURL and keep pointing at their httptest fake, since the fake
+  doesn't care about region).
+- `notifications/twilio.go`: precedence is `s.BaseURL` (test override) first,
+  falling back to `twilio.BaseURLForRegion(settings.Region)` — documented in a
+  comment. Backward compatible: empty region + empty `BaseURL` still resolves
+  to `DefaultBaseURL`.
+
+### 5. Callbacks
+- `twiliocb/handler.go`: confirmed region-agnostic (signs over `cfg.Server.BaseURL`
+  + POST params with the account auth token; no Twilio host anywhere in the
+  path). Add a short comment recording that this was verified, not assumed.
+
+### 6. Frontend (`integration-form.tsx` `TwilioPanel`)
+- Add a `region` field: an `Input` with a `<datalist>` offering `us1` / `ie1`
+  (Ireland) / `au1` (Australia) as suggestions, but accepting any typed value
+  — not a closed `<Select>`, per the resolved question. Hint text: empty =
+  US1, credentials are region-scoped.
+
+### 7. Docs (`web/docs/docs/configuration/twilio.md`)
+- New "Region" subsection under Step 3: what data residency buys you,
+  credentials are per-region and not portable between regions, region is
+  chosen at Twilio account creation (not switched later), and the connection
+  now live-verifies credentials against the resolved region on save.
+
+### 8. Tests
+- `twilio` package: `BaseURLForRegion` table (empty/us1/ie1/au1/arbitrary
+  well-formed), `ValidRegion` table including the SSRF-shaped rejects
+  (`evil.com`, `../x`, `US1` uppercase, `us`, `1us`), `VerifyCredentials`
+  against an httptest fake for the 2xx/401/timeout branches.
+- `handlers/integrations` service tests: region format rejected at
+  create/update; credential-verification stub accept/reject on create; PATCH
+  that changes only `name` does not call the verify seam (stub panics/records
+  calls to prove it); PATCH that changes `auth_token` does call it and, on
+  reject, the persisted connection is unchanged.
+- `jobtypes` and `usernotifications`: extend the existing fake-Twilio-server
+  tests to assert the request path/host reflects
+  `BaseURLForRegion(settings.Region)` for all three call sites (escalation
+  SMS, escalation voice, phone verification) with a non-default region.
+- `notifications` package: `TwilioSender` test proving settings' region wins
+  when `BaseURL` is empty, and `BaseURL` still wins when set (existing tests
+  keep passing unmodified — no region set).
