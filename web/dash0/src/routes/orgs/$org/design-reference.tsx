@@ -58,6 +58,10 @@ import { LiveStatusDot } from "@/components/layout/live-status-dot";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
+  ConfirmByTypingButton,
+  DangerZone,
+} from "@/components/shared/danger-zone";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -1920,6 +1924,29 @@ function FeedbackSection() {
             </AlertDialog>
           }
           importLine={`import {\n  AlertDialog,\n  AlertDialogAction,\n  AlertDialogCancel,\n  AlertDialogContent,\n  AlertDialogDescription,\n  AlertDialogFooter,\n  AlertDialogHeader,\n  AlertDialogTitle,\n  AlertDialogTrigger,\n} from "@/components/ui/alert-dialog";`}
+        />
+
+        <h3 className="text-sm font-medium">Danger zone + confirm-by-typing</h3>
+        <ExampleRow
+          preview={
+            <DangerZone
+              title="Danger zone"
+              description="Irreversible actions live here, at the bottom of a settings page."
+            >
+              <ConfirmByTypingButton
+                buttonLabel="Delete organization"
+                title="Delete this organization?"
+                description="Everything it owns stops working. This cannot be undone."
+                inputLabel="Type acme to confirm"
+                confirmValue="acme"
+                confirmLabel="Delete organization"
+                onConfirm={() => {
+                  toast("Confirmed");
+                }}
+              />
+            </DangerZone>
+          }
+          importLine={`import {\n  ConfirmByTypingButton,\n  DangerZone,\n} from "@/components/shared/danger-zone";`}
         />
 
         <h3 className="text-sm font-medium">Toast (sonner)</h3>

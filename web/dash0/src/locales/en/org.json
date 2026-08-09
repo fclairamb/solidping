@@ -23,7 +23,18 @@
     "sessionDurationHelp": "Once set, a session is force-expired this many hours after login even if the user stays active — separate from the 7-day inactivity timeout.",
     "defaultEscalation": "Default escalation policy",
     "defaultEscalationDescription": "Applied to checks that resolve to no policy of their own (check → group → org default → none). Leave unset for no org-wide fallback.",
-    "defaultEscalationNone": "None (no fallback)"
+    "defaultEscalationNone": "None (no fallback)",
+    "dangerZone": {
+      "title": "Danger zone",
+      "description": "Irreversible actions. Only owners can see this section.",
+      "deleteHelp": "Deleting {{org}} removes its checks, status pages, members and history. This cannot be undone.",
+      "deleteButton": "Delete organization",
+      "confirmTitle": "Delete this organization?",
+      "confirmBody": "This permanently deletes {{org}}: every check stops running, its status pages and badges stop responding, and everybody loses access. This cannot be undone.",
+      "confirmInputLabel": "Type {{org}} to confirm",
+      "confirmAction": "Delete organization",
+      "deleted": "Organization {{org}} deleted"
+    }
   },
   "usage": {
     "title": "Usage",
@@ -148,6 +159,7 @@
       "joinedAt": "Joined"
     },
     "role": {
+      "owner": "Owner",
       "admin": "Admin",
       "user": "User",
       "viewer": "Viewer"
@@ -168,6 +180,7 @@
     "roleUpdated": "Role updated",
     "memberRemoved": "Member removed",
     "removeFailed": "Failed to remove member",
-    "updateFailed": "Failed to update role"
+    "updateFailed": "Failed to update role",
+    "ownerOnly": "Only an owner can change or remove an owner."
   }
 }

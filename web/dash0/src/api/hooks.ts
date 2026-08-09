@@ -2442,7 +2442,8 @@ export function useRejectMembershipRequest(org: string) {
 }
 
 // Member hooks
-export type MemberRole = "admin" | "user" | "viewer";
+// Ordered most- to least-privileged: owner > admin > user > viewer.
+export type MemberRole = "owner" | "admin" | "user" | "viewer";
 
 export interface MemberResponse {
   uid: string;
@@ -2487,6 +2488,23 @@ export function useRemoveMember(org: string) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["members", org] });
+    },
+  });
+}
+
+// useDeleteOrg deletes the whole organization. Owner-only, enforced server-side
+// by the RequireOrgOwner middleware — an admin gets a 403 even if the UI slipped
+// and showed them the button. The body repeats the slug as confirmation.
+export function useDeleteOrg(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}`, {
+        method: "DELETE",
+        body: JSON.stringify({ slug }),
+      }),
+    onSuccess: () => {
+      queryClient.clear();
     },
   });
 }

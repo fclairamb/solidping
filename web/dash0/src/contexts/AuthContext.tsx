@@ -26,7 +26,10 @@ interface User {
   name?: string;
   avatarUrl?: string;
   roles: string[];
+  // isAdmin means "at least admin" — an owner outranks an admin and must pass
+  // every admin gate (spec 2026-08-08-11).
   isAdmin: boolean;
+  isOwner: boolean;
   isSuperAdmin: boolean;
 }
 
@@ -203,7 +206,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name: data.user.name,
         avatarUrl: data.user.avatarUrl,
         roles: [data.user.role],
-        isAdmin: data.user.role === "admin" || data.user.role === "superadmin",
+        isAdmin:
+          data.user.role === "owner" ||
+          data.user.role === "admin" ||
+          data.user.role === "superadmin",
+        isOwner: data.user.role === "owner" || data.user.role === "superadmin",
         isSuperAdmin: data.user.role === "superadmin",
       });
       // Update org from server response
@@ -277,7 +284,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: data.user.name,
       avatarUrl: data.user.avatarUrl,
       roles: [data.user.role],
-      isAdmin: data.user.role === "admin" || data.user.role === "superadmin",
+      isAdmin:
+        data.user.role === "owner" ||
+        data.user.role === "admin" ||
+        data.user.role === "superadmin",
+      isOwner: data.user.role === "owner" || data.user.role === "superadmin",
       isSuperAdmin: data.user.role === "superadmin",
     });
 
@@ -340,7 +351,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: data.user.name,
       avatarUrl: data.user.avatarUrl,
       roles: [data.user.role],
-      isAdmin: data.user.role === "admin" || data.user.role === "superadmin",
+      isAdmin:
+        data.user.role === "owner" ||
+        data.user.role === "admin" ||
+        data.user.role === "superadmin",
+      isOwner: data.user.role === "owner" || data.user.role === "superadmin",
       isSuperAdmin: data.user.role === "superadmin",
     });
     setOrganizations(data.organizations || []);
@@ -367,7 +382,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: data.user.name,
       avatarUrl: data.user.avatarUrl,
       roles: [data.user.role],
-      isAdmin: data.user.role === "admin" || data.user.role === "superadmin",
+      isAdmin:
+        data.user.role === "owner" ||
+        data.user.role === "admin" ||
+        data.user.role === "superadmin",
+      isOwner: data.user.role === "owner" || data.user.role === "superadmin",
       isSuperAdmin: data.user.role === "superadmin",
     });
     setOrganizations(data.organizations || []);
@@ -392,7 +411,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: data.user.name,
       avatarUrl: data.user.avatarUrl,
       roles: [data.user.role],
-      isAdmin: data.user.role === "admin" || data.user.role === "superadmin",
+      isAdmin:
+        data.user.role === "owner" ||
+        data.user.role === "admin" ||
+        data.user.role === "superadmin",
+      isOwner: data.user.role === "owner" || data.user.role === "superadmin",
       isSuperAdmin: data.user.role === "superadmin",
     });
     // Re-fetch organizations from /me (consistent with login)
@@ -418,7 +441,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: data.user.name,
       avatarUrl: data.user.avatarUrl,
       roles: [data.user.role],
-      isAdmin: data.user.role === "admin" || data.user.role === "superadmin",
+      isAdmin:
+        data.user.role === "owner" ||
+        data.user.role === "admin" ||
+        data.user.role === "superadmin",
+      isOwner: data.user.role === "owner" || data.user.role === "superadmin",
       isSuperAdmin: data.user.role === "superadmin",
     });
     setOrganizations(data.organizations || []);

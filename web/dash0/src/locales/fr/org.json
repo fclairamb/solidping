@@ -20,7 +20,18 @@
     "sessionDurationFullDescription": "Définissez une limite stricte sur la durée d'une session de connexion, quelle que soit l'activité. Laissez vide pour utiliser la valeur par défaut de la plateforme (illimitée sauf limite définie globalement).",
     "sessionDurationHoursLabel": "Durée maximale de session (heures)",
     "sessionDurationPlaceholder": "Illimitée",
-    "sessionDurationHelp": "Une fois définie, la session expire de force ce nombre d'heures après la connexion, même si l'utilisateur reste actif — indépendamment du délai d'inactivité de 7 jours."
+    "sessionDurationHelp": "Une fois définie, la session expire de force ce nombre d'heures après la connexion, même si l'utilisateur reste actif — indépendamment du délai d'inactivité de 7 jours.",
+    "dangerZone": {
+      "title": "Zone de danger",
+      "description": "Actions irréversibles. Seuls les propriétaires voient cette section.",
+      "deleteHelp": "Supprimer {{org}} efface ses contrôles, pages de statut, membres et historique. Cette action est irréversible.",
+      "deleteButton": "Supprimer l'organisation",
+      "confirmTitle": "Supprimer cette organisation ?",
+      "confirmBody": "Cela supprime définitivement {{org}} : tous les contrôles s'arrêtent, ses pages de statut et badges ne répondent plus, et tout le monde perd l'accès. Cette action est irréversible.",
+      "confirmInputLabel": "Saisissez {{org}} pour confirmer",
+      "confirmAction": "Supprimer l'organisation",
+      "deleted": "Organisation {{org}} supprimée"
+    }
   },
   "usage": {
     "title": "Utilisation",
@@ -145,6 +156,7 @@
       "joinedAt": "Rejoint le"
     },
     "role": {
+      "owner": "Propriétaire",
       "admin": "Administrateur",
       "user": "Utilisateur",
       "viewer": "Lecteur"
@@ -165,6 +177,7 @@
     "roleUpdated": "Rôle mis à jour",
     "memberRemoved": "Membre retiré",
     "removeFailed": "Échec du retrait du membre",
-    "updateFailed": "Échec de la mise à jour du rôle"
+    "updateFailed": "Échec de la mise à jour du rôle",
+    "ownerOnly": "Seul un propriétaire peut modifier ou retirer un propriétaire."
   }
 }

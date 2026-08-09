@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,10 +23,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  useDeleteOrg,
   useEscalationPolicies,
   useOrgSettings,
   useUpdateOrgSettings,
 } from "@/api/hooks";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  ConfirmByTypingButton,
+  DangerZone,
+} from "@/components/shared/danger-zone";
 
 // Sentinel Select value for "no org default" (Radix needs a non-empty value).
 const NO_DEFAULT = "__none__";
@@ -38,7 +45,10 @@ function SettingsPage() {
   const { t } = useTranslation("org");
   const { t: tc } = useTranslation("common");
   const { org } = Route.useParams();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const { data: settings, isLoading } = useOrgSettings(org);
+  const deleteOrg = useDeleteOrg(org);
   const { data: policies } = useEscalationPolicies(org);
   const updateSettings = useUpdateOrgSettings(org);
   const updateSessionSettings = useUpdateOrgSettings(org);
@@ -140,6 +150,22 @@ function SettingsPage() {
       setTimeout(() => setEscalationSaved(false), 3000);
     } catch (err) {
       setEscalationError(
+        err instanceof ApiError ? err.message : t("settings.unexpectedError"),
+      );
+    }
+  };
+
+  const handleDeleteOrg = async () => {
+    try {
+      await deleteOrg.mutateAsync(org);
+      toast.success(t("settings.dangerZone.deleted", { org }));
+      // The org-scoped session died with the org, so there is nothing to
+      // navigate *within*. Drop the session and land on the login/org-switcher
+      // surface rather than replaying a token that now 404s.
+      await logout();
+      await navigate({ to: "/login", search: { returnTo: undefined } });
+    } catch (err) {
+      toast.error(
         err instanceof ApiError ? err.message : t("settings.unexpectedError"),
       );
     }
@@ -410,6 +436,33 @@ function SettingsPage() {
           </form>
         </CardContent>
       </Card>
+
+      {/* Owner-only. The server enforces it too (RequireOrgOwner): an admin who
+          reaches the endpoint gets a 403, the hidden card is only UX. */}
+      {user?.isOwner && (
+        <DangerZone
+          title={t("settings.dangerZone.title")}
+          description={t("settings.dangerZone.description")}
+          testId="org-danger-zone"
+        >
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {t("settings.dangerZone.deleteHelp", { org })}
+            </p>
+            <ConfirmByTypingButton
+              buttonLabel={t("settings.dangerZone.deleteButton")}
+              title={t("settings.dangerZone.confirmTitle")}
+              description={t("settings.dangerZone.confirmBody", { org })}
+              inputLabel={t("settings.dangerZone.confirmInputLabel", { org })}
+              confirmValue={org}
+              confirmLabel={t("settings.dangerZone.confirmAction")}
+              onConfirm={handleDeleteOrg}
+              disabled={deleteOrg.isPending}
+              testId="delete-org"
+            />
+          </div>
+        </DangerZone>
+      )}
     </>
   );
 }

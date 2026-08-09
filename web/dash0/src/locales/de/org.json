@@ -20,7 +20,18 @@
     "sessionDurationFullDescription": "Legen Sie eine feste Obergrenze für die Dauer einer Anmeldesitzung fest, unabhängig von der Aktivität. Leer lassen, um den Plattform-Standard zu verwenden (unbegrenzt, sofern kein systemweites Limit gesetzt ist).",
     "sessionDurationHoursLabel": "Maximale Sitzungsdauer (Stunden)",
     "sessionDurationPlaceholder": "Unbegrenzt",
-    "sessionDurationHelp": "Sobald festgelegt, läuft die Sitzung nach dieser Anzahl von Stunden nach der Anmeldung zwangsweise ab, auch wenn der Benutzer aktiv bleibt — unabhängig vom 7-tägigen Inaktivitäts-Timeout."
+    "sessionDurationHelp": "Sobald festgelegt, läuft die Sitzung nach dieser Anzahl von Stunden nach der Anmeldung zwangsweise ab, auch wenn der Benutzer aktiv bleibt — unabhängig vom 7-tägigen Inaktivitäts-Timeout.",
+    "dangerZone": {
+      "title": "Gefahrenzone",
+      "description": "Unwiderrufliche Aktionen. Nur Eigentümer sehen diesen Bereich.",
+      "deleteHelp": "Das Löschen von {{org}} entfernt Checks, Statusseiten, Mitglieder und Verlauf. Dies kann nicht rückgängig gemacht werden.",
+      "deleteButton": "Organisation löschen",
+      "confirmTitle": "Diese Organisation löschen?",
+      "confirmBody": "Damit wird {{org}} dauerhaft gelöscht: alle Checks stoppen, Statusseiten und Badges antworten nicht mehr, und alle verlieren den Zugriff. Dies kann nicht rückgängig gemacht werden.",
+      "confirmInputLabel": "Geben Sie {{org}} zur Bestätigung ein",
+      "confirmAction": "Organisation löschen",
+      "deleted": "Organisation {{org}} gelöscht"
+    }
   },
   "usage": {
     "title": "Nutzung",
@@ -145,6 +156,7 @@
       "joinedAt": "Beigetreten"
     },
     "role": {
+      "owner": "Eigentümer",
       "admin": "Admin",
       "user": "Benutzer",
       "viewer": "Betrachter"
@@ -165,6 +177,7 @@
     "roleUpdated": "Rolle aktualisiert",
     "memberRemoved": "Mitglied entfernt",
     "removeFailed": "Mitglied konnte nicht entfernt werden",
-    "updateFailed": "Rolle konnte nicht aktualisiert werden"
+    "updateFailed": "Rolle konnte nicht aktualisiert werden",
+    "ownerOnly": "Nur ein Eigentümer kann einen Eigentümer ändern oder entfernen."
   }
 }

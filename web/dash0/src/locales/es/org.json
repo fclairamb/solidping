@@ -20,7 +20,18 @@
     "sessionDurationFullDescription": "Establezca un límite estricto para la duración de una sesión de inicio de sesión, independientemente de la actividad. Déjelo vacío para usar el valor predeterminado de la plataforma (sin límite salvo que se establezca uno global).",
     "sessionDurationHoursLabel": "Duración máxima de la sesión (horas)",
     "sessionDurationPlaceholder": "Ilimitada",
-    "sessionDurationHelp": "Una vez establecida, la sesión expira forzosamente tras este número de horas desde el inicio de sesión, incluso si el usuario permanece activo, independientemente del tiempo de inactividad de 7 días."
+    "sessionDurationHelp": "Una vez establecida, la sesión expira forzosamente tras este número de horas desde el inicio de sesión, incluso si el usuario permanece activo, independientemente del tiempo de inactividad de 7 días.",
+    "dangerZone": {
+      "title": "Zona de peligro",
+      "description": "Acciones irreversibles. Solo los propietarios ven esta sección.",
+      "deleteHelp": "Eliminar {{org}} borra sus comprobaciones, páginas de estado, miembros e historial. Esto no se puede deshacer.",
+      "deleteButton": "Eliminar organización",
+      "confirmTitle": "¿Eliminar esta organización?",
+      "confirmBody": "Esto elimina {{org}} de forma permanente: todas las comprobaciones se detienen, sus páginas de estado y distintivos dejan de responder, y todos pierden el acceso. Esto no se puede deshacer.",
+      "confirmInputLabel": "Escriba {{org}} para confirmar",
+      "confirmAction": "Eliminar organización",
+      "deleted": "Organización {{org}} eliminada"
+    }
   },
   "usage": {
     "title": "Uso",
@@ -145,6 +156,7 @@
       "joinedAt": "Se unió"
     },
     "role": {
+      "owner": "Propietario",
       "admin": "Administrador",
       "user": "Usuario",
       "viewer": "Lector"
@@ -165,6 +177,7 @@
     "roleUpdated": "Rol actualizado",
     "memberRemoved": "Miembro eliminado",
     "removeFailed": "No se pudo eliminar al miembro",
-    "updateFailed": "No se pudo actualizar el rol"
+    "updateFailed": "No se pudo actualizar el rol",
+    "ownerOnly": "Solo un propietario puede cambiar o eliminar a un propietario."
   }
 }
