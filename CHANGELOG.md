@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/fclairamb/solidping/compare/v0.10.0...v0.11.0) (2026-08-09)
+
+
+### Features
+
+* owner role, organization profile, embeddable status pages, device-auth CLI login and Twilio regions ([#204](https://github.com/fclairamb/solidping/issues/204)) ([e4c9cb7](https://github.com/fclairamb/solidping/commit/e4c9cb791c114d7da0881737bb8ea6ab4689dfa8))
+
 ## [Unreleased]
 
 ### ⚠ BREAKING CHANGES
