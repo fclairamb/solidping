@@ -767,7 +767,7 @@ func envKeyToParam(envVar string) string {
 // TestNodeRoleParameterApply covers the node.role overlay (spec 2026-08-09-01).
 // This ApplyFunc runs AFTER config.Validate(), so it is the one path where an
 // unvalidated role could reach the subsystem gates: a multi-value role must be
-// accepted verbatim, and an invalid one must be refused in favour of the
+// accepted verbatim, and an invalid one must be refused in favor of the
 // already-validated value rather than silently switching subsystems off.
 func TestNodeRoleParameterApply(t *testing.T) {
 	t.Parallel()

@@ -398,6 +398,8 @@ func TestLoad_LegacySingleValueNodeRolesSurviveEnv(t *testing.T) {
 // widely deployed configuration — end to end: no SP_NODE_ROLE at all still
 // means "all", and still starts every subsystem. Uses t.Setenv, which is
 // incompatible with t.Parallel.
+//
+//nolint:paralleltest // reads process env; must not race a sibling t.Setenv
 func TestLoad_UnsetNodeRoleDefaultsToAll(t *testing.T) {
 	r := require.New(t)
 

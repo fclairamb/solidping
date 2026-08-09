@@ -319,8 +319,8 @@ func getKnownParameters() []ParameterDefinition {
 			EnvVar: "SP_NODE_ROLE",
 			Secret: false,
 			ApplyFunc: func(cfg *config.Config, value any) {
-				v, ok := value.(string)
-				if !ok || v == "" {
+				role, ok := value.(string)
+				if !ok || role == "" {
 					return
 				}
 
@@ -329,16 +329,16 @@ func getKnownParameters() []ParameterDefinition {
 				// unparseable one would silently switch off whichever subsystems
 				// it fails to name — keep the validated value and say so loudly
 				// instead (same best-effort contract as the password policy).
-				if _, err := config.ParseNodeRoles(v); err != nil {
+				if _, err := config.ParseNodeRoles(role); err != nil {
 					slog.Warn(
 						"Ignoring invalid node.role system parameter; keeping the configured role",
-						"value", v, "configuredRole", cfg.Node.Role, "error", err,
+						"value", role, "configuredRole", cfg.Node.Role, "error", err,
 					)
 
 					return
 				}
 
-				cfg.Node.Role = v
+				cfg.Node.Role = role
 			},
 		},
 		{
