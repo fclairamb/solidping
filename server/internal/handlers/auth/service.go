@@ -2809,9 +2809,12 @@ type AcceptInviteRequest struct {
 func (s *Service) CreateInvitation(
 	ctx context.Context, orgSlug, inviterUID string, req InviteRequest,
 ) (*InviteResponse, error) {
-	// Validate role
-	role := models.MemberRole(req.Role)
-	if role != models.MemberRoleAdmin && role != models.MemberRoleUser && role != models.MemberRoleViewer {
+	// Validate role. `owner` is deliberately NOT invitable: ownership is granted
+	// by an owner on the members page, where the caller's owner role is checked
+	// live (spec 2026-08-08-11). An invitation is consumed later, by whoever
+	// holds the link, long after the inviter's role could have changed.
+	if role := models.MemberRole(req.Role); role != models.MemberRoleAdmin &&
+		role != models.MemberRoleUser && role != models.MemberRoleViewer {
 		return nil, fmt.Errorf("%w: invalid role", ErrInvalidCredentials)
 	}
 
