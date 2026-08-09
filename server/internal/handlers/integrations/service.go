@@ -567,25 +567,6 @@ func validateTwilioSettings(settings models.JSONMap) error {
 //nolint:gochecknoglobals // test seam for the outbound Twilio credential check.
 var verifyTwilioCredentials = twilio.VerifyCredentials
 
-// twilioCredentialFields are the settings keys that, when present in a PATCH
-// request, invalidate the connection's existing credential verification and
-// require a fresh one.
-//
-//nolint:gochecknoglobals // constant lookup set.
-var twilioCredentialFields = []string{"account_sid", "auth_token", "region"}
-
-// touchesTwilioCredentialFields reports whether an incoming (unmerged) PATCH
-// settings map sets or changes any of the account SID, auth token, or region.
-func touchesTwilioCredentialFields(reqSettings models.JSONMap) bool {
-	for _, k := range twilioCredentialFields {
-		if _, ok := reqSettings[k]; ok {
-			return true
-		}
-	}
-
-	return false
-}
-
 // verifyTwilioWrite makes one live authenticated call to Twilio, against the
 // region resolved from parsed.Region, to confirm the account SID / auth token
 // pair actually works before the caller persists the connection. Twilio
@@ -640,23 +621,35 @@ func (s *Service) verifyTwilioOnCreate(ctx context.Context, settings models.JSON
 }
 
 // verifyTwilioOnUpdate validates the merged (post-PATCH) Twilio settings and,
-// only when the incoming PATCH touches a credential-shaped field, re-verifies
-// them against Twilio before the caller persists the update.
-func (s *Service) verifyTwilioOnUpdate(ctx context.Context, merged map[string]any, reqSettings models.JSONMap) error {
+// only when the merge actually changes the account SID, auth token, or
+// region relative to what's currently stored, re-verifies them against
+// Twilio before the caller persists the update.
+//
+// Comparing resolved *values* (not raw request key presence) is deliberate:
+// non-secret settings fields use PATCH's wholesale-replace semantics (see
+// credentials.MergePatch) — a caller resending the same account_sid
+// alongside a changed from_number would otherwise look like it "touched"
+// account_sid even though nothing about the credentials changed.
+func (s *Service) verifyTwilioOnUpdate(ctx context.Context, existing, merged map[string]any) error {
 	if vErr := validateTwilioSettings(models.JSONMap(merged)); vErr != nil {
 		return vErr
 	}
 
-	if !touchesTwilioCredentialFields(reqSettings) {
-		return nil
-	}
-
-	parsed, err := models.TwilioSettingsFromJSONMap(models.JSONMap(merged))
+	before, err := models.TwilioSettingsFromJSONMap(models.JSONMap(existing))
 	if err != nil {
 		return fmt.Errorf("%w: malformed twilio settings", ErrInvalidSettings)
 	}
 
-	return s.verifyTwilioWrite(ctx, parsed)
+	after, err := models.TwilioSettingsFromJSONMap(models.JSONMap(merged))
+	if err != nil {
+		return fmt.Errorf("%w: malformed twilio settings", ErrInvalidSettings)
+	}
+
+	if before.AccountSID == after.AccountSID && before.AuthToken == after.AuthToken && before.Region == after.Region {
+		return nil
+	}
+
+	return s.verifyTwilioWrite(ctx, after)
 }
 
 // UpdateIntegration updates a connection.
@@ -741,10 +734,10 @@ func (s *Service) applyUpdateSettings(
 
 	// Validate the merged (post-PATCH) settings so a partial update can't leave
 	// a Twilio connection in an unsendable state, and re-verify against Twilio
-	// when the PATCH touches a credential-shaped field (renaming the
+	// when the merge actually changes a credential-shaped field (renaming the
 	// connection or changing the from-number must not trigger a live call).
 	if conn.Type == models.ConnectionTypeTwilio {
-		if vErr := s.verifyTwilioOnUpdate(ctx, merged, reqSettings); vErr != nil {
+		if vErr := s.verifyTwilioOnUpdate(ctx, existing, merged); vErr != nil {
 			return vErr
 		}
 	}

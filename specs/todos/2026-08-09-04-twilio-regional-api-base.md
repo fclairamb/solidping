@@ -215,10 +215,16 @@ persisted in the reject case.
   `validateConnectionType` and before `s.db.CreateChannel` — a POST always
   "sets" SID/token/region, so it always verifies.
 - `applyUpdateSettings`: after the existing `validateTwilioSettings(merged)`
-  call, if `reqSettings` (the raw incoming PATCH map) contains any of
-  `account_sid` / `auth_token` / `region`, call `verifyTwilioWrite` with the
-  merged settings before falling through to the encrypt/write path — a PATCH
-  that touches none of the three fields must not call it at all.
+  call, compare the pre-merge (existing, decrypted) and post-merge
+  `TwilioSettings` on account SID / auth token / region; call
+  `verifyTwilioWrite` with the merged settings only when one of the three
+  differs. **Deliberately value-diff, not raw-key presence**: non-secret
+  settings fields use PATCH's wholesale-replace semantics
+  (`credentials.MergePatch` — anything absent from the request is dropped),
+  so the dashboard's edit form always resends the full settings object
+  (including an unchanged `account_sid`) on every save. Gating on "key
+  present in the request" would therefore call Twilio on *every* Twilio
+  settings save, not just ones that actually change credentials.
 - `handler.go`: `handleError` currently has no case for `ErrInvalidSettings` —
   it silently falls to `WriteInternalError` (500). Add a case mapping it to
   `400 VALIDATION_ERROR` with `err.Error()` as the message (pre-existing gap
