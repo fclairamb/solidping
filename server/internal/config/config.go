@@ -79,7 +79,13 @@ var (
 	// ErrDatabaseDirRequired is returned when sqlite is selected but directory is missing.
 	ErrDatabaseDirRequired = errors.New("database directory is required for sqlite")
 	// ErrInvalidNodeRole is returned when the node role is invalid.
-	ErrInvalidNodeRole = errors.New("node role must be 'all', 'api', 'jobs', 'checks', or 'agent'")
+	ErrInvalidNodeRole = errors.New(
+		"node role must be 'all', 'api', 'jobs', 'checks' or 'agent', " +
+			"or a comma-separated combination of 'api', 'jobs' and 'checks'",
+	)
+	// ErrExclusiveNodeRole is returned when a whole-node role ('all' or
+	// 'agent') is combined with another role in a comma-separated list.
+	ErrExclusiveNodeRole = errors.New("node role cannot be combined with other roles")
 	// ErrAgentServerURLRequired is returned when role is "agent" but no server URL is set.
 	ErrAgentServerURLRequired = errors.New("SP_AGENT_SERVER_URL is required when SP_NODE_ROLE is set to 'agent'")
 	// ErrRegionRequiredForChecks is returned when role is "checks" but region is not set.
@@ -137,7 +143,9 @@ const (
 	bcryptCostAdvisory   = 12 // warn below this
 )
 
-// ValidNodeRoles returns all valid role values.
+// ValidNodeRoles returns every role value SP_NODE_ROLE accepts on its own. A
+// comma-separated SP_NODE_ROLE may only combine the MultiValueNodeRoles subset;
+// see ParseNodeRoles in node_role.go.
 func ValidNodeRoles() []string {
 	return []string{NodeRoleAll, NodeRoleAPI, NodeRoleJobs, NodeRoleChecks, NodeRoleAgent}
 }
@@ -412,8 +420,13 @@ type EntitlementsConfig struct {
 
 // NodeConfig contains node role configuration.
 type NodeConfig struct {
-	Role   string `koanf:"role"`   // Node role: all, api, jobs, checks
-	Region string `koanf:"region"` // Node region (required for checks role)
+	// Role is the raw SP_NODE_ROLE value: one of all, api, jobs, checks, agent,
+	// or a comma-separated combination of api/jobs/checks (e.g. "api,jobs" for a
+	// node that serves the dashboard and processes jobs while dedicated
+	// checks-only nodes execute the checks). Parse it with Config.NodeRoles()
+	// rather than comparing the string.
+	Role   string `koanf:"role"`
+	Region string `koanf:"region"` // Node region (required when the role set contains checks)
 	// Name overrides the worker slug/name this process registers under
 	// (SP_NODE_NAME). Empty means "derive it from os.Hostname()", which is the
 	// historic behavior. Set it wherever the hostname is not stable, not
@@ -454,21 +467,6 @@ type RuntimeConfig struct {
 	// GCPercent maps to GOGC / debug.SetGCPercent when > 0
 	// (SP_RUNTIME_GC_PERCENT). 0 leaves the runtime default untouched.
 	GCPercent int `koanf:"gc_percent"`
-}
-
-// ShouldRunAPI returns true if this node should run the HTTP server.
-func (c *Config) ShouldRunAPI() bool {
-	return c.Node.Role == NodeRoleAll || c.Node.Role == NodeRoleAPI
-}
-
-// ShouldRunJobs returns true if this node should run the job processor.
-func (c *Config) ShouldRunJobs() bool {
-	return c.Node.Role == NodeRoleAll || c.Node.Role == NodeRoleJobs
-}
-
-// ShouldRunChecks returns true if this node should run the check executor.
-func (c *Config) ShouldRunChecks() bool {
-	return c.Node.Role == NodeRoleAll || c.Node.Role == NodeRoleChecks
 }
 
 // CustomDomainCNAMETarget resolves the hostname customers point their
@@ -1628,8 +1626,21 @@ func applyProfilerEnv(cfg *ProfilerConfig) {
 // spec 2026-07-05-09 (D1): a checks/jobs node only runs batched polling loops
 // and is typically deployed as several replicas sharing one Postgres role, so
 // an API-sized pool per replica saturates the role's connection limit fast.
+//
+// The rule is expressed on the parsed role set: shrink only for a node that
+// runs checks and/or jobs but does NOT serve the API. That is byte-identical to
+// the historic exact-string test for every single-value role ("checks"/"jobs"
+// shrink; "all"/"api"/"agent"/anything invalid do not), and gives the
+// multi-value forms the obvious answer — "api,jobs" keeps the API-sized pool,
+// "checks,jobs" gets the worker-sized one.
 func applyNodeRolePoolDefaults(cfg *DatabaseConfig, nodeRole string) {
-	if nodeRole != NodeRoleChecks && nodeRole != NodeRoleJobs {
+	roles, err := ParseNodeRoles(nodeRole)
+	if err != nil {
+		return // invalid values are rejected by Validate(); never guess a pool here
+	}
+
+	runsWorkerLoops := roles.Runs(NodeRoleChecks) || roles.Runs(NodeRoleJobs)
+	if roles.Runs(NodeRoleAPI) || !runsWorkerLoops {
 		return
 	}
 
@@ -1889,18 +1900,23 @@ func (c *Config) Validate() error {
 // role-specific requirements, and the worker identity this process would
 // register under.
 func (c *Config) validateNodeConfig() error {
-	if !slices.Contains(ValidNodeRoles(), c.Node.Role) {
-		return fmt.Errorf("%w, got '%s'", ErrInvalidNodeRole, c.Node.Role)
+	// An unknown role, a malformed list, or a conflicting combination aborts
+	// startup here: silently disabling a subsystem is the failure mode this
+	// guard exists to prevent.
+	roles, err := ParseNodeRoles(c.Node.Role)
+	if err != nil {
+		return err
 	}
 
-	// The checks role needs a region.
-	if c.Node.Role == NodeRoleChecks && c.Node.Region == "" {
+	// The checks role needs a region. Membership is deliberately literal (Has,
+	// not Runs): "all" has never required SP_NODE_REGION, and must not start.
+	if roles.Has(NodeRoleChecks) && c.Node.Region == "" {
 		return ErrRegionRequiredForChecks
 	}
 
 	// The agent role needs a server URL (the enrollment token is only needed on
 	// the very first run — a persisted identity replaces it).
-	if c.Node.Role == NodeRoleAgent && c.Agent.ServerURL == "" {
+	if roles.Has(NodeRoleAgent) && c.Agent.ServerURL == "" {
 		return ErrAgentServerURLRequired
 	}
 
