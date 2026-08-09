@@ -398,15 +398,8 @@ func (s *Service) CreateIntegration(
 		return nil, err
 	}
 
-	// Slack channels can only be created by the OAuth install flow (which calls
-	// s.db.CreateChannel directly and writes the bot token). A manually-created
-	// Slack channel has no token and is permanently broken, so reject it here.
-	if connType == models.ConnectionTypeSlack {
-		return nil, ErrSlackManualCreate
-	}
-
-	if connType == models.ConnectionTypeMSTeamsBot {
-		return nil, ErrMSTeamsBotManualCreate
+	if err := s.checkCreateTypeConstraints(ctx, connType, req.Settings); err != nil {
+		return nil, err
 	}
 
 	conn := models.NewIntegration(org.UID, connType, req.Name)
@@ -493,6 +486,33 @@ func validateConnectionType(connType models.ConnectionType, settings models.JSON
 	return nil
 }
 
+// checkCreateTypeConstraints enforces the per-type rules that gate whether a
+// POST is even allowed to proceed for connType: Slack and Teams-bot channels
+// can only originate from their respective provider-driven install flows, and
+// a Twilio connection must have its credentials verified against Twilio
+// before it is ever persisted.
+func (s *Service) checkCreateTypeConstraints(
+	ctx context.Context, connType models.ConnectionType, settings models.JSONMap,
+) error {
+	switch connType { //nolint:exhaustive // only Slack/Teams-bot/Twilio have creation-time constraints.
+	case models.ConnectionTypeSlack:
+		// Slack channels can only be created by the OAuth install flow (which
+		// calls s.db.CreateChannel directly and writes the bot token). A
+		// manually-created Slack channel has no token and is permanently
+		// broken, so reject it here.
+		return ErrSlackManualCreate
+	case models.ConnectionTypeMSTeamsBot:
+		return ErrMSTeamsBotManualCreate
+	case models.ConnectionTypeTwilio:
+		// A POST always sets the account SID / auth token (both required by
+		// validateTwilioSettings above), so creation always verifies them
+		// against Twilio before the connection is persisted.
+		return s.verifyTwilioOnCreate(ctx, settings)
+	default:
+		return nil
+	}
+}
+
 // validateTwilioSettings enforces the Twilio connection's settings invariants:
 // an AC… account SID, a non-empty auth token, exactly one of from_number /
 // messaging_service_sid, and E.164 for every configured number. Called against
@@ -532,7 +552,111 @@ func validateTwilioSettings(settings models.JSONMap) error {
 		}
 	}
 
+	if !twilio.ValidRegion(parsed.Region) {
+		return fmt.Errorf(
+			"%w: region must be empty or match ^[a-z]{2}[0-9]+$ (e.g. us1, ie1, au1)", ErrInvalidSettings)
+	}
+
 	return nil
+}
+
+// verifyTwilioCredentials is the credential-verification seam used before a
+// Twilio connection write that sets or changes the account SID, auth token,
+// or region. Overridden in tests to avoid a live Twilio call.
+//
+//nolint:gochecknoglobals // test seam for the outbound Twilio credential check.
+var verifyTwilioCredentials = twilio.VerifyCredentials
+
+// twilioCredentialFields are the settings keys that, when present in a PATCH
+// request, invalidate the connection's existing credential verification and
+// require a fresh one.
+//
+//nolint:gochecknoglobals // constant lookup set.
+var twilioCredentialFields = []string{"account_sid", "auth_token", "region"}
+
+// touchesTwilioCredentialFields reports whether an incoming (unmerged) PATCH
+// settings map sets or changes any of the account SID, auth token, or region.
+func touchesTwilioCredentialFields(reqSettings models.JSONMap) bool {
+	for _, k := range twilioCredentialFields {
+		if _, ok := reqSettings[k]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// verifyTwilioWrite makes one live authenticated call to Twilio, against the
+// region resolved from parsed.Region, to confirm the account SID / auth token
+// pair actually works before the caller persists the connection. Twilio
+// rejecting the credentials and Twilio being unreachable are reported as
+// distinct errors so the operator knows which situation they are in — both
+// refuse the write.
+//
+// Skipped entirely in test-run mode (SP_RUNMODE=test): dev-test and the
+// Playwright E2E suite create Twilio connections with placeholder
+// credentials and no real Twilio account to verify against, and there is no
+// way to intercept this server-side HTTP call from a browser-driven test.
+// Production (RunMode == "") always verifies.
+func (s *Service) verifyTwilioWrite(ctx context.Context, parsed *models.TwilioSettings) error {
+	if s.appConfig != nil && s.appConfig.RunMode == "test" {
+		return nil
+	}
+
+	region := parsed.Region
+	if region == "" {
+		region = "us1"
+	}
+
+	baseURL := twilio.BaseURLForRegion(parsed.Region)
+
+	err := verifyTwilioCredentials(ctx, parsed.AccountSID, parsed.AuthToken, baseURL)
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(err, twilio.ErrCredentialsRejected) {
+		return fmt.Errorf(
+			"%w: Twilio rejected these credentials for region %s — "+
+				"account SID and auth token are region-scoped, check you copied them from the %s account",
+			ErrInvalidSettings, region, region)
+	}
+
+	return fmt.Errorf(
+		"%w: could not verify Twilio credentials for region %s "+
+			"(Twilio was unreachable, timed out, or returned an error) — the connection was not saved",
+		ErrInvalidSettings, region)
+}
+
+// verifyTwilioOnCreate parses the create-request settings and verifies them
+// against Twilio before the caller persists the new connection.
+func (s *Service) verifyTwilioOnCreate(ctx context.Context, settings models.JSONMap) error {
+	parsed, err := models.TwilioSettingsFromJSONMap(settings)
+	if err != nil {
+		return fmt.Errorf("%w: malformed twilio settings", ErrInvalidSettings)
+	}
+
+	return s.verifyTwilioWrite(ctx, parsed)
+}
+
+// verifyTwilioOnUpdate validates the merged (post-PATCH) Twilio settings and,
+// only when the incoming PATCH touches a credential-shaped field, re-verifies
+// them against Twilio before the caller persists the update.
+func (s *Service) verifyTwilioOnUpdate(ctx context.Context, merged map[string]any, reqSettings models.JSONMap) error {
+	if vErr := validateTwilioSettings(models.JSONMap(merged)); vErr != nil {
+		return vErr
+	}
+
+	if !touchesTwilioCredentialFields(reqSettings) {
+		return nil
+	}
+
+	parsed, err := models.TwilioSettingsFromJSONMap(models.JSONMap(merged))
+	if err != nil {
+		return fmt.Errorf("%w: malformed twilio settings", ErrInvalidSettings)
+	}
+
+	return s.verifyTwilioWrite(ctx, parsed)
 }
 
 // UpdateIntegration updates a connection.
@@ -616,9 +740,11 @@ func (s *Service) applyUpdateSettings(
 	}
 
 	// Validate the merged (post-PATCH) settings so a partial update can't leave
-	// a Twilio connection in an unsendable state.
+	// a Twilio connection in an unsendable state, and re-verify against Twilio
+	// when the PATCH touches a credential-shaped field (renaming the
+	// connection or changing the from-number must not trigger a live call).
 	if conn.Type == models.ConnectionTypeTwilio {
-		if vErr := validateTwilioSettings(models.JSONMap(merged)); vErr != nil {
+		if vErr := s.verifyTwilioOnUpdate(ctx, merged, reqSettings); vErr != nil {
 			return vErr
 		}
 	}
