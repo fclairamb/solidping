@@ -5,6 +5,18 @@
   },
   "settings": {
     "title": "Ajustes de la organización",
+    "profile": {
+      "title": "Perfil de la organización",
+      "description": "El nombre de la organización, su slug de URL y el logotipo que se muestra en el panel y en sus páginas de estado.",
+      "name": "Nombre",
+      "slug": "Slug de URL",
+      "renameWarning": "Todas las URL de esta organización cambian: enlaces del panel, páginas de estado, insignias SVG y widgets integrados. Los enlaces existentes siguen funcionando: la dirección antigua redirige a la nueva, pero solo hasta que otra organización la reclame.",
+      "logo": "Logotipo",
+      "logoHelp": "Pegue la URL de una imagen o suba un PNG, JPEG, WebP, GIF o SVG de hasta 1 MB.",
+      "logoUploaded": "Logotipo actualizado.",
+      "upload": "Subir",
+      "removeLogo": "Quitar logotipo"
+    },
     "autoJoin": "Adhesión automática",
     "autoJoinDescription": "Añade automáticamente a la organización a los usuarios cuyo correo coincida con este patrón.",
     "autoJoinFullDescription": "Los usuarios cuyo correo coincida con este patrón se unirán automáticamente a esta organización al registrarse o iniciar sesión vía OAuth.",

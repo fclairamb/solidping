@@ -33,6 +33,7 @@ import {
   ConfirmByTypingButton,
   DangerZone,
 } from "@/components/shared/danger-zone";
+import { OrgProfileCard } from "@/components/shared/org-profile-card";
 
 // Sentinel Select value for "no org default" (Radix needs a non-empty value).
 const NO_DEFAULT = "__none__";
@@ -192,7 +193,11 @@ function SettingsPage() {
 
   return (
     <>
-      <Card>
+      {/* Owner-only, like the danger zone below — the server enforces it with
+          RequireOrgOwner, so hiding the card from an admin is UX only. */}
+      {user?.isOwner && <OrgProfileCard org={org} />}
+
+      <Card className={user?.isOwner ? "mt-6" : undefined}>
         <CardHeader>
           <CardTitle>{t("settings.autoJoin")}</CardTitle>
           <CardDescription>

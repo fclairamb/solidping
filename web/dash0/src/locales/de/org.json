@@ -5,6 +5,18 @@
   },
   "settings": {
     "title": "Organisationseinstellungen",
+    "profile": {
+      "title": "Organisationsprofil",
+      "description": "Der Name der Organisation, ihr URL-Slug und das Logo, das im Dashboard und auf ihren Statusseiten angezeigt wird.",
+      "name": "Name",
+      "slug": "URL-Slug",
+      "renameWarning": "Alle URLs dieser Organisation ändern sich — Dashboard-Links, Statusseiten, SVG-Badges und eingebettete Widgets. Bestehende Links funktionieren weiter: Die alte Adresse leitet auf die neue um, aber nur so lange, bis eine andere Organisation sie beansprucht.",
+      "logo": "Logo",
+      "logoHelp": "Fügen Sie eine Bild-URL ein oder laden Sie ein PNG, JPEG, WebP, GIF oder SVG mit maximal 1 MB hoch.",
+      "logoUploaded": "Logo aktualisiert.",
+      "upload": "Hochladen",
+      "removeLogo": "Logo entfernen"
+    },
     "autoJoin": "Automatischer Beitritt",
     "autoJoinDescription": "Benutzer, deren E-Mail-Adresse diesem Muster entspricht, werden automatisch der Organisation hinzugefügt.",
     "autoJoinFullDescription": "Benutzer, deren E-Mail diesem Muster entspricht, treten dieser Organisation automatisch bei, wenn sie sich registrieren oder über OAuth anmelden.",

@@ -143,7 +143,8 @@ export function AppSidebar() {
   const { data: versionData } = useVersion();
   const isTestMode = versionData?.runMode === "test";
 
-  const currentOrgName = organizations.find((o) => o.slug === org)?.name;
+  const currentOrg = organizations.find((o) => o.slug === org);
+  const currentOrgName = currentOrg?.name;
 
   const handleLogout = async () => {
     await logout();
@@ -163,8 +164,19 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
               <Link to="/orgs/$org" params={{ org }}>
-                <div className="flex aspect-square size-8 items-center justify-center">
-                  <Logo size={32} />
+                <div className="flex aspect-square size-8 items-center justify-center overflow-hidden rounded">
+                  {/* The org's own logo replaces the SolidPing mark when set;
+                      the product mark is the fallback (spec 2026-08-08-12). */}
+                  {currentOrg?.logoUrl ? (
+                    <img
+                      src={currentOrg.logoUrl}
+                      alt=""
+                      className="h-8 w-8 object-contain"
+                      data-testid="sidebar-org-logo"
+                    />
+                  ) : (
+                    <Logo size={32} />
+                  )}
                 </div>
                 <div className="flex flex-col gap-0.5 leading-none">
                   <span className="font-semibold">SolidPing</span>
@@ -344,7 +356,15 @@ export function AppSidebar() {
                           onClick={() => handleSwitchOrg(o.slug)}
                           data-testid={`switch-org-${o.slug}`}
                         >
-                          <Building className="mr-2 h-4 w-4" />
+                          {o.logoUrl ? (
+                            <img
+                              src={o.logoUrl}
+                              alt=""
+                              className="mr-2 h-4 w-4 object-contain"
+                            />
+                          ) : (
+                            <Building className="mr-2 h-4 w-4" />
+                          )}
                           {o.name || o.slug}
                         </DropdownMenuItem>
                       ))}

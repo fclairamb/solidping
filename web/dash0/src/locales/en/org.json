@@ -5,6 +5,18 @@
   },
   "settings": {
     "title": "Organization Settings",
+    "profile": {
+      "title": "Organization profile",
+      "description": "The organization's name, its URL slug, and the logo shown across the dashboard and its status pages.",
+      "name": "Name",
+      "slug": "URL slug",
+      "renameWarning": "Every URL of this organization changes — dashboard links, status pages, SVG badges and embedded widgets. Existing links keep working: the old address redirects to the new one, but only until another organization claims it.",
+      "logo": "Logo",
+      "logoHelp": "Paste an image URL, or upload a PNG, JPEG, WebP, GIF or SVG of up to 1 MB.",
+      "logoUploaded": "Logo updated.",
+      "upload": "Upload",
+      "removeLogo": "Remove logo"
+    },
     "autoJoin": "Auto-join",
     "autoJoinDescription": "Automatically add users matching this email pattern to the organization.",
     "autoJoinFullDescription": "Users whose email matches this pattern will automatically join this organization when they register or sign in via OAuth.",

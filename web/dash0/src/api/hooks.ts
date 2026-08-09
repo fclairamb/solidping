@@ -2509,6 +2509,79 @@ export function useDeleteOrg(org: string) {
   });
 }
 
+// --- Organization profile (name / slug / logo) -----------------------------
+// Owner-only, enforced server-side by RequireOrgOwner (spec 2026-08-08-12).
+
+export interface UpdateOrgProfileRequest {
+  name?: string;
+  slug?: string;
+  // An absolute http(s) URL sets the logo; null clears it; omit to leave it
+  // untouched (the server distinguishes "absent" from "null").
+  logoUrl?: string | null;
+}
+
+export interface OrgProfileResponse {
+  uid: string;
+  slug: string;
+  name: string;
+  logoUrl: string | null;
+  // Set only when the slug changed. The old slug keeps redirecting to the new
+  // one until another organization claims it.
+  previousSlug?: string;
+  // A rename re-mints the session for the new slug — the caller must adopt it
+  // (AuthContext.adoptRenamedOrgSession) before navigating.
+  accessToken?: string;
+  refreshToken?: string;
+  expiresIn?: number;
+  tokenType?: string;
+}
+
+export function useUpdateOrgProfile(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: UpdateOrgProfileRequest) =>
+      apiFetch<OrgProfileResponse>(`/api/v1/orgs/${org}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-settings", org] });
+    },
+  });
+}
+
+// useUploadOrgLogo posts the image as multipart/form-data. The Content-Type
+// header is deliberately left unset so the browser adds the multipart boundary.
+export function useUploadOrgLogo(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => {
+      const body = new FormData();
+      body.append("logo", file);
+      return apiFetch<OrgProfileResponse>(`/api/v1/orgs/${org}/logo`, {
+        method: "POST",
+        body,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-settings", org] });
+    },
+  });
+}
+
+export function useClearOrgLogo(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<OrgProfileResponse>(`/api/v1/orgs/${org}/logo`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-settings", org] });
+    },
+  });
+}
+
 export interface InviteInfo {
   orgName: string;
   orgSlug: string;

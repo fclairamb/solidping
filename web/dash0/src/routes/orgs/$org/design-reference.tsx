@@ -17,6 +17,7 @@ import {
   Copy,
   Eye,
   Info,
+  Building2,
   KeyRound,
   LogOut,
   Moon,
@@ -32,6 +33,7 @@ import {
   Search,
   Sun,
   Trash2,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -1288,6 +1290,31 @@ function FormsSection() {
         </p>
         <NameSlugExample />
 
+        <h3 className="text-sm font-medium">Image / logo field</h3>
+        <p className="text-sm text-muted-foreground">
+          A field that accepts <em>either</em> a pasted URL or an uploaded file
+          renders as one row: a fixed-size preview tile with a{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">lucide</code>{" "}
+          placeholder icon, the URL input, an outline{" "}
+          <strong>Upload</strong> button driving a hidden{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            &lt;input type="file"&gt;
+          </code>
+          , and — only when something is set — a destructive{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">Trash2</code>{" "}
+          icon button to clear it. The row wraps on narrow screens; the input
+          takes the remaining width with{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            min-w-0 flex-1
+          </code>{" "}
+          so it never overflows. Shipped in{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            components/shared/org-profile-card.tsx
+          </code>
+          .
+        </p>
+        <ImageFieldExample />
+
         <h3 className="text-sm font-medium">Assembled form</h3>
         <div className="rounded-md border bg-card p-4">
           <form className="max-w-md space-y-4" onSubmit={(e) => e.preventDefault()}>
@@ -1325,6 +1352,50 @@ function FormsSection() {
         </div>
       </div>
     </Section>
+  );
+}
+
+function ImageFieldExample() {
+  const [url, setUrl] = useState("");
+
+  return (
+    <ExampleRow
+      preview={
+        <div className="flex w-full flex-wrap items-center gap-3">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
+            {url ? (
+              <img src={url} alt="" className="h-full w-full object-contain" />
+            ) : (
+              <Building2 className="h-6 w-6 text-muted-foreground" />
+            )}
+          </div>
+          <Input
+            type="url"
+            placeholder="https://example.com/logo.png"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            className="min-w-0 flex-1"
+          />
+          <Button type="button" variant="outline">
+            <Upload className="mr-2 h-4 w-4" />
+            Upload
+          </Button>
+          {url && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="text-destructive"
+              aria-label="Remove image"
+              onClick={() => setUrl("")}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      }
+      importLine={`const fileInput = useRef<HTMLInputElement>(null);\n\n<div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">\n  {url ? <img src={url} alt="" className="h-full w-full object-contain" /> : <Building2 className="h-6 w-6 text-muted-foreground" />}\n</div>\n<Input type="url" value={url} onChange={...} className="min-w-0 flex-1" />\n<input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" className="hidden" onChange={...} />\n<Button type="button" variant="outline" onClick={() => fileInput.current?.click()}>\n  <Upload className="mr-2 h-4 w-4" />\n  Upload\n</Button>\n<Button type="button" variant="ghost" size="icon" className="text-destructive" aria-label="Remove image">\n  <Trash2 className="h-4 w-4" />\n</Button>`}
+    />
   );
 }
 
