@@ -141,3 +141,38 @@ Once released, split the k8xp `k8s/solidping/overlays/dev` main deployment:
       checks-only `default`-region deployment runs with `hostNetwork: true` and
       passes the IPv6 check consistently, without destabilizing the public
       dashboard/API pod.
+
+## Implementation Plan
+
+1. **`server/internal/config/node_role.go` (new)** — the whole role model in one
+   place:
+   - `NodeRoleSet` (a `map[string]bool`) with `Has` (raw membership) and `Runs`
+     (membership honoring `all`).
+   - `ParseNodeRoles(raw string) (NodeRoleSet, error)`: split on `,`, trim each
+     segment, reject an empty raw value / empty segment / unknown token /
+     duplicate token, then reject `all` or `agent` appearing alongside anything
+     else (both are whole-node modes). `MultiValueNodeRoles()` documents the
+     `{api, jobs, checks}` subset usable in a list.
+   - `Config.NodeRoles()` parses on every call — the `node.role` system
+     parameter can overwrite `Config.Node.Role` *after* `Validate()`, so a
+     cached set would go stale.
+   - `ShouldRunAPI` / `ShouldRunJobs` / `ShouldRunChecks` move here and become
+     `NodeRoles().Runs(...)`; add `IsAgentMode()` for the `agent` branch.
+2. **`config.go`** — drop the three exact-string `ShouldRun*`, extend the
+   `ErrInvalidNodeRole` text, add `ErrExclusiveNodeRole`; make
+   `applyNodeRolePoolDefaults` set-aware ("runs checks or jobs and does *not*
+   serve the API" → smaller pool, which is byte-identical for every single-value
+   role); rewrite `validateNodeConfig` on top of `ParseNodeRoles` (region still
+   required only when `checks` is an explicit member, never for `all`).
+3. **`server/main.go`** — `cfg.Node.Role == config.NodeRoleAgent` →
+   `cfg.IsAgentMode()`.
+4. **Docs** — `web/docs/docs/configuration/index.md`, `wiki/conventions/runners.md`,
+   `README.md`.
+5. **Tests** — `server/internal/config/node_role_test.go`: a backward-compat
+   table pinning the `ShouldRun*` triple for every legacy single value plus the
+   unset default; the new `api,jobs` combination; every rejection path; and an
+   end-to-end `Load()` test proving a comma-separated value survives the koanf
+   env path unsplit.
+
+Out of scope here: the k8xp deployment split (separate repo). Nothing in this
+change assumes it has happened — `all` stays the default.
