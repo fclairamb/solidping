@@ -737,6 +737,71 @@ func (h *Handler) DeleteOrg(writer http.ResponseWriter, req *http.Request) error
 	return nil
 }
 
+// UpdateOrgProfile handles PATCH /api/v1/orgs/:org. The route is owner-gated by
+// middleware.RequireOrgOwner (an admin gets the standard 403, not a hidden
+// button), so this handler only validates and translates errors.
+//
+// On a slug rename the response carries a fresh org-scoped session, and the
+// access-token cookie is refreshed with it — exactly like CreateOrg/SwitchOrg.
+// Without that the dashboard's very next request, now addressed to the new
+// slug, would 403 on the token-scope check.
+func (h *Handler) UpdateOrgProfile(writer http.ResponseWriter, req *http.Request) error {
+	claims, ok := getClaimsFromContext(req)
+	if !ok {
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
+	}
+
+	orgSlug := httpx.Param(req, fieldOrg)
+
+	var profileReq UpdateOrgProfileRequest
+	if err := json.NewDecoder(req.Body).Decode(&profileReq); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	authContext := Context{
+		UserAgent:  req.Header.Get("User-Agent"),
+		RemoteAddr: base.ExtractRemoteAddr(req),
+	}
+
+	resp, err := h.svc.UpdateOrgProfile(req.Context(), orgSlug, claims.UserUID, profileReq, authContext)
+	if err != nil {
+		return h.writeOrgProfileError(writer, err)
+	}
+
+	if resp.AccessToken != "" {
+		setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
+// writeOrgProfileError maps the profile-update domain errors onto the standard
+// error shape, reusing exactly the messages CreateOrg emits for the shared slug
+// errors so the dashboard can render one validation string per field.
+func (h *Handler) writeOrgProfileError(writer http.ResponseWriter, err error) error {
+	switch {
+	case errors.Is(err, ErrInvalidOrgSlug):
+		return h.WriteErrorErr(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError,
+			"Slug must be 3-20 characters, lowercase alphanumeric with hyphens", err)
+	case errors.Is(err, ErrOrgSlugTaken):
+		return h.WriteErrorErr(writer, http.StatusConflict, base.ErrorCodeConflict,
+			"Organization slug is already taken", err)
+	case errors.Is(err, ErrInvalidOrgName):
+		return h.WriteErrorErr(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError,
+			"Name must be between 1 and 100 characters", err)
+	case errors.Is(err, ErrInvalidLogoURL):
+		return h.WriteErrorErr(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError,
+			"Logo URL must be an absolute http(s) URL", err)
+	case errors.Is(err, ErrOrganizationNotFound):
+		return h.WriteErrorErr(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound,
+			"Organization not found", err)
+	default:
+		return h.WriteInternalError(writer, err)
+	}
+}
+
 // CreateInvitation handles invitation creation.
 func (h *Handler) CreateInvitation(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)

@@ -550,9 +550,23 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// subscribe) are registered directly on `api` and deliberately do NOT go
 	// through here; the service-token entitlements group keeps its own
 	// ServiceTokenBypass -> RequireAuth -> RequireOrgAccess chain.
+	//
+	// orgSlugRedirect runs FIRST in the chain: a request to an organization's
+	// previous slug (after a rename) is answered with a permanent redirect to
+	// the current slug before the token-scope check in AuthorizeOrgAccess can
+	// turn it into a 403 (spec 2026-08-08-12).
+	orgSlugRedirect := middleware.NewOrgSlugRedirect(s.dbService)
 	orgGroup := func(path string) *httpx.Group {
-		return api.NewGroup(path).Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+		return api.NewGroup(path).
+			Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
 	}
+
+	// publicOrgAPI carries the previous-slug redirect for the intentionally
+	// public /orgs/:org/... and /status-pages/:org/... routes, which bypass
+	// orgGroup by design. These are exactly the URLs customers paste into
+	// their own sites (status pages, SVG badges, the /embed/v1 widget's
+	// summary endpoint), so they are the ones a rename must not break.
+	publicOrgAPI := api.Use(orgSlugRedirect.Middleware)
 
 	// Org creation (protected). Any authenticated user may create an org; the
 	// creator becomes its owner (spec 2026-08-08-11).
@@ -563,8 +577,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// admin is refused with the standard 403 shape, not merely denied the
 	// button in the dashboard).
 	orgOwnerGroup := api.NewGroup("/orgs/:org").
-		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgOwner)
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgOwner)
 	orgOwnerGroup.DELETE("", authHandler.DeleteOrg)
+
+	// Org profile (name / slug / logo) — owner only, same rationale as delete:
+	// renaming the slug moves every URL of the organization (spec 2026-08-08-12).
+	orgOwnerGroup.PATCH("", authHandler.UpdateOrgProfile)
 
 	// Org-scoped token management (protected)
 	orgTokens := orgGroup("/orgs/:org/tokens")
@@ -861,13 +880,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Badge routes (public, no authentication required)
 	badgesService := badges.NewService(s.dbService, s.config)
 	badgesHandler := badges.NewHandler(badgesService, s.config)
-	api.GET("/orgs/:org/checks/:check/badges/:components", badgesHandler.GetBadge)
+	publicOrgAPI.GET("/orgs/:org/checks/:check/badges/:components", badgesHandler.GetBadge)
 
 	// Heartbeat ingestion routes (public, token-based auth)
 	heartbeatService := heartbeat.NewService(s.dbService, s.jobSvc, s.services.Realtime)
 	heartbeatHandler := heartbeat.NewHandler(heartbeatService, s.config)
-	api.POST("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
-	api.GET("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
+	publicOrgAPI.POST("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
+	publicOrgAPI.GET("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
 
 	// The HTTP edge-worker API (/workers/{register,heartbeat,claim-jobs,
 	// submit-result}) was removed with spec 2026-07-16-02: it had no production
@@ -949,7 +968,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Magic-link ack — public route (the signed token authenticates).
 	// Returns text/html so it renders in a browser opened from a mail client.
-	api.GET("/orgs/:org/incidents/:uid/ack", incidentsHandler.AcknowledgeIncidentByLink)
+	publicOrgAPI.GET("/orgs/:org/incidents/:uid/ack", incidentsHandler.AcknowledgeIncidentByLink)
 
 	// Per-recipient email unsubscribe (spec 2026-07-05-10, D4) — public,
 	// top-level routes (not under /api/v1: these are browser pages and a
@@ -1276,18 +1295,18 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgMW.PUT("/:uid/checks", mwHandler.SetChecks)
 
 	// Public status page endpoints (no authentication)
-	api.GET("/status-pages/:org", statusPagesHandler.ViewDefaultStatusPage)
-	api.GET("/status-pages/:org/:slug", statusPagesHandler.ViewStatusPage)
+	publicOrgAPI.GET("/status-pages/:org", statusPagesHandler.ViewDefaultStatusPage)
+	publicOrgAPI.GET("/status-pages/:org/:slug", statusPagesHandler.ViewStatusPage)
 	// Lightweight "is it up?" rollup — cheap alternative to the full page view
 	// above, with a Cache-Control header the full view doesn't set (spec
 	// 2026-08-08-06).
-	api.GET("/status-pages/:org/:slug/summary", statusPagesHandler.ViewStatusPageSummary)
+	publicOrgAPI.GET("/status-pages/:org/:slug/summary", statusPagesHandler.ViewStatusPageSummary)
 	// Public SVG badge (page-level rollup) — same sibling as the per-check
 	// badge under /orgs/:org/checks/:check/badges/:components (spec
 	// 2026-08-08-07).
-	api.GET("/status-pages/:org/:slug/badge", statusPagesHandler.GetBadge)
+	publicOrgAPI.GET("/status-pages/:org/:slug/badge", statusPagesHandler.GetBadge)
 	// Public Atom/RSS feed of the status-update timeline.
-	api.GET("/status-pages/:org/:slug/feed.xml", statusSubscribersHandler.Feed)
+	publicOrgAPI.GET("/status-pages/:org/:slug/feed.xml", statusSubscribersHandler.Feed)
 
 	// Edge-TLS "ask" endpoint (public, no auth): 204 when the queried domain is a
 	// verified+enabled+public custom domain, 404 otherwise. Contract for Caddy
@@ -1298,7 +1317,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// subscribe endpoint inherits the global per-IP rate limit on /api/v1/;
 	// double opt-in is the primary anti-abuse control. Confirm/unsubscribe are
 	// single-purpose token links that render an HTML landing page.
-	api.POST("/orgs/:org/status-pages/:statusPageUid/subscribers", statusSubscribersHandler.Subscribe)
+	publicOrgAPI.POST("/orgs/:org/status-pages/:statusPageUid/subscribers", statusSubscribersHandler.Subscribe)
 	publicSubscribers := api.NewGroup("/public/status-subscribers")
 	publicSubscribers.GET("/confirm", statusSubscribersHandler.Confirm)
 	publicSubscribers.GET("/unsubscribe", statusSubscribersHandler.Unsubscribe)
@@ -1990,6 +2009,11 @@ func (s *Server) serveAppStatic(writer http.ResponseWriter, req *http.Request) e
 
 // serveDash0Root serves the dash0 status dashboard.
 func (s *Server) serveDash0Root(writer http.ResponseWriter, req *http.Request) error {
+	// A bookmarked /dash0/orgs/<old slug>/... URL still works after a rename.
+	if s.redirectRenamedOrgSPA(writer, req) {
+		return nil
+	}
+
 	// Check if any redirect rule matches for development proxying
 	for i := range s.config.Server.Redirects {
 		rule := &s.config.Server.Redirects[i]
@@ -2062,6 +2086,11 @@ func (s *Server) serveDash0Static(writer http.ResponseWriter, req *http.Request)
 
 // serveStatus0Root serves the status0 public status page app.
 func (s *Server) serveStatus0Root(writer http.ResponseWriter, req *http.Request) error {
+	// A pasted /status0/<old slug>/<page> link still works after a rename.
+	if s.redirectRenamedOrgSPA(writer, req) {
+		return nil
+	}
+
 	for i := range s.config.Server.Redirects {
 		rule := &s.config.Server.Redirects[i]
 		if strings.HasPrefix(req.URL.Path, rule.PathPrefix) {

@@ -78,6 +78,14 @@ func (s *Service) DeleteOrg(ctx context.Context, orgSlug string, req DeleteOrgRe
 		return fmt.Errorf("failed to revoke organization tokens: %w", tokenErr)
 	}
 
+	// Rename aliases go too. The alias lookup already refuses to resolve a
+	// soft-deleted org, so this is belt-and-braces — but it also frees any slug
+	// the org was still holding as a previous slug, matching "the slug becomes
+	// claimable again" for every slug the org ever answered on.
+	if aliasErr := s.db.ReleaseOrganizationPreviousSlugsForOrg(ctx, org.UID); aliasErr != nil {
+		return fmt.Errorf("failed to release organization previous slugs: %w", aliasErr)
+	}
+
 	if delErr := s.db.DeleteOrganization(ctx, org.UID); delErr != nil {
 		return fmt.Errorf("failed to delete organization: %w", delErr)
 	}

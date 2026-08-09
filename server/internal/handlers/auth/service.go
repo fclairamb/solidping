@@ -229,13 +229,34 @@ type OrganizationInfo struct {
 	UID  string `json:"uid"`
 	Slug string `json:"slug"`
 	Name string `json:"name,omitempty"`
+	// LogoURL is the org's logo (absolute http(s) URL, or /pub/org-logos/<uid>
+	// for an uploaded one). Null means "no logo" and the client falls back to
+	// the product default.
+	LogoURL *string `json:"logoUrl"`
+}
+
+// newOrganizationInfo builds the org payload every login-shaped response
+// carries. Funnelling the construction through one function is what keeps a new
+// org field (like logoUrl) from reaching some responses and not others.
+func newOrganizationInfo(org *models.Organization) *OrganizationInfo {
+	if org == nil {
+		return nil
+	}
+
+	return &OrganizationInfo{
+		UID:     org.UID,
+		Slug:    org.Slug,
+		Name:    org.Name,
+		LogoURL: org.LogoURL,
+	}
 }
 
 // OrganizationSummary represents a brief organization entry for listing.
 type OrganizationSummary struct {
-	Slug string `json:"slug"`
-	Name string `json:"name,omitempty"`
-	Role string `json:"role"`
+	Slug    string  `json:"slug"`
+	Name    string  `json:"name,omitempty"`
+	LogoURL *string `json:"logoUrl"`
+	Role    string  `json:"role"`
 }
 
 // LoginAction describes how the frontend should handle the login result.
@@ -646,16 +667,12 @@ func (s *Service) completeLogin(
 	}
 
 	return &LoginResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshTokenValue,
-		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
-		TokenType:    tokenTypeBearer,
-		User:         userInfo,
-		Organization: &OrganizationInfo{
-			UID:  resolvedOrg.UID,
-			Slug: resolvedOrg.Slug,
-			Name: resolvedOrg.Name,
-		},
+		AccessToken:   accessToken,
+		RefreshToken:  refreshTokenValue,
+		ExpiresIn:     int(s.cfg.AccessTokenExpiry.Seconds()),
+		TokenType:     tokenTypeBearer,
+		User:          userInfo,
+		Organization:  newOrganizationInfo(resolvedOrg),
 		Organizations: orgSummaries,
 		LoginAction:   loginAction,
 	}, nil
@@ -748,9 +765,10 @@ func buildOrgSummaries(members []*models.OrganizationMember) []OrganizationSumma
 		}
 
 		summaries = append(summaries, OrganizationSummary{
-			Slug: member.Organization.Slug,
-			Name: member.Organization.Name,
-			Role: string(member.Role),
+			Slug:    member.Organization.Slug,
+			Name:    member.Organization.Name,
+			LogoURL: member.Organization.LogoURL,
+			Role:    string(member.Role),
 		})
 	}
 
@@ -1205,11 +1223,7 @@ func (s *Service) Refresh(ctx context.Context, refreshTokenValue string) (*Login
 			AvatarURL: user.AvatarURL,
 			Role:      role,
 		},
-		Organization: &OrganizationInfo{
-			UID:  org.UID,
-			Slug: org.Slug,
-			Name: org.Name,
-		},
+		Organization: newOrganizationInfo(org),
 	}, nil
 }
 
@@ -1431,11 +1445,7 @@ func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse,
 			AvatarURL: user.AvatarURL,
 			Role:      role,
 		},
-		Organization: &OrganizationInfo{
-			UID:  org.UID,
-			Slug: org.Slug,
-			Name: org.Name,
-		},
+		Organization:              newOrganizationInfo(org),
 		Organizations:             orgs,
 		TOTPEnabled:               user.TOTPEnabled,
 		PasskeyCount:              len(passkeys),
@@ -1523,9 +1533,10 @@ func (s *Service) getOrganizationsForUser(ctx context.Context, userUID string) (
 		}
 
 		orgs = append(orgs, OrganizationSummary{
-			Slug: member.Organization.Slug,
-			Name: member.Organization.Name,
-			Role: string(member.Role),
+			Slug:    member.Organization.Slug,
+			Name:    member.Organization.Name,
+			LogoURL: member.Organization.LogoURL,
+			Role:    string(member.Role),
 		})
 	}
 
@@ -1846,11 +1857,7 @@ func (s *Service) SwitchOrg(
 			AvatarURL: user.AvatarURL,
 			Role:      role,
 		},
-		Organization: &OrganizationInfo{
-			UID:  org.UID,
-			Slug: org.Slug,
-			Name: org.Name,
-		},
+		Organization: newOrganizationInfo(org),
 	}, nil
 }
 
@@ -2293,11 +2300,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 			Name:  user.Name,
 			Role:  role,
 		},
-		Organization: &OrganizationInfo{
-			UID:  org.UID,
-			Slug: org.Slug,
-			Name: org.Name,
-		},
+		Organization: newOrganizationInfo(org),
 	}, nil
 }
 
@@ -2630,13 +2633,14 @@ type CreateOrgRequest struct {
 // other way to obtain a token whose orgSlug claim matches the new org (see
 // the 2026-07-08 "create-org missing org-scoped token" spec).
 type OrgResponse struct {
-	UID          string `json:"uid"`
-	Slug         string `json:"slug"`
-	Name         string `json:"name"`
-	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken"`
-	ExpiresIn    int    `json:"expiresIn"`
-	TokenType    string `json:"tokenType"`
+	UID          string  `json:"uid"`
+	Slug         string  `json:"slug"`
+	Name         string  `json:"name"`
+	LogoURL      *string `json:"logoUrl"`
+	AccessToken  string  `json:"accessToken"`
+	RefreshToken string  `json:"refreshToken"`
+	ExpiresIn    int     `json:"expiresIn"`
+	TokenType    string  `json:"tokenType"`
 }
 
 var orgSlugRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$`)
@@ -2652,7 +2656,9 @@ var orgSlugRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$`)
 //
 // Slug availability is decided by GetOrganizationBySlug, which filters
 // `deleted_at IS NULL` — so a deleted org's slug is free for reuse, matching
-// the partial unique index on organizations(slug).
+// the partial unique index on organizations(slug). A slug held only as a
+// renamed org's previous slug is likewise free, and claiming it releases that
+// alias (spec 2026-08-08-12).
 func (s *Service) CreateOrg(
 	ctx context.Context, userUID string, req CreateOrgRequest, authContext Context,
 ) (*OrgResponse, error) {
@@ -2685,6 +2691,15 @@ func (s *Service) CreateOrg(
 		return nil, fmt.Errorf("failed to create organization: %w", createOrgErr)
 	}
 
+	// A slug held only as another org's rename alias is claimable, and the
+	// claim releases the alias immediately: from here on the old links point
+	// at this brand-new organization's URL space, never at the renamed one
+	// (spec 2026-08-08-12). An alias must never shadow — or outlive — a live
+	// organization on the same slug.
+	if releaseErr := s.db.ReleaseOrganizationPreviousSlug(ctx, org.Slug); releaseErr != nil {
+		return nil, fmt.Errorf("failed to release previous slug: %w", releaseErr)
+	}
+
 	// The creator owns the org they just created: owner outranks admin, and
 	// only an owner may delete the org or grant/revoke ownership (spec
 	// 2026-08-08-11). Without this the creator becomes indistinguishable from
@@ -2705,26 +2720,7 @@ func (s *Service) CreateOrg(
 	// org's slug. Without this, the caller's existing token (orgSlug "" for
 	// a zero-org user, or their previous org otherwise) 403s on every
 	// org-scoped call to the org they just created.
-	refreshTokenValue, err := s.generateRefreshToken()
-	if err != nil {
-		return nil, err
-	}
-
-	refreshToken := models.NewUserToken(userUID, &org.UID, refreshTokenValue, models.TokenTypeRefresh)
-	expiresAt := s.refreshTokenExpiry(ctx, org.UID, now, now)
-	refreshToken.ExpiresAt = &expiresAt
-	refreshToken.LastActiveAt = &now
-	refreshToken.Properties = models.JSONMap{
-		keyCreatedWith: authContext.ToMap(),
-	}
-
-	if createTokenErr := s.db.CreateUserToken(ctx, refreshToken); createTokenErr != nil {
-		return nil, createTokenErr
-	}
-
-	s.enforceSessionCap(ctx, userUID)
-
-	accessToken, err := s.generateAccessToken(userUID, org.Slug, string(models.MemberRoleOwner), refreshToken.UID)
+	session, err := s.mintOrgSession(ctx, userUID, org, string(models.MemberRoleOwner), authContext)
 	if err != nil {
 		return nil, err
 	}
@@ -2733,10 +2729,11 @@ func (s *Service) CreateOrg(
 		UID:          org.UID,
 		Slug:         org.Slug,
 		Name:         org.Name,
-		AccessToken:  accessToken,
-		RefreshToken: refreshTokenValue,
-		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
-		TokenType:    tokenTypeBearer,
+		LogoURL:      org.LogoURL,
+		AccessToken:  session.AccessToken,
+		RefreshToken: session.RefreshToken,
+		ExpiresIn:    session.ExpiresIn,
+		TokenType:    session.TokenType,
 	}, nil
 }
 
@@ -3118,11 +3115,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 			Name:  user.Name,
 			Role:  role,
 		},
-		Organization: &OrganizationInfo{
-			UID:  matchedOrg.UID,
-			Slug: matchedOrg.Slug,
-			Name: matchedOrg.Name,
-		},
+		Organization:  newOrganizationInfo(matchedOrg),
 		Organizations: orgSummaries,
 	}, nil
 }
@@ -3694,10 +3687,6 @@ func (s *Service) completeLoginAfter2FA(
 		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
 		TokenType:    tokenTypeBearer,
 		User:         userInfo,
-		Organization: &OrganizationInfo{
-			UID:  org.UID,
-			Slug: org.Slug,
-			Name: org.Name,
-		},
+		Organization: newOrganizationInfo(org),
 	}, nil
 }
