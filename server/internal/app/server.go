@@ -1130,15 +1130,27 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	featuresHandler := features.NewHandler(s.config)
 	api.NewGroup("/features").Use(authMiddleware.RequireAuth).GET("", featuresHandler.GetFeatures)
 
-	// Members routes (authentication required)
+	// Members routes (authentication required).
+	//
+	// Reads stay open to any member of the org — the escalation-policy editor
+	// and the member picker read this list as a plain user.
+	//
+	// Writes are admin-only (spec 2026-08-09-03). `members.Service`
+	// additionally requires *owner* to touch an owner or to grant ownership
+	// (spec 2026-08-08-11); this gate is the floor beneath that, not a
+	// replacement for it.
 	membersService := members.NewService(s.dbService)
 	membersHandler := members.NewHandler(membersService, s.config)
 	orgMembers := orgGroup("/orgs/:org/members")
 	orgMembers.GET("", membersHandler.ListMembers)
-	orgMembers.POST("", membersHandler.AddMember)
 	orgMembers.GET("/:uid", membersHandler.GetMember)
-	orgMembers.PATCH("/:uid", membersHandler.UpdateMember)
-	orgMembers.DELETE("/:uid", membersHandler.RemoveMember)
+
+	orgMembersAdmin := api.NewGroup("/orgs/:org/members").
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+	orgMembersAdmin.POST("", membersHandler.AddMember)
+	orgMembersAdmin.PATCH("/:uid", membersHandler.UpdateMember)
+	orgMembersAdmin.DELETE("/:uid", membersHandler.RemoveMember)
 
 	// System parameters routes (super admin only)
 	systemService := system.NewService(s.dbService)
