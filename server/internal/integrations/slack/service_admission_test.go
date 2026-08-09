@@ -93,11 +93,13 @@ func runInstallCallback(ctx context.Context, t *testing.T, svc *Service) *OAuthR
 	return result
 }
 
-// TestInstallBootstrapsFirstUserAsAdmin pins the behavior the old
+// TestInstallBootstrapsFirstUserAsOwner pins the behavior the old
 // ensureOrganizationMembership provided and the shared policy must preserve:
-// the first human in a brand-new org created by a Marketplace install becomes
-// its admin.
-func TestInstallBootstrapsFirstUserAsAdmin(t *testing.T) {
+// the first human in a brand-new org created by a Marketplace install gets the
+// org's top role. Spec 2026-08-08-11 raised that role from admin to OWNER —
+// whoever brings an org into existence owns it — which also means this install
+// path can delete the org it just created.
+func TestInstallBootstrapsFirstUserAsOwner(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -112,7 +114,7 @@ func TestInstallBootstrapsFirstUserAsAdmin(t *testing.T) {
 
 	member, err := svc.db.GetMemberByUserAndOrg(ctx, result.UserUID, org.UID)
 	r.NoError(err)
-	r.Equal(models.MemberRoleAdmin, member.Role)
+	r.Equal(models.MemberRoleOwner, member.Role)
 }
 
 // TestInstallJoinsWorkspaceMemberAsUser is the positive control for the cap

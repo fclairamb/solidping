@@ -165,8 +165,8 @@ func TestDeletedOrgSurfaces404Immediately(t *testing.T) {
 	}
 
 	for _, surface := range aliveChecks {
-		status, body := doBearerRequest(t, testServer, ownerToken, http.MethodGet, surface.path, nil)
-		r.Equalf(http.StatusOK, status, "%s before delete: body=%s", surface.name, body)
+		code, respBody := doBearerRequest(t, testServer, ownerToken, http.MethodGet, surface.path, nil)
+		r.Equalf(http.StatusOK, code, "%s before delete: body=%s", surface.name, respBody)
 	}
 
 	// Delete the org.
@@ -178,14 +178,14 @@ func TestDeletedOrgSurfaces404Immediately(t *testing.T) {
 	// in front of them, and including the authenticated API called with the
 	// owner's own token (still cryptographically valid, but the org is gone).
 	for _, surface := range aliveChecks {
-		status, body := doBearerRequest(t, testServer, ownerToken, http.MethodGet, surface.path, nil)
-		r.Equalf(http.StatusNotFound, status, "%s after delete: body=%s", surface.name, body)
+		code, respBody := doBearerRequest(t, testServer, ownerToken, http.MethodGet, surface.path, nil)
+		r.Equalf(http.StatusNotFound, code, "%s after delete: body=%s", surface.name, respBody)
 	}
 
 	// An anonymous caller sees the same 404 on the public surfaces (no token).
 	for _, path := range []string{pagePath, pagePath + "/summary", pagePath + "/badge"} {
-		status, body := doBearerRequest(t, testServer, "", http.MethodGet, path, nil)
-		r.Equalf(http.StatusNotFound, status, "anonymous %s after delete: body=%s", path, body)
+		code, respBody := doBearerRequest(t, testServer, "", http.MethodGet, path, nil)
+		r.Equalf(http.StatusNotFound, code, "anonymous %s after delete: body=%s", path, respBody)
 	}
 
 	// And the slug is free again: a new org may claim it, with none of the old

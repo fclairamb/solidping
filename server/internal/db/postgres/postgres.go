@@ -770,7 +770,7 @@ func (s *Service) CountAdminsByOrg(ctx context.Context, orgUID string) (int, err
 	count, err := s.db.NewSelect().
 		Model((*models.OrganizationMember)(nil)).
 		Where("organization_uid = ?", orgUID).
-		Where("role IN (?)", bun.In([]models.MemberRole{models.MemberRoleOwner, models.MemberRoleAdmin})).
+		Where("role IN (?)", bun.List([]models.MemberRole{models.MemberRoleOwner, models.MemberRoleAdmin})).
 		Where("deleted_at IS NULL").
 		Where("joined_at IS NOT NULL").
 		Count(ctx)

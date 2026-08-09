@@ -287,33 +287,8 @@ func (s *Service) UpdateMember(
 
 	if req.Role != nil {
 		newRole := models.MemberRole(*req.Role)
-		if !isValidRole(newRole) {
-			return nil, ErrInvalidRole
-		}
-
-		// Ownership is owner-only in BOTH directions: an admin can neither
-		// promote somebody to owner nor demote (or otherwise touch) an existing
-		// owner. Without the second half, any admin could simply demote the
-		// owner and take the org.
-		if (newRole == models.MemberRoleOwner || member.Role == models.MemberRoleOwner) &&
-			!s.roleIn(ctx, caller, org.UID).AtLeast(models.MemberRoleOwner) {
-			return nil, ErrOwnerRoleRequired
-		}
-
-		// Check if demoting the last owner. Multiple owners are allowed, which
-		// is also the ownership-transfer path: promote someone to owner, then
-		// demote yourself.
-		if isDemotingOwner(member.Role, newRole) {
-			if lastOwnerErr := s.checkLastOwner(ctx, org.UID); lastOwnerErr != nil {
-				return nil, lastOwnerErr
-			}
-		}
-
-		// Check if demoting the last admin-or-above.
-		if isDemotingAdmin(member.Role, newRole) {
-			if lastAdminErr := s.checkLastAdmin(ctx, org.UID); lastAdminErr != nil {
-				return nil, lastAdminErr
-			}
+		if roleErr := s.authorizeRoleChange(ctx, caller, org.UID, member.Role, newRole); roleErr != nil {
+			return nil, roleErr
 		}
 
 		update.Role = &newRole
@@ -345,6 +320,43 @@ func (s *Service) UpdateMember(
 		JoinedAt:  member.JoinedAt,
 		CreatedAt: member.CreatedAt,
 	}, nil
+}
+
+// authorizeRoleChange validates a member role change: the role itself, the
+// caller's authority over the owner role, and the two "don't strand the org"
+// guards.
+func (s *Service) authorizeRoleChange(
+	ctx context.Context, caller Caller, orgUID string, currentRole, newRole models.MemberRole,
+) error {
+	if !isValidRole(newRole) {
+		return ErrInvalidRole
+	}
+
+	// Ownership is owner-only in BOTH directions: an admin can neither promote
+	// somebody to owner nor demote (or otherwise touch) an existing owner.
+	// Without the second half, any admin could simply demote the owner and take
+	// the org.
+	if (newRole == models.MemberRoleOwner || currentRole == models.MemberRoleOwner) &&
+		!s.roleIn(ctx, caller, orgUID).AtLeast(models.MemberRoleOwner) {
+		return ErrOwnerRoleRequired
+	}
+
+	// Demoting the last owner. Multiple owners are allowed, which is also the
+	// ownership-transfer path: promote someone to owner, then demote yourself.
+	if isDemotingOwner(currentRole, newRole) {
+		if lastOwnerErr := s.checkLastOwner(ctx, orgUID); lastOwnerErr != nil {
+			return lastOwnerErr
+		}
+	}
+
+	// Demoting the last admin-or-above.
+	if isDemotingAdmin(currentRole, newRole) {
+		if lastAdminErr := s.checkLastAdmin(ctx, orgUID); lastAdminErr != nil {
+			return lastAdminErr
+		}
+	}
+
+	return nil
 }
 
 // RemoveMember removes a member from the organization.

@@ -11,11 +11,20 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
+// seededOrg bundles everything seedDeletableOrg creates, so callers can pick
+// what they need without a row of blank identifiers.
+type seededOrg struct {
+	org   *models.Organization
+	check *models.Check
+	job   *models.CheckJob
+	token *models.UserToken
+}
+
 // seedDeletableOrg builds an org with one owner, one check with a scheduled
 // job, and one org-scoped refresh token — everything DeleteOrg must take down.
 func seedDeletableOrg(
 	ctx context.Context, t *testing.T, dbService db.Service, slug string,
-) (*models.Organization, *models.Check, *models.CheckJob, *models.UserToken) {
+) seededOrg {
 	t.Helper()
 
 	org := models.NewOrganization(slug, slug)
@@ -45,7 +54,18 @@ func seedDeletableOrg(
 	token := models.NewUserToken(user.UID, &org.UID, "refresh-"+slug, models.TokenTypeRefresh)
 	require.NoError(t, dbService.CreateUserToken(ctx, token))
 
-	return org, check, job, token
+	return seededOrg{org: org, check: check, job: job, token: token}
+}
+
+// mustSeedOrgOnly is seedDeletableOrg for callers that only need the org.
+func mustSeedOrgOnly(
+	ctx context.Context, t *testing.T, dbService db.Service, slug string,
+) *models.Organization {
+	t.Helper()
+
+	seeded := seedDeletableOrg(ctx, t, dbService, slug)
+
+	return seeded.org
 }
 
 // TestDeleteOrgTearsEverythingDown is the happy path: after DeleteOrg the org no
@@ -55,7 +75,8 @@ func TestDeleteOrgTearsEverythingDown(t *testing.T) {
 	t.Parallel()
 
 	svc, dbService, ctx := setupAuthTestService(t)
-	org, check, job, token := seedDeletableOrg(ctx, t, dbService, "doomed")
+	seeded := seedDeletableOrg(ctx, t, dbService, "doomed")
+	org, check, job, token := seeded.org, seeded.check, seeded.job, seeded.token
 
 	// Controls: everything is alive before the delete.
 	_, err := dbService.GetOrganizationBySlug(ctx, org.Slug)
@@ -120,7 +141,7 @@ func TestDeleteOrgSlugConfirmation(t *testing.T) {
 			t.Parallel()
 
 			svc, dbService, ctx := setupAuthTestService(t)
-			org, _, _, _ := seedDeletableOrg(ctx, t, dbService, "confirm-me")
+			org := mustSeedOrgOnly(ctx, t, dbService, "confirm-me")
 
 			err := svc.DeleteOrg(ctx, org.Slug, DeleteOrgRequest{Slug: tc.confirm})
 
@@ -159,7 +180,8 @@ func TestDeletedOrgSlugIsFreedAndDoesNotResolve(t *testing.T) {
 	t.Parallel()
 
 	svc, dbService, ctx := setupAuthTestService(t)
-	oldOrg, oldCheck, _, _ := seedDeletableOrg(ctx, t, dbService, "reusable")
+	seeded := seedDeletableOrg(ctx, t, dbService, "reusable")
+	oldOrg, oldCheck := seeded.org, seeded.check
 
 	require.NoError(t, svc.DeleteOrg(ctx, oldOrg.Slug, DeleteOrgRequest{Slug: oldOrg.Slug}))
 
@@ -230,8 +252,9 @@ func TestDeleteOrgLeavesOtherOrgsAlone(t *testing.T) {
 	t.Parallel()
 
 	svc, dbService, ctx := setupAuthTestService(t)
-	victim, _, _, _ := seedDeletableOrg(ctx, t, dbService, "victim")
-	bystander, bystanderCheck, _, bystanderToken := seedDeletableOrg(ctx, t, dbService, "bystander")
+	victim := mustSeedOrgOnly(ctx, t, dbService, "victim")
+	bystanderSeed := seedDeletableOrg(ctx, t, dbService, "bystander")
+	bystander, bystanderCheck, bystanderToken := bystanderSeed.org, bystanderSeed.check, bystanderSeed.token
 
 	require.NoError(t, svc.DeleteOrg(ctx, victim.Slug, DeleteOrgRequest{Slug: victim.Slug}))
 
