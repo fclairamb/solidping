@@ -1,5 +1,38 @@
 # Changelog
 
+## [Unreleased]
+
+### ⚠ BREAKING CHANGES
+
+* **members:** the member-management write routes (`POST`/`PATCH`/`DELETE /api/v1/orgs/:org/members`) are now admin-only. Any member of an organization — including a read-only `viewer` — could previously add members, change other members' roles (including promoting themselves to `admin`) and remove members; there was no admin check on the routes or in the handlers. Reads stay open to every member, because the escalation-policy editor and the member picker need them. An integration that wrote members with a non-admin token now receives a `403 FORBIDDEN`
+* **cli:** `sp auth login` now uses the RFC 8628 device-authorization flow, replacing the loopback-browser flow. A host with no browser — a server, a container, an SSH session — can authenticate by visiting a URL elsewhere and entering a code, and the CLI no longer opens a local listening port to catch a redirect
+* **orgs:** deleting an organization is owner-only and requires confirming the slug. Organization creators become `owner`, and every role gate is now hierarchy-aware, so an `admin` no longer inherits the ability to remove the organization or to touch an owner
+* **integrations:** saving a Twilio connection now verifies the credentials against Twilio before persisting. A wrong Account SID or auth token — or one belonging to a different region than the connection declares — is rejected at configuration time with a `VALIDATION_ERROR` rather than failing silently at 3 a.m. on the first page
+
+### Features
+
+* **orgs:** an `owner` role sits above `admin`, with the privilege hierarchy enforced against the live membership row rather than the JWT claim. Only an owner may grant ownership, modify or remove another owner, or delete the organization, and the last owner cannot be removed
+* **orgs:** organizations get an editable profile — display name, uploaded logo, and a slug rename that keeps working. Previous slugs are stored and redirect across every org-scoped API group, so renaming no longer breaks dashboard links, status pages, badges or embedded widgets; aliases are released at the database choke points and replaced logo files are retired
+* **orgs:** a user who already belongs to an organization can create another one. A new Organizations tab in the account section lists every org with its logo, slug and the user's role, marks the current one, switches between them, and hosts the create form — previously reachable only by hand-typing `/no-org` or calling the API
+* **status pages:** a status page can now be embedded anywhere. A public summary endpoint exposes the server-computed rollup, an SVG badge endpoint renders it as an image, and a JavaScript widget served from `/embed/v1/widget.js` drops a live status block into any page — with `data-force-status` and `data-size` attributes, a live preview, size selection and label overrides in the dashboard's appearance settings
+* **cli:** the device-authorization flow is backed by RFC 8628 endpoints with org-bound consent, persisted request storage on both database dialects, and a dashboard consent page with an org picker
+* **checks:** a check can be pinned to an address family with a shared `ipVersion` option, so an IPv4-only or IPv6-only probe is a deliberate choice rather than whatever the resolver returned. Invalid, unsupported and tunneled values are rejected at write time, the dashboard shows which family the probe actually used, and Better Stack imports carry `ip_version` across with a warning about its both-families default
+* **checks:** HTTP checks gain `verifySsl` and `followRedirects` options, exposed as dashboard toggles and mapped by the importers instead of being warned about and dropped
+* **integrations:** a Twilio connection can name its region, so an account provisioned in Ireland (`ie1`) or Australia (`au1`) works instead of every request landing on US1 and failing authentication. The region is validated by format rather than an allowlist, so a region Twilio adds later needs no code change, and it resolves the API base on all three paths — escalation SMS, escalation voice, and phone-contact verification
+* **auth:** federated-login and Slack organization joins go through one shared admission policy, so who may be admitted into an org is decided at a single chokepoint rather than per-provider. Slack workspace members are admitted into their linked org through it, and the Slack app install routes through the same gate
+* **entitlements:** the billing service authenticates by signing its requests — HMAC-SHA256 over timestamp, method, path and body digest — with independent key sets per direction, so keys rotate without a lockstep restart. The legacy static bearer still works but is now gated and logged as deprecated
+* **config:** `SP_NODE_ROLE` accepts a comma-separated list, so one node can run `api` and `jobs` without also running checks
+* **docs:** the documentation site gets offline local search
+
+### Bug Fixes
+
+* **checks:** an address-family failure now reports the same status on every check type, instead of surfacing differently depending on which checker ran
+* **orgs:** a deleted organization's internal checks are stopped along with it
+* **dash0:** editing an organization's name no longer rewrites its slug. The slug is a load-bearing address, so moving it is now always something the user typed on purpose rather than a side effect of retitling
+* **slack:** the Slack auto-join opt-out fails closed, and how to set it is documented
+* **deps:** `go generate` for the API client works again — `go-yit` had drifted past the `yaml-jsonpath` version `oapi-codegen` requires, breaking the tool's own build
+* **migrations:** the unreleased migration is named `010_v0_10_0` rather than `v0_9_0`, so a consolidated release-cycle migration is not silently skipped against a database that already recorded the older number
+
 ## [0.10.0](https://github.com/fclairamb/solidping/compare/v0.9.0...v0.10.0) (2026-08-08)
 
 
