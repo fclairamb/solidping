@@ -113,13 +113,13 @@ type OrgProfileResponse struct {
 // elsewhere (status pages, SVG badges, the /embed/v1 widget). Those links keep
 // working: the old slug is recorded as an alias
 // (models.OrganizationPreviousSlug) and middleware.OrgSlugRedirect answers a
-// permanent redirect to the new one. Two rules bound that promise, and both are
-// enforced here:
+// permanent redirect to the new one. Two rules bound that promise:
 //
-//   - The new slug is released from the alias store, so an alias can never
-//     shadow the organization now living at that slug.
+//   - An alias can never shadow the organization now living at that slug —
+//     resolution tries the live slug first, and db.UpdateOrganization /
+//     db.CreateOrganization release any alias on a slug they hand out.
 //   - The guarantee lasts only until another organization claims the freed
-//     slug (CreateOrg releases it), which is what the dashboard warns about.
+//     slug, which is what the dashboard warns about before saving.
 func (s *Service) UpdateOrgProfile(
 	ctx context.Context, orgSlug string, userUID string,
 	req UpdateOrgProfileRequest, authContext Context,
@@ -142,12 +142,23 @@ func (s *Service) UpdateOrgProfile(
 		return nil, fmt.Errorf("failed to update organization: %w", updErr)
 	}
 
+	// Replacing or clearing an uploaded logo retires its file row, which is
+	// also what stops /pub/org-logos/:uid from serving it. Best-effort: the org
+	// already points elsewhere, so a surviving row is wasted storage, not a
+	// leak.
+	if (update.LogoURL != nil || update.ClearLogoURL) && org.LogoFileUID != nil {
+		if delErr := s.db.DeleteFile(ctx, org.UID, *org.LogoFileUID); delErr != nil {
+			slog.WarnContext(ctx, "failed to retire previous organization logo file",
+				"error", delErr, "orgUID", org.UID, "fileUID", *org.LogoFileUID)
+		}
+	}
+
 	previousSlug := ""
 
 	if newSlug != "" {
 		previousSlug = org.Slug
 
-		if aliasErr := s.recordSlugRename(ctx, org.UID, previousSlug, newSlug); aliasErr != nil {
+		if aliasErr := s.recordSlugRename(ctx, org.UID, previousSlug); aliasErr != nil {
 			return nil, aliasErr
 		}
 	}
@@ -234,16 +245,12 @@ func (s *Service) buildOrgProfileUpdate(
 	return update, newSlug, nil
 }
 
-// recordSlugRename persists the alias for the freed slug and releases any alias
-// held on the newly claimed one.
-func (s *Service) recordSlugRename(ctx context.Context, orgUID, previousSlug, newSlug string) error {
-	// Release first: the org may be renaming BACK to a slug it (or another org)
-	// still holds as an alias. Leaving that row live would let an alias sit on
-	// a slug a live organization now owns.
-	if err := s.db.ReleaseOrganizationPreviousSlug(ctx, newSlug); err != nil {
-		return fmt.Errorf("failed to release previous slug: %w", err)
-	}
-
+// recordSlugRename persists the alias for the slug the organization just freed.
+//
+// Releasing any alias held on the NEW slug is not done here: UpdateOrganization
+// does it for every slug write, which also covers an organization renaming back
+// onto a slug it still holds as its own alias.
+func (s *Service) recordSlugRename(ctx context.Context, orgUID, previousSlug string) error {
 	if err := s.db.AddOrganizationPreviousSlug(ctx, orgUID, previousSlug); err != nil {
 		return fmt.Errorf("failed to record previous slug: %w", err)
 	}

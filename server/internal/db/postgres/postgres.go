@@ -316,9 +316,20 @@ func (s *Service) Close() error {
 
 // Organization operations
 
+// CreateOrganization inserts an organization and releases any rename alias
+// still holding its slug.
+//
+// The release lives here, at the single choke point every creation path goes
+// through (the API, and every connector's zero-member bootstrap), rather than
+// in one caller: a slug held only as an alias is claimable, and once claimed it
+// must never resolve to the renamed organization again — not even later, if the
+// claiming organization is itself deleted (spec 2026-08-08-12).
 func (s *Service) CreateOrganization(ctx context.Context, org *models.Organization) error {
-	_, err := s.db.NewInsert().Model(org).Exec(ctx)
-	return err
+	if _, err := s.db.NewInsert().Model(org).Exec(ctx); err != nil {
+		return err
+	}
+
+	return s.ReleaseOrganizationPreviousSlug(ctx, org.Slug)
 }
 
 func (s *Service) GetOrganization(ctx context.Context, uid string) (*models.Organization, error) {
@@ -399,9 +410,17 @@ func (s *Service) UpdateOrganization(ctx context.Context, uid string, update mod
 		query = query.Set("logo_file_uid = ?", *update.LogoFileUID)
 	}
 
-	_, err := query.Exec(ctx)
+	if _, err := query.Exec(ctx); err != nil {
+		return err
+	}
 
-	return err
+	// Same rule as CreateOrganization: an organization now living on this slug
+	// outranks any alias that still held it.
+	if update.Slug != nil {
+		return s.ReleaseOrganizationPreviousSlug(ctx, *update.Slug)
+	}
+
+	return nil
 }
 
 func (s *Service) DeleteOrganization(ctx context.Context, uid string) error {

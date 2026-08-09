@@ -441,3 +441,41 @@ func TestUpdateOrgProfileSameSlugIsNotARename(t *testing.T) {
 	_, err = dbService.GetOrganizationByPreviousSlug(ctx, "stable")
 	r.Error(err)
 }
+
+// TestReclaimedSlugNeverResurrectsTheAlias closes the cross-tenant hole the
+// alias release exists to prevent. Org A renames away from a slug; org B claims
+// it (through the DB layer directly, the way every connector's zero-member
+// bootstrap creates orgs, bypassing CreateOrg); B is later deleted. The slug
+// must simply be free — it must NOT fall back to redirecting at A, months after
+// somebody else owned it.
+func TestReclaimedSlugNeverResurrectsTheAlias(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, dbService, ctx := setupAuthTestService(t)
+	_, owner := seedOwnedOrg(ctx, t, dbService, "handover")
+
+	away := "handover-new"
+	_, err := svc.UpdateOrgProfile(ctx, "handover", owner.UID,
+		UpdateOrgProfileRequest{Slug: &away}, Context{})
+	r.NoError(err)
+
+	// Control: the alias resolves right up until somebody claims the slug.
+	_, err = dbService.GetOrganizationByPreviousSlug(ctx, "handover")
+	r.NoError(err)
+
+	// A connector-style creation path: straight to the DB layer, no CreateOrg.
+	claimant := models.NewOrganization("handover", "Claimant")
+	r.NoError(dbService.CreateOrganization(ctx, claimant))
+
+	_, err = dbService.GetOrganizationByPreviousSlug(ctx, "handover")
+	r.Error(err, "creating an org on the slug must release the alias, whatever the code path")
+
+	r.NoError(dbService.DeleteOrganization(ctx, claimant.UID))
+
+	_, err = dbService.GetOrganizationByPreviousSlug(ctx, "handover")
+	r.Error(err, "a released alias must stay released once the claiming org is gone")
+
+	_, err = dbService.GetOrganizationBySlug(ctx, "handover")
+	r.Error(err, "the slug is simply free again")
+}

@@ -2689,15 +2689,6 @@ func (s *Service) CreateOrg(
 		return nil, fmt.Errorf("failed to create organization: %w", createOrgErr)
 	}
 
-	// A slug held only as another org's rename alias is claimable, and the
-	// claim releases the alias immediately: from here on the old links point
-	// at this brand-new organization's URL space, never at the renamed one
-	// (spec 2026-08-08-12). An alias must never shadow — or outlive — a live
-	// organization on the same slug.
-	if releaseErr := s.db.ReleaseOrganizationPreviousSlug(ctx, org.Slug); releaseErr != nil {
-		return nil, fmt.Errorf("failed to release previous slug: %w", releaseErr)
-	}
-
 	// The creator owns the org they just created: owner outranks admin, and
 	// only an owner may delete the org or grant/revoke ownership (spec
 	// 2026-08-08-11). Without this the creator becomes indistinguishable from
