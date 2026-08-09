@@ -134,6 +134,44 @@ test.describe("Organization profile", () => {
     expect(direct.status()).not.toBe(301);
   });
 
+  test("editing the name never touches the slug", async ({ page }) => {
+    const { orgSlug } = await seedOwnedOrg(page);
+
+    await page.goto(`orgs/${orgSlug}/organization/settings`);
+    await page.waitForLoadState("networkidle");
+
+    const nameField = page.getByTestId("org-profile-name");
+    const slugField = page.getByTestId("org-profile-slug");
+
+    await expect(slugField).toHaveValue(orgSlug);
+
+    // A name that would slugify to something entirely different if the field
+    // were still derived.
+    await nameField.fill("Totally Different Name");
+    await expect(slugField).toHaveValue(orgSlug);
+
+    // Nothing moved, so the URL-change warning must stay away.
+    await expect(page.getByTestId("org-profile-rename-warning")).toHaveCount(0);
+
+    await page.getByTestId("org-profile-save").click();
+
+    // The save is a pure rename of the display name: the app stays on the same
+    // slug (a slug change would have navigated away) and the field still holds
+    // the original slug after the reload of the org identity.
+    await expect(page.getByTestId("org-profile-name")).toHaveValue(
+      "Totally Different Name",
+      { timeout: 15000 },
+    );
+    expect(page.url()).toContain(`/orgs/${orgSlug}/`);
+    await expect(slugField).toHaveValue(orgSlug);
+
+    // Positive control: the slug field itself is still editable, so the
+    // assertions above prove decoupling, not a frozen input.
+    await slugField.fill(`${orgSlug}-y`);
+    await expect(slugField).toHaveValue(`${orgSlug}-y`);
+    await expect(page.getByTestId("org-profile-rename-warning")).toBeVisible();
+  });
+
   test("an owner uploads a logo and it shows in the sidebar", async ({
     page,
   }) => {

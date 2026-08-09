@@ -22,7 +22,6 @@ import {
   type OrgProfileResponse,
 } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
-import { slugify } from "@/lib/utils";
 
 // Mirrors the server allowlist (handlers/orglogo) so the file picker never
 // offers something the upload would reject.
@@ -36,6 +35,10 @@ interface OrgProfileCardProps {
  * Owner-only card for the organization's own identity: name, URL slug and
  * logo. The server enforces the same gate (RequireOrgOwner) — hiding the card
  * from an admin is UX, not security.
+ *
+ * The slug is never derived from the name here: editing the name leaves the
+ * slug untouched, so moving the organization's URLs is always something the
+ * user typed on purpose.
  *
  * Renaming the slug moves every URL of the organization. It is not
  * destructive any more: the previous slug keeps redirecting to the new one —
@@ -53,7 +56,6 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
 
   const [name, setName] = useState("");
   const [slug, setSlug] = useState(org);
-  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
   const [logoUrl, setLogoUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -77,7 +79,6 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
     setSyncedFrom(syncKey);
     setName(current?.name ?? "");
     setSlug(org);
-    setSlugManuallyEdited(false);
     setLogoUrl(current?.logoUrl ?? "");
   }
 
@@ -196,10 +197,13 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
               <Input
                 id="org-profile-name"
                 value={name}
-                onChange={(event) => {
-                  setName(event.target.value);
-                  if (!slugManuallyEdited) setSlug(slugify(event.target.value));
-                }}
+                // Deliberately does NOT derive the slug: this card edits a
+                // live organization, where the slug is a load-bearing address
+                // (dashboard links, status pages, badges, embedded widgets).
+                // Renaming it is an explicit act, never a side effect of
+                // retitling the org — unlike the create form on /no-org, where
+                // auto-slugify is the right default.
+                onChange={(event) => setName(event.target.value)}
                 disabled={busy}
                 data-testid="org-profile-name"
               />
@@ -211,10 +215,7 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
               <Input
                 id="org-profile-slug"
                 value={slug}
-                onChange={(event) => {
-                  setSlug(event.target.value);
-                  setSlugManuallyEdited(true);
-                }}
+                onChange={(event) => setSlug(event.target.value)}
                 disabled={busy}
                 data-testid="org-profile-slug"
               />
