@@ -78,8 +78,11 @@ func NewClientWithBaseURL(token, baseURL string) *Client {
 	}
 }
 
-// ExchangeCode exchanges an OAuth code for an access token.
-func ExchangeCode(ctx context.Context, clientID, clientSecret, code, redirectURI string) (*OAuthResponse, error) {
+// ExchangeCode exchanges an OAuth code for an access token at endpoint
+// (SlackOAuthURL in production, an httptest stand-in in tests).
+func ExchangeCode(
+	ctx context.Context, endpoint, clientID, clientSecret, code, redirectURI string,
+) (*OAuthResponse, error) {
 	data := url.Values{}
 	data.Set("client_id", clientID)
 	data.Set("client_secret", clientSecret)
@@ -88,7 +91,7 @@ func ExchangeCode(ctx context.Context, clientID, clientSecret, code, redirectURI
 		data.Set("redirect_uri", redirectURI)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, SlackOAuthURL, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -305,10 +308,10 @@ type OpenIDUserInfo struct {
 	Error             string `json:"error,omitempty"`
 }
 
-// FetchOpenIDUserInfo fetches user info via OpenID Connect.
+// FetchOpenIDUserInfo fetches user info via OpenID Connect at endpoint.
 // This requires the openid, email, and profile scopes on the user token.
-func FetchOpenIDUserInfo(ctx context.Context, userAccessToken string) (*OpenIDUserInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, SlackAPIBaseURL+"/openid.connect.userInfo", nil)
+func FetchOpenIDUserInfo(ctx context.Context, endpoint, userAccessToken string) (*OpenIDUserInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

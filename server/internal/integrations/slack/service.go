@@ -70,6 +70,12 @@ type OAuthResult struct {
 	ExpiresIn    int
 	OrgSlug      string
 	UserUID      string
+	// Pending is true when the install succeeded but the organization did not
+	// admit the installing user (e.g. the org opted out of Slack workspace
+	// auto-join, or it is at its member cap): no membership was created, a
+	// membership request is awaiting approval, and the tokens above are an
+	// org-less session with no refresh token.
+	Pending bool
 }
 
 // installStateKind / installStateTTL govern the bot-install OAuth flow's
@@ -137,6 +143,12 @@ type Service struct {
 	// Tests override it to point at an httptest fake Slack server (mirrors
 	// SlackSocketSupervisor.dialClient).
 	newAPIClient func(token string) *Client
+
+	// oauthURL / userInfoURL are the Slack OAuth endpoints hit during the
+	// install callback. Fields rather than constants so tests can drive the
+	// real HandleOAuthCallback against httptest stand-ins.
+	oauthURL    string
+	userInfoURL string
 }
 
 // NewService creates a new Slack integration service.
@@ -154,6 +166,8 @@ func NewService(
 		checksService:    checksService,
 		incidentsService: incidentsService,
 		newAPIClient:     NewClient,
+		oauthURL:         SlackOAuthURL,
+		userInfoURL:      SlackAPIBaseURL + "/openid.connect.userInfo",
 	}
 }
 
@@ -363,15 +377,25 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 		return nil, fmt.Errorf("failed to find or create user: %w", err)
 	}
 
-	// Ensure user is a member of the organization
-	member, err := s.ensureOrganizationMembership(ctx, org.UID, user.UID)
+	// Admission + session minting go through the shared chokepoint every
+	// federated connector uses (auth.Service.JoinOrgViaLogin), so an install
+	// can no longer mint a membership that bypasses the org's rules or the
+	// MaxUsers cap. The team ID from the token exchange is passed as a
+	// workspace attestation: the policy admits the installer when this org is
+	// the one linked to that workspace, and otherwise leaves them pending
+	// with a membership request.
+	login, err := s.authService.CompleteOrgLogin(ctx, org, user, auth.WithSlackWorkspace(oauthResp.Team.ID))
 	if err != nil {
-		return nil, fmt.Errorf("failed to ensure organization membership: %w", err)
+		return nil, fmt.Errorf("failed to complete organization login: %w", err)
 	}
 
-	// Create or update the integration connection. When triggered from a
-	// channel page, update THAT channel's settings directly so the
-	// existing channel record becomes "connected" (gains a team_id).
+	// Create or update the integration connection. This happens even when the
+	// installer was left pending: the bot credentials belong to the
+	// organization, not to the human who clicked install, and dropping them
+	// would leave the workspace with an app that cannot talk to SolidPing.
+	// When triggered from a channel page, update THAT channel's settings
+	// directly so the existing channel record becomes "connected" (gains a
+	// team_id).
 	var connUID string
 	if targetChannelUID != "" {
 		connUID, err = s.updateExistingChannel(ctx, targetChannelUID, oauthResp)
@@ -385,12 +409,6 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 
 	resultChannelUID := resolveResultChannelUID(targetChannelUID, targetOrgSlug, connUID)
 
-	// Generate authentication tokens
-	tokens, err := s.authService.GenerateTokensForOAuth(ctx, user, org, string(member.Role))
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate auth tokens: %w", err)
-	}
-
 	slog.InfoContext(ctx, "Slack OAuth completed successfully",
 		"org_uid", org.UID,
 		"org_slug", org.Slug,
@@ -398,16 +416,18 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 		"user_email", user.Email,
 		"team_id", oauthResp.Team.ID,
 		"team_name", oauthResp.Team.Name,
+		"membership_pending", login.Pending,
 	)
 
 	return &OAuthResult{
 		ConnectionUID: connUID,
 		ChannelUID:    resultChannelUID,
-		AccessToken:   tokens.AccessToken,
-		RefreshToken:  tokens.RefreshToken,
-		ExpiresIn:     tokens.ExpiresIn,
+		AccessToken:   login.AccessToken,
+		RefreshToken:  login.RefreshToken,
+		ExpiresIn:     login.ExpiresIn,
 		OrgSlug:       org.Slug,
 		UserUID:       user.UID,
+		Pending:       login.Pending,
 	}, nil
 }
 
@@ -418,6 +438,7 @@ func (s *Service) exchangeCodeAndFetchUser(
 ) (*OAuthResponse, *OpenIDUserInfo, error) {
 	oauthResp, err := ExchangeCode(
 		ctx,
+		s.oauthURL,
 		s.cfg.Slack.ClientID,
 		s.cfg.Slack.ClientSecret,
 		code,
@@ -429,7 +450,7 @@ func (s *Service) exchangeCodeAndFetchUser(
 		return nil, nil, fmt.Errorf("%w: %w", ErrOAuthFailed, err)
 	}
 
-	userInfo, err := FetchOpenIDUserInfo(ctx, oauthResp.AuthedUser.AccessToken)
+	userInfo, err := FetchOpenIDUserInfo(ctx, s.userInfoURL, oauthResp.AuthedUser.AccessToken)
 	if err != nil {
 		slog.ErrorContext(
 			ctx,
@@ -712,50 +733,6 @@ func (s *Service) createUserFromSlack(ctx context.Context, userInfo *OpenIDUserI
 	)
 
 	return user, nil
-}
-
-// ensureOrganizationMembership ensures the user is a member of the organization.
-func (s *Service) ensureOrganizationMembership(
-	ctx context.Context, orgUID, userUID string,
-) (*models.OrganizationMember, error) {
-	// Check if user is already a member
-	member, err := s.db.GetMemberByUserAndOrg(ctx, userUID, orgUID)
-	if err == nil {
-		return member, nil
-	}
-
-	if !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("failed to check membership: %w", err)
-	}
-
-	// Determine role: first user becomes admin, others are regular users
-	role := models.MemberRoleUser
-
-	members, err := s.db.ListMembersByOrg(ctx, orgUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list members: %w", err)
-	}
-
-	if len(members) == 0 {
-		role = models.MemberRoleAdmin
-	}
-
-	// Add user to organization
-	now := time.Now()
-	member = models.NewOrganizationMember(orgUID, userUID, role)
-	member.JoinedAt = &now
-
-	if err := s.db.CreateOrganizationMember(ctx, member); err != nil {
-		return nil, fmt.Errorf("failed to create membership: %w", err)
-	}
-
-	slog.InfoContext(ctx, "Added user to organization",
-		"org_uid", orgUID,
-		"user_uid", userUID,
-		"role", role,
-	)
-
-	return member, nil
 }
 
 // CountInstalledTeams returns the number of distinct Slack workspaces
