@@ -55,9 +55,15 @@ func (s *TwilioSender) Send(ctx context.Context, jctx *jobdef.JobContext, payloa
 
 	body := s.buildBody(jctx, payload, settings)
 
+	// Precedence: the test override (BaseURL) wins when set — it exists only
+	// so tests can point the sender at an httptest fake, and a test that sets
+	// it always wants that exact host regardless of the connection's region.
+	// In real operation BaseURL is always empty, so the connection's region
+	// decides: BaseURLForRegion("") still resolves to DefaultBaseURL, so a
+	// connection with no region behaves exactly as before this field existed.
 	baseURL := s.BaseURL
 	if baseURL == "" {
-		baseURL = twilio.DefaultBaseURL
+		baseURL = twilio.BaseURLForRegion(settings.Region)
 	}
 
 	client := twilio.NewClientWithBaseURL(settings.AccountSID, settings.AuthToken, baseURL)

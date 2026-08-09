@@ -68,7 +68,7 @@ func withFakeVerifyTwilio(t *testing.T, srv *httptest.Server) {
 	t.Helper()
 
 	prev := newTwilioClient
-	newTwilioClient = func(accountSID, authToken string) *twilio.Client {
+	newTwilioClient = func(accountSID, authToken, _ string) *twilio.Client {
 		return twilio.NewClientWithBaseURL(accountSID, authToken, srv.URL)
 	}
 	t.Cleanup(func() { newTwilioClient = prev })

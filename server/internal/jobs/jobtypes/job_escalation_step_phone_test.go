@@ -67,12 +67,13 @@ func (f *fakeTwilio) smsCount() int  { return f.countBySuffix("Messages.json") }
 func (f *fakeTwilio) callCount() int { return f.countBySuffix("Calls.json") }
 
 // useFakeTwilio points the dispatch client seam at the fake server for the
-// duration of the test.
+// duration of the test, ignoring the resolved region base URL — the fake
+// server doesn't care what region it was "meant" for.
 func useFakeTwilio(t *testing.T, srv *httptest.Server) {
 	t.Helper()
 
 	prev := newTwilioClient
-	newTwilioClient = func(accountSID, authToken string) *twilio.Client {
+	newTwilioClient = func(accountSID, authToken, _ string) *twilio.Client {
 		return twilio.NewClientWithBaseURL(accountSID, authToken, srv.URL)
 	}
 	t.Cleanup(func() { newTwilioClient = prev })
