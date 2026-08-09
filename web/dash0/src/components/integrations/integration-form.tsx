@@ -1572,6 +1572,34 @@ function TwilioPanel({
         onChange={(v) => update("auth_token", v)}
       />
 
+      <div className="space-y-2">
+        <Label htmlFor="ch-twilio-region">
+          {t("form.twilioRegion", "Region (optional)")}
+        </Label>
+        <Input
+          id="ch-twilio-region"
+          data-testid="twilio-region"
+          list="ch-twilio-region-options"
+          placeholder="us1"
+          value={(settings.region as string) || ""}
+          onChange={(e) => update("region", e.target.value.trim().toLowerCase())}
+        />
+        {/* Suggestions only — any well-formed region token (e.g. "br2") is
+            accepted, not just these three. The backend validates by format,
+            not an allowlist. */}
+        <datalist id="ch-twilio-region-options">
+          <option value="us1">US1 (default)</option>
+          <option value="ie1">Ireland (ie1)</option>
+          <option value="au1">Australia (au1)</option>
+        </datalist>
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "form.twilioRegionHint",
+            "Leave empty for US1 (default). Credentials are region-scoped — an ie1 account's SID and auth token only work against ie1, and won't verify here if pasted from a different region's account.",
+          )}
+        </p>
+      </div>
+
       <p className="text-xs text-muted-foreground">
         {t(
           "form.twilioSenderHint",

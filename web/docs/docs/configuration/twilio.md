@@ -120,6 +120,7 @@ the bill.
 |---|---|---|
 | `account_sid` | yes | Must start with `AC` and be 34 characters. |
 | `auth_token` | yes | **Secret** — encrypted at rest when `SP_ENCRYPTION_MASTER_KEY` is set (see [Security](./security.md)). Never returned by the API. |
+| `region` | no | Which Twilio regional edition to talk to. Empty = US1 (default). See [Region](#region) below. |
 | `from_number` | one of | SMS sender, E.164 (`+15551234567`). |
 | `messaging_service_sid` | one of | SMS sender as a Messaging Service (`MG…`). Exactly one of these two. |
 | `voice_from_number` | no | Caller ID for voice calls, E.164. **Voice is disabled when empty.** |
@@ -133,6 +134,44 @@ otherwise fail silently at 3 a.m. rather than at configuration time.
 Mark the connection **default** if the organization has more than one Twilio
 connection — the phone-verification flow and escalation paging always use the
 default (or the only enabled one).
+
+On every **Create** and on any **Update** that changes the account SID, auth
+token, or region, SolidPing makes one live call to Twilio
+(`GET /2010-04-01/Accounts/{AccountSid}.json`) to confirm the credentials
+actually work before saving. A save is refused — nothing is persisted — if
+Twilio rejects the credentials, or if Twilio could not be reached to check
+them. This is deliberate: it turns a bad paste into an error on the
+configuration form, not a silent failure the next time an incident fires. A
+save that only changes something else (the name, `from_number`,
+`voice_from_number`, `to_numbers`) never makes this call.
+
+### Region
+
+Twilio's [regional editions](https://www.twilio.com/docs/global-infrastructure)
+give each region its own API host and its own account, credentials, and data
+residency. `region` picks which host SolidPing talks to for this connection —
+it does not change anything on Twilio's side.
+
+- **Empty (default) or `us1`** — the global/US1 edge, `api.twilio.com`. This
+  is what every connection used before this field existed, and stays the
+  behavior if you never set it.
+- **`ie1`** — Ireland, for EU data residency.
+- **`au1`** — Australia.
+- Any other well-formed token (two lowercase letters + digits, matching what
+  Twilio itself uses in the console) is accepted too — SolidPing does not
+  hard-code the list of regions Twilio supports.
+
+Two things that trip people up:
+
+- **Credentials are per-region, not portable.** An `ie1` account has its own
+  Account SID and Auth Token — a `us1` token pasted into an `ie1` connection
+  (or vice versa) will not work, and the live credential check above will
+  refuse to save it.
+- **The region is chosen when the Twilio account is created, not switched
+  later.** If you picked the wrong region in Twilio's console, the fix is a
+  new Twilio account (or subaccount) in the right region, not changing
+  `region` on the existing SolidPing connection — the SID/token you already
+  have are scoped to the old region regardless of what `region` says here.
 
 Use **Test** to send to `to_numbers` and confirm credentials end to end.
 
@@ -239,6 +278,8 @@ A Twilio trial account is fine for a first end-to-end test, with three caveats:
 |---|---|
 | `account_sid must be a Twilio Account SID (AC…)` | An API Key SID (`SK…`) was pasted instead of the Account SID. |
 | `exactly one of from_number or messaging_service_sid is required` | Both are set, or neither is. |
+| `Twilio rejected these credentials for region <region>` | The SID/token belong to a different region's account than `region` says — see [Region](#region). |
+| `could not verify Twilio credentials for region <region>` | Twilio was unreachable, timed out, or errored while SolidPing tried to confirm the credentials on save. Try again. |
 | Twilio error **21608** | Trial account sending to an unverified number. |
 | Twilio error **21606** / **21212** | The from-number is not owned by this account, or is not SMS-capable. |
 | Twilio error **21610** | The recipient replied `STOP` and is on the opt-out list. They must text `START` to resubscribe. |
