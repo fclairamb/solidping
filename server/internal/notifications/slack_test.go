@@ -221,6 +221,10 @@ func (m *mockDBService) CountAdminsByOrg(_ context.Context, _ string) (int, erro
 	panic("not implemented")
 }
 
+func (m *mockDBService) CountOwnersByOrg(_ context.Context, _ string) (int, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CreateCheck(_ context.Context, _ *models.Check) error {
 	panic("not implemented")
 }
@@ -669,6 +673,10 @@ func (m *mockDBService) UpdateUserToken(_ context.Context, _ string, _ models.Us
 }
 
 func (m *mockDBService) DeleteUserToken(_ context.Context, _ string) (bool, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteUserTokensByOrg(_ context.Context, _ string) (int, error) {
 	panic("not implemented")
 }
 

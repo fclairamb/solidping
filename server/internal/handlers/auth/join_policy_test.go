@@ -110,13 +110,15 @@ func TestJoinOrgViaLogin(t *testing.T) {
 			wantPending: true,
 		},
 		{
-			// Bootstrap preserved: the first user of an empty org still
-			// becomes its admin, pattern or not.
-			name:     "zero-member org bootstraps an admin",
+			// Bootstrap preserved, but the minted role changed deliberately
+			// with spec 2026-08-08-11: whoever brings an org into existence
+			// OWNS it, so the first user of an empty org becomes its owner
+			// (owner outranks admin, so every admin gate still passes).
+			name:     "zero-member org bootstraps an owner",
 			pattern:  "",
 			email:    "founder@somewhere.example",
 			seeded:   false,
-			wantRole: models.MemberRoleAdmin,
+			wantRole: models.MemberRoleOwner,
 		},
 		{
 			// An invitation admits an address the pattern would refuse, with
@@ -452,7 +454,11 @@ func TestJoinOrgViaLoginSlackWorkspaceRespectsMaxUsers(t *testing.T) {
 // TestJoinOrgViaLoginSlackWorkspaceBootstrapStaysAdmin proves the attestation
 // rule sits BELOW the bootstrap rule: the first member of an empty linked org
 // still becomes its admin rather than a plain user.
-func TestJoinOrgViaLoginSlackWorkspaceBootstrapStaysAdmin(t *testing.T) {
+// TestJoinOrgViaLoginSlackWorkspaceBootstrapStaysOwner pins that the Slack
+// workspace path does not short-circuit the bootstrap rule: the very first
+// member of a freshly linked workspace org is its OWNER, not the plain `user`
+// the workspace-attestation rule would grant (spec 2026-08-08-11).
+func TestJoinOrgViaLoginSlackWorkspaceBootstrapStaysOwner(t *testing.T) {
 	t.Parallel()
 
 	svc, dbSvc, ctx := setupAuthTestService(t)
@@ -464,7 +470,7 @@ func TestJoinOrgViaLoginSlackWorkspaceBootstrapStaysAdmin(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, pending)
 	require.NotNil(t, member)
-	require.Equal(t, models.MemberRoleAdmin, member.Role)
+	require.Equal(t, models.MemberRoleOwner, member.Role)
 }
 
 // TestParseParamBool pins how the opt-out parameter is decoded: JSON(B)

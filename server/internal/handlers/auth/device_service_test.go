@@ -29,7 +29,7 @@ func deviceTestUser(
 	member := models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleAdmin)
 	r.NoError(dbSvc.CreateOrganizationMember(ctx, member))
 
-	return org, user, &Claims{UserUID: user.UID, OrgSlug: org.Slug, Role: roleAdmin}
+	return org, user, &Claims{UserUID: user.UID, OrgSlug: org.Slug, Role: string(models.MemberRoleAdmin)}
 }
 
 // addDeviceTestOrg joins an existing user to a second org, for the multi-org

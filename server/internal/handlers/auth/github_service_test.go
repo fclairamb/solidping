@@ -278,7 +278,7 @@ func TestGitHubHandleCallback(t *testing.T) {
 		assert.NotNil(t, user.EmailVerifiedAt)
 	})
 
-	t.Run("ensure membership first user gets admin", func(t *testing.T) {
+	t.Run("ensure membership first user gets owner", func(t *testing.T) {
 		t.Parallel()
 
 		svc, ctx := setupGitHubTestService(t)
@@ -291,7 +291,8 @@ func TestGitHubHandleCallback(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, pending)
 		require.NotNil(t, member)
-		assert.Equal(t, models.MemberRoleAdmin, member.Role)
+		// First member of an empty org owns it (spec 2026-08-08-11).
+		assert.Equal(t, models.MemberRoleOwner, member.Role)
 	})
 
 	t.Run("ensure membership second user gets user role", func(t *testing.T) {
