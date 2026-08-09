@@ -211,7 +211,16 @@ function IncidentsIndexPage() {
             </TableHeader>
             <TableBody>
               {incidents.data.map((incident) => (
-                <TableRow key={incident.uid} data-testid="incident-row">
+                // data-incident-uid gives tests a handle that is unique per
+                // incident. The row's visible text is not: the title is built
+                // from the check *slug*, and slugs are server-generated
+                // counters that get recycled, so two incidents can render
+                // identical text and trip Playwright's strict mode.
+                <TableRow
+                  key={incident.uid}
+                  data-testid="incident-row"
+                  data-incident-uid={incident.uid}
+                >
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <Link
