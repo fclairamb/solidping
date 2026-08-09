@@ -560,6 +560,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// previous slug (after a rename) is answered with a permanent redirect to
 	// the current slug before the token-scope check in AuthorizeOrgAccess can
 	// turn it into a 403 (spec 2026-08-08-12).
+	//
+	// A handful of /orgs/:org/* groups cannot use this helper because they need
+	// an extra gate (RequireOrgAdmin) or a different auth chain entirely (the
+	// entitlements service-signature chain). Those MUST still list
+	// orgSlugRedirect.Middleware first in their own Use(...) — forgetting it is
+	// invisible in review and only ever breaks API/CLI clients holding an old
+	// slug, since dash0's own SPA redirect masks it. That is not left to
+	// discipline: TestEveryOrgScopedAPIRouteRedirectsOnAPreviousSlug walks the
+	// real route table and fails on any org-scoped route that does not redirect
+	// (the realtime WS is the single documented exception).
 	orgSlugRedirect := middleware.NewOrgSlugRedirect(s.dbService)
 	orgGroup := func(path string) *httpx.Group {
 		return api.NewGroup(path).
@@ -737,7 +747,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Job routes (auth required for org-scoped routes)
 	jobHandler := jobs.NewHandler(s.jobSvc)
-	orgJobsGroup := api.NewGroup("/orgs/:org/jobs").Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	orgJobsGroup := api.NewGroup("/orgs/:org/jobs").
+		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
 	orgJobsGroup.POST("", jobHandler.CreateJob)
 	orgJobsGroup.GET("", jobHandler.ListJobs)
 	orgJobsGroup.GET("/:uid", jobHandler.GetJob)
@@ -752,7 +763,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	jobsAdminHandler := jobsadmin.NewHandler(jobsAdminSvc, s.config)
 
 	orgJobsAdmin := api.NewGroup("/orgs/:org").
-		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
 	orgJobsAdmin.GET("/jobs/stats", checkJobsHandler.Stats)
 	orgJobsAdmin.GET("/admin/jobs", jobsAdminHandler.ListOrgJobs)
 	orgJobsAdmin.GET("/admin/jobs/:uid", jobsAdminHandler.GetOrgJob)
@@ -794,7 +806,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// see specs/todos/2026-06-20-05-config-as-code.md). Apply is the reconcile
 	// sibling of import with dry-run/prune/deletion-cap guardrails.
 	orgChecksAdmin := api.NewGroup("/orgs/:org/checks").
-		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
 	orgChecksAdmin.GET("/export", checksHandler.ExportChecks)
 	orgChecksAdmin.POST("/import", checksHandler.ImportChecks)
 	orgChecksAdmin.POST("/apply", checksHandler.ApplyChecks)
@@ -820,7 +833,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.dbService.DB(), s.dbService, checksService, s.jobSvc, s.services.Credentials,
 	)
 	discoveryHandler := discovery.NewHandler(discoverySvc, s.config)
-	orgDiscovery := api.NewGroup("/orgs/:org/discovery").Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	orgDiscovery := api.NewGroup("/orgs/:org/discovery").
+		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
 	discoveryHandler.RegisterRoutes(orgDiscovery)
 
 	// Label autocomplete routes
@@ -908,7 +922,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	agentsAdminSvc := agentsadmin.NewService(s.dbService, s.services.Credentials, s.services.Entitlements)
 	agentsAdminHandler := agentsadmin.NewHandler(agentsAdminSvc, s.config)
 	orgAgentsAdmin := api.NewGroup("/orgs/:org").
-		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
 	orgAgentsAdmin.GET("/private-regions", agentsAdminHandler.ListPrivateRegions)
 	orgAgentsAdmin.POST("/private-regions", agentsAdminHandler.CreatePrivateRegion)
 	orgAgentsAdmin.DELETE("/private-regions/:slug", agentsAdminHandler.DeletePrivateRegion)
@@ -1183,6 +1198,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// other caller authenticates normally.
 	entitlementsHandler := entitlements.NewHandler(s.services.Entitlements, s.dbService, s.config)
 	orgEntitlements := api.NewGroup("/orgs/:org/entitlements").
+		Use(orgSlugRedirect.Middleware).
 		Use(authMiddleware.ServiceSignature(entitlements.ParamServiceSigningKeys)).
 		Use(authMiddleware.ServiceTokenBypass(
 			entitlements.ParamServiceToken, entitlements.ParamAllowLegacyServiceToken)).
@@ -1415,7 +1431,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// context, and the code it mints is the only thing that can bind a
 	// Microsoft 365 tenant to this org.
 	msTeamsOrgIntegrationRoutes := api.NewGroup("/orgs/:org/integrations/msteams").
-		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
 	msTeamsOrgIntegrationRoutes.POST("/link-code", msTeamsHandler.StartLink)
 	msTeamsOrgIntegrationRoutes.GET("/status", msTeamsHandler.GetStatus)
 	msTeamsOrgIntegrationRoutes.GET("/manifest.zip", msTeamsHandler.DownloadManifest)
@@ -1426,7 +1442,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// again here without landing the user in — or joining them to — that
 	// other org.
 	slackOrgIntegrationRoutes := api.NewGroup("/orgs/:org/integrations/slack").
-		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
 	slackOrgIntegrationRoutes.POST("/install-url", slackHandler.BuildInstallURLForOrg)
 
 	// Incident events (authentication required)

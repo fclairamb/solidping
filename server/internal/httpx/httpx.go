@@ -95,6 +95,16 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.mux.ServeHTTP(w, req)
 }
 
+// Walk visits every registered route as (method, chi pattern). It exists so a
+// test can assert a property over the WHOLE route table rather than over a
+// hand-maintained list — the route table is 1500 lines of registrations, and a
+// new group that forgets a cross-cutting middleware is invisible in review.
+func (r *Router) Walk(fn func(method, pattern string) error) error {
+	return chi.Walk(r.mux, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		return fn(method, route)
+	})
+}
+
 // Group is a set of routes sharing a path prefix and a middleware stack. It
 // mirrors bunrouter.Group so the route table in app/server.go maps over almost
 // unchanged.

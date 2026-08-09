@@ -5334,7 +5334,7 @@ type ClientInterface interface {
 	//
 	// Updates the organization's name, URL slug and/or logo. **Owner only** — an admin is refused with 403 FORBIDDEN. Standard PATCH semantics: an omitted field is left untouched, and `logoUrl` accepts `null` (or an empty string) to clear the logo.
 	//
-	// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. That guarantee ends as soon as another organization claims the freed slug.
+	// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. Every `/api/v1/orgs/{org}/...` route is covered except the realtime WebSocket (`/api/v1/orgs/{org}/events/ws`), where an HTTP redirect is meaningless — reconnect against the current slug. That guarantee ends as soon as another organization claims the freed slug.
 	//
 	// Because access tokens are scoped to an organization slug, a rename response also carries a freshly minted session (`accessToken`, `refreshToken`, `expiresIn`, `tokenType`) for the new slug; the caller must adopt it or every subsequent request will be refused with 403. Other live sessions self-heal on their next token refresh.
 	//
@@ -5347,7 +5347,7 @@ type ClientInterface interface {
 	//
 	// Updates the organization's name, URL slug and/or logo. **Owner only** — an admin is refused with 403 FORBIDDEN. Standard PATCH semantics: an omitted field is left untouched, and `logoUrl` accepts `null` (or an empty string) to clear the logo.
 	//
-	// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. That guarantee ends as soon as another organization claims the freed slug.
+	// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. Every `/api/v1/orgs/{org}/...` route is covered except the realtime WebSocket (`/api/v1/orgs/{org}/events/ws`), where an HTTP redirect is meaningless — reconnect against the current slug. That guarantee ends as soon as another organization claims the freed slug.
 	//
 	// Because access tokens are scoped to an organization slug, a rename response also carries a freshly minted session (`accessToken`, `refreshToken`, `expiresIn`, `tokenType`) for the new slug; the caller must adopt it or every subsequent request will be refused with 403. Other live sessions self-heal on their next token refresh.
 	//
@@ -6119,6 +6119,8 @@ type ClientInterface interface {
 	// Stores an uploaded image as the organization's logo and points `logoUrl` at its public URL. **Owner only.**
 	//
 	// Accepted content types are `image/png`, `image/jpeg`, `image/webp`, `image/gif` and `image/svg+xml`, up to 1 MB. Anything else is a 422 VALIDATION_ERROR; an oversized body is a 413.
+	//
+	// The content type is the one the client declares in the multipart part header — the bytes are never sniffed or checked against it. The declared value is clamped to the allowlist and is what gets stored and echoed back as `Content-Type`, so an SVG uploaded as `image/png` is stored and served as `image/png`. The serving rules below never assume the type is harmless, which is what makes that safe.
 	//
 	// The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable, but authorized by state: it only serves a file that is the CURRENT logo of a live organization, so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
 	//
@@ -7752,7 +7754,7 @@ func (c *Client) DeleteOrg(ctx context.Context, org OrgPath, body DeleteOrgJSONR
 //
 // Updates the organization's name, URL slug and/or logo. **Owner only** — an admin is refused with 403 FORBIDDEN. Standard PATCH semantics: an omitted field is left untouched, and `logoUrl` accepts `null` (or an empty string) to clear the logo.
 //
-// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. That guarantee ends as soon as another organization claims the freed slug.
+// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. Every `/api/v1/orgs/{org}/...` route is covered except the realtime WebSocket (`/api/v1/orgs/{org}/events/ws`), where an HTTP redirect is meaningless — reconnect against the current slug. That guarantee ends as soon as another organization claims the freed slug.
 //
 // Because access tokens are scoped to an organization slug, a rename response also carries a freshly minted session (`accessToken`, `refreshToken`, `expiresIn`, `tokenType`) for the new slug; the caller must adopt it or every subsequent request will be refused with 403. Other live sessions self-heal on their next token refresh.
 //
@@ -7775,7 +7777,7 @@ func (c *Client) UpdateOrgProfileWithBody(ctx context.Context, org OrgPath, cont
 //
 // Updates the organization's name, URL slug and/or logo. **Owner only** — an admin is refused with 403 FORBIDDEN. Standard PATCH semantics: an omitted field is left untouched, and `logoUrl` accepts `null` (or an empty string) to clear the logo.
 //
-// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. That guarantee ends as soon as another organization claims the freed slug.
+// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. Every `/api/v1/orgs/{org}/...` route is covered except the realtime WebSocket (`/api/v1/orgs/{org}/events/ws`), where an HTTP redirect is meaningless — reconnect against the current slug. That guarantee ends as soon as another organization claims the freed slug.
 //
 // Because access tokens are scoped to an organization slug, a rename response also carries a freshly minted session (`accessToken`, `refreshToken`, `expiresIn`, `tokenType`) for the new slug; the caller must adopt it or every subsequent request will be refused with 403. Other live sessions self-heal on their next token refresh.
 //
@@ -9657,6 +9659,8 @@ func (c *Client) DeleteOrgLogo(ctx context.Context, org OrgPath, reqEditors ...R
 // Stores an uploaded image as the organization's logo and points `logoUrl` at its public URL. **Owner only.**
 //
 // Accepted content types are `image/png`, `image/jpeg`, `image/webp`, `image/gif` and `image/svg+xml`, up to 1 MB. Anything else is a 422 VALIDATION_ERROR; an oversized body is a 413.
+//
+// The content type is the one the client declares in the multipart part header — the bytes are never sniffed or checked against it. The declared value is clamped to the allowlist and is what gets stored and echoed back as `Content-Type`, so an SVG uploaded as `image/png` is stored and served as `image/png`. The serving rules below never assume the type is harmless, which is what makes that safe.
 //
 // The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable, but authorized by state: it only serves a file that is the CURRENT logo of a live organization, so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
 //
@@ -22783,7 +22787,7 @@ type ClientWithResponsesInterface interface {
 	//
 	// Updates the organization's name, URL slug and/or logo. **Owner only** — an admin is refused with 403 FORBIDDEN. Standard PATCH semantics: an omitted field is left untouched, and `logoUrl` accepts `null` (or an empty string) to clear the logo.
 	//
-	// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. That guarantee ends as soon as another organization claims the freed slug.
+	// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. Every `/api/v1/orgs/{org}/...` route is covered except the realtime WebSocket (`/api/v1/orgs/{org}/events/ws`), where an HTTP redirect is meaningless — reconnect against the current slug. That guarantee ends as soon as another organization claims the freed slug.
 	//
 	// Because access tokens are scoped to an organization slug, a rename response also carries a freshly minted session (`accessToken`, `refreshToken`, `expiresIn`, `tokenType`) for the new slug; the caller must adopt it or every subsequent request will be refused with 403. Other live sessions self-heal on their next token refresh.
 	//
@@ -22796,7 +22800,7 @@ type ClientWithResponsesInterface interface {
 	//
 	// Updates the organization's name, URL slug and/or logo. **Owner only** — an admin is refused with 403 FORBIDDEN. Standard PATCH semantics: an omitted field is left untouched, and `logoUrl` accepts `null` (or an empty string) to clear the logo.
 	//
-	// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. That guarantee ends as soon as another organization claims the freed slug.
+	// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. Every `/api/v1/orgs/{org}/...` route is covered except the realtime WebSocket (`/api/v1/orgs/{org}/events/ws`), where an HTTP redirect is meaningless — reconnect against the current slug. That guarantee ends as soon as another organization claims the freed slug.
 	//
 	// Because access tokens are scoped to an organization slug, a rename response also carries a freshly minted session (`accessToken`, `refreshToken`, `expiresIn`, `tokenType`) for the new slug; the caller must adopt it or every subsequent request will be refused with 403. Other live sessions self-heal on their next token refresh.
 	//
@@ -23692,6 +23696,8 @@ type ClientWithResponsesInterface interface {
 	// Stores an uploaded image as the organization's logo and points `logoUrl` at its public URL. **Owner only.**
 	//
 	// Accepted content types are `image/png`, `image/jpeg`, `image/webp`, `image/gif` and `image/svg+xml`, up to 1 MB. Anything else is a 422 VALIDATION_ERROR; an oversized body is a 413.
+	//
+	// The content type is the one the client declares in the multipart part header — the bytes are never sniffed or checked against it. The declared value is clamped to the allowlist and is what gets stored and echoed back as `Content-Type`, so an SVG uploaded as `image/png` is stored and served as `image/png`. The serving rules below never assume the type is harmless, which is what makes that safe.
 	//
 	// The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable, but authorized by state: it only serves a file that is the CURRENT logo of a live organization, so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
 	//
@@ -37108,7 +37114,7 @@ func (c *ClientWithResponses) DeleteOrgWithResponse(ctx context.Context, org Org
 //
 // Updates the organization's name, URL slug and/or logo. **Owner only** — an admin is refused with 403 FORBIDDEN. Standard PATCH semantics: an omitted field is left untouched, and `logoUrl` accepts `null` (or an empty string) to clear the logo.
 //
-// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. That guarantee ends as soon as another organization claims the freed slug.
+// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. Every `/api/v1/orgs/{org}/...` route is covered except the realtime WebSocket (`/api/v1/orgs/{org}/events/ws`), where an HTTP redirect is meaningless — reconnect against the current slug. That guarantee ends as soon as another organization claims the freed slug.
 //
 // Because access tokens are scoped to an organization slug, a rename response also carries a freshly minted session (`accessToken`, `refreshToken`, `expiresIn`, `tokenType`) for the new slug; the caller must adopt it or every subsequent request will be refused with 403. Other live sessions self-heal on their next token refresh.
 //
@@ -37127,7 +37133,7 @@ func (c *ClientWithResponses) UpdateOrgProfileWithBodyWithResponse(ctx context.C
 //
 // Updates the organization's name, URL slug and/or logo. **Owner only** — an admin is refused with 403 FORBIDDEN. Standard PATCH semantics: an omitted field is left untouched, and `logoUrl` accepts `null` (or an empty string) to clear the logo.
 //
-// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. That guarantee ends as soon as another organization claims the freed slug.
+// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. Every `/api/v1/orgs/{org}/...` route is covered except the realtime WebSocket (`/api/v1/orgs/{org}/events/ws`), where an HTTP redirect is meaningless — reconnect against the current slug. That guarantee ends as soon as another organization claims the freed slug.
 //
 // Because access tokens are scoped to an organization slug, a rename response also carries a freshly minted session (`accessToken`, `refreshToken`, `expiresIn`, `tokenType`) for the new slug; the caller must adopt it or every subsequent request will be refused with 403. Other live sessions self-heal on their next token refresh.
 //
@@ -38689,6 +38695,8 @@ func (c *ClientWithResponses) DeleteOrgLogoWithResponse(ctx context.Context, org
 // Stores an uploaded image as the organization's logo and points `logoUrl` at its public URL. **Owner only.**
 //
 // Accepted content types are `image/png`, `image/jpeg`, `image/webp`, `image/gif` and `image/svg+xml`, up to 1 MB. Anything else is a 422 VALIDATION_ERROR; an oversized body is a 413.
+//
+// The content type is the one the client declares in the multipart part header — the bytes are never sniffed or checked against it. The declared value is clamped to the allowlist and is what gets stored and echoed back as `Content-Type`, so an SVG uploaded as `image/png` is stored and served as `image/png`. The serving rules below never assume the type is harmless, which is what makes that safe.
 //
 // The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable, but authorized by state: it only serves a file that is the CURRENT logo of a live organization, so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
 //

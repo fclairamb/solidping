@@ -162,11 +162,10 @@ verify the files handler does not serve inline-executable SVG with a sniffable
 type, and set `Content-Disposition` / `X-Content-Type-Options: nosniff` if it
 does. A stored SVG that executes in a victim's browser on the app's own origin
 is XSS.
-- Logo dimensions/normalization (resize server-side?) — spec assumes no
-  processing beyond type/size validation for V1; SVG is served with a
-  correct content type by the existing files handler (verify it doesn't
-  serve inline-executable SVG with a sniffable type; set
-  `Content-Disposition`/`X-Content-Type-Options` if needed).
+
+Note that "type validation" means the **declared** multipart content type,
+clamped to an allowlist — the bytes are not sniffed. That is why the serving
+headers, not the upload check, carry the security weight.
 
 ## Implementation Plan
 
@@ -219,6 +218,10 @@ never appended to `011_owner_role`:
   status-page subscribe, and the four public `/status-pages/:org/...` routes
   (view, summary, badge, feed) — the last of which is what the `/embed/v1`
   widget polls, so the widget follows the redirect transparently.
+- The groups that cannot use the `orgGroup` helper (they need `RequireOrgAdmin`,
+  or the entitlements service-signature chain) list the middleware first in
+  their own chain. Coverage is enforced by a test that walks the real route
+  table, so a new org-scoped group cannot silently opt out.
 - SPA URLs: `app.orgSlugRedirectForSPA` handles `/status0/<org>/...` and
   `/dash0/orgs/<org>/...` in `serveStatus0Root` / `serveDash0Root`.
 - The realtime WS (`/orgs/:org/events/ws`) cannot redirect (no HTTP redirect in

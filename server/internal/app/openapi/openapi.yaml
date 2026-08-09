@@ -5200,8 +5200,10 @@ paths:
         public ones — status pages, SVG badges and the embed widget. Existing
         links keep working: the previous slug is remembered and answers a
         permanent redirect (301 for GET/HEAD, 308 otherwise) to the current
-        slug. That guarantee ends as soon as another organization claims the
-        freed slug.
+        slug. Every `/api/v1/orgs/{org}/...` route is covered except the
+        realtime WebSocket (`/api/v1/orgs/{org}/events/ws`), where an HTTP
+        redirect is meaningless — reconnect against the current slug. That
+        guarantee ends as soon as another organization claims the freed slug.
 
 
         Because access tokens are scoped to an organization slug, a rename
@@ -5291,6 +5293,14 @@ paths:
         Accepted content types are `image/png`, `image/jpeg`, `image/webp`,
         `image/gif` and `image/svg+xml`, up to 1 MB. Anything else is a 422
         VALIDATION_ERROR; an oversized body is a 413.
+
+
+        The content type is the one the client declares in the multipart part
+        header — the bytes are never sniffed or checked against it. The declared
+        value is clamped to the allowlist and is what gets stored and echoed
+        back as `Content-Type`, so an SVG uploaded as `image/png` is stored and
+        served as `image/png`. The serving rules below never assume the type is
+        harmless, which is what makes that safe.
 
 
         The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -320,4 +321,140 @@ func TestRenamedOrgRedirectRewritesOnlyTheOrgSegment(t *testing.T) {
 	r.Equal(http.StatusMovedPermanently, status)
 	r.Equal("/api/v1/orgs/collide-new/checks/collide/badges/status", location,
 		"only the org segment may be rewritten; the identically named check must survive")
+}
+
+// wsRoutePattern is the one org-scoped route that deliberately cannot redirect:
+// an HTTP 301/308 has no meaning in a WebSocket handshake, so a client on a
+// previous slug must reconnect against the current one. Documented in
+// wiki/api-specification/orgs.md.
+const wsRoutePattern = "/api/v1/orgs/{org}/events/ws"
+
+// concreteURLForPattern turns a chi route pattern into a requestable URL by
+// substituting the org slug and filling every other parameter with a
+// placeholder. The redirect runs ahead of every handler, so the placeholders
+// never have to resolve to anything real.
+func concreteURLForPattern(pattern, orgSlug string) (string, bool) {
+	segments := strings.Split(pattern, "/")
+
+	for i, segment := range segments {
+		switch {
+		case segment == "{org}":
+			segments[i] = orgSlug
+		case segment == "*":
+			segments[i] = "x"
+		case strings.HasPrefix(segment, "{"):
+			segments[i] = "placeholder"
+		}
+	}
+
+	return strings.Join(segments, "/"), true
+}
+
+// TestEveryOrgScopedAPIRouteRedirectsOnAPreviousSlug is the structural guard on
+// the promise in wiki/api-specification/orgs.md that the redirect covers "the
+// whole /api/v1/orgs/:org/... API".
+//
+// It walks the REAL route table rather than a hand-maintained list: the route
+// registrations run to well over a thousand lines, and a new group built with
+// `api.NewGroup("/orgs/:org/...")` instead of the orgGroup helper silently
+// misses the middleware — invisible in review, and only ever hit by API/CLI
+// clients holding an old slug (dash0 masks it, because its SPA-level redirect
+// fires first).
+func TestEveryOrgScopedAPIRouteRedirectsOnAPreviousSlug(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	env := newRenameEnv(t, "walked-old")
+	env.rename("walked-new")
+
+	var patterns []string
+
+	r.NoError(env.server.router.Walk(func(method, pattern string) error {
+		if method != http.MethodGet || !strings.HasPrefix(pattern, "/api/v1/orgs/{org}") {
+			return nil
+		}
+
+		if pattern != wsRoutePattern {
+			patterns = append(patterns, pattern)
+		}
+
+		return nil
+	}))
+
+	// The walk must actually find the route table — an empty list would make
+	// every assertion below vacuously true.
+	r.Greater(len(patterns), 20, "the org-scoped GET route table looks implausibly small")
+
+	for _, pattern := range patterns {
+		path, ok := concreteURLForPattern(pattern, "walked-old")
+		r.True(ok, pattern)
+
+		status, location := env.get(path)
+		r.Equalf(http.StatusMovedPermanently, status,
+			"%s must redirect on a previous slug (got %d)", pattern, status)
+
+		wantPath, _ := concreteURLForPattern(pattern, "walked-new")
+		r.Equalf(wantPath, location, "%s must redirect to the current slug", pattern)
+	}
+}
+
+// TestOrgScopedRoutesOutsideOrgGroupRedirect pins, by name, the groups that are
+// built with their own middleware chain instead of the orgGroup helper — the
+// exact set an audit found uncovered. The walk test above would catch a
+// regression too, but these names document WHY the chains differ (extra admin
+// gate, config-as-code, the entitlements service-signature chain), so a future
+// refactor sees the requirement rather than an anonymous failure.
+func TestOrgScopedRoutesOutsideOrgGroupRedirect(t *testing.T) {
+	t.Parallel()
+
+	env := newRenameEnv(t, "outside-old")
+	env.rename("outside-new")
+
+	// path suffix -> the group it belongs to, for a legible failure message.
+	routes := map[string]string{
+		"/jobs":                        "jobs",
+		"/jobs/stats":                  "jobs admin",
+		"/admin/jobs":                  "jobs admin",
+		"/checks/export":               "config-as-code (admin)",
+		"/discovery/scans":             "discovery",
+		"/private-regions":             "private locations",
+		"/agent-enrollment-tokens":     "agent enrollment tokens",
+		"/entitlements":                "entitlements (service-signature chain)",
+		"/integrations/msteams/status": "msteams integration",
+	}
+
+	for suffix, group := range routes {
+		status, location := env.get("/api/v1/orgs/outside-old" + suffix)
+		require.Equalf(t, http.StatusMovedPermanently, status,
+			"%s (%s) must redirect on a previous slug", suffix, group)
+		require.Equal(t, "/api/v1/orgs/outside-new"+suffix, location)
+	}
+}
+
+// TestEntitlementsRedirectLeavesTheSignedPathAlone pins the one ordering risk in
+// wiring the redirect ahead of the entitlements service-auth chain: a signed
+// request addressed to the CURRENT slug must still reach the signature
+// verifier untouched. The redirect runs outermost, so it must be a pure
+// pass-through here — if it swallowed or rewrote the request, a correctly
+// signed billing-service call would break.
+func TestEntitlementsRedirectLeavesTheSignedPathAlone(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	env := newRenameEnv(t, "billed-old")
+	env.rename("billed-new")
+
+	// Previous slug: permanently redirected, so the billing service learns the
+	// canonical path (and re-signs for it — the signature covers the path).
+	status, location := env.get("/api/v1/orgs/billed-old/entitlements")
+	r.Equal(http.StatusMovedPermanently, status)
+	r.Equal("/api/v1/orgs/billed-new/entitlements", location)
+
+	// Current slug: not redirected — the request falls through to the
+	// service-signature / auth chain, which answers 401 for this unsigned,
+	// unauthenticated probe.
+	status, location = env.get("/api/v1/orgs/billed-new/entitlements")
+	r.NotEqual(http.StatusMovedPermanently, status,
+		"a signed request on the current slug must reach the auth chain (Location %q)", location)
+	r.Equal(http.StatusUnauthorized, status)
 }

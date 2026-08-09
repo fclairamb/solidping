@@ -64,7 +64,15 @@ URL), `409 CONFLICT` (slug already held by a live org).
 Upload the organization's logo (`multipart/form-data`, field `logo`). Auth:
 required (**owner**). Allowed types: `image/png`, `image/jpeg`, `image/webp`,
 `image/gif`, `image/svg+xml`; max 1 MB. Wrong type → `422 VALIDATION_ERROR`,
-too big → `413`. Returns the updated profile with `logoUrl` set to
+too big → `413 LOGO_TOO_LARGE`.
+
+The type is the one the client **declares** in the multipart part header — the
+bytes are never sniffed or validated against it. The declared value is clamped
+to the allowlist and is what gets stored and echoed back as `Content-Type`, so
+an SVG uploaded as `image/png` is stored and served as `image/png`. That is
+safe rather than sloppy: the serving headers below never trust the type to be
+harmless (always `nosniff`, and only raster types are served `inline`), so no
+declared value can turn an upload into an executable document. Returns the updated profile with `logoUrl` set to
 `/pub/org-logos/<fileUid>`.
 
 ### DELETE /api/v1/orgs/:org/logo
@@ -93,13 +101,25 @@ answers a permanent redirect to the current slug: **301** for `GET`/`HEAD`,
 **308** for other methods (a 301 would license a client to replay a `POST` as a
 `GET` and drop its body).
 
-Covered surfaces: the whole `/api/v1/orgs/:org/...` API, the public status-page
-endpoints (`/api/v1/status-pages/:org/...` — view, summary, badge, feed, which
-is also what the `/embed/v1` widget polls), per-check SVG badges, heartbeat
-ingest, the magic-link incident ack, status-page subscribe, and the
-`/dash0/orgs/:org/...` and `/status0/:org/...` app URLs. The realtime WebSocket
-(`/api/v1/orgs/:org/events/ws`) is **not** covered — an HTTP redirect has no
-meaning in a WS handshake; reconnect against the current slug.
+Covered surfaces: **every** `/api/v1/orgs/:org/...` route — including the ones
+whose groups carry their own middleware chain (jobs, jobs admin, config-as-code
+export/import/apply, discovery, private locations and agent enrollment tokens,
+entitlements, and the Slack/MS Teams integration routes) — plus the public
+status-page endpoints (`/api/v1/status-pages/:org/...` — view, summary, badge,
+feed, which is also what the `/embed/v1` widget polls), per-check SVG badges,
+heartbeat ingest, the magic-link incident ack, status-page subscribe, and the
+`/dash0/orgs/:org/...` and `/status0/:org/...` app URLs.
+
+The single exception is the realtime WebSocket (`/api/v1/orgs/:org/events/ws`):
+an HTTP redirect has no meaning in a WS handshake, so a client on a previous
+slug must reconnect against the current one. Coverage is enforced by a test that
+walks the real route table (`TestEveryOrgScopedAPIRouteRedirectsOnAPreviousSlug`),
+so a new org-scoped group cannot quietly opt out.
+
+A note for the entitlements endpoints specifically: the billing service signs
+the request **path**, so a redirect from a previous slug means it must re-sign
+for the canonical path rather than replay the original signature. The redirect
+tells it where to sign for; it is not a transparent proxy.
 
 Two rules bound the guarantee:
 
