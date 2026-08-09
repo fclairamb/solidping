@@ -52,7 +52,7 @@ func TestBuildInstallURL_GeneratesValidStateAndScopes(t *testing.T) {
 
 	// State should be redeemable as a slack-install kind, and the source
 	// payload from the request should round-trip.
-	stateValue := extractQueryParam(t, authorizeURL, "state")
+	stateValue := extractStateParam(t, authorizeURL)
 	entry, err := oauthstate.Validate(ctx, svc.db, "slack-install", stateValue)
 	r.NoError(err)
 	r.Equal("marketplace", entry.Payload["source"])
@@ -107,7 +107,7 @@ func TestHandleOAuthCallback_StateConsumedOnReuse(t *testing.T) {
 	authorizeURL, err := svc.BuildInstallURL(ctx, "", "", "")
 	r.NoError(err)
 
-	stateValue := extractQueryParam(t, authorizeURL, "state")
+	stateValue := extractStateParam(t, authorizeURL)
 
 	// First call: state is consumed; the call fails on the Slack token
 	// exchange (no real network), surfacing as ErrOAuthFailed.
@@ -149,8 +149,11 @@ func TestIssueExchangeCode_RoundTripIsSingleUse(t *testing.T) {
 	r.ErrorIs(err, oauthstate.ErrInvalidState)
 }
 
-func extractQueryParam(t *testing.T, urlString, key string) string {
+// extractStateParam pulls the CSRF state nonce out of a Slack authorize URL.
+func extractStateParam(t *testing.T, urlString string) string {
 	t.Helper()
+
+	const key = "state"
 
 	idx := strings.Index(urlString, "?")
 	require.NotEqual(t, -1, idx, "url has no query string: %s", urlString)

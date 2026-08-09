@@ -87,7 +87,7 @@ func runInstallCallback(ctx context.Context, t *testing.T, svc *Service) *OAuthR
 	authorizeURL, err := svc.BuildInstallURL(ctx, "marketplace", "", "")
 	require.NoError(t, err)
 
-	result, err := svc.HandleOAuthCallback(ctx, "mock-code", extractQueryParam(t, authorizeURL, "state"))
+	result, err := svc.HandleOAuthCallback(ctx, "mock-code", extractStateParam(t, authorizeURL))
 	require.NoError(t, err)
 
 	return result
@@ -122,8 +122,8 @@ func TestInstallJoinsWorkspaceMemberAsUser(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	ctx, svc := setupInstallService(t, "T-LINKED", nil)
-	org := seedLinkedOrg(ctx, t, svc, "T-LINKED")
+	ctx, svc := setupInstallService(t, linkedTeamID, nil)
+	org := seedLinkedOrg(ctx, t, svc)
 
 	result := runInstallCallback(ctx, t, svc)
 	r.False(result.Pending)
@@ -143,8 +143,8 @@ func TestInstallRespectsMembershipCap(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	ctx, svc := setupInstallService(t, "T-LINKED", cappedEntitlements{})
-	org := seedLinkedOrg(ctx, t, svc, "T-LINKED")
+	ctx, svc := setupInstallService(t, linkedTeamID, cappedEntitlements{})
+	org := seedLinkedOrg(ctx, t, svc)
 
 	result := runInstallCallback(ctx, t, svc)
 	r.True(result.Pending, "a capped org must not admit the installer")
@@ -161,7 +161,7 @@ func TestInstallRespectsMembershipCap(t *testing.T) {
 	// The workspace connection survives: the bot credentials belong to the
 	// org, not to the human who clicked install.
 	conn, connErr := svc.db.GetChannelByPropertyForOrg(
-		ctx, org.UID, string(models.ConnectionTypeSlack), "team_id", "T-LINKED")
+		ctx, org.UID, string(models.ConnectionTypeSlack), "team_id", linkedTeamID)
 	r.NoError(connErr)
 	r.NotNil(conn)
 }
@@ -172,8 +172,8 @@ func TestInstallOptOutLeavesInstallerPending(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	ctx, svc := setupInstallService(t, "T-LINKED", nil)
-	org := seedLinkedOrg(ctx, t, svc, "T-LINKED")
+	ctx, svc := setupInstallService(t, linkedTeamID, nil)
+	org := seedLinkedOrg(ctx, t, svc)
 	r.NoError(svc.db.SetOrgParameter(ctx, org.UID, "registration.slack_workspace_auto_join", false, false))
 
 	result := runInstallCallback(ctx, t, svc)
@@ -191,8 +191,8 @@ func TestInstallCallbackRedirectsPendingToNoOrg(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	ctx, svc := setupInstallService(t, "T-LINKED", cappedEntitlements{})
-	org := seedLinkedOrg(ctx, t, svc, "T-LINKED")
+	ctx, svc := setupInstallService(t, linkedTeamID, cappedEntitlements{})
+	org := seedLinkedOrg(ctx, t, svc)
 
 	authorizeURL, err := svc.BuildInstallURL(ctx, "marketplace", "", "")
 	r.NoError(err)
@@ -200,7 +200,7 @@ func TestInstallCallbackRedirectsPendingToNoOrg(t *testing.T) {
 	handler := NewHandler(svc, svc.cfg)
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet,
 		"/api/v1/integrations/slack/oauth?code=mock-code&state="+
-			extractQueryParam(t, authorizeURL, "state"), nil)
+			extractStateParam(t, authorizeURL), nil)
 	rec := httptest.NewRecorder()
 
 	r.NoError(handler.OAuthCallback(rec, req))
@@ -221,7 +221,7 @@ func TestInstallDoesNotJoinForeignTargetOrg(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	ctx, svc := setupInstallService(t, "T-LINKED", nil)
+	ctx, svc := setupInstallService(t, linkedTeamID, nil)
 
 	// The org the install URL points at belongs to a DIFFERENT workspace.
 	foreign := models.NewOrganization("foreign-org", "Foreign")
@@ -237,7 +237,7 @@ func TestInstallDoesNotJoinForeignTargetOrg(t *testing.T) {
 	authorizeURL, err := svc.BuildInstallURL(ctx, "dashboard", "", foreign.Slug)
 	r.NoError(err)
 
-	result, err := svc.HandleOAuthCallback(ctx, "mock-code", extractQueryParam(t, authorizeURL, "state"))
+	result, err := svc.HandleOAuthCallback(ctx, "mock-code", extractStateParam(t, authorizeURL))
 	r.NoError(err)
 	r.True(result.Pending, "workspace T-LINKED must not open the org linked to T-FOREIGN")
 	r.Equal(foreign.Slug, result.OrgSlug)
@@ -246,15 +246,18 @@ func TestInstallDoesNotJoinForeignTargetOrg(t *testing.T) {
 	r.Error(memberErr, "no organization_members row may be created in a foreign org")
 }
 
-// seedLinkedOrg creates an org linked to teamID and already past the
+// linkedTeamID is the workspace the seeded org is linked to.
+const linkedTeamID = "T-LINKED"
+
+// seedLinkedOrg creates an org linked to linkedTeamID and already past the
 // zero-member bootstrap rule.
-func seedLinkedOrg(ctx context.Context, t *testing.T, svc *Service, teamID string) *models.Organization {
+func seedLinkedOrg(ctx context.Context, t *testing.T, svc *Service) *models.Organization {
 	t.Helper()
 
 	org := models.NewOrganization("linked-org", "Acme")
 	require.NoError(t, svc.db.CreateOrganization(ctx, org))
 	require.NoError(t, svc.db.CreateOrganizationProvider(
-		ctx, models.NewOrganizationProvider(org.UID, models.ProviderTypeSlack, teamID)))
+		ctx, models.NewOrganizationProvider(org.UID, models.ProviderTypeSlack, linkedTeamID)))
 
 	seed := models.NewUser("seed@acme.example")
 	require.NoError(t, svc.db.CreateUser(ctx, seed))
