@@ -26,6 +26,11 @@ type GroupType string
 const (
 	GroupTypeReports     GroupType = "reports"
 	GroupTypeScreenshots GroupType = "screenshots"
+	// GroupTypeOrgLogos holds organization logos (spec 2026-08-08-12). Unlike
+	// the other groups these blobs are served over an unsigned public route,
+	// so keeping them in their own group makes "what is world-readable" a
+	// storage-level question, not a per-row one.
+	GroupTypeOrgLogos GroupType = "org-logos"
 )
 
 // FileMetadata is the small bag of attributes a backend may need to write

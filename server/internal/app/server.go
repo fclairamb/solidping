@@ -77,6 +77,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
 	"github.com/fclairamb/solidping/server/internal/handlers/members"
 	"github.com/fclairamb/solidping/server/internal/handlers/oncallschedules"
+	"github.com/fclairamb/solidping/server/internal/handlers/orglogo"
 	"github.com/fclairamb/solidping/server/internal/handlers/publicconfig"
 	"github.com/fclairamb/solidping/server/internal/handlers/realtimews"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
@@ -1092,6 +1093,17 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgFiles.DELETE("/:uid", filesHandler.Delete)
 	pubFiles := mainGroup.NewGroup("/pub/files")
 	pubFiles.GET("/:uid", filesHandler.PublicGet)
+
+	// Organization logo (spec 2026-08-08-12). Upload/clear are owner-gated; the
+	// public route is unsigned on purpose — a logo URL has to be stable enough
+	// to paste into a status page — and is authorized by state instead: the
+	// file must be the CURRENT logo of a live organization.
+	orgLogoService := orglogo.NewService(s.dbService, filesService)
+	orgLogoHandler := orglogo.NewHandler(orgLogoService, s.config)
+	orgOwnerGroup.POST("/logo", orgLogoHandler.Upload)
+	orgOwnerGroup.DELETE("/logo", orgLogoHandler.Delete)
+	pubOrgLogos := mainGroup.NewGroup("/pub/org-logos")
+	pubOrgLogos.GET("/:uid", orgLogoHandler.PublicGet)
 
 	// Bug report (public POST under /api/mgmt) and features endpoint (auth)
 	feedbackService := feedback.NewService(s.dbService, filesService, s.config, nil)

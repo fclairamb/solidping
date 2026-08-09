@@ -111,6 +111,32 @@ func (m *mockDBService) ListOrganizations(_ context.Context) ([]*models.Organiza
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetOrganizationByLogoFileUID(_ context.Context, _ string) (*models.Organization, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) AddOrganizationPreviousSlug(_ context.Context, _, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetOrganizationByPreviousSlug(_ context.Context, _ string) (*models.Organization, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ReleaseOrganizationPreviousSlug(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ReleaseOrganizationPreviousSlugsForOrg(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListOrganizationPreviousSlugs(
+	_ context.Context, _ string,
+) ([]*models.OrganizationPreviousSlug, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) UpdateOrganization(_ context.Context, _ string, _ models.OrganizationUpdate) error {
 	panic("not implemented")
 }
