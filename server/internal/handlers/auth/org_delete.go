@@ -88,10 +88,25 @@ func (s *Service) DeleteOrg(ctx context.Context, orgSlug string, req DeleteOrgRe
 	return nil
 }
 
+// internalFilterAll is the ListChecksFilter.Internal sentinel meaning "do not
+// filter on internal at all" (both dialects switch on the string; see the
+// "Apply internal filter" block in postgres.go / sqlite.go).
+const internalFilterAll = "all"
+
 // stopOrgChecks hard-deletes the org's scheduler rows and soft-deletes its
 // checks, so no worker can pick anything up after the org is gone.
+//
+// The Internal filter MUST be "all": ListChecks defaults to `internal = FALSE`,
+// so enumerating without it silently skips every internal check, leaving its
+// check_jobs row behind — and the scheduler's claim query never joins
+// organizations, so those jobs would keep being claimed and executed forever
+// after the org was deleted. `internal` is client-settable at check creation,
+// so this is reachable through the public API. Regression test:
+// TestDeleteOrgStopsInternalChecksToo.
 func (s *Service) stopOrgChecks(ctx context.Context, orgUID string) error {
-	checks, _, err := s.db.ListChecks(ctx, orgUID, &models.ListChecksFilter{})
+	internalAll := internalFilterAll
+
+	checks, _, err := s.db.ListChecks(ctx, orgUID, &models.ListChecksFilter{Internal: &internalAll})
 	if err != nil {
 		return fmt.Errorf("failed to list organization checks: %w", err)
 	}

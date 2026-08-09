@@ -115,6 +115,72 @@ func TestDeleteOrgTearsEverythingDown(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestDeleteOrgStopsInternalChecksToo is the regression test for the
+// internal-check leak: stopOrgChecks enumerates the org's checks through
+// ListChecks, whose filter DEFAULTS to `internal = FALSE` in both dialects
+// (postgres.go / sqlite.go "Apply internal filter"). Enumerating with a filter
+// that does not opt into internal checks therefore skipped them entirely — and
+// because the scheduler's claim query never joins organizations, their
+// check_jobs rows kept being claimed and executed forever after the org was
+// deleted.
+//
+// `internal` is client-settable on check creation (handlers/checks/service.go),
+// so this is reachable through the public API, not just by internal machinery.
+//
+// The non-internal check in the same org is the positive control: if the
+// enumeration broke altogether, BOTH assertions would fail rather than just the
+// internal one, and the test would stop being a detector for this specific bug.
+func TestDeleteOrgStopsInternalChecksToo(t *testing.T) {
+	t.Parallel()
+
+	svc, dbService, ctx := setupAuthTestService(t)
+
+	org := models.NewOrganization("internal-checks", "Internal Checks")
+	require.NoError(t, dbService.CreateOrganization(ctx, org))
+
+	user := models.NewUser("owner@internal-checks.example")
+	require.NoError(t, dbService.CreateUser(ctx, user))
+
+	member := models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleOwner)
+	joined := time.Now()
+	member.JoinedAt = &joined
+	require.NoError(t, dbService.CreateOrganizationMember(ctx, member))
+
+	mkCheck := func(slug string, internal bool) *models.Check {
+		check := models.NewCheck(org.UID, slug, "http")
+		name := slug
+		check.Name = &name
+		check.Internal = internal
+		check.Enabled = true
+		require.NoError(t, dbService.CreateCheck(ctx, check))
+
+		return check
+	}
+
+	publicCheck := mkCheck("public-api", false)
+	internalCheck := mkCheck("internal-probe", true)
+
+	// Control: both checks are scheduled before the delete. An internal check
+	// that never got a job in the first place would make this test vacuous.
+	for _, check := range []*models.Check{publicCheck, internalCheck} {
+		jobs, err := dbService.ListCheckJobsByCheckUID(ctx, check.UID)
+		require.NoError(t, err)
+		require.NotEmpty(t, jobs, "check %s must be scheduled before the delete", *check.Name)
+	}
+
+	require.NoError(t, svc.DeleteOrg(ctx, org.Slug, DeleteOrgRequest{Slug: org.Slug}))
+
+	// Both checks must be unscheduled. Deleting the jobs is what actually stops
+	// the probes — soft-deleting the check row alone does not.
+	for _, check := range []*models.Check{publicCheck, internalCheck} {
+		jobs, err := dbService.ListCheckJobsByCheckUID(ctx, check.UID)
+		require.NoError(t, err)
+		require.Emptyf(t, jobs,
+			"check %s still has a scheduler row after the org was deleted — workers would keep running it",
+			*check.Name)
+	}
+}
+
 // TestDeleteOrgSlugConfirmation pins the typed-confirmation guard.
 func TestDeleteOrgSlugConfirmation(t *testing.T) {
 	t.Parallel()

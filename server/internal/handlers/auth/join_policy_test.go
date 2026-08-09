@@ -451,9 +451,6 @@ func TestJoinOrgViaLoginSlackWorkspaceRespectsMaxUsers(t *testing.T) {
 	require.Equal(t, models.MembershipRequestStatusPending, request.Status)
 }
 
-// TestJoinOrgViaLoginSlackWorkspaceBootstrapStaysAdmin proves the attestation
-// rule sits BELOW the bootstrap rule: the first member of an empty linked org
-// still becomes its admin rather than a plain user.
 // TestJoinOrgViaLoginSlackWorkspaceBootstrapStaysOwner pins that the Slack
 // workspace path does not short-circuit the bootstrap rule: the very first
 // member of a freshly linked workspace org is its OWNER, not the plain `user`
