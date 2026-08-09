@@ -236,3 +236,70 @@ test. A capability-aware scheduler is explicitly a follow-up.
       check detail page.
 - [ ] The tunnel/`ip_version` interaction is explicitly handled and documented,
       not left implicit.
+
+## Implementation Plan
+
+Chosen shape: `ipVersion` is a **shared, well-known check-config key**, not a field on
+ten config structs — the `tunnelCheckUid` / `timeout` precedent
+(`checkerdef/tunnel.go:56-66`). The worker reads it generically off the raw config
+map and puts it on the execution context; checkers consume it through one helper.
+This is the strongest reading of "address-family selection lives in ONE shared
+helper", and it means a checker gaining support needs no config-struct change.
+
+Canonical key `ipVersion` (camelCase, per `wiki/conventions/checker-config.md` /
+`resolveKey`), with `ip_version` accepted as a snake_case read fallback. The
+**output** key stays `ip_version`, unchanged in shape.
+
+1. **`server/internal/checkers/checkerdef/ipversion.go` (new)** — the single home:
+   `IPVersion` type (`auto`/`ipv4`/`ipv6`, zero value auto), `ParseIPVersion`,
+   `IPVersionFromConfig` (camel + snake fallback), `WithIPVersion`/`IPVersionFrom`
+   context plumbing, `MatchesIPVersion`, `Network("tcp") -> tcp/tcp4/tcp6`, and
+   **`SelectIPAddr(host, addrs, version)`** — the one address pick.
+   - `auto`: first IPv4 (normalized via `To4()`), else `addrs[0]`. Byte-for-byte
+     what all nine loops do today, including checkicmp's 4-byte normalization.
+   - `ipv4`/`ipv6`: filter; none → `ErrNoAddressForFamily` naming host + family.
+   - explicit family only: a local-egress pre-flight (`Dial("udp6", ip:9)`, no
+     packets sent) turns "this worker has no IPv6 route" into
+     `ErrWorkerNoEgress`, whose text blames the worker/region, not the target.
+     Injectable via `SelectIPAddrWithProbe` for tests; never runs for `auto`.
+
+2. **Capability metadata** — `CheckTypeMeta.SupportsIPVersion`
+   (`json:"supportsIpVersion"`) for tcp, udp, icmp, ssl, ssh, smtp, imap, pop3,
+   dnsbl, http; echoed by `handlers/checktypes/service.go`. Everything else
+   (including **dns**, per the resolved question) rejects the key, exactly like
+   `supportsTunnel` does.
+
+3. **Worker** (`internal/checkworker/worker.go`) — after the tunnel block, put a
+   non-auto `IPVersion` on `execCtx`. `auto` leaves the context untouched.
+
+4. **Checkers** — delete every `To4() != nil` preference loop and call
+   `checkerdef.SelectIPAddr`: checktcp, checkudp, checkicmp, checkssl, checkssh,
+   checksmtp, checkimap, checkpop3. checkdnsbl's IPv4 filter is a *protocol*
+   constraint (DNSBL zones index IPv4), expressed via `MatchesIPVersion`; it
+   accepts `auto`/`ipv4` and rejects `ipv6` at write time. checkdns is untouched.
+   **checkhttp** cannot pick an address (it dials by name): it forces
+   `Network()` on a `Transport.DialContext` when non-auto, and reports the
+   family actually connected via `httptrace.GotConn` (so `auto` keeps
+   `Transport == nil` → `DefaultTransport` → Happy Eyeballs, unchanged).
+
+5. **Write-time validation** — `handlers/checks/ipversion.go`:
+   `validateIPVersionConfig(checkType, config)` rejects an unknown value, the key
+   on a type that does not support it, `ipv6` on dnsbl, and **any non-auto value
+   on a tunneled check** (the tunnel resolves remotely; the family is the
+   bastion's business). Wired into the same three sites as
+   `validateConfigTimeout` (validate / create / PATCH) plus the document
+   validator.
+
+6. **Better Stack importer** — Better Stack's `null` means *both families*;
+   SolidPing's `auto` means *pick one*. Map `ipv4`/`ipv6` through, and warn
+   explicitly whenever the monitor leaves it unset that only one family will be
+   monitored.
+
+7. **dash0** — `CheckTypeInfo.supportsIpVersion`, an `IPVersionSelect` in the
+   Advanced section (`check-ip-version-section` / `check-ip-version-select`),
+   serialized into the config alongside `tunnelCheckUid`, and the resolved
+   family shown as its own labelled row on the check detail page.
+
+8. **Docs** — `web/docs/docs/features/check-types.md` Common Options: the option,
+   its default, the "an IPv4 check does not verify IPv6 reachability" rationale,
+   the DNS exclusion, and the tunnel interaction.
