@@ -23,7 +23,7 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 | Opsgenie | Available | API integration |
 | Pushover | Available | API integration |
 | Web Push | Available | Browser push (VAPID) |
-| SMS / Voice | Available | Twilio (per-organization connection) |
+| SMS / Voice | Available | [Twilio](./twilio.md) (per-organization connection) |
 | WhatsApp | Available | [Meta WhatsApp Business Cloud API](./whatsapp.md) (instance-level) |
 
 ## Email (SMTP)
