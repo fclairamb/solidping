@@ -24,6 +24,11 @@ type CheckTypeResponse struct {
 	// dashboard gates its tunnel selector on this flag rather than on a
 	// hard-coded type list.
 	SupportsTunnel bool `json:"supportsTunnel"`
+	// SupportsIPVersion mirrors CheckTypeMeta.SupportsIPVersion: the type honors
+	// the shared `ipVersion` config key (auto/ipv4/ipv6). Same reasoning as
+	// SupportsTunnel — the dashboard gates its selector on the flag, not on a
+	// hard-coded list.
+	SupportsIPVersion bool `json:"supportsIpVersion"`
 }
 
 // ListCheckTypesResponse wraps the list of check types.
@@ -143,6 +148,7 @@ func toResponse(statuses []checkerdef.CheckTypeStatus) ListCheckTypesResponse {
 			MaxPeriodSeconds:     durationToSeconds(statuses[idx].MaxPeriod),
 			DefaultPeriodSeconds: durationToSeconds(statuses[idx].DefaultPeriod),
 			SupportsTunnel:       statuses[idx].SupportsTunnel,
+			SupportsIPVersion:    statuses[idx].SupportsIPVersion,
 		})
 	}
 

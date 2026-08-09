@@ -387,7 +387,10 @@ func (c *IMAPChecker) dial(
 	return conn, time.Since(connectStart), nil
 }
 
-// resolveHost resolves the hostname to an IP address, preferring IPv4.
+// resolveHost resolves the hostname and picks the address to dial. The pick
+// itself lives in checkerdef.SelectIPAddr — IPv4-first by default, or the family
+// the check pinned via `ipVersion` — so this checker cannot drift from the
+// others.
 func resolveHost(ctx context.Context, host string) (net.IP, error) {
 	addrs, err := checkerdef.LookupIPAddr(ctx, host)
 	if err != nil {
@@ -398,13 +401,7 @@ func resolveHost(ctx context.Context, host string) (net.IP, error) {
 		return nil, errNoIPAddresses
 	}
 
-	for i := range addrs {
-		if addrs[i].IP.To4() != nil {
-			return addrs[i].IP, nil
-		}
-	}
-
-	return addrs[0].IP, nil
+	return checkerdef.SelectIPAddr(host, addrs, checkerdef.IPVersionFrom(ctx))
 }
 
 func handleDialError(ctx context.Context, err error, start time.Time) *checkerdef.Result {

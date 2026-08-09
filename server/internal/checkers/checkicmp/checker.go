@@ -128,24 +128,28 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		}, nil
 	}
 
-	// Pick first IPv4, or first IPv6 if no IPv4 available
-	var ip net.IP
-
-	var isIPv6 bool
-
-	for idx := range ips {
-		if v4 := ips[idx].IP.To4(); v4 != nil {
-			ip = v4
-			isIPv6 = false
-
-			break
-		}
-
-		if ip == nil {
-			ip = ips[idx].IP
-			isIPv6 = true
-		}
+	// Pick the address to ping — IPv4-first by default (in its 4-byte form, as
+	// the ICMP path has always used), or the family this check pins via
+	// `ipVersion`. One shared implementation for every checker.
+	ip, selectErr := checkerdef.SelectIPAddr(cfg.Host, ips, checkerdef.IPVersionFrom(ctx))
+	if selectErr != nil {
+		return &checkerdef.Result{
+			Status:   checkerdef.IPVersionFailureStatus(selectErr),
+			Duration: 0,
+			Output: map[string]any{
+				checkerdef.OutputKeyHost:   cfg.Host,
+				checkerdef.OutputKeyMethod: methodICMP,
+				checkerdef.OutputKeyError:  selectErr.Error(),
+			},
+			Metrics: map[string]any{
+				"packets_sent":     0,
+				"packets_received": 0,
+				"packet_loss_pct":  float64(percentageMultiplier),
+			},
+		}, nil
 	}
+
+	isIPv6 := checkerdef.IPVersionOf(ip) == checkerdef.IPVersionIPv6
 
 	start := time.Now()
 
@@ -186,10 +190,7 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	}
 
 	// Determine IP version string
-	ipVersion := "ipv4"
-	if isIPv6 {
-		ipVersion = "ipv6"
-	}
+	ipVersion := checkerdef.IPVersionOf(ip).String()
 
 	result := checkerdef.Result{
 		Status:   status,
@@ -200,10 +201,10 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			"packet_loss_pct":  packetLossPct,
 		},
 		Output: map[string]any{
-			checkerdef.OutputKeyHost:   cfg.Host,
-			checkerdef.OutputKeyMethod: methodICMP,
-			"ip":                       ip.String(),
-			"ip_version":               ipVersion,
+			checkerdef.OutputKeyHost:      cfg.Host,
+			checkerdef.OutputKeyMethod:    methodICMP,
+			"ip":                          ip.String(),
+			checkerdef.OutputKeyIPVersion: ipVersion,
 		},
 	}
 

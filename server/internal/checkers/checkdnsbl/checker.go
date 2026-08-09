@@ -24,6 +24,11 @@ const (
 var (
 	errTargetNotIPv4 = errors.New("target is not an IPv4 address")
 	errTargetNoIPv4  = errors.New("target resolved to no IPv4 addresses")
+	// errTargetIPv6Unsupported explains why a dnsbl check cannot be pinned to
+	// IPv6: DNSBL zones are indexed by reversed IPv4 octets, and the IPv6
+	// nibble form is a separate feature nobody has asked for yet.
+	errTargetIPv6Unsupported = errors.New(
+		"dnsbl checks query IPv4 blocklists only, so ipVersion: ipv6 is not supported for this target")
 )
 
 // hostLookuper is the minimal resolver surface the checker needs. It lets tests
@@ -90,7 +95,7 @@ func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 	start := time.Now()
 
 	// 1. Resolve the target to one or more IPv4 addresses.
-	ips, err := resolveTargetIPs(ctx, lookuper, cfg.Target)
+	ips, err := resolveTargetIPs(ctx, lookuper, cfg.Target, checkerdef.IPVersionFrom(ctx))
 	if err != nil {
 		// Target hostname does not resolve → cannot be checked → Down.
 		return &checkerdef.Result{
@@ -232,9 +237,25 @@ func classifyStatus(listed, clean, inconclusive int) checkerdef.Status {
 
 // resolveTargetIPs returns the IPv4 addresses for the target. When the target
 // is already an IPv4 literal it is returned as-is.
-func resolveTargetIPs(ctx context.Context, lookuper hostLookuper, target string) ([]string, error) {
+//
+// The IPv4 restriction here is a PROTOCOL constraint, not an address-family
+// preference: a DNSBL zone is queried by reversing the octets of an IPv4
+// address (1.2.3.4 -> 4.3.2.1.zone), and the IPv6 nibble form is a different,
+// unimplemented feature. So the family filter goes through the shared
+// checkerdef predicate — there is no local preference loop — and the check
+// accepts `ipVersion: auto` and `ipVersion: ipv4` as the same thing. An
+// `ipVersion: ipv6` dnsbl check is rejected at write time
+// (checkerdef.ValidateIPVersionConfig); the guard below only exists for a
+// hand-edited row that predates that gate.
+func resolveTargetIPs(
+	ctx context.Context, lookuper hostLookuper, target string, version checkerdef.IPVersion,
+) ([]string, error) {
+	if version == checkerdef.IPVersionIPv6 {
+		return nil, fmt.Errorf("%w: %q", errTargetIPv6Unsupported, target)
+	}
+
 	if ip := net.ParseIP(target); ip != nil {
-		if ip.To4() == nil {
+		if !checkerdef.MatchesIPVersion(ip, checkerdef.IPVersionIPv4) {
 			return nil, fmt.Errorf("%w: %q", errTargetNotIPv4, target)
 		}
 
@@ -250,7 +271,7 @@ func resolveTargetIPs(ctx context.Context, lookuper hostLookuper, target string)
 
 	for _, addr := range addrs {
 		ip := net.ParseIP(addr)
-		if ip != nil && ip.To4() != nil {
+		if ip != nil && checkerdef.MatchesIPVersion(ip, checkerdef.IPVersionIPv4) {
 			ips = append(ips, ip.String())
 		}
 	}
