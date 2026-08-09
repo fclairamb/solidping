@@ -851,6 +851,54 @@ All check types support these common options:
 | `incident_threshold` | Failures before incident | `1` |
 | `escalation_threshold` | Failures before escalation | `3` |
 | `recovery_threshold` | Successes before recovery | `1` |
+| `ipVersion` | Address family to probe over (`auto`, `ipv4`, `ipv6`) | `auto` |
+
+### IP version
+
+**An IPv4 check does not verify IPv6 reachability.** By default a check resolves
+its target and probes exactly one address — whichever family it lands on first.
+So a dual-stack host whose IPv6 path is broken (a missing AAAA record, a firewall
+rule that was never added for v6, a dead v6 route, a load balancer listening on
+v4 only) keeps reporting **up** while every IPv6 user is down.
+
+Set `ipVersion` to pin the check to a family, or pick it under **Advanced → IP
+version** in the dashboard:
+
+| Value | Meaning |
+|--------|---------|
+| `auto` (default) | No constraint — probe one address, exactly as before this option existed. Unchanged behaviour for every check that does not set it. |
+| `ipv4` | Probe over IPv4 only. Fails if the target publishes no A record. |
+| `ipv6` | Probe over IPv6 only. Fails if the target publishes no AAAA record. |
+
+The family a probe actually used is reported back as the `ip_version` field of
+the result output, and shown on the check detail page — so an `ipVersion: ipv6`
+check that reports `ip_version: ipv6` is real, verified IPv6 coverage.
+
+**One check covers one family.** `auto` means "pick one", not "probe both" — this
+is a deliberate difference from Better Stack, where an unset value monitors both.
+To cover both families, create two checks on the same target, one pinned to each;
+the [Better Stack importer](./migrate-from-better-stack.md) warns when a monitor relied on that
+default.
+
+Supported on `http`, `tcp`, `udp`, `icmp`, `ssl`, `ssh`, `smtp`, `imap`, `pop3`
+and `dnsbl` (where only `auto`/`ipv4` are accepted — DNS blocklists are indexed
+by IPv4 address). The dashboard only shows the option on types that support it,
+driven by `supportsIpVersion` on `/api/v1/orgs/{org}/check-types`.
+
+**`dns` checks do not take `ipVersion`** and reject it. For a DNS check the
+option could mean either "which record types to assert on" or "which transport to
+reach the nameserver over" — two different features. Use the `dns` check's own
+`record_type` (`A` / `AAAA`) to assert on records.
+
+**Tunneled checks do not take `ipVersion` either** and reject the pair. A
+[tunneled check](./ssh-tunnels.md) is resolved and dialed on the far side of the
+bastion, so the address family is the tunnel's to choose — pinning it here could
+only ever be a claim the worker cannot honor.
+
+**When a worker has no IPv6.** A check pinned to a family the worker itself
+cannot originate fails with an explicit error saying so — it names the worker's
+missing egress rather than blaming the target. If you see it, change the check's
+region rather than investigating your service.
 
 ### SSH tunnel
 

@@ -68,6 +68,22 @@ Drop `&dryRun=true` to apply. The endpoint requires an **organization admin** to
 | `required_keyword` | body must / must not contain |
 | `expected_status_codes` | expected status codes |
 | `paused` | the check is imported **disabled** |
+| `ip_version` | `ipVersion` — but see the warning below |
+
+:::warning `ip_version` does not mean the same thing on both sides
+In Better Stack an **unset** `ip_version` means *monitor over both IPv4 and
+IPv6*. In SolidPing a check probes **one** family — `auto` means "pick one",
+exactly as it always has (see
+[IP version](/docs/features/check-types#ip-version)).
+
+Monitors that pinned `ipv4` or `ipv6` are imported pinned. Monitors that left it
+unset are imported as `auto`, and the import preview says how many — because
+those are the ones whose coverage silently halves. Create a second check pinned
+to `ipv6` for every target where IPv6 reachability matters.
+
+A pinned value on a type SolidPing cannot pin (for example `dns`) is reported as
+its own warning rather than dropped quietly.
+:::
 
 ### Heartbeats
 

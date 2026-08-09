@@ -374,3 +374,17 @@ func DialEgressProbe(version IPVersion, ip net.IP) error {
 
 	return nil
 }
+
+// SampleConfigWithIPVersion returns cfg with the shared `ipVersion` key set. It
+// exists because `ipVersion` is deliberately NOT a field on any checker's config
+// struct — samples are built through those structs, so a sample that
+// demonstrates the option needs this one seam rather than nine new fields.
+func SampleConfigWithIPVersion(cfg map[string]any, version IPVersion) map[string]any {
+	if cfg == nil {
+		cfg = map[string]any{}
+	}
+
+	cfg[IPVersionConfigKey] = string(version)
+
+	return cfg
+}

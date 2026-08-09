@@ -36,6 +36,18 @@ func (c *TCPChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checker
 			}).GetConfig(),
 		},
 		{
+			// Same host as the first sample, pinned to IPv6: the pair is the
+			// clearest illustration that one check covers one family.
+			Name:   "Google HTTPS over IPv6 (443)",
+			Slug:   "tcp-google-ipv6",
+			Period: time.Minute * 5,
+			Config: checkerdef.SampleConfigWithIPVersion((&TCPConfig{
+				Host:    sampleHostGoogle,
+				Port:    samplePort,
+				Timeout: sampleTimeout,
+			}).GetConfig(), checkerdef.IPVersionIPv6),
+		},
+		{
 			Name:   "GitHub HTTPS (443)",
 			Slug:   "tcp-github",
 			Period: time.Minute * 5,
