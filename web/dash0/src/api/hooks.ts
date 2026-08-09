@@ -3011,6 +3011,13 @@ export interface CheckTypeInfo {
    * type list that would drift as more checkers gain tunnel support.
    */
   supportsTunnel?: boolean;
+  /**
+   * True when the type honors the shared `ipVersion` config key
+   * (auto/ipv4/ipv6). Server-declared capability metadata, for the same reason
+   * as supportsTunnel: the form gates its selector on this rather than on a
+   * hard-coded type list.
+   */
+  supportsIpVersion?: boolean;
 }
 
 export function useCheckTypes(org: string) {
