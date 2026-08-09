@@ -39,7 +39,7 @@ var (
 )
 
 // MaxLogoSize caps a logo upload. A logo is a small brand asset, not a photo:
-// a tight bound is the cheapest defence against an org filling the storage
+// a tight bound is the cheapest defense against an org filling the storage
 // backend, and it keeps the whole file comfortably bufferable by the S3 backend.
 const MaxLogoSize int64 = 1 << 20 // 1 MB
 
@@ -52,16 +52,17 @@ const MaxLogoSize int64 = 1 << 20 // 1 MB
 // un-publishes the old blob immediately.
 const LogoPublicPathPrefix = "/pub/org-logos/"
 
-// allowedLogoTypes is the upload allowlist. SVG is accepted because logos are
+// allowedLogoType is the upload allowlist. SVG is accepted because logos are
 // commonly vector, but it is served with Content-Disposition: attachment and
 // nosniff (files.WriteContent) so it can never execute as a document on our
 // origin — an uploaded SVG is an XML file that may carry <script>.
-var allowedLogoTypes = map[string]bool{
-	"image/png":     true,
-	"image/jpeg":    true,
-	"image/webp":    true,
-	"image/gif":     true,
-	"image/svg+xml": true,
+func allowedLogoType(mimeType string) bool {
+	switch mimeType {
+	case "image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml":
+		return true
+	default:
+		return false
+	}
 }
 
 // Service implements the logo upload/clear/serve operations.
@@ -214,7 +215,7 @@ func NormalizeLogoMIME(declared string) (string, error) {
 	}
 
 	parsed = strings.ToLower(parsed)
-	if !allowedLogoTypes[parsed] {
+	if !allowedLogoType(parsed) {
 		return "", ErrUnsupportedLogoType
 	}
 

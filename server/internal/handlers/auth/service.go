@@ -236,7 +236,7 @@ type OrganizationInfo struct {
 }
 
 // newOrganizationInfo builds the org payload every login-shaped response
-// carries. Funnelling the construction through one function is what keeps a new
+// carries. Funneling the construction through one function is what keeps a new
 // org field (like logoUrl) from reaching some responses and not others.
 func newOrganizationInfo(org *models.Organization) *OrganizationInfo {
 	if org == nil {
@@ -594,8 +594,6 @@ func (s *Service) maybeRehashPassword(ctx context.Context, user *models.User, pa
 // Token issuance is identical across paths; the only knob is `method`
 // (one of "password", "passkey", "oauth") which lands in the token's
 // Properties.created_with.method field.
-//
-//nolint:funlen
 func (s *Service) completeLogin(
 	ctx context.Context,
 	user *models.User,

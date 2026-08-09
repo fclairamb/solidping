@@ -147,7 +147,7 @@ func (h *Handler) PublicGet(writer http.ResponseWriter, req *http.Request) error
 	return WriteContent(writer, file.MimeType, file.Name, body)
 }
 
-// safeInlineMIMEs is the allowlist of stored content types that may be served
+// safeInlineMIME is the allowlist of stored content types that may be served
 // with `Content-Disposition: inline`, i.e. rendered as a top-level document on
 // our own origin.
 //
@@ -158,13 +158,13 @@ func (h *Handler) PublicGet(writer http.ResponseWriter, req *http.Request) error
 // everywhere it is meant to, because Content-Disposition does not affect
 // subresource loads: an <img src="...svg"> logo renders fine, and scripts
 // inside an SVG referenced by <img> never execute.
-var safeInlineMIMEs = map[string]bool{
-	"image/png":  true,
-	"image/jpeg": true,
-	"image/gif":  true,
-	"image/webp": true,
-	"image/avif": true,
-	"image/bmp":  true,
+func safeInlineMIME(mimeType string) bool {
+	switch mimeType {
+	case "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp":
+		return true
+	default:
+		return false
+	}
 }
 
 // WriteContent streams a stored file with hardened response headers. Exported
@@ -191,7 +191,7 @@ func WriteContent(writer http.ResponseWriter, mimeType, name string, body io.Rea
 // contentDisposition returns "inline" only for the safe raster allowlist.
 func contentDisposition(mimeType string) string {
 	base, _, _ := strings.Cut(mimeType, ";")
-	if safeInlineMIMEs[strings.ToLower(strings.TrimSpace(base))] {
+	if safeInlineMIME(strings.ToLower(strings.TrimSpace(base))) {
 		return "inline"
 	}
 

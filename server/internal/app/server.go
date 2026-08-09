@@ -134,6 +134,10 @@ const (
 	contentTypeICO  = "image/x-icon"
 )
 
+// dbTypeSQLiteMemory is the config value selecting the ephemeral in-memory
+// SQLite backend — the database every server-level test runs against.
+const dbTypeSQLiteMemory = "sqlite-memory"
+
 // ErrUnsupportedDatabaseType is returned when an unsupported database type is specified.
 var ErrUnsupportedDatabaseType = errors.New("unsupported database type")
 
@@ -232,7 +236,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create SQLite service: %w", err)
 		}
-	case "sqlite-memory":
+	case dbTypeSQLiteMemory:
 		dbService, err = sqlite.New(ctx, sqlite.Config{
 			InMemory: true,
 			LogSQL:   cfg.Database.LogSQL,
