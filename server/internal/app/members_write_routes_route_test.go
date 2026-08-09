@@ -261,14 +261,61 @@ func TestMembersWriteRoutesAreAdminOnly(t *testing.T) {
 		r.Equal(http.StatusForbidden, resp.StatusCode, "DELETE must be refused for role %s", role)
 		r.Equal(base.ErrorCodeForbidden, decodeErrorCode(t, resp))
 
-		still, getErr := env.server.dbService.GetOrganizationMember(context.Background(), env.target)
-		r.NoError(getErr)
+		still, stillErr := env.server.dbService.GetOrganizationMember(context.Background(), env.target)
+		r.NoError(stillErr)
 		r.Nil(still.DeletedAt, "a refused DELETE must not remove the member")
 	}
 
 	deleteResp := env.do(http.MethodDelete, patchPath, env.jwts[models.MemberRoleAdmin], "", nil)
 	defer func() { _ = deleteResp.Body.Close() }()
 	r.Equal(http.StatusNoContent, deleteResp.StatusCode)
+
+	// --- Owner positive controls for PATCH and DELETE. ---
+	//
+	// The POST positive control above already proves an owner passes the
+	// admin gate; these two guard the same hierarchical-not-equality
+	// regression for PATCH and DELETE specifically, on fresh targets so they
+	// don't collide with the admin-path assertions above (env.target is
+	// already deleted by this point).
+	ownerPatchTarget := env.addMember(t, models.MemberRoleUser, "owner-patch-target@members-route.example")
+	ownerPatchResp := env.do(http.MethodPatch, membersPath+"/"+ownerPatchTarget, env.jwts[models.MemberRoleOwner],
+		"application/json", bytes.NewReader(patchBody))
+	defer func() { _ = ownerPatchResp.Body.Close() }()
+	r.Equal(http.StatusOK, ownerPatchResp.StatusCode, "an owner must pass the admin gate on PATCH")
+
+	ownerPatched, getErr := env.server.dbService.GetOrganizationMember(context.Background(), ownerPatchTarget)
+	r.NoError(getErr)
+	r.Equal(models.MemberRoleAdmin, ownerPatched.Role, "the owner's PATCH must have landed")
+
+	ownerDeleteTarget := env.addMember(t, models.MemberRoleUser, "owner-delete-target@members-route.example")
+	ownerDeleteResp := env.do(http.MethodDelete, membersPath+"/"+ownerDeleteTarget,
+		env.jwts[models.MemberRoleOwner], "", nil)
+	defer func() { _ = ownerDeleteResp.Body.Close() }()
+	r.Equal(http.StatusNoContent, ownerDeleteResp.StatusCode, "an owner must pass the admin gate on DELETE")
+
+	// GetOrganizationMember filters deleted_at IS NULL, so a landed delete
+	// surfaces as "no rows" here rather than a DeletedAt to inspect.
+	_, getErr = env.server.dbService.GetOrganizationMember(context.Background(), ownerDeleteTarget)
+	r.Error(getErr, "the owner's DELETE must have landed")
+}
+
+// addMember seeds a fresh user and attaches them to the env's org with the
+// given role, returning the membership UID — a target distinct from every
+// caller identity and from the other tests' targets, so these assertions
+// can't collide with earlier mutations in the same test.
+func (e *membersRouteEnv) addMember(t *testing.T, role models.MemberRole, email string) string {
+	t.Helper()
+	r := require.New(t)
+
+	user := models.NewUser(email)
+	r.NoError(e.server.dbService.CreateUser(context.Background(), user))
+
+	now := time.Now()
+	member := models.NewOrganizationMember(e.orgUID, user.UID, role)
+	member.JoinedAt = &now
+	r.NoError(e.server.dbService.CreateOrganizationMember(context.Background(), member))
+
+	return member.UID
 }
 
 // decodeErrorCode reads the standard {title, code, detail} error body's code
