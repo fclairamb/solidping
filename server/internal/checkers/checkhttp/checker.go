@@ -331,7 +331,7 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 			}, nil
 		}
 
-		// An address-family failure is catalogued, not a generic dial error:
+		// An address-family failure is cataloged, not a generic dial error:
 		// "the host has no AAAA record" and "this worker has no IPv6 egress"
 		// must not read the same as "your service is down".
 		return &checkerdef.Result{
@@ -590,7 +590,7 @@ func withTLSVerifySkipped(output map[string]any, skipped bool) map[string]any {
 
 // familyDialTimeout / familyDialKeepAlive mirror http.DefaultTransport's dialer
 // settings, so pinning the address family changes only the family — not the
-// connect timeout or the keep-alive behaviour a check has always had.
+// connect timeout or the keep-alive behavior a check has always had.
 const (
 	familyDialTimeout   = 30 * time.Second
 	familyDialKeepAlive = 30 * time.Second
@@ -599,7 +599,7 @@ const (
 // buildTransport returns the http.Transport a check needs, or nil when it needs
 // none. Returning nil matters: with a nil Transport net/http uses the shared
 // http.DefaultTransport, keeping its connection pool and its Happy Eyeballs
-// dialing — which is exactly the behaviour an unconfigured check must keep.
+// dialing — which is exactly the behavior an unconfigured check must keep.
 //
 // Three independent reasons compose onto the SAME transport:
 //   - a tunnel dialer (the probe is dialed through an SSH bastion),
@@ -643,7 +643,7 @@ func buildTransport(
 //
 // It resolves and selects explicitly (rather than just handing "tcp6" to
 // net.Dialer) so that a target with no address of the requested family fails
-// with checkerdef's catalogued error naming the host and the family, instead of
+// with checkerdef's cataloged error naming the host and the family, instead of
 // the stdlib's opaque "no suitable address found" — and so the worker-has-no-v6
 // case is told apart from the target-has-no-AAAA case. The error travels out
 // through *url.Error, which unwraps, so errors.Is still matches at the top.
@@ -683,7 +683,7 @@ func familyDialContext(version checkerdef.IPVersion) func(context.Context, strin
 
 // connFamilyTracker observes which address family the request actually
 // connected over. It is a pure httptrace observer — it never influences dialing
-// — so an `ipVersion: auto` check keeps Go's Happy Eyeballs behaviour untouched
+// — so an `ipVersion: auto` check keeps Go's Happy Eyeballs behavior untouched
 // and merely reports the outcome.
 type connFamilyTracker struct {
 	mu     sync.Mutex

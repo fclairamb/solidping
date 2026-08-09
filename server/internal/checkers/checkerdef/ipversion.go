@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -59,13 +60,13 @@ const (
 // ErrInvalidIPVersion is returned for a value that is not auto/ipv4/ipv6.
 var ErrInvalidIPVersion = errors.New("invalid ipVersion")
 
-// ErrNoAddressForFamily is the catalogued failure for "the target has no
+// ErrNoAddressForFamily is the cataloged failure for "the target has no
 // address of the requested family" — usually a missing AAAA record. It is
 // deliberately distinct from a dial failure: the target may be perfectly
 // healthy, it simply is not reachable over the family this check pins.
 var ErrNoAddressForFamily = errors.New("no address of the requested IP version")
 
-// ErrWorkerNoEgress is the catalogued failure for "this worker cannot send
+// ErrWorkerNoEgress is the cataloged failure for "this worker cannot send
 // traffic over the requested family at all" — the node running the check has no
 // IPv6 route, not the target being down. Kept separate from
 // ErrNoAddressForFamily and from any dial error so the message can point the
@@ -113,6 +114,8 @@ func (v IPVersion) Label() string {
 		return "IPv4"
 	case IPVersionIPv6:
 		return "IPv6"
+	case IPVersionAuto:
+		return "auto"
 	default:
 		return "auto"
 	}
@@ -128,6 +131,8 @@ func (v IPVersion) Network(base string) string {
 		return base + "4"
 	case IPVersionIPv6:
 		return base + "6"
+	case IPVersionAuto:
+		return base
 	default:
 		return base
 	}
@@ -207,6 +212,8 @@ func MatchesIPVersion(ip net.IP, version IPVersion) bool {
 		return ip.To4() != nil
 	case IPVersionIPv6:
 		return ip.To4() == nil && ip.To16() != nil
+	case IPVersionAuto:
+		return true
 	default:
 		return true
 	}
@@ -250,7 +257,7 @@ type EgressProbe func(version IPVersion, ip net.IP) error
 // nine copies of that loop is exactly how this option would rot back into
 // per-type inconsistency.
 //
-// Behaviour:
+// Behavior:
 //   - auto reproduces the historical pick byte-for-byte: the first IPv4
 //     address, normalized to its 4-byte form (checkicmp relied on that), and
 //     otherwise the first address the resolver returned. No egress probe runs,
@@ -356,7 +363,7 @@ func DialEgressProbe(version IPVersion, ip net.IP) error {
 	}
 
 	network := version.Network("udp")
-	address := net.JoinHostPort(ip.String(), fmt.Sprint(egressProbePort))
+	address := net.JoinHostPort(ip.String(), strconv.Itoa(egressProbePort))
 
 	dialer := net.Dialer{Timeout: egressProbeTimeout}
 

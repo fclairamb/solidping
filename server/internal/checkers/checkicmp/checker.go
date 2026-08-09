@@ -31,6 +31,12 @@ const (
 	protocolICMPv6 = 58
 
 	methodICMP = "icmp"
+
+	// Metric keys, named because the failure paths repeat the "nothing was
+	// sent" metric block.
+	metricPacketsSent     = "packets_sent"
+	metricPacketsReceived = "packets_received"
+	metricPacketLossPct   = "packet_loss_pct"
 )
 
 // ICMPChecker implements the Checker interface for ICMP ping checks.
@@ -121,9 +127,9 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 				checkerdef.OutputKeyError:  "DNS resolution failed: " + err.Error(),
 			},
 			Metrics: map[string]any{
-				"packets_sent":     0,
-				"packets_received": 0,
-				"packet_loss_pct":  float64(percentageMultiplier),
+				metricPacketsSent:     0,
+				metricPacketsReceived: 0,
+				metricPacketLossPct:   float64(percentageMultiplier),
 			},
 		}, nil
 	}
@@ -142,9 +148,9 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 				checkerdef.OutputKeyError:  selectErr.Error(),
 			},
 			Metrics: map[string]any{
-				"packets_sent":     0,
-				"packets_received": 0,
-				"packet_loss_pct":  float64(percentageMultiplier),
+				metricPacketsSent:     0,
+				metricPacketsReceived: 0,
+				metricPacketLossPct:   float64(percentageMultiplier),
 			},
 		}, nil
 	}
@@ -196,9 +202,9 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		Status:   status,
 		Duration: duration,
 		Metrics: map[string]any{
-			"packets_sent":     count,
-			"packets_received": successCount,
-			"packet_loss_pct":  packetLossPct,
+			metricPacketsSent:     count,
+			metricPacketsReceived: successCount,
+			metricPacketLossPct:   packetLossPct,
 		},
 		Output: map[string]any{
 			checkerdef.OutputKeyHost:      cfg.Host,

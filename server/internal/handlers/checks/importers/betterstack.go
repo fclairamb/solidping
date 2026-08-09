@@ -189,18 +189,7 @@ func (c *BetterStackConverter) ConvertContext(ctx context.Context, input []byte)
 		}
 	}
 
-	// The one knowing divergence from Better Stack, stated up front rather than
-	// discovered later: their unset ip_version monitors BOTH families, ours
-	// monitors one. Reported once for the whole import instead of once per
-	// monitor, since it is the Better Stack default and would otherwise drown
-	// out every other warning.
-	if bothFamilies > 0 {
-		warn.addDocf("%d monitor(s) left Better Stack's ip_version unset, which there means "+
-			"\"monitor over both IPv4 and IPv6\". SolidPing checks one family per check: these were "+
-			"imported as ipVersion: auto and will only be monitored over whichever family the target "+
-			"resolves to first. Create a second check with ipVersion: ipv6 for the targets where IPv6 "+
-			"reachability matters", bothFamilies)
-	}
+	warnBetterStackBothFamilies(bothFamilies, warn)
 
 	for i := range heartbeats {
 		if check, ok := convertBetterStackHeartbeat(&heartbeats[i], slugs, warn); ok {
@@ -437,7 +426,24 @@ func betterStackApplyIPVersion(
 	check.Config[checkerdef.IPVersionConfigKey] = string(version)
 }
 
-// betterStackUsesBothFamilies reports whether a monitor relies on Better
+// warnBetterStackBothFamilies states the one knowing divergence from Better
+// Stack up front rather than letting it be discovered later: their unset
+// ip_version monitors BOTH families, ours monitors one. Reported once for the
+// whole import instead of once per monitor, since it is the Better Stack default
+// and would otherwise drown out every other warning.
+func warnBetterStackBothFamilies(count int, warn *warnings) {
+	if count == 0 {
+		return
+	}
+
+	warn.addDocf("%d monitor(s) left Better Stack's ip_version unset, which there means "+
+		"\"monitor over both IPv4 and IPv6\". SolidPing checks one family per check: these were "+
+		"imported as ipVersion: auto and will only be monitored over whichever family the target "+
+		"resolves to first. Create a second check with ipVersion: ipv6 for the targets where IPv6 "+
+		"reachability matters", count)
+}
+
+// betterStackMonitorUsesBothFamilies reports whether a monitor relies on Better
 // Stack's null/unset ip_version — the value that means "monitor both families",
 // which SolidPing cannot reproduce in a single check.
 func betterStackMonitorUsesBothFamilies(monitor *betterStackMonitor) bool {

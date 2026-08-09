@@ -19,7 +19,7 @@ const ipVersionConfigField = checkerdef.IPVersionConfigKey
 //   - the value must be auto / ipv4 / ipv6 (or absent). A typo like "v6" is
 //     rejected loudly rather than silently monitoring the wrong family.
 //   - `auto` (and absence) is always legal, for every type — it is the historical
-//     behaviour and must never start failing a write.
+//     behavior and must never start failing a write.
 //   - a pinned family requires the check's type to declare SupportsIPVersion.
 //     `dns` deliberately does not: for a DNS check the option could mean either
 //     "which record types to assert on" or "which transport to reach the
