@@ -3243,6 +3243,34 @@ type OrgDependencyGraphResponse struct {
 	} `json:"data,omitempty"`
 }
 
+// OrgLogoResponse defines model for OrgLogoResponse.
+type OrgLogoResponse struct {
+	LogoUrl *string            `json:"logoUrl"`
+	Name    string             `json:"name"`
+	Slug    string             `json:"slug"`
+	Uid     openapi_types.UUID `json:"uid"`
+}
+
+// OrgProfileResponse defines model for OrgProfileResponse.
+type OrgProfileResponse struct {
+	// AccessToken Access token scoped to the new slug. Present only when the slug changed — the caller's previous token is scoped to the old slug and is refused against the new one.
+	AccessToken *string `json:"accessToken,omitempty"`
+
+	// ExpiresIn Access token lifetime in seconds
+	ExpiresIn *int    `json:"expiresIn,omitempty"`
+	LogoUrl   *string `json:"logoUrl"`
+	Name      string  `json:"name"`
+
+	// PreviousSlug The slug that was just freed by a rename. It keeps redirecting to `slug` until another organization claims it. Absent when the slug did not change.
+	PreviousSlug *string `json:"previousSlug,omitempty"`
+	RefreshToken *string `json:"refreshToken,omitempty"`
+
+	// Slug The organization's current slug.
+	Slug      string             `json:"slug"`
+	TokenType *string            `json:"tokenType,omitempty"`
+	Uid       openapi_types.UUID `json:"uid"`
+}
+
 // OrgRegionListResponse defines model for OrgRegionListResponse.
 type OrgRegionListResponse struct {
 	Data           *[]Region `json:"data,omitempty"`
@@ -3255,7 +3283,10 @@ type OrgResponse struct {
 	AccessToken string `json:"accessToken"`
 
 	// ExpiresIn Access token lifetime in seconds
-	ExpiresIn    int                `json:"expiresIn"`
+	ExpiresIn int `json:"expiresIn"`
+
+	// LogoUrl The organization's logo: an absolute http(s) URL, or a relative `/pub/org-logos/{fileUid}` path for an uploaded image. Null when the organization has no logo.
+	LogoUrl      *string            `json:"logoUrl,omitempty"`
 	Name         string             `json:"name"`
 	RefreshToken string             `json:"refreshToken"`
 	Slug         string             `json:"slug"`
@@ -3920,6 +3951,18 @@ type UpdateOncallScheduleRequest struct {
 	UserUids       *[]openapi_types.UUID `json:"userUids,omitempty"`
 }
 
+// UpdateOrgProfileRequest All fields are optional. An omitted field is left untouched; `logoUrl` additionally accepts an explicit null (or empty string) meaning "clear the logo".
+type UpdateOrgProfileRequest struct {
+	// LogoUrl Absolute http(s) URL of the logo. Null or an empty string clears it. Relative paths are rejected — an uploaded logo is set through `POST /api/v1/orgs/{org}/logo`, not here.
+	LogoUrl *string `json:"logoUrl,omitempty"`
+
+	// Name Display name. Must not be blank.
+	Name *string `json:"name,omitempty"`
+
+	// Slug New URL slug, 3-20 characters, lowercase alphanumeric with hyphens. Must not be held by another live organization; a slug held only as another organization's previous slug is claimable.
+	Slug *string `json:"slug,omitempty"`
+}
+
 // UpdateOrgSettingsRequest defines model for UpdateOrgSettingsRequest.
 type UpdateOrgSettingsRequest struct {
 	// DefaultEscalationPolicyUid A UID sets the org default escalation policy (must be a policy in this org); an empty string clears it; omit to leave unchanged.
@@ -4472,6 +4515,11 @@ type ListLabelsParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// UploadOrgLogoMultipartBody defines parameters for UploadOrgLogo.
+type UploadOrgLogoMultipartBody struct {
+	Logo openapi_types.File `json:"logo"`
+}
+
 // ListMaintenanceWindowsParams defines parameters for ListMaintenanceWindows.
 type ListMaintenanceWindowsParams struct {
 	// Status Filter by lifecycle status (active, upcoming, past)
@@ -4711,6 +4759,9 @@ type CreateOrgJSONRequestBody = CreateOrgRequest
 // DeleteOrgJSONRequestBody defines body for DeleteOrg for application/json ContentType.
 type DeleteOrgJSONRequestBody = DeleteOrgRequest
 
+// UpdateOrgProfileJSONRequestBody defines body for UpdateOrgProfile for application/json ContentType.
+type UpdateOrgProfileJSONRequestBody = UpdateOrgProfileRequest
+
 // CreateChannelJSONRequestBody defines body for CreateChannel for application/json ContentType.
 type CreateChannelJSONRequestBody = CreateChannelRequest
 
@@ -4782,6 +4833,9 @@ type CreateInvitationJSONRequestBody = CreateInvitationRequest
 
 // CreateJobJSONRequestBody defines body for CreateJob for application/json ContentType.
 type CreateJobJSONRequestBody = CreateJobRequest
+
+// UploadOrgLogoMultipartRequestBody defines body for UploadOrgLogo for multipart/form-data ContentType.
+type UploadOrgLogoMultipartRequestBody UploadOrgLogoMultipartBody
 
 // CreateMaintenanceWindowJSONRequestBody defines body for CreateMaintenanceWindow for application/json ContentType.
 type CreateMaintenanceWindowJSONRequestBody = CreateMaintenanceWindowRequest
@@ -5275,6 +5329,32 @@ type ClientInterface interface {
 	//
 	// Corresponds with DELETE /api/v1/orgs/{org} (the `DeleteOrg` operationId).
 	DeleteOrg(ctx context.Context, org OrgPath, body DeleteOrgJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateOrgProfileWithBody Update the organization profile
+	//
+	// Updates the organization's name, URL slug and/or logo. **Owner only** — an admin is refused with 403 FORBIDDEN. Standard PATCH semantics: an omitted field is left untouched, and `logoUrl` accepts `null` (or an empty string) to clear the logo.
+	//
+	// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. That guarantee ends as soon as another organization claims the freed slug.
+	//
+	// Because access tokens are scoped to an organization slug, a rename response also carries a freshly minted session (`accessToken`, `refreshToken`, `expiresIn`, `tokenType`) for the new slug; the caller must adopt it or every subsequent request will be refused with 403. Other live sessions self-heal on their next token refresh.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org} (the `UpdateOrgProfile` operationId).
+	UpdateOrgProfileWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateOrgProfile Update the organization profile
+	//
+	// Updates the organization's name, URL slug and/or logo. **Owner only** — an admin is refused with 403 FORBIDDEN. Standard PATCH semantics: an omitted field is left untouched, and `logoUrl` accepts `null` (or an empty string) to clear the logo.
+	//
+	// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. That guarantee ends as soon as another organization claims the freed slug.
+	//
+	// Because access tokens are scoped to an organization slug, a rename response also carries a freshly minted session (`accessToken`, `refreshToken`, `expiresIn`, `tokenType`) for the new slug; the caller must adopt it or every subsequent request will be refused with 403. Other live sessions self-heal on their next token refresh.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org} (the `UpdateOrgProfile` operationId).
+	UpdateOrgProfile(ctx context.Context, org OrgPath, body UpdateOrgProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAdminJobs List background jobs (admin)
 	//
@@ -6026,6 +6106,26 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/labels (the `ListLabels` operationId).
 	ListLabels(ctx context.Context, org OrgPath, params *ListLabelsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteOrgLogo Clear the organization logo
+	//
+	// Removes the organization's logo. **Owner only.** An uploaded image is retired at the same time, so its public URL stops resolving.
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org}/logo (the `DeleteOrgLogo` operationId).
+	DeleteOrgLogo(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UploadOrgLogoWithBody Upload the organization logo
+	//
+	// Stores an uploaded image as the organization's logo and points `logoUrl` at its public URL. **Owner only.**
+	//
+	// Accepted content types are `image/png`, `image/jpeg`, `image/webp`, `image/gif` and `image/svg+xml`, up to 1 MB. Anything else is a 422 VALIDATION_ERROR; an oversized body is a 413.
+	//
+	// The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable, but authorized by state: it only serves a file that is the CURRENT logo of a live organization, so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/logo (the `UploadOrgLogo` operationId).
+	UploadOrgLogoWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListMaintenanceWindows List maintenance windows
 	//
@@ -7638,6 +7738,52 @@ func (c *Client) DeleteOrgWithBody(ctx context.Context, org OrgPath, contentType
 // Corresponds with DELETE /api/v1/orgs/{org} (the `DeleteOrg` operationId).
 func (c *Client) DeleteOrg(ctx context.Context, org OrgPath, body DeleteOrgJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteOrgRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateOrgProfileWithBody Update the organization profile
+//
+// Updates the organization's name, URL slug and/or logo. **Owner only** — an admin is refused with 403 FORBIDDEN. Standard PATCH semantics: an omitted field is left untouched, and `logoUrl` accepts `null` (or an empty string) to clear the logo.
+//
+// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. That guarantee ends as soon as another organization claims the freed slug.
+//
+// Because access tokens are scoped to an organization slug, a rename response also carries a freshly minted session (`accessToken`, `refreshToken`, `expiresIn`, `tokenType`) for the new slug; the caller must adopt it or every subsequent request will be refused with 403. Other live sessions self-heal on their next token refresh.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /api/v1/orgs/{org} (the `UpdateOrgProfile` operationId).
+func (c *Client) UpdateOrgProfileWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateOrgProfileRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateOrgProfile Update the organization profile
+//
+// Updates the organization's name, URL slug and/or logo. **Owner only** — an admin is refused with 403 FORBIDDEN. Standard PATCH semantics: an omitted field is left untouched, and `logoUrl` accepts `null` (or an empty string) to clear the logo.
+//
+// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. That guarantee ends as soon as another organization claims the freed slug.
+//
+// Because access tokens are scoped to an organization slug, a rename response also carries a freshly minted session (`accessToken`, `refreshToken`, `expiresIn`, `tokenType`) for the new slug; the caller must adopt it or every subsequent request will be refused with 403. Other live sessions self-heal on their next token refresh.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /api/v1/orgs/{org} (the `UpdateOrgProfile` operationId).
+func (c *Client) UpdateOrgProfile(ctx context.Context, org OrgPath, body UpdateOrgProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateOrgProfileRequest(c.Server, org, body)
 	if err != nil {
 		return nil, err
 	}
@@ -9479,6 +9625,46 @@ func (c *Client) GetJob(ctx context.Context, org OrgPath, uid JobUidPath, reqEdi
 // Corresponds with GET /api/v1/orgs/{org}/labels (the `ListLabels` operationId).
 func (c *Client) ListLabels(ctx context.Context, org OrgPath, params *ListLabelsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListLabelsRequest(c.Server, org, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteOrgLogo Clear the organization logo
+//
+// Removes the organization's logo. **Owner only.** An uploaded image is retired at the same time, so its public URL stops resolving.
+//
+// Corresponds with DELETE /api/v1/orgs/{org}/logo (the `DeleteOrgLogo` operationId).
+func (c *Client) DeleteOrgLogo(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteOrgLogoRequest(c.Server, org)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UploadOrgLogoWithBody Upload the organization logo
+//
+// Stores an uploaded image as the organization's logo and points `logoUrl` at its public URL. **Owner only.**
+//
+// Accepted content types are `image/png`, `image/jpeg`, `image/webp`, `image/gif` and `image/svg+xml`, up to 1 MB. Anything else is a 422 VALIDATION_ERROR; an oversized body is a 413.
+//
+// The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable, but authorized by state: it only serves a file that is the CURRENT logo of a live organization, so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/logo (the `UploadOrgLogo` operationId).
+func (c *Client) UploadOrgLogoWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUploadOrgLogoRequestWithBody(c.Server, org, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -12752,6 +12938,53 @@ func NewDeleteOrgRequestWithBody(server string, org OrgPath, contentType string,
 	}
 
 	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewUpdateOrgProfileRequest calls the generic UpdateOrgProfile builder with application/json body
+func NewUpdateOrgProfileRequest(server string, org OrgPath, body UpdateOrgProfileJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateOrgProfileRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewUpdateOrgProfileRequestWithBody constructs an http.Request for the UpdateOrgProfile method, with any body, and a specified content type
+func NewUpdateOrgProfileRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -17273,6 +17506,76 @@ func NewListLabelsRequest(server string, org OrgPath, params *ListLabelsParams) 
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewDeleteOrgLogoRequest constructs an http.Request for the DeleteOrgLogo method
+func NewDeleteOrgLogoRequest(server string, org OrgPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/logo", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUploadOrgLogoRequestWithBody constructs an http.Request for the UploadOrgLogo method, with any body, and a specified content type
+func NewUploadOrgLogoRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/logo", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -22476,6 +22779,32 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with DELETE /api/v1/orgs/{org} (the `DeleteOrg` operationId).
 	DeleteOrgWithResponse(ctx context.Context, org OrgPath, body DeleteOrgJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteOrgResult, error)
 
+	// UpdateOrgProfileWithBodyWithResponse Update the organization profile
+	//
+	// Updates the organization's name, URL slug and/or logo. **Owner only** — an admin is refused with 403 FORBIDDEN. Standard PATCH semantics: an omitted field is left untouched, and `logoUrl` accepts `null` (or an empty string) to clear the logo.
+	//
+	// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. That guarantee ends as soon as another organization claims the freed slug.
+	//
+	// Because access tokens are scoped to an organization slug, a rename response also carries a freshly minted session (`accessToken`, `refreshToken`, `expiresIn`, `tokenType`) for the new slug; the caller must adopt it or every subsequent request will be refused with 403. Other live sessions self-heal on their next token refresh.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org} (the `UpdateOrgProfile` operationId).
+	UpdateOrgProfileWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateOrgProfileResult, error)
+
+	// UpdateOrgProfileWithResponse Update the organization profile
+	//
+	// Updates the organization's name, URL slug and/or logo. **Owner only** — an admin is refused with 403 FORBIDDEN. Standard PATCH semantics: an omitted field is left untouched, and `logoUrl` accepts `null` (or an empty string) to clear the logo.
+	//
+	// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. That guarantee ends as soon as another organization claims the freed slug.
+	//
+	// Because access tokens are scoped to an organization slug, a rename response also carries a freshly minted session (`accessToken`, `refreshToken`, `expiresIn`, `tokenType`) for the new slug; the caller must adopt it or every subsequent request will be refused with 403. Other live sessions self-heal on their next token refresh.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org} (the `UpdateOrgProfile` operationId).
+	UpdateOrgProfileWithResponse(ctx context.Context, org OrgPath, body UpdateOrgProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateOrgProfileResult, error)
+
 	// ListAdminJobsWithResponse List background jobs (admin)
 	//
 	// Admin-gated list of background jobs for the org, most-recent first.
@@ -23348,6 +23677,28 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/labels (the `ListLabels` operationId).
 	ListLabelsWithResponse(ctx context.Context, org OrgPath, params *ListLabelsParams, reqEditors ...RequestEditorFn) (*ListLabelsResult, error)
+
+	// DeleteOrgLogoWithResponse Clear the organization logo
+	//
+	// Removes the organization's logo. **Owner only.** An uploaded image is retired at the same time, so its public URL stops resolving.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org}/logo (the `DeleteOrgLogo` operationId).
+	DeleteOrgLogoWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*DeleteOrgLogoResult, error)
+
+	// UploadOrgLogoWithBodyWithResponse Upload the organization logo
+	//
+	// Stores an uploaded image as the organization's logo and points `logoUrl` at its public URL. **Owner only.**
+	//
+	// Accepted content types are `image/png`, `image/jpeg`, `image/webp`, `image/gif` and `image/svg+xml`, up to 1 MB. Anything else is a 422 VALIDATION_ERROR; an oversized body is a 413.
+	//
+	// The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable, but authorized by state: it only serves a file that is the CURRENT logo of a live organization, so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/logo (the `UploadOrgLogo` operationId).
+	UploadOrgLogoWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadOrgLogoResult, error)
 
 	// ListMaintenanceWindowsWithResponse List maintenance windows
 	//
@@ -25838,6 +26189,82 @@ func (r DeleteOrgResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r DeleteOrgResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateOrgProfileResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *OrgProfileResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ValidationError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateOrgProfileResult) GetJSON200() *OrgProfileResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UpdateOrgProfileResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r UpdateOrgProfileResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdateOrgProfileResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r UpdateOrgProfileResult) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r UpdateOrgProfileResult) GetJSON422() *ValidationError {
+	return r.JSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateOrgProfileResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateOrgProfileResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateOrgProfileResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateOrgProfileResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -30553,6 +30980,144 @@ func (r ListLabelsResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListLabelsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteOrgLogoResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *OrgLogoResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteOrgLogoResult) GetJSON200() *OrgLogoResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteOrgLogoResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeleteOrgLogoResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteOrgLogoResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteOrgLogoResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteOrgLogoResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteOrgLogoResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteOrgLogoResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UploadOrgLogoResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *OrgLogoResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ValidationError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UploadOrgLogoResult) GetJSON200() *OrgLogoResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UploadOrgLogoResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r UploadOrgLogoResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UploadOrgLogoResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r UploadOrgLogoResult) GetJSON413() *Error {
+	return r.JSON413
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r UploadOrgLogoResult) GetJSON422() *ValidationError {
+	return r.JSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r UploadOrgLogoResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UploadOrgLogoResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UploadOrgLogoResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UploadOrgLogoResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -36539,6 +37104,44 @@ func (c *ClientWithResponses) DeleteOrgWithResponse(ctx context.Context, org Org
 	return ParseDeleteOrgResult(rsp)
 }
 
+// UpdateOrgProfileWithBodyWithResponse Update the organization profile
+//
+// Updates the organization's name, URL slug and/or logo. **Owner only** — an admin is refused with 403 FORBIDDEN. Standard PATCH semantics: an omitted field is left untouched, and `logoUrl` accepts `null` (or an empty string) to clear the logo.
+//
+// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. That guarantee ends as soon as another organization claims the freed slug.
+//
+// Because access tokens are scoped to an organization slug, a rename response also carries a freshly minted session (`accessToken`, `refreshToken`, `expiresIn`, `tokenType`) for the new slug; the caller must adopt it or every subsequent request will be refused with 403. Other live sessions self-heal on their next token refresh.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/orgs/{org} (the `UpdateOrgProfile` operationId).
+func (c *ClientWithResponses) UpdateOrgProfileWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateOrgProfileResult, error) {
+	rsp, err := c.UpdateOrgProfileWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateOrgProfileResult(rsp)
+}
+
+// UpdateOrgProfileWithResponse Update the organization profile
+//
+// Updates the organization's name, URL slug and/or logo. **Owner only** — an admin is refused with 403 FORBIDDEN. Standard PATCH semantics: an omitted field is left untouched, and `logoUrl` accepts `null` (or an empty string) to clear the logo.
+//
+// Renaming the slug moves every URL of the organization, including the public ones — status pages, SVG badges and the embed widget. Existing links keep working: the previous slug is remembered and answers a permanent redirect (301 for GET/HEAD, 308 otherwise) to the current slug. That guarantee ends as soon as another organization claims the freed slug.
+//
+// Because access tokens are scoped to an organization slug, a rename response also carries a freshly minted session (`accessToken`, `refreshToken`, `expiresIn`, `tokenType`) for the new slug; the caller must adopt it or every subsequent request will be refused with 403. Other live sessions self-heal on their next token refresh.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/orgs/{org} (the `UpdateOrgProfile` operationId).
+func (c *ClientWithResponses) UpdateOrgProfileWithResponse(ctx context.Context, org OrgPath, body UpdateOrgProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateOrgProfileResult, error) {
+	rsp, err := c.UpdateOrgProfile(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateOrgProfileResult(rsp)
+}
+
 // ListAdminJobsWithResponse List background jobs (admin)
 //
 // Admin-gated list of background jobs for the org, most-recent first.
@@ -38064,6 +38667,40 @@ func (c *ClientWithResponses) ListLabelsWithResponse(ctx context.Context, org Or
 		return nil, err
 	}
 	return ParseListLabelsResult(rsp)
+}
+
+// DeleteOrgLogoWithResponse Clear the organization logo
+//
+// Removes the organization's logo. **Owner only.** An uploaded image is retired at the same time, so its public URL stops resolving.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/orgs/{org}/logo (the `DeleteOrgLogo` operationId).
+func (c *ClientWithResponses) DeleteOrgLogoWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*DeleteOrgLogoResult, error) {
+	rsp, err := c.DeleteOrgLogo(ctx, org, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteOrgLogoResult(rsp)
+}
+
+// UploadOrgLogoWithBodyWithResponse Upload the organization logo
+//
+// Stores an uploaded image as the organization's logo and points `logoUrl` at its public URL. **Owner only.**
+//
+// Accepted content types are `image/png`, `image/jpeg`, `image/webp`, `image/gif` and `image/svg+xml`, up to 1 MB. Anything else is a 422 VALIDATION_ERROR; an oversized body is a 413.
+//
+// The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable, but authorized by state: it only serves a file that is the CURRENT logo of a live organization, so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/logo (the `UploadOrgLogo` operationId).
+func (c *ClientWithResponses) UploadOrgLogoWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadOrgLogoResult, error) {
+	rsp, err := c.UploadOrgLogoWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUploadOrgLogoResult(rsp)
 }
 
 // ListMaintenanceWindowsWithResponse List maintenance windows
@@ -40835,6 +41472,67 @@ func ParseDeleteOrgResult(rsp *http.Response) (*DeleteOrgResult, error) {
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateOrgProfileResult parses an HTTP response from a UpdateOrgProfileWithResponse call
+func ParseUpdateOrgProfileResult(rsp *http.Response) (*UpdateOrgProfileResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateOrgProfileResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OrgProfileResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ValidationError
@@ -44307,6 +45005,114 @@ func ParseListLabelsResult(rsp *http.Response) (*ListLabelsResult, error) {
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteOrgLogoResult parses an HTTP response from a DeleteOrgLogoWithResponse call
+func ParseDeleteOrgLogoResult(rsp *http.Response) (*DeleteOrgLogoResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteOrgLogoResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OrgLogoResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUploadOrgLogoResult parses an HTTP response from a UploadOrgLogoWithResponse call
+func ParseUploadOrgLogoResult(rsp *http.Response) (*UploadOrgLogoResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UploadOrgLogoResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OrgLogoResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	}
 

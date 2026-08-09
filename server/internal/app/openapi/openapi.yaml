@@ -5186,6 +5186,61 @@ paths:
           $ref: "#/components/responses/ValidationError"
 
   /api/v1/orgs/{org}:
+    patch:
+      tags: [Organizations]
+      summary: Update the organization profile
+      description: >-
+        Updates the organization's name, URL slug and/or logo. **Owner only** —
+        an admin is refused with 403 FORBIDDEN. Standard PATCH semantics: an
+        omitted field is left untouched, and `logoUrl` accepts `null` (or an
+        empty string) to clear the logo.
+
+
+        Renaming the slug moves every URL of the organization, including the
+        public ones — status pages, SVG badges and the embed widget. Existing
+        links keep working: the previous slug is remembered and answers a
+        permanent redirect (301 for GET/HEAD, 308 otherwise) to the current
+        slug. That guarantee ends as soon as another organization claims the
+        freed slug.
+
+
+        Because access tokens are scoped to an organization slug, a rename
+        response also carries a freshly minted session (`accessToken`,
+        `refreshToken`, `expiresIn`, `tokenType`) for the new slug; the caller
+        must adopt it or every subsequent request will be refused with 403.
+        Other live sessions self-heal on their next token refresh.
+      operationId: updateOrgProfile
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrgProfileRequest"
+      responses:
+        "200":
+          description: Updated organization profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgProfileResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The requested slug is already taken by a live organization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/ValidationError"
     delete:
       tags: [Organizations]
       summary: Delete an organization
@@ -5223,6 +5278,89 @@ paths:
           $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/ValidationError"
+
+  /api/v1/orgs/{org}/logo:
+    post:
+      tags: [Organizations]
+      summary: Upload the organization logo
+      description: >-
+        Stores an uploaded image as the organization's logo and points
+        `logoUrl` at its public URL. **Owner only.**
+
+
+        Accepted content types are `image/png`, `image/jpeg`, `image/webp`,
+        `image/gif` and `image/svg+xml`, up to 1 MB. Anything else is a 422
+        VALIDATION_ERROR; an oversized body is a 413.
+
+
+        The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable,
+        but authorized by state: it only serves a file that is the CURRENT logo
+        of a live organization, so replacing or clearing the logo un-publishes
+        the previous image immediately. Uploaded SVGs are always served with
+        `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff`
+        so they cannot execute as a document on the application's origin; they
+        still render normally in an `img` element.
+      operationId: uploadOrgLogo
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [logo]
+              properties:
+                logo:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Updated organization profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgLogoResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          description: The uploaded logo exceeds 1 MB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [Organizations]
+      summary: Clear the organization logo
+      description: >-
+        Removes the organization's logo. **Owner only.** An uploaded image is
+        retired at the same time, so its public URL stops resolving.
+      operationId: deleteOrgLogo
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: Updated organization profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgLogoResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/orgs/{org}/settings:
     get:
@@ -10172,6 +10310,13 @@ components:
           type: string
         name:
           type: string
+        logoUrl:
+          type: string
+          nullable: true
+          description: >-
+            The organization's logo: an absolute http(s) URL, or a relative
+            `/pub/org-logos/{fileUid}` path for an uploaded image. Null when the
+            organization has no logo.
         accessToken:
           type: string
           description: Access token scoped to the new organization
@@ -10182,6 +10327,83 @@ components:
           description: Access token lifetime in seconds
         tokenType:
           type: string
+
+    UpdateOrgProfileRequest:
+      type: object
+      description: >-
+        All fields are optional. An omitted field is left untouched; `logoUrl`
+        additionally accepts an explicit null (or empty string) meaning "clear
+        the logo".
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          description: Display name. Must not be blank.
+        slug:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$"
+          description: >-
+            New URL slug, 3-20 characters, lowercase alphanumeric with hyphens.
+            Must not be held by another live organization; a slug held only as
+            another organization's previous slug is claimable.
+        logoUrl:
+          type: string
+          nullable: true
+          maxLength: 2048
+          description: >-
+            Absolute http(s) URL of the logo. Null or an empty string clears it.
+            Relative paths are rejected — an uploaded logo is set through
+            `POST /api/v1/orgs/{org}/logo`, not here.
+
+    OrgProfileResponse:
+      type: object
+      required: [uid, slug, name, logoUrl]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          description: The organization's current slug.
+        name:
+          type: string
+        logoUrl:
+          type: string
+          nullable: true
+        previousSlug:
+          type: string
+          description: >-
+            The slug that was just freed by a rename. It keeps redirecting to
+            `slug` until another organization claims it. Absent when the slug did
+            not change.
+        accessToken:
+          type: string
+          description: >-
+            Access token scoped to the new slug. Present only when the slug
+            changed — the caller's previous token is scoped to the old slug and
+            is refused against the new one.
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+          description: Access token lifetime in seconds
+        tokenType:
+          type: string
+
+    OrgLogoResponse:
+      type: object
+      required: [uid, slug, name, logoUrl]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        logoUrl:
+          type: string
+          nullable: true
 
     OrgSettingsResponse:
       type: object

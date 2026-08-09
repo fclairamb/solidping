@@ -42,6 +42,77 @@ scoped to the new org. The org is always created for the caller — the owner
 comes from the access token, never from the body. A slug freed by a deleted
 organization can be claimed again.
 
+### PATCH /api/v1/orgs/:org
+Update the organization's profile — `{name?, slug?, logoUrl?}`. Auth: required
+(**owner**) — an admin gets `403 FORBIDDEN`. Standard PATCH semantics: an
+omitted field is untouched, and `logoUrl` accepts an explicit `null` (or `""`)
+to clear the logo. `logoUrl` must be an absolute `http(s)` URL; an uploaded
+logo is set through `POST /api/v1/orgs/:org/logo` instead.
+
+Renaming the slug moves every URL of the organization, including the public
+ones. **Old links keep working** — see [Previous slugs](#previous-slugs-after-a-rename).
+Because access tokens are scoped to an org slug, the response of a rename also
+carries a fresh session (`accessToken`, `refreshToken`, `expiresIn`,
+`tokenType`) plus `previousSlug`; the caller must adopt the tokens or its next
+request 403s. Other live sessions self-heal on their next refresh, which
+derives the claim from the org row by UID.
+
+Errors: `422 VALIDATION_ERROR` (bad slug, blank/oversized name, non-http logo
+URL), `409 CONFLICT` (slug already held by a live org).
+
+### POST /api/v1/orgs/:org/logo
+Upload the organization's logo (`multipart/form-data`, field `logo`). Auth:
+required (**owner**). Allowed types: `image/png`, `image/jpeg`, `image/webp`,
+`image/gif`, `image/svg+xml`; max 1 MB. Wrong type → `422 VALIDATION_ERROR`,
+too big → `413`. Returns the updated profile with `logoUrl` set to
+`/pub/org-logos/<fileUid>`.
+
+### DELETE /api/v1/orgs/:org/logo
+Clear the organization's logo. Auth: required (**owner**). Retires the uploaded
+file, so its public URL stops resolving. Returns the updated profile.
+
+### GET /pub/org-logos/:fileUid
+Serve an uploaded logo. **Public, unsigned** — unlike `/pub/files/:uid`, which
+needs an expiring signed URL, a logo URL must be stable enough to paste into a
+status page or an email. Authorization is by state instead of by signature: the
+file is served only while it is the **current** logo of a **live**
+organization, so replacing the logo, clearing it, or deleting the org
+un-publishes the image immediately.
+
+Uploaded bytes are served with `X-Content-Type-Options: nosniff`, and only
+raster images get `Content-Disposition: inline` — an SVG is always
+`attachment`, because an uploaded SVG is XML that may carry `<script>` and
+serving it inline would be stored XSS on the app's own origin. It still renders
+normally in an `<img>`, where scripts inside an SVG never execute.
+
+## Previous slugs (after a rename)
+
+Renaming an organization does not break the URLs its customers have already
+pasted elsewhere. The previous slug is recorded and every org-scoped surface
+answers a permanent redirect to the current slug: **301** for `GET`/`HEAD`,
+**308** for other methods (a 301 would license a client to replay a `POST` as a
+`GET` and drop its body).
+
+Covered surfaces: the whole `/api/v1/orgs/:org/...` API, the public status-page
+endpoints (`/api/v1/status-pages/:org/...` — view, summary, badge, feed, which
+is also what the `/embed/v1` widget polls), per-check SVG badges, heartbeat
+ingest, the magic-link incident ack, status-page subscribe, and the
+`/dash0/orgs/:org/...` and `/status0/:org/...` app URLs. The realtime WebSocket
+(`/api/v1/orgs/:org/events/ws`) is **not** covered — an HTTP redirect has no
+meaning in a WS handshake; reconnect against the current slug.
+
+Two rules bound the guarantee:
+
+- **A live organization always wins.** Resolution tries the live slug first, so
+  a previous slug can never shadow a real organization.
+- **A previous slug is released the moment another organization claims it.**
+  `POST /api/v1/orgs` may claim a slug held only as an alias, and doing so drops
+  the alias — it never resolves across tenants afterwards.
+
+Deleted organizations are explicitly out of scope: a deleted org 404s on
+**both** its current and its previous slugs, with no alias, tombstone or
+redirect.
+
 ### DELETE /api/v1/orgs/:org
 Delete an organization. Auth: required (**owner**) — an admin gets
 `403 FORBIDDEN`. Body: `{"slug":"<org-slug>"}`, retyped as confirmation;
