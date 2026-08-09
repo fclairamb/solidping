@@ -183,3 +183,60 @@ entitlement, a SaaS-mode conditional, or any other gate as part of this work.
 
 Shortening the label to "Orgs" was rejected: it only defers the same overflow to
 the next tab that gets added.
+
+## Implementation Plan
+
+1. **Extract `CreateOrgCard`** from `web/dash0/src/routes/no-org.tsx` into
+   `web/dash0/src/components/shared/create-org-card.tsx`, taking the local
+   `slugify` with it (module-private, distinct from `@/lib/utils`'s 100-char
+   generic one — org slugs cap at 20). Add an optional `onCancel` prop that
+   renders a Cancel button next to Create when provided; `/no-org` omits it
+   (unchanged layout). Preserve every existing testid/id the `create-org.spec.ts`
+   and `membership-requests.spec.ts` E2E tests depend on verbatim:
+   `data-testid="no-org-advanced-toggle"`, `id="orgName"` / `id="orgSlug"`, and
+   the "Create organization" / "Start a new organization" strings. Update
+   `no-org.tsx` to import and render the shared component instead of its own
+   copy.
+2. **i18n**: move the form's strings from `auth:noOrg.*` to a neutral
+   `auth:createOrg.*` block (title/description/orgName/.../submit) in all four
+   locales (en/de/fr/es), keeping the English copy byte-identical so the
+   existing E2E regex matches keep passing. Add `nav:organizations` (all
+   locales) for the tab label, and an `account:organizations.*` block (title,
+   subtitle, newOrganization, current, role, switch, switchFailed) for the new
+   list page.
+3. **TabNav fix**: add `overflow-x-auto` to the nav container in
+   `components/shared/tab-nav.tsx`, plus `whitespace-nowrap shrink-0` on each
+   tab `Link`, per the resolved decision. Manually check the other three
+   consumers (`account.tsx`, `organization.tsx`, `server.tsx`, `test.tsx`) at
+   desktop width for a stray scrollbar and at a narrow width for horizontal
+   scroll instead of squashing.
+4. **Account tab + routes**: add the Organizations tab to `account.tsx` after
+   Tokens. Add the `account.organizations.tsx` (layout/Outlet) /
+   `account.organizations.index.tsx` (list) / `account.organizations.new.tsx`
+   (form) route triple, mirroring `checks.tsx` / `checks.index.tsx` /
+   `checks.new.tsx`. The list reads `organizations` from `useAuth()`, marks the
+   entry matching the route's `org` param as current, and renders a switch
+   action (reusing `useAuth().switchOrg`, same as `AppSidebar`) for the rest;
+   logo falls back to the `Building` icon exactly like the sidebar. The `.new`
+   route renders `<CreateOrgCard onCancel={...} />` with the cancel target set
+   to `/orgs/$org/account/organizations`.
+5. **Design reference**: check for an existing "list of cards with a current
+   marker + switch action" pattern before inventing one; add this pattern to
+   `design-reference.tsx` if nothing already covers it, per the mandatory
+   design-reference rule.
+6. **Tests**:
+   - New Playwright spec near `e2e/org-profile.spec.ts`: a user seeded with an
+     existing org (via the real `POST /api/v1/orgs`, `test/users` pattern
+     already used by `create-org.spec.ts` / `org-profile.spec.ts`) opens
+     `/orgs/$org/account/organizations`, creates a second org through the UI,
+     and lands on the new org's dashboard with a session that can make a
+     successful org-scoped call against the NEW org (proving adoption, not
+     just a URL change).
+   - Regression coverage: `/no-org` still creates a first org for a zero-org
+     user post-extraction (existing `create-org.spec.ts` continues to pass
+     unmodified) and the list marks the current org / lists siblings.
+   - Narrow-viewport check for the `TabNav` overflow fix, folded into the new
+     spec or a small addition to it.
+7. **QA gate**: `make build-dash0`, `bun run lint` scoped to touched files
+   clean of new errors, then the new/updated Playwright spec(s) green against
+   a side-car test server (dash0 rebuilt + copied into the embed path first).
