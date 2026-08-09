@@ -36,13 +36,20 @@ test.describe("Membership requests", () => {
     await page.getByTestId("auto-join-pattern-save").click();
 
     // Inline error must surface (server message under the field, no toast).
+    // Scope to the auto-join form: the settings page also renders an
+    // owner-only danger zone whose title is legitimately text-destructive
+    // (spec 2026-08-08-11), so a page-wide locator would match it too.
+    const autoJoinForm = page
+      .getByTestId("auto-join-pattern-save")
+      .locator("xpath=ancestor::form");
+
     await expect(
-      page.locator(".text-destructive").first(),
+      autoJoinForm.locator(".text-destructive").first(),
     ).toBeVisible({ timeout: 5000 });
 
     // Field stays editable; errors clear on edit.
     await pattern.fill(".+@example\\.com");
-    await expect(page.locator(".text-destructive")).toHaveCount(0);
+    await expect(autoJoinForm.locator(".text-destructive")).toHaveCount(0);
   });
 
   test("test-against-email preview reports match / no-match", async ({
