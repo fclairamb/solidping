@@ -142,3 +142,77 @@ but only for **renamed** orgs, not deleted ones — that is spec
 store. If both specs land, a deleted org's slug is freed with no alias, while a
 renamed org's previous slug still resolves. Keep the two paths distinct and do
 not let a deleted org resolve through the rename-alias mechanism.
+
+## Implementation Plan
+
+### 1. Role hierarchy (`server/internal/db/models/auth.go`)
+- Add `MemberRoleOwner MemberRole = "owner"`.
+- Add `MemberRole.Rank()`, `MemberRole.AtLeast(min)`, `MemberRole.IsValid()` —
+  ranking `owner(4) > admin(3) > user(2) > viewer(1)`, unknown = 0.
+- Add `auth.Claims.HasOrgRole(min)` so JWT-claim gates (`claims.Role == "admin"`)
+  become hierarchy-aware without sprinkling `|| "owner"`.
+
+### 2. Migration `011_owner_role` (both dialects)
+- Widen the `organization_members.role` CHECK to include `'owner'`
+  (Postgres: drop/re-add constraint; SQLite: `_new` table rebuild, the established pattern).
+- Backfill: for every org that has at least one admin and no owner, promote the
+  oldest (`created_at ASC`) live admin to `owner`. Covers seeded `default`/`test`.
+- `.down.sql`: demote owners back to admin and restore the narrow CHECK.
+
+### 3. Role gates (audit every comparison)
+- `middleware.RequireOrgAdmin` → `member.Role.AtLeast(MemberRoleAdmin)`.
+- New `middleware.RequireOrgOwner` (super-admin bypass, same shape).
+- Admin-notification fan-outs (`job_escalation_step.go`, `membership_requests.go`,
+  `incidentnotifications/handler.go`) → `AtLeast(admin)`.
+- Claim gates (`auth/handler.go`, `membership_requests_handler.go`, `discovery`,
+  `integrations`, `entitlements`) → `claims.HasOrgRole(admin)`.
+- `CountAdminsByOrg` counts `role IN ('admin','owner')` in both dialects; add
+  `CountOwnersByOrg`.
+
+### 4. Creator becomes owner
+- `auth.Service.CreateOrg`: membership role `owner`, minted access token claim `owner`.
+  Slug availability already ignores soft-deleted orgs (`GetOrganizationBySlug` filters
+  `deleted_at IS NULL`, and both dialects' unique slug index is partial) — assert with a test.
+- `join_policy.go` rule 2 (zero-member bootstrap) mints `owner`; update `join_policy_test.go`.
+  This is what makes the Slack/Discord/OAuth `findOrCreateOrganization` paths produce an
+  owner, since they all funnel through `CompleteOrgLogin`.
+- `job_startup.go` seeded default org admin → owner.
+
+### 5. Members service guards (`handlers/members/`)
+- `isValidRole` and `AddMember` accept `owner`.
+- Caller role is resolved in the handler (membership, or super-admin) and passed to
+  `AddMember` / `UpdateMember` / `RemoveMember`:
+  - only a caller at owner level may grant `owner` or touch a member who *is* owner;
+  - otherwise `ErrOwnerRoleRequired` → 403 FORBIDDEN.
+- Last-owner guard: demoting or removing the last owner → `ErrCannotDemoteLastOwner` /
+  `ErrCannotRemoveLastOwner` (409 CONFLICT). Multiple owners allowed → transfer path.
+- Last-admin guard re-expressed against the hierarchy (owner counts as admin), so an org
+  with an owner and no plain admins is unaffected.
+
+### 6. Org deletion
+- `DELETE /api/v1/orgs/:org`, gated by `RequireAuth + RequireOrgAccess + RequireOrgOwner`.
+- Body `{"slug": "<org-slug>"}`; mismatch → `VALIDATION_ERROR`. No special case for `default`.
+- Service `DeleteOrg`: hard-delete the org's `check_jobs` (so the scheduler stops
+  immediately — it does not join organizations), soft-delete its checks, soft-delete its
+  memberships, revoke every org-scoped user token, then soft-delete the org. 204.
+- Deleted slug 404s everywhere for free: every org resolution (dashboard API,
+  status pages, badges, embed widget data) goes through `GetOrganizationBySlug`, which
+  filters `deleted_at IS NULL`. Prove it with tests rather than adding new filtering.
+- New db method `DeleteUserTokensByOrg` (both dialects).
+
+### 7. dash0
+- `MemberRole` type += `owner`; `ROLE_ORDER` sorts owners first.
+- Members page: owner badge/label, `Owner` select option only for an owner caller,
+  owner rows read-only (role select + remove disabled) for non-owners.
+- Settings page: owner-only **Danger zone** card — `Trash2` + `variant="destructive"`,
+  type-the-slug confirm dialog; on success clear the session org and navigate out.
+- `AuthContext`: `isOwner`; `isAdmin` true for owner too.
+- i18n en/fr/de/es.
+
+### 8. Docs & tests
+- `openapi.yaml` (role enums + DELETE /orgs/{org}), `wiki/api-specification/`.
+- Backend table-driven tests: hierarchy, member guards, CreateOrg→owner,
+  bootstrap→owner, delete happy path / non-owner 403 / wrong slug 400 / token revocation /
+  scheduler stop / slug reuse / deleted-org 404 on API + status page + badge.
+- E2E: owner badge after org creation, danger zone visible to owner only, delete lands
+  outside the org.
