@@ -190,6 +190,7 @@
     "memberRemoved": "Mitglied entfernt",
     "removeFailed": "Mitglied konnte nicht entfernt werden",
     "updateFailed": "Rolle konnte nicht aktualisiert werden",
-    "ownerOnly": "Nur ein Eigentümer kann einen Eigentümer ändern oder entfernen."
+    "ownerOnly": "Nur ein Eigentümer kann einen Eigentümer ändern oder entfernen.",
+    "adminOnly": "Nur ein Admin kann ein Mitglied hinzufügen, ändern oder entfernen."
   }
 }

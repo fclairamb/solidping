@@ -190,6 +190,7 @@
     "memberRemoved": "Membre retiré",
     "removeFailed": "Échec du retrait du membre",
     "updateFailed": "Échec de la mise à jour du rôle",
-    "ownerOnly": "Seul un propriétaire peut modifier ou retirer un propriétaire."
+    "ownerOnly": "Seul un propriétaire peut modifier ou retirer un propriétaire.",
+    "adminOnly": "Seul un administrateur peut ajouter, modifier ou retirer un membre."
   }
 }

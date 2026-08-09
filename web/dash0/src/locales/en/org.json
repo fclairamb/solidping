@@ -193,6 +193,7 @@
     "memberRemoved": "Member removed",
     "removeFailed": "Failed to remove member",
     "updateFailed": "Failed to update role",
-    "ownerOnly": "Only an owner can change or remove an owner."
+    "ownerOnly": "Only an owner can change or remove an owner.",
+    "adminOnly": "Only an admin can add, change or remove a member."
   }
 }

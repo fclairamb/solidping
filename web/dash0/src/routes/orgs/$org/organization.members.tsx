@@ -83,6 +83,11 @@ function MembersPage() {
   // server enforces this too (members service, ErrOwnerRoleRequired); hiding
   // the controls just stops the UI from offering a call that would 403.
   const isOwner = user?.isOwner ?? false;
+  // Add/re-role/remove are admin-only server-side (RequireOrgAdmin — spec
+  // 2026-08-09-03). A viewer or plain user still sees the list (reads stay
+  // open) but every row control renders disabled, mirroring the owner-row
+  // treatment below.
+  const isAdmin = user?.isAdmin ?? false;
   const { data, isLoading, error } = useMembers(org);
   const updateMember = useUpdateMember(org);
   const removeMember = useRemoveMember(org);
@@ -106,6 +111,17 @@ function MembersPage() {
   // An owner row is read-only for anyone who is not themselves an owner.
   const isLocked = (member: MemberResponse) =>
     member.role === "owner" && !isOwner;
+
+  // Reasons a row's controls render disabled, in priority order (each has its
+  // own tooltip copy). Non-admin is checked before the owner lock so a viewer
+  // sees "admin required" rather than the more specific owner-only message.
+  type LockReason = "self" | "admin" | "owner" | null;
+  const lockReason = (member: MemberResponse): LockReason => {
+    if (isSelf(member)) return "self";
+    if (!isAdmin) return "admin";
+    if (isLocked(member)) return "owner";
+    return null;
+  };
 
   const applyRoleChange = async (member: MemberResponse, role: MemberRole) => {
     try {
@@ -131,6 +147,17 @@ function MembersPage() {
     const target = demoteTarget;
     setDemoteTarget(null);
     await applyRoleChange(target, "viewer");
+  };
+
+  const lockTooltip = (reason: NonNullable<LockReason>) => {
+    switch (reason) {
+      case "self":
+        return t("members.cannotEditSelf");
+      case "admin":
+        return t("members.adminOnly");
+      case "owner":
+        return t("members.ownerOnly");
+    }
   };
 
   const confirmRemove = async () => {
@@ -182,8 +209,7 @@ function MembersPage() {
               </TableHeader>
               <TableBody>
                 {sortedMembers.map((member) => {
-                  const self = isSelf(member);
-                  const locked = isLocked(member);
+                  const reason = lockReason(member);
                   const joined = member.joinedAt || member.createdAt;
                   return (
                     <TableRow key={member.uid}>
@@ -209,7 +235,7 @@ function MembersPage() {
                         {member.email}
                       </TableCell>
                       <TableCell>
-                        {self || locked ? (
+                        {reason ? (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <span className="inline-block">
@@ -228,11 +254,7 @@ function MembersPage() {
                                 </Select>
                               </span>
                             </TooltipTrigger>
-                            <TooltipContent>
-                              {self
-                                ? t("members.cannotEditSelf")
-                                : t("members.ownerOnly")}
-                            </TooltipContent>
+                            <TooltipContent>{lockTooltip(reason)}</TooltipContent>
                           </Tooltip>
                         ) : (
                           <Select
@@ -271,7 +293,7 @@ function MembersPage() {
                         {new Date(joined).toLocaleDateString()}
                       </TableCell>
                       <TableCell>
-                        {self || locked ? (
+                        {reason ? (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <span className="inline-block">
@@ -285,11 +307,7 @@ function MembersPage() {
                                 </Button>
                               </span>
                             </TooltipTrigger>
-                            <TooltipContent>
-                              {self
-                                ? t("members.cannotEditSelf")
-                                : t("members.ownerOnly")}
-                            </TooltipContent>
+                            <TooltipContent>{lockTooltip(reason)}</TooltipContent>
                           </Tooltip>
                         ) : (
                           <Button
