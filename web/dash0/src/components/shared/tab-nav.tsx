@@ -10,7 +10,7 @@ export function TabNav({ tabs, org }: { tabs: Tab[]; org: string }) {
   const location = useLocation();
 
   return (
-    <nav className="flex gap-4 border-b">
+    <nav className="flex gap-4 overflow-x-auto border-b" data-testid="tab-nav">
       {tabs.map((tab) => {
         const resolved = tab.path.replace("$org", org);
         const isActive = location.pathname.startsWith(resolved);
@@ -19,7 +19,7 @@ export function TabNav({ tabs, org }: { tabs: Tab[]; org: string }) {
             key={tab.label}
             to={tab.path}
             params={{ org }}
-            className={`pb-2 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
+            className={`shrink-0 whitespace-nowrap pb-2 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
               isActive
                 ? "border-primary text-primary"
                 : "border-transparent text-muted-foreground hover:text-foreground"

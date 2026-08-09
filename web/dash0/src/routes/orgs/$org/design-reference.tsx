@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Bot,
+  Building,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -1119,6 +1120,54 @@ function ButtonsBadgesSection() {
             </div>
           }
           importLine={`import { Card, CardContent } from "@/components/ui/card";\nimport { Badge } from "@/components/ui/badge";\nimport { parseUserAgent } from "@/lib/user-agent";\n\n<Card className={session.isCurrent ? "border-primary" : undefined}>\n  <CardContent className="flex items-start justify-between gap-3 p-4">\n    {/* device icon + browser/OS + badges + revoke button */}\n  </CardContent>\n</Card>`}
+        />
+
+        <h3 className="text-sm font-medium">Organization row</h3>
+        <p className="text-sm text-muted-foreground">
+          The account Organizations page (<code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">/orgs/$org/account/organizations</code>) reuses
+          the same current-marker card as the session list above: a{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">border-primary</code> accent +
+          &quot;Current&quot; badge on the active org&apos;s row. The logo box falls back to the{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Building</code> icon exactly
+          like the sidebar org switcher, and every other row gets an outline Switch button instead
+          of a revoke action.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full space-y-2">
+              <Card className="border-primary">
+                <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded bg-muted">
+                      <Building className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="truncate font-medium">Acme Corp</span>
+                        <Badge className="border-primary">Current</Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground">acme · Role: owner</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded bg-muted">
+                      <Building className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="truncate font-medium">Other Org</span>
+                      <div className="text-xs text-muted-foreground">other-org · Role: admin</div>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" className="shrink-0">Switch</Button>
+                </CardContent>
+              </Card>
+            </div>
+          }
+          importLine={`import { Card, CardContent } from "@/components/ui/card";\nimport { Badge } from "@/components/ui/badge";\nimport { Building } from "lucide-react";\n\n<Card className={isCurrent ? "border-primary" : undefined}>\n  <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">\n    {/* logo/Building fallback + name + slug + role, "Current" badge or a Switch button */}\n  </CardContent>\n</Card>`}
         />
 
         <h3 className="text-sm font-medium">Secondary-path divider + sub-card</h3>
