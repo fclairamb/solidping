@@ -350,6 +350,20 @@ func (s *Service) UpdateOrganization(ctx context.Context, uid string, update mod
 		query = query.Set("default_escalation_policy_uid = ?", *update.DefaultEscalationPolicyUID)
 	}
 
+	switch {
+	case update.ClearLogoURL:
+		query = query.Set("logo_url = NULL")
+	case update.LogoURL != nil:
+		query = query.Set("logo_url = ?", *update.LogoURL)
+	}
+
+	switch {
+	case update.ClearLogoFileUID:
+		query = query.Set("logo_file_uid = NULL")
+	case update.LogoFileUID != nil:
+		query = query.Set("logo_file_uid = ?", *update.LogoFileUID)
+	}
+
 	_, err := query.Exec(ctx)
 
 	return err
@@ -363,6 +377,110 @@ func (s *Service) DeleteOrganization(ctx context.Context, uid string) error {
 		Exec(ctx)
 
 	return err
+}
+
+// GetOrganizationByLogoFileUID returns the live organization whose current logo
+// is the given file. This is the authorization rule behind the unsigned
+// /pub/org-logos/:uid route: only a file that is some live org's CURRENT logo
+// is public, so retiring a logo (replacing or clearing it) immediately
+// un-publishes the old blob.
+func (s *Service) GetOrganizationByLogoFileUID(ctx context.Context, fileUID string) (*models.Organization, error) {
+	org := new(models.Organization)
+
+	err := s.db.NewSelect().
+		Model(org).
+		Where("logo_file_uid = ?", fileUID).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return org, nil
+}
+
+// AddOrganizationPreviousSlug records a slug an organization has just renamed
+// away from. Any live alias already holding that slug is released first: the
+// partial unique index allows a single live alias per slug, and the newest
+// claim is the truthful one.
+func (s *Service) AddOrganizationPreviousSlug(ctx context.Context, orgUID, slug string) error {
+	if err := s.ReleaseOrganizationPreviousSlug(ctx, slug); err != nil {
+		return err
+	}
+
+	alias := models.NewOrganizationPreviousSlug(orgUID, slug)
+
+	_, err := s.db.NewInsert().Model(alias).Exec(ctx)
+
+	return err
+}
+
+// GetOrganizationByPreviousSlug resolves a rename alias to its organization.
+//
+// It deliberately delegates the second hop to GetOrganization, which filters
+// `deleted_at IS NULL`: a soft-deleted organization must never be reachable
+// through its previous slug (spec 2026-08-08-11 — a deleted org's slug 404s
+// immediately, with no alias, tombstone or redirect).
+//
+// Callers must try GetOrganizationBySlug FIRST; a live org always wins over an
+// alias.
+func (s *Service) GetOrganizationByPreviousSlug(ctx context.Context, slug string) (*models.Organization, error) {
+	alias := new(models.OrganizationPreviousSlug)
+
+	err := s.db.NewSelect().
+		Model(alias).
+		Where("slug = ?", slug).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.GetOrganization(ctx, alias.OrganizationUID)
+}
+
+// ReleaseOrganizationPreviousSlug drops every live alias on a slug, whichever
+// org holds it. Called when a slug is claimed by a real organization (creation
+// or rename) so an alias can never resolve across tenants once reclaimed.
+func (s *Service) ReleaseOrganizationPreviousSlug(ctx context.Context, slug string) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.OrganizationPreviousSlug)(nil)).
+		Where("slug = ?", slug).
+		Where("deleted_at IS NULL").
+		Set("deleted_at = ?", time.Now()).
+		Exec(ctx)
+
+	return err
+}
+
+// ReleaseOrganizationPreviousSlugsForOrg drops every alias of an organization.
+// Used on org deletion so nothing of the deleted org keeps holding slugs.
+func (s *Service) ReleaseOrganizationPreviousSlugsForOrg(ctx context.Context, orgUID string) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.OrganizationPreviousSlug)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Set("deleted_at = ?", time.Now()).
+		Exec(ctx)
+
+	return err
+}
+
+// ListOrganizationPreviousSlugs returns an organization's live aliases, newest
+// first.
+func (s *Service) ListOrganizationPreviousSlugs(
+	ctx context.Context, orgUID string,
+) ([]*models.OrganizationPreviousSlug, error) {
+	var aliases []*models.OrganizationPreviousSlug
+
+	err := s.db.NewSelect().
+		Model(&aliases).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Order("created_at DESC").
+		Scan(ctx)
+
+	return aliases, err
 }
 
 // OrganizationProvider operations

@@ -73,6 +73,21 @@ type Service interface {
 	ListOrganizations(ctx context.Context) ([]*models.Organization, error)
 	UpdateOrganization(ctx context.Context, uid string, update models.OrganizationUpdate) error
 	DeleteOrganization(ctx context.Context, uid string) error
+	// GetOrganizationByLogoFileUID resolves the live organization whose current
+	// logo is the given file. It is the authorization rule behind the unsigned
+	// /pub/org-logos/:uid route: a file that is not some org's current logo is
+	// simply not served there.
+	GetOrganizationByLogoFileUID(ctx context.Context, fileUID string) (*models.Organization, error)
+
+	// Organization previous-slug (rename alias) operations. See
+	// models.OrganizationPreviousSlug for the semantics; the invariant is that
+	// a live organizations.slug always wins over an alias, and that an alias
+	// never resolves a soft-deleted organization.
+	AddOrganizationPreviousSlug(ctx context.Context, orgUID, slug string) error
+	GetOrganizationByPreviousSlug(ctx context.Context, slug string) (*models.Organization, error)
+	ReleaseOrganizationPreviousSlug(ctx context.Context, slug string) error
+	ReleaseOrganizationPreviousSlugsForOrg(ctx context.Context, orgUID string) error
+	ListOrganizationPreviousSlugs(ctx context.Context, orgUID string) ([]*models.OrganizationPreviousSlug, error)
 
 	// OrganizationProvider operations - single source of truth for org↔provider mapping
 	CreateOrganizationProvider(ctx context.Context, provider *models.OrganizationProvider) error
