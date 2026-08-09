@@ -17,6 +17,11 @@ func TestValidateRole(t *testing.T) {
 		isValid bool
 	}{
 		{
+			name:    "valid owner role",
+			role:    "owner",
+			isValid: true,
+		},
+		{
 			name:    "valid admin role",
 			role:    "admin",
 			isValid: true,
@@ -63,12 +68,11 @@ func TestValidateRole(t *testing.T) {
 			t.Parallel()
 
 			r := require.New(t)
-			role := models.MemberRole(tc.role)
-			isValid := role == models.MemberRoleAdmin ||
-				role == models.MemberRoleUser ||
-				role == models.MemberRoleViewer
 
-			r.Equal(tc.isValid, isValid)
+			// Exercise the production predicate, not a copy of it — a
+			// hand-rolled duplicate silently stops tracking the real role set
+			// (it did exactly that when `owner` was introduced).
+			r.Equal(tc.isValid, isValidRole(models.MemberRole(tc.role)))
 		})
 	}
 }
