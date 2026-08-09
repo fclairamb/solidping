@@ -10,14 +10,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
 import { AuroraPanel } from "@/components/ui/aurora-panel";
 import { AlertCircle, Loader2, X } from "lucide-react";
-import { ApiError, setSession } from "@/api/client";
+import { ApiError } from "@/api/client";
 import {
-  useCreateOrg,
   useCreateMembershipRequest,
   useCancelMembershipRequest,
   useMyMembershipRequests,
 } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
+import { CreateOrgCard } from "@/components/shared/create-org-card";
 
 export const Route = createFileRoute("/no-org")({
   // `membershipPending` is set by the backend's federated-login callbacks
@@ -36,14 +36,6 @@ export const Route = createFileRoute("/no-org")({
   }),
   component: NoOrgPage,
 });
-
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 20);
-}
 
 function NoOrgPage() {
   const { t } = useTranslation("auth");
@@ -100,121 +92,6 @@ function NoOrgPage() {
         </div>
       </div>
     </div>
-  );
-}
-
-function CreateOrgCard() {
-  const { t } = useTranslation("auth");
-  const navigate = useNavigate();
-  const createOrg = useCreateOrg();
-  const { refreshUser } = useAuth();
-
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
-  const [slugTouched, setSlugTouched] = useState(false);
-  const [slugAdvancedOpen, setSlugAdvancedOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleNameChange = (value: string) => {
-    setName(value);
-    if (!slugTouched) {
-      setSlug(slugify(value));
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    try {
-      const result = await createOrg.mutateAsync({ name, slug });
-      // The pre-creation token is scoped to no org (orgSlug "") — adopt the
-      // fresh org-scoped session the server just minted before navigating,
-      // or every org-scoped call on the new org 403s.
-      setSession(result.accessToken, result.refreshToken, result.expiresIn);
-      // Best-effort: sync AuthContext's user/organizations (e.g. the sidebar
-      // org switcher) with the new org. Navigation proceeds even if this
-      // fails — the new token is already good enough for the dashboard.
-      await refreshUser().catch(() => {});
-      navigate({ to: "/orgs/$org", params: { org: result.slug } });
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("unexpectedError"));
-    }
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">{t("noOrg.createTitle")}</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          {t("noOrg.createDescription")}
-        </p>
-      </CardHeader>
-      <CardContent>
-        {error && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="orgName">{t("noOrg.orgName")}</Label>
-            <Input
-              id="orgName"
-              value={name}
-              onChange={(e) => handleNameChange(e.target.value)}
-              required
-              disabled={createOrg.isPending}
-              placeholder={t("noOrg.orgNamePlaceholder")}
-            />
-            {slug && !slugAdvancedOpen && (
-              <p className="text-xs text-muted-foreground">
-                {t("noOrg.slugPreview", { slug, defaultValue: "Will be reachable as " })}
-                <code className="font-mono">{slug}</code>
-              </p>
-            )}
-          </div>
-          {!slugAdvancedOpen ? (
-            <button
-              type="button"
-              onClick={() => setSlugAdvancedOpen(true)}
-              className="text-xs text-muted-foreground hover:underline"
-              data-testid="no-org-advanced-toggle"
-            >
-              {t("noOrg.advanced", { defaultValue: "Advanced — customize slug" })}
-            </button>
-          ) : (
-            <div className="space-y-1.5">
-              <Label htmlFor="orgSlug">{t("noOrg.slug")}</Label>
-              <Input
-                id="orgSlug"
-                value={slug}
-                onChange={(e) => {
-                  setSlug(e.target.value);
-                  setSlugTouched(true);
-                }}
-                required
-                pattern="[a-z0-9][a-z0-9-]{1,18}[a-z0-9]"
-                title={t("noOrg.slugTitle")}
-                disabled={createOrg.isPending}
-                placeholder={t("noOrg.slugPlaceholder")}
-              />
-            </div>
-          )}
-          <Button type="submit" className="w-full" disabled={createOrg.isPending}>
-            {createOrg.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {t("noOrg.creating")}
-              </>
-            ) : (
-              t("noOrg.createOrg")
-            )}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
   );
 }
 

@@ -23,6 +23,7 @@
   "security": "Security",
   "sessions": "Sessions",
   "tokens": "API tokens",
+  "organizations": "Organizations",
   "members": "Members",
   "invitations": "Invitations",
   "requests": "Requests",

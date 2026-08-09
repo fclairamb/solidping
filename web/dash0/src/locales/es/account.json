@@ -88,6 +88,15 @@
       "disableSubtitle": "Enter a current 6-digit code to confirm."
     }
   },
+  "organizations": {
+    "title": "Organizaciones",
+    "subtitle": "Organizaciones a las que pertenece.",
+    "newOrganization": "Nueva organización",
+    "current": "Actual",
+    "role": "Rol",
+    "switch": "Cambiar",
+    "switchFailed": "No se pudo cambiar de organización"
+  },
   "notifications": {
     "verifyButton": "Verificar",
     "verifiedBadge": "Verificado",
