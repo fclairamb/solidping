@@ -149,12 +149,60 @@ func NewUserProvider(userUID string, providerType ProviderType, providerID strin
 // MemberRole represents a user's role in an organization.
 type MemberRole string
 
-// Member roles.
+// Member roles, from most to least privileged. The ordering is meaningful:
+// owner > admin > user > viewer. Use MemberRole.AtLeast rather than equality
+// whenever a call site gates on "at least this much privilege" — an owner must
+// pass every admin gate.
 const (
+	MemberRoleOwner  MemberRole = "owner"
 	MemberRoleAdmin  MemberRole = "admin"
 	MemberRoleUser   MemberRole = "user"
 	MemberRoleViewer MemberRole = "viewer"
 )
+
+// Privilege ranks for the member roles. Higher is more privileged; an unknown
+// role ranks 0, below every real role, so a garbage value can never satisfy a
+// gate.
+const (
+	memberRoleRankUnknown = 0
+	memberRoleRankViewer  = 1
+	memberRoleRankUser    = 2
+	memberRoleRankAdmin   = 3
+	memberRoleRankOwner   = 4
+)
+
+// Rank returns the role's privilege rank. Unknown roles rank below every valid
+// role.
+func (r MemberRole) Rank() int {
+	switch r {
+	case MemberRoleOwner:
+		return memberRoleRankOwner
+	case MemberRoleAdmin:
+		return memberRoleRankAdmin
+	case MemberRoleUser:
+		return memberRoleRankUser
+	case MemberRoleViewer:
+		return memberRoleRankViewer
+	default:
+		return memberRoleRankUnknown
+	}
+}
+
+// AtLeast reports whether the role carries at least the privilege of min. An
+// unknown role never satisfies any gate; an unknown min is never satisfied
+// either (it ranks 0 but a role must still be valid to pass).
+func (r MemberRole) AtLeast(minRole MemberRole) bool {
+	if !r.IsValid() || !minRole.IsValid() {
+		return false
+	}
+
+	return r.Rank() >= minRole.Rank()
+}
+
+// IsValid reports whether the role is one of the known member roles.
+func (r MemberRole) IsValid() bool {
+	return r.Rank() != memberRoleRankUnknown
+}
 
 // OrganizationMember links a user to an organization with a role.
 type OrganizationMember struct {

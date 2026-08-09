@@ -182,6 +182,25 @@ func (c *Claims) IsSuperAdmin() bool {
 	return c.Role == RoleSuperAdmin
 }
 
+// HasOrgRole reports whether the claims carry at least the given org role for
+// the org the token is scoped to. Super admins always pass.
+//
+// Use this instead of `claims.Role == "admin"`: with the owner role above admin
+// (spec 2026-08-08-11) an equality check silently locks owners out of every
+// admin surface, and enumerating `|| "owner"` at each call site is exactly the
+// per-site drift the role hierarchy exists to prevent.
+func (c *Claims) HasOrgRole(minRole models.MemberRole) bool {
+	if c == nil {
+		return false
+	}
+
+	if c.IsSuperAdmin() {
+		return true
+	}
+
+	return models.MemberRole(c.Role).AtLeast(minRole)
+}
+
 // Context contains metadata about the authentication request.
 type Context struct {
 	UserAgent  string `json:"userAgent,omitempty"`
