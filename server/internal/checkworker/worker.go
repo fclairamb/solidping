@@ -913,6 +913,23 @@ func (r *CheckWorker) executeJob(
 		execCtx = checkerdef.WithTunnelDialer(execCtx, tunnel.dialer)
 	}
 
+	// Address family pinning (`ipVersion` in config, spec 2026-08-09-02). Read
+	// generically off the raw config map like `timeout`/`tunnelCheckUid`, so no
+	// checker config struct carries the field, and handed to the checkers on the
+	// context — the same seam the tunnel dialer uses.
+	//
+	// Only an explicitly pinned family touches the context: an unset/auto check
+	// keeps IPVersionFrom returning IPVersionAuto and every checker's address
+	// pick stays byte-for-byte what it was. A malformed value cannot reach here
+	// (write-time validation rejects it), so a parse failure is treated as auto
+	// rather than failing a check that used to run.
+	if version, versionErr := checkerdef.IPVersionFromConfig(checkJob.Config); versionErr != nil {
+		logger.WarnContext(ctx, "Ignoring invalid ipVersion in check config",
+			"check_uid", checkJob.CheckUID, "error", versionErr)
+	} else if version.Explicit() {
+		execCtx = checkerdef.WithIPVersion(execCtx, version)
+	}
+
 	execStart := time.Now()
 	result, err := r.runCheckerGuarded(execCtx, logger, checker, checkConfig, checkJob, checkTimeout, startTime)
 	prommetrics.RecordCheckStage("execute", time.Since(execStart).Seconds())

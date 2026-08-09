@@ -316,9 +316,20 @@ func (s *Service) Close() error {
 
 // Organization operations
 
+// CreateOrganization inserts an organization and releases any rename alias
+// still holding its slug.
+//
+// The release lives here, at the single choke point every creation path goes
+// through (the API, and every connector's zero-member bootstrap), rather than
+// in one caller: a slug held only as an alias is claimable, and once claimed it
+// must never resolve to the renamed organization again — not even later, if the
+// claiming organization is itself deleted (spec 2026-08-08-12).
 func (s *Service) CreateOrganization(ctx context.Context, org *models.Organization) error {
-	_, err := s.db.NewInsert().Model(org).Exec(ctx)
-	return err
+	if _, err := s.db.NewInsert().Model(org).Exec(ctx); err != nil {
+		return err
+	}
+
+	return s.ReleaseOrganizationPreviousSlug(ctx, org.Slug)
 }
 
 func (s *Service) GetOrganization(ctx context.Context, uid string) (*models.Organization, error) {
@@ -385,9 +396,31 @@ func (s *Service) UpdateOrganization(ctx context.Context, uid string, update mod
 		query = query.Set("default_escalation_policy_uid = ?", *update.DefaultEscalationPolicyUID)
 	}
 
-	_, err := query.Exec(ctx)
+	switch {
+	case update.ClearLogoURL:
+		query = query.Set("logo_url = NULL")
+	case update.LogoURL != nil:
+		query = query.Set("logo_url = ?", *update.LogoURL)
+	}
 
-	return err
+	switch {
+	case update.ClearLogoFileUID:
+		query = query.Set("logo_file_uid = NULL")
+	case update.LogoFileUID != nil:
+		query = query.Set("logo_file_uid = ?", *update.LogoFileUID)
+	}
+
+	if _, err := query.Exec(ctx); err != nil {
+		return err
+	}
+
+	// Same rule as CreateOrganization: an organization now living on this slug
+	// outranks any alias that still held it.
+	if update.Slug != nil {
+		return s.ReleaseOrganizationPreviousSlug(ctx, *update.Slug)
+	}
+
+	return nil
 }
 
 func (s *Service) DeleteOrganization(ctx context.Context, uid string) error {
@@ -398,6 +431,110 @@ func (s *Service) DeleteOrganization(ctx context.Context, uid string) error {
 		Exec(ctx)
 
 	return err
+}
+
+// GetOrganizationByLogoFileUID returns the live organization whose current logo
+// is the given file. This is the authorization rule behind the unsigned
+// /pub/org-logos/:uid route: only a file that is some live org's CURRENT logo
+// is public, so retiring a logo (replacing or clearing it) immediately
+// un-publishes the old blob.
+func (s *Service) GetOrganizationByLogoFileUID(ctx context.Context, fileUID string) (*models.Organization, error) {
+	org := new(models.Organization)
+
+	err := s.db.NewSelect().
+		Model(org).
+		Where("logo_file_uid = ?", fileUID).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return org, nil
+}
+
+// AddOrganizationPreviousSlug records a slug an organization has just renamed
+// away from. Any live alias already holding that slug is released first: the
+// partial unique index allows a single live alias per slug, and the newest
+// claim is the truthful one.
+func (s *Service) AddOrganizationPreviousSlug(ctx context.Context, orgUID, slug string) error {
+	if err := s.ReleaseOrganizationPreviousSlug(ctx, slug); err != nil {
+		return err
+	}
+
+	alias := models.NewOrganizationPreviousSlug(orgUID, slug)
+
+	_, err := s.db.NewInsert().Model(alias).Exec(ctx)
+
+	return err
+}
+
+// GetOrganizationByPreviousSlug resolves a rename alias to its organization.
+//
+// It deliberately delegates the second hop to GetOrganization, which filters
+// `deleted_at IS NULL`: a soft-deleted organization must never be reachable
+// through its previous slug (spec 2026-08-08-11 — a deleted org's slug 404s
+// immediately, with no alias, tombstone or redirect).
+//
+// Callers must try GetOrganizationBySlug FIRST; a live org always wins over an
+// alias.
+func (s *Service) GetOrganizationByPreviousSlug(ctx context.Context, slug string) (*models.Organization, error) {
+	alias := new(models.OrganizationPreviousSlug)
+
+	err := s.db.NewSelect().
+		Model(alias).
+		Where("slug = ?", slug).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.GetOrganization(ctx, alias.OrganizationUID)
+}
+
+// ReleaseOrganizationPreviousSlug drops every live alias on a slug, whichever
+// org holds it. Called when a slug is claimed by a real organization (creation
+// or rename) so an alias can never resolve across tenants once reclaimed.
+func (s *Service) ReleaseOrganizationPreviousSlug(ctx context.Context, slug string) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.OrganizationPreviousSlug)(nil)).
+		Where("slug = ?", slug).
+		Where("deleted_at IS NULL").
+		Set("deleted_at = ?", time.Now()).
+		Exec(ctx)
+
+	return err
+}
+
+// ReleaseOrganizationPreviousSlugsForOrg drops every alias of an organization.
+// Used on org deletion so nothing of the deleted org keeps holding slugs.
+func (s *Service) ReleaseOrganizationPreviousSlugsForOrg(ctx context.Context, orgUID string) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.OrganizationPreviousSlug)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Set("deleted_at = ?", time.Now()).
+		Exec(ctx)
+
+	return err
+}
+
+// ListOrganizationPreviousSlugs returns an organization's live aliases, newest
+// first.
+func (s *Service) ListOrganizationPreviousSlugs(
+	ctx context.Context, orgUID string,
+) ([]*models.OrganizationPreviousSlug, error) {
+	var aliases []*models.OrganizationPreviousSlug
+
+	err := s.db.NewSelect().
+		Model(&aliases).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Order("created_at DESC").
+		Scan(ctx)
+
+	return aliases, err
 }
 
 // OrganizationProvider operations
@@ -762,11 +899,28 @@ func (s *Service) DeleteOrganizationMember(ctx context.Context, uid string) erro
 	return err
 }
 
+// CountAdminsByOrg counts the members who hold at least the admin role. Owners
+// are included deliberately: they outrank admins, so an org whose only
+// privileged member is its owner must not read as "zero admins" to the
+// last-admin guards.
 func (s *Service) CountAdminsByOrg(ctx context.Context, orgUID string) (int, error) {
 	count, err := s.db.NewSelect().
 		Model((*models.OrganizationMember)(nil)).
 		Where("organization_uid = ?", orgUID).
-		Where("role = ?", models.MemberRoleAdmin).
+		Where("role IN (?)", bun.List([]models.MemberRole{models.MemberRoleOwner, models.MemberRoleAdmin})).
+		Where("deleted_at IS NULL").
+		Where("joined_at IS NOT NULL").
+		Count(ctx)
+
+	return count, err
+}
+
+// CountOwnersByOrg counts the org's live owners. Used by the last-owner guard.
+func (s *Service) CountOwnersByOrg(ctx context.Context, orgUID string) (int, error) {
+	count, err := s.db.NewSelect().
+		Model((*models.OrganizationMember)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("role = ?", models.MemberRoleOwner).
 		Where("deleted_at IS NULL").
 		Where("joined_at IS NOT NULL").
 		Count(ctx)
@@ -885,6 +1039,29 @@ func (s *Service) DeleteUserToken(ctx context.Context, uid string) (bool, error)
 	}
 
 	return affected > 0, nil
+}
+
+// DeleteUserTokensByOrg soft-deletes every token scoped to an organization
+// (refresh tokens, PATs, OAuth grants) and returns how many rows it killed.
+// Called when an organization is deleted so no surviving session can keep
+// talking to it. Org-less tokens (organization_uid IS NULL) are untouched.
+func (s *Service) DeleteUserTokensByOrg(ctx context.Context, orgUID string) (int, error) {
+	res, err := s.db.NewUpdate().
+		Model((*models.UserToken)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Set("deleted_at = ?", time.Now()).
+		Exec(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to read delete org tokens result: %w", err)
+	}
+
+	return int(affected), nil
 }
 
 // UserPasskey operations

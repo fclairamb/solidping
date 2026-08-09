@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Bot,
+  Building,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -17,6 +18,7 @@ import {
   Copy,
   Eye,
   Info,
+  Building2,
   KeyRound,
   LogOut,
   Moon,
@@ -32,6 +34,7 @@ import {
   Search,
   Sun,
   Trash2,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -57,6 +60,10 @@ import { StatusDot } from "@/components/shared/status-dot";
 import { LiveStatusDot } from "@/components/layout/live-status-dot";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  ConfirmByTypingButton,
+  DangerZone,
+} from "@/components/shared/danger-zone";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -151,6 +158,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "dns-record-row", label: "DNS record row" },
   { id: "collapsible-code", label: "Collapsible code" },
   { id: "collapsible-section", label: "Collapsible section" },
+  { id: "sandboxed-preview", label: "Sandboxed preview (iframe)" },
   { id: "stepper", label: "Stepper" },
   { id: "feedback", label: "Feedback" },
   { id: "label-filter", label: "Label filter" },
@@ -189,6 +197,7 @@ function DesignReferencePage() {
       <DnsRecordRowSection />
       <CollapsibleCodeSection />
       <CollapsibleSectionSection />
+      <SandboxedPreviewSection />
       <StepperSection />
       <FeedbackSection />
       <LabelFilterSection />
@@ -1113,6 +1122,54 @@ function ButtonsBadgesSection() {
           importLine={`import { Card, CardContent } from "@/components/ui/card";\nimport { Badge } from "@/components/ui/badge";\nimport { parseUserAgent } from "@/lib/user-agent";\n\n<Card className={session.isCurrent ? "border-primary" : undefined}>\n  <CardContent className="flex items-start justify-between gap-3 p-4">\n    {/* device icon + browser/OS + badges + revoke button */}\n  </CardContent>\n</Card>`}
         />
 
+        <h3 className="text-sm font-medium">Organization row</h3>
+        <p className="text-sm text-muted-foreground">
+          The account Organizations page (<code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">/orgs/$org/account/organizations</code>) reuses
+          the same current-marker card as the session list above: a{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">border-primary</code> accent +
+          &quot;Current&quot; badge on the active org&apos;s row. The logo box falls back to the{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Building</code> icon exactly
+          like the sidebar org switcher, and every other row gets an outline Switch button instead
+          of a revoke action.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full space-y-2">
+              <Card className="border-primary">
+                <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded bg-muted">
+                      <Building className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="truncate font-medium">Acme Corp</span>
+                        <Badge className="border-primary">Current</Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground">acme · Role: owner</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded bg-muted">
+                      <Building className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="truncate font-medium">Other Org</span>
+                      <div className="text-xs text-muted-foreground">other-org · Role: admin</div>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" className="shrink-0">Switch</Button>
+                </CardContent>
+              </Card>
+            </div>
+          }
+          importLine={`import { Card, CardContent } from "@/components/ui/card";\nimport { Badge } from "@/components/ui/badge";\nimport { Building } from "lucide-react";\n\n<Card className={isCurrent ? "border-primary" : undefined}>\n  <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">\n    {/* logo/Building fallback + name + slug + role, "Current" badge or a Switch button */}\n  </CardContent>\n</Card>`}
+        />
+
         <h3 className="text-sm font-medium">Secondary-path divider + sub-card</h3>
         <p className="text-sm text-muted-foreground">
           When a page has one primary action and a clearly subordinate
@@ -1282,6 +1339,31 @@ function FormsSection() {
         </p>
         <NameSlugExample />
 
+        <h3 className="text-sm font-medium">Image / logo field</h3>
+        <p className="text-sm text-muted-foreground">
+          A field that accepts <em>either</em> a pasted URL or an uploaded file
+          renders as one row: a fixed-size preview tile with a{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">lucide</code>{" "}
+          placeholder icon, the URL input, an outline{" "}
+          <strong>Upload</strong> button driving a hidden{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            &lt;input type="file"&gt;
+          </code>
+          , and — only when something is set — a destructive{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">Trash2</code>{" "}
+          icon button to clear it. The row wraps on narrow screens; the input
+          takes the remaining width with{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            min-w-0 flex-1
+          </code>{" "}
+          so it never overflows. Shipped in{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            components/shared/org-profile-card.tsx
+          </code>
+          .
+        </p>
+        <ImageFieldExample />
+
         <h3 className="text-sm font-medium">Assembled form</h3>
         <div className="rounded-md border bg-card p-4">
           <form className="max-w-md space-y-4" onSubmit={(e) => e.preventDefault()}>
@@ -1319,6 +1401,50 @@ function FormsSection() {
         </div>
       </div>
     </Section>
+  );
+}
+
+function ImageFieldExample() {
+  const [url, setUrl] = useState("");
+
+  return (
+    <ExampleRow
+      preview={
+        <div className="flex w-full flex-wrap items-center gap-3">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
+            {url ? (
+              <img src={url} alt="" className="h-full w-full object-contain" />
+            ) : (
+              <Building2 className="h-6 w-6 text-muted-foreground" />
+            )}
+          </div>
+          <Input
+            type="url"
+            placeholder="https://example.com/logo.png"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            className="min-w-0 flex-1"
+          />
+          <Button type="button" variant="outline">
+            <Upload className="mr-2 h-4 w-4" />
+            Upload
+          </Button>
+          {url && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="text-destructive"
+              aria-label="Remove image"
+              onClick={() => setUrl("")}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      }
+      importLine={`const fileInput = useRef<HTMLInputElement>(null);\n\n<div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">\n  {url ? <img src={url} alt="" className="h-full w-full object-contain" /> : <Building2 className="h-6 w-6 text-muted-foreground" />}\n</div>\n<Input type="url" value={url} onChange={...} className="min-w-0 flex-1" />\n<input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" className="hidden" onChange={...} />\n<Button type="button" variant="outline" onClick={() => fileInput.current?.click()}>\n  <Upload className="mr-2 h-4 w-4" />\n  Upload\n</Button>\n<Button type="button" variant="ghost" size="icon" className="text-destructive" aria-label="Remove image">\n  <Trash2 className="h-4 w-4" />\n</Button>`}
+    />
   );
 }
 
@@ -1738,6 +1864,72 @@ function CollapsibleSectionSection() {
   );
 }
 
+/** Escapes a value for safe interpolation into a double-quoted HTML attribute
+ * — same helper `StatusPageWidgetCard` uses to build its preview `srcDoc`. */
+function demoEscapeHtmlAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function SandboxedPreviewSection() {
+  const [label, setLabel] = useState('Try: "><b>bold</b>');
+  const srcDoc = `<!doctype html><html><body style="margin:0;padding:16px;font-family:ui-sans-serif,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100%;box-sizing:border-box;">
+  <span data-label="${demoEscapeHtmlAttr(label)}" style="border:1px solid #d1d5db;border-radius:9999px;padding:6px 12px;">${demoEscapeHtmlAttr(label)}</span>
+</body></html>`;
+
+  return (
+    <Section
+      id="sandboxed-preview"
+      title="Sandboxed preview (iframe)"
+      description={
+        'Renders third-party or user-typed HTML byte-for-byte — not a React ' +
+        "replica that could drift — via a sandboxed <iframe srcDoc>. Two rules " +
+        'keep it safe: sandbox="allow-scripts" only (no allow-same-origin, so ' +
+        "the frame gets an opaque origin and can't reach the parent document " +
+        "or its storage), and every interpolated value is HTML-attribute-" +
+        "escaped before it goes into the srcDoc string — the preview parses " +
+        "user input as markup, so an unescaped quote could inject a new " +
+        "attribute or tag. Used by StatusPageWidgetCard to preview the real " +
+        "/embed/v1/widget.js script with the operator's own label overrides."
+      }
+    >
+      <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="demo-sandboxed-preview-input">
+              Label (try a quote-breakout attempt)
+            </Label>
+            <Input
+              id="demo-sandboxed-preview-input"
+              value={label}
+              onChange={(event) => setLabel(event.target.value)}
+            />
+          </div>
+          <div className="overflow-hidden rounded-lg border border-dashed">
+            <iframe
+              title="Sandboxed preview demo"
+              srcDoc={srcDoc}
+              sandbox="allow-scripts"
+              className="h-28 w-full"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            The typed value renders as inert text even when it contains
+            markup — escaping happens before the string ever reaches the
+            iframe's HTML parser.
+          </p>
+        </div>
+        <CodeSnippet
+          code={`function escapeHtmlAttr(value: string): string {\n  return value\n    .replace(/&/g, "&amp;")\n    .replace(/"/g, "&quot;")\n    .replace(/</g, "&lt;")\n    .replace(/>/g, "&gt;");\n}\n\nconst srcDoc = \`<!doctype html><html>...\n  <span>\${escapeHtmlAttr(userValue)}</span>\n...</html>\`;\n\n<iframe srcDoc={srcDoc} sandbox="allow-scripts" title="Preview" />`}
+        />
+      </div>
+    </Section>
+  );
+}
+
 function StepperSection() {
   return (
     <Section
@@ -1852,6 +2044,29 @@ function FeedbackSection() {
             </AlertDialog>
           }
           importLine={`import {\n  AlertDialog,\n  AlertDialogAction,\n  AlertDialogCancel,\n  AlertDialogContent,\n  AlertDialogDescription,\n  AlertDialogFooter,\n  AlertDialogHeader,\n  AlertDialogTitle,\n  AlertDialogTrigger,\n} from "@/components/ui/alert-dialog";`}
+        />
+
+        <h3 className="text-sm font-medium">Danger zone + confirm-by-typing</h3>
+        <ExampleRow
+          preview={
+            <DangerZone
+              title="Danger zone"
+              description="Irreversible actions live here, at the bottom of a settings page."
+            >
+              <ConfirmByTypingButton
+                buttonLabel="Delete organization"
+                title="Delete this organization?"
+                description="Everything it owns stops working. This cannot be undone."
+                inputLabel="Type acme to confirm"
+                confirmValue="acme"
+                confirmLabel="Delete organization"
+                onConfirm={() => {
+                  toast("Confirmed");
+                }}
+              />
+            </DangerZone>
+          }
+          importLine={`import {\n  ConfirmByTypingButton,\n  DangerZone,\n} from "@/components/shared/danger-zone";`}
         />
 
         <h3 className="text-sm font-medium">Toast (sonner)</h3>

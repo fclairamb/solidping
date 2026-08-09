@@ -43,9 +43,13 @@ import { Badge } from "@/components/ui/badge";
 import { NotifyViaSection } from "@/components/checks/form/sections/notifications";
 import { EscalationSelect } from "@/components/checks/form/sections/escalation";
 import { DependsOnFormSection } from "@/components/checks/form/sections/dependencies";
-import { checkTypeRegistry, authFieldsRegistry } from "@/components/checks/form/types";
+import { checkTypeRegistry, authFieldsRegistry, advancedFieldsRegistry } from "@/components/checks/form/types";
 import { CheckFormFieldsProvider } from "@/components/checks/form/types/context";
 import { TunnelSelect } from "@/components/checks/form/tunnel-select";
+import {
+  IPVersionSelect,
+  IP_VERSION_AUTO,
+} from "@/components/checks/form/ip-version-select";
 import {
   getConfigField,
   durationStringToSeconds,
@@ -319,6 +323,11 @@ export function CheckForm({
   // no frontend change.
   const supportsTunnel = checkTypeInfoMap.get(type)?.supportsTunnel === true;
 
+  // Same story for the address family: server-declared capability metadata, so
+  // a checker gaining `ipVersion` support needs no frontend change.
+  const supportsIpVersion =
+    checkTypeInfoMap.get(type)?.supportsIpVersion === true;
+
   // The org's SSH checks are the tunnel candidates, filtered server-side.
   const { data: sshChecks } = useChecks(org, { type: "ssh", limit: 100 });
   const tunnelCandidates = sshChecks ?? [];
@@ -421,6 +430,13 @@ export function CheckForm({
   // type module; empty = direct connection.
   const [tunnelCheckUid, setTunnelCheckUid] = useState(
     getConfigField(initialData?.config, "tunnelCheckUid"),
+  );
+
+  // Optional address family — the well-known `ipVersion` config key. Shared and
+  // protocol-agnostic like `timeout` and `tunnelCheckUid`; empty/"auto" = no
+  // constraint (whichever family the target resolves to first).
+  const [ipVersion, setIpVersion] = useState(
+    getConfigField(initialData?.config, "ipVersion") || IP_VERSION_AUTO,
   );
 
   // The active check type's config state — one object seeded via the type
@@ -550,6 +566,9 @@ export function CheckForm({
   const ActiveFields = activeModule.Fields;
   const authSection = authFieldsRegistry[type];
   const AuthFields = authSection?.Fields;
+  const advancedSection = advancedFieldsRegistry[type];
+  const AdvancedTypeFields = advancedSection?.Fields;
+  const advancedTypeSummary = advancedSection?.summary(configState);
 
   // Serialize the active type's config ONCE (spec §3): the same object feeds the
   // live preview/validation AND the submitted payload, so they cannot drift. The
@@ -569,8 +588,27 @@ export function CheckForm({
     if (supportsTunnel && tunnelCheckUid !== "") {
       cfg.tunnelCheckUid = tunnelCheckUid;
     }
+    // Only pinned families are written: `auto` is the default, and a tunneled
+    // check may not carry the key at all (the server rejects the pair), so a
+    // stale selection never leaks into the submitted config.
+    if (
+      supportsIpVersion &&
+      ipVersion !== "" &&
+      ipVersion !== IP_VERSION_AUTO &&
+      !(supportsTunnel && tunnelCheckUid !== "")
+    ) {
+      cfg.ipVersion = ipVersion;
+    }
     return cfg;
-  }, [serialized, type, timeoutSeconds, supportsTunnel, tunnelCheckUid]);
+  }, [
+    serialized,
+    type,
+    timeoutSeconds,
+    supportsTunnel,
+    tunnelCheckUid,
+    supportsIpVersion,
+    ipVersion,
+  ]);
 
   const fieldErrors = useCheckValidation(
     org,
@@ -595,6 +633,7 @@ export function CheckForm({
     setConfigState(checkTypeRegistry[type].fromConfig(sample.config));
     setTimeoutSeconds(durationStringToSeconds(getConfigField(sample.config, "timeout")));
     setTunnelCheckUid(getConfigField(sample.config, "tunnelCheckUid"));
+    setIpVersion(getConfigField(sample.config, "ipVersion") || IP_VERSION_AUTO);
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -772,10 +811,16 @@ export function CheckForm({
 
   const timeoutError = getFieldError(fieldErrors, "timeout");
   const advancedCustomized =
-    timeoutSeconds.trim() !== "" || (supportsTunnel && tunnelCheckUid !== "");
-  const advancedSummary = advancedCustomized
-    ? `timeout ${timeoutSeconds}s`
-    : "timeout 15s (default)";
+    timeoutSeconds.trim() !== "" ||
+    (supportsTunnel && tunnelCheckUid !== "") ||
+    (supportsIpVersion && ipVersion !== IP_VERSION_AUTO && ipVersion !== "") ||
+    !!advancedTypeSummary?.customized;
+  const advancedSummary = [
+    timeoutSeconds.trim() !== "" ? `timeout ${timeoutSeconds}s` : "",
+    advancedTypeSummary?.customized ? advancedTypeSummary.text : "",
+  ]
+    .filter(Boolean)
+    .join(" · ") || "timeout 15s (default)";
   const showGroup = (checkGroups?.length ?? 0) > 0;
 
   // A section opens on load when it holds non-default values OR is the target of
@@ -1354,6 +1399,29 @@ export function CheckForm({
                       {getFieldError(fieldErrors, "tunnelCheckUid")}
                     </p>
                   )}
+                </div>
+              )}
+              {supportsIpVersion && (
+                <div className="mt-4" data-testid="check-ip-version-section">
+                  <IPVersionSelect
+                    value={ipVersion}
+                    onChange={setIpVersion}
+                    tunneled={supportsTunnel && tunnelCheckUid !== ""}
+                  />
+                  {getFieldError(fieldErrors, "ipVersion") && (
+                    <p className="text-xs text-destructive">
+                      {getFieldError(fieldErrors, "ipVersion")}
+                    </p>
+                  )}
+                </div>
+              )}
+              {AdvancedTypeFields && (
+                <div className="mt-4">
+                  <AdvancedTypeFields
+                    state={configState}
+                    onChange={setConfigState}
+                    errors={fieldErrors}
+                  />
                 </div>
               )}
             </CollapsibleSection>

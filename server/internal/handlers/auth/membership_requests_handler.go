@@ -97,7 +97,7 @@ func (h *Handler) ListOrgMembershipRequestsHandler(
 		)
 	}
 
-	if claims.Role != roleAdmin && claims.Role != RoleSuperAdmin {
+	if !claims.HasOrgRole(models.MemberRoleAdmin) {
 		return h.WriteError(
 			writer, http.StatusForbidden,
 			base.ErrorCodeForbidden, "Admin access required",
@@ -127,7 +127,7 @@ func (h *Handler) ApproveMembershipRequestHandler(
 		)
 	}
 
-	if claims.Role != roleAdmin && claims.Role != RoleSuperAdmin {
+	if !claims.HasOrgRole(models.MemberRoleAdmin) {
 		return h.WriteError(
 			writer, http.StatusForbidden,
 			base.ErrorCodeForbidden, "Admin access required",
@@ -169,7 +169,7 @@ func (h *Handler) RejectMembershipRequestHandler(
 		)
 	}
 
-	if claims.Role != roleAdmin && claims.Role != RoleSuperAdmin {
+	if !claims.HasOrgRole(models.MemberRoleAdmin) {
 		return h.WriteError(
 			writer, http.StatusForbidden,
 			base.ErrorCodeForbidden, "Admin access required",

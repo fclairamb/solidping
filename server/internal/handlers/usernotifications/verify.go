@@ -60,10 +60,12 @@ var (
 var resendTracker = newResendLimiter()
 
 // newTwilioClient is the client constructor seam used when sending a
-// verification code. Overridden in tests to target an httptest fake.
+// verification code. Takes an explicit base URL so the connection's region
+// (twilio.BaseURLForRegion) decides which Twilio host is hit. Overridden in
+// tests to target an httptest fake.
 //
 //nolint:gochecknoglobals // test seam for the outbound Twilio client.
-var newTwilioClient = twilio.NewClient
+var newTwilioClient = twilio.NewClientWithBaseURL
 
 // codeTransport delivers one verification code to one destination. Resolved
 // per contact type so the shared issue/confirm machinery below stays
@@ -255,7 +257,7 @@ func sendVerificationSMS(
 		return ErrNoProvider
 	}
 
-	client := newTwilioClient(settings.AccountSID, settings.AuthToken)
+	client := newTwilioClient(settings.AccountSID, settings.AuthToken, twilio.BaseURLForRegion(settings.Region))
 	_, err := client.SendSMS(ctx, &twilio.SendSMSParams{
 		To:                  toNumber,
 		From:                settings.FromNumber,

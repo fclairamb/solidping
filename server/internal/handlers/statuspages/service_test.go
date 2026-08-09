@@ -374,7 +374,7 @@ func TestGetCheckInfo_InMaintenanceFlag(t *testing.T) {
 				r.NoError(svc.db.SetMaintenanceWindowChecks(ctx, win.UID, []string{check.UID}, nil))
 			}
 
-			info, err := svc.getCheckInfo(ctx, org.UID, check.UID)
+			info, _, err := svc.getCheckInfo(ctx, org.UID, check.UID)
 			r.NoError(err)
 			r.Equal(tc.want, info.InMaintenance)
 		})

@@ -102,6 +102,10 @@ func testService(t *testing.T, svc db.Service) {
 		testOAuthRepos(ctx, t, svc)
 	})
 
+	t.Run("DeviceAuthRequests", func(t *testing.T) {
+		testDeviceAuthRequests(ctx, t, svc)
+	})
+
 	t.Run("ChannelByPropertyForOrg", func(t *testing.T) {
 		testChannelByPropertyForOrg(ctx, t, svc)
 	})

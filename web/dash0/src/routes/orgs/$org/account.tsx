@@ -15,6 +15,7 @@ function AccountLayout() {
     { label: t("nav:security"), path: "/orgs/$org/account/security" },
     { label: t("nav:sessions"), path: "/orgs/$org/account/sessions" },
     { label: t("nav:tokens"), path: "/orgs/$org/account/tokens" },
+    { label: t("nav:organizations"), path: "/orgs/$org/account/organizations" },
     { label: t("nav:ai"), path: "/orgs/$org/account/mcp" },
     { label: "Notifications", path: "/orgs/$org/account/notifications" },
   ];

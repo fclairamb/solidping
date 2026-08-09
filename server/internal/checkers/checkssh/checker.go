@@ -112,19 +112,15 @@ func (c *SSHChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 		}, nil
 	}
 
-	// Prefer IPv4
-	var targetIP net.IP
-
-	for i := range addrs {
-		if addrs[i].IP.To4() != nil {
-			targetIP = addrs[i].IP
-
-			break
-		}
-	}
-
-	if targetIP == nil {
-		targetIP = addrs[0].IP
+	// Pick the address to dial — IPv4-first by default, or the family this
+	// check pins via `ipVersion`. One shared implementation for every checker.
+	targetIP, selectErr := checkerdef.SelectIPAddr(cfg.Host, addrs, checkerdef.IPVersionFrom(ctx))
+	if selectErr != nil {
+		return &checkerdef.Result{
+			Status:   checkerdef.IPVersionFailureStatus(selectErr),
+			Duration: time.Since(start),
+			Output:   map[string]any{checkerdef.OutputKeyError: selectErr.Error()},
+		}, nil
 	}
 
 	target := net.JoinHostPort(targetIP.String(), strconv.Itoa(port))

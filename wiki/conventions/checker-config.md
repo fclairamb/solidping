@@ -6,6 +6,32 @@ Complete reference for all 39 checker types and their configuration fields. Fiel
 
 ---
 
+## Shared keys
+
+A few config keys are **type-agnostic**: they are read generically off the raw
+config map rather than being fields on a checker's config struct, so they are not
+repeated in the per-type tables below.
+
+| Field | Type | O/R | Default | Description |
+|-------|------|-----|---------|-------------|
+| `timeout` | duration | O | `15s` | Per-check execution budget, 1s-30s. Overrides the cost-aware clamp. |
+| `tunnelCheckUid` | string | O | | Dial the probe through an `ssh` check's bastion. Only on types whose `supportsTunnel` metadata is true. |
+| `ipVersion` | string | O | `auto` | Address family to probe over: `auto` / `ipv4` / `ipv6`. Read fallback: `ip_version`. Only on types whose `supportsIpVersion` metadata is true (`http`, `tcp`, `udp`, `icmp`, `ssl`, `ssh`, `smtp`, `imap`, `pop3`, `dnsbl`). |
+
+`ipVersion` notes — `auto` is the historical behaviour (probe one address,
+IPv4-first for the address-picking checkers, Happy Eyeballs for `http`) and is
+byte-for-byte unchanged. A pinned family never falls back: a target with no
+address of that family fails with `checkerdef.ErrNoAddressForFamily`, and a
+worker with no egress for it fails with `checkerdef.ErrWorkerNoEgress` (which
+blames the worker, not the target). `dns` rejects the key outright (the two
+plausible meanings are different features); `dnsbl` accepts only `auto`/`ipv4`;
+and a tunneled check rejects it, because the bastion resolves and dials. The
+family actually used is reported as the `ip_version` result-output field. Address
+selection lives in exactly one place, `checkerdef.SelectIPAddr` — no checker
+keeps its own IPv4-preference loop.
+
+---
+
 ## Network
 
 ### `http` -- HTTP/HTTPS endpoint monitoring
@@ -26,6 +52,8 @@ Complete reference for all 39 checker types and their configuration fields. Fiel
 | `body_pattern_reject` | string | O | | Regex pattern that must NOT match in response body |
 | `headers_pattern` | map[string]string | O | | Map of header name to regex pattern; all must match |
 | `json_path_assertions` | object | O | | AST-based JSONPath assertions (see below) |
+| `verifySsl` | bool | O | true | Verify the TLS certificate. `false` skips verification (`InsecureSkipVerify`) and marks the result with `tls_verify_skipped: true`. Read fallback: `verify_ssl` |
+| `followRedirects` | bool | O | true | Follow HTTP redirects (up to 10). `false` stops at the first response, so status/body/header assertions run against the redirect itself (e.g. `expectedStatus: 301` + `headersPattern.Location`). Read fallback: `follow_redirects` |
 
 **JSONPath assertion node** (`json_path_assertions`):
 

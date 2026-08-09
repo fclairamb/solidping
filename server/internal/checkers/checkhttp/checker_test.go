@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -1555,4 +1556,126 @@ func TestHTTPChecker_Execute_SecretHeaderWinsOnConflict(t *testing.T) {
 	r.NoError(err)
 	r.Equal(checkerdef.StatusUp, result.Status)
 	r.Equal("Bearer secret", receivedAuth)
+}
+
+// TestHTTPChecker_Execute_VerifySsl is the positive + negative control pair:
+// a self-signed TLS server fails the check by default (verification on) and
+// succeeds when verifySsl: false is set. It also asserts the
+// tls_verify_skipped output marker only appears in the latter case.
+func TestHTTPChecker_Execute_VerifySsl(t *testing.T) {
+	t.Parallel()
+
+	if version.UserAgent == "" {
+		version.UserAgent = version.DefaultUserAgent()
+	}
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	// t.Cleanup (not defer): subtests below are t.Parallel(), so they pause and
+	// let this function return immediately; a plain defer would close the
+	// server before they actually run. t.Cleanup runs only after every
+	// (including parallel) subtest has finished.
+	t.Cleanup(server.Close)
+
+	checker := &HTTPChecker{}
+
+	t.Run("default verifies and fails against a self-signed cert", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+
+		result, err := checker.Execute(context.Background(), &HTTPConfig{URL: server.URL})
+		r.NoError(err)
+		r.Equal(checkerdef.StatusDown, result.Status)
+		r.NotContains(result.Output, checkerdef.OutputKeyTLSVerifySkipped)
+	})
+
+	t.Run("verifySsl false skips verification and succeeds", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+
+		skip := false
+		result, err := checker.Execute(context.Background(), &HTTPConfig{URL: server.URL, VerifySsl: &skip})
+		r.NoError(err)
+		r.Equal(checkerdef.StatusUp, result.Status)
+		r.Equal(true, result.Output[checkerdef.OutputKeyTLSVerifySkipped])
+	})
+
+	t.Run("verifySsl true behaves like the default", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+
+		verify := true
+		result, err := checker.Execute(context.Background(), &HTTPConfig{URL: server.URL, VerifySsl: &verify})
+		r.NoError(err)
+		r.Equal(checkerdef.StatusDown, result.Status)
+	})
+}
+
+// newRedirectingServers builds a fresh final destination + 301-redirector
+// pair, plus a pointer that flips true when the final destination is hit.
+func newRedirectingServers(t *testing.T) (*httptest.Server, *httptest.Server, *bool) {
+	t.Helper()
+
+	hit := false
+
+	final := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hit = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(final.Close)
+
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		http.Redirect(w, req, final.URL, http.StatusMovedPermanently)
+	}))
+	t.Cleanup(redirector.Close)
+
+	return final, redirector, &hit
+}
+
+// TestHTTPChecker_Execute_FollowRedirects covers both directions: by default
+// a redirect is followed to the final destination, and with
+// followRedirects: false the check sees and asserts against the first (301)
+// response instead.
+func TestHTTPChecker_Execute_FollowRedirects(t *testing.T) {
+	t.Parallel()
+
+	if version.UserAgent == "" {
+		version.UserAgent = version.DefaultUserAgent()
+	}
+
+	t.Run("redirects are followed by default", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		_, redirector, finalHit := newRedirectingServers(t)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{URL: redirector.URL})
+		r.NoError(err)
+		r.Equal(checkerdef.StatusUp, result.Status)
+		r.Equal(http.StatusOK, result.Output[checkerdef.OutputKeyStatusCode])
+		r.True(*finalHit, "the final destination must have been reached")
+	})
+
+	t.Run("followRedirects false surfaces the first response", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		final, redirector, finalHit := newRedirectingServers(t)
+
+		noFollow := false
+		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{
+			URL:             redirector.URL,
+			FollowRedirects: &noFollow,
+			ExpectedStatus:  http.StatusMovedPermanently,
+			HeadersPattern:  map[string]string{"Location": regexp.QuoteMeta(final.URL)},
+		})
+		r.NoError(err)
+		r.Equal(checkerdef.StatusUp, result.Status)
+		r.Equal(http.StatusMovedPermanently, result.Output[checkerdef.OutputKeyStatusCode])
+		r.False(*finalHit, "the redirect target must not have been reached")
+	})
 }

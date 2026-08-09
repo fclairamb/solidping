@@ -5,6 +5,18 @@
   },
   "settings": {
     "title": "Organization Settings",
+    "profile": {
+      "title": "Organization profile",
+      "description": "The organization's name, its URL slug, and the logo shown across the dashboard and its status pages.",
+      "name": "Name",
+      "slug": "URL slug",
+      "renameWarning": "Every URL of this organization changes — dashboard links, status pages, SVG badges and embedded widgets. Existing links keep working: the old address redirects to the new one, but only until another organization claims it.",
+      "logo": "Logo",
+      "logoHelp": "Paste an image URL, or upload a PNG, JPEG, WebP, GIF or SVG of up to 1 MB.",
+      "logoUploaded": "Logo updated.",
+      "upload": "Upload",
+      "removeLogo": "Remove logo"
+    },
     "autoJoin": "Auto-join",
     "autoJoinDescription": "Automatically add users matching this email pattern to the organization.",
     "autoJoinFullDescription": "Users whose email matches this pattern will automatically join this organization when they register or sign in via OAuth.",
@@ -23,7 +35,18 @@
     "sessionDurationHelp": "Once set, a session is force-expired this many hours after login even if the user stays active — separate from the 7-day inactivity timeout.",
     "defaultEscalation": "Default escalation policy",
     "defaultEscalationDescription": "Applied to checks that resolve to no policy of their own (check → group → org default → none). Leave unset for no org-wide fallback.",
-    "defaultEscalationNone": "None (no fallback)"
+    "defaultEscalationNone": "None (no fallback)",
+    "dangerZone": {
+      "title": "Danger zone",
+      "description": "Irreversible actions. Only owners can see this section.",
+      "deleteHelp": "Deleting {{org}} removes its checks, status pages, members and history. This cannot be undone.",
+      "deleteButton": "Delete organization",
+      "confirmTitle": "Delete this organization?",
+      "confirmBody": "This permanently deletes {{org}}: every check stops running, its status pages and badges stop responding, and everybody loses access. This cannot be undone.",
+      "confirmInputLabel": "Type {{org}} to confirm",
+      "confirmAction": "Delete organization",
+      "deleted": "Organization {{org}} deleted"
+    }
   },
   "usage": {
     "title": "Usage",
@@ -148,6 +171,7 @@
       "joinedAt": "Joined"
     },
     "role": {
+      "owner": "Owner",
       "admin": "Admin",
       "user": "User",
       "viewer": "Viewer"
@@ -168,6 +192,8 @@
     "roleUpdated": "Role updated",
     "memberRemoved": "Member removed",
     "removeFailed": "Failed to remove member",
-    "updateFailed": "Failed to update role"
+    "updateFailed": "Failed to update role",
+    "ownerOnly": "Only an owner can change or remove an owner.",
+    "adminOnly": "Only an admin can add, change or remove a member."
   }
 }

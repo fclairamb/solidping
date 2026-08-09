@@ -182,6 +182,25 @@ func (c *Claims) IsSuperAdmin() bool {
 	return c.Role == RoleSuperAdmin
 }
 
+// HasOrgRole reports whether the claims carry at least the given org role for
+// the org the token is scoped to. Super admins always pass.
+//
+// Use this instead of `claims.Role == "admin"`: with the owner role above admin
+// (spec 2026-08-08-11) an equality check silently locks owners out of every
+// admin surface, and enumerating `|| "owner"` at each call site is exactly the
+// per-site drift the role hierarchy exists to prevent.
+func (c *Claims) HasOrgRole(minRole models.MemberRole) bool {
+	if c == nil {
+		return false
+	}
+
+	if c.IsSuperAdmin() {
+		return true
+	}
+
+	return models.MemberRole(c.Role).AtLeast(minRole)
+}
+
 // Context contains metadata about the authentication request.
 type Context struct {
 	UserAgent  string `json:"userAgent,omitempty"`
@@ -210,13 +229,34 @@ type OrganizationInfo struct {
 	UID  string `json:"uid"`
 	Slug string `json:"slug"`
 	Name string `json:"name,omitempty"`
+	// LogoURL is the org's logo (absolute http(s) URL, or /pub/org-logos/<uid>
+	// for an uploaded one). Null means "no logo" and the client falls back to
+	// the product default.
+	LogoURL *string `json:"logoUrl"`
+}
+
+// newOrganizationInfo builds the org payload every login-shaped response
+// carries. Funneling the construction through one function is what keeps a new
+// org field (like logoUrl) from reaching some responses and not others.
+func newOrganizationInfo(org *models.Organization) *OrganizationInfo {
+	if org == nil {
+		return nil
+	}
+
+	return &OrganizationInfo{
+		UID:     org.UID,
+		Slug:    org.Slug,
+		Name:    org.Name,
+		LogoURL: org.LogoURL,
+	}
 }
 
 // OrganizationSummary represents a brief organization entry for listing.
 type OrganizationSummary struct {
-	Slug string `json:"slug"`
-	Name string `json:"name,omitempty"`
-	Role string `json:"role"`
+	Slug    string  `json:"slug"`
+	Name    string  `json:"name,omitempty"`
+	LogoURL *string `json:"logoUrl"`
+	Role    string  `json:"role"`
 }
 
 // LoginAction describes how the frontend should handle the login result.
@@ -554,8 +594,6 @@ func (s *Service) maybeRehashPassword(ctx context.Context, user *models.User, pa
 // Token issuance is identical across paths; the only knob is `method`
 // (one of "password", "passkey", "oauth") which lands in the token's
 // Properties.created_with.method field.
-//
-//nolint:funlen
 func (s *Service) completeLogin(
 	ctx context.Context,
 	user *models.User,
@@ -627,16 +665,12 @@ func (s *Service) completeLogin(
 	}
 
 	return &LoginResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshTokenValue,
-		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
-		TokenType:    tokenTypeBearer,
-		User:         userInfo,
-		Organization: &OrganizationInfo{
-			UID:  resolvedOrg.UID,
-			Slug: resolvedOrg.Slug,
-			Name: resolvedOrg.Name,
-		},
+		AccessToken:   accessToken,
+		RefreshToken:  refreshTokenValue,
+		ExpiresIn:     int(s.cfg.AccessTokenExpiry.Seconds()),
+		TokenType:     tokenTypeBearer,
+		User:          userInfo,
+		Organization:  newOrganizationInfo(resolvedOrg),
 		Organizations: orgSummaries,
 		LoginAction:   loginAction,
 	}, nil
@@ -729,9 +763,10 @@ func buildOrgSummaries(members []*models.OrganizationMember) []OrganizationSumma
 		}
 
 		summaries = append(summaries, OrganizationSummary{
-			Slug: member.Organization.Slug,
-			Name: member.Organization.Name,
-			Role: string(member.Role),
+			Slug:    member.Organization.Slug,
+			Name:    member.Organization.Name,
+			LogoURL: member.Organization.LogoURL,
+			Role:    string(member.Role),
 		})
 	}
 
@@ -1186,11 +1221,7 @@ func (s *Service) Refresh(ctx context.Context, refreshTokenValue string) (*Login
 			AvatarURL: user.AvatarURL,
 			Role:      role,
 		},
-		Organization: &OrganizationInfo{
-			UID:  org.UID,
-			Slug: org.Slug,
-			Name: org.Name,
-		},
+		Organization: newOrganizationInfo(org),
 	}, nil
 }
 
@@ -1412,11 +1443,7 @@ func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse,
 			AvatarURL: user.AvatarURL,
 			Role:      role,
 		},
-		Organization: &OrganizationInfo{
-			UID:  org.UID,
-			Slug: org.Slug,
-			Name: org.Name,
-		},
+		Organization:              newOrganizationInfo(org),
 		Organizations:             orgs,
 		TOTPEnabled:               user.TOTPEnabled,
 		PasskeyCount:              len(passkeys),
@@ -1504,9 +1531,10 @@ func (s *Service) getOrganizationsForUser(ctx context.Context, userUID string) (
 		}
 
 		orgs = append(orgs, OrganizationSummary{
-			Slug: member.Organization.Slug,
-			Name: member.Organization.Name,
-			Role: string(member.Role),
+			Slug:    member.Organization.Slug,
+			Name:    member.Organization.Name,
+			LogoURL: member.Organization.LogoURL,
+			Role:    string(member.Role),
 		})
 	}
 
@@ -1827,11 +1855,7 @@ func (s *Service) SwitchOrg(
 			AvatarURL: user.AvatarURL,
 			Role:      role,
 		},
-		Organization: &OrganizationInfo{
-			UID:  org.UID,
-			Slug: org.Slug,
-			Name: org.Name,
-		},
+		Organization: newOrganizationInfo(org),
 	}, nil
 }
 
@@ -2274,11 +2298,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 			Name:  user.Name,
 			Role:  role,
 		},
-		Organization: &OrganizationInfo{
-			UID:  org.UID,
-			Slug: org.Slug,
-			Name: org.Name,
-		},
+		Organization: newOrganizationInfo(org),
 	}, nil
 }
 
@@ -2611,21 +2631,32 @@ type CreateOrgRequest struct {
 // other way to obtain a token whose orgSlug claim matches the new org (see
 // the 2026-07-08 "create-org missing org-scoped token" spec).
 type OrgResponse struct {
-	UID          string `json:"uid"`
-	Slug         string `json:"slug"`
-	Name         string `json:"name"`
-	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken"`
-	ExpiresIn    int    `json:"expiresIn"`
-	TokenType    string `json:"tokenType"`
+	UID          string  `json:"uid"`
+	Slug         string  `json:"slug"`
+	Name         string  `json:"name"`
+	LogoURL      *string `json:"logoUrl"`
+	AccessToken  string  `json:"accessToken"`
+	RefreshToken string  `json:"refreshToken"`
+	ExpiresIn    int     `json:"expiresIn"`
+	TokenType    string  `json:"tokenType"`
 }
 
 var orgSlugRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$`)
 
-// CreateOrg creates a new organization, makes the user an admin, and mints a
+// CreateOrg creates a new organization, makes the caller its OWNER, and mints a
 // session scoped to the new org — mirroring SwitchOrg, since this is
 // structurally the same "hand the caller a token for an org other than the
 // one in their current claims" problem.
+//
+// The org is always created for the authenticated caller: userUID comes from
+// the validated JWT claims, never from the request body, so there is no way to
+// create an org on somebody else's behalf.
+//
+// Slug availability is decided by GetOrganizationBySlug, which filters
+// `deleted_at IS NULL` — so a deleted org's slug is free for reuse, matching
+// the partial unique index on organizations(slug). A slug held only as a
+// renamed org's previous slug is likewise free, and claiming it releases that
+// alias (spec 2026-08-08-12).
 func (s *Service) CreateOrg(
 	ctx context.Context, userUID string, req CreateOrgRequest, authContext Context,
 ) (*OrgResponse, error) {
@@ -2658,8 +2689,11 @@ func (s *Service) CreateOrg(
 		return nil, fmt.Errorf("failed to create organization: %w", createOrgErr)
 	}
 
-	// Make user admin
-	member := models.NewOrganizationMember(org.UID, userUID, models.MemberRoleAdmin)
+	// The creator owns the org they just created: owner outranks admin, and
+	// only an owner may delete the org or grant/revoke ownership (spec
+	// 2026-08-08-11). Without this the creator becomes indistinguishable from
+	// any admin they later promote.
+	member := models.NewOrganizationMember(org.UID, userUID, models.MemberRoleOwner)
 	member.JoinedAt = &now
 
 	if createMemberErr := s.db.CreateOrganizationMember(ctx, member); createMemberErr != nil {
@@ -2675,26 +2709,7 @@ func (s *Service) CreateOrg(
 	// org's slug. Without this, the caller's existing token (orgSlug "" for
 	// a zero-org user, or their previous org otherwise) 403s on every
 	// org-scoped call to the org they just created.
-	refreshTokenValue, err := s.generateRefreshToken()
-	if err != nil {
-		return nil, err
-	}
-
-	refreshToken := models.NewUserToken(userUID, &org.UID, refreshTokenValue, models.TokenTypeRefresh)
-	expiresAt := s.refreshTokenExpiry(ctx, org.UID, now, now)
-	refreshToken.ExpiresAt = &expiresAt
-	refreshToken.LastActiveAt = &now
-	refreshToken.Properties = models.JSONMap{
-		keyCreatedWith: authContext.ToMap(),
-	}
-
-	if createTokenErr := s.db.CreateUserToken(ctx, refreshToken); createTokenErr != nil {
-		return nil, createTokenErr
-	}
-
-	s.enforceSessionCap(ctx, userUID)
-
-	accessToken, err := s.generateAccessToken(userUID, org.Slug, string(models.MemberRoleAdmin), refreshToken.UID)
+	session, err := s.mintOrgSession(ctx, userUID, org, string(models.MemberRoleOwner), authContext)
 	if err != nil {
 		return nil, err
 	}
@@ -2703,10 +2718,11 @@ func (s *Service) CreateOrg(
 		UID:          org.UID,
 		Slug:         org.Slug,
 		Name:         org.Name,
-		AccessToken:  accessToken,
-		RefreshToken: refreshTokenValue,
-		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
-		TokenType:    tokenTypeBearer,
+		LogoURL:      org.LogoURL,
+		AccessToken:  session.AccessToken,
+		RefreshToken: session.RefreshToken,
+		ExpiresIn:    session.ExpiresIn,
+		TokenType:    session.TokenType,
 	}, nil
 }
 
@@ -2779,9 +2795,12 @@ type AcceptInviteRequest struct {
 func (s *Service) CreateInvitation(
 	ctx context.Context, orgSlug, inviterUID string, req InviteRequest,
 ) (*InviteResponse, error) {
-	// Validate role
-	role := models.MemberRole(req.Role)
-	if role != models.MemberRoleAdmin && role != models.MemberRoleUser && role != models.MemberRoleViewer {
+	// Validate role. `owner` is deliberately NOT invitable: ownership is granted
+	// by an owner on the members page, where the caller's owner role is checked
+	// live (spec 2026-08-08-11). An invitation is consumed later, by whoever
+	// holds the link, long after the inviter's role could have changed.
+	if role := models.MemberRole(req.Role); role != models.MemberRoleAdmin &&
+		role != models.MemberRoleUser && role != models.MemberRoleViewer {
 		return nil, fmt.Errorf("%w: invalid role", ErrInvalidCredentials)
 	}
 
@@ -3085,11 +3104,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 			Name:  user.Name,
 			Role:  role,
 		},
-		Organization: &OrganizationInfo{
-			UID:  matchedOrg.UID,
-			Slug: matchedOrg.Slug,
-			Name: matchedOrg.Name,
-		},
+		Organization:  newOrganizationInfo(matchedOrg),
 		Organizations: orgSummaries,
 	}, nil
 }
@@ -3661,10 +3676,6 @@ func (s *Service) completeLoginAfter2FA(
 		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
 		TokenType:    tokenTypeBearer,
 		User:         userInfo,
-		Organization: &OrganizationInfo{
-			UID:  org.UID,
-			Slug: org.Slug,
-			Name: org.Name,
-		},
+		Organization: newOrganizationInfo(org),
 	}, nil
 }

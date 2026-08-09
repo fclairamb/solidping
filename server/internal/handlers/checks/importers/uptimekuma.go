@@ -191,7 +191,7 @@ func (c *UptimeKumaConverter) convertMonitor(
 	var ok bool
 
 	switch monitor.Type {
-	case "http", srcKeyword, "json-query":
+	case srcHTTP, srcKeyword, srcJSONQuery:
 		check.Type = string(checkerdef.CheckTypeHTTP)
 		check.Config = c.httpConfig(monitor, timeout, warn)
 		ok = true
@@ -257,7 +257,10 @@ func (c *UptimeKumaConverter) convertMonitor(
 
 // warnUnmapped reports monitor-level settings with no SolidPing counterpart.
 func (c *UptimeKumaConverter) warnUnmapped(monitor *kumaMonitor, name string, warn *warnings) {
-	if monitor.IgnoreTLS {
+	// ignoreTls maps to verifySsl: false for http/keyword/json-query monitors
+	// (handled in httpConfig); for every other type there is no TLS
+	// verification toggle to map it onto.
+	if monitor.IgnoreTLS && !kumaIsHTTPType(monitor.Type) {
 		warn.addf(name, "ignoreTls", "ignoring TLS errors is not supported — the check verifies certificates")
 	}
 
@@ -275,6 +278,18 @@ func (c *UptimeKumaConverter) warnUnmapped(monitor *kumaMonitor, name string, wa
 
 	if len(monitor.Tags) > 0 {
 		warn.addf(name, "tags", "Uptime Kuma tags are not imported — add SolidPing labels manually")
+	}
+}
+
+// kumaIsHTTPType reports whether a Kuma monitor type maps to the SolidPing
+// http checker (see convertMonitor's dispatch), i.e. whether it goes through
+// httpConfig and so can carry verifySsl.
+func kumaIsHTTPType(monitorType string) bool {
+	switch monitorType {
+	case srcHTTP, srcKeyword, srcJSONQuery:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -324,6 +339,10 @@ func (c *UptimeKumaConverter) httpConfig(monitor *kumaMonitor, timeout string, w
 		cfg["expected_status_codes"] = codes
 	}
 
+	if monitor.IgnoreTLS {
+		cfg["verifySsl"] = false
+	}
+
 	switch monitor.Type {
 	case srcKeyword:
 		if monitor.InvertKeyword {
@@ -331,7 +350,7 @@ func (c *UptimeKumaConverter) httpConfig(monitor *kumaMonitor, timeout string, w
 		} else {
 			cfg["body_expect"] = monitor.Keyword
 		}
-	case "json-query":
+	case srcJSONQuery:
 		if monitor.JSONPath != "" {
 			cfg["json_path_assertions"] = assertionConfig(&checkhttp.AssertionNode{
 				Type:     checkhttp.NodeTypeAssertion,

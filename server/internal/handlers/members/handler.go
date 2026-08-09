@@ -85,7 +85,7 @@ func (h *Handler) AddMember(writer http.ResponseWriter, req *http.Request) error
 		inviterUID = &user.UID
 	}
 
-	member, err := h.svc.AddMember(req.Context(), orgSlug, addReq, inviterUID)
+	member, err := h.svc.AddMember(req.Context(), orgSlug, addReq, inviterUID, callerFrom(req))
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -105,7 +105,7 @@ func (h *Handler) UpdateMember(writer http.ResponseWriter, req *http.Request) er
 		})
 	}
 
-	member, err := h.svc.UpdateMember(req.Context(), orgSlug, memberUID, updateReq)
+	member, err := h.svc.UpdateMember(req.Context(), orgSlug, memberUID, updateReq, callerFrom(req))
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -118,13 +118,26 @@ func (h *Handler) RemoveMember(writer http.ResponseWriter, req *http.Request) er
 	orgSlug := httpx.Param(req, "org")
 	memberUID := httpx.Param(req, "uid")
 
-	if err := h.svc.RemoveMember(req.Context(), orgSlug, memberUID); err != nil {
+	if err := h.svc.RemoveMember(req.Context(), orgSlug, memberUID, callerFrom(req)); err != nil {
 		return h.handleError(writer, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
 
 	return nil
+}
+
+// callerFrom builds the member-management Caller from the authenticated request
+// context. It carries identity only — the caller's *role* is re-read from the
+// membership row inside the service, never taken from the (possibly stale) JWT
+// role claim.
+func callerFrom(req *http.Request) Caller {
+	user, ok := middleware.GetUserFromContext(req.Context())
+	if !ok {
+		return Caller{}
+	}
+
+	return Caller{UserUID: user.UID, SuperAdmin: user.SuperAdmin}
 }
 
 // handleError maps service errors to HTTP responses.
@@ -144,9 +157,17 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 			"Cannot remove the last admin from the organization")
 	case errors.Is(err, ErrCannotDemoteLastAdmin):
 		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict, "Cannot demote the last admin")
+	case errors.Is(err, ErrCannotRemoveLastOwner):
+		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict,
+			"Cannot remove the last owner from the organization")
+	case errors.Is(err, ErrCannotDemoteLastOwner):
+		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict, "Cannot demote the last owner")
+	case errors.Is(err, ErrOwnerRoleRequired):
+		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden,
+			"Only an owner can grant, revoke or remove ownership")
 	case errors.Is(err, ErrInvalidRole):
 		return h.WriteValidationError(writer, "Invalid role", []base.ValidationErrorField{
-			{Name: "role", Message: "Role must be one of: admin, user, viewer"},
+			{Name: "role", Message: "Role must be one of: owner, admin, user, viewer"},
 		})
 	default:
 		return h.WriteInternalError(writer, err)

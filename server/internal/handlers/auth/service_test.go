@@ -507,7 +507,9 @@ func TestCreateOrgMintsScopedToken(t *testing.T) {
 	claims, err := svc.ValidateToken(ctx, resp.AccessToken)
 	r.NoError(err)
 	r.Equal("new-co", claims.OrgSlug)
-	r.Equal(string(models.MemberRoleAdmin), claims.Role)
+	// The creator owns the org they just created (spec 2026-08-08-11), so the
+	// minted token carries the owner role, not admin.
+	r.Equal(string(models.MemberRoleOwner), claims.Role)
 	r.Equal(user.UID, claims.UserUID)
 }
 

@@ -34,6 +34,21 @@ type TwilioSender struct {
 	BaseURL string
 }
 
+// resolveBaseURL decides which Twilio host a send goes to. Precedence: the
+// test override (BaseURL) wins when set — it exists only so tests can point
+// the sender at an httptest fake, and a test that sets it always wants that
+// exact host regardless of the connection's region. In real operation
+// BaseURL is always empty, so the connection's region decides:
+// twilio.BaseURLForRegion("") still resolves to twilio.DefaultBaseURL, so a
+// connection with no region behaves exactly as before this field existed.
+func (s *TwilioSender) resolveBaseURL(region string) string {
+	if s.BaseURL != "" {
+		return s.BaseURL
+	}
+
+	return twilio.BaseURLForRegion(region)
+}
+
 // Send delivers an SMS to every configured shared recipient.
 func (s *TwilioSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload *Payload) error {
 	settings, err := models.TwilioSettingsFromJSONMap(payload.Integration.Settings)
@@ -55,12 +70,7 @@ func (s *TwilioSender) Send(ctx context.Context, jctx *jobdef.JobContext, payloa
 
 	body := s.buildBody(jctx, payload, settings)
 
-	baseURL := s.BaseURL
-	if baseURL == "" {
-		baseURL = twilio.DefaultBaseURL
-	}
-
-	client := twilio.NewClientWithBaseURL(settings.AccountSID, settings.AuthToken, baseURL)
+	client := twilio.NewClientWithBaseURL(settings.AccountSID, settings.AuthToken, s.resolveBaseURL(settings.Region))
 
 	var statusCallback string
 	if payload.AppBaseURL != "" {

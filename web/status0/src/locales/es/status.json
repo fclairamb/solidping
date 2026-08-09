@@ -8,6 +8,8 @@
   "allSystemsOperational": "Todos los sistemas operativos",
   "someSystemsDegraded": "Algunos sistemas degradados",
   "systemOutage": "Caída del sistema",
+  "underMaintenance": "En mantenimiento",
+  "statusUnknown": "Estado desconocido",
   "noResourcesConfigured": "No hay recursos configurados",
   "noSectionsConfigured": "Aún no hay secciones configuradas",
   "poweredBy": "Con tecnología de SolidPing",

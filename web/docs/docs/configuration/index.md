@@ -56,8 +56,8 @@ own edge. See [Custom Domains](/features/custom-domains) for the full setup.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SP_NODE_ROLE` | `all` | Node role: `all`, `api`, `jobs`, `checks` |
-| `SP_NODE_REGION` | - | Worker region (required when role=`checks`) |
+| `SP_NODE_ROLE` | `all` | Node role: `all`, `api`, `jobs`, `checks` — or a comma-separated combination (`api,jobs`) |
+| `SP_NODE_REGION` | - | Worker region (required when the role includes `checks`) |
 | `SP_NODE_NAME` | hostname | Worker identity (`workers.slug` and `workers.name`) — overrides the OS hostname |
 | `SP_REGIONS` | - | Region display definitions, as a JSON list of `{slug, emoji, name}` |
 
@@ -66,6 +66,33 @@ Use `SP_NODE_ROLE` to run SolidPing in a distributed configuration:
 - `api` - Only serve the API and dashboard
 - `jobs` - Only run background jobs (scheduling, cleanup)
 - `checks` - Only execute health checks (worker mode)
+
+`api`, `jobs` and `checks` can also be **combined** in one value, as a
+comma-separated list:
+
+```bash
+SP_NODE_ROLE=api,jobs
+```
+
+That node serves the API/dashboard and processes background jobs, but runs no
+check executor — the checks are left to separate `SP_NODE_ROLE=checks` nodes.
+This is what you want when the check workers need a network setup the
+public-facing node should not have: on a single-stack (IPv4-only) Kubernetes
+cluster, check workers need `hostNetwork: true` to reach IPv6-only targets, and
+putting the pod that serves your dashboard on the host network namespace is a
+much more sensitive change than doing it for a checks-only worker. Run the main
+pod as `api,jobs` and add a checks-only `hostNetwork` Deployment per region.
+
+Rules:
+
+- `all` and `agent` are whole-node modes and cannot be combined with anything —
+  `all` already means api + jobs + checks.
+- A role listed twice, an unknown role, or an empty entry (`api,`) **aborts
+  startup** with a message naming the offending value. A typo never silently
+  disables a subsystem.
+- `SP_NODE_REGION` is required as soon as `checks` is in the list.
+- Every single-value spelling keeps its exact historic behavior, so existing
+  deployments need no change.
 
 `SP_NODE_NAME` pins the identity a node registers under. By default the slug
 is the OS hostname, lowercased and cut to 15 characters, and it must match

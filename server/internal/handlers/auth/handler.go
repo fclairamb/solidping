@@ -8,6 +8,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
@@ -15,8 +16,6 @@ import (
 
 // CookieAuthToken is the name of the cookie used for storing the access token.
 const CookieAuthToken = "access_token"
-
-const roleAdmin = "admin"
 
 const (
 	roleUser            = "user"
@@ -699,6 +698,110 @@ func (h *Handler) CreateOrg(writer http.ResponseWriter, req *http.Request) error
 	return h.WriteJSON(writer, http.StatusCreated, resp)
 }
 
+// DeleteOrg handles DELETE /api/v1/orgs/:org. The route is owner-gated by
+// middleware.RequireOrgOwner, so reaching this handler already proves the
+// caller owns the org (or is a super admin); the body must additionally repeat
+// the org slug as an explicit confirmation.
+func (h *Handler) DeleteOrg(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, fieldOrg)
+
+	var delReq DeleteOrgRequest
+	if err := json.NewDecoder(req.Body).Decode(&delReq); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	if err := h.svc.DeleteOrg(req.Context(), orgSlug, delReq); err != nil {
+		switch {
+		case errors.Is(err, ErrOrgSlugConfirmationMismatch):
+			return h.WriteValidationError(writer, "Organization slug confirmation does not match",
+				[]base.ValidationErrorField{
+					{Name: "slug", Message: "Type the organization slug exactly to confirm deletion"},
+				})
+		case errors.Is(err, ErrOrganizationNotFound):
+			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound,
+				"Organization not found")
+		default:
+			return h.WriteInternalError(writer, err)
+		}
+	}
+
+	// The caller's own org-scoped session died with the org; clear the cookie
+	// so the dashboard drops to the org switcher instead of replaying a token
+	// that now 404s.
+	h.clearAuthCookie(writer)
+
+	writer.WriteHeader(http.StatusNoContent)
+
+	return nil
+}
+
+// UpdateOrgProfile handles PATCH /api/v1/orgs/:org. The route is owner-gated by
+// middleware.RequireOrgOwner (an admin gets the standard 403, not a hidden
+// button), so this handler only validates and translates errors.
+//
+// On a slug rename the response carries a fresh org-scoped session, and the
+// access-token cookie is refreshed with it — exactly like CreateOrg/SwitchOrg.
+// Without that the dashboard's very next request, now addressed to the new
+// slug, would 403 on the token-scope check.
+func (h *Handler) UpdateOrgProfile(writer http.ResponseWriter, req *http.Request) error {
+	claims, ok := getClaimsFromContext(req)
+	if !ok {
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
+	}
+
+	orgSlug := httpx.Param(req, fieldOrg)
+
+	var profileReq UpdateOrgProfileRequest
+	if err := json.NewDecoder(req.Body).Decode(&profileReq); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	authContext := Context{
+		UserAgent:  req.Header.Get("User-Agent"),
+		RemoteAddr: base.ExtractRemoteAddr(req),
+	}
+
+	resp, err := h.svc.UpdateOrgProfile(req.Context(), orgSlug, claims.UserUID, profileReq, authContext)
+	if err != nil {
+		return h.writeOrgProfileError(writer, err)
+	}
+
+	if resp.AccessToken != "" {
+		setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
+// writeOrgProfileError maps the profile-update domain errors onto the standard
+// error shape, reusing exactly the messages CreateOrg emits for the shared slug
+// errors so the dashboard can render one validation string per field.
+func (h *Handler) writeOrgProfileError(writer http.ResponseWriter, err error) error {
+	switch {
+	case errors.Is(err, ErrInvalidOrgSlug):
+		return h.WriteErrorErr(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError,
+			"Slug must be 3-20 characters, lowercase alphanumeric with hyphens", err)
+	case errors.Is(err, ErrOrgSlugTaken):
+		return h.WriteErrorErr(writer, http.StatusConflict, base.ErrorCodeConflict,
+			"Organization slug is already taken", err)
+	case errors.Is(err, ErrInvalidOrgName):
+		return h.WriteErrorErr(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError,
+			"Name must be between 1 and 100 characters", err)
+	case errors.Is(err, ErrInvalidLogoURL):
+		return h.WriteErrorErr(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError,
+			"Logo URL must be an absolute http(s) URL", err)
+	case errors.Is(err, ErrOrganizationNotFound):
+		return h.WriteErrorErr(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound,
+			"Organization not found", err)
+	default:
+		return h.WriteInternalError(writer, err)
+	}
+}
+
 // CreateInvitation handles invitation creation.
 func (h *Handler) CreateInvitation(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
@@ -707,7 +810,7 @@ func (h *Handler) CreateInvitation(writer http.ResponseWriter, req *http.Request
 	}
 
 	// Admin check
-	if claims.Role != roleAdmin && claims.Role != RoleSuperAdmin {
+	if !claims.HasOrgRole(models.MemberRoleAdmin) {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin access required")
 	}
 
@@ -753,7 +856,7 @@ func (h *Handler) ListInvitations(writer http.ResponseWriter, req *http.Request)
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	if claims.Role != roleAdmin && claims.Role != RoleSuperAdmin {
+	if !claims.HasOrgRole(models.MemberRoleAdmin) {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin access required")
 	}
 
@@ -774,7 +877,7 @@ func (h *Handler) RevokeInvitation(writer http.ResponseWriter, req *http.Request
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	if claims.Role != roleAdmin && claims.Role != RoleSuperAdmin {
+	if !claims.HasOrgRole(models.MemberRoleAdmin) {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin access required")
 	}
 
@@ -842,7 +945,7 @@ func (h *Handler) GetOrgSettings(writer http.ResponseWriter, req *http.Request) 
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	if claims.Role != roleAdmin && claims.Role != RoleSuperAdmin {
+	if !claims.HasOrgRole(models.MemberRoleAdmin) {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin access required")
 	}
 
@@ -863,7 +966,7 @@ func (h *Handler) UpdateOrgSettings(writer http.ResponseWriter, req *http.Reques
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	if claims.Role != roleAdmin && claims.Role != RoleSuperAdmin {
+	if !claims.HasOrgRole(models.MemberRoleAdmin) {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin access required")
 	}
 

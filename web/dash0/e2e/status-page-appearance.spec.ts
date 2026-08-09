@@ -319,4 +319,257 @@ test.describe("Status page appearance editor", () => {
 
     await publicPage.close();
   });
+
+  // Spec 2026-08-08-07: the page-level SVG badge embed block on the same
+  // settings screen as the custom-CSS editor.
+  test("offers a copyable SVG badge embed pointing at the public badge endpoint", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const suffix = Date.now().toString().slice(-9);
+    const slug = await createStatusPage(page, suffix);
+
+    await openAppearance(page);
+
+    const card = page.getByTestId("status-page-badge-card");
+    await expect(card).toBeVisible();
+    await expect(page.getByTestId("status-page-badge-preview")).toBeVisible({
+      timeout: 15000,
+    });
+
+    const urlText = await page.getByTestId("badge-embed-url").textContent();
+    expect(urlText).toContain(`/api/v1/status-pages/test/${slug}/badge`);
+
+    const markdownText = await page
+      .getByTestId("badge-embed-markdown")
+      .textContent();
+    expect(markdownText).toContain(`(${urlText})`);
+
+    const htmlText = await page.getByTestId("badge-embed-html").textContent();
+    expect(htmlText).toContain(`src="${urlText}"`);
+
+    // The URL is live: it 200s with a real SVG carrying the rollup status —
+    // a freshly-created page has no resources, so it rolls up to "unknown".
+    const resp = await page.request.get(urlText!);
+    expect(resp.status()).toBe(200);
+    expect(resp.headers()["content-type"]).toContain("image/svg+xml");
+    const body = await resp.text();
+    expect(body).toContain("<svg");
+    expect(body).toContain(">unknown<");
+
+    // Customizing the label updates every embed snippet together.
+    await page.getByTestId("status-page-badge-label").fill("Custom Label");
+    await expect
+      .poll(() => page.getByTestId("badge-embed-url").textContent())
+      .toContain("label=Custom");
+    const customUrlText = await page
+      .getByTestId("badge-embed-url")
+      .textContent();
+    const customMarkdown = await page
+      .getByTestId("badge-embed-markdown")
+      .textContent();
+    expect(customMarkdown).toContain(`(${customUrlText})`);
+  });
+  // Spec 2026-08-08-08: the live-widget snippet generator, sharing the badge
+  // block's home on this screen.
+  test("generates a live widget <script> snippet that reflects mode, theme and position", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const suffix = Date.now().toString().slice(-9);
+    const slug = await createStatusPage(page, suffix);
+
+    await openAppearance(page);
+
+    const card = page.getByTestId("status-page-widget-card");
+    await expect(card).toBeVisible();
+
+    const snippet = page.getByTestId("widget-embed-snippet");
+    const defaultSnippet = (await snippet.textContent())!;
+    // The exact frozen v1 contract: async script + data-page="org/slug".
+    expect(defaultSnippet).toContain("/embed/v1/widget.js");
+    expect(defaultSnippet).toContain(`data-page="test/${slug}"`);
+    expect(defaultSnippet).toContain("<script async src=");
+    expect(defaultSnippet).toContain("></script>");
+    // Defaults are implicit — no redundant attributes in the pasted snippet.
+    expect(defaultSnippet).not.toContain("data-mode=");
+    expect(defaultSnippet).not.toContain("data-theme=");
+    expect(defaultSnippet).not.toContain("data-position=");
+    // The preview drives itself via data-force-status, but that must never
+    // leak into the snippet customers actually copy — otherwise every pasted
+    // pill would be permanently frozen on whatever state happened to be
+    // selected in the preview when it was copied.
+    expect(defaultSnippet).not.toContain("data-force-status");
+    // No empty data-label-* either: untouched label inputs must not emit an
+    // attribute at all.
+    expect(defaultSnippet).not.toContain('data-label-operational=""');
+    expect(defaultSnippet).not.toContain("data-label-");
+
+    // The generated URL is live: the script it points at really is served.
+    const scriptUrl = defaultSnippet.match(/src="([^"]+)"/)![1];
+    const scriptResponse = await page.request.get(scriptUrl);
+    expect(scriptResponse.status()).toBe(200);
+    expect(scriptResponse.headers()["content-type"]).toContain(
+      "application/javascript",
+    );
+
+    // Floating mode reveals the position select and adds both attributes.
+    await page.getByTestId("status-page-widget-mode").click();
+    await page.getByRole("option", { name: /Floating/ }).click();
+    await expect(page.getByTestId("status-page-widget-position")).toBeVisible();
+    await expect
+      .poll(() => snippet.textContent())
+      .toContain('data-mode="floating"');
+    expect(await snippet.textContent()).toContain(
+      'data-position="bottom-right"',
+    );
+
+    await page.getByTestId("status-page-widget-position").click();
+    await page.getByRole("option", { name: /Bottom left/ }).click();
+    await expect
+      .poll(() => snippet.textContent())
+      .toContain('data-position="bottom-left"');
+
+    await page.getByTestId("status-page-widget-theme").click();
+    await page.getByRole("option", { name: /^Dark$/ }).click();
+    await expect.poll(() => snippet.textContent()).toContain('data-theme="dark"');
+  });
+
+  // Spec 2026-08-08-09: live preview + size/label customization.
+  test("shows a live preview of the real widget and updates it as preview state/size/theme change", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const suffix = Date.now().toString().slice(-9);
+    await createStatusPage(page, suffix);
+    await openAppearance(page);
+
+    // The preview never calls the summary endpoint — it drives its own state
+    // via data-force-status, so it must work even though this page has just
+    // been created (no real status history yet).
+    let summaryRequested = false;
+    page.on("request", (request) => {
+      if (request.url().includes("/summary")) {
+        summaryRequested = true;
+      }
+    });
+
+    const previewFrame = page.frameLocator(
+      '[data-testid="status-page-widget-preview"]',
+    );
+    const previewPill = previewFrame.locator(
+      '[data-testid="solidping-widget-pill"]',
+    );
+    const previewLabel = previewFrame.locator(
+      '[data-testid="solidping-widget-label"]',
+    );
+
+    await expect(previewPill).toBeVisible({ timeout: 30000 });
+    await expect(previewLabel).toHaveText("All systems operational");
+    // No link target: the preview never has real page data to link to.
+    expect(await previewPill.evaluate((el) => el.tagName)).toBe("SPAN");
+
+    // Preview-state picker switches the rendered pill without a save.
+    await page.getByTestId("status-page-widget-preview-status").click();
+    await page.getByRole("option", { name: /^Down$/ }).click();
+    await expect(previewLabel).toHaveText("Major outage");
+
+    const fontSize = () =>
+      previewPill.evaluate((el) => getComputedStyle(el).fontSize);
+    const mdFontSize = await fontSize();
+
+    await page.getByTestId("status-page-widget-size").click();
+    await page.getByRole("option", { name: /^Large$/ }).click();
+    await expect(previewPill).toBeVisible({ timeout: 30000 });
+    await expect
+      .poll(fontSize)
+      .not.toBe(mdFontSize);
+
+    await page.getByTestId("status-page-widget-theme").click();
+    await page.getByRole("option", { name: /^Dark$/ }).click();
+    await expect(previewFrame.locator("body")).toBeVisible({ timeout: 30000 });
+    await expect
+      .poll(() =>
+        previewFrame
+          .locator("body")
+          .evaluate((el) => getComputedStyle(el).backgroundColor),
+      )
+      .toBe("rgb(11, 18, 32)");
+
+    expect(summaryRequested).toBe(false);
+  });
+
+  test("preview theme 'auto' (the default) follows dash0's own light/dark toggle", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const suffix = Date.now().toString().slice(-9);
+    await createStatusPage(page, suffix);
+    await openAppearance(page);
+
+    // Widget theme is "auto" by default — never touched in this test.
+    const previewFrame = page.frameLocator(
+      '[data-testid="status-page-widget-preview"]',
+    );
+    const previewBody = previewFrame.locator("body");
+    const backgroundColor = () =>
+      previewBody.evaluate((el) => getComputedStyle(el).backgroundColor);
+
+    await expect(previewFrame.locator('[data-testid="solidping-widget-pill"]')).toBeVisible({
+      timeout: 30000,
+    });
+
+    // A freshly restored session starts with no persisted theme preference,
+    // so dash0 falls back to the (light) system preference — the preview
+    // must mirror that starting point.
+    await expect.poll(backgroundColor).toBe("rgb(248, 250, 252)");
+
+    // Flipping dash0's own theme must flip the "auto" preview along with it,
+    // with no widget option touched — this is the MutationObserver-backed
+    // reactivity in useIsDashDark(), not a one-time read at mount.
+    await page.getByTestId("theme-toggle").click();
+    await expect.poll(backgroundColor).toBe("rgb(11, 18, 32)");
+
+    // And back again, proving it isn't a one-way/stuck transition.
+    await page.getByTestId("theme-toggle").click();
+    await expect.poll(backgroundColor).toBe("rgb(248, 250, 252)");
+  });
+
+  test("a customized label updates both the preview and the copyable snippet, escaped against quote-breakout", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const suffix = Date.now().toString().slice(-9);
+    await createStatusPage(page, suffix);
+    await openAppearance(page);
+
+    await page.getByTestId("status-page-widget-customize-labels").click();
+
+    const hostile = `"><img src=x onerror="window.__pwned=1">`;
+    const labelInput = page.getByTestId("status-page-widget-label-operational");
+    await expect(labelInput).toBeVisible();
+    await labelInput.fill(hostile);
+
+    // The emitted (copyable) snippet must remain valid, single-attribute
+    // HTML: the quote is escaped rather than allowed to break out into a new
+    // attribute on the tag customers paste onto their own site.
+    const snippet = page.getByTestId("widget-embed-snippet");
+    await expect
+      .poll(() => snippet.textContent())
+      .toContain("&quot;&gt;&lt;img src=x onerror=&quot;window.__pwned=1&quot;&gt;");
+    expect(await snippet.textContent()).not.toContain(
+      `data-label-operational="${hostile}"`,
+    );
+
+    // The preview (same status: default is operational) renders the hostile
+    // value as inert text — no image element, no markup breakout.
+    const previewFrame = page.frameLocator(
+      '[data-testid="status-page-widget-preview"]',
+    );
+    const previewLabel = previewFrame.locator(
+      '[data-testid="solidping-widget-label"]',
+    );
+    await expect(previewLabel).toHaveText(hostile, { timeout: 30000 });
+    expect(await previewFrame.locator("img").count()).toBe(0);
+  });
 });

@@ -2,12 +2,14 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"strconv"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/entitlements"
+	"github.com/fclairamb/solidping/server/internal/servicesig"
 )
 
 // SaaS-mode seed env vars. koanf collapses every underscore in an SP_*
@@ -18,6 +20,12 @@ const (
 	envEntitlementsUpgradeURL    = "SP_ENTITLEMENTS_UPGRADE_URL_TEMPLATE"
 	envEntitlementsAdminWrites   = "SP_ENTITLEMENTS_ADMIN_WRITES_ENABLED"
 	envEntitlementsBillingSecret = "SP_ENTITLEMENTS_BILLING_INBOUND_SECRET"
+	// Ordered {id, secret} JSON key sets for the signed service channels, one
+	// per direction (see internal/servicesig). The billing service holds the
+	// mirror image as BILLING_SIGNING_KEYS_OUTBOUND / _INBOUND.
+	envEntitlementsServiceSigningKeys  = "SP_ENTITLEMENTS_SERVICE_SIGNING_KEYS"
+	envEntitlementsOutboundSigningKeys = "SP_ENTITLEMENTS_OUTBOUND_SIGNING_KEYS"
+	envEntitlementsAllowLegacyToken    = "SP_ENTITLEMENTS_ALLOW_LEGACY_SERVICE_TOKEN"
 )
 
 // SeedSaaSEntitlements wires the system parameters the entitlements handler
@@ -60,6 +68,10 @@ func (s *Server) SeedSaaSEntitlements(ctx context.Context) error {
 			"key", entitlements.ParamBillingInboundSecret)
 	}
 
+	if err := s.seedSigningKeys(ctx); err != nil {
+		return err
+	}
+
 	if raw := os.Getenv(envEntitlementsAdminWrites); raw != "" {
 		enabled, parseErr := strconv.ParseBool(raw)
 		switch {
@@ -73,6 +85,72 @@ func (s *Server) SeedSaaSEntitlements(ctx context.Context) error {
 				return err
 			}
 		}
+	}
+
+	return nil
+}
+
+// seedSigningKeys wires the two request-signing key sets and the legacy-bearer
+// escape hatch. Each key set is validated before it is stored, so a malformed
+// JSON array surfaces at boot rather than as a stream of 401s later.
+//
+// The legacy flag is intentionally NOT defaulted here: absent the env var, the
+// parameter stays unset and the readers default it to true. Turning it off is
+// step 3 of the cross-repo migration and must be a deliberate operator action.
+func (s *Server) seedSigningKeys(ctx context.Context) error {
+	keySets := []struct {
+		env      string
+		param    string
+		describe string
+	}{
+		{
+			envEntitlementsServiceSigningKeys, entitlements.ParamServiceSigningKeys,
+			"inbound (verify the billing entitlements push)",
+		},
+		{
+			envEntitlementsOutboundSigningKeys, entitlements.ParamOutboundSigningKeys,
+			"outbound (sign our calls to billing)",
+		},
+	}
+
+	for i := range keySets {
+		keySet := &keySets[i]
+
+		raw := os.Getenv(keySet.env)
+		if raw == "" {
+			continue
+		}
+
+		parsed, err := servicesig.ParseKeySet(raw)
+		if err != nil {
+			return fmt.Errorf("%s: %w", keySet.env, err)
+		}
+
+		if err := s.dbService.SetSystemParameter(ctx, keySet.param, raw, true); err != nil {
+			return err
+		}
+
+		slog.InfoContext(ctx, "SaaS: seeded entitlements signing keys",
+			"key", keySet.param, "direction", keySet.describe, "keyCount", len(parsed))
+	}
+
+	if raw := os.Getenv(envEntitlementsAllowLegacyToken); raw != "" {
+		allowed, parseErr := strconv.ParseBool(raw)
+		if parseErr != nil {
+			slog.WarnContext(ctx, "SaaS: ignoring unparsable "+envEntitlementsAllowLegacyToken,
+				"value", raw, "error", parseErr)
+
+			return nil
+		}
+
+		if err := s.dbService.SetSystemParameter(
+			ctx, entitlements.ParamAllowLegacyServiceToken, allowed, false,
+		); err != nil {
+			return err
+		}
+
+		slog.InfoContext(ctx, "SaaS: legacy entitlements service token acceptance",
+			"key", entitlements.ParamAllowLegacyServiceToken, "allowed", allowed)
 	}
 
 	return nil

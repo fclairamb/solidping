@@ -157,8 +157,8 @@ All `SP_` prefixed variables are handled by the configuration system. Precedence
 | `SP_SHUTDOWN_TIMEOUT` | Graceful shutdown timeout (duration) | `30s` |
 | `SP_RUN_MODE` | Runtime mode: `test`, `demo` | — |
 | `SP_LOG_LEVEL` | Log level: `debug`, `info`, `warn`, `error` | `info` |
-| `SP_NODE_ROLE` | Node role: `all`, `api`, `jobs`, `checks` | `all` |
-| `SP_NODE_REGION` | Worker region (required when role=`checks`) | — |
+| `SP_NODE_ROLE` | Node role: `all`, `api`, `jobs`, `checks`, `agent` — or a comma-separated combination such as `api,jobs` | `all` |
+| `SP_NODE_REGION` | Worker region (required when the role includes `checks`) | — |
 | `SP_SERVER_JOB_WORKER_NB` | Concurrent job workers | `2` |
 | `SP_SERVER_CHECK_WORKER_NB` | Concurrent check workers | `3` |
 | `PORT` | HTTP port (overrides `SP_SERVER_LISTEN`) | — |

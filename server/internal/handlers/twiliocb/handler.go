@@ -58,6 +58,13 @@ func NewHandler(dbSvc db.Service, creds credentials.Service, cfg *config.Config,
 // VerifyMiddleware authenticates the inbound request: it resolves the Twilio
 // connection from `cid`, decrypts its auth token, and validates the Twilio
 // signature. On any failure it returns 403 with no body detail.
+//
+// This path is region-agnostic by construction, confirmed (not assumed) when
+// the region support was added: the signature is computed over SolidPing's
+// own `cfg.Server.BaseURL` + request URI + POST params, signed with the
+// account's auth token — no Twilio host appears anywhere in the signed
+// material or in ValidateSignature itself, so it validates identically for a
+// us1, ie1, or any other regional account.
 func (h *Handler) VerifyMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
 	return func(writer http.ResponseWriter, req *http.Request) error {
 		cid := req.URL.Query().Get("cid")

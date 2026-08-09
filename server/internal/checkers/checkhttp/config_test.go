@@ -83,6 +83,151 @@ func TestGetConfig_WritesCamelCase(t *testing.T) {
 	r.NotContains(out, "expected_status_codes")
 }
 
+func TestHTTPConfigVerifySslFollowRedirects_FromMap(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                string
+		input               map[string]any
+		wantVerifySsl       *bool
+		wantFollowRedirects *bool
+		wantErr             bool
+	}{
+		{
+			name:  "absent leaves both nil (default true)",
+			input: map[string]any{"url": "http://example.com"},
+		},
+		{
+			name: "camelCase false",
+			input: map[string]any{
+				"url":             "http://example.com",
+				"verifySsl":       false,
+				"followRedirects": false,
+			},
+			wantVerifySsl:       boolPtr(false),
+			wantFollowRedirects: boolPtr(false),
+		},
+		{
+			name: "camelCase true is still recorded explicitly",
+			input: map[string]any{
+				"url":             "http://example.com",
+				"verifySsl":       true,
+				"followRedirects": true,
+			},
+			wantVerifySsl:       boolPtr(true),
+			wantFollowRedirects: boolPtr(true),
+		},
+		{
+			name: "snake_case read fallback",
+			input: map[string]any{
+				"url":              "http://example.com",
+				"verify_ssl":       false,
+				"follow_redirects": false,
+			},
+			wantVerifySsl:       boolPtr(false),
+			wantFollowRedirects: boolPtr(false),
+		},
+		{
+			name: "camelCase wins over snake_case when both present",
+			input: map[string]any{
+				"url":              "http://example.com",
+				"verifySsl":        true,
+				"verify_ssl":       false,
+				"followRedirects":  true,
+				"follow_redirects": false,
+			},
+			wantVerifySsl:       boolPtr(true),
+			wantFollowRedirects: boolPtr(true),
+		},
+		{
+			name: "non-boolean verifySsl is a config error",
+			input: map[string]any{
+				"url":       "http://example.com",
+				"verifySsl": "no",
+			},
+			wantErr: true,
+		},
+		{
+			name: "non-boolean followRedirects is a config error",
+			input: map[string]any{
+				"url":             "http://example.com",
+				"followRedirects": "no",
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			cfg := &HTTPConfig{}
+			err := cfg.FromMap(tc.input)
+
+			if tc.wantErr {
+				r.Error(err)
+
+				return
+			}
+
+			r.NoError(err)
+			r.Equal(tc.wantVerifySsl, cfg.VerifySsl)
+			r.Equal(tc.wantFollowRedirects, cfg.FollowRedirects)
+		})
+	}
+}
+
+func TestHTTPConfigVerifySslFollowRedirects_GetConfig(t *testing.T) {
+	t.Parallel()
+
+	t.Run("unset omits both keys", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		cfg := &HTTPConfig{URL: "http://example.com"}
+		out := cfg.GetConfig()
+		r.NotContains(out, "verifySsl")
+		r.NotContains(out, "followRedirects")
+	})
+
+	t.Run("explicit true omits both keys (matches the default)", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		verify, follow := true, true
+		cfg := &HTTPConfig{URL: "http://example.com", VerifySsl: &verify, FollowRedirects: &follow}
+		out := cfg.GetConfig()
+		r.NotContains(out, "verifySsl")
+		r.NotContains(out, "followRedirects")
+	})
+
+	t.Run("explicit false emits both keys", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		verify, follow := false, false
+		cfg := &HTTPConfig{URL: "http://example.com", VerifySsl: &verify, FollowRedirects: &follow}
+		out := cfg.GetConfig()
+		r.Equal(false, out["verifySsl"])
+		r.Equal(false, out["followRedirects"])
+	})
+}
+
+func TestHTTPConfigVerifySslFollowRedirects_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	verify, follow := false, false
+	original := &HTTPConfig{URL: "http://example.com", VerifySsl: &verify, FollowRedirects: &follow}
+
+	roundTripped := &HTTPConfig{}
+	r.NoError(roundTripped.FromMap(original.GetConfig()))
+
+	r.True(roundTripped.SkipTLSVerify())
+	r.True(roundTripped.SkipRedirects())
+}
+
 func TestHTTPConfigSecretHeaders_RoundTrip(t *testing.T) {
 	t.Parallel()
 

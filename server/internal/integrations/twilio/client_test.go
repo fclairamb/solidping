@@ -210,3 +210,107 @@ func TestValidateSignature(t *testing.T) {
 	r.False(ValidateSignature(authToken, fullURL, params, ""))
 	r.False(ValidateSignature("wrong-token", fullURL, params, valid))
 }
+
+// TestBaseURLForRegion pins the mapping contract: "" and "us1" both resolve
+// to DefaultBaseURL, and any other (already-validated) region token maps to
+// the api.<region>.twilio.com host.
+func TestBaseURLForRegion(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.Equal(DefaultBaseURL, BaseURLForRegion(""))
+	r.Equal(DefaultBaseURL, BaseURLForRegion("us1"))
+	r.Equal("https://api.ie1.twilio.com", BaseURLForRegion("ie1"))
+	r.Equal("https://api.au1.twilio.com", BaseURLForRegion("au1"))
+	r.Equal("https://api.br2.twilio.com", BaseURLForRegion("br2")) // unknown-but-well-formed: not an allowlist
+}
+
+// TestValidRegion proves the format check is the SSRF guard: any token that
+// isn't strictly [a-z]{2}[0-9]+ is rejected, even though there is no
+// enumerated allowlist of known regions.
+func TestValidRegion(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.True(ValidRegion(""))
+	r.True(ValidRegion("us1"))
+	r.True(ValidRegion("ie1"))
+	r.True(ValidRegion("au1"))
+	r.True(ValidRegion("br2")) // unknown-but-well-formed region must be accepted
+
+	r.False(ValidRegion("evil.com"))
+	r.False(ValidRegion("../x"))
+	r.False(ValidRegion("us1/x"))
+	r.False(ValidRegion("US1")) // uppercase not allowed
+	r.False(ValidRegion("us"))  // no digits
+	r.False(ValidRegion("1us")) // digits first
+	r.False(ValidRegion("us1 "))
+	r.False(ValidRegion(" us1"))
+}
+
+// newAccountFetchServer returns a fake Twilio "Accounts/{sid}.json" endpoint
+// that responds with the given status, and records the request path and
+// basic-auth credentials it received.
+func newAccountFetchServer(t *testing.T, status int) (*capturingServer, *httptest.Server) {
+	t.Helper()
+
+	cs := &capturingServer{status: status}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, pass, _ := r.BasicAuth()
+
+		cs.mu.Lock()
+		cs.path = r.URL.Path
+		cs.authUser = user
+		cs.authPass = pass
+		cs.mu.Unlock()
+
+		w.WriteHeader(cs.status)
+	}))
+	t.Cleanup(srv.Close)
+
+	return cs, srv
+}
+
+func TestVerifyCredentials_Accepted(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cs, srv := newAccountFetchServer(t, http.StatusOK)
+
+	err := VerifyCredentials(t.Context(), "AC00000000000000000000000000000001", "tok-secret", srv.URL)
+	r.NoError(err)
+
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	r.Equal("/2010-04-01/Accounts/AC00000000000000000000000000000001.json", cs.path)
+	r.Equal("AC00000000000000000000000000000001", cs.authUser)
+	r.Equal("tok-secret", cs.authPass)
+}
+
+func TestVerifyCredentials_Rejected(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	_, srv401 := newAccountFetchServer(t, http.StatusUnauthorized)
+	err := VerifyCredentials(t.Context(), "AC00000000000000000000000000000001", "wrong", srv401.URL)
+	r.ErrorIs(err, ErrCredentialsRejected)
+
+	_, srv403 := newAccountFetchServer(t, http.StatusForbidden)
+	err = VerifyCredentials(t.Context(), "AC00000000000000000000000000000001", "wrong", srv403.URL)
+	r.ErrorIs(err, ErrCredentialsRejected)
+}
+
+func TestVerifyCredentials_Unverifiable(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	// Unexpected status (e.g. a 5xx) is "could not verify", not "rejected".
+	_, srv500 := newAccountFetchServer(t, http.StatusInternalServerError)
+	err := VerifyCredentials(t.Context(), "AC00000000000000000000000000000001", "tok", srv500.URL)
+	r.ErrorIs(err, ErrCredentialsUnverifiable)
+	r.NotErrorIs(err, ErrCredentialsRejected)
+
+	// Unreachable host (network error).
+	err = VerifyCredentials(t.Context(), "AC00000000000000000000000000000001", "tok", "http://127.0.0.1:1")
+	r.ErrorIs(err, ErrCredentialsUnverifiable)
+}

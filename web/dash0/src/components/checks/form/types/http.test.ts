@@ -12,6 +12,8 @@ function baseState(overrides: Partial<HttpState> = {}): HttpState {
     username: "",
     password: "",
     secretHeaders: [],
+    verifySsl: true,
+    followRedirects: true,
     authDirty: false,
     headersDirty: false,
     ...overrides,
@@ -126,5 +128,37 @@ describe("httpModule.toConfig — expectedStatusCodes serialization", () => {
       baseState({ expectedStatusCodes: ["200", "4XX", "500"] }),
     );
     expect(errors).toEqual([]);
+  });
+});
+
+describe("httpModule — verifySsl / followRedirects round-trip", () => {
+  it("fromConfig defaults both to true when absent", () => {
+    const state = httpModule.fromConfig({ url: "https://example.com" });
+    expect(state.verifySsl).toBe(true);
+    expect(state.followRedirects).toBe(true);
+  });
+
+  it("fromConfig reads an explicit false", () => {
+    const state = httpModule.fromConfig({
+      url: "https://example.com",
+      verifySsl: false,
+      followRedirects: false,
+    });
+    expect(state.verifySsl).toBe(false);
+    expect(state.followRedirects).toBe(false);
+  });
+
+  it("toConfig omits both keys at the default (true)", () => {
+    const { config } = httpModule.toConfig(baseState());
+    expect(config).not.toHaveProperty("verifySsl");
+    expect(config).not.toHaveProperty("followRedirects");
+  });
+
+  it("toConfig writes false explicitly, never true", () => {
+    const { config } = httpModule.toConfig(
+      baseState({ verifySsl: false, followRedirects: false }),
+    );
+    expect(config.verifySsl).toBe(false);
+    expect(config.followRedirects).toBe(false);
   });
 });

@@ -26,9 +26,49 @@ own runner pool.
 | `api`    | yes | no  | no  |
 | `checks` | no  | yes | no  |
 | `jobs`   | no  | no  | yes |
+| `api,jobs` | yes | no | yes |
+| `api,checks` | yes | yes | no |
+| `checks,jobs` | no | yes | yes |
 
 Splitting roles across processes is optional. A single `all` process is the
 normal deployment.
+
+### Combined roles (`SP_NODE_ROLE=api,jobs`)
+
+`api`, `jobs` and `checks` may be combined in one comma-separated value. Every
+single value (including the unset default, `all`) keeps its exact historic
+behavior — the list form is purely additive.
+
+Validation is strict, on purpose (a typo that quietly stops check execution
+looks exactly like a healthy idle node):
+
+- `all` and `agent` describe the whole process and cannot appear alongside
+  another role — startup aborts with `node role cannot be combined with other
+  roles`.
+- An unknown token, a duplicate, or an empty entry (`api,`, `api,,jobs`) aborts
+  startup with a message naming the offending value.
+- `SP_NODE_REGION` is required as soon as `checks` is a member of the list —
+  the same rule `SP_NODE_ROLE=checks` has always had. `all` still never
+  requires it.
+- The role can also be set through the `node.role` system parameter. That
+  overlay is applied *after* startup validation, so an invalid stored value is
+  refused with a WARN and the validated (env/YAML) role is kept.
+
+The one place this matters today: `hostNetwork: true` is the practical way to
+give check workers IPv6 egress on a single-stack cluster (see below), but the
+node that serves the public dashboard/API should not be moved into the host
+network namespace just to get it. The clean split is:
+
+- main deployment: `SP_NODE_ROLE=api,jobs`, pod-networked, unchanged exposure;
+- one checks-only deployment per region: `SP_NODE_ROLE=checks`,
+  `SP_NODE_REGION=<region>`, `hostNetwork: true`, a fixed `SP_NODE_NAME`, and
+  no liveness/readiness/startup probes (a checks-only node opens no HTTP
+  listener).
+
+A node that stops running checks (role changed from `all` to `api,jobs`, or a
+checks pod scaled down) strands nothing: check-job leases carry
+`lease_expires_at`, so any job still claimed at shutdown is reclaimed by another
+worker once the lease lapses — the same path a crashed worker already takes.
 
 ## Worker identity (`SP_NODE_NAME`)
 

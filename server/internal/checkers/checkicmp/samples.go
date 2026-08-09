@@ -35,6 +35,19 @@ func (c *ICMPChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checke
 			}).GetConfig(),
 		},
 		{
+			// The reason the ipVersion option exists, as a ready-made example:
+			// an IPv4 ping proves nothing about the IPv6 path, so verifying
+			// IPv6 reachability means a check pinned to it.
+			Name:   "Cloudflare DNS over IPv6",
+			Slug:   "icmp-cloudflare-ipv6",
+			Period: time.Minute * 5,
+			Config: checkerdef.SampleConfigWithIPVersion((&ICMPConfig{
+				Host:    "one.one.one.one",
+				Count:   sampleCount,
+				Timeout: sampleTimeout,
+			}).GetConfig(), checkerdef.IPVersionIPv6),
+		},
+		{
 			Name:   "Google DNS Alt (8.8.4.4)",
 			Slug:   "icmp-google-alt",
 			Period: time.Minute * 5,

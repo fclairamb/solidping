@@ -26,6 +26,13 @@ var (
 	ErrCannotDemoteLastAdmin = errors.New("cannot demote the last admin")
 	// ErrInvalidRole is returned when an invalid role is provided.
 	ErrInvalidRole = errors.New("invalid role")
+	// ErrCannotRemoveLastOwner is returned when trying to remove the last owner.
+	ErrCannotRemoveLastOwner = errors.New("cannot remove the last owner from the organization")
+	// ErrCannotDemoteLastOwner is returned when trying to demote the last owner.
+	ErrCannotDemoteLastOwner = errors.New("cannot demote the last owner")
+	// ErrOwnerRoleRequired is returned when a non-owner tries to grant or revoke
+	// the owner role, or to modify/remove a member who is an owner.
+	ErrOwnerRoleRequired = errors.New("only an owner can manage owners")
 )
 
 // Service provides business logic for member management.
@@ -66,6 +73,36 @@ type AddMemberRequest struct {
 // UpdateMemberRequest represents the request to update a member.
 type UpdateMemberRequest struct {
 	Role *string `json:"role,omitempty"`
+}
+
+// Caller identifies the authenticated user performing a member-management
+// operation. Deliberately NOT the caller's JWT role claim: that claim is minted
+// at login and goes stale the moment somebody's role changes, so a just-demoted
+// owner would keep owner powers until their access token expired. The role is
+// re-read from the membership row on every call.
+type Caller struct {
+	UserUID    string
+	SuperAdmin bool
+}
+
+// roleIn resolves the caller's effective role in an organization. Super admins
+// outrank everybody and need no membership row; a caller with no membership has
+// no role at all (rank 0), which satisfies no gate.
+func (s *Service) roleIn(ctx context.Context, caller Caller, orgUID string) models.MemberRole {
+	if caller.SuperAdmin {
+		return models.MemberRoleOwner
+	}
+
+	if caller.UserUID == "" {
+		return ""
+	}
+
+	member, err := s.db.GetMemberByUserAndOrg(ctx, caller.UserUID, orgUID)
+	if err != nil || member == nil {
+		return ""
+	}
+
+	return member.Role
 }
 
 // ListMembers returns all members of an organization.
@@ -151,9 +188,10 @@ func (s *Service) GetMember(ctx context.Context, orgSlug, memberUID string) (*Me
 	}, nil
 }
 
-// AddMember adds a user to an organization by email.
+// AddMember adds a user to an organization by email. Only an owner may mint
+// another owner.
 func (s *Service) AddMember(
-	ctx context.Context, orgSlug string, req AddMemberRequest, inviterUID *string,
+	ctx context.Context, orgSlug string, req AddMemberRequest, inviterUID *string, caller Caller,
 ) (*MemberResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
@@ -166,8 +204,13 @@ func (s *Service) AddMember(
 
 	// Validate role
 	role := models.MemberRole(req.Role)
-	if role != models.MemberRoleAdmin && role != models.MemberRoleUser && role != models.MemberRoleViewer {
+	if !isValidRole(role) {
 		return nil, ErrInvalidRole
+	}
+
+	// Only an owner may create another owner.
+	if role == models.MemberRoleOwner && !s.roleIn(ctx, caller, org.UID).AtLeast(models.MemberRoleOwner) {
+		return nil, ErrOwnerRoleRequired
 	}
 
 	// Find user by email
@@ -214,7 +257,7 @@ func (s *Service) AddMember(
 
 // UpdateMember updates a member's role.
 func (s *Service) UpdateMember(
-	ctx context.Context, orgSlug, memberUID string, req UpdateMemberRequest,
+	ctx context.Context, orgSlug, memberUID string, req UpdateMemberRequest, caller Caller,
 ) (*MemberResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
@@ -244,15 +287,8 @@ func (s *Service) UpdateMember(
 
 	if req.Role != nil {
 		newRole := models.MemberRole(*req.Role)
-		if !isValidRole(newRole) {
-			return nil, ErrInvalidRole
-		}
-
-		// Check if demoting an admin
-		if isDemotingAdmin(member.Role, newRole) {
-			if lastAdminErr := s.checkLastAdmin(ctx, org.UID); lastAdminErr != nil {
-				return nil, lastAdminErr
-			}
+		if roleErr := s.authorizeRoleChange(ctx, caller, org.UID, member.Role, newRole); roleErr != nil {
+			return nil, roleErr
 		}
 
 		update.Role = &newRole
@@ -286,8 +322,47 @@ func (s *Service) UpdateMember(
 	}, nil
 }
 
+// authorizeRoleChange validates a member role change: the role itself, the
+// caller's authority over the owner role, and the two "don't strand the org"
+// guards.
+func (s *Service) authorizeRoleChange(
+	ctx context.Context, caller Caller, orgUID string, currentRole, newRole models.MemberRole,
+) error {
+	if !isValidRole(newRole) {
+		return ErrInvalidRole
+	}
+
+	// Ownership is owner-only in BOTH directions: an admin can neither promote
+	// somebody to owner nor demote (or otherwise touch) an existing owner.
+	// Without the second half, any admin could simply demote the owner and take
+	// the org.
+	if (newRole == models.MemberRoleOwner || currentRole == models.MemberRoleOwner) &&
+		!s.roleIn(ctx, caller, orgUID).AtLeast(models.MemberRoleOwner) {
+		return ErrOwnerRoleRequired
+	}
+
+	// Demoting the last owner. Multiple owners are allowed, which is also the
+	// ownership-transfer path: promote someone to owner, then demote yourself.
+	if isDemotingOwner(currentRole, newRole) {
+		if lastOwnerErr := s.checkLastOwner(ctx, orgUID); lastOwnerErr != nil {
+			return lastOwnerErr
+		}
+	}
+
+	// Demoting the last admin-or-above.
+	if isDemotingAdmin(currentRole, newRole) {
+		if lastAdminErr := s.checkLastAdmin(ctx, orgUID); lastAdminErr != nil {
+			return lastAdminErr
+		}
+	}
+
+	return nil
+}
+
 // RemoveMember removes a member from the organization.
-func (s *Service) RemoveMember(ctx context.Context, orgSlug, memberUID string) error {
+func (s *Service) RemoveMember(
+	ctx context.Context, orgSlug, memberUID string, caller Caller,
+) error {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -311,8 +386,25 @@ func (s *Service) RemoveMember(ctx context.Context, orgSlug, memberUID string) e
 		return ErrMemberNotFound
 	}
 
-	// Check if removing the last admin
-	if member.Role == models.MemberRoleAdmin {
+	// Only an owner may remove an owner — otherwise an admin could evict the
+	// org's owner and take over.
+	if member.Role == models.MemberRoleOwner {
+		if !s.roleIn(ctx, caller, org.UID).AtLeast(models.MemberRoleOwner) {
+			return ErrOwnerRoleRequired
+		}
+
+		ownerCount, countErr := s.db.CountOwnersByOrg(ctx, org.UID)
+		if countErr != nil {
+			return countErr
+		}
+
+		if ownerCount <= 1 {
+			return ErrCannotRemoveLastOwner
+		}
+	}
+
+	// Check if removing the last admin-or-above (owners count as admins).
+	if member.Role.AtLeast(models.MemberRoleAdmin) {
 		adminCount, countErr := s.db.CountAdminsByOrg(ctx, org.UID)
 		if countErr != nil {
 			return countErr
@@ -328,17 +420,22 @@ func (s *Service) RemoveMember(ctx context.Context, orgSlug, memberUID string) e
 
 // isValidRole checks if the given role is valid.
 func isValidRole(role models.MemberRole) bool {
-	return role == models.MemberRoleAdmin ||
-		role == models.MemberRoleUser ||
-		role == models.MemberRoleViewer
+	return role.IsValid()
 }
 
-// isDemotingAdmin returns true if this change would demote an admin.
+// isDemotingAdmin returns true if this change drops the member below the admin
+// tier. Expressed against the hierarchy so owner→admin does NOT count as a
+// demotion (the member still holds admin privileges) while owner→user does.
 func isDemotingAdmin(currentRole, newRole models.MemberRole) bool {
-	return currentRole == models.MemberRoleAdmin && newRole != models.MemberRoleAdmin
+	return currentRole.AtLeast(models.MemberRoleAdmin) && !newRole.AtLeast(models.MemberRoleAdmin)
 }
 
-// checkLastAdmin returns an error if the org has only one admin.
+// isDemotingOwner returns true if this change strips the owner role.
+func isDemotingOwner(currentRole, newRole models.MemberRole) bool {
+	return currentRole == models.MemberRoleOwner && newRole != models.MemberRoleOwner
+}
+
+// checkLastAdmin returns an error if the org has only one admin-or-above.
 func (s *Service) checkLastAdmin(ctx context.Context, orgUID string) error {
 	adminCount, countErr := s.db.CountAdminsByOrg(ctx, orgUID)
 	if countErr != nil {
@@ -347,6 +444,22 @@ func (s *Service) checkLastAdmin(ctx context.Context, orgUID string) error {
 
 	if adminCount <= 1 {
 		return ErrCannotDemoteLastAdmin
+	}
+
+	return nil
+}
+
+// checkLastOwner returns an error if the org has only one owner. An org must
+// never be left ownerless: with no owner nobody could delete it or hand
+// ownership on.
+func (s *Service) checkLastOwner(ctx context.Context, orgUID string) error {
+	ownerCount, countErr := s.db.CountOwnersByOrg(ctx, orgUID)
+	if countErr != nil {
+		return countErr
+	}
+
+	if ownerCount <= 1 {
+		return ErrCannotDemoteLastOwner
 	}
 
 	return nil

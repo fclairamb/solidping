@@ -119,6 +119,15 @@
     "signOutOthersSuccess_other": "Signed out {{count}} other sessions",
     "failedSignOutOthers": "Failed to sign out other sessions"
   },
+  "organizations": {
+    "title": "Organizations",
+    "subtitle": "Organizations you belong to.",
+    "newOrganization": "New organization",
+    "current": "Current",
+    "role": "Role",
+    "switch": "Switch",
+    "switchFailed": "Failed to switch organization"
+  },
   "notifications": {
     "verifyButton": "Verify",
     "verifiedBadge": "Verified",

@@ -526,7 +526,9 @@ func KubernetesPrivateSettingsFromMap(decrypted map[string]any) *KubernetesPriva
 // encrypted in SettingsPrivate under the "auth_token" key (see
 // connectionSecretFields). Exactly one of FromNumber / MessagingServiceSID is
 // set for SMS; VoiceFromNumber (optional) enables voice calls; ToNumbers are
-// shared recipients for direct-channel (registry-path) sends.
+// shared recipients for direct-channel (registry-path) sends. Region is
+// public/non-secret: it picks which Twilio API host requests go to (see
+// twilio.BaseURLForRegion) but carries no credential material itself.
 //
 //nolint:tagliatelle // JSON keys match the Twilio settings wire format (snake_case).
 type TwilioSettings struct {
@@ -536,6 +538,10 @@ type TwilioSettings struct {
 	MessagingServiceSID string   `json:"messaging_service_sid,omitempty"`
 	VoiceFromNumber     string   `json:"voice_from_number,omitempty"`
 	ToNumbers           []string `json:"to_numbers,omitempty"`
+	// Region is the Twilio regional edition this account was provisioned in
+	// ("" or "us1" = the default global/US1 edge, "ie1" = Ireland, "au1" =
+	// Australia, ...). Empty behaves exactly as before this field existed.
+	Region string `json:"region,omitempty"`
 }
 
 // ToJSONMap converts TwilioSettings to JSONMap for storage.

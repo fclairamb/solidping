@@ -171,6 +171,54 @@ SP_SLACK_CLIENT_SECRET=your-client-secret
 1. In your [Slack app](https://api.slack.com/apps), enable OpenID Connect / "Sign in with Slack"
 2. Add redirect URL: `{SP_BASE_URL}/api/v1/auth/slack/callback`
 
+#### Workspace members join their organization automatically
+
+An organization created from a Slack workspace stays linked to that workspace.
+Slack only completes the OAuth exchange for a member of the workspace, so
+SolidPing treats a successful "Sign in with Slack" (or app install) as proof of
+membership: the user joins the linked organization as a regular **user** and
+lands straight in the dashboard, without an admin approving a request first.
+
+The link is matched on the workspace ID Slack returns — never on a workspace
+name or on the organization named in the login URL — so members of one
+workspace can never reach another workspace's organization. Everything else
+still applies: an organization at its member limit, or one whose workspace link
+was removed, falls back to the normal membership-request flow, and the first
+person in an empty organization still becomes its admin.
+
+Single- and multi-channel **guests** of the workspace are admitted as well, as
+Slack does not expose guest status during sign-in.
+
+##### Turning it off
+
+Auto-join can be disabled per organization with the
+`registration.slack_workspace_auto_join` parameter. When it is `false`,
+workspace members need an invitation, a matching `registration.email_pattern`,
+or an approved membership request, exactly as before.
+
+There is **no API or dashboard control for this parameter yet** — a settings-UI
+toggle is a follow-up. Today it is written directly in the database, in the
+organization-scoped `parameters` table (`organization_uid` = the organization's
+`uid`, `key` = `registration.slack_workspace_auto_join`, `value` = the JSON
+object `{"value": false}`):
+
+```sql
+-- PostgreSQL; on SQLite replace gen_random_uuid() with any unique UID string.
+INSERT INTO parameters (uid, organization_uid, key, value)
+VALUES (
+  gen_random_uuid(),
+  (SELECT uid FROM organizations WHERE slug = 'your-org'),
+  'registration.slack_workspace_auto_join',
+  '{"value": false}'
+);
+```
+
+The parameter is read on every Slack sign-in, so the change takes effect
+immediately — no restart. If it holds a value SolidPing cannot read as a
+boolean (`"off"`, `"no"`, …), auto-join is treated as **disabled** and a
+warning naming the organization and the value is logged, so a typo'd switch
+never silently lets people in.
+
 ### Discord
 
 ```bash

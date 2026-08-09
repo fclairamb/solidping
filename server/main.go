@@ -172,7 +172,7 @@ func serve(ctx context.Context, _ *cli.Command) error {
 	// Deported-agent mode (SP_NODE_ROLE=agent, spec 2026-07-16-02): the agent
 	// has no database and runs no migrations — branch BEFORE any DB init. It
 	// enrolls (or reconnects) over WebSocket and runs the check worker loop.
-	if cfg.Node.Role == config.NodeRoleAgent {
+	if cfg.IsAgentMode() {
 		return runAgentMode(ctx, cfg)
 	}
 

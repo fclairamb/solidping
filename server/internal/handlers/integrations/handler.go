@@ -30,7 +30,7 @@ func isAdmin(req *http.Request) bool {
 		return false
 	}
 
-	return claims.Role == "admin" || claims.IsSuperAdmin()
+	return claims.HasOrgRole(models.MemberRoleAdmin)
 }
 
 // requireAdminForSourceType writes a 403 and returns true when connType is a
@@ -329,6 +329,8 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 			"That Microsoft Teams channel is not one this bot has been added to")
 	case errors.Is(err, ErrFreeboxPairingFailed):
 		return h.WriteError(writer, http.StatusBadGateway, base.ErrorCodeInternalError, err.Error())
+	case errors.Is(err, ErrInvalidSettings):
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	default:
 		return h.WriteInternalError(writer, err)
 	}

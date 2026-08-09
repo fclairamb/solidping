@@ -247,6 +247,59 @@ Visitors can subscribe to a status page to be notified of incidents by email:
 
 Each page also publishes an **Atom feed** (`/feed.xml`) of status updates, so users can follow along in a feed reader or pipe updates into other tools.
 
+## Summary endpoint
+
+For integrators who just want "is this service up right now?" without the full page payload, `GET /api/v1/status-pages/{org}/{slug}/summary` returns a lightweight JSON rollup:
+
+```json
+{
+  "status": "operational",
+  "counts": { "operational": 12, "degraded": 1, "down": 0, "maintenance": 0, "unknown": 0 },
+  "page": { "name": "SolidPing", "slug": "main", "url": "https://status.example.com/" },
+  "generatedAt": "2026-08-08T12:00:00Z"
+}
+```
+
+It's public (no authentication), sets `Cache-Control: public, max-age=60`, and computes `status`/`counts` from the exact same server-side rollup as the full page view — so the two can never disagree.
+
+## Badge
+
+`GET /api/v1/status-pages/{org}/{slug}/badge` returns an SVG badge showing the page's overall status — the static, script-free counterpart to the JS embed widget, for places scripts can't run (a GitHub README, a wiki, an email footer):
+
+```markdown
+![Status](https://your-solidping-instance/api/v1/status-pages/default/main/badge)
+```
+
+It's public, sets `Cache-Control: public, max-age=60`, and applies the same visibility gate and rollup as the summary endpoint above, so the badge can never disagree with the status page. Colors follow the rollup status: green (operational), yellow (degraded), red (down), blue (maintenance), gray (unknown). Customize with `label`, `style` (`flat` or `flat-square`), `minWidth`, and `width` query parameters, matching the per-check badges.
+
+## Embeddable Live Widget
+
+`GET /embed/v1/widget.js` serves a small, self-contained script that renders a live status pill on **your own** site — the "⊙ All systems operational" badge that links back to your status page:
+
+```html
+<script async src="https://your-solidping-instance/embed/v1/widget.js" data-page="default/main"></script>
+```
+
+The pill renders where the tag sits, in a shadow root, so your site's CSS can neither break it nor be affected by it. It polls the [summary endpoint](#summary-endpoint) every 60 seconds with an uncredentialed request, and if that request fails — or the page doesn't exist, or is private — it renders **nothing at all**, never an error state on your site.
+
+Customization is entirely by data-attribute:
+
+| Attribute | Values | Default |
+|---|---|---|
+| `data-page` | `org/slug` — required | — |
+| `data-mode` | `inline`, `floating` | `inline` |
+| `data-position` | `bottom-right`, `bottom-left` (floating only) | `bottom-right` |
+| `data-theme` | `light`, `dark`, `auto` (follows `prefers-color-scheme`) | `auto` |
+| `data-size` | `sm`, `md`, `lg` | `md` |
+| `data-label-operational`<br/>`data-label-degraded`<br/>`data-label-down`<br/>`data-label-maintenance`<br/>`data-label-unknown` | any text | built-in English labels |
+| `data-force-status` | `operational`, `degraded`, `down`, `maintenance`, `unknown` | — (normal polling) |
+
+`data-force-status` skips polling entirely and renders that status statically, with no link — mainly useful for previewing the widget (the dashboard's snippet generator uses it) or for a demo/staging page that isn't backed by a real status page yet. An unrecognized value is ignored and normal polling resumes.
+
+Everything under `/embed/v1/` is a **frozen contract**: once you've pasted the snippet it will keep working, and any future behavior change ships under `/embed/v2/` instead. The script is served with `Cache-Control: public, max-age=3600`.
+
+The dashboard generates the snippet for you under **Status Pages → (your page) → Appearance**.
+
 ## Accessing Status Pages
 
 Status pages are served directly by SolidPing at a dedicated URL path, making them easy to embed or link to from your own website. The default page is reachable at the organization root path, and named pages at their slug.

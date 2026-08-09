@@ -81,11 +81,9 @@ func (h *SlackOAuthHandler) Callback(writer http.ResponseWriter, req *http.Reque
 	// Redirect with tokens. Also set the SPA session cookie so
 	// cookie-authenticated surfaces (the embedded MCP OAuth
 	// authorize/consent flow) work without a login-page refresh bounce.
-	redirectURL := h.buildSuccessRedirect(oauthState.RedirectURI, result)
-	setAccessTokenCookie(writer, result.AccessToken, result.ExpiresIn)
-	http.Redirect(writer, req, redirectURL, http.StatusFound)
-
-	return nil
+	return finishProviderCallback(writer, req,
+		h.buildSuccessRedirect(oauthState.RedirectURI, result),
+		result.OrgSlug, result.AccessToken, result.ExpiresIn, result.Pending)
 }
 
 // Exchange trades a single-use install-callback code for the freshly

@@ -229,7 +229,8 @@
         "slug": "authenticated-api",
         "type": "http",
         "config": {
-          "url": "https://secure.example.org"
+          "url": "https://secure.example.org",
+          "verifySsl": false
         },
         "enabled": true,
         "period": "1m"
@@ -309,11 +310,6 @@
       "item": "Broken db",
       "field": "databaseConnectionString",
       "message": "monitor skipped: the connection string is empty"
-    },
-    {
-      "item": "Authenticated API",
-      "field": "ignoreTls",
-      "message": "ignoring TLS errors is not supported — the check verifies certificates"
     },
     {
       "item": "Authenticated API",

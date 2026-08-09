@@ -70,17 +70,24 @@ function getStatusLabelKey(status: string) {
  */
 const NO_TRANSLATE = { translate: "no" } as const;
 
-function getOverallStatus(sections: StatusPageSection[]): string {
-  let hasWarning = false;
-  for (const section of sections) {
-    for (const resource of section.resources ?? []) {
-      const s = resource.check?.status;
-      if (s === "error" || s === "down") return "error";
-      if (s === "warning" || s === "degraded") hasWarning = true;
-    }
+// Hero banner label per page-level overallStatus (spec 2026-08-08-05). The
+// rollup itself — including the maintenance-masks-down rule and honest
+// "unknown" handling — is computed server-side (models.RollupPageStatus);
+// this is purely a display mapping.
+function getOverallStatusLabelKey(overallStatus: string | undefined): string {
+  switch (overallStatus) {
+    case "operational":
+      return "allSystemsOperational";
+    case "degraded":
+      return "someSystemsDegraded";
+    case "down":
+      return "systemOutage";
+    case "maintenance":
+      return "underMaintenance";
+    case "unknown":
+    default:
+      return "statusUnknown";
   }
-  if (hasWarning) return "warning";
-  return "ok";
 }
 
 interface ResourceCardProps {
@@ -228,7 +235,9 @@ export function StatusPageView({
 }) {
   const { t } = useTranslation();
   const sections = page.sections ?? [];
-  const overallStatus = getOverallStatus(sections);
+  // Server-computed (spec 2026-08-08-05); falls back to "unknown" if a
+  // cached/older response ever lacks the field.
+  const overallStatus = page.overallStatus ?? "unknown";
   const { data: versionInfo } = useVersion();
   const feedUrl = `/api/v1/status-pages/${org}/${page.slug}/feed.xml`;
   // Outside preview mode this is just page.customCss; with ?preview=1 the
@@ -279,11 +288,7 @@ export function StatusPageView({
               data-testid="overall-status-badge"
               {...NO_TRANSLATE}
             >
-              {overallStatus === "ok"
-                ? t("allSystemsOperational")
-                : overallStatus === "warning"
-                  ? t("someSystemsDegraded")
-                  : t("systemOutage")}
+              {t(getOverallStatusLabelKey(overallStatus))}
             </Badge>
           </div>
         </div>

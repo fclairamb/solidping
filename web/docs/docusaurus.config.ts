@@ -49,8 +49,7 @@ const config: Config = {
           docItemComponent: "@theme/ApiItem",
           // Docs ARE the site — serve them at the root, not under /docs.
           routeBasePath: "/",
-          editUrl:
-            "https://github.com/fclairamb/solidping/tree/main/web/docs/",
+          editUrl: "https://github.com/fclairamb/solidping/tree/main/web/docs/",
         },
         // Blog stays on www.solidping.io.
         blog: false,
@@ -93,7 +92,19 @@ const config: Config = {
     ],
   ],
 
-  themes: ["docusaurus-theme-openapi-docs", "@docusaurus/theme-mermaid"],
+  themes: [
+    "docusaurus-theme-openapi-docs",
+    "@docusaurus/theme-mermaid",
+    [
+      require.resolve("@easyops-cn/docusaurus-search-local"),
+      {
+        hashed: true, // long-term-cacheable index filenames
+        docsRouteBasePath: "/", // docs are served at the site root (routeBasePath: "/")
+        indexBlog: false, // blog is disabled
+        highlightSearchTermsOnTargetPage: true,
+      } satisfies import("@easyops-cn/docusaurus-search-local").PluginOptions,
+    ],
+  ],
 
   themeConfig: {
     colorMode: {

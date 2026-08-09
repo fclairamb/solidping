@@ -68,7 +68,7 @@ func withFakeVerifyTwilio(t *testing.T, srv *httptest.Server) {
 	t.Helper()
 
 	prev := newTwilioClient
-	newTwilioClient = func(accountSID, authToken string) *twilio.Client {
+	newTwilioClient = func(accountSID, authToken, _ string) *twilio.Client {
 		return twilio.NewClientWithBaseURL(accountSID, authToken, srv.URL)
 	}
 	t.Cleanup(func() { newTwilioClient = prev })
@@ -100,6 +100,41 @@ func TestVerifyContact_NoProvider(t *testing.T) {
 
 	svc, org, user, contact := setupVerifyEnv(t, false) // no twilio integration
 	r.ErrorIs(svc.VerifyContact(ctx, org.Slug, user, contact.UID), ErrNoProvider)
+}
+
+// TestVerifyContact_RegionResolvesRegionalBase proves the phone-verification
+// send resolves the connection's region to the matching Twilio host — the
+// third of the three call sites this spec fixes (the other two are the
+// escalation SMS and voice paths in jobtypes).
+//
+//nolint:paralleltest // mutates the package-level newTwilioClient seam.
+func TestVerifyContact_RegionResolvesRegionalBase(t *testing.T) {
+	r := require.New(t)
+	ctx := context.Background()
+
+	svc, org, user, contact := setupVerifyEnv(t, true)
+
+	channels, err := svc.db.ListChannels(ctx, &models.ListIntegrationsFilter{OrganizationUID: org.UID})
+	r.NoError(err)
+	r.Len(channels, 1)
+	conn := channels[0]
+	conn.Settings["region"] = "au1"
+	r.NoError(svc.db.UpdateChannel(ctx, conn.UID, &models.IntegrationUpdate{Settings: &conn.Settings}))
+
+	srv := fakeTwilioSMS(t)
+
+	var gotBaseURL string
+	prev := newTwilioClient
+	newTwilioClient = func(accountSID, authToken, baseURL string) *twilio.Client {
+		gotBaseURL = baseURL
+
+		return twilio.NewClientWithBaseURL(accountSID, authToken, srv.URL)
+	}
+	t.Cleanup(func() { newTwilioClient = prev })
+
+	r.NoError(svc.VerifyContact(ctx, org.Slug, user, contact.UID))
+	r.Equal("https://api.au1.twilio.com", gotBaseURL,
+		"phone verification must resolve the connection's region, not the default base")
 }
 
 //nolint:paralleltest // mutates the package-level newTwilioClient seam.

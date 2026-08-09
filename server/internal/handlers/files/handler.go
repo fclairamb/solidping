@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -85,7 +86,7 @@ func (h *Handler) GetContent(writer http.ResponseWriter, req *http.Request) erro
 
 	defer func() { _ = body.Close() }()
 
-	return writeFileContent(writer, file.MimeType, file.Name, body)
+	return WriteContent(writer, file.MimeType, file.Name, body)
 }
 
 // Delete handles DELETE /api/v1/orgs/:org/files/:uid.
@@ -143,21 +144,79 @@ func (h *Handler) PublicGet(writer http.ResponseWriter, req *http.Request) error
 
 	defer func() { _ = body.Close() }()
 
-	return writeFileContent(writer, file.MimeType, file.Name, body)
+	return WriteContent(writer, file.MimeType, file.Name, body)
 }
 
-func writeFileContent(writer http.ResponseWriter, mimeType, name string, body io.Reader) error {
+// safeInlineMIME is the allowlist of stored content types that may be served
+// with `Content-Disposition: inline`, i.e. rendered as a top-level document on
+// our own origin.
+//
+// It contains raster images only. `image/svg+xml` is deliberately absent: an
+// SVG is an XML document that can carry <script>, so serving an uploaded one
+// inline is stored XSS on the application's origin — and the MIME type is
+// attacker-supplied (it comes from the multipart part header). SVG still works
+// everywhere it is meant to, because Content-Disposition does not affect
+// subresource loads: an <img src="...svg"> logo renders fine, and scripts
+// inside an SVG referenced by <img> never execute.
+func safeInlineMIME(mimeType string) bool {
+	switch mimeType {
+	case "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp":
+		return true
+	default:
+		return false
+	}
+}
+
+// WriteContent streams a stored file with hardened response headers. Exported
+// so every route that serves user-uploaded bytes (org logos included) shares
+// exactly one set of security headers.
+func WriteContent(writer http.ResponseWriter, mimeType, name string, body io.Reader) error {
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
 	}
 
 	writer.Header().Set("Content-Type", mimeType)
-	writer.Header().Set("Content-Disposition", `inline; filename="`+name+`"`)
+	// nosniff stops a browser from second-guessing the stored type and
+	// executing, say, a .png that is really HTML.
+	writer.Header().Set("X-Content-Type-Options", "nosniff")
+	writer.Header().Set("Content-Disposition",
+		contentDisposition(mimeType)+`; filename="`+sanitizeFilename(name)+`"`)
 	writer.WriteHeader(http.StatusOK)
 
 	_, err := io.Copy(writer, body)
 
 	return err
+}
+
+// contentDisposition returns "inline" only for the safe raster allowlist.
+func contentDisposition(mimeType string) string {
+	base, _, _ := strings.Cut(mimeType, ";")
+	if safeInlineMIME(strings.ToLower(strings.TrimSpace(base))) {
+		return "inline"
+	}
+
+	return "attachment"
+}
+
+// sanitizeFilename strips the characters that would let a stored filename break
+// out of the quoted-string in the Content-Disposition header (or inject a
+// second header line).
+func sanitizeFilename(name string) string {
+	cleaned := strings.Map(func(r rune) rune {
+		switch {
+		case r == '"', r == '\\', r == '\r', r == '\n', r < 0x20, r == 0x7f:
+			return -1
+		default:
+			return r
+		}
+	}, name)
+
+	cleaned = strings.TrimSpace(cleaned)
+	if cleaned == "" {
+		return "download"
+	}
+
+	return cleaned
 }
 
 func (h *Handler) handleError(writer http.ResponseWriter, err error) error {

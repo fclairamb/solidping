@@ -29,9 +29,27 @@ import (
 
 // System parameter keys driving auth + behavior.
 const (
-	ParamServiceToken       = "entitlements.service_token"
-	ParamAdminWritesEnabled = "entitlements.admin_writes_enabled"
-	ParamUpgradeURLTemplate = "entitlements.upgrade_url_template"
+	// ParamServiceToken is the LEGACY static bearer the billing service used
+	// to authenticate the entitlements push. Superseded by
+	// ParamServiceSigningKeys; still accepted while
+	// ParamAllowLegacyServiceToken is true (its default).
+	ParamServiceToken = "entitlements.service_token"
+	// ParamServiceSigningKeys holds the ordered {id, secret} set (newest
+	// first, JSON array) used to VERIFY signed requests coming from the
+	// billing service — the mirror of its BILLING_SIGNING_KEYS_OUTBOUND.
+	ParamServiceSigningKeys = "entitlements.service_signing_keys"
+	// ParamOutboundSigningKeys holds the ordered {id, secret} set used to
+	// SIGN our own calls to the billing service's /api/v1/* endpoints — the
+	// mirror of its BILLING_SIGNING_KEYS_INBOUND. A separate set per
+	// direction, so a leak of one cannot forge the other.
+	ParamOutboundSigningKeys = "entitlements.outbound_signing_keys"
+	// ParamAllowLegacyServiceToken gates acceptance of ParamServiceToken.
+	// Defaults to true: it must stay on until the billing service has
+	// stopped sending the static bearer, and turning it off is a parameter
+	// flip, not a deploy.
+	ParamAllowLegacyServiceToken = "entitlements.allow_legacy_service_token"
+	ParamAdminWritesEnabled      = "entitlements.admin_writes_enabled"
+	ParamUpgradeURLTemplate      = "entitlements.upgrade_url_template"
 	// ParamBillingInboundSecret is the shared HS256 secret used to sign the
 	// billing upgrade token appended to the upgrade URL. Set to the same
 	// value as the billing service's BILLING_INBOUND_SECRET.
@@ -66,18 +84,40 @@ type principal struct {
 	isAdmin   bool
 }
 
-// authorize accepts either a valid service token (preferred for SaaS) or
-// an admin user JWT (gated by entitlements.admin_writes_enabled, default
-// true in self-hosted, false in SaaS). Read-only endpoints accept any
-// authenticated org member.
+// authorize accepts a trusted service caller (preferred for SaaS) or an admin
+// user JWT (gated by entitlements.admin_writes_enabled, default true in
+// self-hosted, false in SaaS). Read-only endpoints accept any authenticated
+// org member.
+//
+// A service caller is recognized in two ways, in order:
+//
+//  1. middleware.ServiceSignature already verified an X-SP-Signature over this
+//     request — the supported path.
+//  2. LEGACY: the raw bearer matches entitlements.service_token, and
+//     entitlements.allow_legacy_service_token is still on. This duplicate of
+//     the middleware check exists because the handler is also mounted without
+//     the middleware in tests; it honors the same flag so the flag cannot be
+//     bypassed by going through the handler.
 func (h *Handler) authorize(req *http.Request, requireWrite bool) (*principal, error) {
-	authHeader := req.Header.Get("Authorization")
-	token := extractBearerToken(authHeader)
+	if middleware.IsServiceAuthorized(req.Context()) {
+		return &principal{actor: "service:entitlements", isService: true}, nil
+	}
 
-	if token != "" {
+	if token := extractBearerToken(req.Header.Get("Authorization")); token != "" {
 		expected, err := h.serviceToken(req.Context())
 		if err == nil && expected != "" && constantTimeMatch(token, expected) {
-			return &principal{actor: "service:entitlements", isService: true}, nil
+			if h.legacyServiceTokenAllowed(req.Context()) {
+				slog.WarnContext(req.Context(),
+					"DEPRECATED: entitlements request authorized by the static service token; "+
+						"the caller should sign it instead (X-SP-Signature)",
+					"path", req.URL.Path, "method", req.Method)
+
+				return &principal{actor: "service:entitlements", isService: true}, nil
+			}
+
+			slog.WarnContext(req.Context(),
+				"legacy entitlements service token presented but disabled",
+				"path", req.URL.Path, "param", ParamAllowLegacyServiceToken)
 		}
 	}
 
@@ -87,7 +127,7 @@ func (h *Handler) authorize(req *http.Request, requireWrite bool) (*principal, e
 	}
 
 	claims, _ := middleware.GetClaimsFromContext(req.Context())
-	isAdmin := claims != nil && (claims.Role == "admin" || claims.Role == "superadmin")
+	isAdmin := claims.HasOrgRole(models.MemberRoleAdmin)
 
 	if requireWrite {
 		writesEnabled, _ := h.adminWritesEnabled(req.Context())
@@ -364,26 +404,43 @@ func (h *Handler) serviceToken(ctx context.Context) (string, error) {
 }
 
 func (h *Handler) adminWritesEnabled(ctx context.Context) (bool, error) {
-	param, err := h.db.GetSystemParameter(ctx, ParamAdminWritesEnabled)
+	// Default true (self-hosted) when unset or unparsable — better to allow
+	// admin writes than to silently lock an operator out.
+	return h.boolParam(ctx, ParamAdminWritesEnabled, true)
+}
+
+// legacyServiceTokenAllowed reports whether the deprecated static bearer is
+// still accepted. Defaults to TRUE when unset: the billing service keeps
+// sending it until the cross-repo migration completes, and flipping this off
+// early breaks every entitlements push.
+func (h *Handler) legacyServiceTokenAllowed(ctx context.Context) bool {
+	allowed, _ := h.boolParam(ctx, ParamAllowLegacyServiceToken, true)
+
+	return allowed
+}
+
+// boolParam reads a boolean system parameter, accepting both a JSON bool and a
+// stringly-typed "true"/"false" (both shapes occur depending on how the value
+// was seeded), and falling back to def when absent or unparsable.
+func (h *Handler) boolParam(ctx context.Context, key string, def bool) (bool, error) {
+	param, err := h.db.GetSystemParameter(ctx, key)
 	if err != nil || param == nil {
-		// Default true (self-hosted) when unset.
-		return true, err
+		return def, err
 	}
 
-	if value, ok := param.Value["value"].(bool); ok {
+	switch value := param.Value["value"].(type) {
+	case bool:
 		return value, nil
-	}
-	if value, ok := param.Value["value"].(string); ok {
+	case string:
 		parsed, parseErr := strconv.ParseBool(value)
 		if parseErr != nil {
-			// Treat unparsable string as "default true" — better to allow
-			// admin writes than to silently lock them out.
-			return true, nil //nolint:nilerr // documented fallback
+			return def, nil //nolint:nilerr // documented fallback
 		}
-		return parsed, nil
-	}
 
-	return true, nil
+		return parsed, nil
+	default:
+		return def, nil
+	}
 }
 
 func (h *Handler) upgradeURL(ctx context.Context, orgSlug string) (string, error) {

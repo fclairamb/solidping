@@ -180,6 +180,10 @@ func TestBetterStackConverterMapsMonitorTypes(t *testing.T) {
 	r.Equal([]any{"200", "201"}, api.Config["expected_status_codes"])
 	r.Equal("POST", api.Config["method"])
 	r.Equal(`{"probe":true}`, api.Config["body"])
+	r.Equal(false, api.Config["verifySsl"], "verify_ssl: false maps to verifySsl: false")
+	r.Equal(false, api.Config["followRedirects"], "follow_redirects: false maps to followRedirects: false")
+	r.NotContains(main.Config, "verifySsl", "verify_ssl: true is the default and is not emitted")
+	r.NotContains(main.Config, "followRedirects", "follow_redirects: true is the default and is not emitted")
 
 	shop := checkBySlug(t, doc, "shop-keyword")
 	r.False(shop.Enabled, "paused monitors import disabled")
@@ -210,8 +214,6 @@ func TestBetterStackConverterMapsMonitorTypes(t *testing.T) {
 	r.True(warningMentions(result.Warnings, `type "playwright"`))
 	r.True(warningMentions(result.Warnings, "basic-auth credentials were deliberately not imported"))
 	r.True(warningMentions(result.Warnings, "monitor groups are not imported"))
-	r.True(warningMentions(result.Warnings, "skipping TLS verification"))
-	r.True(warningMentions(result.Warnings, "redirect handling"))
 	r.True(warningMentions(result.Warnings, "certificate expiry"))
 	r.True(warningMentions(result.Warnings, "domain expiry"))
 }
@@ -347,4 +349,45 @@ func TestBetterStackConverterHonorsRequestBaseURL(t *testing.T) {
 	result, err := conv.Convert(betterStackBody(t, srv.URL))
 	r.NoError(err)
 	r.NotEmpty(result.Document.Checks)
+}
+
+// TestBetterStackIPVersionMapping covers the one place SolidPing knowingly
+// diverges from Better Stack. Their `ip_version` is ipv4 / ipv6 / null, where
+// NULL MEANS BOTH FAMILIES; ours pins one family per check. Mapping null onto
+// `auto` silently would halve the coverage of every monitor that relied on the
+// default, so the importer must say so out loud.
+func TestBetterStackIPVersionMapping(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	srv := newBetterStackServer(t)
+	conv := importers.NewBetterStackConverter(importers.BetterStackOptions{BaseURL: srv.URL})
+
+	result, err := conv.Convert(betterStackBody(t, ""))
+	r.NoError(err)
+
+	doc := result.Document
+
+	// An explicitly pinned family is carried across, on the canonical key.
+	r.Equal("ipv6", checkBySlug(t, doc, "ipv6-only-tcp").Config["ipVersion"])
+	r.Equal("ipv4", checkBySlug(t, doc, "ipv4-pinned-ping").Config["ipVersion"])
+
+	// A monitor that left it unset is imported as auto — no key at all, so the
+	// stored config is exactly what an untouched check would carry.
+	tcpDefault := checkBySlug(t, doc, "postgres-port")
+	_, pinned := tcpDefault.Config["ipVersion"]
+	r.False(pinned, "an unset Better Stack ip_version must not write a pinned family")
+
+	// ...but it is reported, naming what the value means on each side and what
+	// to do about it. This is the anti-silent-mismap assertion.
+	r.True(warningMentions(result.Warnings, "left Better Stack's ip_version unset"))
+	r.True(warningMentions(result.Warnings, "monitor over both IPv4 and IPv6"))
+	r.True(warningMentions(result.Warnings, "Create a second check with ipVersion: ipv6"))
+
+	// A family pinned on a type SolidPing cannot pin (dns is scoped out) is its
+	// own warning rather than a silently dropped setting or an invalid config.
+	dnsPinned := checkBySlug(t, doc, "dns-pinned-v6")
+	_, dnsHasKey := dnsPinned.Config["ipVersion"]
+	r.False(dnsHasKey, "an unsupported pin must not be written into the config")
+	r.True(warningMentions(result.Warnings, `SolidPing "dns" checks cannot be pinned`))
 }

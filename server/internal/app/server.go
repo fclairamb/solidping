@@ -77,6 +77,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
 	"github.com/fclairamb/solidping/server/internal/handlers/members"
 	"github.com/fclairamb/solidping/server/internal/handlers/oncallschedules"
+	"github.com/fclairamb/solidping/server/internal/handlers/orglogo"
 	"github.com/fclairamb/solidping/server/internal/handlers/publicconfig"
 	"github.com/fclairamb/solidping/server/internal/handlers/realtimews"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
@@ -132,6 +133,10 @@ const (
 	contentTypePNG  = "image/png"
 	contentTypeICO  = "image/x-icon"
 )
+
+// dbTypeSQLiteMemory is the config value selecting the ephemeral in-memory
+// SQLite backend — the database every server-level test runs against.
+const dbTypeSQLiteMemory = "sqlite-memory"
 
 // ErrUnsupportedDatabaseType is returned when an unsupported database type is specified.
 var ErrUnsupportedDatabaseType = errors.New("unsupported database type")
@@ -231,7 +236,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create SQLite service: %w", err)
 		}
-	case "sqlite-memory":
+	case dbTypeSQLiteMemory:
 		dbService, err = sqlite.New(ctx, sqlite.Config{
 			InMemory: true,
 			LogSQL:   cfg.Database.LogSQL,
@@ -352,7 +357,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	svcList.Entitlements = entitlementsService
 
 	// Create auth service. The entitlements service gates SSO membership
-	// caps inside ensureMembership (every OAuth callback) and inside
+	// caps inside JoinOrgViaLogin (every OAuth/SAML/LDAP callback) and inside
 	// autoJoinMatchingOrgs.
 	authService := auth.NewService(dbService, cfg.Auth, cfg, jobService, entitlementsService)
 
@@ -415,6 +420,26 @@ func (s *Server) registerSubsystemMetrics(reg prometheus.Registerer) {
 	prommetrics.RegisterSubsystems(reg, sizes)
 }
 
+// deviceConsentRequestsPerMinute is the per-caller allowance for the RFC 8628
+// consent endpoints. A human approving a device login makes a handful of
+// requests; anything beyond this is someone walking the user-code space.
+const deviceConsentRequestsPerMinute = 20
+
+// deviceConsentRateLimitConfig derives a much stricter limiter config from the
+// server's own, keeping deployment-specific knobs (trusted proxy hops, token
+// bucket keying) while collapsing the allowance. RateQueue is left at zero so
+// an over-eager caller is rejected outright rather than parked in a waiting
+// room, and the concurrency limiter is disabled (the global one already
+// applies).
+func deviceConsentRateLimitConfig(base config.RateLimitConfig) config.RateLimitConfig {
+	return config.RateLimitConfig{
+		RequestsPerMinute: deviceConsentRequestsPerMinute,
+		Burst:             deviceConsentRequestsPerMinute / 2,
+		TrustedProxies:    base.TrustedProxies,
+		TokenBucketsPerIP: base.TokenBucketsPerIP,
+	}
+}
+
 // SetupRoutes builds the HTTP router and registers every handler. It must
 // be called after InitializeSystemConfig so handlers see the post-overlay
 // config (e.g. PasskeyService deriving its RP ID from cfg.Server.BaseURL,
@@ -473,6 +498,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	rootAuth.POST("/passkeys/login/begin", passkeyHandler.LoginBegin)
 	rootAuth.POST("/passkeys/login/finish", passkeyHandler.LoginFinish)
 
+	// OAuth 2.0 Device Authorization Grant, RFC 8628 (spec 2026-08-08-02).
+	// Both endpoints below are public: opening a request grants nothing until
+	// a logged-in human approves it, and the token endpoint is guarded by the
+	// device_code's 32 bytes of entropy plus its own slow_down interval — a
+	// legitimate client polls it every few seconds for the request's TTL, so a
+	// stricter per-IP limit would break the flow rather than protect it.
+	rootAuth.POST("/device", authHandler.StartDeviceAuthorization)
+	rootAuth.POST("/device/token", authHandler.PollDeviceToken)
+
 	// Root-level auth routes (protected, authentication required)
 	rootAuthProtected := rootAuth.Use(authMiddleware.RequireAuth)
 	rootAuthProtected.POST("/logout", authHandler.Logout)
@@ -495,6 +529,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	rootAuthProtected.GET("/passkeys", passkeyHandler.List)
 	rootAuthProtected.PATCH("/passkeys/:uid", passkeyHandler.Rename)
 	rootAuthProtected.DELETE("/passkeys/:uid", passkeyHandler.Delete)
+	// Device-authorization consent (RFC 8628 §3.3). Unlike the two public
+	// device endpoints, these are keyed by the SHORT user code — the
+	// brute-forceable surface — so they get a dedicated, much stricter
+	// instance of the same rate-limit middleware on top of the global one.
+	deviceConsentLimiter := middleware.NewRateLimiter(deviceConsentRateLimitConfig(s.config.Server.RateLimiting), ctx)
+	deviceConsent := rootAuthProtected.Use(deviceConsentLimiter.RateLimit)
+	deviceConsent.GET("/device/consent", authHandler.GetDeviceConsent)
+	deviceConsent.POST("/device/consent", authHandler.RespondToDeviceConsent)
+
 	rootAuthProtected.POST("/membership-requests", authHandler.CreateMembershipRequestHandler)
 	rootAuthProtected.GET("/membership-requests", authHandler.ListOwnMembershipRequestsHandler)
 	rootAuthProtected.DELETE("/membership-requests/:uid", authHandler.CancelMembershipRequestHandler)
@@ -512,13 +555,50 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// subscribe) are registered directly on `api` and deliberately do NOT go
 	// through here; the service-token entitlements group keeps its own
 	// ServiceTokenBypass -> RequireAuth -> RequireOrgAccess chain.
+	//
+	// orgSlugRedirect runs FIRST in the chain: a request to an organization's
+	// previous slug (after a rename) is answered with a permanent redirect to
+	// the current slug before the token-scope check in AuthorizeOrgAccess can
+	// turn it into a 403 (spec 2026-08-08-12).
+	//
+	// A handful of /orgs/:org/* groups cannot use this helper because they need
+	// an extra gate (RequireOrgAdmin) or a different auth chain entirely (the
+	// entitlements service-signature chain). Those MUST still list
+	// orgSlugRedirect.Middleware first in their own Use(...) — forgetting it is
+	// invisible in review and only ever breaks API/CLI clients holding an old
+	// slug, since dash0's own SPA redirect masks it. That is not left to
+	// discipline: TestEveryOrgScopedAPIRouteRedirectsOnAPreviousSlug walks the
+	// real route table and fails on any org-scoped route that does not redirect
+	// (the realtime WS is the single documented exception).
+	orgSlugRedirect := middleware.NewOrgSlugRedirect(s.dbService)
 	orgGroup := func(path string) *httpx.Group {
-		return api.NewGroup(path).Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+		return api.NewGroup(path).
+			Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
 	}
 
-	// Org creation (protected)
+	// publicOrgAPI carries the previous-slug redirect for the intentionally
+	// public /orgs/:org/... and /status-pages/:org/... routes, which bypass
+	// orgGroup by design. These are exactly the URLs customers paste into
+	// their own sites (status pages, SVG badges, the /embed/v1 widget's
+	// summary endpoint), so they are the ones a rename must not break.
+	publicOrgAPI := api.Use(orgSlugRedirect.Middleware)
+
+	// Org creation (protected). Any authenticated user may create an org; the
+	// creator becomes its owner (spec 2026-08-08-11).
 	orgsGroup := api.NewGroup("/orgs").Use(authMiddleware.RequireAuth)
 	orgsGroup.POST("", authHandler.CreateOrg)
+
+	// Org deletion — owner only, enforced server-side by RequireOrgOwner (an
+	// admin is refused with the standard 403 shape, not merely denied the
+	// button in the dashboard).
+	orgOwnerGroup := api.NewGroup("/orgs/:org").
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgOwner)
+	orgOwnerGroup.DELETE("", authHandler.DeleteOrg)
+
+	// Org profile (name / slug / logo) — owner only, same rationale as delete:
+	// renaming the slug moves every URL of the organization (spec 2026-08-08-12).
+	orgOwnerGroup.PATCH("", authHandler.UpdateOrgProfile)
 
 	// Org-scoped token management (protected)
 	orgTokens := orgGroup("/orgs/:org/tokens")
@@ -637,6 +717,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	s.mcpHandler = mcp.NewHandler(
 		s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService,
 		s.services.Credentials, s.services.Entitlements, s.services.Realtime,
+		s.config,
 	)
 	mcpGroup := api.NewGroup("/mcp")
 	// GET is deliberately outside RequireMCPAuth: a browser opening the
@@ -667,7 +748,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Job routes (auth required for org-scoped routes)
 	jobHandler := jobs.NewHandler(s.jobSvc)
-	orgJobsGroup := api.NewGroup("/orgs/:org/jobs").Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	orgJobsGroup := api.NewGroup("/orgs/:org/jobs").
+		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
 	orgJobsGroup.POST("", jobHandler.CreateJob)
 	orgJobsGroup.GET("", jobHandler.ListJobs)
 	orgJobsGroup.GET("/:uid", jobHandler.GetJob)
@@ -682,7 +764,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	jobsAdminHandler := jobsadmin.NewHandler(jobsAdminSvc, s.config)
 
 	orgJobsAdmin := api.NewGroup("/orgs/:org").
-		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
 	orgJobsAdmin.GET("/jobs/stats", checkJobsHandler.Stats)
 	orgJobsAdmin.GET("/admin/jobs", jobsAdminHandler.ListOrgJobs)
 	orgJobsAdmin.GET("/admin/jobs/:uid", jobsAdminHandler.GetOrgJob)
@@ -724,7 +807,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// see specs/todos/2026-06-20-05-config-as-code.md). Apply is the reconcile
 	// sibling of import with dry-run/prune/deletion-cap guardrails.
 	orgChecksAdmin := api.NewGroup("/orgs/:org/checks").
-		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
 	orgChecksAdmin.GET("/export", checksHandler.ExportChecks)
 	orgChecksAdmin.POST("/import", checksHandler.ImportChecks)
 	orgChecksAdmin.POST("/apply", checksHandler.ApplyChecks)
@@ -750,7 +834,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.dbService.DB(), s.dbService, checksService, s.jobSvc, s.services.Credentials,
 	)
 	discoveryHandler := discovery.NewHandler(discoverySvc, s.config)
-	orgDiscovery := api.NewGroup("/orgs/:org/discovery").Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	orgDiscovery := api.NewGroup("/orgs/:org/discovery").
+		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
 	discoveryHandler.RegisterRoutes(orgDiscovery)
 
 	// Label autocomplete routes
@@ -815,13 +900,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Badge routes (public, no authentication required)
 	badgesService := badges.NewService(s.dbService, s.config)
 	badgesHandler := badges.NewHandler(badgesService, s.config)
-	api.GET("/orgs/:org/checks/:check/badges/:components", badgesHandler.GetBadge)
+	publicOrgAPI.GET("/orgs/:org/checks/:check/badges/:components", badgesHandler.GetBadge)
 
 	// Heartbeat ingestion routes (public, token-based auth)
 	heartbeatService := heartbeat.NewService(s.dbService, s.jobSvc, s.services.Realtime)
 	heartbeatHandler := heartbeat.NewHandler(heartbeatService, s.config)
-	api.POST("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
-	api.GET("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
+	publicOrgAPI.POST("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
+	publicOrgAPI.GET("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
 
 	// The HTTP edge-worker API (/workers/{register,heartbeat,claim-jobs,
 	// submit-result}) was removed with spec 2026-07-16-02: it had no production
@@ -838,7 +923,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	agentsAdminSvc := agentsadmin.NewService(s.dbService, s.services.Credentials, s.services.Entitlements)
 	agentsAdminHandler := agentsadmin.NewHandler(agentsAdminSvc, s.config)
 	orgAgentsAdmin := api.NewGroup("/orgs/:org").
-		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
 	orgAgentsAdmin.GET("/private-regions", agentsAdminHandler.ListPrivateRegions)
 	orgAgentsAdmin.POST("/private-regions", agentsAdminHandler.CreatePrivateRegion)
 	orgAgentsAdmin.DELETE("/private-regions/:slug", agentsAdminHandler.DeletePrivateRegion)
@@ -903,7 +989,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Magic-link ack — public route (the signed token authenticates).
 	// Returns text/html so it renders in a browser opened from a mail client.
-	api.GET("/orgs/:org/incidents/:uid/ack", incidentsHandler.AcknowledgeIncidentByLink)
+	publicOrgAPI.GET("/orgs/:org/incidents/:uid/ack", incidentsHandler.AcknowledgeIncidentByLink)
 
 	// Per-recipient email unsubscribe (spec 2026-07-05-10, D4) — public,
 	// top-level routes (not under /api/v1: these are browser pages and a
@@ -1028,21 +1114,44 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	pubFiles := mainGroup.NewGroup("/pub/files")
 	pubFiles.GET("/:uid", filesHandler.PublicGet)
 
+	// Organization logo (spec 2026-08-08-12). Upload/clear are owner-gated; the
+	// public route is unsigned on purpose — a logo URL has to be stable enough
+	// to paste into a status page — and is authorized by state instead: the
+	// file must be the CURRENT logo of a live organization.
+	orgLogoService := orglogo.NewService(s.dbService, filesService)
+	orgLogoHandler := orglogo.NewHandler(orgLogoService, s.config)
+	orgOwnerGroup.POST("/logo", orgLogoHandler.Upload)
+	orgOwnerGroup.DELETE("/logo", orgLogoHandler.Delete)
+	pubOrgLogos := mainGroup.NewGroup("/pub/org-logos")
+	pubOrgLogos.GET("/:uid", orgLogoHandler.PublicGet)
+
 	// Bug report (public POST under /api/mgmt) and features endpoint (auth)
 	feedbackService := feedback.NewService(s.dbService, filesService, s.config, nil)
 	feedbackHandler := feedback.NewHandler(feedbackService, s.authService, s.config)
 	featuresHandler := features.NewHandler(s.config)
 	api.NewGroup("/features").Use(authMiddleware.RequireAuth).GET("", featuresHandler.GetFeatures)
 
-	// Members routes (authentication required)
+	// Members routes (authentication required).
+	//
+	// Reads stay open to any member of the org — the escalation-policy editor
+	// and the member picker read this list as a plain user.
+	//
+	// Writes are admin-only (spec 2026-08-09-03). `members.Service`
+	// additionally requires *owner* to touch an owner or to grant ownership
+	// (spec 2026-08-08-11); this gate is the floor beneath that, not a
+	// replacement for it.
 	membersService := members.NewService(s.dbService)
 	membersHandler := members.NewHandler(membersService, s.config)
 	orgMembers := orgGroup("/orgs/:org/members")
 	orgMembers.GET("", membersHandler.ListMembers)
-	orgMembers.POST("", membersHandler.AddMember)
 	orgMembers.GET("/:uid", membersHandler.GetMember)
-	orgMembers.PATCH("/:uid", membersHandler.UpdateMember)
-	orgMembers.DELETE("/:uid", membersHandler.RemoveMember)
+
+	orgMembersAdmin := api.NewGroup("/orgs/:org/members").
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+	orgMembersAdmin.POST("", membersHandler.AddMember)
+	orgMembersAdmin.PATCH("/:uid", membersHandler.UpdateMember)
+	orgMembersAdmin.DELETE("/:uid", membersHandler.RemoveMember)
 
 	// System parameters routes (super admin only)
 	systemService := system.NewService(s.dbService)
@@ -1088,15 +1197,24 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	systemActions.GET("/agents", agentsAdminHandler.ListAllAgents)
 
 	// Org entitlements routes. The handler does its own auth gating
-	// (service token preferred for SaaS billing service; admin user
-	// fallback gated by entitlements.admin_writes_enabled). The billing
-	// service authenticates with the entitlements.service_token shared
-	// secret (not a JWT). ServiceTokenBypass marks a matching request as a
-	// trusted service so the following RequireAuth + RequireOrgAccess become
-	// no-ops (cross-org writes); every other caller authenticates normally.
+	// (trusted service preferred for the SaaS billing service; admin user
+	// fallback gated by entitlements.admin_writes_enabled).
+	//
+	// The billing service proves identity by SIGNING the request
+	// (X-SP-Signature over <timestamp>.<method>.<path>.<sha256 body>, keys in
+	// entitlements.service_signing_keys) — ServiceSignature verifies it.
+	// ServiceTokenBypass stays behind it for the legacy static bearer, gated
+	// by entitlements.allow_legacy_service_token (default true) so the
+	// cross-repo migration is a parameter flip rather than a lockstep restart.
+	// Either one marks the request as a trusted service, so the following
+	// RequireAuth + RequireOrgAccess become no-ops (cross-org writes); every
+	// other caller authenticates normally.
 	entitlementsHandler := entitlements.NewHandler(s.services.Entitlements, s.dbService, s.config)
 	orgEntitlements := api.NewGroup("/orgs/:org/entitlements").
-		Use(authMiddleware.ServiceTokenBypass(entitlements.ParamServiceToken)).
+		Use(orgSlugRedirect.Middleware).
+		Use(authMiddleware.ServiceSignature(entitlements.ParamServiceSigningKeys)).
+		Use(authMiddleware.ServiceTokenBypass(
+			entitlements.ParamServiceToken, entitlements.ParamAllowLegacyServiceToken)).
 		Use(authMiddleware.RequireAuth).
 		Use(authMiddleware.RequireOrgAccess)
 	orgEntitlements.GET("", entitlementsHandler.Get)
@@ -1222,10 +1340,18 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgMW.PUT("/:uid/checks", mwHandler.SetChecks)
 
 	// Public status page endpoints (no authentication)
-	api.GET("/status-pages/:org", statusPagesHandler.ViewDefaultStatusPage)
-	api.GET("/status-pages/:org/:slug", statusPagesHandler.ViewStatusPage)
+	publicOrgAPI.GET("/status-pages/:org", statusPagesHandler.ViewDefaultStatusPage)
+	publicOrgAPI.GET("/status-pages/:org/:slug", statusPagesHandler.ViewStatusPage)
+	// Lightweight "is it up?" rollup — cheap alternative to the full page view
+	// above, with a Cache-Control header the full view doesn't set (spec
+	// 2026-08-08-06).
+	publicOrgAPI.GET("/status-pages/:org/:slug/summary", statusPagesHandler.ViewStatusPageSummary)
+	// Public SVG badge (page-level rollup) — same sibling as the per-check
+	// badge under /orgs/:org/checks/:check/badges/:components (spec
+	// 2026-08-08-07).
+	publicOrgAPI.GET("/status-pages/:org/:slug/badge", statusPagesHandler.GetBadge)
 	// Public Atom/RSS feed of the status-update timeline.
-	api.GET("/status-pages/:org/:slug/feed.xml", statusSubscribersHandler.Feed)
+	publicOrgAPI.GET("/status-pages/:org/:slug/feed.xml", statusSubscribersHandler.Feed)
 
 	// Edge-TLS "ask" endpoint (public, no auth): 204 when the queried domain is a
 	// verified+enabled+public custom domain, 404 otherwise. Contract for Caddy
@@ -1236,7 +1362,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// subscribe endpoint inherits the global per-IP rate limit on /api/v1/;
 	// double opt-in is the primary anti-abuse control. Confirm/unsubscribe are
 	// single-purpose token links that render an HTML landing page.
-	api.POST("/orgs/:org/status-pages/:statusPageUid/subscribers", statusSubscribersHandler.Subscribe)
+	publicOrgAPI.POST("/orgs/:org/status-pages/:statusPageUid/subscribers", statusSubscribersHandler.Subscribe)
 	publicSubscribers := api.NewGroup("/public/status-subscribers")
 	publicSubscribers.GET("/confirm", statusSubscribersHandler.Confirm)
 	publicSubscribers.GET("/unsubscribe", statusSubscribersHandler.Unsubscribe)
@@ -1318,7 +1444,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// context, and the code it mints is the only thing that can bind a
 	// Microsoft 365 tenant to this org.
 	msTeamsOrgIntegrationRoutes := api.NewGroup("/orgs/:org/integrations/msteams").
-		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
 	msTeamsOrgIntegrationRoutes.POST("/link-code", msTeamsHandler.StartLink)
 	msTeamsOrgIntegrationRoutes.GET("/status", msTeamsHandler.GetStatus)
 	msTeamsOrgIntegrationRoutes.GET("/manifest.zip", msTeamsHandler.DownloadManifest)
@@ -1329,7 +1455,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// again here without landing the user in — or joining them to — that
 	// other org.
 	slackOrgIntegrationRoutes := api.NewGroup("/orgs/:org/integrations/slack").
-		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
 	slackOrgIntegrationRoutes.POST("/install-url", slackHandler.BuildInstallURLForOrg)
 
 	// Incident events (authentication required)
@@ -1417,6 +1543,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Dash0 status page (served at /dash0/)
 	mainGroup.GET("/dash0", s.serveDash0Root)
 	mainGroup.GET("/dash0/*path", s.serveDash0Root)
+
+	// Embeddable status widget (spec 2026-08-08-08). Frozen public contract:
+	// customers paste this URL into their own sites, so it must keep working
+	// forever — new behavior goes to /embed/v2/widget.js, never here.
+	mainGroup.GET("/embed/v1/widget.js", s.serveEmbedWidgetV1)
 
 	// Status0 public status page (served at /status0/)
 	mainGroup.GET("/status0", s.serveStatus0Root)
@@ -1679,6 +1810,40 @@ func (s *Server) serveDocsRoute(writer http.ResponseWriter, req *http.Request) e
 	return nil
 }
 
+// embedWidgetV1Path is where the status0 build emits the compiled embeddable
+// status widget (see web/status0/package.json's `build:widget` script), inside
+// the same dist that becomes the embedded status0res filesystem.
+const embedWidgetV1Path = "status0res/embed/v1/widget.js"
+
+// serveEmbedWidgetV1 serves the embeddable status widget (spec
+// 2026-08-08-08) at /embed/v1/widget.js — the script customers paste onto
+// their own sites:
+//
+//	<script async src="https://<host>/embed/v1/widget.js" data-page="org/slug"></script>
+//
+// EVERYTHING UNDER /embed/v1/ IS A FROZEN PUBLIC CONTRACT. Once a customer has
+// pasted the snippet we can never take the URL away or change what the script
+// does; a behavior change ships as a new /embed/v2/widget.js route alongside
+// this one. The long cache lifetime (1 h, versus 60 s for the summary data the
+// widget polls) is deliberate: the script is immutable within a version, only
+// the data behind it moves.
+func (s *Server) serveEmbedWidgetV1(writer http.ResponseWriter, req *http.Request) error {
+	data, err := fs.ReadFile(s.status0FSOrDefault(), embedWidgetV1Path)
+	if err != nil {
+		slog.ErrorContext(req.Context(), "Embed widget asset missing", "error", err)
+		http.Error(writer, "Not found", http.StatusNotFound)
+
+		return nil
+	}
+
+	writer.Header().Set("Content-Type", contentTypeJS+"; charset=utf-8")
+	writer.Header().Set("Cache-Control", "public, max-age=3600")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write(data)
+
+	return nil
+}
+
 // serveRootLLMsTxt serves the Docusaurus-generated llms.txt manifest at the
 // conventional root path (GitHub issue #183), sharing the embedded-docs
 // lookup, content-type, and cache-header logic used for /docs/llms.txt.
@@ -1889,6 +2054,11 @@ func (s *Server) serveAppStatic(writer http.ResponseWriter, req *http.Request) e
 
 // serveDash0Root serves the dash0 status dashboard.
 func (s *Server) serveDash0Root(writer http.ResponseWriter, req *http.Request) error {
+	// A bookmarked /dash0/orgs/<old slug>/... URL still works after a rename.
+	if s.redirectRenamedOrgSPA(writer, req) {
+		return nil
+	}
+
 	// Check if any redirect rule matches for development proxying
 	for i := range s.config.Server.Redirects {
 		rule := &s.config.Server.Redirects[i]
@@ -1961,6 +2131,11 @@ func (s *Server) serveDash0Static(writer http.ResponseWriter, req *http.Request)
 
 // serveStatus0Root serves the status0 public status page app.
 func (s *Server) serveStatus0Root(writer http.ResponseWriter, req *http.Request) error {
+	// A pasted /status0/<old slug>/<page> link still works after a rename.
+	if s.redirectRenamedOrgSPA(writer, req) {
+		return nil
+	}
+
 	for i := range s.config.Server.Redirects {
 		rule := &s.config.Server.Redirects[i]
 		if strings.HasPrefix(req.URL.Path, rule.PathPrefix) {

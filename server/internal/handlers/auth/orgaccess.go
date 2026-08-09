@@ -64,9 +64,14 @@ func AuthorizeOrgAccess(
 		return nil, OrgAccessDenied
 	}
 
-	org, err := dbService.GetOrganizationBySlug(ctx, orgSlug)
-	if err != nil {
-		return nil, OrgAccessOrgNotFound
+	org := ResolvedOrgFromContext(ctx, orgSlug)
+	if org == nil {
+		loaded, err := dbService.GetOrganizationBySlug(ctx, orgSlug)
+		if err != nil {
+			return nil, OrgAccessOrgNotFound
+		}
+
+		org = loaded
 	}
 
 	// Claims and DB super-admins skip the membership check.
@@ -79,4 +84,35 @@ func AuthorizeOrgAccess(
 	}
 
 	return org, OrgAccessGranted
+}
+
+// resolvedOrgContextKey memoizes an organization already loaded by slug earlier
+// in the request. It is a pure optimization with no authorization meaning.
+type resolvedOrgContextKey struct{}
+
+// WithResolvedOrg memoizes an organization loaded by slug on the request
+// context. middleware.OrgSlugRedirect has to resolve the :org slug before the
+// auth chain runs (to decide whether the request is hitting a renamed org's
+// previous slug); memoizing the result keeps AuthorizeOrgAccess from repeating
+// the very same query one middleware later.
+//
+// The memo is per-request and keyed by slug, so it can never serve a different
+// organization than a fresh lookup would have.
+func WithResolvedOrg(ctx context.Context, org *models.Organization) context.Context {
+	if org == nil {
+		return ctx
+	}
+
+	return context.WithValue(ctx, resolvedOrgContextKey{}, org)
+}
+
+// ResolvedOrgFromContext returns the memoized organization when it matches the
+// requested slug, or nil when the caller must query the database.
+func ResolvedOrgFromContext(ctx context.Context, slug string) *models.Organization {
+	org, ok := ctx.Value(resolvedOrgContextKey{}).(*models.Organization)
+	if !ok || org == nil || org.Slug != slug {
+		return nil
+	}
+
+	return org
 }

@@ -27,10 +27,12 @@ import (
 const phoneAckTokenTTL = 7 * 24 * time.Hour
 
 // newTwilioClient is the client constructor seam used by the phone dispatch
-// path. Overridden in tests to target an httptest fake without hitting Twilio.
+// path. Takes an explicit base URL so the resolved connection's region
+// (twilio.BaseURLForRegion) decides which Twilio host is hit. Overridden in
+// tests to target an httptest fake without hitting Twilio.
 //
 //nolint:gochecknoglobals // test seam for the outbound Twilio client.
-var newTwilioClient = twilio.NewClient
+var newTwilioClient = twilio.NewClientWithBaseURL
 
 // Escalation step errors.
 var (
@@ -821,7 +823,7 @@ func (r *EscalationStepJobRun) sendPhoneSMS(
 			strings.TrimRight(baseURL, "/"), orgSlug, incident.UID, ackToken)
 	}
 
-	client := newTwilioClient(settings.AccountSID, settings.AuthToken)
+	client := newTwilioClient(settings.AccountSID, settings.AuthToken, twilio.BaseURLForRegion(settings.Region))
 	res, err := client.SendSMS(ctx, &twilio.SendSMSParams{
 		To:                  route.Contact.Value,
 		From:                settings.FromNumber,
@@ -860,7 +862,7 @@ func (r *EscalationStepJobRun) placePhoneCall(
 		strings.TrimRight(baseURL, "/"),
 		url.QueryEscape(conn.UID), url.QueryEscape(incident.UID), url.QueryEscape(ackToken))
 
-	client := newTwilioClient(settings.AccountSID, settings.AuthToken)
+	client := newTwilioClient(settings.AccountSID, settings.AuthToken, twilio.BaseURLForRegion(settings.Region))
 	res, err := client.CreateCall(ctx, twilio.CreateCallParams{
 		To:             route.Contact.Value,
 		From:           settings.VoiceFromNumber,
@@ -1022,7 +1024,7 @@ func (r *EscalationStepJobRun) pageAllAdmins(
 
 	count := 0
 	for _, member := range members {
-		if member.Role != models.MemberRoleAdmin || member.User == nil {
+		if !member.Role.AtLeast(models.MemberRoleAdmin) || member.User == nil {
 			continue
 		}
 

@@ -69,7 +69,7 @@ func newMCPTestEnv(t *testing.T) *mcpTestEnv {
 	ctx := context.Background()
 
 	cfg := &config.Config{}
-	cfg.Database.Type = "sqlite-memory"
+	cfg.Database.Type = dbTypeSQLiteMemory
 	cfg.Auth.JWTSecret = "mcp-endpoint-test-secret"
 	cfg.Auth.AccessTokenExpiry = time.Hour
 	cfg.Auth.RefreshTokenExpiry = 24 * time.Hour

@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
@@ -563,6 +565,163 @@ func (h *Handler) ViewDefaultStatusPage(writer http.ResponseWriter, req *http.Re
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, page)
+}
+
+// StatusPageSummaryResponse is the lightweight "is it up?" public response
+// (spec 2026-08-08-06).
+type StatusPageSummaryResponse struct {
+	Status      string                    `json:"status"`
+	Counts      StatusCountsResponse      `json:"counts"`
+	Page        StatusPageSummaryPageInfo `json:"page"`
+	GeneratedAt time.Time                 `json:"generatedAt"`
+}
+
+// StatusPageSummaryPageInfo identifies the page a summary belongs to.
+type StatusPageSummaryPageInfo struct {
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+	// URL is the canonical public URL: the verified custom domain when
+	// active, otherwise the absolute path-based /status0/{org}/{slug} URL
+	// derived from the request — same derivation the OG-meta injection uses
+	// (see internal/app/status0_meta.go).
+	URL string `json:"url"`
+}
+
+// ViewStatusPageSummary handles the public, cheap "is it up?" rollup for a
+// status page: GET /api/v1/status-pages/:org/:slug/summary. It reuses the
+// same visibility gate and rollup as ViewStatusPage/ViewDefaultStatusPage
+// (models.RollupPageStatus) so it can never disagree with them, but skips the
+// expensive sections/availability payload.
+func (h *Handler) ViewStatusPageSummary(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	slug := httpx.Param(req, "slug")
+
+	summary, err := h.svc.ViewStatusPageSummary(req.Context(), orgSlug, slug)
+	if err != nil {
+		return h.handlePublicError(writer, err)
+	}
+
+	response := StatusPageSummaryResponse{
+		Status: string(summary.Status),
+		Counts: StatusCountsResponse{
+			Operational: summary.Counts.Operational,
+			Degraded:    summary.Counts.Degraded,
+			Down:        summary.Counts.Down,
+			Maintenance: summary.Counts.Maintenance,
+			Unknown:     summary.Counts.Unknown,
+		},
+		Page: StatusPageSummaryPageInfo{
+			Name: summary.PageName,
+			Slug: summary.PageSlug,
+			URL:  publicPageURL(req, orgSlug, &summary),
+		},
+		GeneratedAt: time.Now().UTC(),
+	}
+
+	writer.Header().Set("Cache-Control", "public, max-age=60")
+
+	return h.WriteJSON(writer, http.StatusOK, response)
+}
+
+// publicPageURL derives the canonical public URL for a status page: the
+// verified custom domain when active, otherwise the absolute
+// /status0/{org}/{slug} URL built from the incoming request's scheme/host —
+// the same derivation status0's OG-meta injection uses
+// (internal/app/status0_meta.go:requestOrigin/requestScheme). Duplicated here
+// rather than imported because that helper lives in the app package, which
+// this handler package must not depend on.
+func publicPageURL(req *http.Request, orgSlug string, summary *StatusPageSummary) string {
+	if summary.CustomDomain != "" {
+		return "https://" + summary.CustomDomain + "/"
+	}
+
+	return requestOrigin(req) + "/status0/" + orgSlug + "/" + summary.PageSlug
+}
+
+// GetBadge handles GET /api/v1/status-pages/:org/:slug/badge — a public SVG
+// badge reflecting the page-level rollup status (spec 2026-08-08-07). It is
+// registered alongside the other public status-page routes and shares their
+// visibility gate via Service.GenerateBadge (which delegates to
+// ViewStatusPageSummary), so a private or disabled page 404s exactly like
+// ViewStatusPage/ViewStatusPageSummary — never leaking existence.
+func (h *Handler) GetBadge(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	slug := httpx.Param(req, "slug")
+
+	opts := BadgeOptions{
+		Label: req.URL.Query().Get("label"),
+		Style: req.URL.Query().Get("style"),
+	}
+
+	if minWidth, ok := parseBadgeIntParam(req.URL.Query().Get("minWidth"), 0, 800); ok {
+		opts.MinWidth = minWidth
+	}
+
+	if width, ok := parseBadgeIntParam(req.URL.Query().Get("width"), 60, 800); ok {
+		opts.Width = width
+	}
+
+	svg, err := h.svc.GenerateBadge(req.Context(), orgSlug, slug, opts)
+	if err != nil {
+		return h.handlePublicError(writer, err)
+	}
+
+	writer.Header().Set("Content-Type", "image/svg+xml")
+	writer.Header().Set("Cache-Control", "public, max-age=60")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write([]byte(svg))
+
+	return nil
+}
+
+// parseBadgeIntParam parses an integer query parameter, clamping it within
+// [minVal, maxVal]. Returns 0, false if the parameter is empty or invalid.
+// Mirrors badges.parseIntParam (unexported in its own package) so the two
+// badge endpoints clamp width/minWidth identically.
+func parseBadgeIntParam(raw string, minVal, maxVal int) (int, bool) {
+	if raw == "" {
+		return 0, false
+	}
+
+	parsed, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, false
+	}
+
+	if parsed < minVal {
+		parsed = minVal
+	}
+
+	if parsed > maxVal {
+		parsed = maxVal
+	}
+
+	return parsed, true
+}
+
+// requestScheme resolves the request scheme, preferring the first token of a
+// proxy-set X-Forwarded-Proto, then the TLS state, defaulting to http.
+func requestScheme(req *http.Request) string {
+	if proto := req.Header.Get("X-Forwarded-Proto"); proto != "" {
+		if idx := strings.IndexByte(proto, ','); idx != -1 {
+			proto = proto[:idx]
+		}
+
+		if proto = strings.TrimSpace(proto); proto != "" {
+			return proto
+		}
+	}
+
+	if req.TLS != nil {
+		return "https"
+	}
+
+	return "http"
+}
+
+// requestOrigin builds the "scheme://host" origin for a request.
+func requestOrigin(req *http.Request) string {
+	return requestScheme(req) + "://" + req.Host
 }
 
 // --- Error handlers ---

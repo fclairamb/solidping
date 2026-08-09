@@ -74,6 +74,16 @@ export interface StatusUpdatePublicResponse {
   publishedAt: string;
 }
 
+// StatusCounts tallies resources per overallStatus category (spec
+// 2026-08-08-05). Only present on the public view payloads.
+export interface StatusCounts {
+  operational: number;
+  degraded: number;
+  down: number;
+  maintenance: number;
+  unknown: number;
+}
+
 export interface StatusPage {
   uid: string;
   name: string;
@@ -96,6 +106,14 @@ export interface StatusPage {
   sections?: StatusPageSection[];
   recentUpdates?: StatusUpdatePublicResponse[];
   createdAt?: string;
+  /**
+   * Server-computed page-level rollup (spec 2026-08-08-05):
+   * "operational" | "degraded" | "down" | "maintenance" | "unknown". Only
+   * populated on the public view endpoints (usePublicStatusPage /
+   * useDefaultStatusPage) — absent on admin listings.
+   */
+  overallStatus?: string;
+  statusCounts?: StatusCounts;
 }
 
 export function usePublicStatusPage(org: string, slug: string) {

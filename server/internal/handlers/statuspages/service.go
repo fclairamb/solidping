@@ -19,6 +19,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/domainverify"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/handlers/badges"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
 
@@ -310,6 +311,41 @@ type StatusPageResponse struct {
 	// AvailabilityThresholds carries the RESOLVED effective thresholds (never
 	// nil/omitted) so public consumers don't need to know the defaults.
 	AvailabilityThresholds AvailabilityThresholdsResponse `json:"availabilityThresholds"`
+	// OverallStatus is the page-level rollup (spec 2026-08-08-05): one of
+	// operational | degraded | down | maintenance | unknown, computed once
+	// server-side via models.RollupPageStatus so status0, the public summary
+	// endpoint (spec 2026-08-08-06) and the SVG badge (spec 2026-08-08-07)
+	// always agree. Only populated on the live public view paths
+	// (ViewStatusPage / ViewDefaultStatusPage) — omitted on admin listings
+	// that don't load live resource data.
+	OverallStatus string `json:"overallStatus,omitempty"`
+	// StatusCounts tallies resources per OverallStatus category. Same
+	// population rule as OverallStatus.
+	StatusCounts *StatusCountsResponse `json:"statusCounts,omitempty"`
+}
+
+// StatusCountsResponse mirrors models.PageStatusCounts on the wire (spec
+// 2026-08-08-05).
+type StatusCountsResponse struct {
+	Operational int `json:"operational"`
+	Degraded    int `json:"degraded"`
+	Down        int `json:"down"`
+	Maintenance int `json:"maintenance"`
+	Unknown     int `json:"unknown"`
+}
+
+// StatusPageSummary is the lightweight page-level rollup a status page
+// resolves to (spec 2026-08-08-06). It carries just enough for the handler to
+// build the public summary response — the URL itself is built by the handler
+// since it needs the incoming request's scheme/host.
+type StatusPageSummary struct {
+	Status   models.PageStatus
+	Counts   models.PageStatusCounts
+	PageName string
+	PageSlug string
+	// CustomDomain is the verified, active custom domain for this page, or ""
+	// when the page is served path-based only.
+	CustomDomain string
 }
 
 // AvailabilitySettingsResponse mirrors models.AvailabilitySettings on the
@@ -752,7 +788,9 @@ func (s *Service) GetStatusPage(
 			return StatusPageResponse{}, err
 		}
 
-		// Enrich resources with live check / group data
+		// Enrich resources with live check / group data. This admin path does
+		// not surface OverallStatus/StatusCounts — those are populated only on
+		// the public view paths (ViewStatusPage / ViewDefaultStatusPage).
 		s.enrichResourceInfo(ctx, org.UID, sections)
 
 		response.Sections = sections
@@ -1352,8 +1390,17 @@ func (s *Service) ViewStatusPage(
 		return StatusPageResponse{}, err
 	}
 
-	// Enrich resources with live check / group data
-	s.enrichResourceInfo(ctx, org.UID, sections)
+	// Enrich resources with live check / group data, and compute the
+	// page-level rollup from that same live data (spec 2026-08-08-05).
+	overallStatus, statusCounts := s.enrichResourceInfo(ctx, org.UID, sections)
+	response.OverallStatus = string(overallStatus)
+	response.StatusCounts = &StatusCountsResponse{
+		Operational: statusCounts.Operational,
+		Degraded:    statusCounts.Degraded,
+		Down:        statusCounts.Down,
+		Maintenance: statusCounts.Maintenance,
+		Unknown:     statusCounts.Unknown,
+	}
 
 	// Enrich resources with availability data
 	if page.ShowAvailability || page.ShowResponseTime {
@@ -1412,6 +1459,126 @@ func (s *Service) ViewDefaultStatusPage(
 	}
 
 	return s.ViewStatusPage(ctx, orgSlug, page.Slug)
+}
+
+// ViewStatusPageSummary returns the lightweight page-level rollup for a
+// status page (spec 2026-08-08-06) — the cheap "is it up?" companion to
+// ViewStatusPage. It applies the IDENTICAL visibility gate (disabled or
+// non-public → ErrStatusPageNotFound, same as ViewStatusPage) and computes the
+// rollup from the exact same live data via models.RollupPageStatus, but skips
+// the availability/response-time enrichment and recent-updates lookup that
+// make the full page view expensive.
+func (s *Service) ViewStatusPageSummary(
+	ctx context.Context, orgSlug, slug string,
+) (StatusPageSummary, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return StatusPageSummary{}, ErrOrganizationNotFound
+	}
+
+	page, err := s.db.GetStatusPageBySlug(ctx, org.UID, slug)
+	if err != nil || page == nil {
+		return StatusPageSummary{}, ErrStatusPageNotFound
+	}
+
+	if !page.Enabled || page.Visibility != visibilityPublic {
+		return StatusPageSummary{}, ErrStatusPageNotFound
+	}
+
+	sections, err := s.loadSectionsWithResources(ctx, page.UID)
+	if err != nil {
+		return StatusPageSummary{}, err
+	}
+
+	status, counts := s.enrichResourceInfo(ctx, org.UID, sections)
+
+	customDomain := ""
+	if page.CustomDomain != nil && page.CustomDomainVerifiedAt != nil {
+		customDomain = *page.CustomDomain
+	}
+
+	return StatusPageSummary{
+		Status:       status,
+		Counts:       counts,
+		PageName:     page.Name,
+		PageSlug:     page.Slug,
+		CustomDomain: customDomain,
+	}, nil
+}
+
+// --- Badge (spec 2026-08-08-07) ---
+
+// BadgeOptions are the caller-supplied rendering options for the page-level
+// SVG badge. Mirrors badges.BadgeOptions' Label/Style/MinWidth/Width shape so
+// the two badge surfaces stay consistent, but is defined locally to avoid the
+// statuspages package depending on badges' check-specific option set.
+type BadgeOptions struct {
+	Label    string // Custom left-side text (default: page name).
+	Style    string // "flat", "flat-square".
+	MinWidth int    // 0 = no minimum.
+	Width    int    // Alternative width knob; the page badge has no bar/graph
+	// rows, so this simply feeds the same single-row stretch as MinWidth
+	// (the larger of the two wins) — see badges.Service.GenerateBadge's
+	// text-only path for the sibling behavior.
+}
+
+// pageBadgeColor maps a page-level rollup status to the badge's fill color.
+// The right-side text is the rollup status's own wire value (string(status)) —
+// reusing models.PageStatus's vocabulary directly rather than a parallel set
+// of string literals, so the badge's text can never drift from the
+// summary/full-page JSON. English text in v1 (localization out of scope, per
+// spec).
+func pageBadgeColor(status models.PageStatus) string {
+	switch status {
+	case models.PageStatusOperational:
+		return badges.ColorGreen
+	case models.PageStatusDegraded:
+		return badges.ColorYellow
+	case models.PageStatusDown:
+		return badges.ColorRed
+	case models.PageStatusMaintenance:
+		return badges.ColorBlue
+	case models.PageStatusUnknown:
+		return badges.ColorGray
+	default:
+		return badges.ColorGray
+	}
+}
+
+// GenerateBadge renders the page-level SVG badge for a status page (spec
+// 2026-08-08-07): a shields.io-style "page name | rollup status" badge for
+// embedding in READMEs, wikis, or email footers. It resolves through
+// ViewStatusPageSummary, so it applies the IDENTICAL visibility gate
+// (disabled/non-public → ErrStatusPageNotFound) and the same
+// models.RollupPageStatus rollup as the summary endpoint and the full status
+// page — a badge that disagreed with either would be worse than no badge.
+// Rendering itself reuses badges.GenerateSVG/ComposeBadgeSVG rather than a
+// second SVG renderer.
+func (s *Service) GenerateBadge(ctx context.Context, orgSlug, slug string, opts BadgeOptions) (string, error) {
+	summary, err := s.ViewStatusPageSummary(ctx, orgSlug, slug)
+	if err != nil {
+		return "", err
+	}
+
+	label := opts.Label
+	if label == "" {
+		label = summary.PageName
+	}
+
+	style := opts.Style
+	if style == "" {
+		style = "flat"
+	}
+
+	minWidth := opts.MinWidth
+	if opts.Width > minWidth {
+		minWidth = opts.Width
+	}
+
+	value := string(summary.Status)
+	color := pageBadgeColor(summary.Status)
+
+	return badges.GenerateSVG(label, value, color, style, minWidth), nil
 }
 
 // --- Availability enrichment ---
@@ -1988,10 +2155,14 @@ func (s *Service) loadSectionsWithResources(
 // resource gets its check's own status, a group resource gets the group's
 // rolled-up status (spec 2026-08-01-03). The per-group status counts are read
 // ONCE per page rather than per resource. A lookup failure leaves Check nil,
-// exactly as before — a broken target must never take the page down.
+// exactly as before — a broken target must never take the page down (it is
+// still counted as an unknown-status resource in the page-level rollup below).
+//
+// It also computes and returns the page-level rollup (spec 2026-08-08-05)
+// from the exact same live data, so the two can never disagree.
 func (s *Service) enrichResourceInfo(
 	ctx context.Context, orgUID string, sections []StatusPageSectionResponse,
-) {
+) (models.PageStatus, models.PageStatusCounts) {
 	var groupCounts map[string]map[models.CheckStatus]int
 
 	if pageHasGroupResource(sections) {
@@ -2004,24 +2175,43 @@ func (s *Service) enrichResourceInfo(
 		}
 	}
 
+	resourceCount := 0
+	for i := range sections {
+		resourceCount += len(sections[i].Resources)
+	}
+
+	rollupInputs := make([]models.PageResourceStatus, 0, resourceCount)
+
 	for i := range sections {
 		for j := range sections[i].Resources {
 			resource := &sections[i].Resources[j]
 
 			switch {
 			case resource.CheckGroupUID != nil:
-				info, err := s.getGroupInfo(ctx, orgUID, *resource.CheckGroupUID, groupCounts)
+				info, rawStatus, err := s.getGroupInfo(ctx, orgUID, *resource.CheckGroupUID, groupCounts)
 				if err == nil {
 					resource.Check = info
+					rollupInputs = append(rollupInputs, models.PageResourceStatus{
+						Status: rawStatus, InMaintenance: info.InMaintenance,
+					})
+				} else {
+					rollupInputs = append(rollupInputs, models.PageResourceStatus{Status: models.CheckStatusCreated})
 				}
 			case resource.CheckUID != nil:
-				info, err := s.getCheckInfo(ctx, orgUID, *resource.CheckUID)
+				info, rawStatus, err := s.getCheckInfo(ctx, orgUID, *resource.CheckUID)
 				if err == nil {
 					resource.Check = info
+					rollupInputs = append(rollupInputs, models.PageResourceStatus{
+						Status: rawStatus, InMaintenance: info.InMaintenance,
+					})
+				} else {
+					rollupInputs = append(rollupInputs, models.PageResourceStatus{Status: models.CheckStatusCreated})
 				}
 			}
 		}
 	}
+
+	return models.RollupPageStatus(rollupInputs)
 }
 
 // pageHasGroupResource reports whether any resource on the page targets a check
@@ -2067,10 +2257,16 @@ func publicCheckStatus(status models.CheckStatus) string {
 	}
 }
 
-func (s *Service) getCheckInfo(ctx context.Context, orgUID, checkUID string) (*ResourceCheckInfo, error) {
+// getCheckInfo returns the public live-data block for a CHECK resource, plus
+// the check's raw (pre-publicCheckStatus) models.CheckStatus — the latter is
+// the input the page-level rollup (models.RollupPageStatus) needs, since the
+// public status string is a lossier, display-only vocabulary.
+func (s *Service) getCheckInfo(
+	ctx context.Context, orgUID, checkUID string,
+) (*ResourceCheckInfo, models.CheckStatus, error) {
 	check, err := s.db.GetCheck(ctx, orgUID, checkUID)
 	if err != nil {
-		return nil, err
+		return nil, models.CheckStatusCreated, err
 	}
 
 	// Flag the resource as under maintenance when the check sits inside an
@@ -2087,7 +2283,7 @@ func (s *Service) getCheckInfo(ctx context.Context, orgUID, checkUID string) (*R
 		Type:          check.Type,
 		Status:        publicCheckStatus(check.Status),
 		InMaintenance: inMaintenance,
-	}, nil
+	}, check.Status, nil
 }
 
 // getGroupInfo builds the live block for a GROUP resource: the group's name,
@@ -2099,14 +2295,14 @@ func (s *Service) getCheckInfo(ctx context.Context, orgUID, checkUID string) (*R
 // included — the whole point of a group component is hiding internal topology.
 func (s *Service) getGroupInfo(
 	ctx context.Context, orgUID, groupUID string, groupCounts map[string]map[models.CheckStatus]int,
-) (*ResourceCheckInfo, error) {
+) (*ResourceCheckInfo, models.CheckStatus, error) {
 	group, err := s.db.GetCheckGroup(ctx, orgUID, groupUID)
 	if err != nil {
-		return nil, err
+		return nil, models.CheckStatusCreated, err
 	}
 
 	if group == nil {
-		return nil, ErrCheckGroupNotFound
+		return nil, models.CheckStatusCreated, ErrCheckGroupNotFound
 	}
 
 	inMaintenance := false
@@ -2116,13 +2312,14 @@ func (s *Service) getGroupInfo(
 	}
 
 	name := group.Name
+	rolled := models.RollupGroupStatus(groupCounts[groupUID])
 
 	return &ResourceCheckInfo{
 		Name:          &name,
 		Type:          "",
-		Status:        publicCheckStatus(models.RollupGroupStatus(groupCounts[groupUID])),
+		Status:        publicCheckStatus(rolled),
 		InMaintenance: inMaintenance,
-	}, nil
+	}, rolled, nil
 }
 
 // anyWindowActive reports whether any of the windows is active right now.

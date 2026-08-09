@@ -3,15 +3,19 @@ package checkhttp
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -187,8 +191,36 @@ func (c *HTTPChecker) Validate(spec *checkerdef.CheckSpec) error {
 
 // Execute performs the HTTP check and returns the result.
 //
-//nolint:funlen,gocognit,cyclop // HTTP checking with pattern matching requires comprehensive validation
+// Unlike every other checker, HTTP never picks an address itself: http.Transport
+// dials by name, which is what gives it Go's Happy Eyeballs. So the address
+// family is pinned on the transport (see buildTransport) rather than through
+// checkerdef.SelectIPAddr, and the family actually used is observed after the
+// fact with httptrace — which is a pure observer, so an `ipVersion: auto` check
+// still runs on the shared http.DefaultTransport exactly as before.
 func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
+	tracker := &connFamilyTracker{}
+	ctx = httptrace.WithClientTrace(ctx, tracker.clientTrace())
+
+	result, err := c.executeRequest(ctx, config)
+	if err != nil || result == nil {
+		return result, err
+	}
+
+	if version := tracker.version(); version != checkerdef.IPVersionAuto {
+		if result.Output == nil {
+			result.Output = make(map[string]any)
+		}
+
+		result.Output[checkerdef.OutputKeyIPVersion] = version.String()
+	}
+
+	return result, nil
+}
+
+// executeRequest is the HTTP probe proper.
+//
+//nolint:funlen,gocognit,cyclop // HTTP checking with pattern matching requires comprehensive validation
+func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
 	cfg, err := checkerdef.AssertConfig[*HTTPConfig](config)
 	if err != nil {
 		return nil, err
@@ -248,8 +280,17 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	}
 
 	// Execute the request
+	skipRedirects := cfg.SkipRedirects()
+	skipTLSVerify := cfg.SkipTLSVerify()
+
 	client := &http.Client{
 		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
+			// followRedirects: false stops at the first response, regardless
+			// of maxRedirects.
+			if skipRedirects {
+				return http.ErrUseLastResponse
+			}
+
 			// Allow up to maxRedirects redirects
 			if len(via) >= maxRedirects {
 				return http.ErrUseLastResponse
@@ -266,9 +307,13 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	// keep verifying exactly as they do untunneled. Redirects, auth, headers:
 	// all unchanged. With no dialer on the context, client.Transport stays nil
 	// and net/http uses DefaultTransport as before.
-	if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
-		client.Transport = &http.Transport{DialContext: dialer.DialContext}
-	}
+	//
+	// verifySsl: false composes with the tunnel dialer on the same transport:
+	// whichever of DialContext/TLSClientConfig applies gets set on one shared
+	// http.Transport, so client.Transport stays nil only when neither is in
+	// play (preserving DefaultTransport's connection pooling in the common case).
+	dialer := checkerdef.TunnelDialerFrom(ctx)
+	client.Transport = buildTransport(dialer, skipTLSVerify, checkerdef.IPVersionFrom(ctx))
 
 	resp, err := client.Do(req)
 	duration := time.Since(start)
@@ -279,20 +324,23 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			return &checkerdef.Result{
 				Status:   checkerdef.StatusTimeout,
 				Duration: duration,
-				Output: map[string]any{
+				Output: withTLSVerifySkipped(map[string]any{
 					checkerdef.OutputKeyError: "request timed out",
 					checkerdef.OutputKeyURL:   cfg.URL,
-				},
+				}, skipTLSVerify),
 			}, nil
 		}
 
+		// An address-family failure is cataloged, not a generic dial error:
+		// "the host has no AAAA record" and "this worker has no IPv6 egress"
+		// must not read the same as "your service is down".
 		return &checkerdef.Result{
-			Status:   checkerdef.StatusDown,
+			Status:   checkerdef.IPVersionFailureStatus(err),
 			Duration: duration,
-			Output: map[string]any{
+			Output: withTLSVerifySkipped(map[string]any{
 				checkerdef.OutputKeyError: err.Error(),
 				checkerdef.OutputKeyURL:   cfg.URL,
-			},
+			}, skipTLSVerify),
 		}, nil
 	}
 
@@ -521,10 +569,158 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	return &checkerdef.Result{
 		Status:   status,
 		Duration: duration,
-		Output: map[string]any{
+		Output: withTLSVerifySkipped(map[string]any{
 			checkerdef.OutputKeyURL:        cfg.URL,
 			checkerdef.OutputKeyStatusCode: resp.StatusCode,
 			checkerdef.OutputKeyMethod:     method,
-		},
+		}, skipTLSVerify),
 	}, nil
+}
+
+// withTLSVerifySkipped adds the tls_verify_skipped marker to a result output
+// map when the check ran with certificate verification disabled, so the
+// reduced trust is visible in result details rather than only in config.
+func withTLSVerifySkipped(output map[string]any, skipped bool) map[string]any {
+	if skipped {
+		output[checkerdef.OutputKeyTLSVerifySkipped] = true
+	}
+
+	return output
+}
+
+// familyDialTimeout / familyDialKeepAlive mirror http.DefaultTransport's dialer
+// settings, so pinning the address family changes only the family — not the
+// connect timeout or the keep-alive behavior a check has always had.
+const (
+	familyDialTimeout   = 30 * time.Second
+	familyDialKeepAlive = 30 * time.Second
+)
+
+// buildTransport returns the http.Transport a check needs, or nil when it needs
+// none. Returning nil matters: with a nil Transport net/http uses the shared
+// http.DefaultTransport, keeping its connection pool and its Happy Eyeballs
+// dialing — which is exactly the behavior an unconfigured check must keep.
+//
+// Three independent reasons compose onto the SAME transport:
+//   - a tunnel dialer (the probe is dialed through an SSH bastion),
+//   - verifySsl: false (InsecureSkipVerify),
+//   - ipVersion: ipv4/ipv6 (the address family).
+//
+// TUNNEL × ipVersion: a tunneled check is resolved and dialed on the far side of
+// the bastion — the worker never sees an address, so the family is the tunnel's
+// business and not something this check can pin. That combination is rejected at
+// write time (by the checks service's validateIPVersionConfig); should a
+// hand-edited row carry both anyway, the tunnel wins here and the family is
+// ignored rather than silently breaking the tunnel.
+func buildTransport(
+	dialer checkerdef.ContextDialer, skipTLSVerify bool, version checkerdef.IPVersion,
+) http.RoundTripper {
+	pinFamily := dialer == nil && version.Explicit()
+
+	if dialer == nil && !skipTLSVerify && !pinFamily {
+		return nil
+	}
+
+	transport := &http.Transport{}
+
+	switch {
+	case dialer != nil:
+		transport.DialContext = dialer.DialContext
+	case pinFamily:
+		transport.DialContext = familyDialContext(version)
+	}
+
+	if skipTLSVerify {
+		// InsecureSkipVerify is only set when the operator explicitly
+		// opted out of verification via verifySsl: false.
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+
+	return transport
+}
+
+// familyDialContext returns a DialContext pinned to one address family.
+//
+// It resolves and selects explicitly (rather than just handing "tcp6" to
+// net.Dialer) so that a target with no address of the requested family fails
+// with checkerdef's cataloged error naming the host and the family, instead of
+// the stdlib's opaque "no suitable address found" — and so the worker-has-no-v6
+// case is told apart from the target-has-no-AAAA case. The error travels out
+// through *url.Error, which unwraps, so errors.Is still matches at the top.
+func familyDialContext(version checkerdef.IPVersion) func(context.Context, string, string) (net.Conn, error) {
+	baseDialer := &net.Dialer{Timeout: familyDialTimeout, KeepAlive: familyDialKeepAlive}
+	network := version.Network("tcp")
+
+	return func(ctx context.Context, _, addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid address %q: %w", addr, err)
+		}
+
+		if ip := net.ParseIP(host); ip != nil {
+			if !checkerdef.MatchesIPVersion(ip, version) {
+				return nil, fmt.Errorf(
+					"%w: %s is not an %s address", checkerdef.ErrNoAddressForFamily, host, version.Label(),
+				)
+			}
+
+			return baseDialer.DialContext(ctx, network, addr)
+		}
+
+		addrs, err := checkerdef.LookupIPAddr(ctx, host)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve hostname: %w", err)
+		}
+
+		ip, err := checkerdef.SelectIPAddr(host, addrs, version)
+		if err != nil {
+			return nil, err
+		}
+
+		return baseDialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+	}
+}
+
+// connFamilyTracker observes which address family the request actually
+// connected over. It is a pure httptrace observer — it never influences dialing
+// — so an `ipVersion: auto` check keeps Go's Happy Eyeballs behavior untouched
+// and merely reports the outcome.
+type connFamilyTracker struct {
+	mu     sync.Mutex
+	family checkerdef.IPVersion
+}
+
+// clientTrace returns the httptrace hooks to attach to the request context.
+func (t *connFamilyTracker) clientTrace() *httptrace.ClientTrace {
+	return &httptrace.ClientTrace{
+		GotConn: func(info httptrace.GotConnInfo) {
+			if info.Conn == nil {
+				return
+			}
+
+			addr, ok := info.Conn.RemoteAddr().(*net.TCPAddr)
+			if !ok || addr.IP == nil {
+				return
+			}
+
+			t.mu.Lock()
+			defer t.mu.Unlock()
+
+			t.family = checkerdef.IPVersionOf(addr.IP)
+		},
+	}
+}
+
+// version reports the observed family, or IPVersionAuto when no connection was
+// established (DNS failure, a redirect chain that never dialed, a non-TCP
+// transport in a test).
+func (t *connFamilyTracker) version() checkerdef.IPVersion {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.family != checkerdef.IPVersionIPv4 && t.family != checkerdef.IPVersionIPv6 {
+		return checkerdef.IPVersionAuto
+	}
+
+	return t.family
 }

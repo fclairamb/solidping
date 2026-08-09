@@ -119,6 +119,7 @@ type betterStackMonitor struct {
 	FollowRedirects     *bool  `json:"follow_redirects"`
 	AuthUsername        string `json:"auth_username"`
 	AuthPassword        string `json:"auth_password"`
+	IPVersion           string `json:"ip_version"`
 	MonitorGroupID      any    `json:"monitor_group_id"`
 	SSLExpiration       any    `json:"ssl_expiration"`
 	DomainExpiration    any    `json:"domain_expiration"`
@@ -173,11 +174,22 @@ func (c *BetterStackConverter) ConvertContext(ctx context.Context, input []byte)
 	doc := newDocument(SourceBetterStack)
 	slugs := newSlugSet()
 
+	bothFamilies := 0
+
 	for i := range monitors {
-		if check, ok := convertBetterStackMonitor(&monitors[i], slugs, warn); ok {
-			doc.Checks = append(doc.Checks, check)
+		check, ok, usedBothFamilies := convertBetterStackMonitor(&monitors[i], slugs, warn)
+		if !ok {
+			continue
+		}
+
+		doc.Checks = append(doc.Checks, check)
+
+		if usedBothFamilies {
+			bothFamilies++
 		}
 	}
+
+	warnBetterStackBothFamilies(bothFamilies, warn)
 
 	for i := range heartbeats {
 		if check, ok := convertBetterStackHeartbeat(&heartbeats[i], slugs, warn); ok {
@@ -294,15 +306,19 @@ func (c *BetterStackConverter) get(ctx context.Context, token, endpoint string) 
 
 // convertBetterStackMonitor maps one monitor onto a check.
 //
+// The third return value reports whether the monitor relied on Better Stack's
+// unset ip_version (which there means "both families") on a type SolidPing can
+// pin — the divergence Convert reports once for the whole import.
+//
 //nolint:funlen // one dispatch per Better Stack monitor type
 func convertBetterStackMonitor(
 	item *betterStackItem, slugs *slugSet, warn *warnings,
-) (checks.ExportCheck, bool) {
+) (checks.ExportCheck, bool, bool) {
 	var monitor betterStackMonitor
 	if err := json.Unmarshal(item.Attributes, &monitor); err != nil {
 		warn.addf("monitor "+item.ID, "", "monitor skipped: its attributes could not be decoded")
 
-		return checks.ExportCheck{}, false
+		return checks.ExportCheck{}, false, false
 	}
 
 	name := monitor.PronounceableName
@@ -351,25 +367,97 @@ func convertBetterStackMonitor(
 		warn.addf(name, "monitor_type",
 			"monitor skipped: Better Stack type %q has no SolidPing counterpart", monitor.MonitorType)
 
-		return checks.ExportCheck{}, false
+		return checks.ExportCheck{}, false, false
 	}
 
 	betterStackWarnUnmapped(&monitor, name, warn)
+	betterStackApplyIPVersion(&monitor, &check, name, warn)
 
-	return check, true
+	meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckType(check.Type))
+	bothFamilies := meta != nil && meta.SupportsIPVersion && betterStackMonitorUsesBothFamilies(&monitor)
+
+	return check, true, bothFamilies
 }
+
+// betterStackApplyIPVersion carries Better Stack's per-monitor `ip_version`
+// across — and is deliberately loud about the one place the two products
+// disagree.
+//
+// Better Stack's tri-state is ipv4 / ipv6 / null, where NULL MEANS "USE BOTH
+// FAMILIES". SolidPing's `auto` means "pick one, exactly as before" — probing
+// both families needs two probes and a rollup status, which is a separate
+// feature. Mapping null onto auto silently would therefore quietly halve the
+// coverage of every monitor that relied on the default, so the unset case maps
+// to auto AND is reported (see the document-level warning in Convert).
+//
+// An explicitly pinned family is carried through when the mapped SolidPing type
+// can honor it, and warned about when it cannot (icmp/dns/... via the metadata
+// flag), rather than being written into a config the API would reject.
+func betterStackApplyIPVersion(
+	monitor *betterStackMonitor, check *checks.ExportCheck, name string, warn *warnings,
+) {
+	version, err := checkerdef.ParseIPVersion(monitor.IPVersion)
+	if err != nil {
+		warn.addf(name, betterStackIPVersionField,
+			"Better Stack ip_version %q is not a value SolidPing understands — the check will "+
+				"monitor whichever family the target resolves to first", monitor.IPVersion)
+
+		return
+	}
+
+	if !version.Explicit() {
+		return
+	}
+
+	meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckType(check.Type))
+	if meta == nil || !meta.SupportsIPVersion {
+		warn.addf(name, betterStackIPVersionField,
+			"Better Stack pinned this monitor to %s, but SolidPing %q checks cannot be pinned to an "+
+				"IP version — the check will monitor whichever family the target resolves to first",
+			version.Label(), check.Type)
+
+		return
+	}
+
+	if check.Config == nil {
+		check.Config = map[string]any{}
+	}
+
+	check.Config[checkerdef.IPVersionConfigKey] = string(version)
+}
+
+// warnBetterStackBothFamilies states the one knowing divergence from Better
+// Stack up front rather than letting it be discovered later: their unset
+// ip_version monitors BOTH families, ours monitors one. Reported once for the
+// whole import instead of once per monitor, since it is the Better Stack default
+// and would otherwise drown out every other warning.
+func warnBetterStackBothFamilies(count int, warn *warnings) {
+	if count == 0 {
+		return
+	}
+
+	warn.addDocf("%d monitor(s) left Better Stack's ip_version unset, which there means "+
+		"\"monitor over both IPv4 and IPv6\". SolidPing checks one family per check: these were "+
+		"imported as ipVersion: auto and will only be monitored over whichever family the target "+
+		"resolves to first. Create a second check with ipVersion: ipv6 for the targets where IPv6 "+
+		"reachability matters", count)
+}
+
+// betterStackMonitorUsesBothFamilies reports whether a monitor relies on Better
+// Stack's null/unset ip_version — the value that means "monitor both families",
+// which SolidPing cannot reproduce in a single check.
+func betterStackMonitorUsesBothFamilies(monitor *betterStackMonitor) bool {
+	version, err := checkerdef.ParseIPVersion(monitor.IPVersion)
+
+	return err == nil && !version.Explicit()
+}
+
+// betterStackIPVersionField is the Better Stack attribute name reported on
+// ip_version warnings, so the warning points at the source field.
+const betterStackIPVersionField = "ip_version"
 
 // betterStackWarnUnmapped reports monitor settings with no SolidPing counterpart.
 func betterStackWarnUnmapped(monitor *betterStackMonitor, name string, warn *warnings) {
-	if monitor.VerifySSL != nil && !*monitor.VerifySSL {
-		warn.addf(name, "verify_ssl", "skipping TLS verification is not supported — the check verifies certificates")
-	}
-
-	if monitor.FollowRedirects != nil && !*monitor.FollowRedirects {
-		warn.addf(name, "follow_redirects",
-			"redirect handling is not configurable on SolidPing http checks (redirects are followed)")
-	}
-
 	if monitor.AuthUsername != "" || monitor.AuthPassword != "" {
 		// checkhttp.HTTPConfig.BasicAuth would hold these; they are dropped as
 		// a deliberate security policy, not for lack of a field.
@@ -403,6 +491,8 @@ func betterStackHTTPConfig(
 	if monitor.HTTPMethod != "" {
 		cfg["method"] = strings.ToUpper(monitor.HTTPMethod)
 	}
+
+	betterStackApplyClientOptions(monitor, cfg)
 
 	if monitor.RequestBody != "" {
 		cfg["body"] = monitor.RequestBody
@@ -460,6 +550,18 @@ func betterStackHTTPConfig(
 	}
 
 	return cfg
+}
+
+// betterStackApplyClientOptions maps Better Stack's verify_ssl / follow_redirects
+// onto the http checker's verifySsl / followRedirects, mutating cfg in place.
+func betterStackApplyClientOptions(monitor *betterStackMonitor, cfg map[string]any) {
+	if monitor.VerifySSL != nil && !*monitor.VerifySSL {
+		cfg["verifySsl"] = false
+	}
+
+	if monitor.FollowRedirects != nil && !*monitor.FollowRedirects {
+		cfg["followRedirects"] = false
+	}
 }
 
 // betterStackIsSecretHeader reports whether a header name looks credential-bearing.

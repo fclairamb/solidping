@@ -746,6 +746,106 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  # OAuth 2.0 Device Authorization Grant (RFC 8628) — `sp auth login`.
+  # Field names on the two public endpoints below are the RFC's snake_case
+  # spellings, not solidping's house camelCase: they are the interoperable
+  # OAuth contract every device-flow client expects.
+  /api/v1/auth/device:
+    post:
+      tags: [Authentication]
+      summary: Start a device authorization request (RFC 8628)
+      operationId: startDeviceAuthorization
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceAuthorizationRequest"
+      responses:
+        "200":
+          description: Device authorization request opened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceAuthorizationResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/auth/device/token:
+    post:
+      tags: [Authentication]
+      summary: Poll for the device authorization result (RFC 8628 token endpoint)
+      operationId: pollDeviceToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceTokenRequest"
+      responses:
+        "200":
+          description: The request was approved; the personal access token is delivered exactly once
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceTokenResponse"
+        "400":
+          description: >-
+            RFC 6749 §5.2 error envelope carrying an RFC 8628 error code
+            (authorization_pending, slow_down, expired_token, access_denied,
+            invalid_request, unsupported_grant_type)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceTokenError"
+
+  /api/v1/auth/device/consent:
+    get:
+      tags: [Authentication]
+      summary: Look up a pending device authorization request by user code
+      operationId: getDeviceConsent
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userCode
+          in: query
+          required: true
+          description: The short user code, in any spelling (case and dash insensitive)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The pending request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceConsentInfo"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Authentication]
+      summary: Approve or deny a pending device authorization request
+      operationId: respondToDeviceConsent
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceConsentRequest"
+      responses:
+        "200":
+          description: Decision recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceConsentResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The request was already approved or denied
+
   /api/v1/auth/tokens:
     get:
       tags: [Authentication]
@@ -1384,6 +1484,198 @@ paths:
           description: SVG badge image
           content:
             image/svg+xml:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Public status page views (no authentication). Disabled and private pages,
+  # and pages that don't exist, all return the same NotFound shape — existence
+  # is never leaked.
+  /api/v1/status-pages/{org}:
+    get:
+      tags: [StatusPages]
+      summary: View an organization's default public status page
+      description: >-
+        Renders the same payload as GET /api/v1/status-pages/{org}/{slug},
+        resolved to the organization's default page. No authentication
+        required.
+      operationId: viewDefaultStatusPage
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: The default status page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPage"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/status-pages/{org}/{slug}:
+    get:
+      tags: [StatusPages]
+      summary: View a public status page
+      description: >-
+        Full public rendering of a status page: sections, per-resource live
+        status, and (when enabled) availability/response-time history. A
+        disabled or non-public page returns 404, identical to a page that
+        doesn't exist. No authentication required.
+      operationId: viewStatusPage
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: slug
+          in: path
+          required: true
+          description: Status page slug
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The status page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPage"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/status-pages/{org}/{slug}/summary:
+    get:
+      tags: [StatusPages]
+      summary: Lightweight status summary for a status page
+      description: >-
+        Cheap "is it up?" companion to the full page view: overall status,
+        per-category counts, page identity, and the canonical public URL —
+        no sections, no per-resource history. Response carries
+        Cache-Control: public, max-age=60. Same visibility gate as the full
+        view: a disabled or non-public page returns 404, identical to a page
+        that doesn't exist. No authentication required.
+      operationId: viewStatusPageSummary
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: slug
+          in: path
+          required: true
+          description: Status page slug
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The status page summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusPageSummary"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/status-pages/{org}/{slug}/badge:
+    get:
+      tags: [StatusPages, Badges]
+      summary: SVG badge for a status page's overall status
+      description: >-
+        Public SVG badge (shields.io style) reflecting the page-level rollup
+        status — the static, script-free sibling of the JS embed widget, for
+        contexts like GitHub READMEs where scripts can't run. Same visibility
+        gate as the full view and the summary endpoint: a disabled or
+        non-public page returns 404, identical to a page that doesn't exist.
+        Response carries Cache-Control: public, max-age=60. No authentication
+        required.
+      operationId: getStatusPageBadge
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: slug
+          in: path
+          required: true
+          description: Status page slug
+          schema:
+            type: string
+        - name: label
+          in: query
+          description: Custom left-side label (default the page name)
+          schema:
+            type: string
+        - name: style
+          in: query
+          description: Badge style
+          schema:
+            type: string
+            enum: [flat, flat-square]
+        - name: minWidth
+          in: query
+          description: Minimum badge width in pixels (0-800)
+          schema:
+            type: integer
+        - name: width
+          in: query
+          description: Badge width in pixels (60-800)
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: SVG badge image
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /embed/v1/widget.js:
+    get:
+      tags: [StatusPages]
+      summary: Embeddable live status widget script
+      description: >-
+        Self-contained JavaScript (IIFE) that renders a live status pill on a
+        third-party site. It is loaded by an async script tag carrying
+        data-page="org/slug", and configured entirely through data-attributes:
+        data-mode (inline|floating), data-position (bottom-right|bottom-left),
+        data-theme (light|dark|auto), data-size (sm|md|lg), per-state label
+        overrides data-label-operational|degraded|down|maintenance|unknown,
+        and data-force-status (operational|degraded|down|maintenance|unknown)
+        to render a status statically without polling. The widget polls the
+        status page summary endpoint every 60 s with an uncredentialed
+        request and renders into a shadow root; a failed request or an
+        unknown page renders nothing. Everything under /embed/v1/ is a frozen
+        public contract — behavior changes ship under /embed/v2/, but
+        additive, backward-compatible data-attributes may land within v1.
+        Response carries Cache-Control: public, max-age=3600. No authentication
+        required.
+      operationId: getEmbedWidgetV1
+      responses:
+        "200":
+          description: The widget script
+          content:
+            application/javascript:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/status-pages/{org}/{slug}/feed.xml:
+    get:
+      tags: [StatusPages]
+      summary: Atom feed of a status page's status-update timeline
+      description: >-
+        Public Atom/RSS feed of the page's recent status updates (incident
+        posts and manual updates). Same visibility gate as the full page
+        view. No authentication required.
+      operationId: statusPageFeed
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: slug
+          in: path
+          required: true
+          description: Status page slug
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Atom feed XML
+          content:
+            application/atom+xml:
               schema:
                 type: string
         "404":
@@ -2603,6 +2895,8 @@ paths:
                 $ref: "#/components/schemas/Member"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -2653,6 +2947,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Member"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -2673,6 +2969,8 @@ paths:
       responses:
         "204":
           description: Member removed
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -4865,8 +5163,11 @@ paths:
       tags: [Organizations]
       summary: Create a new organization
       description: >-
-        Creates a new organization, makes the caller its admin, and returns a
-        session scoped to the new org.
+        Creates a new organization, makes the caller its OWNER, and returns a
+        session scoped to the new org. Any authenticated user may create an
+        organization; it is always created for the caller (the owner is taken
+        from the access token, never from the request body). A slug freed by a
+        previously deleted organization may be claimed again.
       operationId: createOrg
       security:
         - bearerAuth: []
@@ -4889,6 +5190,193 @@ paths:
           $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/ValidationError"
+
+  /api/v1/orgs/{org}:
+    patch:
+      tags: [Organizations]
+      summary: Update the organization profile
+      description: >-
+        Updates the organization's name, URL slug and/or logo. **Owner only** —
+        an admin is refused with 403 FORBIDDEN. Standard PATCH semantics: an
+        omitted field is left untouched, and `logoUrl` accepts `null` (or an
+        empty string) to clear the logo.
+
+
+        Renaming the slug moves every URL of the organization, including the
+        public ones — status pages, SVG badges and the embed widget. Existing
+        links keep working: the previous slug is remembered and answers a
+        permanent redirect (301 for GET/HEAD, 308 otherwise) to the current
+        slug. Every `/api/v1/orgs/{org}/...` route is covered except the
+        realtime WebSocket (`/api/v1/orgs/{org}/events/ws`), where an HTTP
+        redirect is meaningless — reconnect against the current slug. That
+        guarantee ends as soon as another organization claims the freed slug.
+
+
+        Because access tokens are scoped to an organization slug, a rename
+        response also carries a freshly minted session (`accessToken`,
+        `refreshToken`, `expiresIn`, `tokenType`) for the new slug; the caller
+        must adopt it or every subsequent request will be refused with 403.
+        Other live sessions self-heal on their next token refresh.
+      operationId: updateOrgProfile
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrgProfileRequest"
+      responses:
+        "200":
+          description: Updated organization profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgProfileResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The requested slug is already taken by a live organization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [Organizations]
+      summary: Delete an organization
+      description: >-
+        Permanently deletes the organization. **Owner only** — an admin is
+        refused with 403 FORBIDDEN. The request body must repeat the
+        organization slug as an explicit confirmation; a mismatch is a 422
+        VALIDATION_ERROR.
+
+
+        Deletion stops every check, revokes every organization-scoped session
+        (including the caller's own), and makes the slug 404 immediately on
+        every surface: the dashboard API, public status pages, badges and the
+        embed widget. The slug is released and may be claimed by a new
+        organization. There is no restore endpoint.
+      operationId: deleteOrg
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteOrgRequest"
+      responses:
+        "204":
+          description: Organization deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/orgs/{org}/logo:
+    post:
+      tags: [Organizations]
+      summary: Upload the organization logo
+      description: >-
+        Stores an uploaded image as the organization's logo and points
+        `logoUrl` at its public URL. **Owner only.**
+
+
+        Accepted content types are `image/png`, `image/jpeg`, `image/webp`,
+        `image/gif` and `image/svg+xml`, up to 1 MB. Anything else is a 422
+        VALIDATION_ERROR; an oversized body is a 413.
+
+
+        The content type is the one the client declares in the multipart part
+        header — the bytes are never sniffed or checked against it. The declared
+        value is clamped to the allowlist and is what gets stored and echoed
+        back as `Content-Type`, so an SVG uploaded as `image/png` is stored and
+        served as `image/png`. The serving rules below never assume the type is
+        harmless, which is what makes that safe.
+
+
+        The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable,
+        but authorized by state: it only serves a file that is the CURRENT logo
+        of a live organization, so replacing or clearing the logo un-publishes
+        the previous image immediately. Uploaded SVGs are always served with
+        `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff`
+        so they cannot execute as a document on the application's origin; they
+        still render normally in an `img` element.
+      operationId: uploadOrgLogo
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [logo]
+              properties:
+                logo:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Updated organization profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgLogoResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          description: The uploaded logo exceeds 1 MB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [Organizations]
+      summary: Clear the organization logo
+      description: >-
+        Removes the organization's logo. **Owner only.** An uploaded image is
+        retired at the same time, so its public URL stops resolving.
+      operationId: deleteOrgLogo
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: Updated organization profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgLogoResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/orgs/{org}/settings:
     get:
@@ -5193,6 +5681,13 @@ paths:
       tags: [Entitlements]
       summary: Replace an organization's entitlements
       operationId: setEntitlements
+      description: |
+        Write access is granted to either the billing service or an org admin.
+        The billing service signs the request (HMAC-SHA256 over
+        `<timestamp>.<METHOD>.<path>.<sha256 of the raw body>`, sent as
+        `X-SP-Signature: v1,<base64>` plus `X-SP-Timestamp` and `X-SP-Key-Id`).
+        The legacy static bearer is still accepted while the
+        `entitlements.allow_legacy_service_token` system parameter is true.
       security:
         - bearerAuth: []
       parameters:
@@ -5222,6 +5717,13 @@ paths:
       tags: [Entitlements]
       summary: Partially update an organization's entitlements
       operationId: patchEntitlements
+      description: |
+        Write access is granted to either the billing service or an org admin.
+        The billing service signs the request (HMAC-SHA256 over
+        `<timestamp>.<METHOD>.<path>.<sha256 of the raw body>`, sent as
+        `X-SP-Signature: v1,<base64>` plus `X-SP-Timestamp` and `X-SP-Key-Id`).
+        The legacy static bearer is still accepted while the
+        `entitlements.allow_legacy_service_token` system parameter is true.
       security:
         - bearerAuth: []
       parameters:
@@ -6058,6 +6560,113 @@ components:
           enum: [ok]
 
     # Authentication schemas
+    DeviceAuthorizationRequest:
+      type: object
+      properties:
+        clientName:
+          type: string
+          maxLength: 200
+          description: Label shown to the approving user on the consent page
+        clientId:
+          type: string
+          description: Accepted for OAuth compatibility and ignored
+
+    DeviceAuthorizationResponse:
+      type: object
+      required: [device_code, user_code, verification_uri, verification_uri_complete, expires_in, interval]
+      properties:
+        device_code:
+          type: string
+          description: The client's secret — the real capability. Never displayed in a browser.
+        user_code:
+          type: string
+          description: Short human-typed code, displayed as XXXX-XXXX
+        verification_uri:
+          type: string
+        verification_uri_complete:
+          type: string
+        expires_in:
+          type: integer
+        interval:
+          type: integer
+          description: Minimum seconds between polls; polling faster earns slow_down
+
+    DeviceTokenRequest:
+      type: object
+      required: [grant_type, device_code]
+      properties:
+        grant_type:
+          type: string
+          enum: ["urn:ietf:params:oauth:grant-type:device_code"]
+        device_code:
+          type: string
+        client_id:
+          type: string
+
+    DeviceTokenResponse:
+      type: object
+      required: [access_token, token_type]
+      properties:
+        access_token:
+          type: string
+          description: A solidping personal access token, usable directly as a bearer credential
+        token_type:
+          type: string
+          enum: [Bearer]
+
+    DeviceTokenError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum:
+            [
+              authorization_pending,
+              slow_down,
+              expired_token,
+              access_denied,
+              invalid_request,
+              unsupported_grant_type,
+            ]
+        error_description:
+          type: string
+
+    DeviceConsentInfo:
+      type: object
+      required: [clientName, userCode, status, expiresAt]
+      properties:
+        clientName:
+          type: string
+        userCode:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, denied]
+        expiresAt:
+          type: string
+          format: date-time
+
+    DeviceConsentRequest:
+      type: object
+      required: [userCode]
+      properties:
+        userCode:
+          type: string
+        org:
+          type: string
+          description: >-
+            Slug of the organization the approved token is scoped to. Defaults to
+            the approving session's organization when omitted.
+        approve:
+          type: boolean
+
+    DeviceConsentResponse:
+      type: object
+      properties:
+        approved:
+          type: boolean
+
     LoginRequest:
       type: object
       required: [email, password]
@@ -6166,7 +6775,7 @@ components:
           type: string
         role:
           type: string
-          enum: [admin, user, viewer]
+          enum: [owner, admin, user, viewer]
 
     UserSummary:
       type: object
@@ -6183,7 +6792,7 @@ components:
           type: string
         role:
           type: string
-          enum: [admin, user, viewer]
+          enum: [owner, admin, user, viewer]
 
     CreateTokenRequest:
       type: object
@@ -6409,6 +7018,14 @@ components:
           enum: [http, tcp, icmp, dns, ssl, domain]
         config:
           type: object
+          description: >-
+            Check-specific configuration; the fields accepted depend on
+            `type`. HTTP checks additionally accept `verifySsl` (boolean,
+            default true — set false to skip TLS certificate verification)
+            and `followRedirects` (boolean, default true — set false to stop
+            at the first response instead of following redirects). See
+            wiki/conventions/checker-config.md for the full per-type field
+            reference.
         targetHost:
           type: string
           nullable: true
@@ -6669,7 +7286,11 @@ components:
           description: Check type (auto-inferred from URL if not provided)
         config:
           type: object
-          description: Check-specific configuration (e.g., url, port, timeout)
+          description: >-
+            Check-specific configuration (e.g., url, port, timeout). HTTP
+            checks additionally accept `verifySsl` and `followRedirects`
+            (both booleans, default true) — see the Check schema above for
+            details.
         enabled:
           type: boolean
           default: true
@@ -6805,7 +7426,10 @@ components:
           description: Check type (auto-inferred from URL if not provided)
         config:
           type: object
-          description: Check-specific configuration
+          description: >-
+            Check-specific configuration. HTTP checks additionally accept
+            `verifySsl` and `followRedirects` (both booleans, default true)
+            — see the Check schema above for details.
         enabled:
           type: boolean
           default: true
@@ -7374,7 +7998,7 @@ components:
           type: string
         role:
           type: string
-          enum: [admin, user, viewer]
+          enum: [owner, admin, user, viewer]
         joinedAt:
           type: string
           format: date-time
@@ -7391,14 +8015,23 @@ components:
           format: email
         role:
           type: string
-          enum: [admin, user, viewer]
+          enum: [owner, admin, user, viewer]
+          description: >-
+            Member role. `owner` may only be granted by a caller who is already
+            an owner of the organization; anybody else gets 403 FORBIDDEN.
 
     UpdateMemberRequest:
       type: object
       properties:
         role:
           type: string
-          enum: [admin, user, viewer]
+          enum: [owner, admin, user, viewer]
+          description: >-
+            New member role. Granting `owner`, or changing the role of a member
+            who currently IS an owner, requires the caller to be an owner
+            (403 FORBIDDEN otherwise). The organization's last owner can never
+            be demoted (409 CONFLICT) — transfer ownership by promoting a second
+            owner first, then demoting yourself.
 
     # Notification schemas
     NotificationListResponse:
@@ -7809,6 +8442,67 @@ components:
           items:
             $ref: "#/components/schemas/StatusUpdatePublic"
         createdAt:
+          type: string
+          format: date-time
+        overallStatus:
+          type: string
+          enum: [operational, degraded, down, maintenance, unknown]
+          description: >-
+            Page-level rollup computed server-side from the live status of
+            every resource on the page, so the public views, the summary
+            endpoint, and the SVG badge always agree. Only populated on the
+            live public view paths (GET /api/v1/status-pages/{org} and
+            GET /api/v1/status-pages/{org}/{slug}) — omitted on the
+            authenticated admin listing, which doesn't load live resource data.
+        statusCounts:
+          $ref: "#/components/schemas/StatusCounts"
+          description: Same population rule as overallStatus.
+
+    StatusCounts:
+      type: object
+      required: [operational, degraded, down, maintenance, unknown]
+      description: Tallies the page's resources per overallStatus category.
+      properties:
+        operational:
+          type: integer
+        degraded:
+          type: integer
+        down:
+          type: integer
+        maintenance:
+          type: integer
+        unknown:
+          type: integer
+
+    StatusPageSummary:
+      type: object
+      required: [status, counts, page, generatedAt]
+      description: >-
+        The lightweight "is it up?" public rollup — a cheap alternative to the
+        full status page view (no sections, no per-resource availability/
+        response-time series).
+      properties:
+        status:
+          type: string
+          enum: [operational, degraded, down, maintenance, unknown]
+        counts:
+          $ref: "#/components/schemas/StatusCounts"
+        page:
+          type: object
+          required: [name, slug, url]
+          properties:
+            name:
+              type: string
+            slug:
+              type: string
+            url:
+              type: string
+              format: uri
+              description: >-
+                The canonical public URL: the verified custom domain when
+                active, otherwise the absolute /status0/{org}/{slug} URL
+                derived from the request host.
+        generatedAt:
           type: string
           format: date-time
 
@@ -9611,6 +10305,16 @@ components:
           type: string
           description: URL-friendly identifier (3-20 chars, lowercase alphanumeric with hyphens)
 
+    DeleteOrgRequest:
+      type: object
+      required: [slug]
+      properties:
+        slug:
+          type: string
+          description: >-
+            The organization's own slug, retyped as confirmation. Must match the
+            `org` path parameter exactly.
+
     OrgResponse:
       type: object
       required: [uid, slug, name, accessToken, refreshToken, expiresIn, tokenType]
@@ -9622,6 +10326,13 @@ components:
           type: string
         name:
           type: string
+        logoUrl:
+          type: string
+          nullable: true
+          description: >-
+            The organization's logo: an absolute http(s) URL, or a relative
+            `/pub/org-logos/{fileUid}` path for an uploaded image. Null when the
+            organization has no logo.
         accessToken:
           type: string
           description: Access token scoped to the new organization
@@ -9632,6 +10343,83 @@ components:
           description: Access token lifetime in seconds
         tokenType:
           type: string
+
+    UpdateOrgProfileRequest:
+      type: object
+      description: >-
+        All fields are optional. An omitted field is left untouched; `logoUrl`
+        additionally accepts an explicit null (or empty string) meaning "clear
+        the logo".
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          description: Display name. Must not be blank.
+        slug:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$"
+          description: >-
+            New URL slug, 3-20 characters, lowercase alphanumeric with hyphens.
+            Must not be held by another live organization; a slug held only as
+            another organization's previous slug is claimable.
+        logoUrl:
+          type: string
+          nullable: true
+          maxLength: 2048
+          description: >-
+            Absolute http(s) URL of the logo. Null or an empty string clears it.
+            Relative paths are rejected — an uploaded logo is set through
+            `POST /api/v1/orgs/{org}/logo`, not here.
+
+    OrgProfileResponse:
+      type: object
+      required: [uid, slug, name, logoUrl]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          description: The organization's current slug.
+        name:
+          type: string
+        logoUrl:
+          type: string
+          nullable: true
+        previousSlug:
+          type: string
+          description: >-
+            The slug that was just freed by a rename. It keeps redirecting to
+            `slug` until another organization claims it. Absent when the slug did
+            not change.
+        accessToken:
+          type: string
+          description: >-
+            Access token scoped to the new slug. Present only when the slug
+            changed — the caller's previous token is scoped to the old slug and
+            is refused against the new one.
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+          description: Access token lifetime in seconds
+        tokenType:
+          type: string
+
+    OrgLogoResponse:
+      type: object
+      required: [uid, slug, name, logoUrl]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        logoUrl:
+          type: string
+          nullable: true
 
     OrgSettingsResponse:
       type: object

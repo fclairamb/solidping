@@ -319,9 +319,26 @@ func getKnownParameters() []ParameterDefinition {
 			EnvVar: "SP_NODE_ROLE",
 			Secret: false,
 			ApplyFunc: func(cfg *config.Config, value any) {
-				if v, ok := value.(string); ok && v != "" {
-					cfg.Node.Role = v
+				role, ok := value.(string)
+				if !ok || role == "" {
+					return
 				}
+
+				// This overlay runs after config.Validate(), so a role stored in
+				// the database never went through startup validation. Applying an
+				// unparseable one would silently switch off whichever subsystems
+				// it fails to name — keep the validated value and say so loudly
+				// instead (same best-effort contract as the password policy).
+				if _, err := config.ParseNodeRoles(role); err != nil {
+					slog.Warn(
+						"Ignoring invalid node.role system parameter; keeping the configured role",
+						"value", role, "configuredRole", cfg.Node.Role, "error", err,
+					)
+
+					return
+				}
+
+				cfg.Node.Role = role
 			},
 		},
 		{

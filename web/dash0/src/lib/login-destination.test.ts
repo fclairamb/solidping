@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  deviceVerificationReturnTo,
+  isDeviceVerificationReturnTo,
   isOAuthAuthorizeReturnTo,
   isSafeReturnTo,
   resolveDestination,
@@ -43,6 +45,61 @@ describe("isOAuthAuthorizeReturnTo", () => {
   });
 });
 
+describe("isDeviceVerificationReturnTo", () => {
+  it("accepts the bare device path and the path with a user_code", () => {
+    expect(isDeviceVerificationReturnTo("/dash0/device", BASE)).toBe(true);
+    expect(
+      isDeviceVerificationReturnTo("/dash0/device?user_code=WDJP-4KXR", BASE),
+    ).toBe(true);
+  });
+
+  it("respects the app base path", () => {
+    expect(isDeviceVerificationReturnTo("/device", "")).toBe(true);
+    expect(isDeviceVerificationReturnTo("/device", BASE)).toBe(false);
+  });
+
+  it("rejects absolute and protocol-relative forms (open-redirect guard)", () => {
+    expect(isDeviceVerificationReturnTo("https://evil.com/dash0/device", BASE)).toBe(
+      false,
+    );
+    expect(isDeviceVerificationReturnTo("//evil.com/dash0/device", BASE)).toBe(
+      false,
+    );
+  });
+
+  it("rejects lookalike paths and subpaths", () => {
+    expect(isDeviceVerificationReturnTo("/dash0/deviceX", BASE)).toBe(false);
+    expect(isDeviceVerificationReturnTo("/dash0/device/extra", BASE)).toBe(false);
+  });
+
+  it("rejects empty / missing values", () => {
+    expect(isDeviceVerificationReturnTo(undefined, BASE)).toBe(false);
+    expect(isDeviceVerificationReturnTo(null, BASE)).toBe(false);
+    expect(isDeviceVerificationReturnTo("", BASE)).toBe(false);
+  });
+});
+
+describe("deviceVerificationReturnTo", () => {
+  it("carries the one-time code, url-encoded", () => {
+    expect(deviceVerificationReturnTo(BASE, "WDJP-4KXR")).toBe(
+      "/dash0/device?user_code=WDJP-4KXR",
+    );
+    expect(deviceVerificationReturnTo(BASE, "A B")).toBe(
+      "/dash0/device?user_code=A%20B",
+    );
+  });
+
+  it("omits the query string when there is no code", () => {
+    expect(deviceVerificationReturnTo(BASE, undefined)).toBe("/dash0/device");
+    expect(deviceVerificationReturnTo(BASE, "")).toBe("/dash0/device");
+  });
+
+  it("round-trips through the guard it is built for", () => {
+    const returnTo = deviceVerificationReturnTo(BASE, "WDJP-4KXR");
+    expect(isDeviceVerificationReturnTo(returnTo, BASE)).toBe(true);
+  });
+});
+
 describe("resolveDestination", () => {
   it("honors a returnTo whose org matches the resolved org", () => {
     expect(
@@ -61,6 +118,18 @@ describe("resolveDestination", () => {
     });
     expect(resolveDestination("other-org", authorize, BASE)).toEqual({
       href: authorize,
+    });
+  });
+
+  it("honors the device verification returnTo for ANY org (the code must survive login)", () => {
+    // The org-less /device route resolves the org from the session after
+    // login, so the org-match rule must not apply — otherwise every user whose
+    // org is not the slug the logged-out visitor was bounced through loses the
+    // pre-filled one-time code (spec 2026-08-08-02).
+    const device = "/dash0/device?user_code=WDJP-4KXR";
+    expect(resolveDestination("test", device, BASE)).toEqual({ href: device });
+    expect(resolveDestination("some-other-org", device, BASE)).toEqual({
+      href: device,
     });
   });
 

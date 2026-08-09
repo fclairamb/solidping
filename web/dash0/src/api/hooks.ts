@@ -1506,6 +1506,54 @@ export function useCreateToken(org: string) {
   });
 }
 
+// Device authorization (RFC 8628) — the consent side of `sp auth login`.
+// The CLI talks to /api/v1/auth/device and /auth/device/token directly; the
+// dashboard only ever sees the two consent endpoints below.
+export interface DeviceConsentInfo {
+  clientName: string;
+  userCode: string;
+  status: "pending" | "approved" | "denied";
+  expiresAt: string;
+}
+
+export interface DeviceConsentRequest {
+  userCode: string;
+  /** Slug of the org the approved token is scoped to. */
+  org?: string;
+  approve: boolean;
+}
+
+/** Looks up a pending device-authorization request by its short user code. */
+export function useDeviceConsent(userCode: string) {
+  return useQuery({
+    queryKey: ["device-consent", userCode],
+    queryFn: () =>
+      apiFetch<DeviceConsentInfo>(
+        `/api/v1/auth/device/consent?userCode=${encodeURIComponent(userCode)}`,
+      ),
+    enabled: !!userCode,
+    retry: false,
+  });
+}
+
+/** Approves or denies a pending device-authorization request. */
+export function useRespondToDeviceConsent() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: DeviceConsentRequest) =>
+      apiFetch<{ approved: boolean }>("/api/v1/auth/device/consent", {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      // An approval mints a PAT, so the tokens list is stale.
+      queryClient.invalidateQueries({ queryKey: ["tokens"] });
+      queryClient.invalidateQueries({ queryKey: ["device-consent"] });
+    },
+  });
+}
+
 export function useRevokeToken() {
   const queryClient = useQueryClient();
 
@@ -2394,7 +2442,8 @@ export function useRejectMembershipRequest(org: string) {
 }
 
 // Member hooks
-export type MemberRole = "admin" | "user" | "viewer";
+// Ordered most- to least-privileged: owner > admin > user > viewer.
+export type MemberRole = "owner" | "admin" | "user" | "viewer";
 
 export interface MemberResponse {
   uid: string;
@@ -2439,6 +2488,96 @@ export function useRemoveMember(org: string) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["members", org] });
+    },
+  });
+}
+
+// useDeleteOrg deletes the whole organization. Owner-only, enforced server-side
+// by the RequireOrgOwner middleware — an admin gets a 403 even if the UI slipped
+// and showed them the button. The body repeats the slug as confirmation.
+export function useDeleteOrg(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}`, {
+        method: "DELETE",
+        body: JSON.stringify({ slug }),
+      }),
+    onSuccess: () => {
+      queryClient.clear();
+    },
+  });
+}
+
+// --- Organization profile (name / slug / logo) -----------------------------
+// Owner-only, enforced server-side by RequireOrgOwner (spec 2026-08-08-12).
+
+export interface UpdateOrgProfileRequest {
+  name?: string;
+  slug?: string;
+  // An absolute http(s) URL sets the logo; null clears it; omit to leave it
+  // untouched (the server distinguishes "absent" from "null").
+  logoUrl?: string | null;
+}
+
+export interface OrgProfileResponse {
+  uid: string;
+  slug: string;
+  name: string;
+  logoUrl: string | null;
+  // Set only when the slug changed. The old slug keeps redirecting to the new
+  // one until another organization claims it.
+  previousSlug?: string;
+  // A rename re-mints the session for the new slug — the caller must adopt it
+  // (AuthContext.adoptRenamedOrgSession) before navigating.
+  accessToken?: string;
+  refreshToken?: string;
+  expiresIn?: number;
+  tokenType?: string;
+}
+
+export function useUpdateOrgProfile(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: UpdateOrgProfileRequest) =>
+      apiFetch<OrgProfileResponse>(`/api/v1/orgs/${org}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-settings", org] });
+    },
+  });
+}
+
+// useUploadOrgLogo posts the image as multipart/form-data. The Content-Type
+// header is deliberately left unset so the browser adds the multipart boundary.
+export function useUploadOrgLogo(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => {
+      const body = new FormData();
+      body.append("logo", file);
+      return apiFetch<OrgProfileResponse>(`/api/v1/orgs/${org}/logo`, {
+        method: "POST",
+        body,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-settings", org] });
+    },
+  });
+}
+
+export function useClearOrgLogo(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<OrgProfileResponse>(`/api/v1/orgs/${org}/logo`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-settings", org] });
     },
   });
 }
@@ -2872,6 +3011,13 @@ export interface CheckTypeInfo {
    * type list that would drift as more checkers gain tunnel support.
    */
   supportsTunnel?: boolean;
+  /**
+   * True when the type honors the shared `ipVersion` config key
+   * (auto/ipv4/ipv6). Server-declared capability metadata, for the same reason
+   * as supportsTunnel: the form gates its selector on this rather than on a
+   * hard-coded type list.
+   */
+  supportsIpVersion?: boolean;
 }
 
 export function useCheckTypes(org: string) {

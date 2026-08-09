@@ -376,7 +376,7 @@ solidping/
 - Soft delete support
 
 #### Users
-- Organization members with role-based access (admin, user, viewer)
+- Organization members with role-based access (owner, admin, user, viewer)
 - Password hash for local authentication
 - Optional auth provider link for OAuth
 - TOTP-based two-factor authentication
@@ -445,7 +445,7 @@ solidping/
 ### Authorization
 - JWT-based with refresh tokens
 - Middleware enforces organization-scoped access
-- Role-based permissions (admin, user, viewer)
+- Role-based permissions, hierarchical: owner > admin > user > viewer (an owner passes every admin gate)
 
 ## API Design Principles
 

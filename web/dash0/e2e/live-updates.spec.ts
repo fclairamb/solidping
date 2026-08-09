@@ -368,15 +368,45 @@ test.describe("Live dashboard updates", () => {
       // Fail the check: with a zero confirmation window the incident opens
       // on this heartbeat and must appear in the table without any reload —
       // the page has no fast poll, so only the live hint can deliver this.
-      // Match on the full title ("<slug> is down"): the row shows the
-      // incident title and the check slug, not the check name — and a bare
-      // slug is a substring prefix of its "-2"/"-3" siblings, which would
-      // trip Playwright's strict mode when several such incidents exist.
-      const incidentTitle = `${check.slug} is down`;
+      //
+      // Locate the row by the incident's own UID, never by its text. The
+      // title is "<check slug> is down", and the slug is a server-generated
+      // counter ("heartbeat-heartbeat-4") that is recycled once an earlier
+      // check is deleted — so an incident left by a previous run against a
+      // since-deleted check renders an identically-titled row, and the text
+      // filter then resolves to two elements and fails strict mode.
       await sendHeartbeat(page, check, "down");
-      await expect(
-        page.getByTestId("incident-row").filter({ hasText: incidentTitle }),
-      ).toBeVisible({ timeout: 6000 });
+
+      // Confirm the incident exists server-side first (and capture its UID),
+      // exactly as the recovery half below does, so the UI budget measures
+      // only live delivery rather than server processing plus delivery.
+      let incidentUid = "";
+      await expect
+        .poll(
+          async () => {
+            const resp = await page.request.get(
+              `${API_BASE}/api/v1/orgs/test/incidents?checkUid=${check.uid}&state=active`,
+              { headers: { Authorization: `Bearer ${token}` } },
+            );
+            const body = await resp.json();
+            const rows = (body.data ?? []) as { uid?: string }[];
+            incidentUid = rows[0]?.uid ?? "";
+            return rows.length;
+          },
+          {
+            timeout: 20_000,
+            message: "the failing heartbeat must open an incident server-side",
+          },
+        )
+        .toBe(1);
+
+      // Guard the selector: an empty UID would silently become a locator that
+      // matches nothing, so the visibility assertion below would fail as a
+      // missing row rather than as the payload problem it actually is.
+      expect(incidentUid).not.toBe("");
+
+      const incidentRow = page.locator(`[data-incident-uid="${incidentUid}"]`);
+      await expect(incidentRow).toBeVisible({ timeout: 6000 });
 
       // Recovery resolves the incident: it must drop off the active-only view
       // live too. The open invalidation just armed the per-scope refetch damper
@@ -410,9 +440,7 @@ test.describe("Live dashboard updates", () => {
         .toBe(0);
 
       // Now the live path has a budget of its own: damper + refetch only.
-      await expect(
-        page.getByTestId("incident-row").filter({ hasText: incidentTitle }),
-      ).toBeHidden({ timeout: 15_000 });
+      await expect(incidentRow).toBeHidden({ timeout: 15_000 });
     } finally {
       await deleteCheck(page, token, check.uid);
     }

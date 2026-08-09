@@ -37,12 +37,22 @@ jobs:
           mkdir -p internal/app/res && echo "placeholder" > internal/app/res/index.html
           mkdir -p internal/app/dash0res && echo "placeholder" > internal/app/dash0res/index.html
           mkdir -p internal/app/status0res && echo "placeholder" > internal/app/status0res/index.html
+          # web/status0's `build:widget` script emits the embeddable status
+          # widget into the real status0 build; the /embed/v1/widget.js route
+          # resolves it out of the embedded FS, so it must exist here too or
+          # TestServeEmbedWidgetV1 404s (spec 2026-08-08-08).
+          mkdir -p internal/app/status0res/embed/v1
+          echo "(()=>{})();" > internal/app/status0res/embed/v1/widget.js
           mkdir -p internal/app/docsres && echo "placeholder" > internal/app/docsres/index.html
           # docusaurus-plugin-llms emits these into the real docs build; the
           # root /llms.txt and /llms-full.txt routes resolve them out of the
           # embedded FS, so they must exist here too or those tests 404.
           echo "placeholder" > internal/app/docsres/llms.txt
           echo "placeholder" > internal/app/docsres/llms-full.txt
+          # @easyops-cn/docusaurus-search-local emits this lunr index into the
+          # real docs build; TestEmbeddedDocsContainSearchIndex asserts it's
+          # present in the embedded FS, so it must exist here too.
+          echo '[]' > internal/app/docsres/search-index.json
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9.3.0

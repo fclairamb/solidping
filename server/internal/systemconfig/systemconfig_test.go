@@ -763,3 +763,77 @@ func envKeyToParam(envVar string) string {
 		return envVar
 	}
 }
+
+// TestNodeRoleParameterApply covers the node.role overlay (spec 2026-08-09-01).
+// This ApplyFunc runs AFTER config.Validate(), so it is the one path where an
+// unvalidated role could reach the subsystem gates: a multi-value role must be
+// accepted verbatim, and an invalid one must be refused in favor of the
+// already-validated value rather than silently switching subsystems off.
+func TestNodeRoleParameterApply(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	var def ParameterDefinition
+
+	for _, candidate := range getKnownParameters() {
+		if candidate.Key == KeyNodeRole {
+			def = candidate
+
+			break
+		}
+	}
+
+	r.Equalf(KeyNodeRole, def.Key, "expected %q to be a known parameter", KeyNodeRole)
+	r.NotNil(def.ApplyFunc)
+
+	tests := []struct {
+		name     string
+		stored   any
+		want     string
+		wantAPI  bool
+		wantJobs bool
+		wantChks bool
+	}{
+		{
+			name: "multi-value role is applied", stored: "api,jobs", want: "api,jobs",
+			wantAPI: true, wantJobs: true, wantChks: false,
+		},
+		{
+			name: "single-value role is applied", stored: "checks", want: "checks",
+			wantChks: true,
+		},
+		{
+			name: "invalid role keeps the configured value", stored: "api,chekcs", want: "all",
+			wantAPI: true, wantJobs: true, wantChks: true,
+		},
+		{
+			name: "conflicting combination keeps the configured value", stored: "agent,api", want: "all",
+			wantAPI: true, wantJobs: true, wantChks: true,
+		},
+		{
+			name: "empty value is ignored", stored: "", want: "all",
+			wantAPI: true, wantJobs: true, wantChks: true,
+		},
+		{
+			name: "non-string value is ignored", stored: 42, want: "all",
+			wantAPI: true, wantJobs: true, wantChks: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rr := require.New(t)
+			cfg := &config.Config{Node: config.NodeConfig{Role: config.NodeRoleAll}}
+
+			def.ApplyFunc(cfg, tt.stored)
+
+			rr.Equal(tt.want, cfg.Node.Role)
+			rr.Equal(tt.wantAPI, cfg.ShouldRunAPI())
+			rr.Equal(tt.wantJobs, cfg.ShouldRunJobs())
+			rr.Equal(tt.wantChks, cfg.ShouldRunChecks())
+		})
+	}
+}

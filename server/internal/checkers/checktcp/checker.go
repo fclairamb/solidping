@@ -127,24 +127,18 @@ func (c *TCPChecker) executeDirect(
 		}
 	}
 
-	// Use any of the resolved addresses (prefer IPv4 if available)
-	var targetIP net.IP
-
-	var isIPv6 bool
-
-	for i := range addrs {
-		if addrs[i].IP.To4() != nil {
-			targetIP = addrs[i].IP
-			isIPv6 = false
-
-			break
+	// Pick the address to dial. The choice — IPv4-first by default, or the
+	// family this check pins via `ipVersion` — lives in checkerdef so every
+	// checker makes it identically.
+	targetIP, selectErr := checkerdef.SelectIPAddr(cfg.Host, addrs, checkerdef.IPVersionFrom(ctx))
+	if selectErr != nil {
+		return &checkerdef.Result{
+			Status:   checkerdef.IPVersionFailureStatus(selectErr),
+			Duration: time.Since(start),
+			Output: map[string]any{
+				checkerdef.OutputKeyError: selectErr.Error(),
+			},
 		}
-	}
-
-	// Fall back to IPv6 if no IPv4 found
-	if targetIP == nil {
-		targetIP = addrs[0].IP
-		isIPv6 = targetIP.To4() == nil
 	}
 
 	// Execute TCP connection
@@ -153,10 +147,7 @@ func (c *TCPChecker) executeDirect(
 	result.Duration = time.Since(start)
 
 	// Add host info to output
-	ipVersion := "ipv4"
-	if isIPv6 {
-		ipVersion = "ipv6"
-	}
+	ipVersion := checkerdef.IPVersionOf(targetIP).String()
 
 	if result.Output == nil {
 		result.Output = make(map[string]any)
@@ -164,7 +155,7 @@ func (c *TCPChecker) executeDirect(
 
 	result.Output["host"] = targetIP.String()
 	result.Output["port"] = cfg.Port
-	result.Output["ip_version"] = ipVersion
+	result.Output[checkerdef.OutputKeyIPVersion] = ipVersion
 	result.Output["tls_enabled"] = cfg.TLS
 
 	return &result

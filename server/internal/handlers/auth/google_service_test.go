@@ -228,7 +228,7 @@ func TestGoogleHandleCallback(t *testing.T) {
 		assert.NotNil(t, user.EmailVerifiedAt)
 	})
 
-	t.Run("ensure membership first user gets admin", func(t *testing.T) {
+	t.Run("ensure membership first user gets owner", func(t *testing.T) {
 		t.Parallel()
 
 		svc, ctx := setupGoogleTestService(t)
@@ -237,9 +237,12 @@ func TestGoogleHandleCallback(t *testing.T) {
 		user := models.NewUser("first@example.com")
 		require.NoError(t, svc.db.CreateUser(ctx, user))
 
-		member, err := svc.ensureMembership(ctx, org.UID, user.UID)
+		member, pending, err := svc.authService.JoinOrgViaLogin(ctx, org, user)
 		require.NoError(t, err)
-		assert.Equal(t, models.MemberRoleAdmin, member.Role)
+		require.False(t, pending)
+		require.NotNil(t, member)
+		// First member of an empty org owns it (spec 2026-08-08-11).
+		assert.Equal(t, models.MemberRoleOwner, member.Role)
 	})
 
 	t.Run("ensure membership second user gets user role", func(t *testing.T) {
@@ -252,15 +255,22 @@ func TestGoogleHandleCallback(t *testing.T) {
 		firstUser := models.NewUser("first@example.com")
 		require.NoError(t, svc.db.CreateUser(ctx, firstUser))
 
-		_, err := svc.ensureMembership(ctx, org.UID, firstUser.UID)
+		_, _, err := svc.authService.JoinOrgViaLogin(ctx, org, firstUser)
 		require.NoError(t, err)
 
-		// Second user should get user role
+		// The org admits @example.com, so the second user joins as a
+		// plain user (without the pattern they would be left pending —
+		// see TestJoinOrgViaLogin).
+		require.NoError(t, svc.db.SetOrgParameter(
+			ctx, org.UID, "registration.email_pattern", `@example\.com$`, false))
+
 		secondUser := models.NewUser("second@example.com")
 		require.NoError(t, svc.db.CreateUser(ctx, secondUser))
 
-		member, err := svc.ensureMembership(ctx, org.UID, secondUser.UID)
+		member, pending, err := svc.authService.JoinOrgViaLogin(ctx, org, secondUser)
 		require.NoError(t, err)
+		require.False(t, pending)
+		require.NotNil(t, member)
 		assert.Equal(t, models.MemberRoleUser, member.Role)
 	})
 
@@ -302,8 +312,12 @@ func TestGoogleGetCallbackURL(t *testing.T) {
 	assert.Equal(t, "http://localhost:4000/api/v1/auth/google/callback", svc.getCallbackURL())
 }
 
-// testGoogleCallbackWithMockServers is a helper to test the full callback flow with mocked servers.
-// It patches the Google URLs temporarily and calls HandleCallback.
+// testGoogleCallbackWithMockServers drives the REAL HandleCallback against
+// httptest stand-ins for Google's token and userinfo endpoints. It must stay a
+// thin URL-injection shim: a test-local re-implementation of the callback body
+// would keep passing if someone reintroduced a direct membership creation in
+// the production path, which is exactly the regression the join-policy gate
+// exists to prevent.
 func testGoogleCallbackWithMockServers(
 	ctx context.Context,
 	t *testing.T,
@@ -312,7 +326,7 @@ func testGoogleCallbackWithMockServers(
 ) *GoogleOAuthResult {
 	t.Helper()
 
-	result, err := callbackWithMockedURLs(ctx, svc, orgSlug, tokenURL, userInfoURL)
+	result, err := testGoogleCallbackWithMockServersErr(ctx, t, svc, orgSlug, tokenURL, userInfoURL)
 	require.NoError(t, err)
 
 	return result
@@ -326,118 +340,8 @@ func testGoogleCallbackWithMockServersErr(
 ) (*GoogleOAuthResult, error) {
 	t.Helper()
 
-	return callbackWithMockedURLs(ctx, svc, orgSlug, tokenURL, userInfoURL)
-}
+	svc.tokenURL = tokenURL
+	svc.userInfoURL = userInfoURL
 
-// callbackWithMockedURLs performs the HandleCallback flow using mock Google endpoints.
-// It creates a temporary wrapper that overrides exchangeCode and fetchUserProfile.
-func callbackWithMockedURLs(
-	ctx context.Context,
-	svc *GoogleOAuthService,
-	orgSlug, tokenURL, userInfoURL string,
-) (*GoogleOAuthResult, error) {
-	// Create a service wrapper that uses mock URLs
-	mockSvc := &googleMockService{
-		GoogleOAuthService: svc,
-		tokenURL:           tokenURL,
-		userInfoURL:        userInfoURL,
-	}
-
-	return mockSvc.handleCallbackMocked(ctx, "mock-code", orgSlug)
-}
-
-// googleMockService wraps GoogleOAuthService to override HTTP endpoints for testing.
-type googleMockService struct {
-	*GoogleOAuthService
-	tokenURL    string
-	userInfoURL string
-}
-
-func (m *googleMockService) handleCallbackMocked(
-	ctx context.Context, code, orgSlug string,
-) (*GoogleOAuthResult, error) {
-	// Exchange code using mock token URL
-	tokenResp, err := m.exchangeCodeMocked(ctx, code)
-	if err != nil {
-		return nil, err
-	}
-
-	// Fetch user info using mock userinfo URL
-	userInfo, err := m.fetchUserProfileMocked(ctx, tokenResp.AccessToken)
-	if err != nil {
-		return nil, err
-	}
-
-	if userInfo.Email == "" || !userInfo.EmailVerified {
-		return nil, ErrEmailNotVerified
-	}
-
-	org, err := m.db.GetOrganizationBySlug(ctx, orgSlug)
-	if err != nil {
-		return nil, err
-	}
-
-	user, err := m.findOrCreateUser(ctx, userInfo)
-	if err != nil {
-		return nil, err
-	}
-
-	member, err := m.ensureMembership(ctx, org.UID, user.UID)
-	if err != nil {
-		return nil, err
-	}
-
-	tokens, err := m.authService.GenerateTokensForOAuth(ctx, user, org, string(member.Role))
-	if err != nil {
-		return nil, err
-	}
-
-	return &GoogleOAuthResult{
-		AccessToken:  tokens.AccessToken,
-		RefreshToken: tokens.RefreshToken,
-		OrgSlug:      org.Slug,
-		UserUID:      user.UID,
-	}, nil
-}
-
-func (m *googleMockService) exchangeCodeMocked(ctx context.Context, _ string) (*GoogleTokenResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, m.tokenURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := m.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	var tokenResp GoogleTokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		return nil, err
-	}
-
-	return &tokenResp, nil
-}
-
-func (m *googleMockService) fetchUserProfileMocked(ctx context.Context, accessToken string) (*GoogleUserInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.userInfoURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	resp, err := m.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	var userInfo GoogleUserInfo
-	if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
-		return nil, err
-	}
-
-	return &userInfo, nil
+	return svc.HandleCallback(ctx, "mock-code", orgSlug)
 }

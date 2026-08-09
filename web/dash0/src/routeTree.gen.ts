@@ -13,6 +13,7 @@ import { Route as NoOrgRouteImport } from './routes/no-org'
 import { Route as McpRouteImport } from './routes/mcp'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as DeviceRouteImport } from './routes/device'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResetPasswordTokenRouteImport } from './routes/reset-password.$token'
 import { Route as OrgsOrgRouteImport } from './routes/orgs/$org'
@@ -103,14 +104,17 @@ import { Route as OrgsOrgAccountTokensRouteImport } from './routes/orgs/$org/acc
 import { Route as OrgsOrgAccountSessionsRouteImport } from './routes/orgs/$org/account.sessions'
 import { Route as OrgsOrgAccountSecurityRouteImport } from './routes/orgs/$org/account.security'
 import { Route as OrgsOrgAccountProfileRouteImport } from './routes/orgs/$org/account.profile'
+import { Route as OrgsOrgAccountOrganizationsRouteImport } from './routes/orgs/$org/account.organizations'
 import { Route as OrgsOrgAccountNotificationsRouteImport } from './routes/orgs/$org/account.notifications'
 import { Route as OrgsOrgAccountMcpRouteImport } from './routes/orgs/$org/account.mcp'
+import { Route as OrgsOrgAccountDeviceRouteImport } from './routes/orgs/$org/account.device'
 import { Route as OrgsOrgStatusPagesStatusPageUidIndexRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.index'
 import { Route as OrgsOrgOrganizationPrivateLocationsIndexRouteImport } from './routes/orgs/$org/organization.private-locations.index'
 import { Route as OrgsOrgOnCallUidIndexRouteImport } from './routes/orgs/$org/on-call.$uid.index'
 import { Route as OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRouteImport } from './routes/orgs/$org/maintenance-windows.$maintenanceWindowUid.index'
 import { Route as OrgsOrgDiscoveryJobUidIndexRouteImport } from './routes/orgs/$org/discovery.$jobUid.index'
 import { Route as OrgsOrgChecksCheckUidIndexRouteImport } from './routes/orgs/$org/checks.$checkUid.index'
+import { Route as OrgsOrgAccountOrganizationsIndexRouteImport } from './routes/orgs/$org/account.organizations.index'
 import { Route as OrgsOrgStatusUpdatesUpdateUidEditRouteImport } from './routes/orgs/$org/status-updates.$updateUid.edit'
 import { Route as OrgsOrgStatusPagesStatusPageUidEditRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.edit'
 import { Route as OrgsOrgStatusPagesStatusPageUidAppearanceRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.appearance'
@@ -120,6 +124,7 @@ import { Route as OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRouteImport }
 import { Route as OrgsOrgJobsCheckCheckJobUidRouteImport } from './routes/orgs/$org/jobs.check.$checkJobUid'
 import { Route as OrgsOrgChecksCheckUidEditRouteImport } from './routes/orgs/$org/checks.$checkUid.edit'
 import { Route as OrgsOrgCheckGroupsUidEditRouteImport } from './routes/orgs/$org/check-groups.$uid.edit'
+import { Route as OrgsOrgAccountOrganizationsNewRouteImport } from './routes/orgs/$org/account.organizations.new'
 import { Route as OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRouteImport } from './routes/orgs/$org/incidents.$incidentUid_.notifications.$notificationUid'
 import { Route as OrgsOrgChecksCheckUidResultsResultUidRouteImport } from './routes/orgs/$org/checks.$checkUid.results.$resultUid'
 
@@ -141,6 +146,11 @@ const LoginRoute = LoginRouteImport.update({
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeviceRoute = DeviceRouteImport.update({
+  id: '/device',
+  path: '/device',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -619,6 +629,12 @@ const OrgsOrgAccountProfileRoute = OrgsOrgAccountProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => OrgsOrgAccountRoute,
 } as any)
+const OrgsOrgAccountOrganizationsRoute =
+  OrgsOrgAccountOrganizationsRouteImport.update({
+    id: '/organizations',
+    path: '/organizations',
+    getParentRoute: () => OrgsOrgAccountRoute,
+  } as any)
 const OrgsOrgAccountNotificationsRoute =
   OrgsOrgAccountNotificationsRouteImport.update({
     id: '/notifications',
@@ -628,6 +644,11 @@ const OrgsOrgAccountNotificationsRoute =
 const OrgsOrgAccountMcpRoute = OrgsOrgAccountMcpRouteImport.update({
   id: '/mcp',
   path: '/mcp',
+  getParentRoute: () => OrgsOrgAccountRoute,
+} as any)
+const OrgsOrgAccountDeviceRoute = OrgsOrgAccountDeviceRouteImport.update({
+  id: '/device',
+  path: '/device',
   getParentRoute: () => OrgsOrgAccountRoute,
 } as any)
 const OrgsOrgStatusPagesStatusPageUidIndexRoute =
@@ -664,6 +685,12 @@ const OrgsOrgChecksCheckUidIndexRoute =
     id: '/',
     path: '/',
     getParentRoute: () => OrgsOrgChecksCheckUidRoute,
+  } as any)
+const OrgsOrgAccountOrganizationsIndexRoute =
+  OrgsOrgAccountOrganizationsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => OrgsOrgAccountOrganizationsRoute,
   } as any)
 const OrgsOrgStatusUpdatesUpdateUidEditRoute =
   OrgsOrgStatusUpdatesUpdateUidEditRouteImport.update({
@@ -718,6 +745,12 @@ const OrgsOrgCheckGroupsUidEditRoute =
     path: '/check-groups/$uid/edit',
     getParentRoute: () => OrgsOrgRoute,
   } as any)
+const OrgsOrgAccountOrganizationsNewRoute =
+  OrgsOrgAccountOrganizationsNewRouteImport.update({
+    id: '/new',
+    path: '/new',
+    getParentRoute: () => OrgsOrgAccountOrganizationsRoute,
+  } as any)
 const OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute =
   OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRouteImport.update({
     id: '/$incidentUid_/notifications/$notificationUid',
@@ -733,6 +766,7 @@ const OrgsOrgChecksCheckUidResultsResultUidRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/device': typeof DeviceRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
@@ -764,8 +798,10 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/status-updates': typeof OrgsOrgStatusUpdatesRouteWithChildren
   '/orgs/$org/test': typeof OrgsOrgTestRouteWithChildren
   '/orgs/$org/': typeof OrgsOrgIndexRoute
+  '/orgs/$org/account/device': typeof OrgsOrgAccountDeviceRoute
   '/orgs/$org/account/mcp': typeof OrgsOrgAccountMcpRoute
   '/orgs/$org/account/notifications': typeof OrgsOrgAccountNotificationsRoute
+  '/orgs/$org/account/organizations': typeof OrgsOrgAccountOrganizationsRouteWithChildren
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
   '/orgs/$org/account/sessions': typeof OrgsOrgAccountSessionsRoute
@@ -828,6 +864,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/status-pages/': typeof OrgsOrgStatusPagesIndexRoute
   '/orgs/$org/status-updates/': typeof OrgsOrgStatusUpdatesIndexRoute
   '/orgs/$org/test/': typeof OrgsOrgTestIndexRoute
+  '/orgs/$org/account/organizations/new': typeof OrgsOrgAccountOrganizationsNewRoute
   '/orgs/$org/check-groups/$uid/edit': typeof OrgsOrgCheckGroupsUidEditRoute
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
@@ -837,6 +874,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/status-pages/$statusPageUid/appearance': typeof OrgsOrgStatusPagesStatusPageUidAppearanceRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
+  '/orgs/$org/account/organizations/': typeof OrgsOrgAccountOrganizationsIndexRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/discovery/$jobUid/': typeof OrgsOrgDiscoveryJobUidIndexRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute
@@ -848,6 +886,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/device': typeof DeviceRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
@@ -864,6 +903,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/me': typeof OrgsOrgMeRouteWithChildren
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
   '/orgs/$org': typeof OrgsOrgIndexRoute
+  '/orgs/$org/account/device': typeof OrgsOrgAccountDeviceRoute
   '/orgs/$org/account/mcp': typeof OrgsOrgAccountMcpRoute
   '/orgs/$org/account/notifications': typeof OrgsOrgAccountNotificationsRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
@@ -922,6 +962,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/status-pages': typeof OrgsOrgStatusPagesIndexRoute
   '/orgs/$org/status-updates': typeof OrgsOrgStatusUpdatesIndexRoute
   '/orgs/$org/test': typeof OrgsOrgTestIndexRoute
+  '/orgs/$org/account/organizations/new': typeof OrgsOrgAccountOrganizationsNewRoute
   '/orgs/$org/check-groups/$uid/edit': typeof OrgsOrgCheckGroupsUidEditRoute
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
@@ -931,6 +972,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/status-pages/$statusPageUid/appearance': typeof OrgsOrgStatusPagesStatusPageUidAppearanceRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
+  '/orgs/$org/account/organizations': typeof OrgsOrgAccountOrganizationsIndexRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/discovery/$jobUid': typeof OrgsOrgDiscoveryJobUidIndexRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute
@@ -943,6 +985,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/device': typeof DeviceRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
@@ -974,8 +1017,10 @@ export interface FileRoutesById {
   '/orgs/$org/status-updates': typeof OrgsOrgStatusUpdatesRouteWithChildren
   '/orgs/$org/test': typeof OrgsOrgTestRouteWithChildren
   '/orgs/$org/': typeof OrgsOrgIndexRoute
+  '/orgs/$org/account/device': typeof OrgsOrgAccountDeviceRoute
   '/orgs/$org/account/mcp': typeof OrgsOrgAccountMcpRoute
   '/orgs/$org/account/notifications': typeof OrgsOrgAccountNotificationsRoute
+  '/orgs/$org/account/organizations': typeof OrgsOrgAccountOrganizationsRouteWithChildren
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
   '/orgs/$org/account/sessions': typeof OrgsOrgAccountSessionsRoute
@@ -1038,6 +1083,7 @@ export interface FileRoutesById {
   '/orgs/$org/status-pages/': typeof OrgsOrgStatusPagesIndexRoute
   '/orgs/$org/status-updates/': typeof OrgsOrgStatusUpdatesIndexRoute
   '/orgs/$org/test/': typeof OrgsOrgTestIndexRoute
+  '/orgs/$org/account/organizations/new': typeof OrgsOrgAccountOrganizationsNewRoute
   '/orgs/$org/check-groups/$uid/edit': typeof OrgsOrgCheckGroupsUidEditRoute
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
@@ -1047,6 +1093,7 @@ export interface FileRoutesById {
   '/orgs/$org/status-pages/$statusPageUid/appearance': typeof OrgsOrgStatusPagesStatusPageUidAppearanceRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
+  '/orgs/$org/account/organizations/': typeof OrgsOrgAccountOrganizationsIndexRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/discovery/$jobUid/': typeof OrgsOrgDiscoveryJobUidIndexRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute
@@ -1060,6 +1107,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/device'
     | '/forgot-password'
     | '/login'
     | '/mcp'
@@ -1091,8 +1139,10 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-updates'
     | '/orgs/$org/test'
     | '/orgs/$org/'
+    | '/orgs/$org/account/device'
     | '/orgs/$org/account/mcp'
     | '/orgs/$org/account/notifications'
+    | '/orgs/$org/account/organizations'
     | '/orgs/$org/account/profile'
     | '/orgs/$org/account/security'
     | '/orgs/$org/account/sessions'
@@ -1155,6 +1205,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages/'
     | '/orgs/$org/status-updates/'
     | '/orgs/$org/test/'
+    | '/orgs/$org/account/organizations/new'
     | '/orgs/$org/check-groups/$uid/edit'
     | '/orgs/$org/checks/$checkUid/edit'
     | '/orgs/$org/jobs/check/$checkJobUid'
@@ -1164,6 +1215,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages/$statusPageUid/appearance'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
+    | '/orgs/$org/account/organizations/'
     | '/orgs/$org/checks/$checkUid/'
     | '/orgs/$org/discovery/$jobUid/'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/'
@@ -1175,6 +1227,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/device'
     | '/forgot-password'
     | '/login'
     | '/mcp'
@@ -1191,6 +1244,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/me'
     | '/orgs/$org/register'
     | '/orgs/$org'
+    | '/orgs/$org/account/device'
     | '/orgs/$org/account/mcp'
     | '/orgs/$org/account/notifications'
     | '/orgs/$org/account/profile'
@@ -1249,6 +1303,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages'
     | '/orgs/$org/status-updates'
     | '/orgs/$org/test'
+    | '/orgs/$org/account/organizations/new'
     | '/orgs/$org/check-groups/$uid/edit'
     | '/orgs/$org/checks/$checkUid/edit'
     | '/orgs/$org/jobs/check/$checkJobUid'
@@ -1258,6 +1313,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages/$statusPageUid/appearance'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
+    | '/orgs/$org/account/organizations'
     | '/orgs/$org/checks/$checkUid'
     | '/orgs/$org/discovery/$jobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid'
@@ -1269,6 +1325,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/device'
     | '/forgot-password'
     | '/login'
     | '/mcp'
@@ -1300,8 +1357,10 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-updates'
     | '/orgs/$org/test'
     | '/orgs/$org/'
+    | '/orgs/$org/account/device'
     | '/orgs/$org/account/mcp'
     | '/orgs/$org/account/notifications'
+    | '/orgs/$org/account/organizations'
     | '/orgs/$org/account/profile'
     | '/orgs/$org/account/security'
     | '/orgs/$org/account/sessions'
@@ -1364,6 +1423,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages/'
     | '/orgs/$org/status-updates/'
     | '/orgs/$org/test/'
+    | '/orgs/$org/account/organizations/new'
     | '/orgs/$org/check-groups/$uid/edit'
     | '/orgs/$org/checks/$checkUid/edit'
     | '/orgs/$org/jobs/check/$checkJobUid'
@@ -1373,6 +1433,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages/$statusPageUid/appearance'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
+    | '/orgs/$org/account/organizations/'
     | '/orgs/$org/checks/$checkUid/'
     | '/orgs/$org/discovery/$jobUid/'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/'
@@ -1385,6 +1446,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DeviceRoute: typeof DeviceRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
   McpRoute: typeof McpRoute
@@ -1424,6 +1486,13 @@ declare module '@tanstack/react-router' {
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/device': {
+      id: '/device'
+      path: '/device'
+      fullPath: '/device'
+      preLoaderRoute: typeof DeviceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -2056,6 +2125,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgAccountProfileRouteImport
       parentRoute: typeof OrgsOrgAccountRoute
     }
+    '/orgs/$org/account/organizations': {
+      id: '/orgs/$org/account/organizations'
+      path: '/organizations'
+      fullPath: '/orgs/$org/account/organizations'
+      preLoaderRoute: typeof OrgsOrgAccountOrganizationsRouteImport
+      parentRoute: typeof OrgsOrgAccountRoute
+    }
     '/orgs/$org/account/notifications': {
       id: '/orgs/$org/account/notifications'
       path: '/notifications'
@@ -2068,6 +2144,13 @@ declare module '@tanstack/react-router' {
       path: '/mcp'
       fullPath: '/orgs/$org/account/mcp'
       preLoaderRoute: typeof OrgsOrgAccountMcpRouteImport
+      parentRoute: typeof OrgsOrgAccountRoute
+    }
+    '/orgs/$org/account/device': {
+      id: '/orgs/$org/account/device'
+      path: '/device'
+      fullPath: '/orgs/$org/account/device'
+      preLoaderRoute: typeof OrgsOrgAccountDeviceRouteImport
       parentRoute: typeof OrgsOrgAccountRoute
     }
     '/orgs/$org/status-pages/$statusPageUid/': {
@@ -2111,6 +2194,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/orgs/$org/checks/$checkUid/'
       preLoaderRoute: typeof OrgsOrgChecksCheckUidIndexRouteImport
       parentRoute: typeof OrgsOrgChecksCheckUidRoute
+    }
+    '/orgs/$org/account/organizations/': {
+      id: '/orgs/$org/account/organizations/'
+      path: '/'
+      fullPath: '/orgs/$org/account/organizations/'
+      preLoaderRoute: typeof OrgsOrgAccountOrganizationsIndexRouteImport
+      parentRoute: typeof OrgsOrgAccountOrganizationsRoute
     }
     '/orgs/$org/status-updates/$updateUid/edit': {
       id: '/orgs/$org/status-updates/$updateUid/edit'
@@ -2175,6 +2265,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgCheckGroupsUidEditRouteImport
       parentRoute: typeof OrgsOrgRoute
     }
+    '/orgs/$org/account/organizations/new': {
+      id: '/orgs/$org/account/organizations/new'
+      path: '/new'
+      fullPath: '/orgs/$org/account/organizations/new'
+      preLoaderRoute: typeof OrgsOrgAccountOrganizationsNewRouteImport
+      parentRoute: typeof OrgsOrgAccountOrganizationsRoute
+    }
     '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid': {
       id: '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid'
       path: '/$incidentUid/notifications/$notificationUid'
@@ -2192,9 +2289,28 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface OrgsOrgAccountOrganizationsRouteChildren {
+  OrgsOrgAccountOrganizationsNewRoute: typeof OrgsOrgAccountOrganizationsNewRoute
+  OrgsOrgAccountOrganizationsIndexRoute: typeof OrgsOrgAccountOrganizationsIndexRoute
+}
+
+const OrgsOrgAccountOrganizationsRouteChildren: OrgsOrgAccountOrganizationsRouteChildren =
+  {
+    OrgsOrgAccountOrganizationsNewRoute: OrgsOrgAccountOrganizationsNewRoute,
+    OrgsOrgAccountOrganizationsIndexRoute:
+      OrgsOrgAccountOrganizationsIndexRoute,
+  }
+
+const OrgsOrgAccountOrganizationsRouteWithChildren =
+  OrgsOrgAccountOrganizationsRoute._addFileChildren(
+    OrgsOrgAccountOrganizationsRouteChildren,
+  )
+
 interface OrgsOrgAccountRouteChildren {
+  OrgsOrgAccountDeviceRoute: typeof OrgsOrgAccountDeviceRoute
   OrgsOrgAccountMcpRoute: typeof OrgsOrgAccountMcpRoute
   OrgsOrgAccountNotificationsRoute: typeof OrgsOrgAccountNotificationsRoute
+  OrgsOrgAccountOrganizationsRoute: typeof OrgsOrgAccountOrganizationsRouteWithChildren
   OrgsOrgAccountProfileRoute: typeof OrgsOrgAccountProfileRoute
   OrgsOrgAccountSecurityRoute: typeof OrgsOrgAccountSecurityRoute
   OrgsOrgAccountSessionsRoute: typeof OrgsOrgAccountSessionsRoute
@@ -2203,8 +2319,11 @@ interface OrgsOrgAccountRouteChildren {
 }
 
 const OrgsOrgAccountRouteChildren: OrgsOrgAccountRouteChildren = {
+  OrgsOrgAccountDeviceRoute: OrgsOrgAccountDeviceRoute,
   OrgsOrgAccountMcpRoute: OrgsOrgAccountMcpRoute,
   OrgsOrgAccountNotificationsRoute: OrgsOrgAccountNotificationsRoute,
+  OrgsOrgAccountOrganizationsRoute:
+    OrgsOrgAccountOrganizationsRouteWithChildren,
   OrgsOrgAccountProfileRoute: OrgsOrgAccountProfileRoute,
   OrgsOrgAccountSecurityRoute: OrgsOrgAccountSecurityRoute,
   OrgsOrgAccountSessionsRoute: OrgsOrgAccountSessionsRoute,
@@ -2653,6 +2772,7 @@ const OrgsOrgRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DeviceRoute: DeviceRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
   McpRoute: McpRoute,

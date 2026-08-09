@@ -5,6 +5,18 @@
   },
   "settings": {
     "title": "Paramètres de l'organisation",
+    "profile": {
+      "title": "Profil de l'organisation",
+      "description": "Le nom de l'organisation, son slug d'URL et le logo affiché dans le tableau de bord et sur ses pages de statut.",
+      "name": "Nom",
+      "slug": "Slug d'URL",
+      "renameWarning": "Toutes les URL de cette organisation changent — liens du tableau de bord, pages de statut, badges SVG et widgets intégrés. Les liens existants continuent de fonctionner : l'ancienne adresse redirige vers la nouvelle, mais seulement jusqu'à ce qu'une autre organisation la revendique.",
+      "logo": "Logo",
+      "logoHelp": "Collez l'URL d'une image, ou téléversez un PNG, JPEG, WebP, GIF ou SVG de 1 Mo maximum.",
+      "logoUploaded": "Logo mis à jour.",
+      "upload": "Téléverser",
+      "removeLogo": "Supprimer le logo"
+    },
     "autoJoin": "Inscription automatique",
     "autoJoinDescription": "Ajouter automatiquement les utilisateurs correspondant à ce modèle d'e-mail à l'organisation.",
     "autoJoinFullDescription": "Les utilisateurs dont l'e-mail correspond à ce modèle rejoindront automatiquement cette organisation lors de leur inscription ou connexion via OAuth.",
@@ -20,7 +32,18 @@
     "sessionDurationFullDescription": "Définissez une limite stricte sur la durée d'une session de connexion, quelle que soit l'activité. Laissez vide pour utiliser la valeur par défaut de la plateforme (illimitée sauf limite définie globalement).",
     "sessionDurationHoursLabel": "Durée maximale de session (heures)",
     "sessionDurationPlaceholder": "Illimitée",
-    "sessionDurationHelp": "Une fois définie, la session expire de force ce nombre d'heures après la connexion, même si l'utilisateur reste actif — indépendamment du délai d'inactivité de 7 jours."
+    "sessionDurationHelp": "Une fois définie, la session expire de force ce nombre d'heures après la connexion, même si l'utilisateur reste actif — indépendamment du délai d'inactivité de 7 jours.",
+    "dangerZone": {
+      "title": "Zone de danger",
+      "description": "Actions irréversibles. Seuls les propriétaires voient cette section.",
+      "deleteHelp": "Supprimer {{org}} efface ses contrôles, pages de statut, membres et historique. Cette action est irréversible.",
+      "deleteButton": "Supprimer l'organisation",
+      "confirmTitle": "Supprimer cette organisation ?",
+      "confirmBody": "Cela supprime définitivement {{org}} : tous les contrôles s'arrêtent, ses pages de statut et badges ne répondent plus, et tout le monde perd l'accès. Cette action est irréversible.",
+      "confirmInputLabel": "Saisissez {{org}} pour confirmer",
+      "confirmAction": "Supprimer l'organisation",
+      "deleted": "Organisation {{org}} supprimée"
+    }
   },
   "usage": {
     "title": "Utilisation",
@@ -145,6 +168,7 @@
       "joinedAt": "Rejoint le"
     },
     "role": {
+      "owner": "Propriétaire",
       "admin": "Administrateur",
       "user": "Utilisateur",
       "viewer": "Lecteur"
@@ -165,6 +189,8 @@
     "roleUpdated": "Rôle mis à jour",
     "memberRemoved": "Membre retiré",
     "removeFailed": "Échec du retrait du membre",
-    "updateFailed": "Échec de la mise à jour du rôle"
+    "updateFailed": "Échec de la mise à jour du rôle",
+    "ownerOnly": "Seul un propriétaire peut modifier ou retirer un propriétaire.",
+    "adminOnly": "Seul un administrateur peut ajouter, modifier ou retirer un membre."
   }
 }

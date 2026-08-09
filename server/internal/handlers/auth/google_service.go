@@ -62,6 +62,10 @@ type GoogleOAuthResult struct {
 	ExpiresIn    int
 	OrgSlug      string
 	UserUID      string
+	// Pending is true when the login succeeded but the org did not admit
+	// the user: no membership was created, a membership request is awaiting
+	// admin approval, and the tokens above are an org-less session.
+	Pending bool
 }
 
 // GoogleOAuthService handles Google OAuth authentication logic.
@@ -70,6 +74,13 @@ type GoogleOAuthService struct {
 	cfg         *config.Config
 	authService *Service
 	httpClient  *http.Client
+
+	// tokenURL / userInfoURL override the Google endpoints. Empty in
+	// production; tests point them at an httptest server so the REAL
+	// HandleCallback runs end to end (see microsoft_service.go for why a
+	// test-local re-implementation is not good enough).
+	tokenURL    string
+	userInfoURL string
 }
 
 // NewGoogleOAuthService creates a new Google OAuth service.
@@ -171,27 +182,21 @@ func (s *GoogleOAuthService) HandleCallback(ctx context.Context, code, orgSlug s
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
 	}
 
-	// Ensure organization membership
-	member, err := s.ensureMembership(ctx, org.UID, user.UID)
+	// Admission policy + session minting, shared by every connector
+	// (see Service.JoinOrgViaLogin). A user the org does not admit gets
+	// login.Pending and an org-less session instead of a membership.
+	login, err := s.authService.CompleteOrgLogin(ctx, org, user)
 	if err != nil {
-		return nil, fmt.Errorf("failed to ensure membership: %w", err)
-	}
-
-	// Auto-join matching orgs
-	s.authService.autoJoinMatchingOrgs(ctx, user.UID, user.Email)
-
-	// Generate tokens
-	tokens, err := s.authService.GenerateTokensForOAuth(ctx, user, org, string(member.Role))
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate tokens: %w", err)
+		return nil, err
 	}
 
 	return &GoogleOAuthResult{
-		AccessToken:  tokens.AccessToken,
-		RefreshToken: tokens.RefreshToken,
-		ExpiresIn:    tokens.ExpiresIn,
+		AccessToken:  login.AccessToken,
+		RefreshToken: login.RefreshToken,
+		ExpiresIn:    login.ExpiresIn,
 		OrgSlug:      org.Slug,
 		UserUID:      user.UID,
+		Pending:      login.Pending,
 	}, nil
 }
 
@@ -204,7 +209,7 @@ func (s *GoogleOAuthService) exchangeCode(ctx context.Context, code string) (*Go
 	data.Set("grant_type", "authorization_code")
 	data.Set("redirect_uri", s.getCallbackURL())
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, googleTokenURL, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.getTokenURL(), strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -235,9 +240,27 @@ func (s *GoogleOAuthService) exchangeCode(ctx context.Context, code string) (*Go
 	return &tokenResp, nil
 }
 
+// getTokenURL returns Google's token endpoint (test-overridable).
+func (s *GoogleOAuthService) getTokenURL() string {
+	if s.tokenURL != "" {
+		return s.tokenURL
+	}
+
+	return googleTokenURL
+}
+
+// getUserInfoURL returns Google's userinfo endpoint (test-overridable).
+func (s *GoogleOAuthService) getUserInfoURL() string {
+	if s.userInfoURL != "" {
+		return s.userInfoURL
+	}
+
+	return googleUserInfoURL
+}
+
 // fetchUserProfile fetches user profile from Google's userinfo endpoint.
 func (s *GoogleOAuthService) fetchUserProfile(ctx context.Context, accessToken string) (*GoogleUserInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, googleUserInfoURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.getUserInfoURL(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -310,51 +333,6 @@ func (s *GoogleOAuthService) findOrCreateUser(ctx context.Context, userInfo *Goo
 	}
 
 	return user, nil
-}
-
-// ensureMembership ensures user is a member of the organization.
-func (s *GoogleOAuthService) ensureMembership(
-	ctx context.Context, orgUID, userUID string,
-) (*models.OrganizationMember, error) {
-	// Check existing membership
-	member, err := s.db.GetMemberByUserAndOrg(ctx, userUID, orgUID)
-	if err == nil {
-		return member, nil
-	}
-
-	if !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("failed to get member: %w", err)
-	}
-
-	// Determine role (first user = admin)
-	role := models.MemberRoleUser
-
-	members, err := s.db.ListMembersByOrg(ctx, orgUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list members: %w", err)
-	}
-
-	if len(members) == 0 {
-		role = models.MemberRoleAdmin
-	}
-
-	// Enforce MaxUsers before creating the membership. The very first
-	// member of an org bypasses any cap (count=0 < cap) so bootstrapping
-	// always succeeds.
-	if err := s.authService.CheckMembershipSlot(ctx, orgUID); err != nil {
-		return nil, err
-	}
-
-	// Create membership
-	member = models.NewOrganizationMember(orgUID, userUID, role)
-	now := time.Now()
-	member.JoinedAt = &now
-
-	if err := s.db.CreateOrganizationMember(ctx, member); err != nil {
-		return nil, fmt.Errorf("failed to create member: %w", err)
-	}
-
-	return member, nil
 }
 
 // getCallbackURL returns the OAuth callback URL for Google.

@@ -103,6 +103,10 @@ type SlackOAuthResult struct {
 	ExpiresIn int
 	OrgSlug   string
 	UserUID   string
+	// Pending is true when the login succeeded but the org did not admit
+	// the user: no membership was created, a membership request is awaiting
+	// admin approval, and the tokens above are an org-less session.
+	Pending bool
 }
 
 // SlackOAuthService handles Slack OAuth authentication logic.
@@ -110,6 +114,12 @@ type SlackOAuthService struct {
 	db          db.Service
 	cfg         *config.Config
 	authService *Service // Reuse existing auth service for token generation
+
+	// oauthURL / userInfoURL are the Slack endpoints this service talks to.
+	// Fields rather than constants so tests can drive the real HandleCallback
+	// against httptest stand-ins (same seam as the Microsoft connector).
+	oauthURL    string
+	userInfoURL string
 }
 
 // NewSlackOAuthService creates a new Slack OAuth service.
@@ -118,6 +128,8 @@ func NewSlackOAuthService(dbService db.Service, cfg *config.Config, authService 
 		db:          dbService,
 		cfg:         cfg,
 		authService: authService,
+		oauthURL:    slackOAuthURL,
+		userInfoURL: slackAPIBaseURL + "/openid.connect.userInfo",
 	}
 }
 
@@ -217,8 +229,11 @@ func (s *SlackOAuthService) ValidateOAuthState(ctx context.Context, stateParam s
 	return state, nil
 }
 
-// exchangeCode exchanges an OAuth code for an access token.
-func exchangeCode(ctx context.Context, clientID, clientSecret, code, redirectURI string) (*OAuthResponse, error) {
+// exchangeCode exchanges an OAuth code for an access token at endpoint
+// (Slack's oauth.v2.access in production, an httptest stand-in in tests).
+func exchangeCode(
+	ctx context.Context, endpoint, clientID, clientSecret, code, redirectURI string,
+) (*OAuthResponse, error) {
 	data := url.Values{}
 	data.Set("client_id", clientID)
 	data.Set("client_secret", clientSecret)
@@ -228,7 +243,7 @@ func exchangeCode(ctx context.Context, clientID, clientSecret, code, redirectURI
 		data.Set("redirect_uri", redirectURI)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, slackOAuthURL, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -260,9 +275,9 @@ func exchangeCode(ctx context.Context, clientID, clientSecret, code, redirectURI
 	return &oauthResp, nil
 }
 
-// fetchOpenIDUserInfo fetches user info via OpenID Connect.
-func fetchOpenIDUserInfo(ctx context.Context, userAccessToken string) (*OpenIDUserInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, slackAPIBaseURL+"/openid.connect.userInfo", nil)
+// fetchOpenIDUserInfo fetches user info via OpenID Connect at endpoint.
+func fetchOpenIDUserInfo(ctx context.Context, endpoint, userAccessToken string) (*OpenIDUserInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -300,6 +315,7 @@ func (s *SlackOAuthService) HandleCallback(ctx context.Context, code string) (*S
 	// Slack requires the same redirect_uri that was used in the authorization request
 	oauthResp, err := exchangeCode(
 		ctx,
+		s.oauthURL,
 		s.cfg.Slack.ClientID,
 		s.cfg.Slack.ClientSecret,
 		code,
@@ -310,7 +326,7 @@ func (s *SlackOAuthService) HandleCallback(ctx context.Context, code string) (*S
 	}
 
 	// Fetch user info via OpenID Connect
-	userInfo, err := fetchOpenIDUserInfo(ctx, oauthResp.AuthedUser.AccessToken)
+	userInfo, err := fetchOpenIDUserInfo(ctx, s.userInfoURL, oauthResp.AuthedUser.AccessToken)
 	if err != nil {
 		return nil, fmt.Errorf("%w: failed to fetch user info: %w", ErrSlackOAuthFailed, err)
 	}
@@ -352,27 +368,27 @@ func (s *SlackOAuthService) HandleCallback(ctx context.Context, code string) (*S
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
 	}
 
-	// Ensure organization membership
-	member, err := s.ensureMembership(ctx, org.UID, user.UID)
+	// Admission policy + session minting, shared by every connector
+	// (see Service.JoinOrgViaLogin). A user the org does not admit gets
+	// login.Pending and an org-less session instead of a membership.
+	//
+	// The team ID comes from the OAuth token exchange we just performed —
+	// Slack only completes it for a member of that workspace — so it is
+	// handed to the policy as an attestation of workspace membership. The
+	// policy still verifies, server-side, that this very org is the one
+	// linked to that workspace.
+	login, err := s.authService.CompleteOrgLogin(ctx, org, user, WithSlackWorkspace(oauthResp.Team.ID))
 	if err != nil {
-		return nil, fmt.Errorf("failed to ensure membership: %w", err)
-	}
-
-	// Auto-join matching orgs
-	s.authService.autoJoinMatchingOrgs(ctx, user.UID, user.Email)
-
-	// Generate tokens
-	tokens, err := s.authService.GenerateTokensForOAuth(ctx, user, org, string(member.Role))
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate tokens: %w", err)
+		return nil, err
 	}
 
 	return &SlackOAuthResult{
-		AccessToken:  tokens.AccessToken,
-		RefreshToken: tokens.RefreshToken,
-		ExpiresIn:    tokens.ExpiresIn,
+		AccessToken:  login.AccessToken,
+		RefreshToken: login.RefreshToken,
+		ExpiresIn:    login.ExpiresIn,
 		OrgSlug:      org.Slug,
 		UserUID:      user.UID,
+		Pending:      login.Pending,
 	}, nil
 }
 
@@ -464,48 +480,4 @@ func (s *SlackOAuthService) findOrCreateUser(
 	}
 
 	return user, nil
-}
-
-// ensureMembership ensures user is a member of the organization.
-func (s *SlackOAuthService) ensureMembership(
-	ctx context.Context, orgUID, userUID string,
-) (*models.OrganizationMember, error) {
-	// Check existing membership
-	member, err := s.db.GetMemberByUserAndOrg(ctx, userUID, orgUID)
-	if err == nil {
-		return member, nil
-	}
-
-	if !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("failed to get member: %w", err)
-	}
-
-	// Determine role (first user = admin)
-	role := models.MemberRoleUser
-	members, err := s.db.ListMembersByOrg(ctx, orgUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list members: %w", err)
-	}
-
-	if len(members) == 0 {
-		role = models.MemberRoleAdmin
-	}
-
-	// Enforce MaxUsers before creating the membership. The very first
-	// member of an org bypasses any cap (count=0 < cap) so bootstrapping
-	// always succeeds.
-	if err := s.authService.CheckMembershipSlot(ctx, orgUID); err != nil {
-		return nil, err
-	}
-
-	// Create membership
-	member = models.NewOrganizationMember(orgUID, userUID, role)
-	now := time.Now()
-	member.JoinedAt = &now
-
-	if err := s.db.CreateOrganizationMember(ctx, member); err != nil {
-		return nil, fmt.Errorf("failed to create member: %w", err)
-	}
-
-	return member, nil
 }

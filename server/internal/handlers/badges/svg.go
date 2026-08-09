@@ -12,6 +12,7 @@ const (
 	ColorYellow = "#dfb317"
 	ColorOrange = "#fe7d37"
 	ColorRed    = "#e05d44"
+	ColorBlue   = "#007ec6"
 	ColorGray   = "#9f9f9f"
 	ColorLabel  = "#555"
 	ColorTitle  = "#333"

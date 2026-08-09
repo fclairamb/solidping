@@ -21,7 +21,13 @@ export interface CheckTypeModule<S = unknown> {
   Fields: FC<CheckTypeFieldsProps<S>>;
 }
 
-import { httpModule, HttpAuthFields, httpAuthSummary } from "./http";
+import {
+  httpModule,
+  HttpAuthFields,
+  httpAuthSummary,
+  HttpOptionsFields,
+  httpOptionsSummary,
+} from "./http";
 import type { HttpState } from "./http";
 import { websocketModule, browserModule } from "./web";
 import {
@@ -126,5 +132,22 @@ export const authFieldsRegistry: Partial<Record<CheckType, AuthSection>> = {
     Fields: HttpAuthFields as unknown as FC<CheckTypeFieldsProps>,
     summary: (state, configPrivateKeys) =>
       httpAuthSummary(state as HttpState, configPrivateKeys),
+  },
+};
+
+// Per-type fields rendered inside the always-present "Advanced" section,
+// alongside timeout/tunnel. Kept out of `CheckTypeModule` for the same
+// reason as `AuthSection`; only HTTP has one today (verifySsl/followRedirects).
+export interface AdvancedSection {
+  Fields: FC<CheckTypeFieldsProps>;
+  summary(state: unknown): { text: string; customized: boolean };
+}
+
+export const advancedFieldsRegistry: Partial<
+  Record<CheckType, AdvancedSection>
+> = {
+  http: {
+    Fields: HttpOptionsFields as unknown as FC<CheckTypeFieldsProps>,
+    summary: (state) => httpOptionsSummary(state as HttpState),
   },
 };

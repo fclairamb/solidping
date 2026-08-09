@@ -9,6 +9,7 @@ import (
 	"net/url"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	mw "github.com/fclairamb/solidping/server/internal/middleware"
@@ -197,6 +198,19 @@ func (h *Handler) OAuthCallback(writer http.ResponseWriter, req *http.Request) e
 			slog.ErrorContext(req.Context(), "Slack OAuth callback failed", "error", err)
 			h.redirectInstallError(writer, req, "unknown")
 		}
+
+		return nil
+	}
+
+	// The install succeeded but the org did not admit the installing user:
+	// there is no org-scoped session to hand over (and no refresh token for
+	// the exchange payload), so send them to the same request-access surface
+	// every other federated login uses for a pending membership.
+	if result.Pending {
+		slog.InfoContext(req.Context(), "Slack install completed without org membership",
+			"org_slug", result.OrgSlug, "user_uid", result.UserUID)
+		auth.RedirectPendingMembership(writer, req,
+			h.cfg.Server.BaseURL, result.OrgSlug, result.AccessToken, result.ExpiresIn)
 
 		return nil
 	}

@@ -181,7 +181,7 @@ func (h *Handler) ListForUser(writer http.ResponseWriter, req *http.Request) err
 	// Authorization: self always allowed; other users require admin membership.
 	if callerUser.UID != targetUID {
 		member, memberErr := h.svc.db.GetMemberByUserAndOrg(req.Context(), callerUser.UID, orgUID)
-		if memberErr != nil || member.Role != models.MemberRoleAdmin {
+		if memberErr != nil || !member.Role.AtLeast(models.MemberRoleAdmin) {
 			return h.handleError(writer, ErrForbidden)
 		}
 	}

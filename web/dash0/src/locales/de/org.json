@@ -5,6 +5,18 @@
   },
   "settings": {
     "title": "Organisationseinstellungen",
+    "profile": {
+      "title": "Organisationsprofil",
+      "description": "Der Name der Organisation, ihr URL-Slug und das Logo, das im Dashboard und auf ihren Statusseiten angezeigt wird.",
+      "name": "Name",
+      "slug": "URL-Slug",
+      "renameWarning": "Alle URLs dieser Organisation ändern sich — Dashboard-Links, Statusseiten, SVG-Badges und eingebettete Widgets. Bestehende Links funktionieren weiter: Die alte Adresse leitet auf die neue um, aber nur so lange, bis eine andere Organisation sie beansprucht.",
+      "logo": "Logo",
+      "logoHelp": "Fügen Sie eine Bild-URL ein oder laden Sie ein PNG, JPEG, WebP, GIF oder SVG mit maximal 1 MB hoch.",
+      "logoUploaded": "Logo aktualisiert.",
+      "upload": "Hochladen",
+      "removeLogo": "Logo entfernen"
+    },
     "autoJoin": "Automatischer Beitritt",
     "autoJoinDescription": "Benutzer, deren E-Mail-Adresse diesem Muster entspricht, werden automatisch der Organisation hinzugefügt.",
     "autoJoinFullDescription": "Benutzer, deren E-Mail diesem Muster entspricht, treten dieser Organisation automatisch bei, wenn sie sich registrieren oder über OAuth anmelden.",
@@ -20,7 +32,18 @@
     "sessionDurationFullDescription": "Legen Sie eine feste Obergrenze für die Dauer einer Anmeldesitzung fest, unabhängig von der Aktivität. Leer lassen, um den Plattform-Standard zu verwenden (unbegrenzt, sofern kein systemweites Limit gesetzt ist).",
     "sessionDurationHoursLabel": "Maximale Sitzungsdauer (Stunden)",
     "sessionDurationPlaceholder": "Unbegrenzt",
-    "sessionDurationHelp": "Sobald festgelegt, läuft die Sitzung nach dieser Anzahl von Stunden nach der Anmeldung zwangsweise ab, auch wenn der Benutzer aktiv bleibt — unabhängig vom 7-tägigen Inaktivitäts-Timeout."
+    "sessionDurationHelp": "Sobald festgelegt, läuft die Sitzung nach dieser Anzahl von Stunden nach der Anmeldung zwangsweise ab, auch wenn der Benutzer aktiv bleibt — unabhängig vom 7-tägigen Inaktivitäts-Timeout.",
+    "dangerZone": {
+      "title": "Gefahrenzone",
+      "description": "Unwiderrufliche Aktionen. Nur Eigentümer sehen diesen Bereich.",
+      "deleteHelp": "Das Löschen von {{org}} entfernt Checks, Statusseiten, Mitglieder und Verlauf. Dies kann nicht rückgängig gemacht werden.",
+      "deleteButton": "Organisation löschen",
+      "confirmTitle": "Diese Organisation löschen?",
+      "confirmBody": "Damit wird {{org}} dauerhaft gelöscht: alle Checks stoppen, Statusseiten und Badges antworten nicht mehr, und alle verlieren den Zugriff. Dies kann nicht rückgängig gemacht werden.",
+      "confirmInputLabel": "Geben Sie {{org}} zur Bestätigung ein",
+      "confirmAction": "Organisation löschen",
+      "deleted": "Organisation {{org}} gelöscht"
+    }
   },
   "usage": {
     "title": "Nutzung",
@@ -145,6 +168,7 @@
       "joinedAt": "Beigetreten"
     },
     "role": {
+      "owner": "Eigentümer",
       "admin": "Admin",
       "user": "Benutzer",
       "viewer": "Betrachter"
@@ -165,6 +189,8 @@
     "roleUpdated": "Rolle aktualisiert",
     "memberRemoved": "Mitglied entfernt",
     "removeFailed": "Mitglied konnte nicht entfernt werden",
-    "updateFailed": "Rolle konnte nicht aktualisiert werden"
+    "updateFailed": "Rolle konnte nicht aktualisiert werden",
+    "ownerOnly": "Nur ein Eigentümer kann einen Eigentümer ändern oder entfernen.",
+    "adminOnly": "Nur ein Admin kann ein Mitglied hinzufügen, ändern oder entfernen."
   }
 }

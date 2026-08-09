@@ -174,6 +174,7 @@ func (c *GatusConverter) convertEndpoint(
 	switch checkType {
 	case checkerdef.CheckTypeHTTP:
 		base.Config = gatusHTTPConfig(endpoint, timeout)
+		gatusApplyHTTPClientOptions(endpoint, base.Config)
 	case checkerdef.CheckTypeDNS:
 		base.Config = gatusDNSConfig(endpoint, target, timeout)
 	case checkerdef.CheckTypeTCP:
@@ -212,14 +213,16 @@ func (c *GatusConverter) convertEndpoint(
 			"alerting/notification bindings are not imported — configure SolidPing integrations instead")
 	}
 
-	if endpoint.Client != nil && endpoint.Client.Insecure != nil && *endpoint.Client.Insecure {
+	if endpoint.Client != nil && endpoint.Client.Insecure != nil && *endpoint.Client.Insecure &&
+		checkType != checkerdef.CheckTypeHTTP {
 		warn.addf(name, "client.insecure",
 			"skipping TLS verification is not supported by the SolidPing %s checker", checkType)
 	}
 
-	if endpoint.Client != nil && endpoint.Client.IgnoreRedirect != nil && *endpoint.Client.IgnoreRedirect {
+	if endpoint.Client != nil && endpoint.Client.IgnoreRedirect != nil && *endpoint.Client.IgnoreRedirect &&
+		checkType != checkerdef.CheckTypeHTTP {
 		warn.addf(name, "client.ignore-redirect",
-			"redirect handling is not configurable on SolidPing http checks (redirects are followed)")
+			"redirect handling is not configurable on the SolidPing %s checker", checkType)
 	}
 
 	if endpoint.Client != nil && endpoint.Client.DNSResolver != "" && checkType != checkerdef.CheckTypeDNS {
@@ -256,7 +259,7 @@ func gatusCheckType(endpoint *gatusEndpoint) (checkerdef.CheckType, gatusTarget,
 
 	scheme := strings.ToLower(parsed.Scheme)
 	switch scheme {
-	case "http", "https":
+	case srcHTTP, "https":
 		return checkerdef.CheckTypeHTTP, gatusTarget{host: parsed.Hostname()}, nil
 	case "ws", "wss", "websocket":
 		return checkerdef.CheckTypeWebSocket, gatusTarget{host: parsed.Hostname()}, nil
@@ -379,6 +382,22 @@ func gatusHTTPConfig(endpoint *gatusEndpoint, timeout string) map[string]any {
 	}
 
 	return cfg
+}
+
+// gatusApplyHTTPClientOptions maps Gatus's client.insecure / client.ignore-redirect
+// onto the http checker's verifySsl / followRedirects, mutating cfg in place.
+func gatusApplyHTTPClientOptions(endpoint *gatusEndpoint, cfg map[string]any) {
+	if endpoint.Client == nil {
+		return
+	}
+
+	if endpoint.Client.Insecure != nil && *endpoint.Client.Insecure {
+		cfg["verifySsl"] = false
+	}
+
+	if endpoint.Client.IgnoreRedirect != nil && *endpoint.Client.IgnoreRedirect {
+		cfg["followRedirects"] = false
+	}
 }
 
 // gatusDNSConfig builds the dns checker config. Gatus puts the monitored name

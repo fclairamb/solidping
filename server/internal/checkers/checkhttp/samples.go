@@ -8,6 +8,7 @@ import (
 
 const (
 	sampleExpectedStatus = 200 // HTTP 200 OK for sample checks
+	sampleRedirectStatus = 301 // HTTP 301 Moved Permanently, for the no-follow-redirects sample
 	defaultBaseURL       = "http://localhost:4000"
 	methodGET            = "GET"
 	statusCodePattern2XX = "2XX" // matches any 2xx response code
@@ -121,5 +122,24 @@ func (c *HTTPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []che
 				},
 			}).GetConfig(),
 		},
+		{
+			// Demonstrates followRedirects: false — httpbin.org/status/301
+			// always responds with a bare 301 and no Location header, so
+			// asserting expectedStatus: 301 here only passes when the
+			// redirect itself is surfaced instead of being followed.
+			Name:   "Redirect check (no follow)",
+			Slug:   "http-redirect-no-follow",
+			Period: time.Minute,
+			Config: (&HTTPConfig{
+				URL:             "https://httpbin.org/status/301",
+				Method:          methodGET,
+				ExpectedStatus:  sampleRedirectStatus,
+				FollowRedirects: boolPtr(false),
+			}).GetConfig(),
+		},
 	}
 }
+
+// boolPtr returns a pointer to b, for the presence-aware VerifySsl /
+// FollowRedirects config fields.
+func boolPtr(b bool) *bool { return &b }

@@ -651,6 +651,12 @@ func TestLogin_LDAP_EnforcesMaxSSOUsers(t *testing.T) {
 	existingMember := models.NewOrganizationMember(org.UID, existing.UID, models.MemberRoleAdmin)
 	require.NoError(t, dbSvc.CreateOrganizationMember(ctx, existingMember))
 
+	// The org admits @example.com addresses, so the LDAP user qualifies for a
+	// membership on the merits — the cap is the only thing that can stop them.
+	// Without the pattern they would be left pending and the cap would never
+	// be consulted, which would make this test vacuous.
+	require.NoError(t, dbSvc.SetOrgParameter(ctx, org.UID, "registration.email_pattern", `@example\.com$`, false))
+
 	_, err := svc.Login(ctx, org.Slug, "quotauser@example.com", "correct-password", Context{})
 	require.Error(t, err)
 	require.ErrorIs(t, err, errLDAPSSOQuotaTest)
@@ -662,4 +668,89 @@ func TestLogin_LDAP_EnforcesMaxSSOUsers(t *testing.T) {
 		_, memberErr := dbSvc.GetMemberByUserAndOrg(ctx, quotaUser.UID, org.UID)
 		require.Error(t, memberErr, "membership must not be created when the SSO quota is exceeded")
 	}
+}
+
+// TestLogin_LDAP_NonMatchingEmailGetsMembershipRequest proves the LDAP branch
+// honors the same admission policy as the OAuth/SAML connectors. LDAP is the
+// one connector calling JoinOrgViaLogin directly (not through
+// CompleteOrgLogin), so its pending branch has its own fallback path: the bind
+// succeeds, the user is provisioned, but a directory identity the org's
+// registration.email_pattern does not admit gets a membership request and NO
+// organization_members row — while the matching address in the second subtest
+// (same org, same rules) joins, so a policy that simply refused everyone would
+// fail this test too.
+func TestLogin_LDAP_NonMatchingEmailGetsMembershipRequest(t *testing.T) {
+	t.Parallel()
+
+	// setup wires a directory holding one entry with the given mail, an org
+	// past bootstrap (one seeded member) whose pattern admits @allowed.example.
+	setup := func(t *testing.T, mail string) (*Service, db.Service, context.Context, *models.Organization) {
+		t.Helper()
+
+		dir := startFakeLDAPDirectory(t)
+		dir.setServiceAccount()
+		dir.setEntries(newFakeLDAPEntry(
+			"cn=policyuser,ou=people,dc=example,dc=org", "correct-password",
+			map[string][]string{"mail": {mail}, "cn": {"Policy User"}},
+		))
+
+		svc, dbSvc, ctx := setupLDAPLoginTestService(t, newFakeLDAPConfig(dir, ""), nil)
+
+		org := models.NewOrganization("ldap-policy-org", "LDAP Policy Org")
+		require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+		seed := models.NewUser("seed@allowed.example")
+		require.NoError(t, dbSvc.CreateUser(ctx, seed))
+		require.NoError(t, dbSvc.CreateOrganizationMember(
+			ctx, models.NewOrganizationMember(org.UID, seed.UID, models.MemberRoleAdmin)))
+
+		require.NoError(t, dbSvc.SetOrgParameter(
+			ctx, org.UID, "registration.email_pattern", `@allowed\.example$`, false))
+
+		return svc, dbSvc, ctx, org
+	}
+
+	t.Run("outsider gets a membership request and no membership", func(t *testing.T) {
+		t.Parallel()
+
+		svc, dbSvc, ctx, org := setup(t, "outsider@evil.example")
+
+		resp, err := svc.Login(ctx, org.Slug, "outsider@evil.example", "correct-password", Context{})
+		require.NoError(t, err, "the bind is valid — the user authenticates, they just don't get in")
+		require.Nil(t, resp.Organization, "no org-scoped session may be minted")
+		require.Empty(t, resp.RefreshToken, "a no-org login mints no refresh token")
+
+		user, err := dbSvc.GetUserByEmail(ctx, "outsider@evil.example")
+		require.NoError(t, err)
+		require.NotNil(t, user)
+
+		_, memberErr := dbSvc.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
+		require.Error(t, memberErr, "no organization_members row may be created")
+
+		request, reqErr := dbSvc.GetMembershipRequestByOrgAndUser(ctx, org.UID, user.UID)
+		require.NoError(t, reqErr)
+		require.NotNil(t, request)
+		require.Equal(t, models.MembershipRequestStatusPending, request.Status)
+	})
+
+	t.Run("matching email joins as user", func(t *testing.T) {
+		t.Parallel()
+
+		svc, dbSvc, ctx, org := setup(t, "insider@allowed.example")
+
+		resp, err := svc.Login(ctx, org.Slug, "insider@allowed.example", "correct-password", Context{})
+		require.NoError(t, err)
+		require.NotNil(t, resp.Organization)
+		require.Equal(t, org.Slug, resp.Organization.Slug)
+
+		user, err := dbSvc.GetUserByEmail(ctx, "insider@allowed.example")
+		require.NoError(t, err)
+
+		member, memberErr := dbSvc.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
+		require.NoError(t, memberErr)
+		require.Equal(t, models.MemberRoleUser, member.Role)
+
+		request, reqErr := dbSvc.GetMembershipRequestByOrgAndUser(ctx, org.UID, user.UID)
+		require.True(t, reqErr != nil || request == nil, "an admitted user opens no request")
+	})
 }

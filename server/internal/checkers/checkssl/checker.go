@@ -48,7 +48,10 @@ func (c *SSLChecker) Validate(spec *checkerdef.CheckSpec) error {
 	return nil
 }
 
-// resolveHost resolves the hostname to an IP address, preferring IPv4.
+// resolveHost resolves the hostname and picks the address to dial. The pick
+// itself lives in checkerdef.SelectIPAddr — IPv4-first by default, or the family
+// the check pinned via `ipVersion` — so this checker cannot drift from the
+// others.
 func resolveHost(ctx context.Context, host string) (net.IP, error) {
 	addrs, err := checkerdef.LookupIPAddr(ctx, host)
 	if err != nil {
@@ -59,13 +62,7 @@ func resolveHost(ctx context.Context, host string) (net.IP, error) {
 		return nil, errNoIPAddresses
 	}
 
-	for i := range addrs {
-		if addrs[i].IP.To4() != nil {
-			return addrs[i].IP, nil
-		}
-	}
-
-	return addrs[0].IP, nil
+	return checkerdef.SelectIPAddr(host, addrs, checkerdef.IPVersionFrom(ctx))
 }
 
 // tlsConnect establishes a TCP connection and performs a TLS handshake.
@@ -244,8 +241,11 @@ func (c *SSLChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 	} else {
 		targetIP, resErr := resolveHost(ctx, params.host)
 		if resErr != nil {
+			// A genuine resolve failure stays StatusError, as it always has; an
+			// address-family failure gets the shared verdict so it reads the
+			// same here as on a tcp/http check.
 			return &checkerdef.Result{
-				Status:   checkerdef.StatusError,
+				Status:   checkerdef.ResolveFailureStatus(resErr, checkerdef.StatusError),
 				Duration: time.Since(start),
 				Output:   map[string]any{checkerdef.OutputKeyError: resErr.Error()},
 			}, nil

@@ -11,13 +11,26 @@ APP_NAME := solidping
 # SaaS mode (make dev-saas): the separate solidping-billing service (next door
 # at ../solidping-billing, served on :4050) drives plan upgrades. These three
 # values wire the two services together for local development:
-#   SAAS_BILLING_TOKEN — shared secret; the billing service presents it as a
-#     bearer token when PUTting resolved entitlements. Must match the billing
-#     service's BILLING_SOLIDPING_TOKEN.
+#   SAAS_BILLING_TOKEN — LEGACY shared secret; the billing service presents it
+#     as a bearer token when PUTting resolved entitlements. Must match the
+#     billing service's BILLING_SOLIDPING_TOKEN. Superseded by the signing key
+#     sets below, but still accepted (see SAAS_ALLOW_LEGACY_TOKEN) until the
+#     billing service has stopped sending it.
 #   SAAS_UPGRADE_URL   — the dashboard's "Upgrade" link. {org} is replaced with
 #     the org slug. Points at the billing service's customer upgrade page.
+#   SAAS_SIGNING_KEYS_IN / _OUT — ordered [{"id","secret"}] key sets (newest
+#     first) for the signed service channels: _IN verifies the billing service's
+#     entitlements push (its BILLING_SIGNING_KEYS_OUTBOUND), _OUT signs our own
+#     calls to billing's /api/v1/* (its BILLING_SIGNING_KEYS_INBOUND). One set
+#     per direction so a leak of one cannot forge the other.
+#   SAAS_ALLOW_LEGACY_TOKEN — whether the legacy bearer above is still accepted.
+#     Stays true until billing signs everything; flipping it is a parameter
+#     change, not a deploy.
 SAAS_BILLING_TOKEN ?= dev-billing-service-token
 SAAS_UPGRADE_URL   ?= http://localhost:4050/app/upgrade?org={org}
+SAAS_SIGNING_KEYS_IN  ?= [{"id":"dev-in","secret":"dev-billing-to-solidping-key"}]
+SAAS_SIGNING_KEYS_OUT ?= [{"id":"dev-out","secret":"dev-solidping-to-billing-key"}]
+SAAS_ALLOW_LEGACY_TOKEN ?= true
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo "dev")
@@ -264,6 +277,9 @@ dev-saas: kill ## Run backend (SaaS mode) + dash0 + status0 — pairs with ../so
 		SP_ENTITLEMENTS_SERVICE_TOKEN="$(SAAS_BILLING_TOKEN)" \
 		SP_ENTITLEMENTS_UPGRADE_URL_TEMPLATE="$(SAAS_UPGRADE_URL)" \
 		SP_ENTITLEMENTS_ADMIN_WRITES_ENABLED=true \
+		SP_ENTITLEMENTS_SERVICE_SIGNING_KEYS='$(SAAS_SIGNING_KEYS_IN)' \
+		SP_ENTITLEMENTS_OUTBOUND_SIGNING_KEYS='$(SAAS_SIGNING_KEYS_OUT)' \
+		SP_ENTITLEMENTS_ALLOW_LEGACY_SERVICE_TOKEN=$(SAAS_ALLOW_LEGACY_TOKEN) \
 		SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" \
 		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 

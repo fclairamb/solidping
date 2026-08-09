@@ -171,6 +171,62 @@
     "saveFailed": "Failed to save the appearance",
     "rejected": "The stylesheet was rejected — check the size and @import rules."
   },
+  "badge": {
+    "title": "Badge",
+    "description": "Embed a static status badge — the script-free sibling of the widget — in a README, wiki, or email footer.",
+    "labelPlaceholder": "Leave empty for page name"
+  },
+  "widget": {
+    "title": "Live widget",
+    "description": "Embed a live status pill on your own site — it polls this page's status and links back to it.",
+    "mode": "Mode",
+    "modes": {
+      "inline": "Inline (where the tag sits)",
+      "floating": "Floating (fixed corner)"
+    },
+    "theme": "Theme",
+    "themes": {
+      "auto": "Auto (follows the visitor's system)",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "position": "Position",
+    "positions": {
+      "bottomRight": "Bottom right",
+      "bottomLeft": "Bottom left"
+    },
+    "hint": "Paste this snippet anywhere in your page's HTML. The widget renders in a shadow root, so it can't be affected by — or affect — your site's CSS.",
+    "size": "Size",
+    "sizes": {
+      "sm": "Small",
+      "md": "Medium",
+      "lg": "Large"
+    },
+    "previewTitle": "Preview",
+    "previewState": "Preview state",
+    "previewStates": {
+      "operational": "Operational",
+      "degraded": "Degraded",
+      "down": "Down",
+      "maintenance": "Maintenance",
+      "unknown": "Unknown"
+    },
+    "customizeLabels": "Customize labels",
+    "labelOverrides": {
+      "operational": "Operational label",
+      "degraded": "Degraded label",
+      "down": "Down label",
+      "maintenance": "Maintenance label",
+      "unknown": "Unknown label"
+    },
+    "labelPlaceholders": {
+      "operational": "All systems operational",
+      "degraded": "Degraded performance",
+      "down": "Major outage",
+      "maintenance": "Under maintenance",
+      "unknown": "Status unknown"
+    }
+  },
   "toast": {
     "created": "Status page created successfully",
     "updated": "Status page updated successfully",

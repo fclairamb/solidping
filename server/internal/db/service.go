@@ -73,6 +73,21 @@ type Service interface {
 	ListOrganizations(ctx context.Context) ([]*models.Organization, error)
 	UpdateOrganization(ctx context.Context, uid string, update models.OrganizationUpdate) error
 	DeleteOrganization(ctx context.Context, uid string) error
+	// GetOrganizationByLogoFileUID resolves the live organization whose current
+	// logo is the given file. It is the authorization rule behind the unsigned
+	// /pub/org-logos/:uid route: a file that is not some org's current logo is
+	// simply not served there.
+	GetOrganizationByLogoFileUID(ctx context.Context, fileUID string) (*models.Organization, error)
+
+	// Organization previous-slug (rename alias) operations. See
+	// models.OrganizationPreviousSlug for the semantics; the invariant is that
+	// a live organizations.slug always wins over an alias, and that an alias
+	// never resolves a soft-deleted organization.
+	AddOrganizationPreviousSlug(ctx context.Context, orgUID, slug string) error
+	GetOrganizationByPreviousSlug(ctx context.Context, slug string) (*models.Organization, error)
+	ReleaseOrganizationPreviousSlug(ctx context.Context, slug string) error
+	ReleaseOrganizationPreviousSlugsForOrg(ctx context.Context, orgUID string) error
+	ListOrganizationPreviousSlugs(ctx context.Context, orgUID string) ([]*models.OrganizationPreviousSlug, error)
 
 	// OrganizationProvider operations - single source of truth for org↔provider mapping
 	CreateOrganizationProvider(ctx context.Context, provider *models.OrganizationProvider) error
@@ -109,7 +124,11 @@ type Service interface {
 	ListMembersByUser(ctx context.Context, userUID string) ([]*models.OrganizationMember, error)
 	UpdateOrganizationMember(ctx context.Context, uid string, update models.OrganizationMemberUpdate) error
 	DeleteOrganizationMember(ctx context.Context, uid string) error
+	// CountAdminsByOrg counts members holding at least the admin role (owners
+	// included — they outrank admins).
 	CountAdminsByOrg(ctx context.Context, orgUID string) (int, error)
+	// CountOwnersByOrg counts the organization's live owners.
+	CountOwnersByOrg(ctx context.Context, orgUID string) (int, error)
 
 	// UserToken operations
 	CreateUserToken(ctx context.Context, token *models.UserToken) error
@@ -124,6 +143,10 @@ type Service interface {
 	// exchange) use the bool to detect a replay racing a concurrent
 	// redemption; plain revocation callers may ignore it.
 	DeleteUserToken(ctx context.Context, uid string) (bool, error)
+	// DeleteUserTokensByOrg soft-deletes every token scoped to an organization
+	// and returns the number of rows killed. Used when an organization is
+	// deleted so no surviving session keeps org-scoped access.
+	DeleteUserTokensByOrg(ctx context.Context, orgUID string) (int, error)
 
 	// OAuth (MCP authorization server) operations. Only the client registry
 	// has dedicated storage: authorization codes are issued/redeemed through
@@ -133,6 +156,26 @@ type Service interface {
 	// via the UserToken operations above.
 	CreateOAuthClient(ctx context.Context, client *models.OAuthClient) error
 	GetOAuthClientByClientID(ctx context.Context, clientID string) (*models.OAuthClient, error)
+
+	// Device authorization operations (RFC 8628, spec 2026-08-08-02). The two
+	// lookups return only live (unexpired) rows, so an expired request is
+	// indistinguishable from an unknown one at the storage layer.
+	CreateDeviceAuthRequest(ctx context.Context, req *models.DeviceAuthRequest) error
+	GetDeviceAuthRequestByUserCode(ctx context.Context, userCode string) (*models.DeviceAuthRequest, error)
+	GetDeviceAuthRequestByDeviceCode(ctx context.Context, deviceCode string) (*models.DeviceAuthRequest, error)
+	// ResolveDeviceAuthRequest is a compare-and-set from pending to
+	// approved/denied on a live row; it reports false when the request was
+	// already resolved or has expired, so two concurrent approvals cannot both
+	// mint a usable grant.
+	ResolveDeviceAuthRequest(ctx context.Context, uid string, res *models.DeviceAuthResolution) (bool, error)
+	// TouchDeviceAuthPoll records a poll timestamp so the token endpoint can
+	// enforce the advertised interval (RFC 8628 slow_down).
+	TouchDeviceAuthPoll(ctx context.Context, uid string, at time.Time) error
+	// ConsumeDeviceAuthRequest hard-deletes a request, reporting whether THIS
+	// caller won the delete. Exactly-once PAT delivery hangs off that boolean.
+	ConsumeDeviceAuthRequest(ctx context.Context, uid string) (bool, error)
+	// PurgeExpiredDeviceAuthRequests removes rows whose human never showed up.
+	PurgeExpiredDeviceAuthRequests(ctx context.Context, before time.Time) (int64, error)
 
 	// UserPasskey operations
 	CreateUserPasskey(ctx context.Context, passkey *models.UserPasskey) error

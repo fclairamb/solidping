@@ -26,13 +26,19 @@ interface User {
   name?: string;
   avatarUrl?: string;
   roles: string[];
+  // isAdmin means "at least admin" — an owner outranks an admin and must pass
+  // every admin gate (spec 2026-08-08-11).
   isAdmin: boolean;
+  isOwner: boolean;
   isSuperAdmin: boolean;
 }
 
 export interface OrganizationSummary {
   slug: string;
   name?: string;
+  // Absolute http(s) URL, or a relative /pub/org-logos/<uid> path for an
+  // uploaded logo. null when the org has none — render the default mark.
+  logoUrl?: string | null;
   role: string;
 }
 
@@ -45,6 +51,14 @@ export interface LoginResult {
   // useRecoveryCode with the temp token to complete the sign-in.
   requires2FA?: boolean;
   tempToken?: string;
+}
+
+// RenamedOrgSession is the session half of the PATCH /orgs/:org response.
+export interface RenamedOrgSession {
+  slug: string;
+  accessToken: string;
+  refreshToken?: string;
+  expiresIn?: number;
 }
 
 interface AuthContextType {
@@ -63,6 +77,12 @@ interface AuthContextType {
   acceptInviteSession: (response: AuthResponse) => void;
   logout: () => Promise<void>;
   switchOrg: (orgSlug: string) => Promise<void>;
+  // Adopts the session PATCH /orgs/:org hands back after an owner renames the
+  // organization. The current access token is scoped to the OLD slug and would
+  // 403 against the new one, so the tokens must be swapped in before the app
+  // navigates to the new URL — this is switchOrg's problem without the
+  // round-trip, since the server already minted the session.
+  adoptRenamedOrgSession: (session: RenamedOrgSession) => Promise<void>;
   refreshUser: () => Promise<void>;
   // Completes a 2FA login from a temp token + a TOTP / recovery code.
   // Both call paths return the same shape as a normal login result so
@@ -203,7 +223,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name: data.user.name,
         avatarUrl: data.user.avatarUrl,
         roles: [data.user.role],
-        isAdmin: data.user.role === "admin" || data.user.role === "superadmin",
+        isAdmin:
+          data.user.role === "owner" ||
+          data.user.role === "admin" ||
+          data.user.role === "superadmin",
+        isOwner: data.user.role === "owner" || data.user.role === "superadmin",
         isSuperAdmin: data.user.role === "superadmin",
       });
       // Update org from server response
@@ -277,7 +301,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: data.user.name,
       avatarUrl: data.user.avatarUrl,
       roles: [data.user.role],
-      isAdmin: data.user.role === "admin" || data.user.role === "superadmin",
+      isAdmin:
+        data.user.role === "owner" ||
+        data.user.role === "admin" ||
+        data.user.role === "superadmin",
+      isOwner: data.user.role === "owner" || data.user.role === "superadmin",
       isSuperAdmin: data.user.role === "superadmin",
     });
 
@@ -340,7 +368,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: data.user.name,
       avatarUrl: data.user.avatarUrl,
       roles: [data.user.role],
-      isAdmin: data.user.role === "admin" || data.user.role === "superadmin",
+      isAdmin:
+        data.user.role === "owner" ||
+        data.user.role === "admin" ||
+        data.user.role === "superadmin",
+      isOwner: data.user.role === "owner" || data.user.role === "superadmin",
       isSuperAdmin: data.user.role === "superadmin",
     });
     setOrganizations(data.organizations || []);
@@ -367,7 +399,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: data.user.name,
       avatarUrl: data.user.avatarUrl,
       roles: [data.user.role],
-      isAdmin: data.user.role === "admin" || data.user.role === "superadmin",
+      isAdmin:
+        data.user.role === "owner" ||
+        data.user.role === "admin" ||
+        data.user.role === "superadmin",
+      isOwner: data.user.role === "owner" || data.user.role === "superadmin",
       isSuperAdmin: data.user.role === "superadmin",
     });
     setOrganizations(data.organizations || []);
@@ -392,7 +428,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: data.user.name,
       avatarUrl: data.user.avatarUrl,
       roles: [data.user.role],
-      isAdmin: data.user.role === "admin" || data.user.role === "superadmin",
+      isAdmin:
+        data.user.role === "owner" ||
+        data.user.role === "admin" ||
+        data.user.role === "superadmin",
+      isOwner: data.user.role === "owner" || data.user.role === "superadmin",
       isSuperAdmin: data.user.role === "superadmin",
     });
     // Re-fetch organizations from /me (consistent with login)
@@ -409,6 +449,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const adoptRenamedOrgSession = async (session: RenamedOrgSession) => {
+    // Overwrite (never merge) both tokens: the refresh token was re-minted for
+    // the renamed org, and keeping the old one would let a background refresh
+    // resurrect a session scoped to a slug that no longer exists.
+    setSession(session.accessToken, session.refreshToken, session.expiresIn);
+    setStoredOrg(session.slug);
+    setOrg(session.slug);
+
+    const data = await apiFetch<MeResponse>(`/api/v1/auth/me`);
+    setOrgUid(data.organization?.uid ?? null);
+    setOrganizations(data.organizations || []);
+  };
+
   const refreshUser = useCallback(async () => {
     const data = await apiFetch<MeResponse>(`/api/v1/auth/me`);
     setOrgUid(data.organization?.uid ?? null);
@@ -418,7 +471,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: data.user.name,
       avatarUrl: data.user.avatarUrl,
       roles: [data.user.role],
-      isAdmin: data.user.role === "admin" || data.user.role === "superadmin",
+      isAdmin:
+        data.user.role === "owner" ||
+        data.user.role === "admin" ||
+        data.user.role === "superadmin",
+      isOwner: data.user.role === "owner" || data.user.role === "superadmin",
       isSuperAdmin: data.user.role === "superadmin",
     });
     setOrganizations(data.organizations || []);
@@ -458,6 +515,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         acceptInviteSession,
         logout,
         switchOrg,
+        adoptRenamedOrgSession,
         refreshUser,
         verify2FA,
         useRecoveryCode,

@@ -77,6 +77,40 @@
       }
     },
     {
+      "id": "13",
+      "type": "monitor",
+      "attributes": {
+        "url": "v6.example.org",
+        "pronounceable_name": "IPv6 only tcp",
+        "monitor_type": "tcp",
+        "port": 443,
+        "check_frequency": 120,
+        "ip_version": "ipv6"
+      }
+    },
+    {
+      "id": "14",
+      "type": "monitor",
+      "attributes": {
+        "url": "v4.example.org",
+        "pronounceable_name": "IPv4 pinned ping",
+        "monitor_type": "ping",
+        "check_frequency": 60,
+        "ip_version": "ipv4"
+      }
+    },
+    {
+      "id": "15",
+      "type": "monitor",
+      "attributes": {
+        "url": "ns.example.org",
+        "pronounceable_name": "Dns pinned v6",
+        "monitor_type": "dns",
+        "check_frequency": 600,
+        "ip_version": "ipv6"
+      }
+    },
+    {
       "id": "12",
       "type": "monitor",
       "attributes": {

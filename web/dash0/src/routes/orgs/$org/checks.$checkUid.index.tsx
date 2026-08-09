@@ -82,6 +82,11 @@ import { ResponseTimeChart, chartFetchParams, formatMs } from "@/components/chec
 import { AvailabilityTable } from "@/components/checks/availability-table";
 import { DependenciesCard } from "@/components/checks/dependencies-card";
 
+// The result-output key reporting which address family the probe used, and the
+// config key pinning it. Kept next to each other so the pair can't drift.
+const IP_VERSION_OUTPUT_KEY = "ip_version";
+const IP_VERSION_CONFIG_KEY = "ipVersion";
+
 /**
  * Check-detail search schema. `graphFrom` / `graphTo` / `graphSelected` are
  * declared **optional** so the ~20 existing literal navigations to this route
@@ -516,6 +521,23 @@ function CheckDetailPage() {
     () => parsePeriodMs(check?.period),
     [check?.period]
   );
+
+  // The address family the last probe actually used, and the one the check asks
+  // for. Showing both is the point: "pinned to IPv6, resolved IPv6" is a
+  // verified IPv6 path, while a check with no pin only ever tells you which
+  // family it happened to land on — an IPv4 result is not evidence that IPv6
+  // works. See the `ipVersion` option (spec 2026-08-09-02).
+  const resolvedIpVersion =
+    typeof check?.lastResult?.output?.[IP_VERSION_OUTPUT_KEY] === "string"
+      ? (check.lastResult.output[IP_VERSION_OUTPUT_KEY] as string)
+      : null;
+  const pinnedIpVersionRaw = check?.config?.[IP_VERSION_CONFIG_KEY];
+  const pinnedIpVersion =
+    typeof pinnedIpVersionRaw === "string" &&
+    pinnedIpVersionRaw !== "" &&
+    pinnedIpVersionRaw !== "auto"
+      ? pinnedIpVersionRaw
+      : null;
 
   // Subscribe with the canonical uid from the loaded check, never the raw
   // route param — `$checkUid` also accepts a slug (the REST fetch above
@@ -1268,6 +1290,24 @@ function CheckDetailPage() {
                     </div>
                   </div>
                 )}
+                {resolvedIpVersion && (
+                  <div
+                    className="flex flex-wrap items-center gap-2 text-sm"
+                    data-testid="last-result-ip-version"
+                  >
+                    <span className="text-muted-foreground">
+                      {t("checks:detail.ipVersionLabel")}:
+                    </span>
+                    <Badge variant="secondary">{resolvedIpVersion}</Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {pinnedIpVersion
+                        ? t("checks:detail.ipVersionPinned", {
+                            version: pinnedIpVersion,
+                          })
+                        : t("checks:detail.ipVersionAuto")}
+                    </span>
+                  </div>
+                )}
                 {check.lastResult.output &&
                   Object.keys(check.lastResult.output).length > 0 && (
                     <div>
@@ -1276,13 +1316,15 @@ function CheckDetailPage() {
                       </div>
                       <div className="bg-muted rounded-md p-3 text-sm font-mono max-h-32 overflow-auto">
                         {Object.entries(check.lastResult.output)
-                          // The SSL chain + soonest-expiring details, and the
-                          // DNSBL zone/code fields, get a dedicated card below;
-                          // don't repeat them as raw JSON.
+                          // The SSL chain + soonest-expiring details, the DNSBL
+                          // zone/code fields and the resolved address family
+                          // each get their own presentation; don't repeat them
+                          // as raw JSON.
                           .filter(
                             ([key]) =>
                               key !== "chain" &&
                               key !== "soonestExpiring" &&
+                              key !== IP_VERSION_OUTPUT_KEY &&
                               !(DNSBL_OUTPUT_KEYS as readonly string[]).includes(key),
                           )
                           .map(([key, value]) => (

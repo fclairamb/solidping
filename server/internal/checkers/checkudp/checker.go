@@ -100,31 +100,23 @@ func (c *UDPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 		}, nil
 	}
 
-	// Prefer IPv4
-	var targetIP net.IP
-
-	var isIPv6 bool
-
-	for i := range addrs {
-		if addrs[i].IP.To4() != nil {
-			targetIP = addrs[i].IP
-
-			break
-		}
-	}
-
-	if targetIP == nil {
-		targetIP = addrs[0].IP
-		isIPv6 = targetIP.To4() == nil
+	// Pick the address to dial — IPv4-first by default, or the family this
+	// check pins via `ipVersion`. One shared implementation for every checker.
+	targetIP, selectErr := checkerdef.SelectIPAddr(cfg.Host, addrs, checkerdef.IPVersionFrom(ctx))
+	if selectErr != nil {
+		return &checkerdef.Result{
+			Status:   checkerdef.IPVersionFailureStatus(selectErr),
+			Duration: time.Since(start),
+			Output: map[string]any{
+				checkerdef.OutputKeyError: selectErr.Error(),
+			},
+		}, nil
 	}
 
 	result := c.connect(ctx, targetIP, cfg, timeout)
 	result.Duration = time.Since(start)
 
-	ipVersion := "ipv4"
-	if isIPv6 {
-		ipVersion = "ipv6"
-	}
+	ipVersion := checkerdef.IPVersionOf(targetIP).String()
 
 	if result.Output == nil {
 		result.Output = make(map[string]any)
@@ -132,7 +124,7 @@ func (c *UDPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 
 	result.Output["host"] = targetIP.String()
 	result.Output["port"] = cfg.Port
-	result.Output["ip_version"] = ipVersion
+	result.Output[checkerdef.OutputKeyIPVersion] = ipVersion
 
 	return &result, nil
 }

@@ -111,6 +111,32 @@ func (m *mockDBService) ListOrganizations(_ context.Context) ([]*models.Organiza
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetOrganizationByLogoFileUID(_ context.Context, _ string) (*models.Organization, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) AddOrganizationPreviousSlug(_ context.Context, _, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetOrganizationByPreviousSlug(_ context.Context, _ string) (*models.Organization, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ReleaseOrganizationPreviousSlug(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ReleaseOrganizationPreviousSlugsForOrg(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListOrganizationPreviousSlugs(
+	_ context.Context, _ string,
+) ([]*models.OrganizationPreviousSlug, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) UpdateOrganization(_ context.Context, _ string, _ models.OrganizationUpdate) error {
 	panic("not implemented")
 }
@@ -218,6 +244,10 @@ func (m *mockDBService) DeleteOrganizationMember(_ context.Context, _ string) er
 }
 
 func (m *mockDBService) CountAdminsByOrg(_ context.Context, _ string) (int, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CountOwnersByOrg(_ context.Context, _ string) (int, error) {
 	panic("not implemented")
 }
 
@@ -672,11 +702,49 @@ func (m *mockDBService) DeleteUserToken(_ context.Context, _ string) (bool, erro
 	panic("not implemented")
 }
 
+func (m *mockDBService) DeleteUserTokensByOrg(_ context.Context, _ string) (int, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CreateOAuthClient(_ context.Context, _ *models.OAuthClient) error {
 	panic("not implemented")
 }
 
 func (m *mockDBService) GetOAuthClientByClientID(_ context.Context, _ string) (*models.OAuthClient, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CreateDeviceAuthRequest(_ context.Context, _ *models.DeviceAuthRequest) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetDeviceAuthRequestByUserCode(
+	_ context.Context, _ string,
+) (*models.DeviceAuthRequest, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetDeviceAuthRequestByDeviceCode(
+	_ context.Context, _ string,
+) (*models.DeviceAuthRequest, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ResolveDeviceAuthRequest(
+	_ context.Context, _ string, _ *models.DeviceAuthResolution,
+) (bool, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) TouchDeviceAuthPoll(_ context.Context, _ string, _ time.Time) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ConsumeDeviceAuthRequest(_ context.Context, _ string) (bool, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) PurgeExpiredDeviceAuthRequests(_ context.Context, _ time.Time) (int64, error) {
 	panic("not implemented")
 }
 
