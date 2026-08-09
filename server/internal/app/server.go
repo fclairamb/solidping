@@ -554,9 +554,17 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		return api.NewGroup(path).Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
 	}
 
-	// Org creation (protected)
+	// Org creation (protected). Any authenticated user may create an org; the
+	// creator becomes its owner (spec 2026-08-08-11).
 	orgsGroup := api.NewGroup("/orgs").Use(authMiddleware.RequireAuth)
 	orgsGroup.POST("", authHandler.CreateOrg)
+
+	// Org deletion — owner only, enforced server-side by RequireOrgOwner (an
+	// admin is refused with the standard 403 shape, not merely denied the
+	// button in the dashboard).
+	orgOwnerGroup := api.NewGroup("/orgs/:org").
+		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgOwner)
+	orgOwnerGroup.DELETE("", authHandler.DeleteOrg)
 
 	// Org-scoped token management (protected)
 	orgTokens := orgGroup("/orgs/:org/tokens")

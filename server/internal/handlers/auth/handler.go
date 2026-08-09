@@ -698,6 +698,45 @@ func (h *Handler) CreateOrg(writer http.ResponseWriter, req *http.Request) error
 	return h.WriteJSON(writer, http.StatusCreated, resp)
 }
 
+// DeleteOrg handles DELETE /api/v1/orgs/:org. The route is owner-gated by
+// middleware.RequireOrgOwner, so reaching this handler already proves the
+// caller owns the org (or is a super admin); the body must additionally repeat
+// the org slug as an explicit confirmation.
+func (h *Handler) DeleteOrg(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, fieldOrg)
+
+	var delReq DeleteOrgRequest
+	if err := json.NewDecoder(req.Body).Decode(&delReq); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	if err := h.svc.DeleteOrg(req.Context(), orgSlug, delReq); err != nil {
+		switch {
+		case errors.Is(err, ErrOrgSlugConfirmationMismatch):
+			return h.WriteValidationError(writer, "Organization slug confirmation does not match",
+				[]base.ValidationErrorField{
+					{Name: "slug", Message: "Type the organization slug exactly to confirm deletion"},
+				})
+		case errors.Is(err, ErrOrganizationNotFound):
+			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound,
+				"Organization not found")
+		default:
+			return h.WriteInternalError(writer, err)
+		}
+	}
+
+	// The caller's own org-scoped session died with the org; clear the cookie
+	// so the dashboard drops to the org switcher instead of replaying a token
+	// that now 404s.
+	h.clearAuthCookie(writer)
+
+	writer.WriteHeader(http.StatusNoContent)
+
+	return nil
+}
+
 // CreateInvitation handles invitation creation.
 func (h *Handler) CreateInvitation(writer http.ResponseWriter, req *http.Request) error {
 	claims, ok := getClaimsFromContext(req)
