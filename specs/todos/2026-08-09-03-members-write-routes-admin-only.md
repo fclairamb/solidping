@@ -167,3 +167,23 @@ describes the auth requirement for these operations and update it if so.
   "admin-only checked in handler". That claim is out of scope for this spec, but
   worth a quick verification pass while in the area — if any of them is likewise
   unenforced, file it as its own spec rather than widening this one.
+
+## Resolved open questions
+
+Both questions above were already settled by the spec itself; restated here as
+directives so there is nothing left to interpret.
+
+> **Should `POST /orgs/:org/members` be admin-only or owner-only?**
+
+**Decision: admin-only**, exactly as the §1 code block shows. It matches the
+documented behaviour in `wiki/api-specification/orgs.md` and the invitation
+flow. The owner-only rules from spec `2026-08-08-11` still apply on top, inside
+`members.Service` — this gate is the floor beneath them, not a replacement.
+
+> **The sibling groups `orgInvitations`, `orgSettings` and
+> `orgMembershipRequests` are commented "admin-only checked in handler".**
+
+**Decision: out of scope — verify, report, do not fix here.** Spend a few
+minutes confirming whether each of those handlers really does check for admin.
+If one does not, **file a new spec** in `specs/todos/` describing the gap and
+mention it in your final report. Do **not** widen this change to cover them.
