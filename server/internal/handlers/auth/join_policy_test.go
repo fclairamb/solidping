@@ -92,7 +92,7 @@ func TestJoinOrgViaLogin(t *testing.T) {
 			wantRole: models.MemberRoleUser,
 		},
 		{
-			// An org with no pattern at all has no rule-4 path: unknown users
+			// An org with no pattern at all has no rule-5 path: unknown users
 			// fall through to a membership request.
 			name:        "org without a pattern admits nobody",
 			pattern:     "",
@@ -228,15 +228,20 @@ func TestJoinOrgViaLoginSlackWorkspace(t *testing.T) {
 		// attestTeam is the workspace Slack attested for the user ("" = a
 		// non-Slack connector: no attestation at all).
 		attestTeam string
-		// optOut, when set, writes registration.slack_workspace_auto_join.
-		optOut *bool
+		// optOut is the raw value written to
+		// registration.slack_workspace_auto_join when writeOptOut is set.
+		// Leaving writeOptOut false means the parameter is ABSENT.
+		optOut      any
+		writeOptOut bool
 
 		wantPending bool
 		wantRole    models.MemberRole
 	}{
 		{
 			// POSITIVE CONTROL — the core fix: a fellow workspace member
-			// signing in to the org that workspace is linked to gets in.
+			// signing in to the org that workspace is linked to gets in. Also
+			// the control for the opt-out cases below: the parameter is
+			// ABSENT here, which must mean enabled.
 			name:       "member of the linked workspace joins as user",
 			linkTeam:   ourTeam,
 			attestTeam: ourTeam,
@@ -288,17 +293,40 @@ func TestJoinOrgViaLoginSlackWorkspace(t *testing.T) {
 			name:        "opted-out org falls back to a membership request",
 			linkTeam:    ourTeam,
 			attestTeam:  ourTeam,
-			optOut:      boolPtr(false),
+			optOut:      false,
+			writeOptOut: true,
 			wantPending: true,
 		},
 		{
 			// POSITIVE CONTROL for the opt-out: an explicit true behaves like
 			// the default.
-			name:       "explicit opt-in joins as user",
-			linkTeam:   ourTeam,
-			attestTeam: ourTeam,
-			optOut:     boolPtr(true),
-			wantRole:   models.MemberRoleUser,
+			name:        "explicit opt-in joins as user",
+			linkTeam:    ourTeam,
+			attestTeam:  ourTeam,
+			optOut:      true,
+			writeOptOut: true,
+			wantRole:    models.MemberRoleUser,
+		},
+		{
+			// A deny switch must fail CLOSED: an admin who typed something
+			// strconv.ParseBool cannot read ("off", "no", "disabled") meant to
+			// turn admission off, and silently granting access instead would
+			// be the wrong direction.
+			name:        "unreadable opt-out value denies rather than admits",
+			linkTeam:    ourTeam,
+			attestTeam:  ourTeam,
+			optOut:      "off",
+			writeOptOut: true,
+			wantPending: true,
+		},
+		{
+			// Same, for a parameter row whose value is not a scalar at all.
+			name:        "null opt-out value denies rather than admits",
+			linkTeam:    ourTeam,
+			attestTeam:  ourTeam,
+			optOut:      nil,
+			writeOptOut: true,
+			wantPending: true,
 		},
 	}
 
@@ -322,9 +350,9 @@ func TestJoinOrgViaLoginSlackWorkspace(t *testing.T) {
 				linkSlackWorkspace(ctx, t, dbSvc, otherOrg.UID, tt.otherOrgTeam)
 			}
 
-			if tt.optOut != nil {
+			if tt.writeOptOut {
 				require.NoError(t, dbSvc.SetOrgParameter(
-					ctx, org.UID, registrationSlackAutoJoinKey, *tt.optOut, false))
+					ctx, org.UID, registrationSlackAutoJoinKey, tt.optOut, false))
 			}
 
 			var opts []LoginOption
@@ -439,39 +467,43 @@ func TestJoinOrgViaLoginSlackWorkspaceBootstrapStaysAdmin(t *testing.T) {
 	require.Equal(t, models.MemberRoleAdmin, member.Role)
 }
 
-// TestParamBoolValue pins how the opt-out parameter is decoded: JSON(B)
-// round-trips can hand back a bool, a string or a number, and anything
-// unrecognized must keep the caller's default rather than silently disabling
-// (or enabling) the rule.
-func TestParamBoolValue(t *testing.T) {
+// TestParseParamBool pins how the opt-out parameter is decoded: JSON(B)
+// round-trips can hand back a bool, a string or a number, and anything else
+// must report "not decodable" (ok=false) rather than quietly becoming a
+// boolean — the caller decides which way an unreadable switch fails.
+func TestParseParamBool(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		raw      any
-		fallback bool
-		want     bool
+		name   string
+		raw    any
+		want   bool
+		wantOK bool
 	}{
-		{name: "bool false", raw: false, fallback: true, want: false},
-		{name: "bool true", raw: true, fallback: false, want: true},
-		{name: "string false", raw: "false", fallback: true, want: false},
-		{name: "padded string", raw: " true ", fallback: false, want: true},
-		{name: "number zero", raw: float64(0), fallback: true, want: false},
-		{name: "number one", raw: float64(1), fallback: false, want: true},
-		{name: "garbage keeps the default", raw: "maybe", fallback: true, want: true},
-		{name: "nil keeps the default", raw: nil, fallback: true, want: true},
+		{name: "bool false", raw: false, want: false, wantOK: true},
+		{name: "bool true", raw: true, want: true, wantOK: true},
+		{name: "string false", raw: "false", want: false, wantOK: true},
+		{name: "padded string", raw: " true ", want: true, wantOK: true},
+		{name: "number zero", raw: float64(0), want: false, wantOK: true},
+		{name: "number one", raw: float64(1), want: true, wantOK: true},
+		{name: "word off is not decodable", raw: "off", wantOK: false},
+		{name: "word no is not decodable", raw: "no", wantOK: false},
+		{name: "nil is not decodable", raw: nil, wantOK: false},
+		{name: "map is not decodable", raw: map[string]any{}, wantOK: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tt.want, paramBoolValue(tt.raw, tt.fallback))
+
+			value, ok := parseParamBool(tt.raw)
+			require.Equal(t, tt.wantOK, ok)
+
+			if tt.wantOK {
+				require.Equal(t, tt.want, value)
+			}
 		})
 	}
-}
-
-func boolPtr(value bool) *bool {
-	return &value
 }
 
 // TestJoinOrgViaLoginExistingMember proves a plain login by someone who is

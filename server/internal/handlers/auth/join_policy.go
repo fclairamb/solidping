@@ -328,7 +328,7 @@ func (s *Service) findOrgInvitationForEmail(ctx context.Context, orgUID, email s
 
 // orgAutoJoinPattern returns the org's registration.email_pattern compiled for
 // matching, or nil when it is absent, empty, unsafe or uncompilable — nil
-// means "this org has no rule-4 path", never "match everything". Unsafe
+// means "this org has no rule-5 path", never "match everything". Unsafe
 // patterns (rejected by validateAutoJoinRegex) are skipped with a warning
 // rather than honored — the same defensive posture autoJoinMatchingOrgs
 // takes, so a leftover over-broad regex written before validation existed
@@ -382,7 +382,9 @@ func (s *Service) orgAutoJoinPattern(ctx context.Context, orgUID string) *regexp
 //     A presenting that attestation while asking for org B (linked to
 //     workspace B, or to nothing) is refused here and falls through to the
 //     membership-request path.
-//   - An org can opt out entirely via registration.slack_workspace_auto_join.
+//   - An org can opt out entirely via registration.slack_workspace_auto_join,
+//     which fails closed when it is present but unreadable (see
+//     slackWorkspaceAutoJoinEnabled).
 //
 // Slack guests (single/multi-channel) pass the OAuth exactly like full
 // members and openid.connect.userInfo does not expose guest status, so V1
@@ -428,15 +430,26 @@ func (s *Service) slackWorkspaceAdmits(
 	return true
 }
 
-// slackWorkspaceAutoJoinEnabled reads the org's opt-out switch. Absent,
-// unreadable or unparseable means enabled — the org exists because of its
-// Slack workspace link, so admitting that workspace's members is the
-// documented default; only an explicit false turns the rule off.
+// slackWorkspaceAutoJoinEnabled reads the org's opt-out switch, distinguishing
+// three states because they must not fail the same way:
+//
+//   - Absent → enabled. The org exists because of its Slack workspace link, so
+//     admitting that workspace's members is the documented default.
+//   - Present and decodable → whatever it says.
+//   - Present but NOT decodable ("off", "no", "disabled", a null value…) →
+//     DISABLED, with a warning naming the org and the offending value. Someone
+//     wrote this parameter to turn admission off; honoring the intent (deny) is
+//     the only safe reading of a switch we cannot parse, and the warning makes
+//     the typo diagnosable instead of silent.
+//
+// A read *error* is different again: a transient DB hiccup must not lock every
+// workspace member out of every org, so it keeps the default (enabled) and is
+// logged.
 func (s *Service) slackWorkspaceAutoJoinEnabled(ctx context.Context, orgUID string) bool {
 	param, err := s.db.GetOrgParameter(ctx, orgUID, registrationSlackAutoJoinKey)
 	if err != nil {
-		slog.WarnContext(ctx, "failed to read slack workspace auto-join parameter",
-			"orgUID", orgUID, "error", err)
+		slog.WarnContext(ctx, "failed to read slack workspace auto-join parameter; keeping the default",
+			"orgUID", orgUID, "key", registrationSlackAutoJoinKey, "error", err)
 
 		return true
 	}
@@ -445,29 +458,42 @@ func (s *Service) slackWorkspaceAutoJoinEnabled(ctx context.Context, orgUID stri
 		return true
 	}
 
-	return paramBoolValue(param.Value["value"], true)
+	raw := param.Value["value"]
+
+	enabled, ok := parseParamBool(raw)
+	if !ok {
+		slog.WarnContext(ctx, "unreadable slack workspace auto-join parameter; treating it as disabled",
+			"orgUID", orgUID, "key", registrationSlackAutoJoinKey,
+			"value", fmt.Sprintf("%v", raw))
+
+		return false
+	}
+
+	return enabled
 }
 
-// paramBoolValue reads a boolean org parameter. Values round-trip through
+// parseParamBool decodes a boolean org parameter. Values round-trip through
 // JSON(B) and may arrive as a real bool, as a string ("false", "0", …) or as a
-// number, so all three are accepted; anything unrecognized yields fallback.
-func paramBoolValue(raw any, fallback bool) bool {
-	switch value := raw.(type) {
+// number, so all three are accepted. It returns (value, decoded): decoded is
+// false for "present but not decodable", in which case value is meaningless
+// and it is up to the caller to decide which way an unreadable switch fails.
+func parseParamBool(raw any) (bool, bool) {
+	switch typed := raw.(type) {
 	case bool:
-		return value
+		return typed, true
 	case string:
-		parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+		parsed, err := strconv.ParseBool(strings.TrimSpace(typed))
 		if err != nil {
-			return fallback
+			return false, false
 		}
 
-		return parsed
+		return parsed, true
 	case float64:
-		return value != 0
+		return typed != 0, true
 	case int:
-		return value != 0
+		return typed != 0, true
 	default:
-		return fallback
+		return false, false
 	}
 }
 

@@ -189,9 +189,35 @@ person in an empty organization still becomes its admin.
 Single- and multi-channel **guests** of the workspace are admitted as well, as
 Slack does not expose guest status during sign-in.
 
-To turn this off for an organization — its members then need an invitation, a
-matching `registration.email_pattern`, or an approved membership request — set
-its `registration.slack_workspace_auto_join` parameter to `false`.
+##### Turning it off
+
+Auto-join can be disabled per organization with the
+`registration.slack_workspace_auto_join` parameter. When it is `false`,
+workspace members need an invitation, a matching `registration.email_pattern`,
+or an approved membership request, exactly as before.
+
+There is **no API or dashboard control for this parameter yet** — a settings-UI
+toggle is a follow-up. Today it is written directly in the database, in the
+organization-scoped `parameters` table (`organization_uid` = the organization's
+`uid`, `key` = `registration.slack_workspace_auto_join`, `value` = the JSON
+object `{"value": false}`):
+
+```sql
+-- PostgreSQL; on SQLite replace gen_random_uuid() with any unique UID string.
+INSERT INTO parameters (uid, organization_uid, key, value)
+VALUES (
+  gen_random_uuid(),
+  (SELECT uid FROM organizations WHERE slug = 'your-org'),
+  'registration.slack_workspace_auto_join',
+  '{"value": false}'
+);
+```
+
+The parameter is read on every Slack sign-in, so the change takes effect
+immediately — no restart. If it holds a value SolidPing cannot read as a
+boolean (`"off"`, `"no"`, …), auto-join is treated as **disabled** and a
+warning naming the organization and the value is logged, so a typo'd switch
+never silently lets people in.
 
 ### Discord
 
