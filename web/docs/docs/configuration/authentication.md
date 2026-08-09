@@ -171,6 +171,28 @@ SP_SLACK_CLIENT_SECRET=your-client-secret
 1. In your [Slack app](https://api.slack.com/apps), enable OpenID Connect / "Sign in with Slack"
 2. Add redirect URL: `{SP_BASE_URL}/api/v1/auth/slack/callback`
 
+#### Workspace members join their organization automatically
+
+An organization created from a Slack workspace stays linked to that workspace.
+Slack only completes the OAuth exchange for a member of the workspace, so
+SolidPing treats a successful "Sign in with Slack" (or app install) as proof of
+membership: the user joins the linked organization as a regular **user** and
+lands straight in the dashboard, without an admin approving a request first.
+
+The link is matched on the workspace ID Slack returns — never on a workspace
+name or on the organization named in the login URL — so members of one
+workspace can never reach another workspace's organization. Everything else
+still applies: an organization at its member limit, or one whose workspace link
+was removed, falls back to the normal membership-request flow, and the first
+person in an empty organization still becomes its admin.
+
+Single- and multi-channel **guests** of the workspace are admitted as well, as
+Slack does not expose guest status during sign-in.
+
+To turn this off for an organization — its members then need an invitation, a
+matching `registration.email_pattern`, or an approved membership request — set
+its `registration.slack_workspace_auto_join` parameter to `false`.
+
 ### Discord
 
 ```bash
