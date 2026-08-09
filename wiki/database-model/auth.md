@@ -146,7 +146,7 @@ Links users to organizations with role-based access control.
 | uid | uuid PK | Primary key |
 | user_uid | uuid | FK to users |
 | organization_uid | uuid | FK to organizations |
-| role | text | Role: admin, user, viewer |
+| role | text | Role: owner, admin, user, viewer (hierarchical: owner > admin > user > viewer) |
 | invited_by_uid | uuid | FK to users (who invited) |
 | invited_at | timestamptz | Invitation timestamp |
 | joined_at | timestamptz | Acceptance timestamp (NULL = pending) |

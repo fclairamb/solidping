@@ -5157,8 +5157,11 @@ paths:
       tags: [Organizations]
       summary: Create a new organization
       description: >-
-        Creates a new organization, makes the caller its admin, and returns a
-        session scoped to the new org.
+        Creates a new organization, makes the caller its OWNER, and returns a
+        session scoped to the new org. Any authenticated user may create an
+        organization; it is always created for the caller (the owner is taken
+        from the access token, never from the request body). A slug freed by a
+        previously deleted organization may be claimed again.
       operationId: createOrg
       security:
         - bearerAuth: []
@@ -5179,6 +5182,45 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/orgs/{org}:
+    delete:
+      tags: [Organizations]
+      summary: Delete an organization
+      description: >-
+        Permanently deletes the organization. **Owner only** — an admin is
+        refused with 403 FORBIDDEN. The request body must repeat the
+        organization slug as an explicit confirmation; a mismatch is a 422
+        VALIDATION_ERROR.
+
+
+        Deletion stops every check, revokes every organization-scoped session
+        (including the caller's own), and makes the slug 404 immediately on
+        every surface: the dashboard API, public status pages, badges and the
+        embed widget. The slug is released and may be claimed by a new
+        organization. There is no restore endpoint.
+      operationId: deleteOrg
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteOrgRequest"
+      responses:
+        "204":
+          description: Organization deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -6579,7 +6621,7 @@ components:
           type: string
         role:
           type: string
-          enum: [admin, user, viewer]
+          enum: [owner, admin, user, viewer]
 
     UserSummary:
       type: object
@@ -6596,7 +6638,7 @@ components:
           type: string
         role:
           type: string
-          enum: [admin, user, viewer]
+          enum: [owner, admin, user, viewer]
 
     CreateTokenRequest:
       type: object
@@ -7802,7 +7844,7 @@ components:
           type: string
         role:
           type: string
-          enum: [admin, user, viewer]
+          enum: [owner, admin, user, viewer]
         joinedAt:
           type: string
           format: date-time
@@ -7819,14 +7861,23 @@ components:
           format: email
         role:
           type: string
-          enum: [admin, user, viewer]
+          enum: [owner, admin, user, viewer]
+          description: >-
+            Member role. `owner` may only be granted by a caller who is already
+            an owner of the organization; anybody else gets 403 FORBIDDEN.
 
     UpdateMemberRequest:
       type: object
       properties:
         role:
           type: string
-          enum: [admin, user, viewer]
+          enum: [owner, admin, user, viewer]
+          description: >-
+            New member role. Granting `owner`, or changing the role of a member
+            who currently IS an owner, requires the caller to be an owner
+            (403 FORBIDDEN otherwise). The organization's last owner can never
+            be demoted (409 CONFLICT) — transfer ownership by promoting a second
+            owner first, then demoting yourself.
 
     # Notification schemas
     NotificationListResponse:
@@ -10099,6 +10150,16 @@ components:
         slug:
           type: string
           description: URL-friendly identifier (3-20 chars, lowercase alphanumeric with hyphens)
+
+    DeleteOrgRequest:
+      type: object
+      required: [slug]
+      properties:
+        slug:
+          type: string
+          description: >-
+            The organization's own slug, retyped as confirmation. Must match the
+            `org` path parameter exactly.
 
     OrgResponse:
       type: object

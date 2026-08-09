@@ -99,7 +99,7 @@ The Go backend follows a clean architecture pattern with strict separation of co
 - `user_id` (text) - User identifier
 - `password_hash` - Hashed password for local auth
 - `auth_provider_uid` - Optional link to OAuth provider
-- `role` - User role: admin, user, or viewer
+- `role` - User role: owner, admin, user, or viewer (hierarchical — an owner passes every admin gate; only an owner may delete the org or grant ownership)
 
 **auth_providers** - Authentication methods per organization
 - `uid` (uuid) - Primary key
