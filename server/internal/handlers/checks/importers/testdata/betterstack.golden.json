@@ -140,6 +140,39 @@
         "period": "10m"
       },
       {
+        "name": "IPv6 only tcp",
+        "slug": "ipv6-only-tcp",
+        "type": "tcp",
+        "config": {
+          "host": "v6.example.org",
+          "ipVersion": "ipv6",
+          "port": 443
+        },
+        "enabled": true,
+        "period": "2m"
+      },
+      {
+        "name": "IPv4 pinned ping",
+        "slug": "ipv4-pinned-ping",
+        "type": "icmp",
+        "config": {
+          "host": "v4.example.org",
+          "ipVersion": "ipv4"
+        },
+        "enabled": true,
+        "period": "1m"
+      },
+      {
+        "name": "Dns pinned v6",
+        "slug": "dns-pinned-v6",
+        "type": "dns",
+        "config": {
+          "host": "ns.example.org"
+        },
+        "enabled": true,
+        "period": "10m"
+      },
+      {
         "name": "Nightly backup",
         "slug": "nightly-backup",
         "type": "heartbeat",
@@ -194,9 +227,17 @@
       "message": "domain expiry is a dedicated domain check in SolidPing — add one for this host"
     },
     {
+      "item": "Dns pinned v6",
+      "field": "ip_version",
+      "message": "Better Stack pinned this monitor to IPv6, but SolidPing \"dns\" checks cannot be pinned to an IP version — the check will monitor whichever family the target resolves to first"
+    },
+    {
       "item": "Login journey",
       "field": "monitor_type",
       "message": "monitor skipped: Better Stack type \"playwright\" has no SolidPing counterpart"
+    },
+    {
+      "message": "10 monitor(s) left Better Stack's ip_version unset, which there means \"monitor over both IPv4 and IPv6\". SolidPing checks one family per check: these were imported as ipVersion: auto and will only be monitored over whichever family the target resolves to first. Create a second check with ipVersion: ipv6 for the targets where IPv6 reachability matters"
     },
     {
       "message": "3 heartbeat(s) were imported: SolidPing issues its own ping URLs, so repoint every cron job or agent at the new URL after the import"
