@@ -174,11 +174,25 @@ a request body would let any user page a stranger.
 
 ## Step 5 — Route severities to Telegram
 
-Add the `telegram` channel token to whichever severities should page over
-Telegram. Like `voice` and `whatsapp`, Telegram is only ever used on an
-**explicit** token — an escalation with no severity attached will not send
-Telegram messages. That is deliberate: a user who opted in for critical pages
-should not be messaged for everything.
+Telegram follows the same routing rule as email and SMS:
+
+| Escalation step | Telegram fires? |
+|---|---|
+| No severity attached | **Yes** — every channel the user connected is used |
+| Severity listing `telegram` | **Yes** |
+| Severity listing other channels but not `telegram` | **No** |
+
+So an escalation with no severity reaches a connected chat, and adding the
+`telegram` token to a severity is how you opt *specific* severities in once you
+start scoping them.
+
+:::note Why not explicit-token-only, like voice?
+`voice` and `whatsapp` fire **only** on an explicit token, because each of those
+deliveries costs money and interrupts hard — nobody should discover a surprise
+phone call. Telegram is free and lands in the same place the user already reads
+alerts, so connecting the chat is treated as the opt-in, exactly as adding an
+email address is.
+:::
 
 ## Quotas and runaway protection
 
@@ -226,7 +240,9 @@ belong to the bot's identity, not to the token.
   today. This is a deliberate cut, not an oversight — but it is a real gap for
   an OSS product, and long-polling is a candidate for a follow-up.
 - **Direct messages only.** No group or channel routing yet (`/setjoingroups`
-  stays enabled so adding it later is additive).
+  stays enabled so adding it later is additive). Using a connect link inside a
+  group is refused with a note to open a direct chat instead — and the link is
+  *not* consumed, so the same one still works in a DM.
 - **No bring-your-own bot per organization** — credentials are instance-level.
 - **No interactive buttons or commands beyond `/start` and `/stop`.** You cannot
   acknowledge an incident by replying (use the SMS ack link or the dashboard).

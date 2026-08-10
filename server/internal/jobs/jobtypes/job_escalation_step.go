@@ -392,12 +392,19 @@ func severityAllowsWhatsApp(filter map[string]bool) bool {
 	return filter[channelTokenWhatsApp]
 }
 
-// severityAllowsTelegram reports whether a Telegram message is permitted. Like
-// voice and WhatsApp, Telegram is only ever sent on an explicit token — never
-// on a nil filter — so a severity-less escalation cannot surprise a user on a
-// channel they only opted into for specific severities.
+// severityAllowsTelegram reports whether a Telegram message is permitted:
+// a nil filter (no severity attached, so everything the user configured fires)
+// or an explicit "telegram" token.
+//
+// Deliberately NOT the voice/WhatsApp rule. Those two are explicit-token-only
+// because each delivery costs money and interrupts hard — a surprise phone call
+// is a different kind of event from a chat message. Telegram is free and
+// arrives in the same place the user already reads alerts, so it follows the
+// email/SMS rule instead: connecting a chat IS the opt-in, and a severity-less
+// escalation should reach every channel the user connected. (Spec
+// 2026-08-10-04, "Escalation dispatch": *explicit token or nil filter*.)
 func severityAllowsTelegram(filter map[string]bool) bool {
-	return filter[channelTokenTelegram]
+	return filter == nil || filter[channelTokenTelegram]
 }
 
 // enqueueNotificationFor queues a notification job for the

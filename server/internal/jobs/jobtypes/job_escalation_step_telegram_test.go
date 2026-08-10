@@ -246,11 +246,13 @@ func TestDispatch_TelegramEscapesCheckName(t *testing.T) {
 
 // --- Severity gating --------------------------------------------------------
 
-func TestDispatch_TelegramNotSentWithoutExplicitToken(t *testing.T) {
+// A severity that names channels but NOT telegram must not page telegram —
+// otherwise a severity carefully scoped to "email only" would still buzz a
+// phone.
+func TestDispatch_TelegramNotSentWhenSeverityExcludesIt(t *testing.T) {
 	t.Parallel()
 
 	for name, filter := range map[string]map[string]bool{
-		"nil filter":      nil,
 		"email and sms":   {"email": true, "sms": true},
 		"whatsapp only":   {"whatsapp": true},
 		"critical push":   {"critical_push": true},
@@ -271,9 +273,32 @@ func TestDispatch_TelegramNotSentWithoutExplicitToken(t *testing.T) {
 			)
 
 			r.Equal(0, sent)
-			r.Equal(0, fake.sendCount(), "no Telegram message may be sent without an explicit token")
+			r.Equal(0, fake.sendCount(),
+				"a severity that lists channels without telegram must not page telegram")
 		})
 	}
+}
+
+// The counterpart: an escalation with NO severity attached pages every channel
+// the user connected, telegram included. Connecting the chat was the opt-in;
+// unlike voice or WhatsApp there is no cost and no interruption class that
+// would justify holding it back.
+func TestDispatch_TelegramSentWithNilFilter(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, false, "")
+	fake, baseURL := newFakeBotAPI(t)
+	enableTelegram(env, baseURL)
+
+	sent := newRun().dispatchRoute(
+		ctx, env.jctx, slog.Default(), env.incident, telegramRoute(env.org.UID, true), nil,
+	)
+
+	r.Equal(1, sent, "a severity-less escalation must reach a connected telegram chat")
+	r.Equal(1, fake.sendCount())
 }
 
 // fanOutWithSeverity gates person targets BEFORE dispatchRoute is reached, so a
@@ -288,9 +313,14 @@ func TestSeverityAllowsPersonTargets_Telegram(t *testing.T) {
 		"a telegram-only severity must open the person-target gate")
 	r.False(severityAllowsPersonTargets(map[string]bool{"slack": true}))
 
+	// All three branches of the per-route gate stay pinned:
+	// explicit token, no severity at all, and a severity that omits telegram.
 	r.True(severityAllowsTelegram(map[string]bool{"telegram": true}))
-	r.False(severityAllowsTelegram(nil))
+	r.True(severityAllowsTelegram(nil),
+		"no severity means every connected channel fires, telegram included")
 	r.False(severityAllowsTelegram(map[string]bool{"email": true, "whatsapp": true}))
+	r.False(severityAllowsTelegram(map[string]bool{}),
+		"an empty (but non-nil) channel set is an explicit 'nothing', not 'everything'")
 }
 
 // --- Skips ------------------------------------------------------------------
