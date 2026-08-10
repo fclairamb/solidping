@@ -26,8 +26,8 @@ const TelegramWebhookPath = "/api/v1/integrations/telegram/webhook"
 //     A mismatch is a LOUD WARNING, never a crash: a stale username produces
 //     connect links pointing at the wrong bot, which is otherwise a silent and
 //     utterly baffling failure ("the link opens a bot that does nothing").
-//  2. setWebhook, when the registered URL differs from ours, so a deploy to a
-//     new hostname self-heals instead of needing a manual curl. Skipped when
+//  2. setWebhook, ALWAYS, so a deploy to a new hostname — or a rotated webhook
+//     secret — self-heals instead of needing a manual curl. Skipped only when
 //     the instance has no public base URL to register.
 //
 // Nothing here can fail startup. An instance whose Telegram bot is temporarily
@@ -78,8 +78,22 @@ func verifyTelegramIdentity(ctx context.Context, client *telegram.Client, cfg *c
 	slog.InfoContext(ctx, "Telegram bot ready", "username", bot.Username)
 }
 
-// ensureTelegramWebhook registers our webhook URL when Telegram is pointing
-// somewhere else (or nowhere).
+// ensureTelegramWebhook registers our webhook URL and secret with Telegram.
+//
+// The setWebhook call is UNCONDITIONAL, and that is the whole point. Telegram's
+// getWebhookInfo returns the registered `url` but NEVER the `secret_token` —
+// that field is write-only in the Bot API. So a URL comparison can only detect
+// half of a divergence: a secret that changes at a constant URL would never be
+// pushed, Telegram would keep echoing the old X-Telegram-Bot-Api-Secret-Token,
+// and the handler would 403 every single update — the connect flow, in-chat
+// /stop and block notifications all dying silently, with the only trace being a
+// last_error_message surfaced at the NEXT boot.
+//
+// setWebhook is idempotent, so re-registering costs exactly one API call per
+// boot and buys convergence by construction for a value that cannot be read
+// back. getWebhookInfo is still called, but purely for the
+// last_error_message / pending_update_count diagnostics: it no longer gates
+// anything, and a failure to read it does not stop the registration.
 func ensureTelegramWebhook(ctx context.Context, client *telegram.Client, cfg *config.Config) {
 	baseURL := strings.TrimRight(strings.TrimSpace(cfg.Server.BaseURL), "/")
 	if baseURL == "" {
@@ -103,23 +117,9 @@ func ensureTelegramWebhook(ctx context.Context, client *telegram.Client, cfg *co
 
 	want := baseURL + TelegramWebhookPath
 
-	info, err := client.GetWebhookInfo(ctx)
-	if err != nil {
-		slog.WarnContext(ctx, "could not read the current Telegram webhook registration",
-			"reason", telegram.FailureReason(err), "error", err)
-
-		return
-	}
-
-	if info.URL == want {
-		if info.LastErrorMessage != "" {
-			slog.WarnContext(ctx, "Telegram reports a recent webhook delivery error",
-				"url", want, "lastError", info.LastErrorMessage,
-				"pendingUpdates", info.PendingUpdateCount)
-		}
-
-		return
-	}
+	// Diagnostics only — deliberately BEFORE the registration so the reported
+	// state is the one Telegram held on arrival, and deliberately non-fatal.
+	previous := reportTelegramWebhookState(ctx, client, want)
 
 	if err := client.SetWebhook(ctx, want, cfg.Telegram.WebhookSecret); err != nil {
 		slog.WarnContext(ctx, "could not register the Telegram webhook",
@@ -128,5 +128,27 @@ func ensureTelegramWebhook(ctx context.Context, client *telegram.Client, cfg *co
 		return
 	}
 
-	slog.InfoContext(ctx, "Telegram webhook registered", "url", want, "previous", info.URL)
+	slog.InfoContext(ctx, "Telegram webhook registered", "url", want, "previous", previous)
+}
+
+// reportTelegramWebhookState logs whatever Telegram reports about the current
+// registration and returns the URL it holds (empty when unknown). Purely
+// informational: every failure path here is a warning, never a reason to skip
+// the setWebhook that follows.
+func reportTelegramWebhookState(ctx context.Context, client *telegram.Client, want string) string {
+	info, err := client.GetWebhookInfo(ctx)
+	if err != nil {
+		slog.WarnContext(ctx, "could not read the current Telegram webhook registration",
+			"reason", telegram.FailureReason(err), "error", err)
+
+		return ""
+	}
+
+	if info.LastErrorMessage != "" {
+		slog.WarnContext(ctx, "Telegram reports a recent webhook delivery error",
+			"url", info.URL, "want", want, "lastError", info.LastErrorMessage,
+			"pendingUpdates", info.PendingUpdateCount)
+	}
+
+	return info.URL
 }
