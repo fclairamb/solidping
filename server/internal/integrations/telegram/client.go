@@ -540,10 +540,15 @@ func ContactDisabling(err error) bool {
 	return errors.Is(err, ErrBotBlocked) || errors.Is(err, ErrChatNotFound)
 }
 
-// ValidChatID reports whether s looks like a Telegram chat id: a (possibly
-// negative, for groups) integer. Used to reject hand-crafted contact values.
+// ValidChatID reports whether s is a usable Telegram chat id: a non-zero
+// (possibly negative, for groups) integer.
+//
+// Zero is rejected on purpose. Telegram has no chat 0, so a "0" here always
+// means an update arrived without a real chat — and storing it would create a
+// contact that can never be delivered to and that no user can recognize in
+// their contacts list.
 func ValidChatID(s string) bool {
-	_, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	id, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
 
-	return err == nil
+	return err == nil && id != 0
 }

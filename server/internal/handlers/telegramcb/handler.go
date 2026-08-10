@@ -172,6 +172,10 @@ func (h *Handler) handleMessage(ctx context.Context, msg *telegram.IncomingMessa
 func (h *Handler) handleStart(
 	ctx context.Context, msg *telegram.IncomingMessage, chatID, token string,
 ) {
+	if !h.chatIsConnectable(ctx, msg, chatID) {
+		return
+	}
+
 	payload, err := usernotifications.ConsumeTelegramLinkToken(ctx, h.db, token)
 	if err != nil {
 		h.log.WarnContext(ctx, "failed to consume telegram link token", "chatId", chatID, "error", err)
@@ -205,6 +209,39 @@ func (h *Handler) handleStart(
 	// Naming the org in the confirmation is the whole point: a user who
 	// connected the wrong account finds out now, not during an outage.
 	h.reply(ctx, chatID, telegram.BuildLinkedHTML(orgSlug))
+}
+
+// chatIsConnectable rejects a /start that could not produce a usable contact,
+// BEFORE the single-use token is consumed — a refusal here must leave the user
+// able to retry with the same link rather than burning it.
+//
+// Two cases:
+//
+//   - A group, supergroup or channel. v1 delivers to one person's chat; group
+//     routing is a deliberate later feature (which is why /setjoingroups stays
+//     enabled on the bot), not something a mis-pasted link should fall into.
+//   - A chat id of 0, i.e. an update that carried no real chat. Storing it
+//     would create a contact nothing can ever be delivered to.
+func (h *Handler) chatIsConnectable(
+	ctx context.Context, msg *telegram.IncomingMessage, chatID string,
+) bool {
+	// An absent type is treated as private: Telegram always sends one, and
+	// refusing on a field we merely failed to read would break real users.
+	if msg.Chat != nil && msg.Chat.Type != "" && msg.Chat.Type != telegram.ChatTypePrivate {
+		h.log.InfoContext(ctx, "ignoring telegram /start from a non-private chat",
+			"chatId", chatID, "chatType", msg.Chat.Type)
+		h.reply(ctx, chatID, telegram.BuildGroupNotSupportedHTML())
+
+		return false
+	}
+
+	if !telegram.ValidChatID(chatID) {
+		h.log.WarnContext(ctx, "ignoring telegram /start with an unusable chat id", "chatId", chatID)
+
+		return false
+	}
+
+	return true
 }
 
 // errContactNotPersisted means the contact row we just upserted could not be

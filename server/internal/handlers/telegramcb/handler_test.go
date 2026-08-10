@@ -506,3 +506,60 @@ func TestHandleMessage_UnknownCommandGetsAHint(t *testing.T) {
 	r.Contains(msgs[0], "/start")
 	r.Contains(msgs[0], "/stop")
 }
+
+// v1 delivers to one person's chat. A token redeemed in a group would bind that
+// user's pages to a room full of people — and, crucially, the refusal must NOT
+// burn the single-use token, so the user can retry the same link in a DM.
+func TestHandleStart_RefusesGroupChatsWithoutBurningTheToken(t *testing.T) {
+	t.Parallel()
+
+	for _, chatType := range []string{"group", "supergroup", "channel"} {
+		t.Run(chatType, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			env := setupEnv(t)
+
+			token := env.mintToken(t)
+
+			body := `{"update_id":40,"message":{"message_id":14,` +
+				`"from":{"id":42,"is_bot":false,"first_name":"Flo","username":"flo"},` +
+				`"chat":{"id":987654321,"type":"` + chatType + `","title":"Ops room"},` +
+				`"text":"/start ` + token + `"}}`
+
+			r.Equal(http.StatusOK, env.post(t, testWebhookSecret, body).Code)
+			r.Empty(env.telegramContacts(t), "a group chat must never become a contact")
+
+			msgs := env.sender.messages()
+			r.Len(msgs, 1)
+			r.Contains(msgs[0], "direct chat")
+
+			// The same token still works from a private chat: the refusal above
+			// must not have consumed it.
+			r.Equal(http.StatusOK, env.post(t, testWebhookSecret, startBody(token)).Code)
+			r.Len(env.telegramContacts(t), 1)
+		})
+	}
+}
+
+// An update carrying no real chat must not create a contact nothing could ever
+// be delivered to.
+func TestHandleStart_RefusesAZeroChatID(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := setupEnv(t)
+
+	token := env.mintToken(t)
+
+	body := `{"update_id":41,"message":{"message_id":15,` +
+		`"chat":{"id":0,"type":"private"},"text":"/start ` + token + `"}}`
+
+	r.Equal(http.StatusOK, env.post(t, testWebhookSecret, body).Code)
+
+	contacts, err := env.db.ListUserContactsByTypeValue(
+		context.Background(), models.UserContactTypeTelegram, "0",
+	)
+	r.NoError(err)
+	r.Empty(contacts)
+}

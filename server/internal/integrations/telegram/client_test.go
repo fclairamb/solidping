@@ -355,4 +355,8 @@ func TestValidChatID(t *testing.T) {
 	r.False(telegram.ValidChatID(""))
 	r.False(telegram.ValidChatID("@someone"))
 	r.False(telegram.ValidChatID("12ab"))
+	// Telegram has no chat 0: a "0" always means an update arrived with no real
+	// chat, and storing it would create an undeliverable contact.
+	r.False(telegram.ValidChatID("0"))
+	r.False(telegram.ValidChatID(" 0 "))
 }

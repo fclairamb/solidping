@@ -146,6 +146,16 @@ func BuildExpiredLinkHTML() string {
 		"(Account → Notifications) and try again."
 }
 
+// BuildGroupNotSupportedHTML is the reply to a connect attempt made from a
+// group or channel. It names the fix (start a direct chat) rather than simply
+// refusing, because from the user's side the link they clicked did work — it
+// just landed somewhere this version cannot use.
+func BuildGroupNotSupportedHTML() string {
+	return "<b>Not supported here</b>\n\n" +
+		"SolidPing alerts go to a direct chat, not to a group. " +
+		"Open a private chat with this bot and use your connect link again."
+}
+
 // BuildUnknownCommandHTML is the reply to a message the bot does not handle. v1
 // implements /start and /stop only, and the bot's advertised command list is
 // trimmed to match — no command is offered that answers nothing.

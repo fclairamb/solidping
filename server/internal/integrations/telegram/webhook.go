@@ -30,6 +30,12 @@ func ValidSecretToken(configured, provided string) bool {
 	return subtle.ConstantTimeCompare([]byte(configured), []byte(provided)) == 1
 }
 
+// ChatTypePrivate is the chat type of a one-to-one conversation with the bot.
+// v1 connects private chats only — a contact is one person's chat, and binding
+// a user's pages to a room full of people is a deliberate later feature rather
+// than something to fall into by accident.
+const ChatTypePrivate = "private"
+
 // Chat is the subset of Telegram's Chat object we use.
 type Chat struct {
 	ID       int64  `json:"id"`

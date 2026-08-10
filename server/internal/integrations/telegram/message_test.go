@@ -238,4 +238,10 @@ func TestBuildConversationalBodies(t *testing.T) {
 
 	assertWellFormedTelegramHTML(t, telegram.BuildUnlinkedHTML())
 	r.NotEmpty(telegram.BuildUnknownCommandHTML())
+
+	// The group refusal names the fix rather than only refusing: from the
+	// user's side the link did work, it just landed somewhere v1 cannot use.
+	group := telegram.BuildGroupNotSupportedHTML()
+	r.Contains(group, "direct chat")
+	assertWellFormedTelegramHTML(t, group)
 }
