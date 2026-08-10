@@ -56,6 +56,10 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Notification contact not found")
 	case errors.Is(err, ErrInvalidWhatsAppNumber):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
+	case errors.Is(err, ErrTelegramContactNotDirect):
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
+	case errors.Is(err, ErrTelegramNotEnabled):
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	default:
 		return h.WriteInternalError(writer, err)
 	}
@@ -113,6 +117,26 @@ func (h *Handler) CreateContact(writer http.ResponseWriter, req *http.Request) e
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, route)
+}
+
+// CreateTelegramLink handles POST /api/v1/orgs/:org/users/me/telegram/link.
+//
+// It mints a single-use connect token and returns the t.me deep link carrying
+// it. Nothing is created here: the contact only comes into existence when the
+// user actually presses Start in Telegram and our webhook sees the token come
+// back from a real chat.
+func (h *Handler) CreateTelegramLink(writer http.ResponseWriter, req *http.Request) error {
+	user, ok := userFromContext(req)
+	if !ok {
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Not authenticated")
+	}
+
+	resp, err := h.svc.CreateTelegramLink(req.Context(), httpx.Param(req, "org"), user)
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusCreated, resp)
 }
 
 // PatchRoute handles PATCH /api/v1/orgs/:org/users/me/notification-routes/:routeUid.

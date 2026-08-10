@@ -1991,6 +1991,20 @@ func (m *mockDBService) MarkUserContactVerified(_ context.Context, _ string, _ t
 	return nil
 }
 
+func (m *mockDBService) ClearUserContactVerified(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) ListUserContactsByTypeValue(
+	_ context.Context, _, _ string,
+) ([]*models.UserContact, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) EnsureUserNotificationRoute(_ context.Context, _, _, _ string) error {
+	return nil
+}
+
 func (m *mockDBService) SetRouteEnabled(_ context.Context, _ string, _ bool) error {
 	return nil
 }

@@ -51,9 +51,10 @@ func allowedChannels() map[string]bool {
 		"opsgenie": true, "pushover": true, "msteams-bot": true,
 		// Direct-channel types. These are synthetic tokens, not connection
 		// types: "whatsapp" pages a user's verified WhatsApp contact through
-		// the instance-level WABA, exactly as "sms" pages their phone contact.
+		// the instance-level WABA, exactly as "sms" pages their phone contact,
+		// and "telegram" pages their connected chat through the instance bot.
 		"sms": true, "voice": true, "push": true, "critical_push": true,
-		"whatsapp": true,
+		"whatsapp": true, "telegram": true,
 	}
 }
 

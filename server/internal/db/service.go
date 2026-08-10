@@ -845,8 +845,31 @@ type Service interface {
 	// verification columns.
 	MarkUserContactVerified(ctx context.Context, uid string, at time.Time) error
 
+	// ClearUserContactVerified removes the verified_at stamp from a contact,
+	// leaving the row in place. Used when a provider tells us a destination is
+	// permanently unreachable (a Telegram user blocked the bot): the contact
+	// must stop being paged, but deleting it would lose the user's intent and
+	// hide the fact that a reconnect is needed.
+	ClearUserContactVerified(ctx context.Context, uid string) error
+
+	// ListUserContactsByTypeValue returns every live contact with the given
+	// type and value, across ALL users and organizations. Inbound provider
+	// callbacks (a Telegram /stop, a block notification) identify the contact
+	// only by its destination, with no org context — one chat can legitimately
+	// be linked in several orgs, and an opt-out must reach all of them.
+	ListUserContactsByTypeValue(
+		ctx context.Context, contactType, value string,
+	) ([]*models.UserContact, error)
+
 	// DeleteUserContact soft-deletes a contact by UID.
 	DeleteUserContact(ctx context.Context, uid string) error
+
+	// EnsureUserNotificationRoute idempotently creates an enabled route for an
+	// existing contact, appended after the user's current routes. Safe to call
+	// repeatedly (INSERT … ON CONFLICT (contact_uid) DO NOTHING), which is what
+	// makes re-connecting an already-connected Telegram chat a no-op instead of
+	// a duplicate.
+	EnsureUserNotificationRoute(ctx context.Context, userUID, orgUID, contactUID string) error
 
 	// SetRouteEnabled toggles the enabled flag on a route.
 	SetRouteEnabled(ctx context.Context, routeUID string, enabled bool) error

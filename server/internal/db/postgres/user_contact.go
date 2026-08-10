@@ -166,6 +166,67 @@ func (s *Service) MarkUserContactVerified(ctx context.Context, uid string, verif
 	return nil
 }
 
+// ClearUserContactVerified removes the verified_at stamp from a contact.
+func (s *Service) ClearUserContactVerified(ctx context.Context, uid string) error {
+	now := time.Now()
+
+	_, err := s.db.NewUpdate().
+		Model((*models.UserContact)(nil)).
+		Where("uid = ?", uid).
+		Set("verified_at = NULL").
+		Set("updated_at = ?", now).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("clear user contact verified: %w", err)
+	}
+
+	return nil
+}
+
+// ListUserContactsByTypeValue returns every live contact with the given type
+// and value, across all users and organizations.
+func (s *Service) ListUserContactsByTypeValue(
+	ctx context.Context, contactType, value string,
+) ([]*models.UserContact, error) {
+	var contacts []*models.UserContact
+
+	err := s.db.NewSelect().
+		Model(&contacts).
+		Where("type = ?", contactType).
+		Where("value = ?", value).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list user contacts by type/value: %w", err)
+	}
+
+	return contacts, nil
+}
+
+// EnsureUserNotificationRoute idempotently creates an enabled route for an
+// existing contact, appended after the user's current routes.
+func (s *Service) EnsureUserNotificationRoute(ctx context.Context, userUID, orgUID, contactUID string) error {
+	count, err := s.db.NewSelect().
+		Model((*models.UserNotificationRoute)(nil)).
+		Where("user_uid = ?", userUID).
+		Where("org_uid = ?", orgUID).
+		Count(ctx)
+	if err != nil {
+		return fmt.Errorf("count user notification routes: %w", err)
+	}
+
+	route := models.NewUserNotificationRoute(userUID, orgUID, contactUID, count)
+
+	if _, err := s.db.NewInsert().
+		Model(route).
+		On("CONFLICT (contact_uid) DO NOTHING").
+		Exec(ctx); err != nil {
+		return fmt.Errorf("ensure user notification route: %w", err)
+	}
+
+	return nil
+}
+
 // SetRouteEnabled toggles the enabled flag on a route.
 func (s *Service) SetRouteEnabled(ctx context.Context, routeUID string, enabled bool) error {
 	_, err := s.db.NewUpdate().

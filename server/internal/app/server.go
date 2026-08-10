@@ -87,6 +87,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/statussubscribers"
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
+	"github.com/fclairamb/solidping/server/internal/handlers/telegramcb"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
 	"github.com/fclairamb/solidping/server/internal/handlers/twiliocb"
 	"github.com/fclairamb/solidping/server/internal/handlers/unsubscribe"
@@ -353,6 +354,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			cfg.Entitlements.SMSRunawayPerHour, cfg.Entitlements.CallRunawayPerHour,
 		),
 		entitlementsapi.WithWhatsAppRunawayCap(cfg.Entitlements.WhatsAppRunawayPerHour),
+		entitlementsapi.WithTelegramRunawayCap(cfg.Entitlements.TelegramRunawayPerHour),
 	)
 	svcList.Entitlements = entitlementsService
 
@@ -1065,6 +1067,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		// authentication template. Off by default; NewService keeps the feature
 		// dark when the config is inactive.
 		usernotifications.WithWhatsAppConfig(&s.config.WhatsApp),
+		// Instance-level Telegram credentials power the connect-link flow. Off
+		// by default; CreateTelegramLink refuses while the config is inactive.
+		usernotifications.WithTelegramConfig(&s.config.Telegram),
 	)
 	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender)
 	slackAdapter := usernotifications.NewSlackDMSenderAdapter()
@@ -1079,6 +1084,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgUserNotif.POST("/notification-routes/:routeUid/test", userNotifHandler.TestRoute)
 	orgUserNotif.POST("/notification-contacts/:contactUid/verify", userNotifHandler.VerifyContact)
 	orgUserNotif.POST("/notification-contacts/:contactUid/verify/confirm", userNotifHandler.ConfirmVerify)
+	// Telegram connect link. Always registered (it answers a clean
+	// VALIDATION_ERROR when the instance has no bot) so the dashboard gets a
+	// meaningful message rather than a 404 it would have to guess about.
+	orgUserNotif.POST("/telegram/link", userNotifHandler.CreateTelegramLink)
 
 	// Events routes (authentication required)
 	eventsService := events.NewService(s.dbService)
@@ -1426,6 +1435,18 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		whatsAppIntegration := api.NewGroup("/integrations/whatsapp")
 		whatsAppIntegration.GET("/webhook", whatsAppHandler.HandleVerify)
 		whatsAppIntegration.POST("/webhook", whatsAppHandler.HandleEvent)
+	}
+
+	// Telegram Bot API inbound webhook (connect flow, in-chat opt-out, block
+	// notifications). Instance-level like WhatsApp, but Telegram does NOT sign
+	// its payloads: the only authenticity gate is the
+	// X-Telegram-Bot-Api-Secret-Token header, compared constant-time before the
+	// body is parsed. Registered only when the instance has Telegram configured
+	// — an unconfigured deployment exposes no route at all.
+	if s.config.Telegram.Active() {
+		telegramHandler := telegramcb.NewHandler(s.dbService, s.config)
+		telegramIntegration := api.NewGroup("/integrations/telegram")
+		telegramIntegration.POST("/webhook", telegramHandler.HandleUpdate)
 	}
 
 	// Slack destinations picker (authenticated, org-scoped)
