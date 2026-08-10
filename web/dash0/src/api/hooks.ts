@@ -380,7 +380,13 @@ export function useInfiniteChecks(
     limit?: number;
     /** Opt-in ordering; "group" loads in the page's display order. */
     sort?: string;
-  }
+  },
+  /**
+   * Query behavior that must NOT take part in the cache key (a poll interval
+   * describes how often to refresh a cache entry, not which entry it is).
+   * Kept as a second parameter so it can never accidentally fork the key.
+   */
+  queryOptions?: { refetchInterval?: number }
 ) {
   return useInfiniteQuery({
     queryKey: ["checks", "infinite", org, options],
@@ -394,6 +400,7 @@ export function useInfiniteChecks(
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.pagination?.cursor,
     enabled: !!org,
+    refetchInterval: queryOptions?.refetchInterval,
   });
 }
 

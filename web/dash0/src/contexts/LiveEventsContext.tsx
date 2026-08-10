@@ -37,6 +37,21 @@ import {
 export const LIVE_LAZY_POLL_MS = 5 * 60_000;
 
 /**
+ * Refetch interval for list queries that embed per-run detail
+ * (`with=last_result`): the checks index page and the org dashboard.
+ *
+ * A `results` live hint no longer invalidates the checks-list roots (spec
+ * 2026-08-09-07 — see DEFAULT_QUERY_ROOTS.checks.results), so these queries
+ * must NOT be stretched with stretchWhileLive: liveness now covers status
+ * transitions (kind "checks") but not the steady-state per-run cells, and
+ * this poll is what bounds their staleness. It is deliberately a plain
+ * constant rather than a stretched one — a fixed 30 s beats the former
+ * hint-driven ~0.5 refetches/second by an order of magnitude while keeping
+ * "last checked" fresh within one interval.
+ */
+export const CHECKS_LIST_POLL_MS = 30_000;
+
+/**
  * Minimum interval between hint-driven cache invalidations for one scope.
  * Hints arriving inside the cooldown are coalesced into exactly one
  * trailing-edge invalidation at cooldown expiry (kinds merged), so the final
@@ -109,15 +124,19 @@ function resultsRoot(root: string): QueryRoot {
 const DEFAULT_QUERY_ROOTS: Record<LiveEntity, Partial<Record<string, QueryRoot[]>>> = {
   checks: {
     checks: [orgRoot("checks"), infiniteOrgRoot("checks")],
-    // A plain result write (no status transition) publishes kind "results"
-    // only — never "checks" (see realtime.KindChecks: published separately,
-    // only on an actual status transition). The checks list embeds
-    // lastResult/lastStatusChange (`with=last_result,last_status_change`),
-    // so it must also be invalidated here or "last checked" goes stale for
-    // up to the lazy poll interval on every steady-state (no-transition) run.
+    // The checks-list roots are deliberately ABSENT here (spec
+    // 2026-08-09-07). Check workers write results continuously, so a busy org
+    // emits a "results" hint essentially without pause; refetching the whole
+    // org's checks list on each one turned a single open tab into ~0.5 list
+    // requests per second — each one an embed of lastResult for every check.
+    //
+    // What still keeps the list correct: a real status transition publishes
+    // kind "checks" (realtime.KindChecks) and lands on the roots above, and
+    // list consumers that render per-run detail (status dot, latency cell)
+    // poll at CHECKS_LIST_POLL_MS — see its doc comment. A plain
+    // no-transition result write is worth at most one cheap poll, never an
+    // immediate org-wide refetch.
     results: [
-      orgRoot("checks"),
-      infiniteOrgRoot("checks"),
       resultsRoot("results"),
       resultsRoot("allResults"),
       orgRoot("checkAvailability"),
