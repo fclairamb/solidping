@@ -19,6 +19,7 @@ import type { TFunction } from "i18next";
 /** Channel tokens that have an explicit translated label. */
 const TRANSLATED_CHANNELS = new Set([
   "whatsapp",
+  "telegram",
   "sms",
   "voice",
   "webpush",
@@ -49,6 +50,15 @@ const TRANSLATED_REASONS = new Set([
   "whatsapp_quota_exhausted",
   "sms_quota_exhausted",
   "voice_quota_exhausted",
+  "telegram_unauthorized",
+  "telegram_bot_blocked",
+  "telegram_chat_not_found",
+  "telegram_reply_target_missing",
+  "telegram_rate_limited",
+  "telegram_not_configured",
+  "telegram_invalid_chat",
+  "telegram_send_failed",
+  "telegram_runaway_guard",
 ]);
 
 /**

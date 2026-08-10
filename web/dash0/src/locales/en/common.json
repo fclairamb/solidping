@@ -73,7 +73,8 @@
     "pushover": "Pushover",
     "slack": "Slack",
     "discord": "Discord",
-    "webhook": "Webhook"
+    "webhook": "Webhook",
+    "telegram": "Telegram"
   },
   "notificationFailureReasons": {
     "whatsapp_template_unavailable": "WhatsApp message template unavailable — ask an admin to check the template's approval status",
@@ -87,6 +88,15 @@
     "whatsapp_send_failed": "WhatsApp delivery failed",
     "whatsapp_quota_exhausted": "Monthly WhatsApp quota exhausted",
     "sms_quota_exhausted": "Monthly SMS quota exhausted",
-    "voice_quota_exhausted": "Monthly voice-call quota exhausted"
+    "voice_quota_exhausted": "Monthly voice-call quota exhausted",
+    "telegram_unauthorized": "Telegram bot credentials are invalid — ask an admin to check the bot token",
+    "telegram_bot_blocked": "The Telegram bot was blocked by the user — reconnect from Account → Notifications",
+    "telegram_chat_not_found": "The Telegram chat no longer exists — reconnect from Account → Notifications",
+    "telegram_reply_target_missing": "The original Telegram alert was deleted",
+    "telegram_rate_limited": "Rate limited by Telegram",
+    "telegram_not_configured": "Telegram is not configured on this instance",
+    "telegram_invalid_chat": "The Telegram chat id is invalid",
+    "telegram_send_failed": "Telegram delivery failed",
+    "telegram_runaway_guard": "Hourly Telegram runaway guard reached"
   }
 }

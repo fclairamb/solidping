@@ -161,6 +161,21 @@
         "dialogDescription": "Nous enverrons un code à 6 chiffres au {{phone}} sur WhatsApp. Saisissez-le ci-dessous pour confirmer que ce numéro peut recevoir les alertes WhatsApp.",
         "verified": "Numéro de téléphone vérifié"
       }
+    },
+    "telegram": {
+      "addTitle": "Ajouter Telegram",
+      "addHint": "Recevez les alertes du bot SolidPing dans une conversation Telegram. Aucun numéro à saisir — il suffit d'appuyer sur Démarrer.",
+      "connectButton": "Connecter Telegram",
+      "reconnectButton": "Reconnecter",
+      "connectedBadge": "Connecté",
+      "reconnectBadge": "Reconnexion nécessaire — le bot ne peut plus écrire dans cette conversation",
+      "connected": "Telegram connecté",
+      "waiting": "En attente de votre appui sur Démarrer dans Telegram… ce lien expire dans {{countdown}}.",
+      "openAgain": "Ouvrir Telegram",
+      "cancel": "Annuler",
+      "expired": "Ce lien de connexion a expiré.",
+      "regenerate": "Générer un nouveau lien",
+      "linkFailed": "Impossible de créer un lien de connexion Telegram"
     }
   }
 }

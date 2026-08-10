@@ -45,6 +45,10 @@ describe("channelTypeLabel", () => {
     expect(channelTypeLabel(t, "msteams-bot")).toBe("Microsoft Teams");
   });
 
+  it("renders Telegram from the locale bundle rather than raw-capitalising it", () => {
+    expect(channelTypeLabel(t, "telegram")).toBe("Telegram");
+  });
+
   it("capitalises an unknown channel rather than leaking an i18n key", () => {
     expect(channelTypeLabel(t, "carrier_pigeon")).toBe("Carrier_pigeon");
     expect(channelTypeLabel(t, "carrier_pigeon")).not.toContain("channels.");
@@ -71,6 +75,17 @@ describe("failureReasonLabel", () => {
     for (const reason of ["whatsapp_rate_limited", "whatsapp_unsupported_message"]) {
       expect(failureReasonLabel(t, reason)).not.toContain("not on WhatsApp");
     }
+  });
+
+  it("explains each Telegram failure class in prose", () => {
+    // The two that need an ACTION from the user, not just a description.
+    expect(failureReasonLabel(t, "telegram_bot_blocked")).toContain("reconnect");
+    expect(failureReasonLabel(t, "telegram_chat_not_found")).toContain("reconnect");
+    // …and the ones that are an operator or transient problem must NOT tell the
+    // user to reconnect, which would send them chasing the wrong fix.
+    expect(failureReasonLabel(t, "telegram_rate_limited")).not.toContain("reconnect");
+    expect(failureReasonLabel(t, "telegram_unauthorized")).not.toContain("reconnect");
+    expect(failureReasonLabel(t, "telegram_not_configured")).not.toContain("reconnect");
   });
 
   it("de-snake-cases an unknown reason rather than leaking an i18n key", () => {

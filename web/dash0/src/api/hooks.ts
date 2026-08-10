@@ -4498,6 +4498,29 @@ export function useVerifyContact(org: string) {
   });
 }
 
+/** The connect link returned by POST /users/me/telegram/link. */
+export interface TelegramLinkResponse {
+  url: string;
+  expiresAt: string;
+}
+
+/**
+ * Mints a single-use Telegram connect link (TTL 15 minutes).
+ *
+ * Nothing is created by this call: the contact only appears once the user
+ * presses Start in Telegram and the resulting `/start <token>` reaches the
+ * instance webhook. Callers therefore poll the routes list afterwards rather
+ * than reading a contact out of this response.
+ */
+export function useCreateTelegramLink(org: string) {
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<TelegramLinkResponse>(`/api/v1/orgs/${org}/users/me/telegram/link`, {
+        method: "POST",
+      }),
+  });
+}
+
 /** Confirms a phone notification contact with the emailed/texted code. */
 export function useConfirmVerifyContact(org: string) {
   const queryClient = useQueryClient();

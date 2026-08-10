@@ -7,8 +7,10 @@ import {
   MessageCircle,
   MessageSquare,
   MessagesSquare,
+  MonitorSmartphone,
   Phone,
   Router,
+  Send,
   Users,
   Webhook,
   Bot,
@@ -81,5 +83,66 @@ export function integrationLabel(type: ConnectionType): string {
       return "Twilio (SMS / Voice)";
     default:
       return type;
+  }
+}
+
+/**
+ * Icons for the **direct channels** — the per-user contact types that page a
+ * person rather than an org connection (`email`, `phone`, `whatsapp`,
+ * `telegram`, `slack_user`, `webpush`).
+ *
+ * They live here, next to the connection-type icons, so one file answers "what
+ * does channel X look like" for every channel SolidPing can deliver on. They
+ * are deliberately a separate map: a direct channel is NOT a ConnectionType —
+ * there is no `telegram` integration row to configure, only an instance-level
+ * bot and a per-user connected chat.
+ */
+const DIRECT_CHANNEL_ICONS: Record<string, typeof Webhook> = {
+  email: Mail,
+  phone: Phone,
+  whatsapp: MessageCircle,
+  telegram: Send,
+  slack_user: MessageSquare,
+  webpush: MonitorSmartphone,
+};
+
+/** Returns the icon component for a direct-channel contact type. */
+export function directChannelIconComponent(contactType: string) {
+  return DIRECT_CHANNEL_ICONS[contactType] ?? BellRing;
+}
+
+/** Renders the icon for a direct-channel contact type. */
+export function DirectChannelIcon({
+  type,
+  className,
+}: {
+  type: string;
+  className?: string;
+}) {
+  const Icon = DIRECT_CHANNEL_ICONS[type] ?? BellRing;
+
+  return <Icon className={className} aria-hidden="true" />;
+}
+
+/**
+ * Brand-correct label for a direct-channel contact type. Exists for the same
+ * reason channel-labels.ts does: CSS `capitalize` would render "Whatsapp".
+ */
+export function directChannelLabel(contactType: string): string {
+  switch (contactType) {
+    case "email":
+      return "Email";
+    case "phone":
+      return "Phone (SMS)";
+    case "whatsapp":
+      return "WhatsApp";
+    case "telegram":
+      return "Telegram";
+    case "slack_user":
+      return "Slack DM";
+    case "webpush":
+      return "Browser push";
+    default:
+      return contactType;
   }
 }

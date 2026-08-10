@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createFileRoute } from "@tanstack/react-router";
 import {
@@ -15,11 +15,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
 import {
   AlertCircle,
-  BellRing,
   Mail,
+  MessageCircle,
   MessageSquare,
   MonitorSmartphone,
-  MessageCircle,
   Phone,
   ShieldCheck,
   Trash2,
@@ -46,49 +45,29 @@ import {
   useTestNotificationRoute,
   useVerifyContact,
   useConfirmVerifyContact,
+  useCreateTelegramLink,
   useIntegrations,
   type NotificationRoute,
   type SlackSuggestion,
 } from "@/api/hooks";
-import { useWhatsAppEnabled } from "@/api/public-config";
+import { useTelegramEnabled, useWhatsAppEnabled } from "@/api/public-config";
+import {
+  DirectChannelIcon,
+  directChannelLabel,
+} from "@/components/integrations/integration-icon";
 
 export const Route = createFileRoute("/orgs/$org/account/notifications")({
   component: NotificationsPage,
 });
 
+// Icons and labels for the direct channels come from the shared
+// integration-icon module, so one file stays the answer to "what does channel X
+// look like" across the dashboard.
 function contactTypeIcon(type: string) {
-  switch (type) {
-    case "email":
-      return <Mail className="h-4 w-4" />;
-    case "phone":
-      return <Phone className="h-4 w-4" />;
-    case "whatsapp":
-      return <MessageCircle className="h-4 w-4" />;
-    case "slack_user":
-      return <MessageSquare className="h-4 w-4" />;
-    case "webpush":
-      return <MonitorSmartphone className="h-4 w-4" />;
-    default:
-      return <BellRing className="h-4 w-4" />;
-  }
+  return <DirectChannelIcon type={type} className="h-4 w-4" />;
 }
 
-function contactTypeLabel(type: string) {
-  switch (type) {
-    case "email":
-      return "Email";
-    case "phone":
-      return "Phone (SMS)";
-    case "whatsapp":
-      return "WhatsApp";
-    case "slack_user":
-      return "Slack DM";
-    case "webpush":
-      return "Browser push";
-    default:
-      return type;
-  }
-}
+const contactTypeLabel = directChannelLabel;
 
 /**
  * Code round-trip dialog shared by the phone (SMS) and WhatsApp contact types.
@@ -217,6 +196,161 @@ function VerifyPhoneDialog({
   );
 }
 
+/** How often the pending-connect poller re-reads the contacts list, in ms. */
+const TELEGRAM_POLL_INTERVAL_MS = 3000;
+
+/** Formats a remaining duration in ms as m:ss, floored at 0:00. */
+function formatCountdown(remainingMs: number): string {
+  const total = Math.max(0, Math.floor(remainingMs / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+/**
+ * The Telegram connect affordance — a button, not an input, because there is
+ * nothing for the user to type: the contact is created by the webhook when they
+ * press Start in Telegram, never from anything typed here.
+ *
+ * While a link is outstanding it shows a live expiry countdown and keeps
+ * polling the contacts list, so the new contact appears on its own the moment
+ * the user presses Start. Once the link lapses the only offer is a fresh one —
+ * an expired link that still looks clickable is worse than no link.
+ */
+function TelegramConnect({
+  org,
+  connected,
+  reconnect,
+  onPoll,
+}: {
+  org: string;
+  connected: boolean;
+  reconnect?: boolean;
+  onPoll: () => void;
+}) {
+  const { t } = useTranslation("account");
+  const createLink = useCreateTelegramLink(org);
+  const [link, setLink] = useState<{
+    url: string;
+    expiresAt: number;
+    /** Whether a Telegram contact was already connected when this link was minted. */
+    wasConnected: boolean;
+  } | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const [error, setError] = useState<string | null>(null);
+
+  // "Connected while we were waiting" is DERIVED, not stored: comparing against
+  // the state captured when the link was minted means no effect has to write
+  // state back, which is both simpler and avoids a cascading render.
+  const justConnected = link !== null && connected && !link.wasConnected;
+  const pending = link !== null && !justConnected;
+  const remaining = link ? link.expiresAt - now : 0;
+  const expired = pending && remaining <= 0;
+
+  // Tick the countdown and poll the contacts list while a link is outstanding.
+  useEffect(() => {
+    if (!pending || expired) return;
+
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    const poll = setInterval(onPoll, TELEGRAM_POLL_INTERVAL_MS);
+
+    return () => {
+      clearInterval(tick);
+      clearInterval(poll);
+    };
+  }, [pending, expired, onPoll]);
+
+  // The contact showed up: say so once. No state is written here — `pending`
+  // already went false the moment `justConnected` did.
+  useEffect(() => {
+    if (justConnected) {
+      toast.success(t("notifications.telegram.connected"));
+    }
+  }, [justConnected, t]);
+
+  const start = async () => {
+    setError(null);
+    try {
+      const resp = await createLink.mutateAsync();
+      const expiresAt = new Date(resp.expiresAt).getTime();
+      setNow(Date.now());
+      setLink({ url: resp.url, expiresAt, wasConnected: connected });
+      window.open(resp.url, "_blank", "noopener,noreferrer");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : t("notifications.telegram.linkFailed"));
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {!pending && (
+        <Button
+          type="button"
+          variant={reconnect ? "outline" : "default"}
+          size="sm"
+          onClick={start}
+          disabled={createLink.isPending}
+          data-testid="telegram-connect-button"
+        >
+          {createLink.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+          ) : (
+            <Send className="h-4 w-4 mr-2" />
+          )}
+          {reconnect
+            ? t("notifications.telegram.reconnectButton")
+            : t("notifications.telegram.connectButton")}
+        </Button>
+      )}
+
+      {pending && !expired && (
+        <Alert data-testid="telegram-connect-pending">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <AlertDescription className="flex flex-wrap items-center gap-2">
+            <span className="flex-1 min-w-0">
+              {t("notifications.telegram.waiting", { countdown: formatCountdown(remaining) })}
+            </span>
+            <Button asChild variant="outline" size="sm">
+              <a href={link.url} target="_blank" rel="noopener noreferrer">
+                {t("notifications.telegram.openAgain")}
+              </a>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setLink(null)}>
+              {t("notifications.telegram.cancel")}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {expired && (
+        <Alert data-testid="telegram-connect-expired">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription className="flex flex-wrap items-center gap-2">
+            <span className="flex-1 min-w-0">{t("notifications.telegram.expired")}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={start}
+              disabled={createLink.isPending}
+              data-testid="telegram-connect-regenerate"
+            >
+              {t("notifications.telegram.regenerate")}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+    </div>
+  );
+}
+
 function RouteRow({
   route,
   org,
@@ -273,6 +407,12 @@ function RouteRow({
     route.contact.type === "phone" || route.contact.type === "whatsapp";
   const isVerified = !!route.contact.verifiedAt;
 
+  // Telegram has no code round-trip: pressing Start in Telegram is the
+  // verification. An UNverified telegram contact therefore means something took
+  // the connection away — almost always the user blocking the bot — so it reads
+  // as "reconnect needed" rather than as a generic unverified contact.
+  const isTelegram = route.contact.type === "telegram";
+
   return (
     <div className="flex items-center gap-3 py-3 border-b last:border-0">
       <div className="flex-none text-muted-foreground">
@@ -285,8 +425,30 @@ function RouteRow({
         <div className="text-sm text-muted-foreground truncate">
           {route.contact.type === "webpush"
             ? (route.contact.label || "Browser")
-            : route.contact.value}
+            : isTelegram
+              ? // A bare numeric chat id is unreadable; the label is the
+                // Telegram @username captured when the chat was connected.
+                route.contact.label || route.contact.value
+              : route.contact.value}
         </div>
+        {isTelegram && isVerified && (
+          <Badge
+            variant="outline"
+            className="mt-1 text-xs text-green-600 border-green-400"
+            data-testid={`telegram-connected-${route.contact.uid}`}
+          >
+            <ShieldCheck className="h-3 w-3 mr-1" /> {t("notifications.telegram.connectedBadge")}
+          </Badge>
+        )}
+        {isTelegram && !isVerified && (
+          <Badge
+            variant="outline"
+            className="mt-1 text-xs text-yellow-600 border-yellow-400"
+            data-testid={`telegram-reconnect-${route.contact.uid}`}
+          >
+            {t("notifications.telegram.reconnectBadge")}
+          </Badge>
+        )}
         {needsVerification && isVerified && (
           <Badge
             variant="outline"
@@ -329,7 +491,10 @@ function RouteRow({
             onVerified={onTestSent}
           />
         )}
-        {!needsVerification && (
+        {isTelegram && !isVerified && (
+          <TelegramConnect org={org} connected={isVerified} reconnect onPoll={onTestSent} />
+        )}
+        {!needsVerification && !isTelegram && (
           <Button
             variant="ghost"
             size="sm"
@@ -430,11 +595,17 @@ function AddContactForm({
   org,
   smsAvailable,
   whatsAppAvailable,
+  telegramAvailable,
+  telegramConnected,
+  onPoll,
   onSuccess,
 }: {
   org: string;
   smsAvailable: boolean;
   whatsAppAvailable: boolean;
+  telegramAvailable: boolean;
+  telegramConnected: boolean;
+  onPoll: () => void;
   onSuccess: () => void;
 }) {
   const { t } = useTranslation("account");
@@ -585,9 +756,22 @@ function AddContactForm({
         </div>
       </form>
 
-      <div className="flex items-center gap-3 pt-2 border-t">
+      {telegramAvailable && (
+        <div className="flex flex-wrap items-center gap-3 pt-2 border-t">
+          <Send className="h-4 w-4 text-muted-foreground flex-none" />
+          <div className="flex-1 min-w-[12rem]">
+            <p className="text-sm font-medium">{t("notifications.telegram.addTitle")}</p>
+            <p className="text-xs text-muted-foreground">
+              {t("notifications.telegram.addHint")}
+            </p>
+          </div>
+          <TelegramConnect org={org} connected={telegramConnected} onPoll={onPoll} />
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3 pt-2 border-t">
         <MonitorSmartphone className="h-4 w-4 text-muted-foreground flex-none" />
-        <div className="flex-1">
+        <div className="flex-1 min-w-[12rem]">
           <p className="text-sm font-medium">Add browser</p>
           <p className="text-xs text-muted-foreground">
             Receive notifications as browser push alerts on this device.
@@ -614,12 +798,21 @@ function NotificationsPage() {
   // deployment), unlike SMS which is a per-org Twilio connection — hence the
   // public-config flag rather than the org integrations list.
   const whatsAppAvailable = useWhatsAppEnabled();
+  // Telegram is instance-level too: one bot for the whole deployment, so the
+  // capability comes from the public config rather than the org's integrations.
+  const telegramAvailable = useTelegramEnabled();
 
   const routes = data?.data ?? [];
   const slackSuggestion = !dismissedSlack ? data?.slackSuggestion : undefined;
   // SMS/voice is available once the org has an enabled Twilio integration.
   const smsAvailable = (integrations ?? []).some(
     (i) => i.type === "twilio" && i.enabled,
+  );
+  // A *verified* telegram contact is what "connected" means: a contact whose
+  // verification was cleared by a block still needs reconnecting.
+  const telegramConnected = routes.some(
+    (route: NotificationRoute) =>
+      route.contact.type === "telegram" && !!route.contact.verifiedAt,
   );
 
   if (isLoading) {
@@ -685,6 +878,9 @@ function NotificationsPage() {
               org={org}
               smsAvailable={smsAvailable}
               whatsAppAvailable={whatsAppAvailable}
+              telegramAvailable={telegramAvailable}
+              telegramConnected={telegramConnected}
+              onPoll={() => refetch()}
               onSuccess={() => setShowAddForm(false)}
             />
           ) : (

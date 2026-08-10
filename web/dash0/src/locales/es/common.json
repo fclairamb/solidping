@@ -73,7 +73,8 @@
     "pushover": "Pushover",
     "slack": "Slack",
     "discord": "Discord",
-    "webhook": "Webhook"
+    "webhook": "Webhook",
+    "telegram": "Telegram"
   },
   "notificationFailureReasons": {
     "whatsapp_template_unavailable": "Plantilla de mensaje de WhatsApp no disponible — pide a un administrador que revise su estado de aprobación",
@@ -87,6 +88,15 @@
     "whatsapp_send_failed": "Error en la entrega por WhatsApp",
     "whatsapp_quota_exhausted": "Cuota mensual de WhatsApp agotada",
     "sms_quota_exhausted": "Cuota mensual de SMS agotada",
-    "voice_quota_exhausted": "Cuota mensual de llamadas de voz agotada"
+    "voice_quota_exhausted": "Cuota mensual de llamadas de voz agotada",
+    "telegram_unauthorized": "Credenciales del bot de Telegram no válidas — pide a un admin que revise el token",
+    "telegram_bot_blocked": "El usuario bloqueó el bot de Telegram — reconecta desde Cuenta → Notificaciones",
+    "telegram_chat_not_found": "El chat de Telegram ya no existe — reconecta desde Cuenta → Notificaciones",
+    "telegram_reply_target_missing": "La alerta original de Telegram se eliminó",
+    "telegram_rate_limited": "Limitado por Telegram",
+    "telegram_not_configured": "Telegram no está configurado en esta instancia",
+    "telegram_invalid_chat": "El id de chat de Telegram no es válido",
+    "telegram_send_failed": "Fallo al entregar por Telegram",
+    "telegram_runaway_guard": "Se alcanzó el límite horario de Telegram"
   }
 }

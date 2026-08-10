@@ -37,10 +37,22 @@ export interface WhatsAppPublicConfig {
   enabled: boolean;
 }
 
+/**
+ * Browser-safe Telegram capability flag, as returned by GET /api/v1/config.
+ * The bot token and the webhook secret are never exposed; the bot *username*
+ * is public by nature (anyone can find the bot in Telegram) and the browser
+ * needs it to build the `t.me/<botUsername>?start=<token>` connect link.
+ */
+export interface TelegramPublicConfig {
+  enabled: boolean;
+  botUsername?: string;
+}
+
 /** The public config document. Extra keys are ignored. */
 export interface PublicConfig {
   posthog?: PostHogPublicConfig;
   whatsapp?: WhatsAppPublicConfig;
+  telegram?: TelegramPublicConfig;
 }
 
 /**
