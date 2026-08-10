@@ -49,11 +49,28 @@ type WhatsAppPublicConfig struct {
 	Enabled bool `json:"enabled"`
 }
 
+// TelegramPublicConfig is the browser-safe view of the instance's Telegram
+// capability.
+//
+// Enabled is the resolved config.TelegramConfig.Active() rule, NOT the raw
+// telegram.enabled kill switch. BotUsername is emitted ONLY when enabled
+// (omitempty): it is not a secret — anyone can find the bot in Telegram — but
+// an operator must be able to see at a glance that an unconfigured instance
+// emits nothing at all. The bot *token* and the webhook secret never appear
+// here under any circumstance.
+type TelegramPublicConfig struct {
+	Enabled bool `json:"enabled"`
+	// BotUsername is the bot's @username without the '@', which the dashboard
+	// needs to build the `https://t.me/<botUsername>?start=<token>` deep link.
+	BotUsername string `json:"botUsername,omitempty"`
+}
+
 // Response is the public config document. Fields are added here as new public
 // flags appear; every one of them must be non-secret and browser-safe.
 type Response struct {
 	PostHog  PostHogPublicConfig  `json:"posthog"`
 	WhatsApp WhatsAppPublicConfig `json:"whatsapp"`
+	Telegram TelegramPublicConfig `json:"telegram"`
 }
 
 // Handler serves the public config document.
@@ -86,6 +103,13 @@ func Build(cfg *config.Config) Response {
 
 	if cfg != nil && cfg.WhatsApp.Active() {
 		resp.WhatsApp = WhatsAppPublicConfig{Enabled: true}
+	}
+
+	if cfg != nil && cfg.Telegram.Active() {
+		resp.Telegram = TelegramPublicConfig{
+			Enabled:     true,
+			BotUsername: cfg.Telegram.ResolvedBotUsername(),
+		}
 	}
 
 	return resp

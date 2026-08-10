@@ -213,11 +213,17 @@ func manualReaderPlatformEnvVars() []string {
 	// reflection set; every other WhatsApp key has a snake_case segment. The
 	// names come from the same list the reader iterates, so the two cannot drift.
 	// applyEntitlementsEnv contributes the WhatsApp runaway cap.
+	// applyTelegramEnv — same quirk: telegram.enabled is koanf-reachable, every
+	// other Telegram key (bot_token, bot_username, webhook_secret, base_url) has
+	// a snake_case segment. applyEntitlementsEnv contributes the runaway caps.
 	whatsAppNames := WhatsAppEnvVarNames()
-	out := make([]string, 0, len(names)+len(whatsAppNames)+1)
+	telegramNames := TelegramEnvVarNames()
+	out := make([]string, 0, len(names)+len(whatsAppNames)+len(telegramNames)+2)
 	out = append(out, names...)
 	out = append(out, whatsAppNames...)
 	out = append(out, EnvEntitlementsWhatsAppRunaway)
+	out = append(out, telegramNames...)
+	out = append(out, EnvEntitlementsTelegramRunaway)
 
 	return out
 }

@@ -322,6 +322,7 @@ type Config struct {
 	Slack        SlackConfig          `koanf:"slack"`
 	MSTeams      MSTeamsConfig        `koanf:"msteams"`
 	WhatsApp     WhatsAppConfig       `koanf:"whatsapp"`
+	Telegram     TelegramConfig       `koanf:"telegram"`
 	Google       GoogleOAuthConfig    `koanf:"google"`
 	GitHub       GitHubOAuthConfig    `koanf:"github"`
 	Microsoft    MicrosoftOAuthConfig `koanf:"microsoft"`
@@ -416,6 +417,11 @@ type EntitlementsConfig struct {
 	// per hour (default 30). Unlike SMS this is instance-billed even for
 	// self-hosters, so the guard matters just as much.
 	WhatsAppRunawayPerHour int `koanf:"whatsapp_runaway_per_hour"`
+	// TelegramRunawayPerHour caps outbound Telegram messages per org per hour
+	// (default 60). Telegram messages are free, so there is deliberately NO
+	// monthly entitlement for the channel — this guard exists purely to bound a
+	// flapping check or a dispatch loop, hence the higher default.
+	TelegramRunawayPerHour int `koanf:"telegram_runaway_per_hour"`
 }
 
 // NodeConfig contains node role configuration.
@@ -766,6 +772,72 @@ func (c *WhatsAppConfig) ResolvedTemplateLanguage() string {
 	}
 
 	return DefaultWhatsAppTemplateLanguage
+}
+
+// DefaultTelegramBaseURL is the real Bot API base. Exported so the client
+// package and its tests share one source of truth.
+const DefaultTelegramBaseURL = "https://api.telegram.org"
+
+// TelegramConfig contains the instance-level Telegram Bot API credentials.
+// Mirrors WhatsAppConfig: one deployment-wide bot identity, no per-org
+// bring-your-own bot in v1. A SaaS deployment supplies SP_TELEGRAM_* in its
+// deployment env; a self-hoster does exactly the same with their own @BotFather
+// bot — no code path differs between the two.
+//
+// A Telegram bot can hold only ONE webhook URL, so dev and prod each need their
+// own bot and their own token. That is a platform constraint, not a convention.
+//
+// Default Enabled:false. BotToken and WebhookSecret are SECRETS: env/SSM only,
+// never logged, never returned by any API, never sent to a browser.
+type TelegramConfig struct {
+	// Enabled is the kill switch (SP_TELEGRAM_ENABLED). It only ever turns the
+	// feature off — credentials are still required to turn it on (see Active).
+	Enabled bool `koanf:"enabled"`
+	// BotToken is the @BotFather token (`123456789:AA…`). SECRET.
+	BotToken string `koanf:"bot_token"`
+	// BotUsername is the bot's @username without the leading '@' (e.g.
+	// "solidping_bot"). Public by nature: the browser needs it to build the
+	// t.me deep link, so it is part of the enablement rule rather than optional.
+	BotUsername string `koanf:"bot_username"`
+	// WebhookSecret is the shared string Telegram echoes in the
+	// X-Telegram-Bot-Api-Secret-Token header. It is the ONLY authenticity gate
+	// on the inbound webhook (Telegram does not sign payloads), so it must be
+	// high-entropy (≥32 bytes). SECRET.
+	WebhookSecret string `koanf:"webhook_secret"`
+	// BaseURL overrides the Bot API base (SP_TELEGRAM_BASE_URL). Empty means the
+	// real api.telegram.org. Exists so an operator can front Telegram with an
+	// egress proxy, and so tests / test mode can point the whole feature at an
+	// httptest fake without any code path differing.
+	BaseURL string `koanf:"base_url"`
+}
+
+// Active reports whether Telegram can actually send AND be connected to. This
+// is THE enablement rule, applied identically by the sender, the escalation
+// dispatcher, the connect flow, the webhook route registration and the public
+// config endpoint.
+//
+// BotUsername is part of the rule on purpose: without it the dashboard cannot
+// build a connect link, so the feature would be half-on — sends would work but
+// nobody could ever link a chat.
+func (c *TelegramConfig) Active() bool {
+	return c.Enabled &&
+		strings.TrimSpace(c.BotToken) != "" &&
+		strings.TrimSpace(c.BotUsername) != ""
+}
+
+// ResolvedBaseURL returns the configured Bot API base or the default.
+func (c *TelegramConfig) ResolvedBaseURL() string {
+	if v := strings.TrimSpace(c.BaseURL); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+
+	return DefaultTelegramBaseURL
+}
+
+// ResolvedBotUsername returns the bot username without a leading '@', which is
+// what a t.me/<username> deep link needs. Operators paste it both ways.
+func (c *TelegramConfig) ResolvedBotUsername() string {
+	return strings.TrimPrefix(strings.TrimSpace(c.BotUsername), "@")
 }
 
 // JobWorkerConfig contains job worker configuration.
@@ -1135,6 +1207,9 @@ func Load() (*Config, error) {
 			VerifyTemplate:   DefaultWhatsAppVerifyTemplate,
 			TemplateLanguage: DefaultWhatsAppTemplateLanguage,
 		},
+		// Off by default. The bot token / username are instance-level and must
+		// be supplied explicitly.
+		Telegram: TelegramConfig{Enabled: false},
 		// Enabled defaults to true but is inert on its own: PostHogConfig.Active
 		// additionally requires a project API key, which self-hosted installs
 		// never have unless the operator sets one.
@@ -1271,6 +1346,7 @@ func Load() (*Config, error) {
 	applyWebPushEnv(&cfg.WebPush)
 	applyPostHogEnv(&cfg.PostHog)
 	applyWhatsAppEnv(&cfg.WhatsApp)
+	applyTelegramEnv(&cfg.Telegram)
 	applyJobsEnv(&cfg.Jobs)
 	applyServerEnv(&cfg.Server)
 	applySchedulingEnv(&cfg.Server.Scheduling)
@@ -1823,6 +1899,10 @@ func applyEntitlementsEnv(cfg *EntitlementsConfig) {
 	if v := envInt(EnvEntitlementsWhatsAppRunaway); v > 0 {
 		cfg.WhatsAppRunawayPerHour = v
 	}
+
+	if v := envInt(EnvEntitlementsTelegramRunaway); v > 0 {
+		cfg.TelegramRunawayPerHour = v
+	}
 }
 
 // applyWhatsAppEnv reads SP_WHATSAPP_* into cfg. Only whatsapp.enabled is
@@ -1840,6 +1920,48 @@ func applyWhatsAppEnv(cfg *WhatsAppConfig) {
 	}
 
 	for i, name := range WhatsAppEnvVarNames() {
+		if v := strings.TrimSpace(os.Getenv(name)); v != "" {
+			*targets[i] = v
+		}
+	}
+}
+
+// SP_TELEGRAM_* environment variable names. Declared once and referenced from
+// both the manual reader below and the RecognizedEnvVars list in envvars.go, so
+// the two can never drift apart.
+const (
+	EnvTelegramBotToken      = "SP_TELEGRAM_BOT_TOKEN"
+	EnvTelegramBotUsername   = "SP_TELEGRAM_BOT_USERNAME"
+	EnvTelegramWebhookSecret = "SP_TELEGRAM_WEBHOOK_SECRET"
+	EnvTelegramBaseURL       = "SP_TELEGRAM_BASE_URL"
+	// EnvEntitlementsTelegramRunaway caps outbound Telegram messages per org
+	// per hour. There is no monthly quota for Telegram (the channel is free),
+	// so this guard is the only bound on a runaway dispatch loop.
+	EnvEntitlementsTelegramRunaway = "SP_ENTITLEMENTS_TELEGRAM_RUNAWAY_PER_HOUR"
+)
+
+// TelegramEnvVarNames lists every manually-read SP_TELEGRAM_* name, in the
+// order they are bound.
+func TelegramEnvVarNames() []string {
+	return []string{
+		EnvTelegramBotToken, EnvTelegramBotUsername,
+		EnvTelegramWebhookSecret, EnvTelegramBaseURL,
+	}
+}
+
+// applyTelegramEnv reads SP_TELEGRAM_* into cfg. Only telegram.enabled is
+// koanf-reachable (single-word segment); every other key has a snake_case
+// segment that koanf's underscore→dot collapsing can never reach
+// (SP_TELEGRAM_BOT_TOKEN would land on telegram.bot.token), so they are read by
+// hand here — the same quirk as rate_limiting, posthog and whatsapp.
+// Keep in sync with manualReaderPlatformEnvVars.
+func applyTelegramEnv(cfg *TelegramConfig) {
+	targets := []*string{
+		&cfg.BotToken, &cfg.BotUsername,
+		&cfg.WebhookSecret, &cfg.BaseURL,
+	}
+
+	for i, name := range TelegramEnvVarNames() {
 		if v := strings.TrimSpace(os.Getenv(name)); v != "" {
 			*targets[i] = v
 		}
