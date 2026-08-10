@@ -256,6 +256,17 @@ prompted this table is a vendor advertising 1-second checks while shipping 60.
 | Hyperping | 30 seconds | Yes — Essentials $24/mo | pricing snapshot |
 | Checkly | 2 min (Hobby) → sub-min paid | Yes | pricing snapshot |
 | exit1.dev | 30 sec (Pro) / 15 sec (Agency) | Yes | pricing snapshot |
+| Larm | 30 seconds | Yes — Business $49/mo ($588/yr); Free 3 min, Pro 1 min | larm.dev/pricing, verified 2026-08-10 |
+| WatchCat | **1 minute at every tier**, including €49/mo Team | n/a — the floor never drops | watchcat.io/pricing, verified 2026-08-10 |
+
+*Two entrants added 2026-08-10 (both surfaced the same day, from the same "Ask
+HN: What are you working on?" thread). Larm matters more than its size suggests:
+it is the one rival that has actually built the distributed probe fleet — Go
+probe binaries spread across hosting providers, majority-vote confirmation — and
+it **still** floors at 30 s and paywalls that behind $588/yr. That is the
+strongest evidence yet that the interval floor is an architectural property
+rather than a packaging choice, since a vendor with the same architecture and
+every commercial incentive has not closed it.*
 
 SolidPing's 10-second floor applies to any check type that does not declare a
 stricter `MinPeriod`; the deliberate exceptions are SSL (1h), domain expiry (6h)

@@ -217,6 +217,62 @@ incident grouping / adaptive resolution. SolidPing counters with self-host,
 multi-protocol, on-call. Surfaced 2026-04-18 (HN 47819121). *Update 2026-07-12:*
 still live; pricing unverified.
 
+### Larm — https://larm.dev  (added 2026-08-10)
+
+SaaS uptime monitoring, EU-hosted, one-person product (About page signed
+"Johanna", ex-on-call engineer; stated motivation is alert blindness from false
+positives). Surfaced via the author's own comment in *Ask HN: What are you
+working on? (August 2026)* — [HN 49235194](https://news.ycombinator.com/item?id=49235194),
+author `shintoist`.
+
+**The closest architectural match in this catalogue.** Independently built, but
+the same design as SolidPing: an Elixir/Phoenix control plane on a 3-node
+cluster, with the actual probes as **small Go binaries spread across multiple
+hosting providers worldwide**, plus synthetic checks running in per-check
+Playwright sandboxes.
+
+| | |
+|---|---|
+| Check types advertised | HTTP, TCP, DNS, Heartbeat (4) + synthetic/browser |
+| Alerting model | Multi-region **majority vote** before alerting |
+| Depth | **Per-check request traces**: DNS → TCP connect → TLS handshake → TTFB → content transfer, per phase, per location, trended |
+| AI | MCP server |
+| Hosting | EU; "EU-only probe control" gated to the top tier |
+| Self-host | **No** — SaaS only |
+
+Pricing verified 2026-08-10 (annual billing):
+
+| Tier | Price | Monitors | Interval | Retention |
+|---|---|---|---|---|
+| Free | $0 (free for commercial use) | 15 | 3 min | 90 days |
+| Pro | $19/mo ($228/yr) | 100 | 1 min | 1 year |
+| Business | $49/mo ($588/yr) | 500 | **30 sec** | 2 years |
+
+Heartbeat interval floors at 10 s on Business. Full API access on every tier
+including Free.
+
+**Where SolidPing wins, on verifiable facts:** protocol breadth (38 check types
+vs 4 + synthetic); self-hosting (Larm has none); and check interval — Larm's
+floor is 30 s *and* paywalled at $588/yr, against SolidPing's 10 s self-hosted,
+unlimited and not tier-gated. See the Axis 5 confirmation in `positioning.md`:
+Larm is the strongest evidence for that axis precisely *because* it built the
+same distributed architecture and still did not go below 30 s.
+
+**Where Larm is genuinely ahead — flagged for engineering, not for copy.**
+Phase-level per-check request traces (DNS/TCP/TLS/TTFB/transfer, per location,
+trended) are real depth SolidPing does not match. It is the substantive version
+of "not just up or down", and it is the kind of capability that takes
+implementation rather than a landing-page sentence — i.e. by our own rule, an
+axis Larm could legitimately hold. Worth sizing.
+
+Larm's homepage names Uptime Kuma directly — *"Unlike single-location monitors
+like Uptime Kuma, Larm confirms from multiple regions before alerting"* — so it
+is fishing in the same Kuma migration pool. `track: true`.
+
+*Consensus tally: Larm is the 4th product in ~6 weeks to headline multi-probe
+consensus, after Vigilmon (06-28), UptimeMonitoring.com (07-21) and UpWatch
+(07-27). The claim is settled commodity copy.*
+
 ### New self-hosted entrants (added 2026-07-12)
 Surfaced during the 2026-07-12 refresh via "Uptime Kuma alternative" roundups and
 self-hosted discovery. Early — verify traction before treating as head-to-head.
@@ -385,3 +441,29 @@ If it gains traction, the strategic call for SolidPing is whether
 upstream-dependency awareness belongs in the product at all or is honestly a
 different product. Recording the angle now so the decision is not made under
 time pressure later.
+
+### WatchCat — https://watchcat.io  (added 2026-08-10)
+SaaS uptime + cron/heartbeat monitoring, Rails, EU-hosted. Surfaced in the same
+*Ask HN: What are you working on?* thread
+([49234346](https://news.ycombinator.com/item?id=49234346), author `_spl`).
+Uptime checks from multiple regions, cron/heartbeat monitoring, incidents,
+status pages, notifications (Slack, Discord, Telegram, Google Chat, webhooks,
+email), API, and "manage monitors from your AI agent". The author's own framing
+is accurate: *"Nothing revolutionary — the goal is to make the familiar stuff
+simple, reliable, and pleasant to use."*
+
+Pricing verified 2026-08-10: Free €0 (5 monitors, 3 min, 7-day retention, 1
+status page) · Pro €19/mo excl. VAT (50 monitors, 1 min, 90-day, 3 status
+pages) · Team €49/mo excl. VAT (200 monitors, 1 min, 365-day, 10 status pages).
+**Check frequency floors at 1 minute on every tier, including the top one** — a
+6× gap against SolidPing's unpaywalled self-hosted 10 s.
+
+`track: false` — SaaS-only, no self-host, nothing SolidPing loses a deal to in
+its lane. Catalogued for the **positioning pattern**, not the product: WatchCat
+is the purest example of EU data residency being sold as the headline rather
+than a feature ("a clear data path, not vague residency promises", plus a
+published compliance brief). That pattern — three products in two weeks, with
+Tindra (07-28) and Larm — is analysed in `positioning.md` under *Axis 6
+candidate*, where it is **rejected as an axis for SolidPing** (any EU vendor
+writes the same sentence next week) and kept as demand signal for jurisdiction
+control, which self-hosting answers as a superset.
