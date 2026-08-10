@@ -94,6 +94,77 @@ func TestGetLastResultForChecks_ReturnsOneRowPerCheck_Postgres(t *testing.T) {
 	r.Equal(newestB.UID, results[checkB.UID].UID, "must be the newest row for check B")
 }
 
+// TestGetLastResultForChecks_Parity_Postgres is the one-for-one twin of the
+// SQLite parity test: the CROSS JOIN LATERAL rewrite (spec 2026-08-09-07) must
+// return exactly what the former DISTINCT ON returned, on both dialects.
+// Aggregated rollup rows are never returned even when newer than every raw
+// row, checks with no raw history are absent from the map, a repeated uid
+// yields one entry, and an unknown uid is simply absent.
+//
+//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its siblings
+func TestGetLastResultForChecks_Parity_Postgres(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping embedded-postgres test in -short mode")
+	}
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	s, err := New(ctx, &Config{
+		Embedded: true,
+		Port:     portLastResult + 2,
+		RunMode:  runModeTest,
+	})
+	if err != nil {
+		t.Skipf("embedded postgres unavailable: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	if initErr := s.Initialize(ctx); initErr != nil {
+		t.Skipf("embedded postgres init failed: %v", initErr)
+	}
+
+	org := models.NewOrganization("parity-pg-org", "Parity PG Org")
+	r.NoError(s.CreateOrganization(ctx, org))
+
+	withHistory := models.NewCheck(org.UID, "with-history", "http")
+	noHistory := models.NewCheck(org.UID, "no-history", "http")
+	r.NoError(s.CreateCheck(ctx, withHistory))
+	r.NoError(s.CreateCheck(ctx, noHistory))
+
+	newest := seedRawResults(t, s, org.UID, withHistory.UID, 5)
+
+	// A rollup row NEWER than every raw row must still never win.
+	rollup := models.NewResult(org.UID, withHistory.UID, models.ResultStatusUp, 999)
+	rollup.PeriodType = models.PeriodTypeHour
+	rollup.PeriodStart = newest.PeriodStart.Add(time.Hour)
+	r.NoError(s.CreateResult(ctx, rollup))
+
+	// noHistory keeps only CreateCheck's initial "created" marker row; drop
+	// it so the check genuinely has no raw history.
+	_, err = s.DB().NewRaw("DELETE FROM results WHERE check_uid = ?", noHistory.UID).Exec(ctx)
+	r.NoError(err)
+
+	results, err := s.GetLastResultForChecks(ctx, org.UID, []string{
+		withHistory.UID, noHistory.UID, withHistory.UID, models.NewCheck(org.UID, "x", "http").UID,
+	})
+	r.NoError(err)
+	r.Len(results, 1, "one entry: only the check that has raw history")
+
+	got := results[withHistory.UID]
+	r.NotNil(got)
+	r.Equal(newest.UID, got.UID)
+	r.Equal(withHistory.UID, got.CheckUID)
+	r.Equal(models.PeriodTypeRaw, got.PeriodType, "rollup rows must never be returned")
+	r.WithinDuration(newest.PeriodStart, got.PeriodStart, time.Second)
+	r.NotNil(got.Status)
+	r.Equal(int(models.ResultStatusUp), *got.Status)
+	r.NotNil(got.Duration)
+	r.InDelta(*newest.Duration, *got.Duration, 0.001)
+
+	r.NotContains(results, noHistory.UID, "a check with no raw row is absent, not nil-valued")
+}
+
 // TestGetLastResultForChecks_FiltersByOrganization_Postgres confirms the
 // organization_uid predicate is actually applied — querying with the wrong
 // org UID must return nothing, and the covering index
