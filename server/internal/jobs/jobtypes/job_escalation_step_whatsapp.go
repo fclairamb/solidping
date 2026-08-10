@@ -151,14 +151,14 @@ func whatsAppCheckButtonParam(orgSlug, checkUID string) string {
 
 // trimPartialEscape drops a trailing incomplete percent-escape left behind by a
 // byte-wise truncation: "%4" is not a valid escape and would break the URL.
-func trimPartialEscape(s string) string {
-	for i := len(s) - 1; i >= 0 && i >= len(s)-2; i-- {
-		if s[i] == '%' {
-			return s[:i]
+func trimPartialEscape(suffix string) string {
+	for i := len(suffix) - 1; i >= 0 && i >= len(suffix)-2; i-- {
+		if suffix[i] == '%' {
+			return suffix[:i]
 		}
 	}
 
-	return s
+	return suffix
 }
 
 // whatsAppStateLabel renders the incident's current state as the template's
