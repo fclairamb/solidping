@@ -80,6 +80,70 @@ language you configure as `template_language` (default `en`).
 | `{{3}}` | Detail line | `connection refused` |
 | `{{4}}` | Organization slug | `acme` |
 
+- **Buttons**: one **URL** button, of the **dynamic** kind:
+
+  | Field | Value |
+  |---|---|
+  | Type | Visit website → **Dynamic** |
+  | Button text | `Open check` |
+  | URL | `https://solidping.example.com/dash0/` + `{{1}}` |
+  | URL sample | `orgs/acme/checks/1f0b…` |
+
+  Replace `solidping.example.com` with **your** installation's base URL — the
+  same host you serve the dashboard on. SolidPing fills `{{1}}` with
+  `orgs/{organization}/checks/{check uid}`, so the button lands the recipient
+  straight on the page of the check that broke.
+
+  Via the WABA API (`POST /{waba-id}/message_templates`), that is one more
+  component alongside the body:
+
+  ```json
+  {
+    "type": "BUTTONS",
+    "buttons": [
+      {
+        "type": "URL",
+        "text": "Open check",
+        "url": "https://solidping.example.com/dash0/{{1}}",
+        "example": ["https://solidping.example.com/dash0/orgs/acme/checks/1f0b"]
+      }
+    ]
+  }
+  ```
+
+  At delivery time SolidPing appends the button component to the body one, with
+  the path as its single parameter:
+
+  ```json
+  {
+    "type": "button",
+    "sub_type": "url",
+    "index": "0",
+    "parameters": [{ "type": "text", "text": "orgs/acme/checks/1f0b…" }]
+  }
+  ```
+
+:::caution The alert template is not portable between installations
+A WhatsApp URL button is **not** a free-form link. Meta fixes the prefix when it
+approves the template and allows exactly **one** variable after it. The base URL
+therefore lives in *your approved template*, not in SolidPing's configuration —
+there is no `whatsapp.alert_button_base` setting, and there deliberately never
+will be. Every installation creates its own `solidping_alert` with its own host,
+just as it already creates its own templates on its own WABA.
+:::
+
+:::tip The button is optional — adding it needs a fresh approval
+If `solidping_alert` is already approved **without** a button, editing it starts
+a new Meta review that can take hours and can be rejected. Nothing breaks in the
+meantime: the bodies-only template keeps delivering alerts exactly as before.
+Add the button when you are ready, and alerts start carrying the link the moment
+the edit is approved.
+
+For the same reason the link is best-effort: if SolidPing cannot resolve the
+organization for an incident, it sends the alert **without** the button rather
+than with a link pointing at the wrong place.
+:::
+
 :::caution Three rules the body must satisfy
 WhatsApp Manager rejects a body that:
 
