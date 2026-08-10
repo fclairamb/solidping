@@ -772,6 +772,36 @@ type LastStatusChangeResponse struct {
 	Status string    `json:"status"`
 }
 
+// lastStatusChangeOf builds the `lastStatusChange` embed from the check row
+// itself: checks.status_changed_at plus the derived checks.status the UI
+// already shows next to it, maintained on the incident path by
+// deriveCheckStatus/UpdateCheckStatusAndClocks.
+//
+// It deliberately does NOT re-derive transitions from `results` any more
+// (spec 2026-08-09-07). That query scanned the organization's whole raw
+// history, and — because the oldest surviving raw row of a partition always
+// looked like a transition — it reported the raw-retention horizon (a
+// timestamp that slid forward on every compaction run) for any check that had
+// not genuinely changed status inside the retention window.
+//
+// Contract when checks.status_changed_at is NULL (a check that has never
+// recorded a transition): the field is omitted entirely — no fallback to
+// created_at, no fallback to the old query. That matches what clients already
+// saw for a check with no history.
+func lastStatusChangeOf(check *models.Check) *LastStatusChangeResponse {
+	if check == nil || check.StatusChangedAt == nil {
+		return nil
+	}
+
+	return &LastStatusChangeResponse{
+		Time: *check.StatusChangedAt,
+		// Uppercase to keep the wire value byte-identical in shape to the
+		// former result-status serialization ("UP"/"DOWN"/…), which is what
+		// the CLI, the Slack/Teams commands and the OpenAPI enum consume.
+		Status: strings.ToUpper(check.Status.String()),
+	}
+}
+
 // ListChecksOptions contains options for listing checks.
 type ListChecksOptions struct {
 	IncludeLastResult       bool
@@ -912,26 +942,12 @@ func (s *Service) ListChecks(ctx context.Context, orgSlug string, opts ListCheck
 		}
 	}
 
-	// If last status change is requested, fetch them in a single query
-	if opts.IncludeLastStatusChange && len(checks) > 0 {
-		checkUIDs := make([]string, len(checks))
-		for i, check := range checks {
-			checkUIDs[i] = check.UID
-		}
-
-		lastStatusChanges, err := s.db.GetLastStatusChangeForChecks(ctx, checkUIDs)
-		if err != nil {
-			return nil, err
-		}
-
-		// Attach last status change data to responses
+	// Last status change comes straight off the check rows already in hand —
+	// no extra query at all (spec 2026-08-09-07). IncludeLastStatusChange is
+	// now purely response-shaping.
+	if opts.IncludeLastStatusChange {
 		for i := range responses {
-			if change, ok := lastStatusChanges[checks[i].UID]; ok {
-				responses[i].LastStatusChange = &LastStatusChangeResponse{
-					Time:   change.Time,
-					Status: change.Status,
-				}
-			}
+			responses[i].LastStatusChange = lastStatusChangeOf(checks[i])
 		}
 	}
 
@@ -1460,18 +1476,10 @@ func (s *Service) GetCheck(
 		}
 	}
 
-	// Fetch last status change if requested
+	// Last status change is carried by the check row itself — no query
+	// (spec 2026-08-09-07), same contract as the list path.
 	if opts.IncludeLastStatusChange {
-		lastStatusChanges, err := s.db.GetLastStatusChangeForChecks(ctx, []string{check.UID})
-		if err != nil {
-			return CheckResponse{}, fmt.Errorf("failed to get last status change: %w", err)
-		}
-		if change, ok := lastStatusChanges[check.UID]; ok {
-			response.LastStatusChange = &LastStatusChangeResponse{
-				Time:   change.Time,
-				Status: change.Status,
-			}
-		}
+		response.LastStatusChange = lastStatusChangeOf(check)
 	}
 
 	return response, nil

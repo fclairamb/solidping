@@ -2312,27 +2312,39 @@ func (s *Service) GetLastResultForChecks(
 
 	var results []*models.Result
 
-	// SQLite has no DISTINCT ON, so rank rows per check_uid with
-	// ROW_NUMBER() (window functions supported since SQLite 3.25.0) and
-	// keep rn = 1 — the newest by period_start. Mirrors the Postgres
-	// DISTINCT ON behavior exactly (sync-pg-to-sqlite convention). The
-	// ranking lives in a CTE keyed on uid only, then joins back to the base
-	// table so the final SELECT can use r.* without leaking the rn column
-	// into the models.Result scan target.
+	// SQLite has neither DISTINCT ON nor LATERAL, so the Postgres per-check
+	// index descent (spec 2026-08-09-07) is mirrored with a correlated scalar
+	// subquery: for each requested check, pick the uid of its newest raw row,
+	// then join those winners back to the base table so the final SELECT can
+	// use r.* without leaking helper columns into the models.Result scan
+	// target. The correlated subquery's (organization_uid, check_uid)
+	// equality + ORDER BY period_start DESC LIMIT 1 matches results_raw_idx
+	// (organization_uid, check_uid, period_start desc) WHERE period_type =
+	// 'raw', so SQLite satisfies both the filter and the ordering from the
+	// index instead of ranking every raw row of the organization. Same rows
+	// as before (sync-pg-to-sqlite convention): the newest raw row per check,
+	// at most one each.
+	//
+	// The driver side reads the requested uids from `checks` (soft-deleted
+	// rows are still present, so a deleted check's last result stays
+	// reachable exactly as it was) because SQLite has no unnest().
 	query := `
-		WITH ranked AS (
-			SELECT
-				uid,
-				ROW_NUMBER() OVER (PARTITION BY check_uid ORDER BY period_start DESC) AS rn
-			FROM results
-			WHERE organization_uid = ?
-				AND check_uid IN (?)
-				AND period_type = 'raw'
+		WITH winners AS (
+			SELECT (
+				SELECT r2.uid
+				FROM results r2
+				WHERE r2.organization_uid = ?
+					AND r2.check_uid = c.uid
+					AND r2.period_type = 'raw'
+				ORDER BY r2.period_start DESC
+				LIMIT 1
+			) AS uid
+			FROM checks c
+			WHERE c.uid IN (?)
 		)
 		SELECT r.*
 		FROM results r
-		JOIN ranked ON ranked.uid = r.uid
-		WHERE ranked.rn = 1
+		JOIN winners w ON w.uid = r.uid
 	`
 
 	err := s.db.NewRaw(query, orgUID, bun.List(checkUIDs)).Scan(ctx, &results)
@@ -2340,72 +2352,11 @@ func (s *Service) GetLastResultForChecks(
 		return nil, err
 	}
 
-	// Convert to map for easy lookup — the rn = 1 filter already guarantees
-	// at most one row per check_uid.
+	// Convert to map for easy lookup — one winning uid per check already
+	// guarantees at most one row per check_uid.
 	resultMap := make(map[string]*models.Result)
 	for _, result := range results {
 		resultMap[result.CheckUID] = result
-	}
-
-	return resultMap, nil
-}
-
-//nolint:lll // Function signature clarity
-func (s *Service) GetLastStatusChangeForChecks(ctx context.Context, checkUIDs []string) (map[string]*models.LastStatusChange, error) {
-	if len(checkUIDs) == 0 {
-		return make(map[string]*models.LastStatusChange), nil
-	}
-
-	// Query to find the last status change for each check
-	// A status change is when the status transitions from one value to another
-	type statusChangeResult struct {
-		CheckUID    string    `bun:"check_uid"`
-		PeriodStart time.Time `bun:"period_start"`
-		Status      int       `bun:"status"`
-	}
-
-	var results []statusChangeResult
-
-	// Use a CTE with LAG to find status transitions
-	// SQLite supports window functions since version 3.25.0
-	query := `
-		WITH status_changes AS (
-			SELECT
-				check_uid,
-				period_start,
-				status,
-				LAG(status) OVER (PARTITION BY check_uid ORDER BY period_start) AS prev_status
-			FROM results
-			WHERE check_uid IN (?)
-				AND period_type = 'raw'
-				AND status IS NOT NULL
-		),
-		last_changes AS (
-			SELECT
-				check_uid,
-				period_start,
-				status,
-				ROW_NUMBER() OVER (PARTITION BY check_uid ORDER BY period_start DESC) AS rn
-			FROM status_changes
-			WHERE status != prev_status OR prev_status IS NULL
-		)
-		SELECT check_uid, period_start, status
-		FROM last_changes
-		WHERE rn = 1
-	`
-
-	err := s.db.NewRaw(query, bun.List(checkUIDs)).Scan(ctx, &results)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert to map with LastStatusChange struct
-	resultMap := make(map[string]*models.LastStatusChange)
-	for i := range results {
-		resultMap[results[i].CheckUID] = &models.LastStatusChange{
-			Time:   results[i].PeriodStart,
-			Status: models.StatusToString(results[i].Status),
-		}
 	}
 
 	return resultMap, nil

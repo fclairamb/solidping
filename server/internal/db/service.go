@@ -313,10 +313,17 @@ type Service interface {
 		ctx context.Context, orgUID, checkUID, periodType string, regions []string,
 		pivotStart time.Time, pivotUID string,
 	) (prevUID, nextUID string, err error)
+	// GetLastResultForChecks returns the newest raw result per requested
+	// check (absent from the map when the check has no raw row), as one
+	// index descent per check — never a scan of the organization's raw
+	// history. There is deliberately no GetLastStatusChangeForChecks
+	// companion: "when did this check last change status" is answered by
+	// checks.status / checks.status_changed_at, which the incident path
+	// maintains, not by re-deriving transitions from the raw rows that
+	// survived retention (spec 2026-08-09-07).
 	GetLastResultForChecks(
 		ctx context.Context, orgUID string, checkUIDs []string,
 	) (map[string]*models.Result, error)
-	GetLastStatusChangeForChecks(ctx context.Context, checkUIDs []string) (map[string]*models.LastStatusChange, error)
 	DeleteResults(ctx context.Context, orgUID string, resultUIDs []string) (int64, error)
 	// CompactResults atomically compacts one source bucket into a single
 	// aggregated row inside one transaction: it fetches the source rows matching

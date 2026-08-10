@@ -956,12 +956,6 @@ func (m *mockDBService) GetLastResultForChecks(
 	panic("not implemented")
 }
 
-func (m *mockDBService) GetLastStatusChangeForChecks(
-	_ context.Context, _ []string,
-) (map[string]*models.LastStatusChange, error) {
-	panic("not implemented")
-}
-
 func (m *mockDBService) SaveResultWithStatusTracking(_ context.Context, _ *models.Result) error {
 	panic("not implemented")
 }
