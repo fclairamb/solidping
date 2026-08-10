@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -116,6 +117,104 @@ func testService(t *testing.T, svc db.Service) {
 
 	t.Run("EmailSuppressions", func(t *testing.T) {
 		testEmailSuppressions(ctx, t, svc)
+	})
+
+	t.Run("GetOrCreateSystemParameter", func(t *testing.T) {
+		testGetOrCreateSystemParameter(ctx, t, svc)
+	})
+}
+
+// testGetOrCreateSystemParameter is the cross-engine parity guard for the
+// atomic insert-if-absent used to derive the Telegram webhook secret and bot
+// username. The contract that matters operationally: the SECOND caller must be
+// told it did not create the row and must be handed the FIRST caller's value —
+// several API pods booting together have to converge on one secret, or the
+// losers would validate inbound webhooks against a secret Telegram never got.
+func testGetOrCreateSystemParameter(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+
+	t.Run("CreatesThenAdopts", func(t *testing.T) {
+		t.Parallel()
+
+		key := "telegram.test_secret." + strconv.FormatInt(time.Now().UnixNano(), 10)
+
+		first, created, err := svc.GetOrCreateSystemParameter(ctx, key, "first-value", true)
+		r.NoError(err)
+		r.True(created, "the first caller creates the row")
+		r.NotNil(first)
+		r.Equal("first-value", first.Value["value"])
+		r.NotNil(first.Secret)
+		r.True(*first.Secret, "the secret flag must be persisted")
+
+		second, created, err := svc.GetOrCreateSystemParameter(ctx, key, "second-value", true)
+		r.NoError(err)
+		r.False(created, "the second caller must be told it did not create the row")
+		r.NotNil(second)
+		r.Equal(first.UID, second.UID, "same row")
+		r.Equal("first-value", second.Value["value"],
+			"the loser must adopt the winner's value, never keep its own")
+
+		// And nothing was overwritten on disk either.
+		stored, err := svc.GetSystemParameter(ctx, key)
+		r.NoError(err)
+		r.NotNil(stored)
+		r.Equal("first-value", stored.Value["value"])
+	})
+
+	t.Run("Concurrent", func(t *testing.T) {
+		t.Parallel()
+
+		const callers = 8
+
+		key := "telegram.test_concurrent." + strconv.FormatInt(time.Now().UnixNano(), 10)
+
+		var (
+			wg      sync.WaitGroup
+			mu      sync.Mutex
+			values  = make([]string, 0, callers)
+			creates int
+			errs    = make([]error, 0, callers)
+		)
+
+		wg.Add(callers)
+
+		for i := range callers {
+			go func(i int) {
+				defer wg.Done()
+
+				param, created, err := svc.GetOrCreateSystemParameter(
+					ctx, key, "candidate-"+strconv.Itoa(i), true,
+				)
+
+				mu.Lock()
+				defer mu.Unlock()
+
+				if err != nil {
+					errs = append(errs, err)
+
+					return
+				}
+
+				if created {
+					creates++
+				}
+
+				value, _ := param.Value["value"].(string)
+				values = append(values, value)
+			}(i)
+		}
+
+		wg.Wait()
+
+		r.Empty(errs)
+		r.Len(values, callers)
+		r.Equal(1, creates, "exactly one caller may report created==true")
+
+		for _, v := range values {
+			r.Equal(values[0], v, "every concurrent caller must end up on the SAME value")
+		}
 	})
 }
 

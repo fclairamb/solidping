@@ -3408,7 +3408,7 @@ func (s *Service) SetSystemParameter(ctx context.Context, key string, value any,
 	}
 
 	now := time.Now()
-	jsonValue := models.JSONMap{"value": value}
+	jsonValue := models.ParameterValue(value)
 
 	if existing != nil {
 		// Update existing parameter
@@ -3437,6 +3437,51 @@ func (s *Service) SetSystemParameter(ctx context.Context, key string, value any,
 	}
 
 	return nil
+}
+
+// GetOrCreateSystemParameter returns the existing system parameter for key, or
+// atomically creates it holding value. The bool reports whether this caller is
+// the one that created it.
+//
+// The insert rides the partial unique index parameters_system_key_idx
+// (key WHERE deleted_at IS NULL AND organization_uid IS NULL) with ON CONFLICT
+// DO NOTHING, then re-reads on a lost race — the GetOrCreateStateEntry pattern.
+// A read-then-write would let concurrent pods each persist their own generated
+// value; here every loser adopts the winner's.
+func (s *Service) GetOrCreateSystemParameter(
+	ctx context.Context, key string, value any, secret bool,
+) (*models.Parameter, bool, error) {
+	existing, err := s.GetSystemParameter(ctx, key)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if existing != nil {
+		return existing, false, nil
+	}
+
+	param := models.NewSystemParameter(key, models.ParameterValue(value), secret)
+
+	res, err := s.db.NewInsert().
+		Model(param).
+		On("CONFLICT (key) WHERE deleted_at IS NULL AND organization_uid IS NULL DO NOTHING").
+		Exec(ctx)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to create system parameter: %w", err)
+	}
+
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
+		// Another process won the race: adopt ITS value, never ours.
+		existing, err = s.GetSystemParameter(ctx, key)
+		if err != nil {
+			return nil, false, err
+		}
+
+		return existing, false, nil
+	}
+
+	return param, true, nil
 }
 
 // DeleteSystemParameter soft-deletes a system parameter.
@@ -3525,7 +3570,7 @@ func (s *Service) SetOrgParameter(ctx context.Context, orgUID, key string, value
 	}
 
 	now := time.Now()
-	jsonValue := models.JSONMap{"value": value}
+	jsonValue := models.ParameterValue(value)
 
 	if existing != nil {
 		_, err = s.db.NewUpdate().

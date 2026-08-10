@@ -558,6 +558,18 @@ type Service interface {
 	GetSystemParameter(ctx context.Context, key string) (*models.Parameter, error)
 	// SetSystemParameter creates or updates a system parameter.
 	SetSystemParameter(ctx context.Context, key string, value any, secret bool) error
+	// GetOrCreateSystemParameter returns the existing system parameter for key,
+	// or atomically creates it with value. The bool reports whether THIS caller
+	// created it.
+	//
+	// Atomicity is the whole point: several API pods booting together must all
+	// end up on the SAME derived value (e.g. the Telegram webhook secret). A
+	// read-then-write would let each pod generate its own, the last writer would
+	// win, and every loser would then validate inbound requests against a secret
+	// the third party no longer holds.
+	GetOrCreateSystemParameter(
+		ctx context.Context, key string, value any, secret bool,
+	) (*models.Parameter, bool, error)
 	// DeleteSystemParameter soft-deletes a system parameter.
 	DeleteSystemParameter(ctx context.Context, key string) error
 	// ListSystemParameters returns all system parameters.
