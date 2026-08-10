@@ -31,6 +31,14 @@
  *                  affordance, but usable standalone (a static pill can
  *                  already be faked with plain HTML, so this adds no new
  *                  capability a hostile page didn't already have).
+ *   data-link      unset (default) | "false" — the pill links to the status
+ *                  page whenever the summary provides a safe http(s) URL.
+ *                  Set to exactly "false" to always render the
+ *                  non-interactive `<span>` pill instead, even when a safe
+ *                  URL is available. Any other value, or omitting the
+ *                  attribute entirely, keeps today's default linked
+ *                  behavior — this is additive, so existing pasted snippets
+ *                  are unaffected.
  *
  * SECURITY. This code executes on customer sites, so every value that reaches
  * the DOM is treated as hostile: labels come from host-page attributes, and
@@ -308,6 +316,15 @@ function readForceStatus(script: HTMLScriptElement): PageStatus | null {
   return null;
 }
 
+/**
+ * Reads `data-link`. Only the exact string `"false"` disables linking —
+ * absence, an unrecognized value, or any other string keeps the existing
+ * linked-when-safe behavior, which is what makes this attribute additive.
+ */
+function readLinkEnabled(script: HTMLScriptElement): boolean {
+  return script.getAttribute("data-link") !== "false";
+}
+
 interface Widget {
   render(status: PageStatus, label: string, title: string, href: string | null): void;
 }
@@ -426,6 +443,7 @@ function boot(script: HTMLScriptElement): void {
   }
 
   const labels = readLabels(script);
+  const linkEnabled = readLinkEnabled(script);
   const widget = createWidget(script);
 
   // `data-force-status`: render statically and stop — deliberately checked
@@ -472,7 +490,8 @@ function boot(script: HTMLScriptElement): void {
         const status = normalizeStatus(body.status);
         const page = body.page || {};
         const title = typeof page.name === "string" ? page.name : "";
-        widget.render(status, labels[status], title, safeHref(page.url));
+        const href = linkEnabled ? safeHref(page.url) : null;
+        widget.render(status, labels[status], title, href);
       })
       .catch(() => {
         /* Network failure: same graceful degradation as above. */
