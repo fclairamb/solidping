@@ -31,6 +31,15 @@ other replica. Each replica holds exactly **one** LISTEN session regardless
 of how many dashboard tabs or subscriptions are open. Single-node SQLite
 deployments get the same behavior through in-process channels.
 
+Each client decides what a hint is worth refetching. The dashboard's **checks
+list** refreshes immediately on a status transition (`checks`), but not on
+every individual result (`results`) — a busy organization writes results
+continuously, and refetching the whole list per result costs far more than it
+buys. Per-run detail on that page (the latency cell, "last checked") instead
+refreshes on the page's own 30-second poll, while result-derived views (a
+check's result history and availability charts) still refresh straight off the
+`results` hint.
+
 High-volume kinds (results, jobs) are coalesced server-side to at most about
 one hint per organization per second per instance; status transitions and
 incident lifecycle events are pushed immediately. A flush window that
