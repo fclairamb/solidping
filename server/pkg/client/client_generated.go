@@ -92,28 +92,31 @@ func (e ApproveMembershipRequestRequestRole) Valid() bool {
 
 // Defines values for CheckLastStatusChangeStatus.
 const (
-	CheckLastStatusChangeStatusDOWN    CheckLastStatusChangeStatus = "DOWN"
-	CheckLastStatusChangeStatusERROR   CheckLastStatusChangeStatus = "ERROR"
-	CheckLastStatusChangeStatusINITIAL CheckLastStatusChangeStatus = "INITIAL"
-	CheckLastStatusChangeStatusTIMEOUT CheckLastStatusChangeStatus = "TIMEOUT"
-	CheckLastStatusChangeStatusUNKNOWN CheckLastStatusChangeStatus = "UNKNOWN"
-	CheckLastStatusChangeStatusUP      CheckLastStatusChangeStatus = "UP"
+	CheckLastStatusChangeStatusCREATED    CheckLastStatusChangeStatus = "CREATED"
+	CheckLastStatusChangeStatusDEGRADED   CheckLastStatusChangeStatus = "DEGRADED"
+	CheckLastStatusChangeStatusDOWN       CheckLastStatusChangeStatus = "DOWN"
+	CheckLastStatusChangeStatusUNKNOWN    CheckLastStatusChangeStatus = "UNKNOWN"
+	CheckLastStatusChangeStatusUP         CheckLastStatusChangeStatus = "UP"
+	CheckLastStatusChangeStatusVALIDATING CheckLastStatusChangeStatus = "VALIDATING"
+	CheckLastStatusChangeStatusWARNING    CheckLastStatusChangeStatus = "WARNING"
 )
 
 // Valid indicates whether the value is a known member of the CheckLastStatusChangeStatus enum.
 func (e CheckLastStatusChangeStatus) Valid() bool {
 	switch e {
+	case CheckLastStatusChangeStatusCREATED:
+		return true
+	case CheckLastStatusChangeStatusDEGRADED:
+		return true
 	case CheckLastStatusChangeStatusDOWN:
-		return true
-	case CheckLastStatusChangeStatusERROR:
-		return true
-	case CheckLastStatusChangeStatusINITIAL:
-		return true
-	case CheckLastStatusChangeStatusTIMEOUT:
 		return true
 	case CheckLastStatusChangeStatusUNKNOWN:
 		return true
 	case CheckLastStatusChangeStatusUP:
+		return true
+	case CheckLastStatusChangeStatusVALIDATING:
+		return true
+	case CheckLastStatusChangeStatusWARNING:
 		return true
 	default:
 		return false
@@ -206,28 +209,31 @@ func (e CheckJobViewState) Valid() bool {
 
 // Defines values for CheckListItemLastStatusChangeStatus.
 const (
-	CheckListItemLastStatusChangeStatusDOWN    CheckListItemLastStatusChangeStatus = "DOWN"
-	CheckListItemLastStatusChangeStatusERROR   CheckListItemLastStatusChangeStatus = "ERROR"
-	CheckListItemLastStatusChangeStatusINITIAL CheckListItemLastStatusChangeStatus = "INITIAL"
-	CheckListItemLastStatusChangeStatusTIMEOUT CheckListItemLastStatusChangeStatus = "TIMEOUT"
-	CheckListItemLastStatusChangeStatusUNKNOWN CheckListItemLastStatusChangeStatus = "UNKNOWN"
-	CheckListItemLastStatusChangeStatusUP      CheckListItemLastStatusChangeStatus = "UP"
+	CheckListItemLastStatusChangeStatusCREATED    CheckListItemLastStatusChangeStatus = "CREATED"
+	CheckListItemLastStatusChangeStatusDEGRADED   CheckListItemLastStatusChangeStatus = "DEGRADED"
+	CheckListItemLastStatusChangeStatusDOWN       CheckListItemLastStatusChangeStatus = "DOWN"
+	CheckListItemLastStatusChangeStatusUNKNOWN    CheckListItemLastStatusChangeStatus = "UNKNOWN"
+	CheckListItemLastStatusChangeStatusUP         CheckListItemLastStatusChangeStatus = "UP"
+	CheckListItemLastStatusChangeStatusVALIDATING CheckListItemLastStatusChangeStatus = "VALIDATING"
+	CheckListItemLastStatusChangeStatusWARNING    CheckListItemLastStatusChangeStatus = "WARNING"
 )
 
 // Valid indicates whether the value is a known member of the CheckListItemLastStatusChangeStatus enum.
 func (e CheckListItemLastStatusChangeStatus) Valid() bool {
 	switch e {
+	case CheckListItemLastStatusChangeStatusCREATED:
+		return true
+	case CheckListItemLastStatusChangeStatusDEGRADED:
+		return true
 	case CheckListItemLastStatusChangeStatusDOWN:
-		return true
-	case CheckListItemLastStatusChangeStatusERROR:
-		return true
-	case CheckListItemLastStatusChangeStatusINITIAL:
-		return true
-	case CheckListItemLastStatusChangeStatusTIMEOUT:
 		return true
 	case CheckListItemLastStatusChangeStatusUNKNOWN:
 		return true
 	case CheckListItemLastStatusChangeStatusUP:
+		return true
+	case CheckListItemLastStatusChangeStatusVALIDATING:
+		return true
+	case CheckListItemLastStatusChangeStatusWARNING:
 		return true
 	default:
 		return false
@@ -1501,7 +1507,9 @@ type Check struct {
 	// LastResult Full last-execution result. Present only on the check DETAIL response (GET/POST/PUT/PATCH by uid/slug) — the detail page renders output, metrics, and the SSL-chain card from these fields. List responses (GET /checks) use the slimmer LastResultListItem instead, which omits output/metrics: no list consumer (checks table, org dashboard, status dashboard) reads them, and they can be large (SSL cert chains, DNSBL details).
 	LastResult *LastResult `json:"lastResult,omitempty"`
 
-	// LastStatusChange Information about when the check last transitioned between states (only included when with=last_status_change)
+	// LastStatusChange When the check's status last changed, and what it changed to (only included when with=last_status_change). This is the *derived* check status — the same value as the `status` field, which respects the confirmation and recovery periods and the flapping backoff — so a single unconfirmed failed probe does not reset the timer.
+	//
+	// Absent for checks that have never recorded a status transition: there is no fallback to the creation time and no fallback to the raw probe history.
 	LastStatusChange *struct {
 		// Status The status that the check transitioned to
 		Status *CheckLastStatusChangeStatus `json:"status,omitempty"`
@@ -1654,7 +1662,9 @@ type CheckListItem struct {
 	// LastResult Slim last-execution result used on list responses (GET /checks) — {uid, status, timestamp, durationMs} only. See LastResult for the full detail-response shape.
 	LastResult *LastResultListItem `json:"lastResult,omitempty"`
 
-	// LastStatusChange Information about when the check last transitioned between states (only included when with=last_status_change)
+	// LastStatusChange When the check's status last changed, and what it changed to (only included when with=last_status_change). This is the *derived* check status — the same value as the `status` field, which respects the confirmation and recovery periods and the flapping backoff — so a single unconfirmed failed probe does not reset the timer.
+	//
+	// Absent for checks that have never recorded a status transition: there is no fallback to the creation time and no fallback to the raw probe history.
 	LastStatusChange *struct {
 		// Status The status that the check transitioned to
 		Status *CheckListItemLastStatusChangeStatus `json:"status,omitempty"`
@@ -4325,7 +4335,7 @@ type ListChecksParams struct {
 	// Labels Filter by labels (format key1:value1,key2:value2 for AND logic)
 	Labels *string `form:"labels,omitempty" json:"labels,omitempty"`
 
-	// With Comma-separated list of additional data to include (e.g., "last_result", "last_status_change")
+	// With Comma-separated list of additional data to include: "last_result" (the check's newest raw result) and "last_status_change" (when the derived check status last changed — served from the check row itself, so it costs no extra query and is omitted for checks that have never transitioned).
 	With *string `form:"with,omitempty" json:"with,omitempty"`
 
 	// Internal Filter by internal status. "false" (default) shows only non-internal checks, "true" shows only internal checks, "all" shows all checks.

@@ -944,7 +944,12 @@ paths:
           example: "env:prod,app:api"
         - name: with
           in: query
-          description: Comma-separated list of additional data to include (e.g., "last_result", "last_status_change")
+          description: >-
+            Comma-separated list of additional data to include: "last_result"
+            (the check's newest raw result) and "last_status_change" (when the
+            derived check status last changed — served from the check row
+            itself, so it costs no extra query and is omitted for checks that
+            have never transitioned).
           schema:
             type: string
         - name: internal
@@ -7080,7 +7085,17 @@ components:
         lastStatusChange:
           type: object
           nullable: true
-          description: Information about when the check last transitioned between states (only included when with=last_status_change)
+          description: >-
+            When the check's status last changed, and what it changed to (only
+            included when with=last_status_change). This is the *derived* check
+            status — the same value as the `status` field, which respects the
+            confirmation and recovery periods and the flapping backoff — so a
+            single unconfirmed failed probe does not reset the timer.
+
+
+            Absent for checks that have never recorded a status transition:
+            there is no fallback to the creation time and no fallback to the
+            raw probe history.
           properties:
             time:
               type: string
@@ -7088,7 +7103,7 @@ components:
               description: ISO 8601 timestamp of when the status change occurred
             status:
               type: string
-              enum: [INITIAL, UP, DOWN, TIMEOUT, ERROR, UNKNOWN]
+              enum: [UP, DOWN, VALIDATING, WARNING, DEGRADED, CREATED, UNKNOWN]
               description: The status that the check transitioned to
         flappingWindowSeconds:
           type: integer
