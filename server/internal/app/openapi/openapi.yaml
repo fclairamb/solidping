@@ -1099,6 +1099,16 @@ paths:
       parameters:
         - $ref: "#/components/parameters/OrgPath"
         - $ref: "#/components/parameters/CheckUidPath"
+        - name: with
+          in: query
+          description: >-
+            Comma-separated list of additional data to include: "last_result"
+            (the check's newest raw result) and "last_status_change" (when the
+            derived check status last changed — served from the check row
+            itself, so it costs no extra query and is omitted for checks that
+            have never transitioned).
+          schema:
+            type: string
       responses:
         "200":
           description: Check details
