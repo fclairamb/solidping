@@ -78,7 +78,7 @@ itself on its first boot and remembers.
 | Setting | Environment variable | Required | Secret | Notes |
 |---|---|---|---|---|
 | Bot token | `SP_TELEGRAM_BOT_TOKEN` | **yes** | **yes** | `123456789:AA…` from @BotFather. It *is* the bot's identity. |
-| Kill switch | `SP_TELEGRAM_ENABLED` | no | no | **Leave unset.** Unset = auto (on iff a token is present); `false` = off whatever else is configured; `true` = explicitly on, but still needs a token. |
+| Kill switch | `SP_TELEGRAM_ENABLED` | no | no | **Leave unset.** Unset = auto (on iff a token is present); `false` = off whatever else is configured; `true` = explicitly on, but still needs a token. A bare `SP_TELEGRAM_ENABLED=` — what a dotenv file produces — counts as *unset*, never as `false`. |
 | Bot username | `SP_TELEGRAM_BOT_USERNAME` | no | no | Derived from `getMe` and persisted. Set it only to skip that call or under declarative/GitOps config. |
 | Webhook secret | `SP_TELEGRAM_WEBHOOK_SECRET` | no | **yes** | Generated (32 random bytes, base64url) and persisted when unset. Set it by hand only when something else must know it too. |
 | API base URL | `SP_TELEGRAM_BASE_URL` | no | no | Overrides `https://api.telegram.org`. For an egress proxy or a test fake. |

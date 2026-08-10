@@ -1317,7 +1317,18 @@ func Load() (*Config, error) {
 	if err := koanfInstance.Load(env.Provider(".", env.Opt{
 		Prefix: "SP_",
 		TransformFunc: func(key, value string) (string, any) {
-			return strings.ToLower(strings.ReplaceAll(strings.TrimPrefix(key, "SP_"), "_", ".")), value
+			path := strings.ToLower(strings.ReplaceAll(strings.TrimPrefix(key, "SP_"), "_", "."))
+
+			// telegram.enabled is a *bool tri-state where nil (auto) and false
+			// (kill switch) mean opposite things, and koanf cannot express nil:
+			// an empty value decodes to false and a non-boolean one fails the
+			// whole Unmarshal. Drop it here (an empty key is skipped by the
+			// provider) so applyTelegramEnabledEnv is its single reader.
+			if path == telegramEnabledKoanfPath {
+				return "", nil
+			}
+
+			return path, value
 		},
 	}), nil); err != nil {
 		return nil, fmt.Errorf("loading environment variables: %w", err)
@@ -1969,6 +1980,15 @@ func applyWhatsAppEnv(cfg *WhatsAppConfig) {
 // both the manual reader below and the RecognizedEnvVars list in envvars.go, so
 // the two can never drift apart.
 const (
+	// EnvTelegramEnabled is the tri-state kill switch. Read by hand (see
+	// applyTelegramEnabledEnv) even though koanf CAN reach it, because koanf
+	// cannot distinguish "unset" from "set to empty" and that distinction is
+	// load-bearing here.
+	EnvTelegramEnabled = "SP_TELEGRAM_ENABLED"
+	// telegramEnabledKoanfPath is the koanf path EnvTelegramEnabled would land
+	// on. The env provider deliberately drops it; see the TransformFunc.
+	telegramEnabledKoanfPath = "telegram.enabled"
+
 	EnvTelegramBotToken      = "SP_TELEGRAM_BOT_TOKEN"
 	EnvTelegramBotUsername   = "SP_TELEGRAM_BOT_USERNAME"
 	EnvTelegramWebhookSecret = "SP_TELEGRAM_WEBHOOK_SECRET"
@@ -1988,11 +2008,14 @@ func TelegramEnvVarNames() []string {
 	}
 }
 
-// applyTelegramEnv reads SP_TELEGRAM_* into cfg. Only telegram.enabled is
-// koanf-reachable (single-word segment); every other key has a snake_case
-// segment that koanf's underscore→dot collapsing can never reach
+// applyTelegramEnv reads SP_TELEGRAM_* into cfg. Every key here has a
+// snake_case segment that koanf's underscore→dot collapsing can never reach
 // (SP_TELEGRAM_BOT_TOKEN would land on telegram.bot.token), so they are read by
-// hand here — the same quirk as rate_limiting, posthog and whatsapp.
+// hand — the same quirk as rate_limiting, posthog and whatsapp.
+//
+// telegram.enabled is the exception that koanf COULD reach, but it is dropped
+// from the env provider on purpose and read here too; see
+// applyTelegramEnabledEnv for why.
 // Keep in sync with manualReaderPlatformEnvVars.
 func applyTelegramEnv(cfg *TelegramConfig) {
 	targets := []*string{
@@ -2005,6 +2028,53 @@ func applyTelegramEnv(cfg *TelegramConfig) {
 			*targets[i] = v
 		}
 	}
+
+	applyTelegramEnabledEnv(cfg)
+}
+
+// applyTelegramEnabledEnv re-reads SP_TELEGRAM_ENABLED by hand, overriding what
+// koanf's env provider already decoded.
+//
+// telegram.enabled IS koanf-reachable (single-word segment), unlike its
+// siblings — but that path cannot tell "unset" from "set to empty": koanf hands
+// mapstructure an empty string and the weakly-typed string→bool conversion
+// turns it into false, i.e. *Enabled == false. For an ordinary bool that is
+// harmless; here nil (auto) versus false (kill switch) is the whole point of
+// the tri-state, and false wins over a perfectly valid bot token.
+//
+// That matters because a bare `SP_TELEGRAM_ENABLED=` line is exactly what a
+// dotenv file produces — `set -a; . .env`, `docker run --env-file`, most PaaS
+// dotenv importers — so an operator who copied .env.example and filled in only
+// the bot token would get Telegram silently and completely off. An empty value
+// means "I did not choose", never "off".
+//
+// An absent variable is left alone so a config-file or default value still
+// applies; only an explicitly present one is honored here.
+func applyTelegramEnabledEnv(cfg *TelegramConfig) {
+	raw, present := os.LookupEnv(EnvTelegramEnabled)
+	if !present {
+		return
+	}
+
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		cfg.Enabled = nil
+
+		return
+	}
+
+	parsed, err := strconv.ParseBool(trimmed)
+	if err != nil {
+		slog.Warn("ignoring unparseable "+EnvTelegramEnabled+
+			"; falling back to auto (on iff a bot token is present)",
+			"value", trimmed)
+
+		cfg.Enabled = nil
+
+		return
+	}
+
+	cfg.Enabled = &parsed
 }
 
 // ComputeBugReportEnabled returns true iff a GitHub PAT and repo are configured.
