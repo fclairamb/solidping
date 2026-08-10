@@ -811,18 +811,35 @@ type TelegramConfig struct {
 	BaseURL string `koanf:"base_url"`
 }
 
-// Active reports whether Telegram can actually send AND be connected to. This
-// is THE enablement rule, applied identically by the sender, the escalation
-// dispatcher, the connect flow, the webhook route registration and the public
-// config endpoint.
+// IsEnabled reports the effective on/off state of the feature.
+func (c *TelegramConfig) IsEnabled() bool {
+	return c.Enabled
+}
+
+// Configured reports whether the instance holds a usable bot identity — i.e.
+// whether it can talk to the Bot API at all. The token IS the identity, so it
+// is the only irreducible input.
 //
-// BotUsername is part of the rule on purpose: without it the dashboard cannot
-// build a connect link, so the feature would be half-on — sends would work but
-// nobody could ever link a chat.
+// This is the gate for everything that does not need a connect link: the
+// inbound webhook route, escalation dispatch, boot-time bootstrap and the
+// client constructor. In particular the WEBHOOK ROUTE MUST NOT depend on the
+// username: on a first boot holding only a token the username is not known yet,
+// and a route that was never registered cannot be fixed by any later GetMe
+// without a restart. Registering it early is harmless — the handler rejects
+// everything failing the secret check, so the endpoint is 403-only until the
+// rest is resolved.
+func (c *TelegramConfig) Configured() bool {
+	return c.IsEnabled() && strings.TrimSpace(c.BotToken) != ""
+}
+
+// Active reports whether a user can actually CONNECT a chat, which additionally
+// requires the bot's @username to build the t.me deep link.
+//
+// Deliberately narrower than Configured: this gates the connect surface only —
+// the public config flag and the connect-link endpoint. Conflating the two is
+// what used to make SP_TELEGRAM_BOT_USERNAME mandatory even for sending.
 func (c *TelegramConfig) Active() bool {
-	return c.Enabled &&
-		strings.TrimSpace(c.BotToken) != "" &&
-		strings.TrimSpace(c.BotUsername) != ""
+	return c.Configured() && strings.TrimSpace(c.BotUsername) != ""
 }
 
 // ResolvedBaseURL returns the configured Bot API base or the default.

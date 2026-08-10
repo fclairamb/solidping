@@ -326,19 +326,26 @@ func TestNewClientFromConfig(t *testing.T) {
 
 	r := require.New(t)
 
-	// Inactive config: no client, and the reason is typed.
+	// Killed by the switch: no client, and the reason is typed.
 	_, err := telegram.NewClientFromConfig(&config.TelegramConfig{Enabled: false, BotToken: "t", BotUsername: "u"})
 	r.ErrorIs(err, telegram.ErrNotConfigured)
 
-	// Enabled but no username is still half-configured: the dashboard could not
-	// build a connect link, so the feature must stay off.
-	_, err = telegram.NewClientFromConfig(&config.TelegramConfig{Enabled: true, BotToken: "t"})
+	// No token means no bot identity, whatever else is set.
+	_, err = telegram.NewClientFromConfig(&config.TelegramConfig{Enabled: true, BotUsername: "u"})
 	r.ErrorIs(err, telegram.ErrNotConfigured)
 
 	_, err = telegram.NewClientFromConfig(nil)
 	r.ErrorIs(err, telegram.ErrNotConfigured)
 
+	// A token alone is enough to SEND: the @username only ever mattered for
+	// building a connect link, which the client never does.
 	client, err := telegram.NewClientFromConfig(&config.TelegramConfig{
+		Enabled: true, BotToken: testBotToken,
+	})
+	r.NoError(err)
+	r.NotNil(client)
+
+	client, err = telegram.NewClientFromConfig(&config.TelegramConfig{
 		Enabled: true, BotToken: testBotToken, BotUsername: "solidping_bot",
 	})
 	r.NoError(err)

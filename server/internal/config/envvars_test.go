@@ -233,3 +233,29 @@ func TestTelegramActiveRequiresUsername(t *testing.T) {
 	r.Equal(DefaultTelegramBaseURL, (&TelegramConfig{}).ResolvedBaseURL())
 	r.Equal("https://proxy.test", (&TelegramConfig{BaseURL: "https://proxy.test/"}).ResolvedBaseURL())
 }
+
+// TestTelegramConfiguredVsActive pins the split between "can we talk to the Bot
+// API" and "can a user connect a chat". A token-only instance must be
+// Configured (webhook route, escalation dispatch, bootstrap) while NOT being
+// Active (connect surface stays off until the @username is known).
+func TestTelegramConfiguredVsActive(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	tokenOnly := &TelegramConfig{Enabled: true, BotToken: "123:AAt"}
+	r.True(tokenOnly.Configured(), "a bot token alone is a usable bot identity")
+	r.False(tokenOnly.Active(), "no @username yet, so no connect link can be built")
+
+	full := &TelegramConfig{Enabled: true, BotToken: "123:AAt", BotUsername: "solidping_bot"}
+	r.True(full.Configured())
+	r.True(full.Active())
+
+	// No token: nothing at all, whatever else is set.
+	usernameOnly := &TelegramConfig{Enabled: true, BotUsername: "solidping_bot"}
+	r.False(usernameOnly.Configured())
+	r.False(usernameOnly.Active())
+
+	// Whitespace is not a token.
+	r.False((&TelegramConfig{Enabled: true, BotToken: "   "}).Configured())
+}

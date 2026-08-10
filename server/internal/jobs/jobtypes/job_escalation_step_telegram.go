@@ -65,7 +65,10 @@ func (r *EscalationStepJobRun) pageTelegram(
 		return 0
 	}
 
-	if jctx.AppConfig == nil || !jctx.AppConfig.Telegram.Active() {
+	// Configured(), not Active(): sending an alert only needs the token. The
+	// bot @username is required to BUILD a connect link, never to use a chat
+	// that is already connected and verified.
+	if jctx.AppConfig == nil || !jctx.AppConfig.Telegram.Configured() {
 		log.InfoContext(ctx, "telegram not configured on this instance; skipping route",
 			"contactUID", contact.UID, "orgUID", incident.OrganizationUID)
 

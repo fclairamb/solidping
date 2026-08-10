@@ -1443,7 +1443,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// X-Telegram-Bot-Api-Secret-Token header, compared constant-time before the
 	// body is parsed. Registered only when the instance has Telegram configured
 	// — an unconfigured deployment exposes no route at all.
-	if s.config.Telegram.Active() {
+	//
+	// Gated on Configured(), NOT Active(): the bot @username is derived at boot
+	// and may be unknown on a first run holding only a token. A route that was
+	// never registered cannot be repaired without a restart, whereas an
+	// early-registered one is 403-only until the secret is known.
+	if s.config.Telegram.Configured() {
 		telegramHandler := telegramcb.NewHandler(s.dbService, s.config)
 		telegramIntegration := api.NewGroup("/integrations/telegram")
 		// Path kept in sync with TelegramWebhookPath, which the boot-time

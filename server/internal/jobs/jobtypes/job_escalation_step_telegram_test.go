@@ -360,6 +360,37 @@ func TestDispatch_TelegramDisabledInstanceSkips(t *testing.T) {
 	r.Equal(0, sent)
 }
 
+// TestDispatch_TelegramTokenOnlyStillDispatches pins the Configured() vs
+// Active() split from the dispatch side: an instance holding only a bot token
+// (no @username yet — it is derived at boot) must still page an already
+// verified chat. The username is needed to BUILD a connect link, never to use
+// a chat that is already connected.
+func TestDispatch_TelegramTokenOnlyStillDispatches(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, false, "")
+	fake, baseURL := newFakeBotAPI(t)
+	env.jctx.AppConfig.Telegram = config.TelegramConfig{
+		Enabled:  true,
+		BotToken: "123456789:AAtest",
+		BaseURL:  baseURL,
+		// BotUsername deliberately empty: Active() is false, Configured() true.
+	}
+	r.True(env.jctx.AppConfig.Telegram.Configured())
+	r.False(env.jctx.AppConfig.Telegram.Active())
+
+	sent := newRun().dispatchRoute(
+		ctx, env.jctx, slog.Default(), env.incident,
+		telegramRoute(env.org.UID, true), map[string]bool{"telegram": true},
+	)
+
+	r.Equal(1, sent)
+	r.Equal(1, fake.sendCount())
+}
+
 // --- Failure handling -------------------------------------------------------
 
 func TestDispatch_TelegramSendFailureFallsThrough(t *testing.T) {

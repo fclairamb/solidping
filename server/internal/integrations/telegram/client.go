@@ -186,7 +186,7 @@ func NewClient(opts Options) (*Client, error) {
 // NewClientFromConfig builds a client from the instance Telegram config.
 // Returns ErrNotConfigured when the instance cannot send.
 func NewClientFromConfig(cfg *config.TelegramConfig) (*Client, error) {
-	if cfg == nil || !cfg.Active() {
+	if cfg == nil || !cfg.Configured() {
 		return nil, ErrNotConfigured
 	}
 

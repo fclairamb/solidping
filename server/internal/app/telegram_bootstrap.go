@@ -36,7 +36,7 @@ func bootstrapTelegram(ctx context.Context, cfg *config.Config) {
 	// Only API nodes serve the webhook, and an inactive config has nothing to
 	// check. Both guards live here rather than at the call site so Start stays
 	// a list of unconditional startup steps.
-	if cfg == nil || !cfg.ShouldRunAPI() || !cfg.Telegram.Active() {
+	if cfg == nil || !cfg.ShouldRunAPI() || !cfg.Telegram.Configured() {
 		return
 	}
 
