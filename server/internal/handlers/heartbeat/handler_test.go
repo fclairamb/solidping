@@ -66,11 +66,17 @@ func (s *heartbeatHandlerSetup) url() string {
 func (s *heartbeatHandlerSetup) lastOutput(t *testing.T) models.JSONMap {
 	t.Helper()
 
+	return s.lastResult(t).Output
+}
+
+func (s *heartbeatHandlerSetup) lastResult(t *testing.T) *models.Result {
+	t.Helper()
+
 	results, err := s.dbSvc.GetLastResultForChecks(t.Context(), s.org.UID, []string{s.check.UID})
 	require.NoError(t, err)
 	require.Contains(t, results, s.check.UID)
 
-	return results[s.check.UID].Output
+	return results[s.check.UID]
 }
 
 func TestReceiveHeartbeatHandlerQueryToken(t *testing.T) {
@@ -219,4 +225,159 @@ func TestReceiveHeartbeatHandlerOverCapBodyRejected(t *testing.T) {
 	var errResp map[string]string
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &errResp))
 	r.Equal("VALIDATION_ERROR", errResp["code"])
+}
+
+// postHeartbeatBody POSTs body as the heartbeat JSON payload and returns the
+// persisted result.
+func (s *heartbeatHandlerSetup) postHeartbeatBody(t *testing.T, body map[string]any) *models.Result {
+	t.Helper()
+	r := require.New(t)
+
+	encoded, err := json.Marshal(body)
+	r.NoError(err)
+
+	req := httptest.NewRequestWithContext(
+		t.Context(), http.MethodPost, s.url()+"?token="+testToken, bytes.NewReader(encoded))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.router.ServeHTTP(rec, req)
+
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+	return s.lastResult(t)
+}
+
+func TestReceiveHeartbeatHandlerDurationMsConsumedFromBody(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := newHeartbeatHandlerSetup(t)
+
+	result := s.postHeartbeatBody(t, map[string]any{"message": "backup done", "durationMs": 42000})
+
+	r.NotNil(result.Duration)
+	r.InEpsilon(float32(42000), *result.Duration, 0.0001)
+	r.NotContains(result.Output, "data", "a valid durationMs must be consumed, not duplicated under output.data")
+}
+
+func TestReceiveHeartbeatHandlerDurationMsAbsentKeepsDurationZero(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := newHeartbeatHandlerSetup(t)
+
+	result := s.postHeartbeatBody(t, map[string]any{"message": "no duration here"})
+
+	r.NotNil(result.Duration)
+	r.InDelta(float32(0), *result.Duration, 0.0001)
+}
+
+func TestReceiveHeartbeatHandlerDurationMsBoundaryAtCapAccepted(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := newHeartbeatHandlerSetup(t)
+
+	// 604,800,000 ms == 7 days, the documented sanity cap; the boundary value
+	// itself must be accepted.
+	result := s.postHeartbeatBody(t, map[string]any{"durationMs": 604800000})
+
+	r.NotNil(result.Duration)
+	r.InEpsilon(float32(604800000), *result.Duration, 0.0001)
+	r.NotContains(result.Output, "data")
+}
+
+func TestReceiveHeartbeatHandlerDurationMsOverCapIgnoredAndLeftInData(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := newHeartbeatHandlerSetup(t)
+
+	result := s.postHeartbeatBody(t, map[string]any{"durationMs": 604800001})
+
+	r.NotNil(result.Duration)
+	r.InDelta(float32(0), *result.Duration, 0.0001, "over-cap durationMs must not be stored as the duration")
+
+	data, ok := result.Output["data"].(map[string]any)
+	r.True(ok, "over-cap durationMs must still be visible to the caller under output.data")
+	r.InEpsilon(float64(604800001), data["durationMs"], 0.0001)
+}
+
+func TestReceiveHeartbeatHandlerDurationMsNegativeIgnoredAndLeftInData(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := newHeartbeatHandlerSetup(t)
+
+	result := s.postHeartbeatBody(t, map[string]any{"durationMs": -5})
+
+	r.NotNil(result.Duration)
+	r.InDelta(float32(0), *result.Duration, 0.0001, "negative durationMs must not be stored as the duration")
+
+	data, ok := result.Output["data"].(map[string]any)
+	r.True(ok, "negative durationMs must still be visible to the caller under output.data")
+	r.InEpsilon(float64(-5), data["durationMs"], 0.0001)
+}
+
+func TestReceiveHeartbeatHandlerDurationMsStringIgnoredAndLeftInData(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := newHeartbeatHandlerSetup(t)
+
+	result := s.postHeartbeatBody(t, map[string]any{"durationMs": "42000"})
+
+	r.NotNil(result.Duration)
+	r.InDelta(float32(0), *result.Duration, 0.0001, "non-numeric durationMs must not be stored as the duration")
+
+	data, ok := result.Output["data"].(map[string]any)
+	r.True(ok, "string durationMs must still be visible to the caller under output.data")
+	r.Equal("42000", data["durationMs"])
+}
+
+func TestReceiveHeartbeatHandlerDurationMsAppliesToRunningStatus(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := newHeartbeatHandlerSetup(t)
+
+	body, err := json.Marshal(map[string]any{"durationMs": 1500})
+	r.NoError(err)
+
+	req := httptest.NewRequestWithContext(
+		t.Context(), http.MethodPost, s.url()+"?token="+testToken+"&status=running", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.router.ServeHTTP(rec, req)
+
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+	result := s.lastResult(t)
+	r.NotNil(result.Duration)
+	r.InEpsilon(float32(1500), *result.Duration, 0.0001, "durationMs applies to every accepted status, including running")
+}
+
+func TestReceiveHeartbeatHandlerDurationMsNaNIgnoredWithoutFailingPing(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := newHeartbeatHandlerSetup(t)
+
+	// NaN/Infinity have no valid JSON literal, so a caller can only send them
+	// as raw (technically malformed) body text. That already falls under the
+	// existing malformed-JSON leniency path: the ping must still succeed and
+	// duration must stay at 0 — see extractHeartbeatDuration's own NaN/Inf
+	// guard for the defensive check exercised when this function is called
+	// directly on a decoded map containing a non-finite float64.
+	req := httptest.NewRequestWithContext(
+		t.Context(), http.MethodPost, s.url()+"?token="+testToken, strings.NewReader(`{"durationMs": NaN}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.router.ServeHTTP(rec, req)
+
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String(), "a bad durationMs must never fail the ping")
+
+	result := s.lastResult(t)
+	r.NotNil(result.Duration)
+	r.InDelta(float32(0), *result.Duration, 0.0001)
 }

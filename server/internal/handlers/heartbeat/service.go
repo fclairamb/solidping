@@ -115,14 +115,16 @@ func NewService(dbService db.Service, jobSvc jobsvc.Service, rt *realtime.Publis
 	}
 }
 
-// ReceiveHeartbeat processes an incoming heartbeat ping. userAgent, remoteAddr,
-// and httpMethod are caller metadata (display-only forensics, not used for any
-// security decision) persisted alongside the ping's message. callerData is the
-// caller-supplied JSON body minus "message", persisted nested under
+// ReceiveHeartbeat processes an incoming heartbeat ping. durationMs is the
+// caller-reported run duration (0 when absent or invalid), persisted as the
+// result's Duration. userAgent, remoteAddr, and httpMethod are caller
+// metadata (display-only forensics, not used for any security decision)
+// persisted alongside the ping's message. callerData is the caller-supplied
+// JSON body minus "message" and a valid "durationMs", persisted nested under
 // Output["data"] — see buildHeartbeatOutput for why it is never flattened.
 func (s *Service) ReceiveHeartbeat(
-	ctx context.Context, orgSlug, identifier, token, statusStr, message, userAgent, remoteAddr, httpMethod string,
-	callerData map[string]any,
+	ctx context.Context, orgSlug, identifier, token, statusStr, message string, durationMs float32,
+	userAgent, remoteAddr, httpMethod string, callerData map[string]any,
 ) error {
 	// Look up organization
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
@@ -176,7 +178,6 @@ func (s *Service) ReceiveHeartbeat(
 	}
 
 	status := int(checkerStatus)
-	durationMs := float32(0)
 
 	result := &models.Result{
 		UID:             resultUID.String(),
