@@ -230,20 +230,20 @@ func TestBuild_TelegramFlag(t *testing.T) {
 	cfg := &config.Config{}
 
 	// Kill switch on, but no credentials: still off.
-	cfg.Telegram = config.TelegramConfig{Enabled: true}
+	cfg.Telegram = config.TelegramConfig{Enabled: config.BoolPtr(true)}
 	r.False(publicconfig.Build(cfg).Telegram.Enabled)
 
 	// Token without a username is half-configured — the dashboard could not
 	// build a connect link, so the feature must report itself off.
-	cfg.Telegram = config.TelegramConfig{Enabled: true, BotToken: "123:AAsuper-secret-bot-token"}
+	cfg.Telegram = config.TelegramConfig{Enabled: config.BoolPtr(true), BotToken: "123:AAsuper-secret-bot-token"}
 	r.False(publicconfig.Build(cfg).Telegram.Enabled)
 
 	// Username without a token cannot send.
-	cfg.Telegram = config.TelegramConfig{Enabled: true, BotUsername: "solidping_bot"}
+	cfg.Telegram = config.TelegramConfig{Enabled: config.BoolPtr(true), BotUsername: "solidping_bot"}
 	r.False(publicconfig.Build(cfg).Telegram.Enabled)
 
 	cfg.Telegram = config.TelegramConfig{
-		Enabled:       true,
+		Enabled:       config.BoolPtr(true),
 		BotToken:      "123:AAsuper-secret-bot-token",
 		BotUsername:   "@solidping_bot",
 		WebhookSecret: "super-secret-webhook-secret",
@@ -274,7 +274,7 @@ func TestBuild_TelegramUsernameOmittedWhenDisabled(t *testing.T) {
 	r := require.New(t)
 
 	cfg := &config.Config{}
-	cfg.Telegram = config.TelegramConfig{Enabled: false, BotUsername: "solidping_bot"}
+	cfg.Telegram = config.TelegramConfig{Enabled: config.BoolPtr(false), BotUsername: "solidping_bot"}
 
 	encoded, err := json.Marshal(publicconfig.Build(cfg))
 	r.NoError(err)

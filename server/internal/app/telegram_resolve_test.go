@@ -41,7 +41,7 @@ func resolveTestConfig(fake *fakeTelegramAPI) *config.Config {
 	cfg := &config.Config{}
 	cfg.Server.BaseURL = "https://solidping.test"
 	cfg.Telegram = config.TelegramConfig{
-		Enabled:  true,
+		Enabled:  config.BoolPtr(true),
 		BotToken: "123456789:AAtest-token",
 		BaseURL:  fake.server.URL,
 	}
@@ -171,7 +171,7 @@ func TestResolveTelegram_GetMeUnreachableDegradesGracefully(t *testing.T) {
 
 	cfg := &config.Config{}
 	cfg.Telegram = config.TelegramConfig{
-		Enabled:  true,
+		Enabled:  config.BoolPtr(true),
 		BotToken: "123456789:AAtest-token",
 		BaseURL:  hang.URL,
 	}
@@ -376,7 +376,7 @@ func TestResolveTelegram_SecretNeverReachesPublicConfig(t *testing.T) {
 	fake.getMeUsername = "public_config_bot"
 
 	server, ts := telegramRouteServer(t, config.TelegramConfig{
-		Enabled:  true,
+		Enabled:  config.BoolPtr(true),
 		BotToken: "123456789:AAtest",
 		BaseURL:  fake.server.URL,
 		// No webhook secret and no username: BOTH are derived at boot.

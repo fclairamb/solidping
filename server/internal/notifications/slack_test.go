@@ -1010,6 +1010,12 @@ func (m *mockDBService) SetSystemParameter(_ context.Context, _ string, _ any, _
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetOrCreateSystemParameter(
+	_ context.Context, _ string, _ any, _ bool,
+) (*models.Parameter, bool, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) DeleteSystemParameter(_ context.Context, _ string) error {
 	panic("not implemented")
 }

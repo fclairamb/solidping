@@ -132,7 +132,7 @@ func telegramTestConfig(fake *fakeTelegramAPI, secret string) *config.Config {
 	cfg := &config.Config{}
 	cfg.Server.BaseURL = "https://solidping.test"
 	cfg.Telegram = config.TelegramConfig{
-		Enabled:       true,
+		Enabled:       config.BoolPtr(true),
 		BotToken:      "123456789:AAtest-token",
 		BotUsername:   "solidping_bot",
 		WebhookSecret: secret,

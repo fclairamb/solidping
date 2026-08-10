@@ -78,7 +78,7 @@ func TestTelegramWebhookRouteRegisteredWithTokenOnly(t *testing.T) {
 	fake.failGetMe = true
 
 	_, ts := telegramRouteServer(t, config.TelegramConfig{
-		Enabled:       true,
+		Enabled:       config.BoolPtr(true),
 		BotToken:      "123456789:AAtest",
 		WebhookSecret: "route-test-secret",
 		BaseURL:       fake.server.URL,
@@ -124,7 +124,7 @@ func TestPublicConfigTelegramOffWithTokenOnly(t *testing.T) {
 	fake.failGetMe = true
 
 	_, ts := telegramRouteServer(t, config.TelegramConfig{
-		Enabled:       true,
+		Enabled:       config.BoolPtr(true),
 		BotToken:      "123456789:AAtest",
 		WebhookSecret: "route-test-secret",
 		BaseURL:       fake.server.URL,

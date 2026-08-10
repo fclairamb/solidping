@@ -76,7 +76,7 @@ func setupEnv(t *testing.T) *tgEnv {
 
 	cfg := &config.Config{}
 	cfg.Telegram = config.TelegramConfig{
-		Enabled:       true,
+		Enabled:       config.BoolPtr(true),
 		BotToken:      "123:AAtest",
 		BotUsername:   "solidping_test_bot",
 		WebhookSecret: testWebhookSecret,
@@ -117,7 +117,7 @@ func (e *tgEnv) mintToken(t *testing.T) string {
 
 	svc := usernotifications.NewService(e.db, nil,
 		usernotifications.WithTelegramConfig(&config.TelegramConfig{
-			Enabled: true, BotToken: "123:AAtest", BotUsername: "solidping_test_bot",
+			Enabled: config.BoolPtr(true), BotToken: "123:AAtest", BotUsername: "solidping_test_bot",
 		}))
 
 	resp, err := svc.CreateTelegramLink(context.Background(), e.org.Slug, e.user)

@@ -16,7 +16,7 @@ import (
 
 func activeTelegramConfig() *config.TelegramConfig {
 	return &config.TelegramConfig{
-		Enabled:       true,
+		Enabled:       config.BoolPtr(true),
 		BotToken:      "123456789:AAtest",
 		BotUsername:   "solidping_test_bot",
 		WebhookSecret: "a-long-random-webhook-secret",

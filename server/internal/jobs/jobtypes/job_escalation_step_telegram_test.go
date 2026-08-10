@@ -126,7 +126,7 @@ func (f *fakeBotAPI) callsFor(method string) []botCall {
 // enableTelegram points the instance config at the fake Bot API.
 func enableTelegram(env *phoneTestEnv, baseURL string) {
 	env.jctx.AppConfig.Telegram = config.TelegramConfig{
-		Enabled:       true,
+		Enabled:       config.BoolPtr(true),
 		BotToken:      "123456789:AAtest",
 		BotUsername:   "solidping_bot",
 		WebhookSecret: "secret",
@@ -374,7 +374,7 @@ func TestDispatch_TelegramTokenOnlyStillDispatches(t *testing.T) {
 	env := setupPhoneEnv(t, false, "")
 	fake, baseURL := newFakeBotAPI(t)
 	env.jctx.AppConfig.Telegram = config.TelegramConfig{
-		Enabled:  true,
+		Enabled:  config.BoolPtr(true),
 		BotToken: "123456789:AAtest",
 		BaseURL:  baseURL,
 		// BotUsername deliberately empty: Active() is false, Configured() true.

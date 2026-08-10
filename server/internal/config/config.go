@@ -790,9 +790,17 @@ const DefaultTelegramBaseURL = "https://api.telegram.org"
 // Default Enabled:false. BotToken and WebhookSecret are SECRETS: env/SSM only,
 // never logged, never returned by any API, never sent to a browser.
 type TelegramConfig struct {
-	// Enabled is the kill switch (SP_TELEGRAM_ENABLED). It only ever turns the
-	// feature off — credentials are still required to turn it on (see Active).
-	Enabled bool `koanf:"enabled"`
+	// Enabled is the TRI-STATE kill switch (SP_TELEGRAM_ENABLED):
+	//
+	//	nil   → auto: on iff a bot token is present
+	//	false → off, whatever else is configured
+	//	true  → explicitly on (still needs a token to do anything)
+	//
+	// A pointer because a bare bool cannot express "unset", and "unset" is
+	// exactly what makes the bot token alone sufficient: supplying a token IS
+	// the intent to enable, so demanding a second variable to confirm it was
+	// pure ceremony. See IsEnabled.
+	Enabled *bool `koanf:"enabled"`
 	// BotToken is the @BotFather token (`123456789:AA…`). SECRET.
 	BotToken string `koanf:"bot_token"`
 	// BotUsername is the bot's @username without the leading '@' (e.g.
@@ -811,9 +819,20 @@ type TelegramConfig struct {
 	BaseURL string `koanf:"base_url"`
 }
 
-// IsEnabled reports the effective on/off state of the feature.
+// BoolPtr returns a pointer to b, for the tri-state config switches where a
+// nil pointer means "unset / auto" rather than false.
+func BoolPtr(b bool) *bool {
+	return &b
+}
+
+// IsEnabled collapses the tri-state switch to the effective on/off state:
+// an explicit value wins, and unset means "on iff a bot token is present".
 func (c *TelegramConfig) IsEnabled() bool {
-	return c.Enabled
+	if c.Enabled != nil {
+		return *c.Enabled
+	}
+
+	return strings.TrimSpace(c.BotToken) != ""
 }
 
 // Configured reports whether the instance holds a usable bot identity — i.e.
@@ -1226,7 +1245,10 @@ func Load() (*Config, error) {
 		},
 		// Off by default. The bot token / username are instance-level and must
 		// be supplied explicitly.
-		Telegram: TelegramConfig{Enabled: false},
+		// Enabled left nil on purpose: unset means "auto", i.e. on iff a bot
+		// token is supplied. Defaulting it to false would resurrect the
+		// ceremony of a second variable just to confirm the token.
+		Telegram: TelegramConfig{},
 		// Enabled defaults to true but is inert on its own: PostHogConfig.Active
 		// additionally requires a project API key, which self-hosted installs
 		// never have unless the operator sets one.

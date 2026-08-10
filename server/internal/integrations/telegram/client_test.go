@@ -327,11 +327,13 @@ func TestNewClientFromConfig(t *testing.T) {
 	r := require.New(t)
 
 	// Killed by the switch: no client, and the reason is typed.
-	_, err := telegram.NewClientFromConfig(&config.TelegramConfig{Enabled: false, BotToken: "t", BotUsername: "u"})
+	_, err := telegram.NewClientFromConfig(&config.TelegramConfig{
+		Enabled: config.BoolPtr(false), BotToken: "t", BotUsername: "u",
+	})
 	r.ErrorIs(err, telegram.ErrNotConfigured)
 
 	// No token means no bot identity, whatever else is set.
-	_, err = telegram.NewClientFromConfig(&config.TelegramConfig{Enabled: true, BotUsername: "u"})
+	_, err = telegram.NewClientFromConfig(&config.TelegramConfig{Enabled: config.BoolPtr(true), BotUsername: "u"})
 	r.ErrorIs(err, telegram.ErrNotConfigured)
 
 	_, err = telegram.NewClientFromConfig(nil)
@@ -340,13 +342,13 @@ func TestNewClientFromConfig(t *testing.T) {
 	// A token alone is enough to SEND: the @username only ever mattered for
 	// building a connect link, which the client never does.
 	client, err := telegram.NewClientFromConfig(&config.TelegramConfig{
-		Enabled: true, BotToken: testBotToken,
+		Enabled: config.BoolPtr(true), BotToken: testBotToken,
 	})
 	r.NoError(err)
 	r.NotNil(client)
 
 	client, err = telegram.NewClientFromConfig(&config.TelegramConfig{
-		Enabled: true, BotToken: testBotToken, BotUsername: "solidping_bot",
+		Enabled: config.BoolPtr(true), BotToken: testBotToken, BotUsername: "solidping_bot",
 	})
 	r.NoError(err)
 	r.NotNil(client)
