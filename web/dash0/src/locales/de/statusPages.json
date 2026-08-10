@@ -195,6 +195,7 @@
       "bottomRight": "Unten rechts",
       "bottomLeft": "Unten links"
     },
+    "link": "Auf die Statusseite verlinken",
     "hint": "Fügen Sie dieses Snippet an beliebiger Stelle im HTML Ihrer Seite ein. Das Widget wird in einem Shadow Root gerendert, kann also weder vom CSS Ihrer Website beeinflusst werden noch dieses beeinflussen.",
     "size": "Größe",
     "sizes": {

@@ -195,6 +195,7 @@
       "bottomRight": "En bas à droite",
       "bottomLeft": "En bas à gauche"
     },
+    "link": "Lien vers la page de statut",
     "hint": "Collez cet extrait n'importe où dans le HTML de votre page. Le widget s'affiche dans un shadow root : le CSS de votre site ne peut ni l'altérer ni être altéré par lui.",
     "size": "Taille",
     "sizes": {

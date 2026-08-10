@@ -195,6 +195,7 @@
       "bottomRight": "Bottom right",
       "bottomLeft": "Bottom left"
     },
+    "link": "Link to the status page",
     "hint": "Paste this snippet anywhere in your page's HTML. The widget renders in a shadow root, so it can't be affected by — or affect — your site's CSS.",
     "size": "Size",
     "sizes": {
