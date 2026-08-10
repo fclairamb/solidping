@@ -42,14 +42,22 @@ export const LIVE_LAZY_POLL_MS = 5 * 60_000;
  *
  * A `results` live hint no longer invalidates the checks-list roots (spec
  * 2026-08-09-07 — see DEFAULT_QUERY_ROOTS.checks.results), so these queries
- * must NOT be stretched with stretchWhileLive: liveness now covers status
- * transitions (kind "checks") but not the steady-state per-run cells, and
- * this poll is what bounds their staleness. It is deliberately a plain
- * constant rather than a stretched one — a fixed 30 s beats the former
- * hint-driven ~0.5 refetches/second by an order of magnitude while keeping
- * "last checked" fresh within one interval.
+ * must NOT be stretched with stretchWhileLive: liveness still covers status
+ * transitions (kind "checks", which does invalidate those roots) but no
+ * longer covers the steady-state per-run cells, and this poll is what bounds
+ * their staleness.
+ *
+ * Why 10 s: the spec's fallback wording is "throttle/coalesce the
+ * invalidation to a few seconds", and the previous hint-driven behavior
+ * refreshed these cells about every 3 s (the damper interval below). Ten
+ * seconds keeps the same order of magnitude of freshness while cutting the
+ * request rate ~5×, and the request itself now costs one index descent per
+ * check instead of two full scans of `results` (~47 ms versus ~1.7 s
+ * measured in the spec) — so the total database work per viewer drops by
+ * more than two orders of magnitude even at this cadence. Trading freshness
+ * for cost beyond this point would not buy anything worth the staleness.
  */
-export const CHECKS_LIST_POLL_MS = 30_000;
+export const CHECKS_LIST_POLL_MS = 10_000;
 
 /**
  * Minimum interval between hint-driven cache invalidations for one scope.
@@ -131,9 +139,10 @@ const DEFAULT_QUERY_ROOTS: Record<LiveEntity, Partial<Record<string, QueryRoot[]
     // requests per second — each one an embed of lastResult for every check.
     //
     // What still keeps the list correct: a real status transition publishes
-    // kind "checks" (realtime.KindChecks) and lands on the roots above, and
-    // list consumers that render per-run detail (status dot, latency cell)
-    // poll at CHECKS_LIST_POLL_MS — see its doc comment. A plain
+    // kind "checks" (realtime.KindChecks, pushed immediately) and lands on
+    // the roots above, so anything the user actually reacts to is still
+    // live; list consumers that render per-run detail (status dot, latency
+    // cell) poll at CHECKS_LIST_POLL_MS — see its doc comment. A plain
     // no-transition result write is worth at most one cheap poll, never an
     // immediate org-wide refetch.
     results: [

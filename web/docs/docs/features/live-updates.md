@@ -36,7 +36,7 @@ list** refreshes immediately on a status transition (`checks`), but not on
 every individual result (`results`) — a busy organization writes results
 continuously, and refetching the whole list per result costs far more than it
 buys. Per-run detail on that page (the latency cell, "last checked") instead
-refreshes on the page's own 30-second poll, while result-derived views (a
+refreshes on the page's own 10-second poll, while result-derived views (a
 check's result history and availability charts) still refresh straight off the
 `results` hint.
 

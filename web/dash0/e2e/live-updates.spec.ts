@@ -533,8 +533,9 @@ test.describe("Live dashboard updates", () => {
       await page.waitForTimeout(2000);
       page.off("request", onRequest);
 
-      // At most the page's own CHECKS_LIST_POLL_MS (30 s) tick could land in
-      // this ~6 s window; the former behavior produced one refetch per hint.
+      // At most one CHECKS_LIST_POLL_MS (10 s) tick can land in this ~6 s
+      // window; the former behavior produced one refetch per hint instead —
+      // roughly one every 3 s, per open tab, forever.
       expect(
         listFetches,
         "a steady-state result write must not refetch the checks list",
