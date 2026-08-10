@@ -2303,6 +2303,28 @@ func (s *Service) CompactResults(
 	return outcome, nil
 }
 
+// lastResultForChecksQuery is the SQL behind GetLastResultForChecks, kept as a
+// package constant so the index-usage test can EXPLAIN QUERY PLAN exactly what
+// production runs.
+const lastResultForChecksQuery = `
+	WITH winners AS (
+		SELECT (
+			SELECT r2.uid
+			FROM results r2
+			WHERE r2.organization_uid = ?
+				AND r2.check_uid = c.uid
+				AND r2.period_type = 'raw'
+			ORDER BY r2.period_start DESC
+			LIMIT 1
+		) AS uid
+		FROM checks c
+		WHERE c.uid IN (?)
+	)
+	SELECT r.*
+	FROM results r
+	JOIN winners w ON w.uid = r.uid
+`
+
 func (s *Service) GetLastResultForChecks(
 	ctx context.Context, orgUID string, checkUIDs []string,
 ) (map[string]*models.Result, error) {
@@ -2328,26 +2350,7 @@ func (s *Service) GetLastResultForChecks(
 	// The driver side reads the requested uids from `checks` (soft-deleted
 	// rows are still present, so a deleted check's last result stays
 	// reachable exactly as it was) because SQLite has no unnest().
-	query := `
-		WITH winners AS (
-			SELECT (
-				SELECT r2.uid
-				FROM results r2
-				WHERE r2.organization_uid = ?
-					AND r2.check_uid = c.uid
-					AND r2.period_type = 'raw'
-				ORDER BY r2.period_start DESC
-				LIMIT 1
-			) AS uid
-			FROM checks c
-			WHERE c.uid IN (?)
-		)
-		SELECT r.*
-		FROM results r
-		JOIN winners w ON w.uid = r.uid
-	`
-
-	err := s.db.NewRaw(query, orgUID, bun.List(checkUIDs)).Scan(ctx, &results)
+	err := s.db.NewRaw(lastResultForChecksQuery, orgUID, bun.List(checkUIDs)).Scan(ctx, &results)
 	if err != nil {
 		return nil, err
 	}

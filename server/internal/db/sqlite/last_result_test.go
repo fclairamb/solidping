@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
@@ -72,6 +73,61 @@ func TestGetLastResultForChecks_ReturnsOneRowPerCheck(t *testing.T) {
 
 	r.Contains(results, checkB.UID)
 	r.Equal(newestB.UID, results[checkB.UID].UID, "must be the newest row for check B")
+}
+
+// TestGetLastResultForChecks_UsesTheRawIndex asserts the SQLite mirror really
+// descends results_raw_idx per check instead of silently regressing to a scan
+// of `results` — the whole point of the rewrite (spec 2026-08-09-07), and the
+// one thing a row-equality test cannot see. EXPLAIN QUERY PLAN is run on the
+// exact SQL production executes (same package constant).
+func TestGetLastResultForChecks_UsesTheRawIndex(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	s, err := New(ctx, Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(s.Initialize(ctx))
+	t.Cleanup(func() { _ = s.Close() })
+
+	org := models.NewOrganization("plan-org", "Plan Org")
+	r.NoError(s.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "planned", "http")
+	r.NoError(s.CreateCheck(ctx, check))
+	seedRawResults(t, s, org.UID, check.UID, 40)
+
+	_, err = s.DB().ExecContext(ctx, "ANALYZE")
+	r.NoError(err)
+
+	// EXPLAIN QUERY PLAN emits (id, parent, notused, detail) — every column
+	// has to be in the scan target for bun to accept the row.
+	var plan []struct {
+		ID      int    `bun:"id"`
+		Parent  int    `bun:"parent"`
+		NotUsed int    `bun:"notused"`
+		Detail  string `bun:"detail"`
+	}
+	r.NoError(s.DB().NewRaw(
+		"EXPLAIN QUERY PLAN "+lastResultForChecksQuery, org.UID, bun.List([]string{check.UID}),
+	).Scan(ctx, &plan))
+
+	var steps string
+	for i := range plan {
+		steps += plan[i].Detail + "\n"
+	}
+
+	r.Contains(steps, "results_raw_idx",
+		"the per-check lookup must ride the partial raw index:\n%s", steps)
+	r.Contains(steps, "CORRELATED SCALAR SUBQUERY",
+		"the winner per check must come from a correlated lookup, not a ranking:\n%s", steps)
+	// Every step must be a SEARCH (an index descent). A SCAN step means
+	// SQLite materialized and walked a row set — which is exactly what the
+	// former ROW_NUMBER() form did ("CO-ROUTINE ranked" + "SCAN ranked"),
+	// i.e. reading every raw row of the organization before discarding all
+	// but one per check.
+	r.NotContains(steps, "SCAN",
+		"no step may scan a row set; every step must be an index search:\n%s", steps)
 }
 
 // TestGetLastResultForChecks_Parity pins the exact contract the per-check
