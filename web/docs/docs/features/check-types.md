@@ -753,16 +753,21 @@ curl -H "Authorization: Bearer <TOKEN>" \
 ```
 
 **Structured body.** A JSON body's `message` key still becomes the ping's
-message exactly as before. Any other keys in the body are stored alongside
-it and shown in a "Data" card on the result detail page — handy for a CI run
-URL, commit SHA, record count, or batch ID. The body is capped at 8 KiB;
-malformed JSON is tolerated (the ping is still recorded with an empty
-message), but an over-cap body is rejected with `400`.
+message exactly as before. A `durationMs` key — a number of milliseconds,
+between 0 and 604 800 000 (7 days) — becomes the result's response time,
+feeding the check's response-time chart just like an active probe's
+measured duration; an invalid value (wrong type, negative, or over the cap)
+is ignored for that purpose but still shown in the "Data" card below, so you
+can see exactly what was sent. Any other keys in the body are stored
+alongside it and shown in that "Data" card on the result detail page — handy
+for a CI run URL, commit SHA, record count, or batch ID. The body is capped
+at 8 KiB; malformed JSON is tolerated (the ping is still recorded with an
+empty message), but an over-cap body is rejected with `400`.
 
 ```bash
 curl -X POST -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
-  -d '{"message":"backup completed","recordCount":18234,"runUrl":"https://ci.example.com/runs/512"}' \
+  -d '{"message":"backup completed","durationMs":42000,"recordCount":18234,"runUrl":"https://ci.example.com/runs/512"}' \
   "https://your-solidping.example.com/api/v1/heartbeat/default/my-cron-job"
 ```
 
