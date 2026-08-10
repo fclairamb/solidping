@@ -144,14 +144,19 @@ create, only one instance bot (`SP_TELEGRAM_*`) and per-user connected chats.
 ### POST /api/v1/integrations/telegram/webhook
 Bot API webhook — Telegram posts `message` and `my_chat_member` updates here.
 Auth: the `X-Telegram-Bot-Api-Secret-Token` header only, compared constant-time
-against `SP_TELEGRAM_WEBHOOK_SECRET` **before the body is parsed**. Telegram
-does not sign its payloads, so that header is the only line of defense; a
-missing or mismatched value is a bare `403` with no body detail. The body is
-capped at 1 MiB before the check.
+against the resolved webhook secret (`SP_TELEGRAM_WEBHOOK_SECRET`, or the
+auto-generated `telegram.webhook_secret` system parameter) **before the body is
+parsed**. Telegram does not sign its payloads, so that header is the only line
+of defense; a missing or mismatched value is a bare `403` with no body detail.
+The body is capped at 1 MiB before the check.
 
-Registered only when `telegram.Active()`. Once authenticated the handler
-**always** answers `200`, including for update types it does not implement —
-Telegram retries any non-2xx forever.
+Registered whenever `telegram.Configured()` — a bot token is enough. It is
+deliberately NOT gated on `Active()`: on a first boot the bot @username is not
+known yet, and a route that was never registered could not be repaired without
+a restart.
+
+Once authenticated the handler **always** answers `200`, including for update
+types it does not implement — Telegram retries any non-2xx forever.
 
 Handled updates: `/start <token>` (redeems a single-use connect token and
 creates the verified contact), `/stop` and `/unlink` (delete every contact for

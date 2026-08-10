@@ -72,46 +72,67 @@ re-registration of the bot.
 
 ## Step 2 — Configure SolidPing
 
-All settings are environment variables (or the equivalent `telegram:` block in
-the config file). **`SP_TELEGRAM_BOT_TOKEN` and `SP_TELEGRAM_WEBHOOK_SECRET`
-are secrets**: keep them in your secret store (SSM, Docker secrets, Kubernetes
-secrets), never in a committed config file. SolidPing never logs them, never
-returns them from an API, and never sends them to a browser.
+**A bot token is all you need.** Everything else SolidPing works out for
+itself on its first boot and remembers.
 
-| Setting | Environment variable | Secret | Notes |
-|---|---|---|---|
-| Kill switch | `SP_TELEGRAM_ENABLED` | no | Only ever turns the feature *off*; it never turns it on by itself. |
-| Bot token | `SP_TELEGRAM_BOT_TOKEN` | **yes** | `123456789:AA…` from @BotFather. |
-| Bot username | `SP_TELEGRAM_BOT_USERNAME` | no | e.g. `solidping_bot`. Public by nature — the browser needs it to build the connect link. |
-| Webhook secret | `SP_TELEGRAM_WEBHOOK_SECRET` | **yes** | High-entropy, **at least 32 bytes**. It is the *only* authenticity gate on the webhook. |
-| API base URL | `SP_TELEGRAM_BASE_URL` | no | Overrides `https://api.telegram.org`. For an egress proxy or a test fake. |
+| Setting | Environment variable | Required | Secret | Notes |
+|---|---|---|---|---|
+| Bot token | `SP_TELEGRAM_BOT_TOKEN` | **yes** | **yes** | `123456789:AA…` from @BotFather. It *is* the bot's identity. |
+| Kill switch | `SP_TELEGRAM_ENABLED` | no | no | **Leave unset.** Unset = auto (on iff a token is present); `false` = off whatever else is configured; `true` = explicitly on, but still needs a token. |
+| Bot username | `SP_TELEGRAM_BOT_USERNAME` | no | no | Derived from `getMe` and persisted. Set it only to skip that call or under declarative/GitOps config. |
+| Webhook secret | `SP_TELEGRAM_WEBHOOK_SECRET` | no | **yes** | Generated (32 random bytes, base64url) and persisted when unset. Set it by hand only when something else must know it too. |
+| API base URL | `SP_TELEGRAM_BASE_URL` | no | no | Overrides `https://api.telegram.org`. For an egress proxy or a test fake. |
+
+So the whole configuration is:
 
 ```bash
-SP_TELEGRAM_ENABLED=true
 SP_TELEGRAM_BOT_TOKEN=123456789:AAExampleTokenReplaceMe   # SECRET
-SP_TELEGRAM_BOT_USERNAME=solidping_bot
-SP_TELEGRAM_WEBHOOK_SECRET=$(openssl rand -hex 32)        # SECRET
 ```
+
+or, in the config file:
 
 ```yaml
 telegram:
-  enabled: true
   bot_token: "123456789:AAExampleTokenReplaceMe"
-  bot_username: solidping_bot
-  webhook_secret: replace-with-32-random-bytes
 ```
 
-The feature is **off unless all three of** `enabled`, `bot_token` and
-`bot_username` are set. The username is part of the rule on purpose: without it
-the dashboard cannot build a connect link, so the feature would be half-on —
-sends would work but nobody could ever connect a chat.
+**`SP_TELEGRAM_BOT_TOKEN` and `SP_TELEGRAM_WEBHOOK_SECRET` are secrets**: keep
+them in your secret store (SSM, Docker secrets, Kubernetes secrets), never in a
+committed config file. SolidPing never logs them, never returns them from an
+API, and never sends them to a browser.
 
-:::tip The bot username is checked at boot
-On startup SolidPing calls `getMe` and compares the answer to
-`SP_TELEGRAM_BOT_USERNAME`. A mismatch is a **loud warning, not a crash** — a
-stale username produces connect links pointing at the wrong bot, which is
-otherwise a silent and utterly baffling failure ("the link opens a bot that does
-nothing").
+### What SolidPing derives, and where it keeps it
+
+On the first boot with a token, **before any route is served**, SolidPing
+resolves the two remaining values and stores them as system parameters:
+
+| Parameter | Secret | Where it comes from |
+|---|---|---|
+| `telegram.bot_username` | no | One `getMe` call, bounded at 3 seconds. Only ever made when neither the environment nor the database knows the username — after the first boot, startup makes no network call at all. |
+| `telegram.webhook_secret` | **yes** | 32 bytes of `crypto/rand`, base64url-encoded. |
+
+Resolution order for both is **environment → stored parameter → derived**. An
+explicitly configured value always wins and the stored parameter is left
+untouched, so an operator running GitOps config, or fronting the webhook with a
+proxy that must know the secret, is never fought by the server.
+
+Creation is atomic, so several API pods booting at once converge on **one**
+secret rather than each generating its own.
+
+:::note First boot with only a token
+If Telegram is unreachable during that first `getMe`, startup still completes
+(within the 3-second bound) and everything except the *connect* surface works:
+the webhook route is live and alerts to already-connected chats still go out.
+The **Connect Telegram** button stays hidden until a later boot resolves the
+username — no operator action needed.
+:::
+
+:::tip An explicitly configured username is still checked at boot
+When you *do* set `SP_TELEGRAM_BOT_USERNAME`, SolidPing calls `getMe` and
+compares. A mismatch is a **loud warning, not a crash** — a stale username
+produces connect links pointing at the wrong bot, which is otherwise a silent
+and utterly baffling failure ("the link opens a bot that does nothing"). A
+derived username has nothing to disagree with, so it warns about nothing.
 :::
 
 ## Step 3 — Register the webhook
@@ -122,9 +143,14 @@ Inbound updates (the connect flow, `/stop`, block notifications) arrive at:
 https://<your-solidping-host>/api/v1/integrations/telegram/webhook
 ```
 
-**SolidPing registers this for you at startup** whenever your configured server
-base URL differs from what Telegram currently has, so a deploy to a new hostname
-self-heals. To do it by hand:
+**SolidPing registers this for you on every startup**, so a deploy to a new
+hostname — or a rotated webhook secret — self-heals. The registration is
+unconditional on purpose: Telegram's `getWebhookInfo` returns the registered
+`url` but **never** the `secret_token`, so a URL comparison could not detect a
+secret that changed at a constant URL. `setWebhook` is idempotent, so this costs
+one API call per boot.
+
+To do it by hand:
 
 ```bash
 curl -sS "https://api.telegram.org/bot$SP_TELEGRAM_BOT_TOKEN/setWebhook" -d "url=https://solidping.io/api/v1/integrations/telegram/webhook" -d "secret_token=$SP_TELEGRAM_WEBHOOK_SECRET" -d 'allowed_updates=["message","my_chat_member"]'
@@ -221,8 +247,9 @@ it never fails the escalation step.
 | *The Telegram chat no longer exists* | The chat id no longer resolves | Same as above — the contact needs reconnecting |
 | *Telegram bot credentials are invalid* | The bot token is wrong or was revoked | Re-issue it with `/revoke` then `/token` in @BotFather and update `SP_TELEGRAM_BOT_TOKEN` |
 | *Rate limited by Telegram* | Telegram throttled the send | Transient; the next escalation repeat honors Telegram's own `retry_after` |
-| *Telegram is not configured on this instance* | The kill switch is off, or a credential is missing | Check `SP_TELEGRAM_ENABLED`, `SP_TELEGRAM_BOT_TOKEN`, `SP_TELEGRAM_BOT_USERNAME` |
+| *Telegram is not configured on this instance* | No bot token, or `SP_TELEGRAM_ENABLED=false` | Check `SP_TELEGRAM_BOT_TOKEN`; make sure `SP_TELEGRAM_ENABLED` is unset or `true` |
 | *Hourly Telegram runaway guard reached* | Too many sends for one org in one hour | Usually a flapping check; raise `SP_ENTITLEMENTS_TELEGRAM_RUNAWAY_PER_HOUR` only once you know why |
+| The **Connect Telegram** button never appears | The bot username is not resolved yet — the first `getMe` failed | Check outbound access to `api.telegram.org` and restart; or set `SP_TELEGRAM_BOT_USERNAME` explicitly |
 | Nothing happens after pressing Start | The webhook is not reaching you | `getWebhookInfo` shows `last_error_message`; check the URL, TLS, and that the secret matches |
 | Alerts stop after a hostname change | The old webhook URL is still registered | Restart SolidPing (it re-registers) or re-run the `setWebhook` call above |
 
@@ -232,6 +259,29 @@ it never fails the escalation step.
 Update `SP_TELEGRAM_BOT_TOKEN`, restart, and confirm the boot log says
 `Telegram bot ready`. Existing connected chats are unaffected — the chat ids
 belong to the bot's identity, not to the token.
+
+### Rotating the webhook secret
+
+If the secret is **derived** (the default), delete the system parameter as a
+super-admin and restart:
+
+```bash
+curl -sS -X DELETE -H "Authorization: Bearer $TOKEN" \
+  'https://<your-solidping-host>/api/v1/system/parameters/telegram.webhook_secret'
+```
+
+The next boot generates a fresh one, persists it, and pushes it to Telegram with
+`setWebhook` — which now happens unconditionally, so the new secret actually
+lands. (Before that fix, a secret changing at a constant URL was never
+re-registered and Telegram kept echoing the old one, 403'ing every update.)
+
+If the secret is **explicitly configured**, change `SP_TELEGRAM_WEBHOOK_SECRET`
+and restart; the stored parameter, if any, is left untouched.
+
+### Re-deriving the bot username
+
+Delete the `telegram.bot_username` parameter the same way and restart — the next
+boot re-fetches it with `getMe`.
 
 ## Limits of the current version
 
