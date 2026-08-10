@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -112,10 +113,12 @@ func TestGetLastResultForChecks_UsesTheRawIndex(t *testing.T) {
 		"EXPLAIN QUERY PLAN "+lastResultForChecksQuery, org.UID, bun.List([]string{check.UID}),
 	).Scan(ctx, &plan))
 
-	var steps string
+	var builder strings.Builder
 	for i := range plan {
-		steps += plan[i].Detail + "\n"
+		builder.WriteString(plan[i].Detail)
+		builder.WriteString("\n")
 	}
+	steps := builder.String()
 
 	r.Contains(steps, "results_raw_idx",
 		"the per-check lookup must ride the partial raw index:\n%s", steps)

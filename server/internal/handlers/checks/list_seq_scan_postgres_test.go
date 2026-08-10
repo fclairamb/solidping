@@ -82,6 +82,26 @@ func waitForStatsActivity(
 	return stats
 }
 
+// readTempBytes returns the database's cumulative temp-file spill. The former
+// queries sorted every matching raw row to disk (24 MB and 17 MB of external
+// merge per request in production); the rewrite sorts nothing at all.
+func readTempBytes(ctx context.Context, t *testing.T, pg *postgres.Service) int64 {
+	t.Helper()
+	r := require.New(t)
+
+	_, err := pg.DB().ExecContext(ctx, "SELECT pg_stat_clear_snapshot()")
+	r.NoError(err)
+
+	var row struct {
+		TempBytes int64 `bun:"temp_bytes"`
+	}
+	r.NoError(pg.DB().NewRaw(
+		"SELECT temp_bytes FROM pg_stat_database WHERE datname = current_database()",
+	).Scan(ctx, &row))
+
+	return row.TempBytes
+}
+
 // TestListChecks_DoesNotScanResults_Postgres is the acceptance test for spec
 // 2026-08-09-07: `GET /checks?with=last_result,last_status_change` must
 // perform ZERO sequential scans of `results`, and must read a bounded number
@@ -98,7 +118,9 @@ func waitForStatsActivity(
 // that MUST be observed — so a broken or stalled statistics view can never
 // make the negative assertion pass vacuously.
 //
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with the other embedded suites
+// extraction) with the other embedded suites
+//
+//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile
 func TestListChecks_DoesNotScanResults_Postgres(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
@@ -169,6 +191,7 @@ func TestListChecks_DoesNotScanResults_Postgres(t *testing.T) {
 
 	// --- The assertion ----------------------------------------------------
 	before := readResultsStats(ctx, t, dbSvc)
+	tempBefore := readTempBytes(ctx, t, dbSvc)
 
 	const bursts = 5
 	for i := 0; i < bursts; i++ {
@@ -191,6 +214,9 @@ func TestListChecks_DoesNotScanResults_Postgres(t *testing.T) {
 		"a checks list with last_result + last_status_change must not sequentially scan `results`")
 	r.Equal(before.SeqTupRead, got.SeqTupRead,
 		"no tuples may be read through a sequential scan of `results`")
+
+	r.Equal(tempBefore, readTempBytes(ctx, t, dbSvc),
+		"steady-state dashboard polling must not spill any temp files: nothing in this path sorts")
 
 	tuplesRead := got.IdxTupFetch - before.IdxTupFetch
 	r.LessOrEqual(tuplesRead, int64(bursts*tupleBudget),
