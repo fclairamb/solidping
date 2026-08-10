@@ -5,33 +5,24 @@
 
 ### Features
 
-* Telegram alert channel, checks-list performance, and alert deep-links ([#209](https://github.com/fclairamb/solidping/issues/209)) ([f1dd548](https://github.com/fclairamb/solidping/commit/f1dd5483326ada48147f194703fc44aad56d98ee))
+* **telegram:** Telegram joins the alert channels, driven by an instance-owned bot. A user connects by following a one-time deep link that opens a chat with the bot, and escalations are dispatched there with per-incident threading, so a single incident stays one conversation rather than a stream of unrelated messages. The dashboard's notifications page hosts the connect and reconnect flow, and a public capability flag lets the frontend hide the channel entirely on an instance that has no bot configured ([#209](https://github.com/fclairamb/solidping/issues/209)) ([f1dd548](https://github.com/fclairamb/solidping/commit/f1dd5483326ada48147f194703fc44aad56d98ee))
+* **telegram:** a bot token is the only setting an operator has to provide. The bot's username and the webhook secret are derived from the token at boot and persisted, the webhook is re-registered on every start so a rotated secret converges on its own, and `SP_TELEGRAM_ENABLED` became a tri-state switch — unset means "on if a token is present", leaving an explicit `true`/`false` as a deliberate override ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **whatsapp:** WhatsApp alerts carry a button linking straight to the check, so a page can be acted on without hunting for the check in the dashboard ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **embed:** the embedded status widget links back to the status page by default, with a `data-link="false"` opt-out for pages that would rather not navigate away. The dashboard's widget card exposes it as a toggle ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **heartbeat:** a heartbeat ping can report how long the job it guards actually took — `durationMs` in the structured body is threaded into the recorded result's duration instead of being discarded ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **checks:** the checks list serves each check's last status change directly, so "how long has this been up" no longer has to be reconstructed from result history ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **dash0:** each row of the account Organizations list gets a direct Settings shortcut, replacing a switch-then-navigate detour ([#209](https://github.com/fclairamb/solidping/issues/209))
 
 
 ### Bug Fixes
 
+* **checks:** the checks list no longer burns a CPU core. Last-result lookups descend a per-check index instead of sequentially scanning the results table, a live results event refreshes only what changed rather than refetching the whole list, and the steady-state poll runs every 10s as intended. Regression tests assert the absence of sequential scans and of temp-file spill, each with a positive control ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **api:** `getCheck` declares its `with` query parameter in the OpenAPI spec — the endpoint accepted it but never advertised it, so generated clients could not pass it ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **telegram:** an escalation with no severity set can page Telegram, instead of being silently dropped ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **telegram:** a connect attempt from a group chat, or with an empty chat id, is refused rather than producing a contact that can never be delivered to ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **telegram:** a bare `SP_TELEGRAM_ENABLED=` is read as unset rather than as an explicit "off" ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **docs:** the WhatsApp template instructions match what Meta actually accepts, and the placeholder code spans stay on one line so MDX can parse them ([#209](https://github.com/fclairamb/solidping/issues/209))
 * **deps:** update go dependencies (non-major) ([#207](https://github.com/fclairamb/solidping/issues/207)) ([24985eb](https://github.com/fclairamb/solidping/commit/24985eb906fb6b1ce85463ff3a56a4ee2b54cc62))
-
-## [Unreleased]
-
-### Features
-
-* **telegram:** Telegram joins the alert channels, driven by an instance-owned bot. A user connects by following a one-time deep link that opens a chat with the bot, and escalations are dispatched there with per-incident threading so a single incident stays one conversation rather than a stream of unrelated messages. The dashboard's notifications page hosts the connect and reconnect flow, and a public capability flag lets the frontend hide the channel entirely on an instance that has no bot configured
-* **telegram:** a bot token is the only setting an operator has to provide. The bot's username and the webhook secret are derived from the token at boot and persisted, the webhook is re-registered on every start so a rotated secret converges on its own, and `SP_TELEGRAM_ENABLED` is a tri-state switch — unset means "on if a token is present", leaving explicit `true`/`false` as a deliberate override
-* **whatsapp:** WhatsApp alerts carry a button linking straight to the check, so a page can be acted on without hunting for the check in the dashboard
-* **heartbeat:** a heartbeat ping can report how long the job it guards actually took — `durationMs` in the structured body is threaded into the recorded result's duration instead of being discarded
-* **embed:** the embedded status widget links back to the status page by default, with a `data-link="false"` opt-out for pages that would rather not navigate away. The dashboard's widget card exposes it as a toggle
-* **checks:** the checks list serves each check's last status change directly, so "how long has this been up" no longer requires the client to reconstruct it from result history
-* **dash0:** each row of the account Organizations list gets a direct Settings shortcut, replacing a switch-then-navigate detour
-
-### Bug Fixes
-
-* **checks:** the checks list no longer burns a CPU core. Last-result lookups descend a per-check index instead of sequentially scanning the results table, a live results event refreshes only what changed rather than refetching the entire list, and the steady-state poll runs every 10s as the spec intended. Regression tests assert the absence of sequential scans and of temp-file spill, each with a positive control
-* **api:** `getCheck` declares its `with` query parameter in the OpenAPI spec — the endpoint accepted it but never advertised it, so generated clients could not pass it
-* **telegram:** an escalation with no severity set can page Telegram, matching the specified behaviour instead of being silently dropped
-* **telegram:** a connect attempt from a group chat, or with an empty chat id, is refused rather than producing a contact that can never be delivered to
-* **telegram:** a bare `SP_TELEGRAM_ENABLED=` is read as unset rather than as an explicit "off"
-* **docs:** the WhatsApp template instructions match what Meta actually accepts, and the placeholder code spans stay on one line so MDX can parse them
 
 ## [0.11.0](https://github.com/fclairamb/solidping/compare/v0.10.0...v0.11.0) (2026-08-09)
 
