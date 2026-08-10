@@ -4351,6 +4351,12 @@ type ListChecksParamsInternal string
 // ListChecksParamsSort defines parameters for ListChecks.
 type ListChecksParamsSort string
 
+// GetCheckParams defines parameters for GetCheck.
+type GetCheckParams struct {
+	// With Comma-separated list of additional data to include: "last_result" (the check's newest raw result) and "last_status_change" (when the derived check status last changed — served from the check row itself, so it costs no extra query and is omitted for checks that have never transitioned).
+	With *string `form:"with,omitempty" json:"with,omitempty"`
+}
+
 // ListCheckEventsParams defines parameters for ListCheckEvents.
 type ListCheckEventsParams struct {
 	// Cursor Cursor for pagination
@@ -5551,7 +5557,7 @@ type ClientInterface interface {
 	// GetCheck Get check details
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid} (the `GetCheck` operationId).
-	GetCheck(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetCheck(ctx context.Context, org OrgPath, checkUid CheckUidPath, params *GetCheckParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// UpdateCheckWithBody Update monitoring check
 	//
@@ -8271,8 +8277,8 @@ func (c *Client) DeleteCheck(ctx context.Context, org OrgPath, checkUid CheckUid
 // GetCheck Get check details
 //
 // Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid} (the `GetCheck` operationId).
-func (c *Client) GetCheck(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetCheckRequest(c.Server, org, checkUid)
+func (c *Client) GetCheck(ctx context.Context, org OrgPath, checkUid CheckUidPath, params *GetCheckParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCheckRequest(c.Server, org, checkUid, params)
 	if err != nil {
 		return nil, err
 	}
@@ -14111,7 +14117,7 @@ func NewDeleteCheckRequest(server string, org OrgPath, checkUid CheckUidPath) (*
 }
 
 // NewGetCheckRequest constructs an http.Request for the GetCheck method
-func NewGetCheckRequest(server string, org OrgPath, checkUid CheckUidPath) (*http.Request, error) {
+func NewGetCheckRequest(server string, org OrgPath, checkUid CheckUidPath, params *GetCheckParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -14141,6 +14147,33 @@ func NewGetCheckRequest(server string, org OrgPath, checkUid CheckUidPath) (*htt
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.With != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "with", *params.With, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -23038,7 +23071,7 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid} (the `GetCheck` operationId).
-	GetCheckWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*GetCheckResult, error)
+	GetCheckWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, params *GetCheckParams, reqEditors ...RequestEditorFn) (*GetCheckResult, error)
 
 	// UpdateCheckWithBodyWithResponse Update monitoring check
 	//
@@ -37566,8 +37599,8 @@ func (c *ClientWithResponses) DeleteCheckWithResponse(ctx context.Context, org O
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid} (the `GetCheck` operationId).
-func (c *ClientWithResponses) GetCheckWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*GetCheckResult, error) {
-	rsp, err := c.GetCheck(ctx, org, checkUid, reqEditors...)
+func (c *ClientWithResponses) GetCheckWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, params *GetCheckParams, reqEditors ...RequestEditorFn) (*GetCheckResult, error) {
+	rsp, err := c.GetCheck(ctx, org, checkUid, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
