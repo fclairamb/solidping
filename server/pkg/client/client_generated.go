@@ -1327,6 +1327,7 @@ type AddNotificationContactRequest struct {
 	Label *string `json:"label,omitempty"`
 
 	// Type Contact type (email, phone, whatsapp, slack_user, webpush, ...). `whatsapp` is deliberately distinct from `phone` even for the same number: verification proves WhatsApp reachability specifically and is Meta's required opt-in record. WhatsApp values must be E.164.
+	// `telegram` is **rejected** here with `VALIDATION_ERROR`: a Telegram contact's value is a chat id and there is no verification round-trip to catch a wrong one, so accepting one from a request body would let any user page a stranger. Use the connect-link endpoint instead.
 	Type  string `json:"type"`
 	Value string `json:"value"`
 }
@@ -3437,6 +3438,14 @@ type PromoteChecksRequest struct {
 type PublicConfigResponse struct {
 	Posthog *PublicPostHogConfig `json:"posthog,omitempty"`
 
+	// Telegram Instance-level Telegram capability flag. The dashboard reads it to
+	// decide whether to offer the "Connect Telegram" action and the
+	// `telegram` severity channel. The bot token and the webhook secret are
+	// never exposed here; the bot *username* is public by nature (anyone can
+	// find the bot in Telegram) and the browser needs it to build the connect
+	// deep link.
+	Telegram *PublicTelegramConfig `json:"telegram,omitempty"`
+
 	// Whatsapp Instance-level WhatsApp capability flag. The dashboard reads it to
 	// decide whether to offer the WhatsApp notification-contact type and the
 	// `whatsapp` severity channel. No credential, phone-number id, WABA id or
@@ -3461,6 +3470,26 @@ type PublicPostHogConfig struct {
 	// ProjectApiKey Public `phc_…` browser ingestion key. Present **only** when
 	// `enabled` is true; omitted entirely otherwise.
 	ProjectApiKey *string `json:"projectApiKey,omitempty"`
+}
+
+// PublicTelegramConfig Instance-level Telegram capability flag. The dashboard reads it to
+// decide whether to offer the "Connect Telegram" action and the
+// `telegram` severity channel. The bot token and the webhook secret are
+// never exposed here; the bot *username* is public by nature (anyone can
+// find the bot in Telegram) and the browser needs it to build the connect
+// deep link.
+type PublicTelegramConfig struct {
+	// BotUsername The bot's @username without the leading '@'. Present only when
+	// `enabled` is true.
+	//
+	//
+	// Example: solidping_bot
+	BotUsername *string `json:"botUsername,omitempty"`
+
+	// Enabled Resolved enablement, i.e. `telegram.enabled == true` **and** a
+	// non-empty bot token **and** a non-empty bot username. False on any
+	// deployment that has not configured a bot.
+	Enabled bool `json:"enabled"`
 }
 
 // PublicWhatsAppConfig Instance-level WhatsApp capability flag. The dashboard reads it to
@@ -3816,6 +3845,17 @@ type SystemParameter struct {
 // SystemParameterListResponse defines model for SystemParameterListResponse.
 type SystemParameterListResponse struct {
 	Data *[]SystemParameter `json:"data,omitempty"`
+}
+
+// TelegramLinkResponse defines model for TelegramLinkResponse.
+type TelegramLinkResponse struct {
+	// ExpiresAt When the token stops working (15 minutes after minting).
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// Url The t.me deep link to open, carrying the single-use token.
+	//
+	// Example: https://t.me/solidping_bot?start=Zm9vYmFyYmF6
+	Url string `json:"url"`
 }
 
 // TestEmailRequest defines model for TestEmailRequest.
@@ -5301,7 +5341,9 @@ type ClientInterface interface {
 	// When a feature is disabled its configuration fields are **omitted**
 	// rather than returned empty — e.g. with PostHog unconfigured the
 	// response is exactly `{"posthog": {"enabled": false}}`. The same rule
-	// applies to `whatsapp`, which is a single resolved boolean.
+	// applies to `whatsapp` and `telegram`: `whatsapp` is a single resolved
+	// boolean, and `telegram` emits its public bot username only while it is
+	// enabled.
 	//
 	// Corresponds with GET /api/v1/config (the `GetPublicConfig` operationId).
 	GetPublicConfig(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6762,6 +6804,24 @@ type ClientInterface interface {
 	// Corresponds with POST /api/v1/orgs/{org}/users/me/notification-routes/{routeUid}/test (the `TestMyNotificationRoute` operationId).
 	TestMyNotificationRoute(ctx context.Context, org OrgPath, routeUid RouteUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// CreateMyTelegramLink Mint a single-use Telegram connect link for the caller
+	//
+	// Returns a `https://t.me/<botUsername>?start=<token>` deep link carrying
+	// a single-use, high-entropy token (TTL 15 minutes).
+	//
+	// Nothing is created by this call. The Telegram contact only comes into
+	// existence when the user actually presses **Start** in Telegram and the
+	// resulting `/start <token>` reaches the instance webhook — pressing Start
+	// is both the proof of reachability and the opt-in, which is why this
+	// channel has no verification code round-trip.
+	//
+	// A replayed token is a no-op, not a second contact. Poll
+	// `GET /api/v1/orgs/{org}/users/me/notification-routes` to observe the new
+	// contact appear.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/users/me/telegram/link (the `CreateMyTelegramLink` operationId).
+	CreateMyTelegramLink(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListUserNotifications List a user's notification deliveries
 	//
 	// Admins may query any user; non-admin members may only query themselves (403 otherwise).
@@ -7671,7 +7731,9 @@ func (c *Client) ListCheckTypeSamples(ctx context.Context, params *ListCheckType
 // When a feature is disabled its configuration fields are **omitted**
 // rather than returned empty — e.g. with PostHog unconfigured the
 // response is exactly `{"posthog": {"enabled": false}}`. The same rule
-// applies to `whatsapp`, which is a single resolved boolean.
+// applies to `whatsapp` and `telegram`: `whatsapp` is a single resolved
+// boolean, and `telegram` emits its public bot username only while it is
+// enabled.
 //
 // Corresponds with GET /api/v1/config (the `GetPublicConfig` operationId).
 func (c *Client) GetPublicConfig(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -11292,6 +11354,34 @@ func (c *Client) UpdateMyNotificationRoute(ctx context.Context, org OrgPath, rou
 // Corresponds with POST /api/v1/orgs/{org}/users/me/notification-routes/{routeUid}/test (the `TestMyNotificationRoute` operationId).
 func (c *Client) TestMyNotificationRoute(ctx context.Context, org OrgPath, routeUid RouteUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTestMyNotificationRouteRequest(c.Server, org, routeUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateMyTelegramLink Mint a single-use Telegram connect link for the caller
+//
+// Returns a `https://t.me/<botUsername>?start=<token>` deep link carrying
+// a single-use, high-entropy token (TTL 15 minutes).
+//
+// Nothing is created by this call. The Telegram contact only comes into
+// existence when the user actually presses **Start** in Telegram and the
+// resulting `/start <token>` reaches the instance webhook — pressing Start
+// is both the proof of reachability and the opt-in, which is why this
+// channel has no verification code round-trip.
+//
+// A replayed token is a no-op, not a second contact. Poll
+// `GET /api/v1/orgs/{org}/users/me/notification-routes` to observe the new
+// contact appear.
+//
+// Corresponds with POST /api/v1/orgs/{org}/users/me/telegram/link (the `CreateMyTelegramLink` operationId).
+func (c *Client) CreateMyTelegramLink(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateMyTelegramLinkRequest(c.Server, org)
 	if err != nil {
 		return nil, err
 	}
@@ -21347,6 +21437,40 @@ func NewTestMyNotificationRouteRequest(server string, org OrgPath, routeUid Rout
 	return req, nil
 }
 
+// NewCreateMyTelegramLinkRequest constructs an http.Request for the CreateMyTelegramLink method
+func NewCreateMyTelegramLinkRequest(server string, org OrgPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/users/me/telegram/link", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListUserNotificationsRequest constructs an http.Request for the ListUserNotifications method
 func NewListUserNotificationsRequest(server string, org OrgPath, uid UserUidPath, params *ListUserNotificationsParams) (*http.Request, error) {
 	var err error
@@ -22779,7 +22903,9 @@ type ClientWithResponsesInterface interface {
 	// When a feature is disabled its configuration fields are **omitted**
 	// rather than returned empty — e.g. with PostHog unconfigured the
 	// response is exactly `{"posthog": {"enabled": false}}`. The same rule
-	// applies to `whatsapp`, which is a single resolved boolean.
+	// applies to `whatsapp` and `telegram`: `whatsapp` is a single resolved
+	// boolean, and `telegram` emits its public bot username only while it is
+	// enabled.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -24455,6 +24581,26 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/users/me/notification-routes/{routeUid}/test (the `TestMyNotificationRoute` operationId).
 	TestMyNotificationRouteWithResponse(ctx context.Context, org OrgPath, routeUid RouteUidPath, reqEditors ...RequestEditorFn) (*TestMyNotificationRouteResult, error)
+
+	// CreateMyTelegramLinkWithResponse Mint a single-use Telegram connect link for the caller
+	//
+	// Returns a `https://t.me/<botUsername>?start=<token>` deep link carrying
+	// a single-use, high-entropy token (TTL 15 minutes).
+	//
+	// Nothing is created by this call. The Telegram contact only comes into
+	// existence when the user actually presses **Start** in Telegram and the
+	// resulting `/start <token>` reaches the instance webhook — pressing Start
+	// is both the proof of reachability and the opt-in, which is why this
+	// channel has no verification code round-trip.
+	//
+	// A replayed token is a no-op, not a second contact. Poll
+	// `GET /api/v1/orgs/{org}/users/me/notification-routes` to observe the new
+	// contact appear.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/users/me/telegram/link (the `CreateMyTelegramLink` operationId).
+	CreateMyTelegramLinkWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*CreateMyTelegramLinkResult, error)
 
 	// ListUserNotificationsWithResponse List a user's notification deliveries
 	//
@@ -35238,6 +35384,68 @@ func (r TestMyNotificationRouteResult) ContentType() string {
 	return ""
 }
 
+type CreateMyTelegramLinkResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *TelegramLinkResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateMyTelegramLinkResult) GetJSON201() *TelegramLinkResponse {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateMyTelegramLinkResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateMyTelegramLinkResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateMyTelegramLinkResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateMyTelegramLinkResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateMyTelegramLinkResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateMyTelegramLinkResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateMyTelegramLinkResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListUserNotificationsResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -37097,7 +37305,9 @@ func (c *ClientWithResponses) ListCheckTypeSamplesWithResponse(ctx context.Conte
 // When a feature is disabled its configuration fields are **omitted**
 // rather than returned empty — e.g. with PostHog unconfigured the
 // response is exactly `{"posthog": {"enabled": false}}`. The same rule
-// applies to `whatsapp`, which is a single resolved boolean.
+// applies to `whatsapp` and `telegram`: `whatsapp` is a single resolved
+// boolean, and `telegram` emits its public bot username only while it is
+// enabled.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -40074,6 +40284,32 @@ func (c *ClientWithResponses) TestMyNotificationRouteWithResponse(ctx context.Co
 		return nil, err
 	}
 	return ParseTestMyNotificationRouteResult(rsp)
+}
+
+// CreateMyTelegramLinkWithResponse Mint a single-use Telegram connect link for the caller
+//
+// Returns a `https://t.me/<botUsername>?start=<token>` deep link carrying
+// a single-use, high-entropy token (TTL 15 minutes).
+//
+// Nothing is created by this call. The Telegram contact only comes into
+// existence when the user actually presses **Start** in Telegram and the
+// resulting `/start <token>` reaches the instance webhook — pressing Start
+// is both the proof of reachability and the opt-in, which is why this
+// channel has no verification code round-trip.
+//
+// A replayed token is a no-op, not a second contact. Poll
+// `GET /api/v1/orgs/{org}/users/me/notification-routes` to observe the new
+// contact appear.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/users/me/telegram/link (the `CreateMyTelegramLink` operationId).
+func (c *ClientWithResponses) CreateMyTelegramLinkWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*CreateMyTelegramLinkResult, error) {
+	rsp, err := c.CreateMyTelegramLink(ctx, org, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateMyTelegramLinkResult(rsp)
 }
 
 // ListUserNotificationsWithResponse List a user's notification deliveries
@@ -48242,6 +48478,53 @@ func ParseTestMyNotificationRouteResult(rsp *http.Response) (*TestMyNotification
 			return nil, err
 		}
 		response.JSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateMyTelegramLinkResult parses an HTTP response from a CreateMyTelegramLinkWithResponse call
+func ParseCreateMyTelegramLinkResult(rsp *http.Response) (*CreateMyTelegramLinkResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateMyTelegramLinkResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest TelegramLinkResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 
