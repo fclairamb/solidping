@@ -80,16 +80,16 @@ func WithSender(sender Sender) Option {
 
 // NewHandler builds a Telegram webhook handler.
 func NewHandler(dbSvc db.Service, cfg *config.Config, opts ...Option) *Handler {
-	h := &Handler{db: dbSvc, cfg: cfg, log: slog.Default()}
+	handler := &Handler{db: dbSvc, cfg: cfg, log: slog.Default()}
 	for _, opt := range opts {
-		opt(h)
+		opt(handler)
 	}
 
-	if h.sender == nil {
-		h.sender = &clientSender{cfg: h.telegramConfig()}
+	if handler.sender == nil {
+		handler.sender = &clientSender{cfg: handler.telegramConfig()}
 	}
 
-	return h
+	return handler
 }
 
 // telegramConfig returns the instance Telegram config, or the zero value.
