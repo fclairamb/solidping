@@ -47,6 +47,21 @@ response is exactly:
 (`posthog.enabled == true && posthog.project_api_key != ""`), which is the same
 rule the backend capture client and the dashboard apply.
 
+The document also carries the instance-level messaging capability flags, each
+resolved the same way:
+
+```json
+{
+  "whatsapp": { "enabled": true },
+  "telegram": { "enabled": true, "botUsername": "solidping_bot" }
+}
+```
+
+`telegram.enabled` is `telegram.enabled && bot_token != "" && bot_username != ""`
+— the username is part of the rule because without it the dashboard cannot build
+a connect link, so the feature would be half-on. `botUsername` is emitted **only
+while enabled**; the bot token and the webhook secret never appear here.
+
 ## System parameters
 
 ### GET /api/v1/system/parameters

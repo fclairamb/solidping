@@ -135,6 +135,29 @@ List the conversation references captured when the bot was added to Teams
 channels, for the destination picker. Unlike Slack this reads stored state —
 a Teams bot cannot enumerate channels it was never added to. Auth: required
 
+## Telegram
+
+Inbound endpoint for the instance-level Telegram bot. Telegram is a **direct
+channel**, not a connection type: there is no `telegram` integration row to
+create, only one instance bot (`SP_TELEGRAM_*`) and per-user connected chats.
+
+### POST /api/v1/integrations/telegram/webhook
+Bot API webhook — Telegram posts `message` and `my_chat_member` updates here.
+Auth: the `X-Telegram-Bot-Api-Secret-Token` header only, compared constant-time
+against `SP_TELEGRAM_WEBHOOK_SECRET` **before the body is parsed**. Telegram
+does not sign its payloads, so that header is the only line of defense; a
+missing or mismatched value is a bare `403` with no body detail. The body is
+capped at 1 MiB before the check.
+
+Registered only when `telegram.Active()`. Once authenticated the handler
+**always** answers `200`, including for update types it does not implement —
+Telegram retries any non-2xx forever.
+
+Handled updates: `/start <token>` (redeems a single-use connect token and
+creates the verified contact), `/stop` and `/unlink` (delete every contact for
+the chat), and `my_chat_member` reporting the bot was blocked or kicked (same
+deletion). Everything else is info-logged and acknowledged.
+
 ## Freebox
 
 ### POST /api/v1/orgs/:org/integrations/freebox/pair

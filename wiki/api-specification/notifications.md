@@ -50,6 +50,20 @@ Delete a contact (and the routes bound to it).
 ### POST /api/v1/orgs/:org/users/me/notification-routes/:routeUid/test
 Send a test notification through the route so the user can confirm it works.
 
+### POST /api/v1/orgs/:org/users/me/telegram/link
+Mint a single-use Telegram connect link (`{url, expiresAt}`, TTL 15 minutes).
+Nothing is created here: the `telegram` contact only comes into existence when
+the user presses **Start** in Telegram and the resulting `/start <token>`
+reaches the instance webhook. Pressing Start is both the reachability proof and
+the opt-in, which is why this channel has no verification round-trip.
+Returns `VALIDATION_ERROR` when the instance has no Telegram bot configured.
+
+**`telegram` contacts may never be created via
+`POST /notification-contacts`** — that request is rejected with
+`VALIDATION_ERROR`. A telegram contact's value is a chat id and nothing would
+catch a wrong one, so accepting it from a request body would let any user page
+a stranger.
+
 ## Web push
 
 ### GET /api/v1/orgs/:org/webpush/vapid-public-key
