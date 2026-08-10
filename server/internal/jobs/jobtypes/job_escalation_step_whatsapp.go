@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"time"
 
@@ -15,6 +16,13 @@ import (
 // whatsAppDetailCap bounds the free-text detail body variable. Meta rejects
 // oversized template parameters, and a template variable is not a log line.
 const whatsAppDetailCap = 160
+
+// whatsAppButtonParamCap bounds the URL-button suffix for the same reason
+// whatsAppDetailCap bounds the detail: Meta rejects an oversized template
+// parameter, and that rejection fails the *entire* send — the alert would never
+// reach the pager. A real slug + UID sits far below this, so the cap only ever
+// fires on corrupt input.
+const whatsAppButtonParamCap = 128
 
 // pageWhatsApp delivers an escalation alert to a user's verified WhatsApp
 // contact through the instance-level WABA. It mirrors pagePhone:
@@ -28,6 +36,13 @@ const whatsAppDetailCap = 160
 //   - a send failure returns 0 so the escalation step falls through to the next
 //     step, precisely as an SMS failure does. A paging channel that swallowed
 //     its own failure would be worse than no channel at all.
+//
+// The alert also carries a URL button pointing at the check's dashboard page,
+// so the recipient is one tap from what broke instead of hunting for it. The
+// button is best-effort by construction: an unresolvable org slug leaves
+// ButtonParam empty, and an empty ButtonParam emits no button component — which
+// is exactly what an installation still running the older, buttonless approved
+// template needs.
 func (r *EscalationStepJobRun) pageWhatsApp(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	incident *models.Incident, route *models.UserNotificationRoute, filter map[string]bool,
@@ -66,6 +81,14 @@ func (r *EscalationStepJobRun) pageWhatsApp(
 		return 0
 	}
 
+	orgSlug := r.orgSlugFor(ctx, jctx, log, incident.OrganizationUID)
+
+	buttonParam := whatsAppCheckButtonParam(orgSlug, incident.CheckUID)
+	if buttonParam == "" {
+		log.InfoContext(ctx, "whatsapp alert has no check link; sending without the button",
+			"incidentUID", incident.UID, "orgUID", incident.OrganizationUID)
+	}
+
 	messageID, err := client.SendTemplate(ctx, &whatsapp.TemplateMessage{
 		To:       contact.Value,
 		Template: cfg.ResolvedAlertTemplate(),
@@ -74,8 +97,9 @@ func (r *EscalationStepJobRun) pageWhatsApp(
 			r.phoneCheckName(ctx, jctx, incident),
 			whatsAppStateLabel(incident),
 			r.whatsAppDetail(ctx, jctx, incident),
-			r.orgSlugFor(ctx, jctx, log, incident.OrganizationUID),
+			orgSlug,
 		},
+		ButtonParam: buttonParam,
 	})
 	if err != nil {
 		// Every failure class is handled: log it with the stable reason string
@@ -91,6 +115,50 @@ func (r *EscalationStepJobRun) pageWhatsApp(
 	r.auditPhoneSend(ctx, jctx, log, incident, route.UserUID, models.UsageCounterKindWhatsApp, messageID)
 
 	return 1
+}
+
+// whatsAppCheckButtonParam builds the URL-button variable of the alert
+// template: the path Meta appends to the static prefix fixed when the template
+// was approved, documented as `{baseURL}/dash0/`. The result therefore resolves
+// to the check page, `/dash0/orgs/{org}/checks/{checkUid}`.
+//
+// The base URL deliberately lives in the approved template rather than in
+// config: a WhatsApp URL button takes a fixed prefix plus one variable, so a
+// template is not portable across installations and each one creates its own
+// (see web/docs/docs/configuration/whatsapp.md).
+//
+// Returns "" when the org slug or check UID is unknown, which makes the caller
+// send with no button at all — a link pointing at the wrong place is worse than
+// no link.
+func whatsAppCheckButtonParam(orgSlug, checkUID string) string {
+	orgSlug = strings.TrimSpace(orgSlug)
+	checkUID = strings.TrimSpace(checkUID)
+
+	if orgSlug == "" || checkUID == "" {
+		return ""
+	}
+
+	// Slugs and UIDs are already path-safe; escape anyway, because a stray "/"
+	// or space would produce a silently broken button rather than an error.
+	suffix := "orgs/" + url.PathEscape(orgSlug) + "/checks/" + url.PathEscape(checkUID)
+
+	if len(suffix) > whatsAppButtonParamCap {
+		suffix = trimPartialEscape(suffix[:whatsAppButtonParamCap])
+	}
+
+	return suffix
+}
+
+// trimPartialEscape drops a trailing incomplete percent-escape left behind by a
+// byte-wise truncation: "%4" is not a valid escape and would break the URL.
+func trimPartialEscape(s string) string {
+	for i := len(s) - 1; i >= 0 && i >= len(s)-2; i-- {
+		if s[i] == '%' {
+			return s[:i]
+		}
+	}
+
+	return s
 }
 
 // whatsAppStateLabel renders the incident's current state as the template's

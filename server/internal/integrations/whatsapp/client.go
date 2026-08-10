@@ -216,9 +216,19 @@ type TemplateMessage struct {
 	Language string
 	// BodyParams are the ordered {{1}}…{{n}} body variables.
 	BodyParams []string
-	// ButtonParam, when non-empty, adds the copy-code URL button component
-	// Meta forces on *authentication*-category templates. It carries the same
-	// value as the code in the body.
+	// ButtonParam, when non-empty, adds the template's dynamic URL button
+	// component. It is NOT authentication-specific: the same component serves
+	// both callers, because Meta gives a URL button exactly one variable.
+	//
+	//   - authentication templates (`solidping_verify`): the one-tap copy-code
+	//     button Meta forces on the category; the value repeats the body code;
+	//   - the alert template (`solidping_alert`): the "Visit website" button,
+	//     whose value is the path appended to the static prefix baked into the
+	//     approved template (see the docs — the base URL lives in the template,
+	//     not in config).
+	//
+	// Empty means no button component at all, which is what an installation
+	// whose approved template has no button requires.
 	ButtonParam string
 }
 
@@ -337,8 +347,10 @@ func buildTemplatePayload(msg *TemplateMessage) (*templatePayload, error) {
 	}
 
 	if msg.ButtonParam != "" {
-		// Meta forces the one-tap copy-code URL button on authentication
-		// templates; its parameter repeats the code from the body.
+		// The dynamic URL button component. Meta allows a URL button exactly one
+		// variable, appended to the static prefix fixed at template-approval
+		// time — so the same shape carries the authentication copy-code and the
+		// alert template's deep link to the check. See TemplateMessage.
 		components = append(components, templateComponent{
 			Type:       "button",
 			SubType:    "url",
