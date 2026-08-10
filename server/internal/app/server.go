@@ -459,6 +459,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		slog.InfoContext(ctx, "Product analytics enabled", "host", s.config.PostHog.ResolvedHost())
 	}
 
+	// Derive the Telegram bot username and webhook secret the operator did not
+	// have to supply. SYNCHRONOUS and here on purpose: it WRITES cfg.Telegram,
+	// which every handler below reads concurrently, so it must complete before
+	// a single route exists — doing it from the async bootstrapTelegram
+	// goroutine would be a real data race. It also has to precede that
+	// goroutine's setWebhook, or Telegram could end up holding a secret no pod
+	// in the fleet knows. No-op unless Telegram is configured.
+	resolveTelegramSettings(ctx, s.dbService, s.config)
+
 	router := httpx.New()
 	rateLimiter := middleware.NewRateLimiter(s.config.Server.RateLimiting, ctx)
 	s.rateLimiter = rateLimiter

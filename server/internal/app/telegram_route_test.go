@@ -14,9 +14,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/integrations/telegram"
 )
 
-// telegramRouteServer boots a real server over an in-memory SQLite DB with the
-// supplied Telegram config and returns the live test server.
-func telegramRouteServer(t *testing.T, tg config.TelegramConfig) *httptest.Server {
+// telegramRouteServer boots a real server (real NewServer + real SetupRoutes,
+// so the synchronous Telegram resolution actually runs) over an in-memory
+// SQLite DB with the supplied Telegram config.
+func telegramRouteServer(t *testing.T, tg config.TelegramConfig) (*Server, *httptest.Server) {
 	t.Helper()
 
 	r := require.New(t)
@@ -38,7 +39,7 @@ func telegramRouteServer(t *testing.T, tg config.TelegramConfig) *httptest.Serve
 	ts := httptest.NewServer(server.Handler())
 	t.Cleanup(ts.Close)
 
-	return ts
+	return server, ts
 }
 
 // postTelegramWebhook fires one update at the real router and returns the
@@ -65,18 +66,22 @@ func postTelegramWebhook(t *testing.T, ts *httptest.Server, secret string) int {
 
 // TestTelegramWebhookRouteRegisteredWithTokenOnly is the route half of the
 // Configured() vs Active() split. A first boot holding ONLY a bot token has no
-// @username yet, and a route that was never registered cannot be repaired by
-// any later GetMe without a restart — so the route must exist, answering 403
-// (not 404) to an unauthenticated caller and 200 to an authenticated one.
+// @username yet — and here getMe cannot supply one either — but a route that
+// was never registered cannot be repaired without a restart, so it must exist:
+// 403 (not 404) to an unauthenticated caller, 200 to an authenticated one.
 func TestTelegramWebhookRouteRegisteredWithTokenOnly(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 
-	ts := telegramRouteServer(t, config.TelegramConfig{
+	fake := newFakeTelegramAPI(t)
+	fake.failGetMe = true
+
+	_, ts := telegramRouteServer(t, config.TelegramConfig{
 		Enabled:       true,
 		BotToken:      "123456789:AAtest",
 		WebhookSecret: "route-test-secret",
+		BaseURL:       fake.server.URL,
 		// BotUsername deliberately absent.
 	})
 
@@ -98,7 +103,7 @@ func TestTelegramWebhookRouteAbsentWithoutToken(t *testing.T) {
 
 	r := require.New(t)
 
-	ts := telegramRouteServer(t, config.TelegramConfig{})
+	_, ts := telegramRouteServer(t, config.TelegramConfig{})
 
 	code := postTelegramWebhook(t, ts, "whatever")
 	// 404 or 405 depending on what the catch-all SPA route claims for the path;
@@ -108,17 +113,21 @@ func TestTelegramWebhookRouteAbsentWithoutToken(t *testing.T) {
 
 // TestPublicConfigTelegramOffWithTokenOnly is the connect-surface half: while
 // the webhook route is live and escalations dispatch, /api/v1/config must still
-// report Telegram off, because the dashboard cannot build a t.me link without
-// the @username.
+// report Telegram off whenever the @username is unknown — here because getMe is
+// unreachable — since the dashboard cannot build a t.me link without it.
 func TestPublicConfigTelegramOffWithTokenOnly(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 
-	ts := telegramRouteServer(t, config.TelegramConfig{
+	fake := newFakeTelegramAPI(t)
+	fake.failGetMe = true
+
+	_, ts := telegramRouteServer(t, config.TelegramConfig{
 		Enabled:       true,
 		BotToken:      "123456789:AAtest",
 		WebhookSecret: "route-test-secret",
+		BaseURL:       fake.server.URL,
 	})
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet,

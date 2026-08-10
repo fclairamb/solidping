@@ -65,8 +65,11 @@ func verifyTelegramIdentity(ctx context.Context, client *telegram.Client, cfg *c
 		return
 	}
 
+	// Only an EXPLICITLY configured username can disagree with the token. When
+	// it was derived from getMe (the default now) there is by construction
+	// nothing to disagree with, so warning would be pure noise.
 	configured := cfg.ResolvedBotUsername()
-	if !strings.EqualFold(configured, bot.Username) {
+	if configured != "" && !strings.EqualFold(configured, bot.Username) {
 		slog.WarnContext(ctx,
 			"SP_TELEGRAM_BOT_USERNAME does not match the bot this token belongs to; "+
 				"connect links will point at the wrong bot",

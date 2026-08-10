@@ -35,6 +35,9 @@ type fakeTelegramAPI struct {
 	failGetWebhookInfo bool
 	// getMeUsername is what getMe answers with.
 	getMeUsername string
+	// failGetMe makes getMe answer a Bot API error, standing in for an
+	// unreachable Telegram on a first boot.
+	failGetMe bool
 }
 
 func newFakeTelegramAPI(t *testing.T) *fakeTelegramAPI {
@@ -61,12 +64,20 @@ func newFakeTelegramAPI(t *testing.T) *fakeTelegramAPI {
 
 		registeredURL, lastError := fake.registeredURL, fake.lastError
 		failInfo, username := fake.failGetWebhookInfo, fake.getMeUsername
+		failMe := fake.failGetMe
 		fake.mu.Unlock()
 
 		w.Header().Set("Content-Type", "application/json")
 
 		switch method {
 		case "getMe":
+			if failMe {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"ok":false,"error_code":500,"description":"boom"}`))
+
+				return
+			}
+
 			_, _ = w.Write([]byte(`{"ok":true,"result":{"id":1,"is_bot":true,"username":"` + username + `"}}`))
 		case "getWebhookInfo":
 			if failInfo {
