@@ -1446,6 +1446,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	if s.config.Telegram.Active() {
 		telegramHandler := telegramcb.NewHandler(s.dbService, s.config)
 		telegramIntegration := api.NewGroup("/integrations/telegram")
+		// Path kept in sync with TelegramWebhookPath, which the boot-time
+		// self-registration uses.
 		telegramIntegration.POST("/webhook", telegramHandler.HandleUpdate)
 	}
 
@@ -2383,6 +2385,11 @@ func (s *Server) Start(ctx context.Context) error {
 		go s.runSlackSocketSupervisor(runnerCtx)
 	}
 
+	// Telegram boot-time sanity check + webhook self-heal (no-op unless this
+	// node serves the API and Telegram is configured). Best-effort and off the
+	// startup path: a Telegram outage must never stop the server from booting.
+	//nolint:contextcheck // runnerCtx is intentionally separate from request context
+	go bootstrapTelegram(runnerCtx, s.config)
 	// Run startup job synchronously to ensure default org exists before workers start
 	if s.config.ShouldRunJobs() {
 		if err := s.runStartupJob(ctx); err != nil {
