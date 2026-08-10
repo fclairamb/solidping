@@ -90,8 +90,9 @@ WhatsApp Manager rejects a body that:
    increase the message length."*
 
 Rule 3 is the one that catches people out: four variables need a fair amount of
-surrounding prose. A terse body such as `Alert: {{1}} is now {{2}}.` / `Detail:
-{{3}}` / `Organization: {{4}}. Sent by SolidPing.` is **rejected** even though it
+surrounding prose. A terse body such as
+`Alert: {{1}} is now {{2}}.` / `Detail: {{3}}` /
+`Organization: {{4}}. Sent by SolidPing.` is **rejected** even though it
 satisfies rules 1 and 2. The body above is padded enough to pass; if you shorten
 it, keep the ratio of static text to placeholders roughly comparable.
 
