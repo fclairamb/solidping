@@ -79,7 +79,7 @@ func checksDepsListAction(ctx context.Context, cmd *cli.Command) error {
 
 // resolveCheckUID looks up a check by uid or slug and returns its uid.
 func resolveCheckUID(ctx context.Context, apiClient *client.SolidPingClient, org, ident string) (string, error) {
-	resp, err := apiClient.GetCheckWithResponse(ctx, org, ident)
+	resp, err := apiClient.GetCheckWithResponse(ctx, org, ident, nil)
 	if err != nil {
 		return "", fmt.Errorf("get check %s: %w", ident, err)
 	}
@@ -442,7 +442,7 @@ func checksDepsSetAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	// PUT-by-slug needs the existing config to preserve type/url/etc; fetch first.
-	existing, err := apiClient.GetCheckWithResponse(ctx, cliCtx.GetOrg(), child)
+	existing, err := apiClient.GetCheckWithResponse(ctx, cliCtx.GetOrg(), child, nil)
 	if err != nil {
 		output.PrintError(os.Stdout, fmt.Sprintf("Failed to load check %s: %v", child, err))
 		return cli.Exit("", 1)

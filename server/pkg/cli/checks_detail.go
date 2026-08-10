@@ -32,7 +32,7 @@ func checksGetAction(ctx context.Context, cmd *cli.Command) error {
 		return cliCtx.HandleAuthError(err)
 	}
 
-	resp, err := apiClient.GetCheckWithResponse(ctx, cliCtx.GetOrg(), identifier)
+	resp, err := apiClient.GetCheckWithResponse(ctx, cliCtx.GetOrg(), identifier, nil)
 	if err != nil {
 		return cliCtx.HandleError("Failed to get check", err)
 	}
