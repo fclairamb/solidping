@@ -214,3 +214,71 @@ func TestBuild_WhatsAppFlag(t *testing.T) {
 		r.NotContains(body, secret)
 	}
 }
+
+// TestBuild_TelegramFlag proves the public document reports the *resolved*
+// Telegram enablement rule (kill switch AND token AND username), and that the
+// bot username — which the browser genuinely needs to build a connect link — is
+// the ONLY Telegram value that ever leaves the server.
+func TestBuild_TelegramFlag(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// Nothing configured at all.
+	r.False(publicconfig.Build(&config.Config{}).Telegram.Enabled)
+
+	cfg := &config.Config{}
+
+	// Kill switch on, but no credentials: still off.
+	cfg.Telegram = config.TelegramConfig{Enabled: true}
+	r.False(publicconfig.Build(cfg).Telegram.Enabled)
+
+	// Token without a username is half-configured — the dashboard could not
+	// build a connect link, so the feature must report itself off.
+	cfg.Telegram = config.TelegramConfig{Enabled: true, BotToken: "123:AAsuper-secret-bot-token"}
+	r.False(publicconfig.Build(cfg).Telegram.Enabled)
+
+	// Username without a token cannot send.
+	cfg.Telegram = config.TelegramConfig{Enabled: true, BotUsername: "solidping_bot"}
+	r.False(publicconfig.Build(cfg).Telegram.Enabled)
+
+	cfg.Telegram = config.TelegramConfig{
+		Enabled:       true,
+		BotToken:      "123:AAsuper-secret-bot-token",
+		BotUsername:   "@solidping_bot",
+		WebhookSecret: "super-secret-webhook-secret",
+	}
+
+	resp := publicconfig.Build(cfg)
+	r.True(resp.Telegram.Enabled)
+	// Normalized for the t.me link: no leading '@'.
+	r.Equal("solidping_bot", resp.Telegram.BotUsername)
+
+	encoded, err := json.Marshal(resp)
+	r.NoError(err)
+
+	body := string(encoded)
+	r.Contains(body, `"telegram":{"enabled":true,"botUsername":"solidping_bot"}`)
+
+	for _, secret := range []string{"super-secret-bot-token", "super-secret-webhook-secret"} {
+		r.NotContains(body, secret)
+	}
+}
+
+// TestBuild_TelegramUsernameOmittedWhenDisabled proves an unconfigured instance
+// emits nothing at all beyond the false flag — an operator must be able to see
+// at a glance that the feature is wholly unwired.
+func TestBuild_TelegramUsernameOmittedWhenDisabled(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	cfg := &config.Config{}
+	cfg.Telegram = config.TelegramConfig{Enabled: false, BotUsername: "solidping_bot"}
+
+	encoded, err := json.Marshal(publicconfig.Build(cfg))
+	r.NoError(err)
+
+	r.Contains(string(encoded), `"telegram":{"enabled":false}`)
+	r.NotContains(string(encoded), "solidping_bot")
+}

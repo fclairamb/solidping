@@ -27,7 +27,7 @@ const (
 	botErrChatNotFound = `{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}`
 	botErrUnauthorized = `{"ok":false,"error_code":401,"description":"Unauthorized"}`
 	botErrRateLimited  = `{"ok":false,"error_code":429,"description":"Too Many",` +
-		`"parameters":{"retry_after":5}}`
+		`"parameters":{"retry_after":1}}`
 	botErrServer      = `{"ok":false,"error_code":500,"description":"Internal Server Error"}`
 	botErrReplyGone   = `{"ok":false,"error_code":400,"description":"Bad Request: message to be replied not found"}`
 	botErrEditMissing = `{"ok":false,"error_code":400,"description":"Bad Request: message to edit not found"}`
@@ -339,12 +339,16 @@ func TestDispatch_TelegramSendFailureFallsThrough(t *testing.T) {
 		name     string
 		status   int
 		response string
+		// attempts is how many sends the dispatcher should make. A rate limit
+		// carrying a short retry_after is waited out and retried once; every
+		// other class is attempted exactly once.
+		attempts int
 	}{
-		{"blocked", http.StatusForbidden, botErrBlocked},
-		{"chat gone", http.StatusBadRequest, botErrChatNotFound},
-		{"bad token", http.StatusUnauthorized, botErrUnauthorized},
-		{"rate limited", http.StatusTooManyRequests, botErrRateLimited},
-		{"server error", http.StatusInternalServerError, botErrServer},
+		{"blocked", http.StatusForbidden, botErrBlocked, 1},
+		{"chat gone", http.StatusBadRequest, botErrChatNotFound, 1},
+		{"bad token", http.StatusUnauthorized, botErrUnauthorized, 1},
+		{"rate limited", http.StatusTooManyRequests, botErrRateLimited, 2},
+		{"server error", http.StatusInternalServerError, botErrServer, 1},
 	}
 
 	for _, tc := range cases {
@@ -364,7 +368,7 @@ func TestDispatch_TelegramSendFailureFallsThrough(t *testing.T) {
 			)
 
 			r.Equal(0, sent, "a failed send must not be reported as delivered")
-			r.Equal(1, fake.sendCount(), "the send was attempted")
+			r.Equal(tc.attempts, fake.sendCount(), "the send was attempted")
 		})
 	}
 }
@@ -746,4 +750,60 @@ func TestTelegramIncidentURL(t *testing.T) {
 	// broken one.
 	r.Empty(telegramIncidentURL("", "acme", "abc"))
 	r.Empty(telegramIncidentURL("https://app.example.com", "", "abc"))
+}
+
+// Telegram's per-chat burst limit is ~1 message/second, and it tells us exactly
+// how long to wait. Honoring that number turns a would-be lost page into a
+// delivered one; a generic backoff would either give up or stall the worker.
+func TestDispatch_TelegramHonorsRetryAfterAndDelivers(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, false, "")
+	fake, baseURL := newFakeBotAPI(t,
+		botReply{
+			http.StatusTooManyRequests,
+			`{"ok":false,"error_code":429,"description":"Too Many Requests","parameters":{"retry_after":1}}`,
+		},
+		botReply{http.StatusOK, botOK(300)},
+	)
+	enableTelegram(env, baseURL)
+
+	start := time.Now()
+	sent := newRun().dispatchRoute(
+		ctx, env.jctx, slog.Default(), env.incident,
+		telegramRoute(env.org.UID, true), map[string]bool{"telegram": true},
+	)
+
+	r.Equal(1, sent, "a throttled send must be retried after Telegram's own cooldown")
+	r.Equal(2, fake.sendCount())
+	r.GreaterOrEqual(time.Since(start), time.Second, "the retry must wait the requested cooldown")
+}
+
+// A cooldown longer than we are willing to hold a worker for is NOT waited out:
+// the step falls through so the next escalation repeat can try instead.
+func TestDispatch_TelegramDoesNotWaitOutALongCooldown(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, false, "")
+	fake, baseURL := newFakeBotAPI(t, botReply{
+		http.StatusTooManyRequests,
+		`{"ok":false,"error_code":429,"description":"Too Many Requests","parameters":{"retry_after":3600}}`,
+	})
+	enableTelegram(env, baseURL)
+
+	start := time.Now()
+	sent := newRun().dispatchRoute(
+		ctx, env.jctx, slog.Default(), env.incident,
+		telegramRoute(env.org.UID, true), map[string]bool{"telegram": true},
+	)
+
+	r.Equal(0, sent)
+	r.Equal(1, fake.sendCount(), "an hour-long cooldown must not be retried inline")
+	r.Less(time.Since(start), 10*time.Second)
 }

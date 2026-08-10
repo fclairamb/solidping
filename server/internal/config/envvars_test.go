@@ -173,3 +173,63 @@ func TestWhatsAppDefaultsOff(t *testing.T) {
 	complete := WhatsAppConfig{Enabled: true, AccessToken: "t", PhoneNumberID: "1"}
 	r.True(complete.Active())
 }
+
+// TestTelegramEnvVarsBind proves every SP_TELEGRAM_* name in the manual-reader
+// list actually lands on its struct field. Every one of these keys except
+// `enabled` has a snake_case koanf tag that koanf's env provider can never
+// reach on its own (SP_TELEGRAM_BOT_TOKEN collapses to telegram.bot.token), so
+// without applyTelegramEnv they would be silent no-ops — the failure mode this
+// test exists to catch.
+func TestTelegramEnvVarsBind(t *testing.T) {
+	t.Setenv("SP_TELEGRAM_ENABLED", "true")
+	t.Setenv("SP_TELEGRAM_BOT_TOKEN", "123456789:AAtoken")
+	t.Setenv("SP_TELEGRAM_BOT_USERNAME", "@solidping_bot")
+	t.Setenv("SP_TELEGRAM_WEBHOOK_SECRET", "a-long-random-secret")
+	t.Setenv("SP_TELEGRAM_BASE_URL", "https://telegram.test")
+	t.Setenv("SP_ENTITLEMENTS_TELEGRAM_RUNAWAY_PER_HOUR", "13")
+
+	r := require.New(t)
+	cfg, err := Load()
+	r.NoError(err)
+
+	r.True(cfg.Telegram.Enabled)
+	r.Equal("123456789:AAtoken", cfg.Telegram.BotToken)
+	r.Equal("@solidping_bot", cfg.Telegram.BotUsername)
+	// The '@' is stripped for link building: operators paste it both ways.
+	r.Equal("solidping_bot", cfg.Telegram.ResolvedBotUsername())
+	r.Equal("a-long-random-secret", cfg.Telegram.WebhookSecret)
+	r.Equal("https://telegram.test", cfg.Telegram.ResolvedBaseURL())
+	r.Equal(13, cfg.Entitlements.TelegramRunawayPerHour)
+	r.True(cfg.Telegram.Active())
+
+	// Every name used above must also be advertised as recognized, otherwise
+	// the startup env check would flag a variable that in fact binds.
+	recognized := RecognizedEnvVars()
+	for _, name := range []string{
+		"SP_TELEGRAM_ENABLED", "SP_TELEGRAM_BOT_TOKEN", "SP_TELEGRAM_BOT_USERNAME",
+		"SP_TELEGRAM_WEBHOOK_SECRET", "SP_TELEGRAM_BASE_URL",
+		"SP_ENTITLEMENTS_TELEGRAM_RUNAWAY_PER_HOUR",
+	} {
+		r.Contains(recognized, name)
+	}
+}
+
+// TestTelegramActiveRequiresUsername pins the enablement rule: a bot token
+// alone is not enough. Without a username the dashboard cannot build a connect
+// link, so the feature would be half-on — sends would work but nobody could
+// ever connect a chat.
+func TestTelegramActiveRequiresUsername(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.False((&TelegramConfig{Enabled: true, BotToken: "t"}).Active())
+	r.False((&TelegramConfig{Enabled: true, BotUsername: "u"}).Active())
+	r.False((&TelegramConfig{Enabled: false, BotToken: "t", BotUsername: "u"}).Active())
+	r.True((&TelegramConfig{Enabled: true, BotToken: "t", BotUsername: "u"}).Active())
+
+	// The default base URL is the real Bot API, and a trailing slash is trimmed
+	// so the client never builds "…//bot<token>/…".
+	r.Equal(DefaultTelegramBaseURL, (&TelegramConfig{}).ResolvedBaseURL())
+	r.Equal("https://proxy.test", (&TelegramConfig{BaseURL: "https://proxy.test/"}).ResolvedBaseURL())
+}

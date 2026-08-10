@@ -170,7 +170,7 @@ func (r *EscalationStepJobRun) sendTelegramAlert(
 	body := telegram.BuildAlertHTML(params)
 	replyTo := r.telegramThreadAnchor(ctx, jctx, log, incident, chatID)
 
-	messageID, err := client.SendMessage(ctx, &telegram.Message{
+	messageID, err := sendTelegramHonoringRetryAfter(ctx, log, client, &telegram.Message{
 		ChatID:           chatID,
 		HTML:             body,
 		ReplyToMessageID: replyTo,
@@ -181,7 +181,9 @@ func (r *EscalationStepJobRun) sendTelegramAlert(
 			"incidentUID", incident.UID, "chatId", chatID)
 		r.clearTelegramThreadAnchor(ctx, jctx, log, incident, chatID)
 
-		messageID, err = client.SendMessage(ctx, &telegram.Message{ChatID: chatID, HTML: body})
+		messageID, err = sendTelegramHonoringRetryAfter(
+			ctx, log, client, &telegram.Message{ChatID: chatID, HTML: body},
+		)
 	}
 
 	if err != nil {
@@ -201,6 +203,49 @@ func (r *EscalationStepJobRun) sendTelegramAlert(
 	}
 
 	return messageID, nil
+}
+
+// telegramMaxRetryAfter bounds how long a single send will wait out a Telegram
+// throttle inline. Telegram's own retry_after for a per-chat burst is usually a
+// second or two; anything longer belongs to the next escalation repeat, not to
+// a job holding a worker slot.
+const telegramMaxRetryAfter = 5 * time.Second
+
+// sendTelegramHonoringRetryAfter sends once and, on a throttle, waits exactly
+// as long as TELEGRAM asked before retrying once.
+//
+// This is the point of parsing `parameters.retry_after` at all: a generic
+// backoff either gives up too early (the page is lost to a one-second burst
+// limit) or waits far too long. Telegram's own number is the only one that
+// clears the throttle without compounding it.
+func sendTelegramHonoringRetryAfter(
+	ctx context.Context, log *slog.Logger, client *telegram.Client, msg *telegram.Message,
+) (int64, error) {
+	messageID, err := client.SendMessage(ctx, msg)
+	if err == nil || !errors.Is(err, telegram.ErrRateLimited) {
+		return messageID, err
+	}
+
+	wait := telegram.RetryAfter(err)
+	if wait <= 0 || wait > telegramMaxRetryAfter {
+		// No hint, or a cooldown too long to hold a worker for: let the step
+		// fall through and let the next escalation repeat try again.
+		return 0, err
+	}
+
+	log.InfoContext(ctx, "telegram throttled the send; waiting the requested cooldown",
+		"retryAfter", wait)
+
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return 0, err
+	case <-timer.C:
+	}
+
+	return client.SendMessage(ctx, msg)
 }
 
 // telegramThreadKey is the state key holding an incident's first message id in
