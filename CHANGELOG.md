@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.0](https://github.com/fclairamb/solidping/compare/v0.11.0...v0.12.0) (2026-08-10)
+
+
+### Features
+
+* Telegram alert channel, checks-list performance, and alert deep-links ([#209](https://github.com/fclairamb/solidping/issues/209)) ([f1dd548](https://github.com/fclairamb/solidping/commit/f1dd5483326ada48147f194703fc44aad56d98ee))
+
+
+### Bug Fixes
+
+* **deps:** update go dependencies (non-major) ([#207](https://github.com/fclairamb/solidping/issues/207)) ([24985eb](https://github.com/fclairamb/solidping/commit/24985eb906fb6b1ce85463ff3a56a4ee2b54cc62))
+
 ## [Unreleased]
 
 ### Features
