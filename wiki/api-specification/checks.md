@@ -21,6 +21,17 @@ Query parameters:
 - `cursor` - pagination cursor
 - `limit` - page size (default 20, max 100)
 
+With `with=last_status_change`, `lastStatusChange` is served from the check row
+itself (`checks.status` / `checks.status_changed_at`, maintained on the incident
+path) — no query, no scan of `results`. It therefore reports the **derived**
+check status change, the same value the `status` field carries, so an
+unconfirmed blip does not reset the timer. It is **omitted** for a check that
+has never recorded a transition (`status_changed_at IS NULL`): no fallback to
+`createdAt`, and no fallback to re-deriving transitions from raw results — that
+older behavior returned the raw-retention horizon (a timestamp that slid forward
+on every compaction run) for any check that had been stable through the whole
+retention window. See spec `2026-08-09-07`.
+
 With `with=last_result`, each item's `lastResult` is the **slim** shape —
 `{uid, status, timestamp, durationMs}`, no `output`/`metrics` — since no list
 consumer (checks table, org dashboard, status dashboard) reads those fields

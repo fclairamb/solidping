@@ -495,6 +495,88 @@ test.describe("Embeddable status widget", () => {
     ).toBe("a");
   });
 
+  // --- Spec 2026-08-10: data-link opt-out. ---
+
+  test("data-link=\"false\" keeps the pill an inert span even with a valid page.url", async ({
+    page,
+  }) => {
+    await stubSummary(page, {
+      status: "operational",
+      page: { name: "ok", slug: "ok", url: "https://status.example.com/" },
+    });
+
+    await gotoFixture(page, `data-page="x/y" data-link="false"`);
+
+    const pill = page.locator(PILL);
+    await expect(pill).toBeVisible({ timeout: 30_000 });
+
+    const result = await page.evaluate(() => {
+      const host = document.querySelector(
+        "[data-solidping-widget]",
+      ) as HTMLElement;
+      const el = host.shadowRoot!.querySelector(
+        '[data-testid="solidping-widget-pill"]',
+      )!;
+
+      return {
+        tag: el.tagName.toLowerCase(),
+        href: el.getAttribute("href"),
+        target: el.getAttribute("target"),
+      };
+    });
+    expect(result.tag).toBe("span");
+    expect(result.href).toBeNull();
+    expect(result.target).toBeNull();
+  });
+
+  // Regression pin on the additive guarantee: omitting data-link must leave
+  // existing pasted snippets linking exactly as before this attribute
+  // existed. This is a positive control for the test above — proof the span
+  // there comes from data-link="false", not from some unrelated regression
+  // that silently stopped linking altogether.
+  test("omitting data-link keeps the existing linked-when-safe behavior unchanged", async ({
+    page,
+  }) => {
+    await stubSummary(page, {
+      status: "operational",
+      page: { name: "ok", slug: "ok", url: "https://status.example.com/" },
+    });
+
+    await gotoFixture(page, `data-page="x/y"`);
+
+    const pill = page.locator(PILL);
+    await expect(pill).toBeVisible({ timeout: 30_000 });
+    expect(await pill.getAttribute("href")).toBe("https://status.example.com/");
+    expect(
+      await page.evaluate(() => {
+        const host = document.querySelector(
+          "[data-solidping-widget]",
+        ) as HTMLElement;
+
+        return host
+          .shadowRoot!.querySelector(
+            '[data-testid="solidping-widget-pill"]',
+          )!
+          .tagName.toLowerCase();
+      }),
+    ).toBe("a");
+  });
+
+  test("an unrecognized data-link value falls back to the default linked behavior", async ({
+    page,
+  }) => {
+    await stubSummary(page, {
+      status: "operational",
+      page: { name: "ok", slug: "ok", url: "https://status.example.com/" },
+    });
+
+    await gotoFixture(page, `data-page="x/y" data-link="nope"`);
+
+    const pill = page.locator(PILL);
+    await expect(pill).toBeVisible({ timeout: 30_000 });
+    expect(await pill.getAttribute("href")).toBe("https://status.example.com/");
+  });
+
   test("never sends credentials with the summary request", async ({ page }) => {
     let sawCookieOrAuth = false;
     await page.route("**/api/v1/status-pages/**/summary", async (route) => {

@@ -68,9 +68,9 @@ language you configure as `template_language` (default `en`).
 - **Body** (four variables):
 
   ```text
-  Alert: {{1}} is now {{2}}.
+  Alert: {{1}} is now {{2}}. Please check your SolidPing dashboard for more information.
   Detail: {{3}}
-  Organization: {{4}}. Sent by SolidPing.
+  Organization: {{4}}. Sent automatically by the SolidPing monitoring platform.
   ```
 
 | Variable | Meaning | Sample |
@@ -80,16 +80,90 @@ language you configure as `template_language` (default `en`).
 | `{{3}}` | Detail line | `connection refused` |
 | `{{4}}` | Organization slug | `acme` |
 
-:::caution Do not start or end the body with a variable
-WhatsApp Manager rejects a template body that **begins or ends with a
-placeholder**, and also rejects **two adjacent placeholders** (`{{1}} {{2}}`
-with nothing between them). The body above is written to satisfy both rules —
-`Alert: ` before `{{1}}` and `. Sent by SolidPing.` after `{{4}}`.
+- **Buttons**: one **URL** button, of the **dynamic** kind:
+
+  | Field | Value |
+  |---|---|
+  | Type | Visit website → **Dynamic** |
+  | Button text | `Open check` |
+  | URL | `https://solidping.example.com/dash0/` + `{{1}}` |
+  | URL sample | `orgs/acme/checks/1f0b…` |
+
+  Replace `solidping.example.com` with **your** installation's base URL — the
+  same host you serve the dashboard on. SolidPing fills `{{1}}` with
+  `orgs/{organization}/checks/{check uid}`, so the button lands the recipient
+  straight on the page of the check that broke.
+
+  Via the WABA API (`POST /{waba-id}/message_templates`), that is one more
+  component alongside the body:
+
+  ```json
+  {
+    "type": "BUTTONS",
+    "buttons": [
+      {
+        "type": "URL",
+        "text": "Open check",
+        "url": "https://solidping.example.com/dash0/{{1}}",
+        "example": ["https://solidping.example.com/dash0/orgs/acme/checks/1f0b"]
+      }
+    ]
+  }
+  ```
+
+  At delivery time SolidPing appends the button component to the body one, with
+  the path as its single parameter:
+
+  ```json
+  {
+    "type": "button",
+    "sub_type": "url",
+    "index": "0",
+    "parameters": [{ "type": "text", "text": "orgs/acme/checks/1f0b…" }]
+  }
+  ```
+
+:::caution The alert template is not portable between installations
+A WhatsApp URL button is **not** a free-form link. Meta fixes the prefix when it
+approves the template and allows exactly **one** variable after it. The base URL
+therefore lives in *your approved template*, not in SolidPing's configuration —
+there is no `whatsapp.alert_button_base` setting, and there deliberately never
+will be. Every installation creates its own `solidping_alert` with its own host,
+just as it already creates its own templates on its own WABA.
+:::
+
+:::tip The button is optional — adding it needs a fresh approval
+If `solidping_alert` is already approved **without** a button, editing it starts
+a new Meta review that can take hours and can be rejected. Nothing breaks in the
+meantime: the bodies-only template keeps delivering alerts exactly as before.
+Add the button when you are ready, and alerts start carrying the link the moment
+the edit is approved.
+
+For the same reason the link is best-effort: if SolidPing cannot resolve the
+organization for an incident, it sends the alert **without** the button rather
+than with a link pointing at the wrong place.
+:::
+
+:::caution Three rules the body must satisfy
+WhatsApp Manager rejects a body that:
+
+1. **begins or ends with a placeholder**;
+2. contains **two adjacent placeholders** (`{{1}} {{2}}` with nothing between);
+3. has **too many variables for its length** — the error reads *"This template
+   has too many variables for its length. Reduce the number of variables or
+   increase the message length."*
+
+Rule 3 is the one that catches people out: four variables need a fair amount of
+surrounding prose. A terse body such as
+`Alert: {{1}} is now {{2}}.` / `Detail: {{3}}` /
+`Organization: {{4}}. Sent by SolidPing.` is **rejected** even though it
+satisfies rules 1 and 2. The body above is padded enough to pass; if you shorten
+it, keep the ratio of static text to placeholders roughly comparable.
 
 SolidPing only cares about the **order and count** of the variables, never the
 surrounding words, so you are free to reword the static text (or translate it)
-as long as the four placeholders stay in the order given and none of them is the
-first or last thing in the body.
+as long as the four placeholders stay in the order given, none of them is the
+first or last thing in the body, and the body stays long enough for rule 3.
 :::
 
 One template covers **down, escalated and resolved** because the state is a
@@ -101,22 +175,47 @@ approval to maintain.
 - **Name**: `solidping_verify`
 - **Category**: **Authentication**
 
+:::danger Authentication templates require a verified business
+Meta refuses to create **any** Authentication-category template until your
+business portfolio has completed **business verification**, with the misleading
+error *"This WhatsApp business account does not have permission to create
+message template"* — even though Utility templates create fine on the same WABA
+minutes earlier. Nothing about the template is wrong; the account simply is not
+verified yet.
+
+Complete verification first (Business settings → Security Center → Business
+Verification). Once it passes, the same template is created **and approved
+within seconds**. Until then, WhatsApp contact verification cannot work at all,
+so plan the verification well ahead of your rollout.
+:::
+
 Authentication templates are not free-form: Meta supplies the body copy and
-**requires a one-tap copy-code button**. SolidPing sends the 6-digit code twice
-— once as the body variable and once as the button parameter — which is the only
-shape Meta accepts for this category. Getting the template shape wrong is the
-single most common cause of every verification send failing with error
-**132000** (component/parameter mismatch), so create it exactly as below.
+**requires a copy-code button**. SolidPing sends the 6-digit code twice — once as
+the body variable and once as the button parameter — which is the only shape Meta
+accepts for this category. Getting the template shape wrong is the single most
+common cause of every verification send failing with error **132000**
+(component/parameter mismatch), so create it exactly as below.
 
 **In WhatsApp Manager (UI path):**
 
-1. **New template → Category: Authentication**.
-2. Leave the body as the Meta-supplied authentication copy (optionally tick
-   *Add security recommendation*).
-3. Under **Buttons**, choose **Copy code** (not *Autofill / one-tap*, which
-   additionally requires an app signature hash). Button text: `Copy code`.
-4. Optionally set the footer's **code expiration** to `10` minutes, matching
-   SolidPing's own code TTL.
+1. **New template → Category: Authentication → One-time Passcode**.
+2. Under **Code delivery setup**, select **Copy code**. This matters: the form
+   defaults to **Zero-tap autofill**, which (a) requires you to accept the
+   WhatsApp Business Terms of Service and (b) demands an Android **package name**
+   and **app signature hash** — neither of which exists for a web application.
+   *One-tap autofill* has the same Android-app requirement. Only **Copy code**
+   matches what SolidPing sends.
+3. Leave the body as the Meta-supplied authentication copy (*Add security
+   recommendation* is ticked by default and is fine to keep).
+4. Optionally tick **Add expiration time for the code** and set `10` minutes,
+   matching SolidPing's own code TTL.
+
+:::note Zero-tap is not an option for SolidPing
+Zero-tap and one-tap autofill deliver the code straight into *your Android app*
+via a broadcast intent, so they are Android-only and require an APK you control.
+They are irrelevant to a web dashboard, and non-Android recipients fall back to a
+copy-code button anyway.
+:::
 
 **Via the WABA API (`POST /{waba-id}/message_templates`):**
 

@@ -73,7 +73,8 @@
     "pushover": "Pushover",
     "slack": "Slack",
     "discord": "Discord",
-    "webhook": "Webhook"
+    "webhook": "Webhook",
+    "telegram": "Telegram"
   },
   "notificationFailureReasons": {
     "whatsapp_template_unavailable": "WhatsApp-Nachrichtenvorlage nicht verfügbar — bitten Sie einen Administrator, den Freigabestatus zu prüfen",
@@ -87,6 +88,15 @@
     "whatsapp_send_failed": "WhatsApp-Zustellung fehlgeschlagen",
     "whatsapp_quota_exhausted": "Monatliches WhatsApp-Kontingent aufgebraucht",
     "sms_quota_exhausted": "Monatliches SMS-Kontingent aufgebraucht",
-    "voice_quota_exhausted": "Monatliches Kontingent für Sprachanrufe aufgebraucht"
+    "voice_quota_exhausted": "Monatliches Kontingent für Sprachanrufe aufgebraucht",
+    "telegram_unauthorized": "Telegram-Bot-Zugangsdaten ungültig — bitte einen Admin, das Bot-Token zu prüfen",
+    "telegram_bot_blocked": "Der Telegram-Bot wurde blockiert — unter Konto → Benachrichtigungen neu verbinden",
+    "telegram_chat_not_found": "Der Telegram-Chat existiert nicht mehr — unter Konto → Benachrichtigungen neu verbinden",
+    "telegram_reply_target_missing": "Der ursprüngliche Telegram-Alarm wurde gelöscht",
+    "telegram_rate_limited": "Von Telegram gedrosselt",
+    "telegram_not_configured": "Telegram ist auf dieser Instanz nicht konfiguriert",
+    "telegram_invalid_chat": "Ungültige Telegram-Chat-ID",
+    "telegram_send_failed": "Telegram-Zustellung fehlgeschlagen",
+    "telegram_runaway_guard": "Stündliche Telegram-Schutzgrenze erreicht"
   }
 }

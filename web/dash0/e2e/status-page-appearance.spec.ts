@@ -435,6 +435,38 @@ test.describe("Status page appearance editor", () => {
     await expect.poll(() => snippet.textContent()).toContain('data-theme="dark"');
   });
 
+  // Spec 2026-08-10: the link-to-status-page opt-out toggle.
+  test("the link toggle is checked by default and unchecking it adds data-link=\"false\" to the snippet", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const suffix = Date.now().toString().slice(-9);
+    await createStatusPage(page, suffix);
+    await openAppearance(page);
+
+    const snippet = page.getByTestId("widget-embed-snippet");
+    const toggle = page.getByTestId("status-page-widget-link-toggle");
+
+    await expect(toggle).toBeVisible();
+    await expect(toggle).toHaveAttribute("data-state", "checked");
+    // Checked by default -> no data-link attribute in the pristine snippet,
+    // matching today's behavior byte-for-byte.
+    expect(await snippet.textContent()).not.toContain("data-link");
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("data-state", "unchecked");
+    await expect
+      .poll(() => snippet.textContent())
+      .toContain('data-link="false"');
+
+    // Toggling back on removes it again.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("data-state", "checked");
+    await expect
+      .poll(() => snippet.textContent())
+      .not.toContain("data-link");
+  });
+
   // Spec 2026-08-08-09: live preview + size/label customization.
   test("shows a live preview of the real widget and updates it as preview state/size/theme change", async ({
     authenticatedPage,

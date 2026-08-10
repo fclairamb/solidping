@@ -94,6 +94,9 @@ type Service struct {
 	// instance — deliberately NOT a package-level seam, so parallel tests can
 	// never race on it.
 	whatsAppSender WhatsAppCodeSender
+	// telegramCfg is the instance-level Telegram configuration used to mint
+	// connect links. Zero value = feature off.
+	telegramCfg config.TelegramConfig
 }
 
 // Option customizes a Service at construction.
@@ -230,6 +233,16 @@ func (s *Service) buildSlackSuggestion(
 func (s *Service) CreateContact(
 	ctx context.Context, orgSlug string, user *models.User, req CreateContactRequest,
 ) (*RouteResponse, error) {
+	// Telegram contacts are NEVER created here. Their value is a chat id and
+	// there is no verification round-trip that could catch a wrong one, so
+	// accepting one from a request body would let any user page a stranger.
+	// The only way to create one is the connect flow: the user presses Start in
+	// Telegram, and the webhook creates the contact from the chat that actually
+	// sent the /start.
+	if req.Type == models.UserContactTypeTelegram {
+		return nil, ErrTelegramContactNotDirect
+	}
+
 	orgUID, err := s.resolveOrgUID(ctx, orgSlug)
 	if err != nil {
 		return nil, err

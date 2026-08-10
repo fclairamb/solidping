@@ -2364,88 +2364,44 @@ func (s *Service) GetLastResultForChecks(
 
 	var results []*models.Result
 
-	// DISTINCT ON (check_uid) returns exactly one row per check_uid: the
-	// first row in each check_uid group per the ORDER BY, i.e. the newest
-	// by period_start. The organization_uid predicate rides the
-	// results_raw_idx partial index (organization_uid, check_uid,
-	// period_start desc) where period_type = 'raw'.
-	err := s.db.NewSelect().
-		Model(&results).
-		DistinctOn("check_uid").
-		Where("organization_uid = ?", orgUID).
-		Where("check_uid IN (?)", bun.List(checkUIDs)).
-		Where("period_type = ?", "raw").
-		Order("check_uid", "period_start DESC").
-		Scan(ctx)
+	// One index descent per check, instead of one scan of the org's whole raw
+	// history. The driving side unnests the requested uids; the LATERAL side
+	// is an (organization_uid, check_uid) equality lookup ordered by
+	// period_start DESC LIMIT 1, which is exactly the leading-column shape of
+	// results_raw_idx (organization_uid, check_uid, period_start desc) WHERE
+	// period_type = 'raw' — so the index supplies both the filter and the
+	// ordering and nothing is ever sorted.
+	//
+	// The former DISTINCT ON form could not use that index at scale: with a
+	// check_uid IN (...) list covering most of the table the planner correctly
+	// preferred a sequential scan, then sorted every matching raw row to disk
+	// (spec 2026-08-09-07: 1690 ms and 24 MB of temp spill for 356 checks,
+	// versus 47 ms and zero spill here). The returned rows are identical: the
+	// newest raw row per requested check, at most one each.
+	query := `
+		SELECT r.*
+		FROM unnest(?::uuid[]) AS cu(uid)
+		CROSS JOIN LATERAL (
+			SELECT res.*
+			FROM results AS res
+			WHERE res.organization_uid = ?
+				AND res.check_uid = cu.uid
+				AND res.period_type = 'raw'
+			ORDER BY res.period_start DESC
+			LIMIT 1
+		) AS r
+	`
+
+	err := s.db.NewRaw(query, pgdialect.Array(checkUIDs), orgUID).Scan(ctx, &results)
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert to map for easy lookup — DISTINCT ON already guarantees at
-	// most one row per check_uid.
+	// Convert to map for easy lookup — the LATERAL LIMIT 1 already guarantees
+	// at most one row per check_uid.
 	resultMap := make(map[string]*models.Result)
 	for _, result := range results {
 		resultMap[result.CheckUID] = result
-	}
-
-	return resultMap, nil
-}
-
-//nolint:lll // Function signature clarity
-func (s *Service) GetLastStatusChangeForChecks(ctx context.Context, checkUIDs []string) (map[string]*models.LastStatusChange, error) {
-	if len(checkUIDs) == 0 {
-		return make(map[string]*models.LastStatusChange), nil
-	}
-
-	// Query to find the last status change for each check
-	// A status change is when the status transitions from one value to another
-	type statusChangeResult struct {
-		CheckUID    string    `bun:"check_uid"`
-		PeriodStart time.Time `bun:"period_start"`
-		Status      int       `bun:"status"`
-	}
-
-	var results []statusChangeResult
-
-	// Use a CTE with LAG to find status transitions
-	query := `
-		WITH status_changes AS (
-			SELECT
-				check_uid,
-				period_start,
-				status,
-				LAG(status) OVER (PARTITION BY check_uid ORDER BY period_start) AS prev_status
-			FROM results
-			WHERE check_uid IN (?)
-				AND period_type = 'raw'
-				AND status IS NOT NULL
-		),
-		last_changes AS (
-			SELECT
-				check_uid,
-				period_start,
-				status,
-				ROW_NUMBER() OVER (PARTITION BY check_uid ORDER BY period_start DESC) AS rn
-			FROM status_changes
-			WHERE status IS DISTINCT FROM prev_status
-		)
-		SELECT check_uid, period_start, status
-		FROM last_changes
-		WHERE rn = 1
-	`
-
-	err := s.db.NewRaw(query, bun.List(checkUIDs)).Scan(ctx, &results)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert to map with LastStatusChange struct
-	resultMap := make(map[string]*models.LastStatusChange)
-	for _, result := range results { //nolint:gocritic // Struct copying acceptable for small result set
-		resultMap[result.CheckUID] = &models.LastStatusChange{
-			Time:   result.PeriodStart,
-			Status: models.StatusToString(result.Status),
-		}
 	}
 
 	return resultMap, nil
@@ -3452,7 +3408,7 @@ func (s *Service) SetSystemParameter(ctx context.Context, key string, value any,
 	}
 
 	now := time.Now()
-	jsonValue := models.JSONMap{"value": value}
+	jsonValue := models.ParameterValue(value)
 
 	if existing != nil {
 		// Update existing parameter
@@ -3481,6 +3437,51 @@ func (s *Service) SetSystemParameter(ctx context.Context, key string, value any,
 	}
 
 	return nil
+}
+
+// GetOrCreateSystemParameter returns the existing system parameter for key, or
+// atomically creates it holding value. The bool reports whether this caller is
+// the one that created it.
+//
+// The insert rides the partial unique index parameters_system_key_idx
+// (key WHERE deleted_at IS NULL AND organization_uid IS NULL) with ON CONFLICT
+// DO NOTHING, then re-reads on a lost race — the GetOrCreateStateEntry pattern.
+// A read-then-write would let concurrent pods each persist their own generated
+// value; here every loser adopts the winner's.
+func (s *Service) GetOrCreateSystemParameter(
+	ctx context.Context, key string, value any, secret bool,
+) (*models.Parameter, bool, error) {
+	existing, err := s.GetSystemParameter(ctx, key)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if existing != nil {
+		return existing, false, nil
+	}
+
+	param := models.NewSystemParameter(key, models.ParameterValue(value), secret)
+
+	res, err := s.db.NewInsert().
+		Model(param).
+		On("CONFLICT (key) WHERE deleted_at IS NULL AND organization_uid IS NULL DO NOTHING").
+		Exec(ctx)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to create system parameter: %w", err)
+	}
+
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
+		// Another process won the race: adopt ITS value, never ours.
+		existing, err = s.GetSystemParameter(ctx, key)
+		if err != nil {
+			return nil, false, err
+		}
+
+		return existing, false, nil
+	}
+
+	return param, true, nil
 }
 
 // DeleteSystemParameter soft-deletes a system parameter.
@@ -3569,7 +3570,7 @@ func (s *Service) SetOrgParameter(ctx context.Context, orgUID, key string, value
 	}
 
 	now := time.Now()
-	jsonValue := models.JSONMap{"value": value}
+	jsonValue := models.ParameterValue(value)
 
 	if existing != nil {
 		_, err = s.db.NewUpdate().

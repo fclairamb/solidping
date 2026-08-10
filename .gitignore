@@ -37,6 +37,10 @@ web/dash0/showcase/output/
 bench-data/
 bench-results/
 
+# Runtime file storage created by the server on startup
+/data/
+/server/data/
+
 # Resources
 server/internal/app/res/
 

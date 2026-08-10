@@ -484,6 +484,73 @@ test.describe("Live dashboard updates", () => {
     }
   });
 
+  test("steady-state results do NOT refetch the checks list (only transitions do)", async ({
+    authenticatedPage,
+  }) => {
+    // Spec 2026-08-09-07: check workers write results continuously, so the
+    // "results" hint arrives essentially without pause. It used to invalidate
+    // the checks-list roots, making one open tab refetch the org's whole
+    // checks list (lastResult embedded per check) about twice a second. A
+    // no-transition result must now cost zero list requests; only a real
+    // status transition ("checks" hint) refetches.
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const check = await createHeartbeatCheck(
+      page,
+      token,
+      `E2E Steady State ${Date.now()}`,
+    );
+
+    try {
+      await sendHeartbeat(page, check, "up");
+
+      const subscribed = waitForScopeSubscribed(page, "checks");
+      await page.goto("orgs/test/checks");
+      await subscribed;
+      await page.getByPlaceholder("Search checks...").fill(check.name);
+      const row = page.getByRole("row").filter({ hasText: check.name });
+      await expect(row).toBeVisible();
+      await expect(row.getByText("Up", { exact: true })).toBeVisible();
+
+      let listFetches = 0;
+      const onRequest = (req: { url: () => string; method: () => string }) => {
+        if (req.method() !== "GET") return;
+        let parsed: URL;
+        try {
+          parsed = new URL(req.url());
+        } catch {
+          return;
+        }
+        if (parsed.pathname === "/api/v1/orgs/test/checks") listFetches += 1;
+      };
+      page.on("request", onRequest);
+
+      // Four more passing heartbeats: results are written, no status change.
+      for (let i = 0; i < 4; i += 1) {
+        await sendHeartbeat(page, check, "up");
+        await page.waitForTimeout(1000);
+      }
+      await page.waitForTimeout(2000);
+      page.off("request", onRequest);
+
+      // At most one CHECKS_LIST_POLL_MS (10 s) tick can land in this ~6 s
+      // window; the former behavior produced one refetch per hint instead —
+      // roughly one every 3 s, per open tab, forever.
+      expect(
+        listFetches,
+        "a steady-state result write must not refetch the checks list",
+      ).toBeLessThanOrEqual(1);
+
+      // …while a genuine transition still refreshes the row live.
+      await sendHeartbeat(page, check, "down");
+      await expect(row.getByText("Down", { exact: true })).toBeVisible({
+        timeout: 8000,
+      });
+    } finally {
+      await deleteCheck(page, token, check.uid);
+    }
+  });
+
   test("a single live hint refreshes rows across every group section (batched query)", async ({
     authenticatedPage,
   }) => {

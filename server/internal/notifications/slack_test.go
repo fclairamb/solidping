@@ -956,12 +956,6 @@ func (m *mockDBService) GetLastResultForChecks(
 	panic("not implemented")
 }
 
-func (m *mockDBService) GetLastStatusChangeForChecks(
-	_ context.Context, _ []string,
-) (map[string]*models.LastStatusChange, error) {
-	panic("not implemented")
-}
-
 func (m *mockDBService) SaveResultWithStatusTracking(_ context.Context, _ *models.Result) error {
 	panic("not implemented")
 }
@@ -1013,6 +1007,12 @@ func (m *mockDBService) GetSystemParameter(_ context.Context, _ string) (*models
 }
 
 func (m *mockDBService) SetSystemParameter(_ context.Context, _ string, _ any, _ bool) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetOrCreateSystemParameter(
+	_ context.Context, _ string, _ any, _ bool,
+) (*models.Parameter, bool, error) {
 	panic("not implemented")
 }
 
@@ -1994,6 +1994,20 @@ func (m *mockDBService) SetUserContactVerifyState(
 }
 
 func (m *mockDBService) MarkUserContactVerified(_ context.Context, _ string, _ time.Time) error {
+	return nil
+}
+
+func (m *mockDBService) ClearUserContactVerified(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) ListUserContactsByTypeValue(
+	_ context.Context, _, _ string,
+) ([]*models.UserContact, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) EnsureUserNotificationRoute(_ context.Context, _, _, _ string) error {
 	return nil
 }
 

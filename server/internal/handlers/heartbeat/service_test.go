@@ -53,11 +53,19 @@ func newHeartbeatSetup(t *testing.T) *heartbeatSetup {
 func (s *heartbeatSetup) lastOutput(t *testing.T) models.JSONMap {
 	t.Helper()
 
+	return s.lastResult(t).Output
+}
+
+// lastResult fetches the most recently persisted raw result for the setup's
+// check.
+func (s *heartbeatSetup) lastResult(t *testing.T) *models.Result {
+	t.Helper()
+
 	results, err := s.dbSvc.GetLastResultForChecks(t.Context(), s.org.UID, []string{s.check.UID})
 	require.NoError(t, err)
 	require.Contains(t, results, s.check.UID)
 
-	return results[s.check.UID].Output
+	return results[s.check.UID]
 }
 
 func TestReceiveHeartbeatPersistsCallerMetadata(t *testing.T) {
@@ -67,7 +75,7 @@ func TestReceiveHeartbeatPersistsCallerMetadata(t *testing.T) {
 	s := newHeartbeatSetup(t)
 
 	err := s.svc.ReceiveHeartbeat(
-		t.Context(), s.org.Slug, s.check.UID, testToken, "up", "",
+		t.Context(), s.org.Slug, s.check.UID, testToken, "up", "", 0,
 		"my-cron/1.0", "203.0.113.7", "POST", nil,
 	)
 	r.NoError(err)
@@ -90,7 +98,7 @@ func TestReceiveHeartbeatOmitsAbsentCallerMetadata(t *testing.T) {
 	// remoteAddr when there's truly nothing to go on. Here we simulate the
 	// no-User-Agent case directly: blank in, absent key out.
 	err := s.svc.ReceiveHeartbeat(
-		t.Context(), s.org.Slug, s.check.UID, testToken, "up", "",
+		t.Context(), s.org.Slug, s.check.UID, testToken, "up", "", 0,
 		"", "198.51.100.9", "GET", nil,
 	)
 	r.NoError(err)
@@ -107,7 +115,7 @@ func TestReceiveHeartbeatOmitsAllCallerMetadataWhenBlank(t *testing.T) {
 
 	s := newHeartbeatSetup(t)
 
-	err := s.svc.ReceiveHeartbeat(t.Context(), s.org.Slug, s.check.UID, testToken, "up", "", "", "", "", nil)
+	err := s.svc.ReceiveHeartbeat(t.Context(), s.org.Slug, s.check.UID, testToken, "up", "", 0, "", "", "", nil)
 	r.NoError(err)
 
 	output := s.lastOutput(t)
@@ -124,7 +132,7 @@ func TestReceiveHeartbeatCallerMetadataDoesNotBypassValidation(t *testing.T) {
 	s := newHeartbeatSetup(t)
 
 	err := s.svc.ReceiveHeartbeat(
-		t.Context(), s.org.Slug, s.check.UID, "wrong-token", "up", "",
+		t.Context(), s.org.Slug, s.check.UID, "wrong-token", "up", "", 0,
 		"my-cron/1.0", "203.0.113.7", "POST", nil,
 	)
 	r.ErrorIs(err, heartbeat.ErrInvalidToken)
@@ -139,7 +147,7 @@ func TestReceiveHeartbeatPersistsCallerDataNested(t *testing.T) {
 	callerData := map[string]any{"runId": "42", "recordCount": float64(7)}
 
 	err := s.svc.ReceiveHeartbeat(
-		t.Context(), s.org.Slug, s.check.UID, testToken, "up", "custom message",
+		t.Context(), s.org.Slug, s.check.UID, testToken, "up", "custom message", 0,
 		"my-cron/1.0", "203.0.113.7", "POST", callerData,
 	)
 	r.NoError(err)
@@ -159,7 +167,7 @@ func TestReceiveHeartbeatOmitsDataKeyWhenCallerDataEmpty(t *testing.T) {
 	s := newHeartbeatSetup(t)
 
 	err := s.svc.ReceiveHeartbeat(
-		t.Context(), s.org.Slug, s.check.UID, testToken, "up", "",
+		t.Context(), s.org.Slug, s.check.UID, testToken, "up", "", 0,
 		"my-cron/1.0", "203.0.113.7", "POST", nil,
 	)
 	r.NoError(err)
@@ -184,7 +192,7 @@ func TestReceiveHeartbeatCallerDataCannotForgeServerCapturedFields(t *testing.T)
 	}
 
 	err := s.svc.ReceiveHeartbeat(
-		t.Context(), s.org.Slug, s.check.UID, testToken, "up", "",
+		t.Context(), s.org.Slug, s.check.UID, testToken, "up", "", 0,
 		"my-cron/1.0", "203.0.113.7", "POST", forgedData,
 	)
 	r.NoError(err)
@@ -199,4 +207,57 @@ func TestReceiveHeartbeatCallerDataCannotForgeServerCapturedFields(t *testing.T)
 	r.Equal("6.6.6.6", data["remoteAddr"], "forged value lands harmlessly inside data")
 	r.Equal("evil/1.0", data["userAgent"])
 	r.Equal("DELETE", data["httpMethod"])
+}
+
+func TestReceiveHeartbeatPersistsDurationOnResult(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := newHeartbeatSetup(t)
+
+	err := s.svc.ReceiveHeartbeat(
+		t.Context(), s.org.Slug, s.check.UID, testToken, "up", "", 42_000,
+		"my-cron/1.0", "203.0.113.7", "POST", nil,
+	)
+	r.NoError(err)
+
+	result := s.lastResult(t)
+	r.NotNil(result.Duration)
+	r.InEpsilon(float32(42_000), *result.Duration, 0.0001)
+}
+
+func TestReceiveHeartbeatDefaultsDurationToZeroWhenAbsent(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := newHeartbeatSetup(t)
+
+	err := s.svc.ReceiveHeartbeat(
+		t.Context(), s.org.Slug, s.check.UID, testToken, "up", "", 0,
+		"my-cron/1.0", "203.0.113.7", "POST", nil,
+	)
+	r.NoError(err)
+
+	result := s.lastResult(t)
+	r.NotNil(result.Duration)
+	r.InDelta(float32(0), *result.Duration, 0.0001)
+}
+
+func TestReceiveHeartbeatPersistsDurationOnRunningStatus(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := newHeartbeatSetup(t)
+
+	// The spec calls out that "running" gets no special casing: an unusual
+	// but present durationMs on a run-start ping is still stored.
+	err := s.svc.ReceiveHeartbeat(
+		t.Context(), s.org.Slug, s.check.UID, testToken, "running", "", 1_500,
+		"my-cron/1.0", "203.0.113.7", "POST", nil,
+	)
+	r.NoError(err)
+
+	result := s.lastResult(t)
+	r.NotNil(result.Duration)
+	r.InEpsilon(float32(1_500), *result.Duration, 0.0001)
 }

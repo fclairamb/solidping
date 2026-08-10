@@ -322,6 +322,7 @@ type Config struct {
 	Slack        SlackConfig          `koanf:"slack"`
 	MSTeams      MSTeamsConfig        `koanf:"msteams"`
 	WhatsApp     WhatsAppConfig       `koanf:"whatsapp"`
+	Telegram     TelegramConfig       `koanf:"telegram"`
 	Google       GoogleOAuthConfig    `koanf:"google"`
 	GitHub       GitHubOAuthConfig    `koanf:"github"`
 	Microsoft    MicrosoftOAuthConfig `koanf:"microsoft"`
@@ -416,6 +417,11 @@ type EntitlementsConfig struct {
 	// per hour (default 30). Unlike SMS this is instance-billed even for
 	// self-hosters, so the guard matters just as much.
 	WhatsAppRunawayPerHour int `koanf:"whatsapp_runaway_per_hour"`
+	// TelegramRunawayPerHour caps outbound Telegram messages per org per hour
+	// (default 60). Telegram messages are free, so there is deliberately NO
+	// monthly entitlement for the channel — this guard exists purely to bound a
+	// flapping check or a dispatch loop, hence the higher default.
+	TelegramRunawayPerHour int `koanf:"telegram_runaway_per_hour"`
 }
 
 // NodeConfig contains node role configuration.
@@ -766,6 +772,108 @@ func (c *WhatsAppConfig) ResolvedTemplateLanguage() string {
 	}
 
 	return DefaultWhatsAppTemplateLanguage
+}
+
+// DefaultTelegramBaseURL is the real Bot API base. Exported so the client
+// package and its tests share one source of truth.
+const DefaultTelegramBaseURL = "https://api.telegram.org"
+
+// TelegramConfig contains the instance-level Telegram Bot API credentials.
+// Mirrors WhatsAppConfig: one deployment-wide bot identity, no per-org
+// bring-your-own bot in v1. A SaaS deployment supplies SP_TELEGRAM_* in its
+// deployment env; a self-hoster does exactly the same with their own @BotFather
+// bot — no code path differs between the two.
+//
+// A Telegram bot can hold only ONE webhook URL, so dev and prod each need their
+// own bot and their own token. That is a platform constraint, not a convention.
+//
+// Default Enabled:false. BotToken and WebhookSecret are SECRETS: env/SSM only,
+// never logged, never returned by any API, never sent to a browser.
+type TelegramConfig struct {
+	// Enabled is the TRI-STATE kill switch (SP_TELEGRAM_ENABLED):
+	//
+	//	nil   → auto: on iff a bot token is present
+	//	false → off, whatever else is configured
+	//	true  → explicitly on (still needs a token to do anything)
+	//
+	// A pointer because a bare bool cannot express "unset", and "unset" is
+	// exactly what makes the bot token alone sufficient: supplying a token IS
+	// the intent to enable, so demanding a second variable to confirm it was
+	// pure ceremony. See IsEnabled.
+	Enabled *bool `koanf:"enabled"`
+	// BotToken is the @BotFather token (`123456789:AA…`). SECRET.
+	BotToken string `koanf:"bot_token"`
+	// BotUsername is the bot's @username without the leading '@' (e.g.
+	// "solidping_bot"). Public by nature: the browser needs it to build the
+	// t.me deep link, so it is part of the enablement rule rather than optional.
+	BotUsername string `koanf:"bot_username"`
+	// WebhookSecret is the shared string Telegram echoes in the
+	// X-Telegram-Bot-Api-Secret-Token header. It is the ONLY authenticity gate
+	// on the inbound webhook (Telegram does not sign payloads), so it must be
+	// high-entropy (≥32 bytes). SECRET.
+	WebhookSecret string `koanf:"webhook_secret"`
+	// BaseURL overrides the Bot API base (SP_TELEGRAM_BASE_URL). Empty means the
+	// real api.telegram.org. Exists so an operator can front Telegram with an
+	// egress proxy, and so tests / test mode can point the whole feature at an
+	// httptest fake without any code path differing.
+	BaseURL string `koanf:"base_url"`
+}
+
+// BoolPtr returns a pointer to b, for the tri-state config switches where a
+// nil pointer means "unset / auto" rather than false.
+func BoolPtr(b bool) *bool {
+	return &b
+}
+
+// IsEnabled collapses the tri-state switch to the effective on/off state:
+// an explicit value wins, and unset means "on iff a bot token is present".
+func (c *TelegramConfig) IsEnabled() bool {
+	if c.Enabled != nil {
+		return *c.Enabled
+	}
+
+	return strings.TrimSpace(c.BotToken) != ""
+}
+
+// Configured reports whether the instance holds a usable bot identity — i.e.
+// whether it can talk to the Bot API at all. The token IS the identity, so it
+// is the only irreducible input.
+//
+// This is the gate for everything that does not need a connect link: the
+// inbound webhook route, escalation dispatch, boot-time bootstrap and the
+// client constructor. In particular the WEBHOOK ROUTE MUST NOT depend on the
+// username: on a first boot holding only a token the username is not known yet,
+// and a route that was never registered cannot be fixed by any later GetMe
+// without a restart. Registering it early is harmless — the handler rejects
+// everything failing the secret check, so the endpoint is 403-only until the
+// rest is resolved.
+func (c *TelegramConfig) Configured() bool {
+	return c.IsEnabled() && strings.TrimSpace(c.BotToken) != ""
+}
+
+// Active reports whether a user can actually CONNECT a chat, which additionally
+// requires the bot's @username to build the t.me deep link.
+//
+// Deliberately narrower than Configured: this gates the connect surface only —
+// the public config flag and the connect-link endpoint. Conflating the two is
+// what used to make SP_TELEGRAM_BOT_USERNAME mandatory even for sending.
+func (c *TelegramConfig) Active() bool {
+	return c.Configured() && strings.TrimSpace(c.BotUsername) != ""
+}
+
+// ResolvedBaseURL returns the configured Bot API base or the default.
+func (c *TelegramConfig) ResolvedBaseURL() string {
+	if v := strings.TrimSpace(c.BaseURL); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+
+	return DefaultTelegramBaseURL
+}
+
+// ResolvedBotUsername returns the bot username without a leading '@', which is
+// what a t.me/<username> deep link needs. Operators paste it both ways.
+func (c *TelegramConfig) ResolvedBotUsername() string {
+	return strings.TrimPrefix(strings.TrimSpace(c.BotUsername), "@")
 }
 
 // JobWorkerConfig contains job worker configuration.
@@ -1135,6 +1243,12 @@ func Load() (*Config, error) {
 			VerifyTemplate:   DefaultWhatsAppVerifyTemplate,
 			TemplateLanguage: DefaultWhatsAppTemplateLanguage,
 		},
+		// Off by default. The bot token / username are instance-level and must
+		// be supplied explicitly.
+		// Enabled left nil on purpose: unset means "auto", i.e. on iff a bot
+		// token is supplied. Defaulting it to false would resurrect the
+		// ceremony of a second variable just to confirm the token.
+		Telegram: TelegramConfig{},
 		// Enabled defaults to true but is inert on its own: PostHogConfig.Active
 		// additionally requires a project API key, which self-hosted installs
 		// never have unless the operator sets one.
@@ -1203,7 +1317,18 @@ func Load() (*Config, error) {
 	if err := koanfInstance.Load(env.Provider(".", env.Opt{
 		Prefix: "SP_",
 		TransformFunc: func(key, value string) (string, any) {
-			return strings.ToLower(strings.ReplaceAll(strings.TrimPrefix(key, "SP_"), "_", ".")), value
+			path := strings.ToLower(strings.ReplaceAll(strings.TrimPrefix(key, "SP_"), "_", "."))
+
+			// telegram.enabled is a *bool tri-state where nil (auto) and false
+			// (kill switch) mean opposite things, and koanf cannot express nil:
+			// an empty value decodes to false and a non-boolean one fails the
+			// whole Unmarshal. Drop it here (an empty key is skipped by the
+			// provider) so applyTelegramEnabledEnv is its single reader.
+			if path == telegramEnabledKoanfPath {
+				return "", nil
+			}
+
+			return path, value
 		},
 	}), nil); err != nil {
 		return nil, fmt.Errorf("loading environment variables: %w", err)
@@ -1271,6 +1396,7 @@ func Load() (*Config, error) {
 	applyWebPushEnv(&cfg.WebPush)
 	applyPostHogEnv(&cfg.PostHog)
 	applyWhatsAppEnv(&cfg.WhatsApp)
+	applyTelegramEnv(&cfg.Telegram)
 	applyJobsEnv(&cfg.Jobs)
 	applyServerEnv(&cfg.Server)
 	applySchedulingEnv(&cfg.Server.Scheduling)
@@ -1823,6 +1949,10 @@ func applyEntitlementsEnv(cfg *EntitlementsConfig) {
 	if v := envInt(EnvEntitlementsWhatsAppRunaway); v > 0 {
 		cfg.WhatsAppRunawayPerHour = v
 	}
+
+	if v := envInt(EnvEntitlementsTelegramRunaway); v > 0 {
+		cfg.TelegramRunawayPerHour = v
+	}
 }
 
 // applyWhatsAppEnv reads SP_WHATSAPP_* into cfg. Only whatsapp.enabled is
@@ -1844,6 +1974,107 @@ func applyWhatsAppEnv(cfg *WhatsAppConfig) {
 			*targets[i] = v
 		}
 	}
+}
+
+// SP_TELEGRAM_* environment variable names. Declared once and referenced from
+// both the manual reader below and the RecognizedEnvVars list in envvars.go, so
+// the two can never drift apart.
+const (
+	// EnvTelegramEnabled is the tri-state kill switch. Read by hand (see
+	// applyTelegramEnabledEnv) even though koanf CAN reach it, because koanf
+	// cannot distinguish "unset" from "set to empty" and that distinction is
+	// load-bearing here.
+	EnvTelegramEnabled = "SP_TELEGRAM_ENABLED"
+	// telegramEnabledKoanfPath is the koanf path EnvTelegramEnabled would land
+	// on. The env provider deliberately drops it; see the TransformFunc.
+	telegramEnabledKoanfPath = "telegram.enabled"
+
+	EnvTelegramBotToken      = "SP_TELEGRAM_BOT_TOKEN"
+	EnvTelegramBotUsername   = "SP_TELEGRAM_BOT_USERNAME"
+	EnvTelegramWebhookSecret = "SP_TELEGRAM_WEBHOOK_SECRET"
+	EnvTelegramBaseURL       = "SP_TELEGRAM_BASE_URL"
+	// EnvEntitlementsTelegramRunaway caps outbound Telegram messages per org
+	// per hour. There is no monthly quota for Telegram (the channel is free),
+	// so this guard is the only bound on a runaway dispatch loop.
+	EnvEntitlementsTelegramRunaway = "SP_ENTITLEMENTS_TELEGRAM_RUNAWAY_PER_HOUR"
+)
+
+// TelegramEnvVarNames lists every manually-read SP_TELEGRAM_* name, in the
+// order they are bound.
+func TelegramEnvVarNames() []string {
+	return []string{
+		EnvTelegramBotToken, EnvTelegramBotUsername,
+		EnvTelegramWebhookSecret, EnvTelegramBaseURL,
+	}
+}
+
+// applyTelegramEnv reads SP_TELEGRAM_* into cfg. Every key here has a
+// snake_case segment that koanf's underscore→dot collapsing can never reach
+// (SP_TELEGRAM_BOT_TOKEN would land on telegram.bot.token), so they are read by
+// hand — the same quirk as rate_limiting, posthog and whatsapp.
+//
+// telegram.enabled is the exception that koanf COULD reach, but it is dropped
+// from the env provider on purpose and read here too; see
+// applyTelegramEnabledEnv for why.
+// Keep in sync with manualReaderPlatformEnvVars.
+func applyTelegramEnv(cfg *TelegramConfig) {
+	targets := []*string{
+		&cfg.BotToken, &cfg.BotUsername,
+		&cfg.WebhookSecret, &cfg.BaseURL,
+	}
+
+	for i, name := range TelegramEnvVarNames() {
+		if v := strings.TrimSpace(os.Getenv(name)); v != "" {
+			*targets[i] = v
+		}
+	}
+
+	applyTelegramEnabledEnv(cfg)
+}
+
+// applyTelegramEnabledEnv re-reads SP_TELEGRAM_ENABLED by hand, overriding what
+// koanf's env provider already decoded.
+//
+// telegram.enabled IS koanf-reachable (single-word segment), unlike its
+// siblings — but that path cannot tell "unset" from "set to empty": koanf hands
+// mapstructure an empty string and the weakly-typed string→bool conversion
+// turns it into false, i.e. *Enabled == false. For an ordinary bool that is
+// harmless; here nil (auto) versus false (kill switch) is the whole point of
+// the tri-state, and false wins over a perfectly valid bot token.
+//
+// That matters because a bare `SP_TELEGRAM_ENABLED=` line is exactly what a
+// dotenv file produces — `set -a; . .env`, `docker run --env-file`, most PaaS
+// dotenv importers — so an operator who copied .env.example and filled in only
+// the bot token would get Telegram silently and completely off. An empty value
+// means "I did not choose", never "off".
+//
+// An absent variable is left alone so a config-file or default value still
+// applies; only an explicitly present one is honored here.
+func applyTelegramEnabledEnv(cfg *TelegramConfig) {
+	raw, present := os.LookupEnv(EnvTelegramEnabled)
+	if !present {
+		return
+	}
+
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		cfg.Enabled = nil
+
+		return
+	}
+
+	parsed, err := strconv.ParseBool(trimmed)
+	if err != nil {
+		slog.Warn("ignoring unparseable "+EnvTelegramEnabled+
+			"; falling back to auto (on iff a bot token is present)",
+			"value", trimmed)
+
+		cfg.Enabled = nil
+
+		return
+	}
+
+	cfg.Enabled = &parsed
 }
 
 // ComputeBugReportEnabled returns true iff a GitHub PAT and repo are configured.

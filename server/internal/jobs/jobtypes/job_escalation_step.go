@@ -332,6 +332,7 @@ const (
 	channelTokenPush         = "push"
 	channelTokenCriticalPush = "critical_push"
 	channelTokenWhatsApp     = "whatsapp"
+	channelTokenTelegram     = "telegram"
 )
 
 // severityAllowsPersonTargets reports whether a severity permits paging
@@ -346,6 +347,7 @@ func severityAllowsPersonTargets(filter map[string]bool) bool {
 	for _, tok := range []string{
 		channelTokenEmail, channelTokenSMS, channelTokenVoice,
 		channelTokenPush, channelTokenCriticalPush, channelTokenWhatsApp,
+		channelTokenTelegram,
 	} {
 		if filter[tok] {
 			return true
@@ -388,6 +390,21 @@ func severityAllowsVoice(filter map[string]bool) bool {
 // on a channel they only opted into for specific severities.
 func severityAllowsWhatsApp(filter map[string]bool) bool {
 	return filter[channelTokenWhatsApp]
+}
+
+// severityAllowsTelegram reports whether a Telegram message is permitted:
+// a nil filter (no severity attached, so everything the user configured fires)
+// or an explicit "telegram" token.
+//
+// Deliberately NOT the voice/WhatsApp rule. Those two are explicit-token-only
+// because each delivery costs money and interrupts hard — a surprise phone call
+// is a different kind of event from a chat message. Telegram is free and
+// arrives in the same place the user already reads alerts, so it follows the
+// email/SMS rule instead: connecting a chat IS the opt-in, and a severity-less
+// escalation should reach every channel the user connected. (Spec
+// 2026-08-10-04, "Escalation dispatch": *explicit token or nil filter*.)
+func severityAllowsTelegram(filter map[string]bool) bool {
+	return filter == nil || filter[channelTokenTelegram]
 }
 
 // enqueueNotificationFor queues a notification job for the
@@ -516,43 +533,7 @@ func (r *EscalationStepJobRun) dispatchRoute(
 			models.IncidentNotificationSourceEscalationUser,
 		)
 	case models.UserContactTypeSlackUser:
-		if !severityAllowsEmail(filter) {
-			// Slack DMs historically ride the email token.
-			return 0
-		}
-		slackConn, connErr := jctx.DBService.GetSlackChannelForOrg(ctx, incident.OrganizationUID)
-		if connErr != nil {
-			log.WarnContext(ctx, "slack channel not found for org; skipping route",
-				"orgUID", incident.OrganizationUID,
-				"contactUID", route.Contact.UID,
-				"error", connErr)
-
-			return 0
-		}
-
-		settings, parseErr := models.SlackSettingsFromJSONMap(slackConn.Settings)
-		if parseErr != nil || settings.AccessToken == "" {
-			log.WarnContext(ctx, "slack access token not configured; skipping route",
-				"orgUID", incident.OrganizationUID, "contactUID", route.Contact.UID)
-
-			return 0
-		}
-
-		text := fmt.Sprintf(
-			"[escalation] incident %s requires your attention. Open the dashboard to acknowledge or resolve.",
-			incident.UID,
-		)
-
-		if err := postSlackDM(ctx, settings.AccessToken, route.Contact.Value, text); err != nil {
-			log.WarnContext(ctx, "failed to send escalation Slack DM",
-				"contactUID", route.Contact.UID,
-				"userUID", route.UserUID,
-				"error", err)
-
-			return 0
-		}
-
-		return 1
+		return r.sendEscalationSlackDM(ctx, jctx, log, incident, route, filter)
 	case models.UserContactTypeWebPush:
 		if !severityAllowsWebPush(filter) {
 			return 0
@@ -563,6 +544,8 @@ func (r *EscalationStepJobRun) dispatchRoute(
 		return r.pagePhone(ctx, jctx, log, incident, route, filter)
 	case models.UserContactTypeWhatsApp:
 		return r.pageWhatsApp(ctx, jctx, log, incident, route, filter)
+	case models.UserContactTypeTelegram:
+		return r.pageTelegram(ctx, jctx, log, incident, route, filter)
 	default:
 		log.WarnContext(ctx, "unknown contact type; skipping route",
 			"type", route.Contact.Type,
@@ -570,6 +553,53 @@ func (r *EscalationStepJobRun) dispatchRoute(
 
 		return 0
 	}
+}
+
+// sendEscalationSlackDM delivers an escalation DM to a per-user slack_user
+// contact through the org's Slack connection. Extracted from dispatchRoute so
+// that switch stays a routing table rather than an implementation.
+func (r *EscalationStepJobRun) sendEscalationSlackDM(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, route *models.UserNotificationRoute, filter map[string]bool,
+) int {
+	if !severityAllowsEmail(filter) {
+		// Slack DMs historically ride the email token.
+		return 0
+	}
+
+	slackConn, connErr := jctx.DBService.GetSlackChannelForOrg(ctx, incident.OrganizationUID)
+	if connErr != nil {
+		log.WarnContext(ctx, "slack channel not found for org; skipping route",
+			"orgUID", incident.OrganizationUID,
+			"contactUID", route.Contact.UID,
+			"error", connErr)
+
+		return 0
+	}
+
+	settings, parseErr := models.SlackSettingsFromJSONMap(slackConn.Settings)
+	if parseErr != nil || settings.AccessToken == "" {
+		log.WarnContext(ctx, "slack access token not configured; skipping route",
+			"orgUID", incident.OrganizationUID, "contactUID", route.Contact.UID)
+
+		return 0
+	}
+
+	text := fmt.Sprintf(
+		"[escalation] incident %s requires your attention. Open the dashboard to acknowledge or resolve.",
+		incident.UID,
+	)
+
+	if err := postSlackDM(ctx, settings.AccessToken, route.Contact.Value, text); err != nil {
+		log.WarnContext(ctx, "failed to send escalation Slack DM",
+			"contactUID", route.Contact.UID,
+			"userUID", route.UserUID,
+			"error", err)
+
+		return 0
+	}
+
+	return 1
 }
 
 // sendWebPush delivers a Web Push notification for a per-user webpush contact.

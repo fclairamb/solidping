@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 )
@@ -133,7 +135,7 @@ func TestDispatch_WhatsAppFilterSendsAndSkipsEmail(t *testing.T) {
 
 	components, ok := tmpl["components"].([]any)
 	r.True(ok)
-	r.Len(components, 1)
+	r.Len(components, 2, "body variables + the check-link button")
 
 	bodyComp, ok := components[0].(map[string]any)
 	r.True(ok)
@@ -405,6 +407,177 @@ func TestWhatsAppDetail(t *testing.T) {
 	})
 	r.NotEmpty(detail)
 	r.Contains(detail, "open for")
+}
+
+// whatsAppButtonComponent returns the button component of the last recorded
+// Graph request, or nil when the payload carries no button at all.
+func whatsAppButtonComponent(t *testing.T, body map[string]any) map[string]any {
+	t.Helper()
+
+	tmpl, ok := body["template"].(map[string]any)
+	require.True(t, ok)
+
+	components, ok := tmpl["components"].([]any)
+	require.True(t, ok)
+
+	for _, raw := range components {
+		comp, isMap := raw.(map[string]any)
+		if isMap && comp["type"] == "button" {
+			return comp
+		}
+	}
+
+	return nil
+}
+
+// TestDispatch_WhatsAppAlertCarriesCheckLinkButton proves the alert is no longer
+// a dead end: the send carries the URL-button variable resolving to the check's
+// dashboard page, alongside the four body variables.
+func TestDispatch_WhatsAppAlertCarriesCheckLinkButton(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, false, "")
+	fake, baseURL := newFakeGraphAPI(t, http.StatusOK, graphOK)
+	enableWhatsApp(env, baseURL)
+
+	sent := newRun().dispatchRoute(
+		ctx, env.jctx, slog.Default(), env.incident,
+		whatsAppRoute(env.org.UID, true), map[string]bool{"whatsapp": true},
+	)
+	r.Equal(1, sent)
+	r.Equal(1, fake.count())
+
+	button := whatsAppButtonComponent(t, fake.last())
+	r.NotNil(button, "the alert must carry a URL button")
+	r.Equal("url", button["sub_type"])
+	r.Equal("0", button["index"])
+
+	params, ok := button["parameters"].([]any)
+	r.True(ok)
+	r.Len(params, 1)
+
+	param, ok := params[0].(map[string]any)
+	r.True(ok)
+	r.Equal("text", param["type"])
+	// Appended by Meta to the template's static `{baseURL}/dash0/` prefix, so
+	// this resolves to /dash0/orgs/test-org/checks/check-1.
+	r.Equal("orgs/"+env.org.Slug+"/checks/"+env.incident.CheckUID, param["text"])
+}
+
+// TestDispatch_WhatsAppSendsWithoutButtonWhenSlugUnresolvable proves the
+// fallback: an org whose slug cannot be loaded still gets paged, with NO button
+// component at all. A link to the wrong place is worse than no link.
+func TestDispatch_WhatsAppSendsWithoutButtonWhenSlugUnresolvable(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, false, "")
+	fake, baseURL := newFakeGraphAPI(t, http.StatusOK, graphOK)
+	enableWhatsApp(env, baseURL)
+
+	orphan := *env.incident
+	orphan.OrganizationUID = "org-does-not-exist"
+
+	sent := newRun().dispatchRoute(
+		ctx, env.jctx, slog.Default(), &orphan,
+		whatsAppRoute(orphan.OrganizationUID, true), map[string]bool{"whatsapp": true},
+	)
+
+	r.Equal(1, sent, "the page must still go out")
+	r.Equal(1, fake.count())
+	r.Nil(whatsAppButtonComponent(t, fake.last()),
+		"no button component may be emitted when the link cannot be built")
+}
+
+// TestWhatsAppCheckButtonParam covers suffix construction directly: the happy
+// path, both unresolvable inputs, defensive escaping, and the length cap.
+func TestWhatsAppCheckButtonParam(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.Equal("orgs/acme/checks/check-1", whatsAppCheckButtonParam("acme", "check-1"))
+
+	// Unresolvable inputs drop the button rather than produce a broken link.
+	r.Empty(whatsAppCheckButtonParam("", "check-1"))
+	r.Empty(whatsAppCheckButtonParam("acme", ""))
+	r.Empty(whatsAppCheckButtonParam("  ", "check-1"))
+
+	// Defensive escaping: a slug or UID that smuggled a separator would
+	// otherwise silently retarget the button.
+	escaped := whatsAppCheckButtonParam("ac me/../evil", "check-1")
+	r.NotContains(strings.TrimPrefix(escaped, "orgs/"), "/../")
+	r.Equal("orgs/ac%20me%2F..%2Fevil/checks/check-1", escaped)
+
+	// The cap bounds the parameter so Meta can never reject the whole send.
+	capped := whatsAppCheckButtonParam(strings.Repeat("a", 300), strings.Repeat("b", 300))
+	r.LessOrEqual(len(capped), whatsAppButtonParamCap)
+	r.NotEmpty(capped)
+
+	// Truncation never leaves a dangling percent-escape behind.
+	dangling := whatsAppCheckButtonParam(strings.Repeat("é", 200), "check-1")
+	r.LessOrEqual(len(dangling), whatsAppButtonParamCap)
+	unescaped, err := url.PathUnescape(dangling)
+	r.NoError(err, "a truncated suffix must stay a valid URL path")
+	r.NotEmpty(unescaped)
+}
+
+// TestDispatch_WhatsAppButtonSendRecordsSentAudit proves the audit trail
+// survives the new button: the delivery history still shows status=sent with
+// Meta's wamid, which is what inbound delivery webhooks key on.
+func TestDispatch_WhatsAppButtonSendRecordsSentAudit(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, false, "")
+	fake, baseURL := newFakeGraphAPI(t, http.StatusOK, graphOK)
+	enableWhatsApp(env, baseURL)
+
+	// The audit row carries real foreign keys (user + escalation step), so both
+	// must exist for the insert to land at all.
+	user := models.NewUser("oncall@example.com")
+	r.NoError(env.db.CreateUser(ctx, user))
+
+	policy := models.NewEscalationPolicy(env.org.UID, "primary")
+	r.NoError(env.db.CreateEscalationPolicy(ctx, policy))
+
+	step := models.NewEscalationPolicyStep(policy.UID, 0, 0)
+	r.NoError(env.db.ReplaceEscalationPolicySteps(ctx, policy.UID,
+		[]*models.EscalationPolicyStep{step}, nil))
+
+	route := whatsAppRoute(env.org.UID, true)
+	route.UserUID = user.UID
+	route.Contact.UserUID = user.UID
+
+	run := &EscalationStepJobRun{config: EscalationStepJobConfig{
+		IncidentUID: env.incident.UID, StepUID: step.UID,
+	}}
+
+	sent := run.dispatchRoute(
+		ctx, env.jctx, slog.Default(), env.incident, route, map[string]bool{"whatsapp": true},
+	)
+	r.Equal(1, sent)
+	r.NotNil(whatsAppButtonComponent(t, fake.last()), "this run must be the button-carrying one")
+
+	rows, err := env.db.ListIncidentNotifications(ctx, env.org.UID, db.ListIncidentNotificationsFilter{
+		IncidentUID: env.incident.UID,
+	})
+	r.NoError(err)
+	r.Len(rows, 1)
+
+	row := rows[0]
+	r.Equal(models.IncidentNotificationStatusSent, row.Status)
+	r.Equal(models.UsageCounterKindWhatsApp, row.ChannelType)
+	r.NotNil(row.MessageID)
+	r.Equal("wamid.SENT", *row.MessageID)
+	r.NotNil(row.SentAt)
 }
 
 // TestSeverityAllowsPersonTargets_WhatsApp closes the gap that would make every

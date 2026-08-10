@@ -95,7 +95,8 @@
     "current": "Actual",
     "role": "Rol",
     "switch": "Cambiar",
-    "switchFailed": "No se pudo cambiar de organización"
+    "switchFailed": "No se pudo cambiar de organización",
+    "settings": "Configuración"
   },
   "notifications": {
     "verifyButton": "Verificar",
@@ -129,6 +130,21 @@
         "dialogDescription": "Enviaremos un código de 6 dígitos al {{phone}} por WhatsApp. Introdúcelo a continuación para confirmar que este número puede recibir alertas por WhatsApp.",
         "verified": "Número de teléfono verificado"
       }
+    },
+    "telegram": {
+      "addTitle": "Añadir Telegram",
+      "addHint": "Recibe alertas del bot de SolidPing en un chat de Telegram. Sin número de teléfono — solo pulsa Iniciar.",
+      "connectButton": "Conectar Telegram",
+      "reconnectButton": "Reconectar",
+      "connectedBadge": "Conectado",
+      "reconnectBadge": "Hace falta reconectar — el bot ya no puede escribir en este chat",
+      "connected": "Telegram conectado",
+      "waiting": "Esperando a que pulses Iniciar en Telegram… este enlace caduca en {{countdown}}.",
+      "openAgain": "Abrir Telegram",
+      "cancel": "Cancelar",
+      "expired": "Este enlace de conexión ha caducado.",
+      "regenerate": "Generar un enlace nuevo",
+      "linkFailed": "No se pudo crear el enlace de conexión de Telegram"
     }
   }
 }

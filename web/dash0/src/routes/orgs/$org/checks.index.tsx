@@ -102,7 +102,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { parseLabelsParam, serializeLabelsParam } from "@/lib/labels";
 import { slugify } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-import { useLiveSubscription } from "@/contexts/LiveEventsContext";
+import { CHECKS_LIST_POLL_MS, useLiveSubscription } from "@/contexts/LiveEventsContext";
 
 // The checks index can bucket its rows by check group (server-side entity,
 // the default) or by the derived targetHost (spec 2026-08-01-04) — no
@@ -949,10 +949,12 @@ function ChecksIndexPage() {
     Boolean(labelsParam) ||
     internalFilter !== "false";
 
-  // Live updates: `checks`/`results` hints invalidate both the flat
-  // ["checks", org] root and the infinite ["checks", "infinite", org] root
-  // (see infiniteOrgRoot in LiveEventsContext), so every group section's
-  // paginated query refreshes status and last-result cells without a reload.
+  // Live updates: a `checks` hint (status transition, membership/config
+  // change) invalidates both the flat ["checks", org] root and the infinite
+  // ["checks", "infinite", org] root (see infiniteOrgRoot in
+  // LiveEventsContext), so the list reflects transitions without a reload.
+  // `results` hints deliberately no longer touch those roots — the
+  // refetchInterval below covers the steady-state per-run cells instead.
   useLiveSubscription({ entity: "checks" });
 
   const {
@@ -1001,6 +1003,13 @@ function ChecksIndexPage() {
     // modes distinct query-cache entries (the queryKey includes this options
     // object), so switching modes is a normal cache miss/hit, not a manual reset.
     sort: groupBy === "host" ? "targetHost" : "group",
+  }, {
+    // A `results` live hint no longer invalidates this list (spec
+    // 2026-08-09-07 — it fired continuously and made one open tab worth ~0.5
+    // whole-list refetches per second). Status transitions still arrive as
+    // "checks" hints; this poll is what keeps the per-run cells (status dot,
+    // latency) fresh in between, bounded by one interval.
+    refetchInterval: CHECKS_LIST_POLL_MS,
   });
 
   // A bucket that is still empty must read as *loading*, never as an empty

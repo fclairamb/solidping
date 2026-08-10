@@ -22,6 +22,17 @@ const (
 	// of the user's opt-in to receive business-initiated messages. Collapsing
 	// the two would silently reuse an SMS consent as a WhatsApp consent.
 	UserContactTypeWhatsApp = "whatsapp"
+	// UserContactTypeTelegram is a Telegram chat id the instance bot can message.
+	// The stored Value is the numeric chat id, never a @username: usernames can
+	// be changed or reassigned, chat ids cannot.
+	//
+	// Deliberately NOT in VerifiableContactTypes: there is no code round-trip.
+	// Pressing Start in Telegram (which delivers /start <token> to our webhook)
+	// IS the proof of reachability and the opt-in, so the contact is created
+	// already verified — and, correspondingly, a telegram contact may never be
+	// created through the generic POST /notification-contacts endpoint, since
+	// nothing there would stop a user typing a stranger's chat id.
+	UserContactTypeTelegram = "telegram"
 )
 
 // VerifiableContactTypes are the contact types that require a code round-trip

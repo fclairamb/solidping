@@ -95,12 +95,6 @@ func RawAvailability(results []*Result) (int, int) {
 	return success, total
 }
 
-// LastStatusChange represents the last time a check's status changed.
-type LastStatusChange struct {
-	Time   time.Time `json:"time"`
-	Status string    `json:"status"`
-}
-
 // Result represents a check execution result.
 type Result struct {
 	UID             string     `bun:"uid,pk,type:varchar(36)"`

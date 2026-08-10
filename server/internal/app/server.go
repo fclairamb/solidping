@@ -87,6 +87,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/statussubscribers"
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
+	"github.com/fclairamb/solidping/server/internal/handlers/telegramcb"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
 	"github.com/fclairamb/solidping/server/internal/handlers/twiliocb"
 	"github.com/fclairamb/solidping/server/internal/handlers/unsubscribe"
@@ -353,6 +354,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			cfg.Entitlements.SMSRunawayPerHour, cfg.Entitlements.CallRunawayPerHour,
 		),
 		entitlementsapi.WithWhatsAppRunawayCap(cfg.Entitlements.WhatsAppRunawayPerHour),
+		entitlementsapi.WithTelegramRunawayCap(cfg.Entitlements.TelegramRunawayPerHour),
 	)
 	svcList.Entitlements = entitlementsService
 
@@ -456,6 +458,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	if analytics.Default().Enabled() {
 		slog.InfoContext(ctx, "Product analytics enabled", "host", s.config.PostHog.ResolvedHost())
 	}
+
+	// Derive the Telegram bot username and webhook secret the operator did not
+	// have to supply. SYNCHRONOUS and here on purpose: it WRITES cfg.Telegram,
+	// which every handler below reads concurrently, so it must complete before
+	// a single route exists — doing it from the async bootstrapTelegram
+	// goroutine would be a real data race. It also has to precede that
+	// goroutine's setWebhook, or Telegram could end up holding a secret no pod
+	// in the fleet knows. No-op unless Telegram is configured.
+	resolveTelegramSettings(ctx, s.dbService, s.config)
 
 	router := httpx.New()
 	rateLimiter := middleware.NewRateLimiter(s.config.Server.RateLimiting, ctx)
@@ -1065,6 +1076,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		// authentication template. Off by default; NewService keeps the feature
 		// dark when the config is inactive.
 		usernotifications.WithWhatsAppConfig(&s.config.WhatsApp),
+		// Instance-level Telegram credentials power the connect-link flow. Off
+		// by default; CreateTelegramLink refuses while the config is inactive.
+		usernotifications.WithTelegramConfig(&s.config.Telegram),
 	)
 	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender)
 	slackAdapter := usernotifications.NewSlackDMSenderAdapter()
@@ -1079,6 +1093,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgUserNotif.POST("/notification-routes/:routeUid/test", userNotifHandler.TestRoute)
 	orgUserNotif.POST("/notification-contacts/:contactUid/verify", userNotifHandler.VerifyContact)
 	orgUserNotif.POST("/notification-contacts/:contactUid/verify/confirm", userNotifHandler.ConfirmVerify)
+	// Telegram connect link. Always registered (it answers a clean
+	// VALIDATION_ERROR when the instance has no bot) so the dashboard gets a
+	// meaningful message rather than a 404 it would have to guess about.
+	orgUserNotif.POST("/telegram/link", userNotifHandler.CreateTelegramLink)
 
 	// Events routes (authentication required)
 	eventsService := events.NewService(s.dbService)
@@ -1426,6 +1444,25 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		whatsAppIntegration := api.NewGroup("/integrations/whatsapp")
 		whatsAppIntegration.GET("/webhook", whatsAppHandler.HandleVerify)
 		whatsAppIntegration.POST("/webhook", whatsAppHandler.HandleEvent)
+	}
+
+	// Telegram Bot API inbound webhook (connect flow, in-chat opt-out, block
+	// notifications). Instance-level like WhatsApp, but Telegram does NOT sign
+	// its payloads: the only authenticity gate is the
+	// X-Telegram-Bot-Api-Secret-Token header, compared constant-time before the
+	// body is parsed. Registered only when the instance has Telegram configured
+	// — an unconfigured deployment exposes no route at all.
+	//
+	// Gated on Configured(), NOT Active(): the bot @username is derived at boot
+	// and may be unknown on a first run holding only a token. A route that was
+	// never registered cannot be repaired without a restart, whereas an
+	// early-registered one is 403-only until the secret is known.
+	if s.config.Telegram.Configured() {
+		telegramHandler := telegramcb.NewHandler(s.dbService, s.config)
+		telegramIntegration := api.NewGroup("/integrations/telegram")
+		// Path kept in sync with TelegramWebhookPath, which the boot-time
+		// self-registration uses.
+		telegramIntegration.POST("/webhook", telegramHandler.HandleUpdate)
 	}
 
 	// Slack destinations picker (authenticated, org-scoped)
@@ -2362,6 +2399,11 @@ func (s *Server) Start(ctx context.Context) error {
 		go s.runSlackSocketSupervisor(runnerCtx)
 	}
 
+	// Telegram boot-time sanity check + webhook self-heal (no-op unless this
+	// node serves the API and Telegram is configured). Best-effort and off the
+	// startup path: a Telegram outage must never stop the server from booting.
+	//nolint:contextcheck // runnerCtx is intentionally separate from request context
+	go bootstrapTelegram(runnerCtx, s.config)
 	// Run startup job synchronously to ensure default org exists before workers start
 	if s.config.ShouldRunJobs() {
 		if err := s.runStartupJob(ctx); err != nil {

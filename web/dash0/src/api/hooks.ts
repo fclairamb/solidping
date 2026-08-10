@@ -380,7 +380,13 @@ export function useInfiniteChecks(
     limit?: number;
     /** Opt-in ordering; "group" loads in the page's display order. */
     sort?: string;
-  }
+  },
+  /**
+   * Query behavior that must NOT take part in the cache key (a poll interval
+   * describes how often to refresh a cache entry, not which entry it is).
+   * Kept as a second parameter so it can never accidentally fork the key.
+   */
+  queryOptions?: { refetchInterval?: number }
 ) {
   return useInfiniteQuery({
     queryKey: ["checks", "infinite", org, options],
@@ -394,6 +400,7 @@ export function useInfiniteChecks(
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.pagination?.cursor,
     enabled: !!org,
+    refetchInterval: queryOptions?.refetchInterval,
   });
 }
 
@@ -4488,6 +4495,29 @@ export function useVerifyContact(org: string) {
         `/api/v1/orgs/${org}/users/me/notification-contacts/${contactUid}/verify`,
         { method: "POST" },
       ),
+  });
+}
+
+/** The connect link returned by POST /users/me/telegram/link. */
+export interface TelegramLinkResponse {
+  url: string;
+  expiresAt: string;
+}
+
+/**
+ * Mints a single-use Telegram connect link (TTL 15 minutes).
+ *
+ * Nothing is created by this call: the contact only appears once the user
+ * presses Start in Telegram and the resulting `/start <token>` reaches the
+ * instance webhook. Callers therefore poll the routes list afterwards rather
+ * than reading a contact out of this response.
+ */
+export function useCreateTelegramLink(org: string) {
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<TelegramLinkResponse>(`/api/v1/orgs/${org}/users/me/telegram/link`, {
+        method: "POST",
+      }),
   });
 }
 

@@ -4,6 +4,7 @@ package heartbeat
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"strings"
 
@@ -37,6 +38,11 @@ const maxHeartbeatBodyBytes = 8 * 1024
 // over-cap body is a hard rejection.
 var ErrBodyTooLarge = errors.New("heartbeat body too large")
 
+// maxHeartbeatDurationMs caps the accepted "durationMs" value to 7 days in
+// milliseconds — a generous sanity ceiling for any real job that also keeps
+// the eventual float32 conversion safely within range.
+const maxHeartbeatDurationMs = 7 * 24 * 60 * 60 * 1000
+
 // extractToken resolves the heartbeat token, preferring the
 // Authorization: Bearer header (the pattern used everywhere else in the API)
 // and falling back to the historical ?token= query parameter so every
@@ -54,17 +60,17 @@ func extractToken(req *http.Request) string {
 }
 
 // decodeHeartbeatBody reads and decodes the optional JSON heartbeat body,
-// bounded to maxHeartbeatBodyBytes. It returns the "message" string (today's
-// semantics, unchanged) and the remaining keys as callerData, which is nil
-// when empty. Malformed JSON under the cap is tolerated — the parse error is
-// swallowed and an empty result is returned, exactly like the previous
-// fixed-struct decode — but exceeding the cap is a hard rejection
-// (ErrBodyTooLarge).
+// bounded to maxHeartbeatBodyBytes. It returns the "message" string and
+// "durationMs" number (today's semantics, unchanged for message) and the
+// remaining keys as callerData, which is nil when empty. Malformed JSON under
+// the cap is tolerated — the parse error is swallowed and an empty result is
+// returned, exactly like the previous fixed-struct decode — but exceeding the
+// cap is a hard rejection (ErrBodyTooLarge).
 func decodeHeartbeatBody(
 	writer http.ResponseWriter, req *http.Request,
-) (string, map[string]any, error) {
+) (string, float32, map[string]any, error) {
 	if req.Body == nil || req.Header.Get("Content-Type") != "application/json" {
-		return "", nil, nil
+		return "", 0, nil, nil
 	}
 
 	req.Body = http.MaxBytesReader(writer, req.Body, maxHeartbeatBodyBytes)
@@ -73,12 +79,12 @@ func decodeHeartbeatBody(
 	if decodeErr := json.NewDecoder(req.Body).Decode(&body); decodeErr != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(decodeErr, &maxBytesErr) {
-			return "", nil, ErrBodyTooLarge
+			return "", 0, nil, ErrBodyTooLarge
 		}
 
 		// Malformed JSON stays lenient: a broken body must never fail a
 		// liveness ping.
-		return "", nil, nil
+		return "", 0, nil, nil
 	}
 
 	var message string
@@ -90,12 +96,38 @@ func decodeHeartbeatBody(
 		delete(body, "message")
 	}
 
+	durationMs := extractHeartbeatDuration(body)
+
 	var callerData map[string]any
 	if len(body) > 0 {
 		callerData = body
 	}
 
-	return message, callerData, nil
+	return message, durationMs, callerData, nil
+}
+
+// extractHeartbeatDuration consumes the top-level "durationMs" key from body
+// when it is a JSON number that is finite, >= 0, and <=
+// maxHeartbeatDurationMs, deleting it from body so it is not duplicated under
+// output.data. An invalid value (wrong type, negative, NaN/Inf, over the cap)
+// is left untouched in body — it lands under output.data as ordinary caller
+// data instead, so the caller can see exactly what they sent when debugging
+// an empty response-time chart. A bad/absent durationMs never fails the ping;
+// it simply yields 0.
+func extractHeartbeatDuration(body map[string]any) float32 {
+	raw, ok := body["durationMs"]
+	if !ok {
+		return 0
+	}
+
+	num, ok := raw.(float64)
+	if !ok || math.IsNaN(num) || math.IsInf(num, 0) || num < 0 || num > maxHeartbeatDurationMs {
+		return 0
+	}
+
+	delete(body, "durationMs")
+
+	return float32(num)
 }
 
 // ReceiveHeartbeat handles incoming heartbeat pings.
@@ -105,7 +137,7 @@ func (h *Handler) ReceiveHeartbeat(writer http.ResponseWriter, req *http.Request
 	token := extractToken(req)
 	status := req.URL.Query().Get("status")
 
-	message, callerData, err := decodeHeartbeatBody(writer, req)
+	message, durationMs, callerData, err := decodeHeartbeatBody(writer, req)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -118,7 +150,8 @@ func (h *Handler) ReceiveHeartbeat(writer http.ResponseWriter, req *http.Request
 	httpMethod := req.Method
 
 	if err := h.svc.ReceiveHeartbeat(
-		req.Context(), orgSlug, identifier, token, status, message, userAgent, remoteAddr, httpMethod, callerData,
+		req.Context(), orgSlug, identifier, token, status, message, durationMs,
+		userAgent, remoteAddr, httpMethod, callerData,
 	); err != nil {
 		return h.handleError(writer, err)
 	}

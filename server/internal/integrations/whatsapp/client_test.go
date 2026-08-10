@@ -101,6 +101,8 @@ func TestSendTemplate_PayloadShape(t *testing.T) {
 
 	components, ok := tmpl["components"].([]any)
 	r.True(ok)
+	// An empty ButtonParam emits NO button component: an installation whose
+	// approved template has no button must keep working.
 	r.Len(components, 1)
 
 	body, ok := components[0].(map[string]any)
@@ -158,6 +160,54 @@ func TestSendTemplate_AuthenticationTemplateAddsCopyCodeButton(t *testing.T) {
 	param, ok := params[0].(map[string]any)
 	r.True(ok)
 	r.Equal("123456", param["text"])
+}
+
+// TestSendTemplate_AlertTemplateCarriesURLButtonSuffix proves the same
+// ButtonParam field serves the alert template's "Visit website" button: the
+// path suffix is carried verbatim, alongside the four body variables, in the
+// component shape a dynamic URL button needs.
+func TestSendTemplate_AlertTemplateCarriesURLButtonSuffix(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fake := newFakeGraph(t, http.StatusOK, `{"messages":[{"id":"wamid.LINK"}]}`)
+	client := newTestClient(t, fake)
+
+	_, err := client.SendTemplate(context.Background(), &whatsapp.TemplateMessage{
+		To:          "+33612345678",
+		Template:    "solidping_alert",
+		Language:    "en",
+		BodyParams:  []string{"API", "DOWN", "connection refused", "acme"},
+		ButtonParam: "orgs/acme/checks/check-1",
+	})
+	r.NoError(err)
+
+	tmpl, ok := fake.body["template"].(map[string]any)
+	r.True(ok)
+
+	components, ok := tmpl["components"].([]any)
+	r.True(ok)
+	r.Len(components, 2, "body + button")
+
+	bodyComp, ok := components[0].(map[string]any)
+	r.True(ok)
+	r.Equal("body", bodyComp["type"])
+
+	button, ok := components[1].(map[string]any)
+	r.True(ok)
+	r.Equal("button", button["type"])
+	r.Equal("url", button["sub_type"])
+	r.Equal("0", button["index"])
+
+	params, ok := button["parameters"].([]any)
+	r.True(ok)
+	r.Len(params, 1)
+
+	param, ok := params[0].(map[string]any)
+	r.True(ok)
+	r.Equal("text", param["type"])
+	r.Equal("orgs/acme/checks/check-1", param["text"], "the suffix is passed through untouched")
 }
 
 func TestSendTemplate_DefaultsLanguageAndAPIVersion(t *testing.T) {

@@ -67,6 +67,10 @@ type Service struct {
 	// whatsAppRunawayPerHour bounds a broken escalation loop on the WhatsApp
 	// channel, independently of the billing-driven monthly quota.
 	whatsAppRunawayPerHour int
+	// telegramRunawayPerHour bounds a broken escalation loop on the Telegram
+	// channel. Telegram has NO monthly quota (the channel is free), so this is
+	// the only bound that applies to it.
+	telegramRunawayPerHour int
 }
 
 // Option customizes a Service at construction.
@@ -95,6 +99,16 @@ func WithWhatsAppRunawayCap(perHour int) Option {
 	}
 }
 
+// WithTelegramRunawayCap overrides the per-org hourly Telegram runaway cap. A
+// non-positive value leaves the default in place.
+func WithTelegramRunawayCap(perHour int) Option {
+	return func(s *Service) {
+		if perHour > 0 {
+			s.telegramRunawayPerHour = perHour
+		}
+	}
+}
+
 // NewService builds an entitlements service with the given defaults.
 // staleAfter of zero disables stale fallback (self-hosted default).
 //
@@ -115,6 +129,7 @@ func NewService(
 		smsRunawayPerHour:      defaultSMSRunawayPerHour,
 		callRunawayPerHour:     defaultCallRunawayPerHour,
 		whatsAppRunawayPerHour: defaultWhatsAppRunawayPerHour,
+		telegramRunawayPerHour: defaultTelegramRunawayPerHour,
 	}
 
 	for _, opt := range opts {

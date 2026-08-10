@@ -267,7 +267,13 @@ describe("LiveRegistry scope-accurate invalidation", () => {
     expect(stale).not.toContain(JSON.stringify(["check", ORG, "uid-2"]));
   });
 
-  it("a 'results' kind update on the checks collection scope also invalidates the checks list", () => {
+  it("a 'results' kind update on the checks collection scope does NOT invalidate the checks list", () => {
+    // Spec 2026-08-09-07: check workers write results continuously, so this
+    // hint arrives essentially without pause; refetching the org's whole
+    // checks list (lastResult embedded for every check) on each one is what
+    // made one open tab worth ~0.5 list requests per second. Result-derived
+    // caches still refresh here; the list itself refreshes on a real status
+    // transition (kind "checks") and on its own CHECKS_LIST_POLL_MS poll.
     const { client, conn, registry } = setup();
     registry.addScope({ entity: "checks" });
     registry.start();
@@ -278,10 +284,13 @@ describe("LiveRegistry scope-accurate invalidation", () => {
     vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
     conn.update({ entity: "checks" }, ["results"]);
     const stale = staleKeys(client);
-    expect(stale).toContain(JSON.stringify(["checks", ORG, { limit: 1000 }]));
-    // The paginated list (checks index page) embeds last-result cells too —
-    // a steady-state (no-transition) run must refresh it as well.
-    expect(stale).toContain(JSON.stringify(["checks", "infinite", ORG, {}]));
+    expect(stale).not.toContain(JSON.stringify(["checks", ORG, { limit: 1000 }]));
+    expect(stale).not.toContain(JSON.stringify(["checks", "infinite", ORG, {}]));
+    // …while the result-derived caches on the same scope still refresh.
+    expect(stale).toContain(JSON.stringify(["results", ORG, { checkUid: "uid-1" }]));
+    expect(stale).toContain(
+      JSON.stringify(["checkAvailability", ORG, "uid-1", ["24h"], undefined])
+    );
   });
 
   it("empty kinds on update means 'all' for that scope's roots", () => {
@@ -355,11 +364,17 @@ describe("LiveRegistry hint damping (refetch storm protection)", () => {
     client.getQueryCache().getAll().forEach((q) => client.resetQueries({ queryKey: q.queryKey }));
   }
 
+  // The damping tests below drive "results" hints and assert on a root that
+  // kind still owns (checkAvailability) — the checks-list roots deliberately
+  // moved off "results" in spec 2026-08-09-07, so asserting them here would
+  // test the root mapping instead of the damper.
   it("the first hint after a quiet period invalidates immediately", () => {
     const { client, conn } = liveChecksScope();
 
     conn.update({ entity: "checks" }, ["results"]);
-    expect(staleKeys(client)).toContain(JSON.stringify(["checks", ORG, { limit: 1000 }]));
+    expect(staleKeys(client)).toContain(
+      JSON.stringify(["checkAvailability", ORG, "uid-1", ["24h"], undefined]),
+    );
   });
 
   it("a burst of hints during the cooldown coalesces into exactly one trailing invalidation", () => {
@@ -382,7 +397,9 @@ describe("LiveRegistry hint damping (refetch storm protection)", () => {
     // Trailing edge: exactly one deferred invalidation at cooldown expiry.
     vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
     expect(invalidate).toHaveBeenCalledTimes(2);
-    expect(staleKeys(client)).toContain(JSON.stringify(["checks", ORG, { limit: 1000 }]));
+    expect(staleKeys(client)).toContain(
+      JSON.stringify(["checkAvailability", ORG, "uid-1", ["24h"], undefined]),
+    );
 
     // And nothing else fires afterwards.
     vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS * 3);
@@ -441,7 +458,9 @@ describe("LiveRegistry hint damping (refetch storm protection)", () => {
     expect(staleKeys(client)).toEqual([]);
 
     conn.update({ entity: "checks" }, ["results"]);
-    expect(staleKeys(client)).toContain(JSON.stringify(["checks", ORG, { limit: 1000 }]));
+    expect(staleKeys(client)).toContain(
+      JSON.stringify(["checkAvailability", ORG, "uid-1", ["24h"], undefined]),
+    );
   });
 
   it("onSubscribed catch-up stays immediate even during a hint cooldown", () => {

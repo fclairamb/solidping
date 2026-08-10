@@ -1,10 +1,12 @@
 package sqlite
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
@@ -72,6 +74,121 @@ func TestGetLastResultForChecks_ReturnsOneRowPerCheck(t *testing.T) {
 
 	r.Contains(results, checkB.UID)
 	r.Equal(newestB.UID, results[checkB.UID].UID, "must be the newest row for check B")
+}
+
+// TestGetLastResultForChecks_UsesTheRawIndex asserts the SQLite mirror really
+// descends results_raw_idx per check instead of silently regressing to a scan
+// of `results` — the whole point of the rewrite (spec 2026-08-09-07), and the
+// one thing a row-equality test cannot see. EXPLAIN QUERY PLAN is run on the
+// exact SQL production executes (same package constant).
+func TestGetLastResultForChecks_UsesTheRawIndex(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	s, err := New(ctx, Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(s.Initialize(ctx))
+	t.Cleanup(func() { _ = s.Close() })
+
+	org := models.NewOrganization("plan-org", "Plan Org")
+	r.NoError(s.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "planned", "http")
+	r.NoError(s.CreateCheck(ctx, check))
+	seedRawResults(t, s, org.UID, check.UID, 40)
+
+	_, err = s.DB().ExecContext(ctx, "ANALYZE")
+	r.NoError(err)
+
+	// EXPLAIN QUERY PLAN emits (id, parent, notused, detail) — every column
+	// has to be in the scan target for bun to accept the row.
+	var plan []struct {
+		ID      int    `bun:"id"`
+		Parent  int    `bun:"parent"`
+		NotUsed int    `bun:"notused"`
+		Detail  string `bun:"detail"`
+	}
+	r.NoError(s.DB().NewRaw(
+		"EXPLAIN QUERY PLAN "+lastResultForChecksQuery, org.UID, bun.List([]string{check.UID}),
+	).Scan(ctx, &plan))
+
+	var builder strings.Builder
+	for i := range plan {
+		builder.WriteString(plan[i].Detail)
+		builder.WriteString("\n")
+	}
+	steps := builder.String()
+
+	r.Contains(steps, "results_raw_idx",
+		"the per-check lookup must ride the partial raw index:\n%s", steps)
+	r.Contains(steps, "CORRELATED SCALAR SUBQUERY",
+		"the winner per check must come from a correlated lookup, not a ranking:\n%s", steps)
+	// Every step must be a SEARCH (an index descent). A SCAN step means
+	// SQLite materialized and walked a row set — which is exactly what the
+	// former ROW_NUMBER() form did ("CO-ROUTINE ranked" + "SCAN ranked"),
+	// i.e. reading every raw row of the organization before discarding all
+	// but one per check.
+	r.NotContains(steps, "SCAN",
+		"no step may scan a row set; every step must be an index search:\n%s", steps)
+}
+
+// TestGetLastResultForChecks_Parity pins the exact contract the per-check
+// index descent (spec 2026-08-09-07) must preserve, field by field, and is
+// mirrored one-for-one by its Postgres twin so the two backends cannot drift:
+// aggregated rollup rows are never returned even when newer than every raw
+// row, checks with no raw history are absent from the map rather than present
+// with a nil value, a repeated uid yields one entry, and an unknown uid is
+// simply absent.
+func TestGetLastResultForChecks_Parity(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	s, err := New(ctx, Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(s.Initialize(ctx))
+	t.Cleanup(func() { _ = s.Close() })
+
+	org := models.NewOrganization("parity-org", "Parity Org")
+	r.NoError(s.CreateOrganization(ctx, org))
+
+	withHistory := models.NewCheck(org.UID, "with-history", "http")
+	noHistory := models.NewCheck(org.UID, "no-history", "http")
+	r.NoError(s.CreateCheck(ctx, withHistory))
+	r.NoError(s.CreateCheck(ctx, noHistory))
+
+	newest := seedRawResults(t, s, org.UID, withHistory.UID, 5)
+
+	// A rollup row NEWER than every raw row must still never win.
+	rollup := models.NewResult(org.UID, withHistory.UID, models.ResultStatusUp, 999)
+	rollup.PeriodType = models.PeriodTypeHour
+	rollup.PeriodStart = newest.PeriodStart.Add(time.Hour)
+	r.NoError(s.CreateResult(ctx, rollup))
+
+	// noHistory keeps only CreateCheck's initial "created" marker row; drop
+	// it so the check genuinely has no raw history.
+	_, err = s.DB().NewRaw("DELETE FROM results WHERE check_uid = ?", noHistory.UID).Exec(ctx)
+	r.NoError(err)
+
+	results, err := s.GetLastResultForChecks(ctx, org.UID, []string{
+		withHistory.UID, noHistory.UID, withHistory.UID, models.NewCheck(org.UID, "x", "http").UID,
+	})
+	r.NoError(err)
+	r.Len(results, 1, "one entry: only the check that has raw history")
+
+	got := results[withHistory.UID]
+	r.NotNil(got)
+	r.Equal(newest.UID, got.UID)
+	r.Equal(withHistory.UID, got.CheckUID)
+	r.Equal(models.PeriodTypeRaw, got.PeriodType, "rollup rows must never be returned")
+	r.WithinDuration(newest.PeriodStart, got.PeriodStart, time.Second)
+	r.NotNil(got.Status)
+	r.Equal(int(models.ResultStatusUp), *got.Status)
+	r.NotNil(got.Duration)
+	r.InDelta(*newest.Duration, *got.Duration, 0.001)
+
+	r.NotContains(results, noHistory.UID, "a check with no raw row is absent, not nil-valued")
 }
 
 // TestGetLastResultForChecks_FiltersByOrganization seeds a check in another

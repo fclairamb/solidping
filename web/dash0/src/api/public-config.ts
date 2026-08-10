@@ -38,3 +38,22 @@ export function useWhatsAppEnabled(): boolean {
 
   return Boolean(data?.whatsapp?.enabled);
 }
+
+/**
+ * Whether this instance can send Telegram alerts. Mirrors the backend's
+ * resolved `config.TelegramConfig.Active()` rule: the dashboard only offers the
+ * "Connect Telegram" action and the `telegram` severity channel when a bot is
+ * actually wired up.
+ *
+ * Defaults to false while loading, so the feature never flashes into view on an
+ * instance that does not have it.
+ *
+ * Deliberately in the same file (and over the same cached query) as
+ * `useWhatsAppEnabled` — both read one public-config document, and a second
+ * fetch of the same document would be pure waste.
+ */
+export function useTelegramEnabled(): boolean {
+  const { data } = usePublicConfig();
+
+  return Boolean(data?.telegram?.enabled);
+}

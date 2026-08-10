@@ -577,7 +577,9 @@ paths:
         When a feature is disabled its configuration fields are **omitted**
         rather than returned empty — e.g. with PostHog unconfigured the
         response is exactly `{"posthog": {"enabled": false}}`. The same rule
-        applies to `whatsapp`, which is a single resolved boolean.
+        applies to `whatsapp` and `telegram`: `whatsapp` is a single resolved
+        boolean, and `telegram` emits its public bot username only while it is
+        enabled.
       operationId: getPublicConfig
       security: []
       responses:
@@ -944,7 +946,12 @@ paths:
           example: "env:prod,app:api"
         - name: with
           in: query
-          description: Comma-separated list of additional data to include (e.g., "last_result", "last_status_change")
+          description: >-
+            Comma-separated list of additional data to include: "last_result"
+            (the check's newest raw result) and "last_status_change" (when the
+            derived check status last changed — served from the check row
+            itself, so it costs no extra query and is omitted for checks that
+            have never transitioned).
           schema:
             type: string
         - name: internal
@@ -1094,6 +1101,16 @@ paths:
       parameters:
         - $ref: "#/components/parameters/OrgPath"
         - $ref: "#/components/parameters/CheckUidPath"
+        - name: with
+          in: query
+          description: >-
+            Comma-separated list of additional data to include: "last_result"
+            (the check's newest raw result) and "last_status_change" (when the
+            derived check status last changed — served from the check row
+            itself, so it costs no extra query and is omitted for checks that
+            have never transitioned).
+          schema:
+            type: string
       responses:
         "200":
           description: Check details
@@ -2405,6 +2422,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/NotificationRoute"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/users/me/telegram/link:
+    post:
+      tags: [Notifications]
+      summary: Mint a single-use Telegram connect link for the caller
+      description: |
+        Returns a `https://t.me/<botUsername>?start=<token>` deep link carrying
+        a single-use, high-entropy token (TTL 15 minutes).
+
+        Nothing is created by this call. The Telegram contact only comes into
+        existence when the user actually presses **Start** in Telegram and the
+        resulting `/start <token>` reaches the instance webhook — pressing Start
+        is both the proof of reachability and the opt-in, which is why this
+        channel has no verification code round-trip.
+
+        A replayed token is a no-op, not a second contact. Poll
+        `GET /api/v1/orgs/{org}/users/me/notification-routes` to observe the new
+        contact appear.
+      operationId: createMyTelegramLink
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "201":
+          description: Connect link minted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelegramLinkResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -6960,6 +7013,32 @@ components:
           $ref: "#/components/schemas/PublicPostHogConfig"
         whatsapp:
           $ref: "#/components/schemas/PublicWhatsAppConfig"
+        telegram:
+          $ref: "#/components/schemas/PublicTelegramConfig"
+
+    PublicTelegramConfig:
+      type: object
+      required: [enabled]
+      description: |
+        Instance-level Telegram capability flag. The dashboard reads it to
+        decide whether to offer the "Connect Telegram" action and the
+        `telegram` severity channel. The bot token and the webhook secret are
+        never exposed here; the bot *username* is public by nature (anyone can
+        find the bot in Telegram) and the browser needs it to build the connect
+        deep link.
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            Resolved enablement, i.e. `telegram.enabled == true` **and** a
+            non-empty bot token **and** a non-empty bot username. False on any
+            deployment that has not configured a bot.
+        botUsername:
+          type: string
+          description: |
+            The bot's @username without the leading '@'. Present only when
+            `enabled` is true.
+          example: solidping_bot
 
     PublicWhatsAppConfig:
       type: object
@@ -7080,7 +7159,17 @@ components:
         lastStatusChange:
           type: object
           nullable: true
-          description: Information about when the check last transitioned between states (only included when with=last_status_change)
+          description: >-
+            When the check's status last changed, and what it changed to (only
+            included when with=last_status_change). This is the *derived* check
+            status — the same value as the `status` field, which respects the
+            confirmation and recovery periods and the flapping backoff — so a
+            single unconfirmed failed probe does not reset the timer.
+
+
+            Absent for checks that have never recorded a status transition:
+            there is no fallback to the creation time and no fallback to the
+            raw probe history.
           properties:
             time:
               type: string
@@ -7088,7 +7177,7 @@ components:
               description: ISO 8601 timestamp of when the status change occurred
             status:
               type: string
-              enum: [INITIAL, UP, DOWN, TIMEOUT, ERROR, UNKNOWN]
+              enum: [UP, DOWN, VALIDATING, WARNING, DEGRADED, CREATED, UNKNOWN]
               description: The status that the check transitioned to
         flappingWindowSeconds:
           type: integer
@@ -8195,10 +8284,28 @@ components:
             `whatsapp` is deliberately distinct from `phone` even for the same
             number: verification proves WhatsApp reachability specifically and
             is Meta's required opt-in record. WhatsApp values must be E.164.
+
+            `telegram` is **rejected** here with `VALIDATION_ERROR`: a Telegram
+            contact's value is a chat id and there is no verification round-trip
+            to catch a wrong one, so accepting one from a request body would let
+            any user page a stranger. Use the connect-link endpoint instead.
         value:
           type: string
         label:
           type: string
+
+    TelegramLinkResponse:
+      type: object
+      required: [url, expiresAt]
+      properties:
+        url:
+          type: string
+          description: The t.me deep link to open, carrying the single-use token.
+          example: https://t.me/solidping_bot?start=Zm9vYmFyYmF6
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the token stops working (15 minutes after minting).
 
     UpdateNotificationRouteRequest:
       type: object

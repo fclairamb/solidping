@@ -313,10 +313,17 @@ type Service interface {
 		ctx context.Context, orgUID, checkUID, periodType string, regions []string,
 		pivotStart time.Time, pivotUID string,
 	) (prevUID, nextUID string, err error)
+	// GetLastResultForChecks returns the newest raw result per requested
+	// check (absent from the map when the check has no raw row), as one
+	// index descent per check — never a scan of the organization's raw
+	// history. There is deliberately no GetLastStatusChangeForChecks
+	// companion: "when did this check last change status" is answered by
+	// checks.status / checks.status_changed_at, which the incident path
+	// maintains, not by re-deriving transitions from the raw rows that
+	// survived retention (spec 2026-08-09-07).
 	GetLastResultForChecks(
 		ctx context.Context, orgUID string, checkUIDs []string,
 	) (map[string]*models.Result, error)
-	GetLastStatusChangeForChecks(ctx context.Context, checkUIDs []string) (map[string]*models.LastStatusChange, error)
 	DeleteResults(ctx context.Context, orgUID string, resultUIDs []string) (int64, error)
 	// CompactResults atomically compacts one source bucket into a single
 	// aggregated row inside one transaction: it fetches the source rows matching
@@ -551,6 +558,18 @@ type Service interface {
 	GetSystemParameter(ctx context.Context, key string) (*models.Parameter, error)
 	// SetSystemParameter creates or updates a system parameter.
 	SetSystemParameter(ctx context.Context, key string, value any, secret bool) error
+	// GetOrCreateSystemParameter returns the existing system parameter for key,
+	// or atomically creates it with value. The bool reports whether THIS caller
+	// created it.
+	//
+	// Atomicity is the whole point: several API pods booting together must all
+	// end up on the SAME derived value (e.g. the Telegram webhook secret). A
+	// read-then-write would let each pod generate its own, the last writer would
+	// win, and every loser would then validate inbound requests against a secret
+	// the third party no longer holds.
+	GetOrCreateSystemParameter(
+		ctx context.Context, key string, value any, secret bool,
+	) (*models.Parameter, bool, error)
 	// DeleteSystemParameter soft-deletes a system parameter.
 	DeleteSystemParameter(ctx context.Context, key string) error
 	// ListSystemParameters returns all system parameters.
@@ -838,8 +857,31 @@ type Service interface {
 	// verification columns.
 	MarkUserContactVerified(ctx context.Context, uid string, at time.Time) error
 
+	// ClearUserContactVerified removes the verified_at stamp from a contact,
+	// leaving the row in place. Used when a provider tells us a destination is
+	// permanently unreachable (a Telegram user blocked the bot): the contact
+	// must stop being paged, but deleting it would lose the user's intent and
+	// hide the fact that a reconnect is needed.
+	ClearUserContactVerified(ctx context.Context, uid string) error
+
+	// ListUserContactsByTypeValue returns every live contact with the given
+	// type and value, across ALL users and organizations. Inbound provider
+	// callbacks (a Telegram /stop, a block notification) identify the contact
+	// only by its destination, with no org context — one chat can legitimately
+	// be linked in several orgs, and an opt-out must reach all of them.
+	ListUserContactsByTypeValue(
+		ctx context.Context, contactType, value string,
+	) ([]*models.UserContact, error)
+
 	// DeleteUserContact soft-deletes a contact by UID.
 	DeleteUserContact(ctx context.Context, uid string) error
+
+	// EnsureUserNotificationRoute idempotently creates an enabled route for an
+	// existing contact, appended after the user's current routes. Safe to call
+	// repeatedly (INSERT … ON CONFLICT (contact_uid) DO NOTHING), which is what
+	// makes re-connecting an already-connected Telegram chat a no-op instead of
+	// a duplicate.
+	EnsureUserNotificationRoute(ctx context.Context, userUID, orgUID, contactUID string) error
 
 	// SetRouteEnabled toggles the enabled flag on a route.
 	SetRouteEnabled(ctx context.Context, routeUID string, enabled bool) error

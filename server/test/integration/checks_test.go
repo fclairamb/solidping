@@ -77,7 +77,7 @@ func TestPUTCheckUpsert(t *testing.T) {
 	r.Equal(enabled, *updateResp.Enabled)
 
 	// Verify via GET
-	getResult, err := apiClient.GetCheckWithResponse(ctx, TestOrgSlug, slug)
+	getResult, err := apiClient.GetCheckWithResponse(ctx, TestOrgSlug, slug, nil)
 	r.NoError(err)
 	r.NotNil(getResult.JSON200)
 
@@ -306,7 +306,7 @@ func TestCreateCheckWithDescription(t *testing.T) {
 	r.Equal(description, *createResp.Description)
 
 	// Verify via GET
-	getResult, err := apiClient.GetCheckWithResponse(ctx, TestOrgSlug, slug)
+	getResult, err := apiClient.GetCheckWithResponse(ctx, TestOrgSlug, slug, nil)
 	r.NoError(err)
 	r.NotNil(getResult.JSON200)
 

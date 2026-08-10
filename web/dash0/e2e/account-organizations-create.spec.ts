@@ -215,6 +215,117 @@ test.describe("Account > Organizations", () => {
     await expect(page.getByTestId("organization-current-badge")).toBeVisible();
   });
 
+  test("the Settings shortcut is per-row role gated: current org links directly, a non-current admin org switches then lands on settings, and a non-admin row has no button", async ({
+    page,
+  }) => {
+    const { email, org } = await seedUserWithOrg(page);
+
+    // A second org the same user owns (admin-capable), created via org1's
+    // token — mirrors the "switching orgs" test above. This is the
+    // non-current row that must switch-then-navigate to its settings.
+    const stamp2 = Date.now() + Math.floor(Math.random() * 1000);
+    const org2Slug = `ao4-${stamp2.toString(36)}`;
+    const createOrg2Resp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
+      headers: { Authorization: `Bearer ${org.accessToken}` },
+      data: { name: `Acct Orgs Owner2 ${stamp2}`, slug: org2Slug },
+    });
+    expect(createOrg2Resp.status()).toBe(201);
+
+    // A third org owned by a DIFFERENT user, who adds our primary user as a
+    // plain "user" role member — the negative-control row: not admin-capable,
+    // so it must render no Settings button at all.
+    const stamp3 = Date.now() + Math.floor(Math.random() * 1000);
+    const otherEmail = `acct-orgs-other-${stamp3}@unknown.example`;
+    const otherPassword = "Strong-Pass-123!";
+    const createOtherResp = await page.request.post(
+      `${API_BASE}/api/v1/test/users`,
+      { data: { email: otherEmail, password: otherPassword, name: "Other Owner" } },
+    );
+    if (createOtherResp.status() !== 201) {
+      test.skip(true, "test user-seed endpoint unavailable");
+    }
+    const otherLoginResp = await page.request.post(
+      `${API_BASE}/api/v1/auth/login`,
+      { data: { email: otherEmail, password: otherPassword } },
+    );
+    expect(otherLoginResp.status()).toBe(200);
+    const otherLogin = (await otherLoginResp.json()) as { accessToken: string };
+
+    const org3Slug = `ao5-${stamp3.toString(36)}`;
+    const createOrg3Resp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
+      headers: { Authorization: `Bearer ${otherLogin.accessToken}` },
+      data: { name: `Acct Orgs Member Co ${stamp3}`, slug: org3Slug },
+    });
+    expect(createOrg3Resp.status()).toBe(201);
+    const org3 = (await createOrg3Resp.json()) as { accessToken: string };
+
+    const addMemberResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/${org3Slug}/members`,
+      {
+        headers: { Authorization: `Bearer ${org3.accessToken}` },
+        data: { email, role: "user" },
+      },
+    );
+    expect(addMemberResp.status()).toBe(201);
+
+    // Seed the browser on org1 — the user now belongs to org1 (owner,
+    // current), org2 (owner, non-current) and org3 (user role, non-current).
+    await seedBrowserSession(page, { ...org, slug: org.slug });
+
+    await page.goto(`orgs/${org.slug}/account/organizations`);
+    await page.waitForLoadState("networkidle");
+
+    // Negative control first: the non-admin row shows no Settings button,
+    // while its row (and the Switch button) is otherwise present.
+    await expect(page.getByTestId(`organization-row-${org3Slug}`)).toBeVisible();
+    await expect(
+      page.getByTestId(`organization-settings-${org3Slug}`),
+    ).toHaveCount(0);
+    await expect(page.getByTestId(`organization-switch-${org3Slug}`)).toBeVisible();
+
+    // Current org (org1): a direct link that lands straight on its settings.
+    const currentSettingsButton = page.getByTestId(
+      `organization-settings-${org.slug}`,
+    );
+    await expect(currentSettingsButton).toBeVisible();
+    await currentSettingsButton.click();
+    await page.waitForURL((url) =>
+      url.pathname.endsWith(`/orgs/${org.slug}/organization/settings`),
+    );
+    await page.waitForLoadState("networkidle");
+    await expect(
+      page.getByRole("heading", { name: /session length/i }),
+    ).toBeVisible();
+
+    // Back to the list (still on org1) to exercise the non-current admin row.
+    await page.goto(`orgs/${org.slug}/account/organizations`);
+    await page.waitForLoadState("networkidle");
+
+    const forbiddenUrls: string[] = [];
+    page.on("response", (response) => {
+      if (response.status() === 403) forbiddenUrls.push(response.url());
+    });
+
+    await page.getByTestId(`organization-settings-${org2Slug}`).click();
+    await page.waitForURL((url) =>
+      url.pathname.endsWith(`/orgs/${org2Slug}/organization/settings`),
+    );
+    await page.waitForLoadState("networkidle");
+    await expect(
+      page.getByRole("heading", { name: /session length/i }),
+    ).toBeVisible();
+
+    expect(forbiddenUrls, `unexpected 403s: ${forbiddenUrls.join(", ")}`).toEqual(
+      [],
+    );
+
+    // The switch actually took effect server-side too, not just client URL.
+    const storedOrg = await page.evaluate(() =>
+      localStorage.getItem("solidping_org"),
+    );
+    expect(storedOrg).toBe(org2Slug);
+  });
+
   test("the account tab bar scrolls horizontally instead of squashing on a narrow screen", async ({
     authenticatedPage,
   }) => {

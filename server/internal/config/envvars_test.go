@@ -1,6 +1,9 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -172,4 +175,277 @@ func TestWhatsAppDefaultsOff(t *testing.T) {
 
 	complete := WhatsAppConfig{Enabled: true, AccessToken: "t", PhoneNumberID: "1"}
 	r.True(complete.Active())
+}
+
+// TestTelegramEnvVarsBind proves every SP_TELEGRAM_* name in the manual-reader
+// list actually lands on its struct field. Each of these keys has a snake_case
+// koanf tag that koanf's env provider can never reach on its own
+// (SP_TELEGRAM_BOT_TOKEN collapses to telegram.bot.token), and `enabled` is
+// deliberately dropped from that provider, so without applyTelegramEnv they
+// would all be silent no-ops — the failure mode this test exists to catch.
+func TestTelegramEnvVarsBind(t *testing.T) {
+	t.Setenv("SP_TELEGRAM_ENABLED", "true")
+	t.Setenv("SP_TELEGRAM_BOT_TOKEN", "123456789:AAtoken")
+	t.Setenv("SP_TELEGRAM_BOT_USERNAME", "@solidping_bot")
+	t.Setenv("SP_TELEGRAM_WEBHOOK_SECRET", "a-long-random-secret")
+	t.Setenv("SP_TELEGRAM_BASE_URL", "https://telegram.test")
+	t.Setenv("SP_ENTITLEMENTS_TELEGRAM_RUNAWAY_PER_HOUR", "13")
+
+	r := require.New(t)
+	cfg, err := Load()
+	r.NoError(err)
+
+	r.NotNil(cfg.Telegram.Enabled, "an explicit SP_TELEGRAM_ENABLED must bind to the tri-state pointer")
+	r.True(*cfg.Telegram.Enabled)
+	r.True(cfg.Telegram.IsEnabled())
+	r.Equal("123456789:AAtoken", cfg.Telegram.BotToken)
+	r.Equal("@solidping_bot", cfg.Telegram.BotUsername)
+	// The '@' is stripped for link building: operators paste it both ways.
+	r.Equal("solidping_bot", cfg.Telegram.ResolvedBotUsername())
+	r.Equal("a-long-random-secret", cfg.Telegram.WebhookSecret)
+	r.Equal("https://telegram.test", cfg.Telegram.ResolvedBaseURL())
+	r.Equal(13, cfg.Entitlements.TelegramRunawayPerHour)
+	r.True(cfg.Telegram.Active())
+
+	// Every name used above must also be advertised as recognized, otherwise
+	// the startup env check would flag a variable that in fact binds.
+	recognized := RecognizedEnvVars()
+	for _, name := range []string{
+		"SP_TELEGRAM_ENABLED", "SP_TELEGRAM_BOT_TOKEN", "SP_TELEGRAM_BOT_USERNAME",
+		"SP_TELEGRAM_WEBHOOK_SECRET", "SP_TELEGRAM_BASE_URL",
+		"SP_ENTITLEMENTS_TELEGRAM_RUNAWAY_PER_HOUR",
+	} {
+		r.Contains(recognized, name)
+	}
+}
+
+// TestTelegramActiveRequiresUsername pins the connect-surface rule: a bot token
+// alone is not enough for Active(). Without a username the dashboard cannot
+// build a connect link, so the connect surface would be half-on.
+func TestTelegramActiveRequiresUsername(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.False((&TelegramConfig{Enabled: BoolPtr(true), BotToken: "t"}).Active())
+	r.False((&TelegramConfig{Enabled: BoolPtr(true), BotUsername: "u"}).Active())
+	r.False((&TelegramConfig{Enabled: BoolPtr(false), BotToken: "t", BotUsername: "u"}).Active())
+	r.True((&TelegramConfig{Enabled: BoolPtr(true), BotToken: "t", BotUsername: "u"}).Active())
+
+	// The default base URL is the real Bot API, and a trailing slash is trimmed
+	// so the client never builds "…//bot<token>/…".
+	r.Equal(DefaultTelegramBaseURL, (&TelegramConfig{}).ResolvedBaseURL())
+	r.Equal("https://proxy.test", (&TelegramConfig{BaseURL: "https://proxy.test/"}).ResolvedBaseURL())
+}
+
+// TestTelegramEnabledIsTriState pins the switch semantics that make a bare bot
+// token sufficient: unset means "on iff a token is present", so supplying the
+// token IS the intent to enable. false stays an unconditional kill switch, and
+// true stays explicit-on.
+func TestTelegramEnabledIsTriState(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// nil (unset) — the default. Auto.
+	r.False((&TelegramConfig{}).IsEnabled(), "unset with no token is off")
+	r.True((&TelegramConfig{BotToken: "123:AAt"}).IsEnabled(),
+		"a bot token alone must switch the feature on")
+	r.True((&TelegramConfig{BotToken: "123:AAt"}).Configured())
+	r.False((&TelegramConfig{BotToken: "  "}).IsEnabled(), "whitespace is not a token")
+
+	// false — the kill switch beats a perfectly good token.
+	off := &TelegramConfig{Enabled: BoolPtr(false), BotToken: "123:AAt", BotUsername: "u"}
+	r.False(off.IsEnabled())
+	r.False(off.Configured())
+	r.False(off.Active())
+
+	// true — explicit on, but still needs a token to do anything.
+	on := &TelegramConfig{Enabled: BoolPtr(true)}
+	r.True(on.IsEnabled())
+	r.False(on.Configured(), "explicitly enabled without a token is still nothing")
+}
+
+// TestTelegramTokenAloneEnablesViaLoad is the end-to-end control for the
+// tri-state default: with SP_TELEGRAM_BOT_TOKEN as the ONLY Telegram variable,
+// a real Load() must come back enabled and configured, with Enabled still nil
+// (unset) — otherwise the "auto" branch would be unreachable dead code.
+//
+// Not parallel: it manipulates the process environment.
+func TestTelegramTokenAloneEnablesViaLoad(t *testing.T) {
+	// LookupEnv, not Getenv: an exported-but-empty SP_TELEGRAM_ENABLED is a
+	// different situation from an absent one, and Getenv cannot tell them apart
+	// — the guard would silently turn into a failure instead of a skip.
+	if _, present := os.LookupEnv(EnvTelegramEnabled); present {
+		t.Skip(EnvTelegramEnabled + " is set in the ambient environment")
+	}
+
+	t.Setenv(EnvTelegramBotToken, "123456789:AAtoken")
+
+	r := require.New(t)
+	cfg, err := Load()
+	r.NoError(err)
+
+	r.Nil(cfg.Telegram.Enabled, "the default must stay unset (auto), never false")
+	r.True(cfg.Telegram.IsEnabled(), "a bot token alone must be enough")
+	r.True(cfg.Telegram.Configured())
+	r.False(cfg.Telegram.Active(), "…but the connect surface waits for the derived username")
+	r.Empty(cfg.Telegram.BotUsername)
+	r.Empty(cfg.Telegram.WebhookSecret)
+}
+
+// TestTelegramEnabledEmptyIsUnsetNotFalse is the regression test for the dotenv
+// hazard: `SP_TELEGRAM_ENABLED=` (present but empty) is exactly what a copied
+// .env.example produces under `set -a; . .env`, `docker run --env-file`, or a
+// PaaS dotenv importer. koanf hands mapstructure an empty string and the
+// weakly-typed string→bool conversion turns it into FALSE, which for a
+// tri-state pointer means an explicit kill switch — silently disabling a
+// perfectly configured bot. An empty value means "I did not choose".
+//
+// Not parallel: it manipulates the process environment.
+func TestTelegramEnabledEmptyIsUnsetNotFalse(t *testing.T) {
+	r := require.New(t)
+
+	for name, raw := range map[string]string{
+		"empty":      "",
+		"whitespace": "   ",
+	} {
+		t.Setenv(EnvTelegramEnabled, raw)
+		t.Setenv(EnvTelegramBotToken, "123456789:AAtoken")
+
+		cfg, err := Load()
+		r.NoError(err, name)
+
+		r.Nil(cfg.Telegram.Enabled, "%s must be treated as unset, never as false", name)
+		r.True(cfg.Telegram.IsEnabled(), "%s must not disable a configured bot", name)
+		r.True(cfg.Telegram.Configured(), "%s must not disable a configured bot", name)
+	}
+
+	// Garbage is not a kill switch either: it falls back to auto and warns.
+	t.Setenv(EnvTelegramEnabled, "yes-please")
+	t.Setenv(EnvTelegramBotToken, "123456789:AAtoken")
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Nil(cfg.Telegram.Enabled)
+	r.True(cfg.Telegram.Configured())
+
+	// Positive control: an explicit false IS still honored, or the fix above
+	// would have quietly removed the kill switch.
+	t.Setenv(EnvTelegramEnabled, "false")
+
+	cfg, err = Load()
+	r.NoError(err)
+	r.NotNil(cfg.Telegram.Enabled)
+	r.False(*cfg.Telegram.Enabled)
+	r.False(cfg.Telegram.IsEnabled(), "an explicit false must still kill the feature")
+	r.False(cfg.Telegram.Configured())
+
+	// …and so is an explicit true.
+	t.Setenv(EnvTelegramEnabled, "true")
+
+	cfg, err = Load()
+	r.NoError(err)
+	r.NotNil(cfg.Telegram.Enabled)
+	r.True(*cfg.Telegram.Enabled)
+}
+
+// TestTelegramEnabledEnvAbsentPreservesConfiguredValue is the guard for the
+// other half of the manual reader: because the env provider now DROPS
+// telegram.enabled outright, applyTelegramEnabledEnv is its only writer — so an
+// absent variable must leave a config-file (or default) value exactly as it
+// found it, rather than resetting everyone to auto.
+//
+// Not parallel: it reads the process environment, which the sequential
+// t.Setenv tests in this file mutate.
+//
+//nolint:paralleltest // reads os.Environ; must not race the t.Setenv tests
+func TestTelegramEnabledEnvAbsentPreservesConfiguredValue(t *testing.T) {
+	if _, present := os.LookupEnv(EnvTelegramEnabled); present {
+		t.Skip(EnvTelegramEnabled + " is set in the ambient environment")
+	}
+
+	r := require.New(t)
+
+	off := TelegramConfig{Enabled: BoolPtr(false), BotToken: "123:AAt"}
+	applyTelegramEnabledEnv(&off)
+	r.NotNil(off.Enabled, "an absent env var must not clear a config-file kill switch")
+	r.False(*off.Enabled)
+
+	on := TelegramConfig{Enabled: BoolPtr(true)}
+	applyTelegramEnabledEnv(&on)
+	r.NotNil(on.Enabled)
+	r.True(*on.Enabled)
+
+	auto := TelegramConfig{BotToken: "123:AAt"}
+	applyTelegramEnabledEnv(&auto)
+	r.Nil(auto.Enabled)
+}
+
+// TestTelegramEnvExampleHasNoDisablingEmptyValues walks the shipped
+// .env.example the way a dotenv importer would and proves that sourcing it with
+// nothing but a bot token filled in leaves Telegram ON. The file tells the
+// reader to copy it, so a bare `KEY=` line in it is a live configuration
+// hazard, not a cosmetic one.
+func TestTelegramEnvExampleHasNoDisablingEmptyValues(t *testing.T) {
+	r := require.New(t)
+
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", ".env.example"))
+	r.NoError(err)
+
+	var telegramVars []string
+
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		key, value, found := strings.Cut(line, "=")
+		if !found || !strings.HasPrefix(key, "SP_TELEGRAM_") {
+			continue
+		}
+
+		telegramVars = append(telegramVars, key)
+		t.Setenv(key, value)
+	}
+
+	r.NotEmpty(telegramVars, "the fixture must actually have found SP_TELEGRAM_* lines")
+	r.NotContains(telegramVars, EnvTelegramEnabled,
+		".env.example must not ship a bare SP_TELEGRAM_ENABLED= line: it parses as false, "+
+			"not as unset, and would silently disable a perfectly good bot token")
+
+	// Now the operator fills in the one required value.
+	t.Setenv(EnvTelegramBotToken, "123456789:AAtoken")
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.True(cfg.Telegram.Configured(),
+		"sourcing .env.example plus a bot token must leave Telegram enabled")
+}
+
+// TestTelegramConfiguredVsActive pins the split between "can we talk to the Bot
+// API" and "can a user connect a chat". A token-only instance must be
+// Configured (webhook route, escalation dispatch, bootstrap) while NOT being
+// Active (connect surface stays off until the @username is known).
+func TestTelegramConfiguredVsActive(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	tokenOnly := &TelegramConfig{Enabled: BoolPtr(true), BotToken: "123:AAt"}
+	r.True(tokenOnly.Configured(), "a bot token alone is a usable bot identity")
+	r.False(tokenOnly.Active(), "no @username yet, so no connect link can be built")
+
+	full := &TelegramConfig{Enabled: BoolPtr(true), BotToken: "123:AAt", BotUsername: "solidping_bot"}
+	r.True(full.Configured())
+	r.True(full.Active())
+
+	// No token: nothing at all, whatever else is set.
+	usernameOnly := &TelegramConfig{Enabled: BoolPtr(true), BotUsername: "solidping_bot"}
+	r.False(usernameOnly.Configured())
+	r.False(usernameOnly.Active())
+
+	// Whitespace is not a token.
+	r.False((&TelegramConfig{Enabled: BoolPtr(true), BotToken: "   "}).Configured())
 }

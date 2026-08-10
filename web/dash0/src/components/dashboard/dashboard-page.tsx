@@ -30,6 +30,7 @@ import {
 } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  CHECKS_LIST_POLL_MS,
   stretchWhileLive,
   useLiveSubscription,
   useScopeLive,
@@ -283,9 +284,11 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   });
 
   // Manual polling for checks: useChecks doesn't expose refetchInterval. Use
-  // a tick + refetch(). Live hints invalidate the cache directly, so the
-  // tick stretches to the safety net while connected.
-  const checkTick = useTick(stretchWhileLive(CHECK_POLL_MS, checksLive));
+  // a tick + refetch(). Deliberately NOT stretched while live: a `results`
+  // hint no longer invalidates the checks-list roots (spec 2026-08-09-07), so
+  // this tick is what keeps the glance card's per-run cells fresh between
+  // status transitions — see CHECKS_LIST_POLL_MS.
+  const checkTick = useTick(CHECKS_LIST_POLL_MS);
   useEffect(() => {
     if (checkTick) checksQuery.refetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -195,6 +195,7 @@
       "bottomRight": "Abajo a la derecha",
       "bottomLeft": "Abajo a la izquierda"
     },
+    "link": "Enlazar a la página de estado",
     "hint": "Pega este fragmento en cualquier parte del HTML de tu página. El widget se renderiza en un shadow root, así que el CSS de tu sitio no puede afectarlo ni verse afectado por él.",
     "size": "Tamaño",
     "sizes": {

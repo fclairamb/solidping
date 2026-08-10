@@ -47,6 +47,17 @@ func NewSystemParameter(key string, value JSONMap, secret bool) *Parameter {
 	}
 }
 
+// ParameterValueKey is the single JSON key a scalar parameter value is stored
+// under. Both engines write and read `{"value": …}`; naming it once keeps them
+// from ever drifting.
+const ParameterValueKey = "value"
+
+// ParameterValue wraps a scalar into the JSON envelope parameters are stored
+// in.
+func ParameterValue(value any) JSONMap {
+	return JSONMap{ParameterValueKey: value}
+}
+
 // ParameterUpdate represents fields that can be updated.
 type ParameterUpdate struct {
 	Key    *string

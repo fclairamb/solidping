@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -104,6 +105,7 @@ function buildAttributes({
   position,
   size,
   labels,
+  linkEnabled,
   forceStatus,
 }: {
   org: string;
@@ -113,6 +115,7 @@ function buildAttributes({
   position: WidgetPosition;
   size: WidgetSize;
   labels: Record<PageStatus, string>;
+  linkEnabled: boolean;
   forceStatus?: PageStatus;
 }): string[] {
   const attributes = [`data-page="${org}/${pageSlug}"`];
@@ -125,6 +128,12 @@ function buildAttributes({
     if (value) {
       attributes.push(`data-label-${status}="${escapeHtmlAttr(value)}"`);
     }
+  }
+  // Linking is the default (matches the widget's own default when the
+  // attribute is absent) — only emit the attribute for the opt-out, so the
+  // common case stays a minimal, unchanged snippet.
+  if (!linkEnabled) {
+    attributes.push(`data-link="false"`);
   }
   if (forceStatus) {
     attributes.push(`data-force-status="${forceStatus}"`);
@@ -169,6 +178,7 @@ export function StatusPageWidgetCard({
   const [position, setPosition] = useState<WidgetPosition>("bottom-right");
   const [size, setSize] = useState<WidgetSize>("md");
   const [previewStatus, setPreviewStatus] = useState<PageStatus>("operational");
+  const [linkEnabled, setLinkEnabled] = useState(true);
   const [labels, setLabels] = useState<Record<PageStatus, string>>({
     operational: "",
     degraded: "",
@@ -187,6 +197,7 @@ export function StatusPageWidgetCard({
     position,
     size,
     labels,
+    linkEnabled,
   });
   const snippet = `<script async src="${scriptUrl}" ${attributes.join(" ")}></script>`;
 
@@ -198,6 +209,7 @@ export function StatusPageWidgetCard({
     position,
     size,
     labels,
+    linkEnabled,
     forceStatus: previewStatus,
   });
   const previewScriptTag = `<script async src="${scriptUrl}" ${previewAttributes.join(" ")}></script>`;
@@ -368,6 +380,15 @@ export function StatusPageWidgetCard({
             ))}
           </div>
         </CollapsibleSection>
+
+        <label className="flex items-center gap-2">
+          <Checkbox
+            data-testid="status-page-widget-link-toggle"
+            checked={linkEnabled}
+            onCheckedChange={(value) => setLinkEnabled(value === true)}
+          />
+          <span className="text-sm">{tStatusPages("widget.link")}</span>
+        </label>
 
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-3">

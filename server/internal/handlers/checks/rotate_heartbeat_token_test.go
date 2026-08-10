@@ -40,7 +40,7 @@ func TestRotateHeartbeatTokenInvalidatesOldTokenImmediately(t *testing.T) {
 	hbSvc := heartbeat.NewService(dbSvc, jobs, nil)
 
 	// Old token works before rotation (positive control).
-	r.NoError(hbSvc.ReceiveHeartbeat(ctx, org.Slug, created.UID, oldToken, "up", "", "", "", "", nil))
+	r.NoError(hbSvc.ReceiveHeartbeat(ctx, org.Slug, created.UID, oldToken, "up", "", 0, "", "", "", nil))
 
 	rotated, err := svc.RotateHeartbeatToken(ctx, org.Slug, created.UID)
 	r.NoError(err)
@@ -51,11 +51,11 @@ func TestRotateHeartbeatTokenInvalidatesOldTokenImmediately(t *testing.T) {
 	r.NotEqual(oldToken, newToken)
 
 	// Old token now rejected immediately — no grace period for heartbeat.
-	err = hbSvc.ReceiveHeartbeat(ctx, org.Slug, created.UID, oldToken, "up", "", "", "", "", nil)
+	err = hbSvc.ReceiveHeartbeat(ctx, org.Slug, created.UID, oldToken, "up", "", 0, "", "", "", nil)
 	r.ErrorIs(err, heartbeat.ErrInvalidToken)
 
 	// New token is accepted.
-	r.NoError(hbSvc.ReceiveHeartbeat(ctx, org.Slug, created.UID, newToken, "up", "", "", "", "", nil))
+	r.NoError(hbSvc.ReceiveHeartbeat(ctx, org.Slug, created.UID, newToken, "up", "", 0, "", "", "", nil))
 
 	// The rotation is durably persisted, not just reflected in the response.
 	row, err := dbSvc.GetCheck(ctx, org.UID, created.UID)
