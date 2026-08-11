@@ -14,6 +14,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/integrations/telegram"
 	"github.com/fclairamb/solidping/server/internal/integrations/whatsapp"
 	"github.com/fclairamb/solidping/server/internal/webpush"
 )
@@ -458,6 +459,8 @@ func (s *Service) dispatchTestRoute(
 		return emailSender.SendTestEmail(ctx, target.Contact.Value)
 	case models.UserContactTypeSlackUser:
 		return s.dispatchTestSlack(ctx, orgUID, target.Contact.Value, slackClient)
+	case models.UserContactTypeTelegram:
+		return s.dispatchTestTelegram(ctx, target.Contact.Value)
 	case models.UserContactTypeWebPush:
 		if wpOpts.VAPIDPublicKey == "" {
 			return ErrWebPushNotConfigured
@@ -471,6 +474,28 @@ func (s *Service) dispatchTestRoute(
 	default:
 		return fmt.Errorf("provider not configured for contact type %q", target.Contact.Type) //nolint:err113
 	}
+}
+
+// dispatchTestTelegram sends a test message to an already-connected chat.
+//
+// Configured(), not Active(): messaging a chat that is already linked needs
+// only the bot token. The @username is required solely to BUILD a connect link,
+// and gating the test on it would fail the one button a user presses to check
+// the setup they have just completed.
+func (s *Service) dispatchTestTelegram(ctx context.Context, chatID string) error {
+	client, err := telegram.NewClientFromConfig(&s.telegramCfg)
+	if err != nil {
+		return ErrTelegramNotEnabled
+	}
+
+	if _, err := client.SendMessage(ctx, &telegram.Message{
+		ChatID: chatID,
+		HTML:   telegram.BuildTestHTML(),
+	}); err != nil {
+		return fmt.Errorf("send telegram test message: %w", err)
+	}
+
+	return nil
 }
 
 // dispatchTestSlack sends a test Slack DM for the given user ID.

@@ -128,6 +128,15 @@ func BuildLinkedHTML(orgSlug string) string {
 		"Send /stop at any time to disconnect."
 }
 
+// BuildTestHTML is the message behind the dashboard's "Test" button. It says
+// which way the delivery went, because that is the only thing the test proves:
+// the chat is connected and the bot can reach it.
+func BuildTestHTML() string {
+	return "<b>🔔 Test alert from SolidPing</b>\n\n" +
+		"This chat is connected and can receive alerts. " +
+		"Nothing is wrong — you pressed Test in your dashboard."
+}
+
 // BuildUnlinkedHTML confirms an in-chat opt-out.
 func BuildUnlinkedHTML() string {
 	return "<b>Disconnected</b>\n\n" +

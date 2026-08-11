@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Bug Fixes
+
+* **telegram:** a bot username derived at boot is written down even when the startup lookup missed it. The synchronous resolver gets one `getMe` bounded to three seconds so it cannot delay boot; when that call lost a race with a cold DNS cache the username stayed unknown and nothing was persisted, so the connect surface answered "telegram is not configured" on every later request while the asynchronous bootstrap — which has a far more generous budget — had already succeeded and logged "Telegram bot ready". The bootstrap now persists what it learned, so the next restart resolves the username from the database with no network call at all
+* **telegram:** the notifications page's Test button reaches Telegram. Test dispatch knew email, Slack and web push but had no Telegram case, so it fell through to a generic "provider not configured" 422 — on the one button a user presses to confirm the setup they have just finished, while real escalation delivery through the same contact worked. Sending a test needs only the bot token, matching alert dispatch, so it also works on an instance whose bot username is not known yet
+
 ## [0.12.0](https://github.com/fclairamb/solidping/compare/v0.11.0...v0.12.0) (2026-08-10)
 
 
