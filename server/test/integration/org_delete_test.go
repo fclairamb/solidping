@@ -106,7 +106,10 @@ func TestDeleteOrgIsOwnerOnly(t *testing.T) {
 	// Control: the owner, with the right slug, deletes it.
 	status, body = doBearerRequest(t, testServer, ownerToken, http.MethodDelete,
 		"/api/v1/orgs/"+created.Slug, map[string]any{"slug": created.Slug})
-	r.Equal(http.StatusNoContent, status, "owner delete: body=%s", body)
+	// 200, not 204: the response carries the replacement session the caller
+	// carries on with (spec 2026-08-10-03) — here an org-less one, since this
+	// user belonged to nothing else.
+	r.Equal(http.StatusOK, status, "owner delete: body=%s", body)
 
 	_, err = dbService.GetOrganizationBySlug(ctx, created.Slug)
 	r.Error(err, "the deleted org must no longer resolve by slug")
@@ -172,7 +175,7 @@ func TestDeletedOrgSurfaces404Immediately(t *testing.T) {
 	// Delete the org.
 	status, body := doBearerRequest(t, testServer, ownerToken, http.MethodDelete,
 		"/api/v1/orgs/"+created.Slug, map[string]any{"slug": created.Slug})
-	r.Equal(http.StatusNoContent, status, "delete: body=%s", body)
+	r.Equal(http.StatusOK, status, "delete: body=%s", body)
 
 	// Every surface now 404s — including the public ones, which never had auth
 	// in front of them, and including the authenticated API called with the
