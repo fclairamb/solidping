@@ -43,7 +43,7 @@ type DeleteOrgRequest struct {
 //     caller's own) keeps org-scoped API access. The caller does not lose their
 //     *authentication* over it: step 6 hands them a brand-new session. Every
 //     OTHER member is signed out of the org for good, which is the deliberate
-//     behaviour from spec 2026-08-08-11.
+//     behavior from spec 2026-08-08-11.
 //  5. the organization row itself is soft-deleted LAST. From that instant every
 //     lookup 404s: dashboard API, status pages, badges and the embed widget all
 //     resolve the org through GetOrganizationBySlug, which filters
