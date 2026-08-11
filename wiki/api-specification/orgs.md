@@ -156,8 +156,9 @@ than a bare `204`:
 | ≥ 1 | `accessToken` + `refreshToken` scoped to the first surviving org, `organization` set, `loginAction: "orgRedirect"` |
 | 0 | org-less `accessToken`, no `refreshToken` (refresh grants are org-scoped), `organization` absent, `loginAction: "noOrg"` |
 
-`organizations` always lists what is left, so a client can repopulate its org
-switcher without a second round-trip. The access-token cookie is refreshed with
+`organizations` lists what is left, so a client can repopulate its org switcher
+without a second round-trip — it is omitted entirely when nothing remains, so
+read it as "the empty list" when absent. The access-token cookie is refreshed with
 the new token, mirroring the slug-rename path on `PATCH /api/v1/orgs/:org`.
 
 Relatedly, `GET /api/v1/auth/me` no longer `401`s when the token's org slug does
