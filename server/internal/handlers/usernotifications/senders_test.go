@@ -70,7 +70,7 @@ func TestDispatchTestRoute_WebPush_Success(t *testing.T) {
 		},
 	}
 
-	err := svc.dispatchTestRoute(context.Background(), "org-1", route, nil, nil, wpOpts)
+	err := svc.dispatchTestRoute(context.Background(), "org-1", "org-one", route, nil, nil, wpOpts)
 	r.NoError(err)
 	r.True(requestReceived, "push service must receive the test request")
 }
@@ -94,6 +94,6 @@ func TestDispatchTestRoute_WebPush_NotConfigured(t *testing.T) {
 		},
 	}
 
-	err := svc.dispatchTestRoute(context.Background(), "org-1", route, nil, nil, webpush.Options{})
+	err := svc.dispatchTestRoute(context.Background(), "org-1", "org-one", route, nil, nil, webpush.Options{})
 	r.ErrorIs(err, ErrWebPushNotConfigured)
 }

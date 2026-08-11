@@ -413,6 +413,13 @@ function RouteRow({
   // as "reconnect needed" rather than as a generic unverified contact.
   const isTelegram = route.contact.type === "telegram";
 
+  // A route is testable once its contact is ready to be paged. Types with a
+  // setup round-trip (code verification for phone/WhatsApp, pressing Start for
+  // Telegram) are testable only once verified; every other type — including
+  // any future one — gets the Test button by default rather than by being
+  // remembered here. The backend applies the same readiness rule.
+  const canTest = (!needsVerification && !isTelegram) || isVerified;
+
   return (
     <div className="flex items-center gap-3 py-3 border-b last:border-0">
       <div className="flex-none text-muted-foreground">
@@ -494,7 +501,7 @@ function RouteRow({
         {isTelegram && !isVerified && (
           <TelegramConnect org={org} connected={isVerified} reconnect onPoll={onTestSent} />
         )}
-        {!needsVerification && !isTelegram && (
+        {canTest && (
           <Button
             variant="ghost"
             size="sm"

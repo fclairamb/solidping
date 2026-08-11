@@ -15,6 +15,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/integrations/telegram"
+	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
+	"github.com/fclairamb/solidping/server/internal/integrations/twilioconn"
 	"github.com/fclairamb/solidping/server/internal/integrations/whatsapp"
 	"github.com/fclairamb/solidping/server/internal/webpush"
 )
@@ -33,6 +35,9 @@ var (
 	// ErrInvalidWhatsAppNumber is returned when a WhatsApp contact value is not
 	// a syntactically valid E.164 number.
 	ErrInvalidWhatsAppNumber = errors.New("WhatsApp number must be in E.164 format (e.g. +15551234567)")
+	// ErrContactNotVerified is returned when a test is requested for a contact
+	// that has not completed its setup round-trip.
+	ErrContactNotVerified = errors.New("contact must be verified before it can be tested")
 )
 
 // ContactResponse is the API representation of a UserContact.
@@ -441,12 +446,32 @@ func (s *Service) SendTestNotification(
 		return ErrRouteNotFound
 	}
 
-	return s.dispatchTestRoute(ctx, orgUID, target, emailSender, slackClient, wpOpts)
+	// Types with a setup round-trip may only be tested once it is done: an
+	// unverified phone number would let the test button text arbitrary
+	// strangers, and an unverified telegram contact is one the bot can no
+	// longer reach anyway.
+	if contactRequiresSetup(target.Contact.Type) && target.Contact.VerifiedAt == nil {
+		return ErrContactNotVerified
+	}
+
+	return s.dispatchTestRoute(ctx, orgUID, orgSlug, target, emailSender, slackClient, wpOpts)
 }
 
-// dispatchTestRoute delivers a test notification for a single route.
+// contactRequiresSetup reports whether a contact type must complete a setup
+// round-trip before it is usable: the verification-code exchange for phone and
+// WhatsApp, or pressing Start in Telegram (telegram contacts are born
+// verified, so an unverified one means the connection was lost).
+func contactRequiresSetup(contactType string) bool {
+	return models.ContactRequiresVerification(contactType) ||
+		contactType == models.UserContactTypeTelegram
+}
+
+// dispatchTestRoute delivers a test notification for a single route. Every
+// contact type an escalation can page has a case here — a route the dashboard
+// lists as ready must never answer its Test button with "provider not
+// configured" (the shipped Telegram gap this switch once had).
 func (s *Service) dispatchTestRoute(
-	ctx context.Context, orgUID string,
+	ctx context.Context, orgUID, orgSlug string,
 	target *models.UserNotificationRoute,
 	emailSender EmailSender, slackClient SlackDMSender, wpOpts webpush.Options,
 ) error {
@@ -461,6 +486,10 @@ func (s *Service) dispatchTestRoute(
 		return s.dispatchTestSlack(ctx, orgUID, target.Contact.Value, slackClient)
 	case models.UserContactTypeTelegram:
 		return s.dispatchTestTelegram(ctx, target.Contact.Value)
+	case models.UserContactTypePhone:
+		return s.dispatchTestSMS(ctx, orgUID, target.Contact.Value)
+	case models.UserContactTypeWhatsApp:
+		return s.dispatchTestWhatsApp(ctx, orgSlug, target.Contact.Value)
 	case models.UserContactTypeWebPush:
 		if wpOpts.VAPIDPublicKey == "" {
 			return ErrWebPushNotConfigured
@@ -493,6 +522,69 @@ func (s *Service) dispatchTestTelegram(ctx context.Context, chatID string) error
 		HTML:   telegram.BuildTestHTML(),
 	}); err != nil {
 		return fmt.Errorf("send telegram test message: %w", err)
+	}
+
+	return nil
+}
+
+// dispatchTestSMS sends a plain test SMS through the org's default Twilio
+// connection — the same transport a verification code rides, so a working
+// verify flow implies a working test.
+func (s *Service) dispatchTestSMS(ctx context.Context, orgUID, toNumber string) error {
+	_, settings, err := twilioconn.ResolveDefault(ctx, s.db, s.creds, orgUID)
+	if err != nil {
+		if errors.Is(err, twilioconn.ErrNoTwilioConnection) {
+			return ErrNoProvider
+		}
+
+		return fmt.Errorf("resolve twilio connection: %w", err)
+	}
+
+	if settings.AccountSID == "" || settings.AuthToken == "" {
+		return ErrNoProvider
+	}
+
+	client := newTwilioClient(settings.AccountSID, settings.AuthToken, twilio.BaseURLForRegion(settings.Region))
+
+	if _, err := client.SendSMS(ctx, &twilio.SendSMSParams{
+		To:                  toNumber,
+		From:                settings.FromNumber,
+		MessagingServiceSID: settings.MessagingServiceSID,
+		Body:                "[SolidPing] Test notification. Your SMS delivery is working correctly.",
+	}); err != nil {
+		return fmt.Errorf("send test SMS: %w", err)
+	}
+
+	return nil
+}
+
+// dispatchTestWhatsApp sends a test through the approved alert template — the
+// only kind of business-initiated message Meta delivers outside a reply
+// window, which is exactly the situation a test button is pressed in. The
+// template's four body slots (check name, state, detail, org slug) are filled
+// with self-describing test values.
+func (s *Service) dispatchTestWhatsApp(ctx context.Context, orgSlug, toNumber string) error {
+	if !s.whatsAppCfg.Active() {
+		return ErrNoWhatsAppProvider
+	}
+
+	client, err := whatsapp.NewClientFromConfig(&s.whatsAppCfg)
+	if err != nil {
+		return fmt.Errorf("build whatsapp client: %w", err)
+	}
+
+	if _, err := client.SendTemplate(ctx, &whatsapp.TemplateMessage{
+		To:       toNumber,
+		Template: s.whatsAppCfg.ResolvedAlertTemplate(),
+		Language: s.whatsAppCfg.ResolvedTemplateLanguage(),
+		BodyParams: []string{
+			"Test notification",
+			"TEST",
+			"Your WhatsApp delivery is working correctly.",
+			orgSlug,
+		},
+	}); err != nil {
+		return fmt.Errorf("send whatsapp test message: %w", err)
 	}
 
 	return nil

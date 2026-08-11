@@ -112,7 +112,7 @@ func TestDispatchTestRoute_TelegramSendsMessage(t *testing.T) {
 	svc := NewService(nil, nil, WithTelegramConfig(cfg))
 
 	err := svc.dispatchTestRoute(
-		context.Background(), "org-uid", telegramRoute("8688918336"),
+		context.Background(), "org-uid", "org-slug", telegramRoute("8688918336"),
 		nil, nil, webpush.Options{},
 	)
 	r.NoError(err)
@@ -136,7 +136,7 @@ func TestDispatchTestRoute_TelegramWithoutTokenIsNamed(t *testing.T) {
 	svc := NewService(nil, nil, WithTelegramConfig(&config.TelegramConfig{}))
 
 	err := svc.dispatchTestRoute(
-		context.Background(), "org-uid", telegramRoute("8688918336"),
+		context.Background(), "org-uid", "org-slug", telegramRoute("8688918336"),
 		nil, nil, webpush.Options{},
 	)
 
@@ -164,7 +164,7 @@ func TestDispatchTestRoute_TelegramNeedsOnlyTheToken(t *testing.T) {
 	r.False(svc.TelegramEnabled(), "no username means no connect-link surface")
 
 	err := svc.dispatchTestRoute(
-		context.Background(), "org-uid", telegramRoute("8688918336"),
+		context.Background(), "org-uid", "org-slug", telegramRoute("8688918336"),
 		nil, nil, webpush.Options{},
 	)
 	r.NoError(err, "sending to a connected chat must not require the bot username")

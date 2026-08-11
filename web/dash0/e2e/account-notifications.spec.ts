@@ -304,6 +304,59 @@ test.describe("Account Notifications", () => {
     await expect.poll(() => confirmReceived).toBe(true);
   });
 
+  test("should offer the Test button on a verified phone route but not an unverified one", async ({
+    authenticatedPage: page,
+  }) => {
+    // The Test button is generic: any route whose contact is ready to be
+    // paged gets it. For types with a setup round-trip, "ready" is verified.
+    const phoneRoute = (uid: string, verified: boolean) => ({
+      uid,
+      enabled: true,
+      position: 1,
+      contact: {
+        uid: `contact-${uid}`,
+        type: "phone",
+        value: verified ? "+15551230000" : "+15551239999",
+        label: "mobile",
+        ...(verified ? { verifiedAt: new Date().toISOString() } : {}),
+      },
+      createdAt: new Date().toISOString(),
+    });
+
+    await page.route("**/notification-routes**", async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: [
+              phoneRoute("route-phone-verified", true),
+              phoneRoute("route-phone-unverified", false),
+            ],
+          }),
+        });
+
+        return;
+      }
+
+      await route.continue();
+    });
+
+    await page.goto("orgs/test/account/notifications");
+    await page.waitForLoadState("networkidle");
+
+    await expect(
+      page.getByTestId("test-route-route-phone-verified"),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("test-route-route-phone-unverified"),
+    ).toHaveCount(0);
+    // The unverified row keeps its one useful action: verify.
+    await expect(
+      page.getByTestId("verify-phone-contact-route-phone-unverified"),
+    ).toBeVisible();
+  });
+
   test("should toggle enabled on email route", async ({
     authenticatedPage: page,
   }) => {
