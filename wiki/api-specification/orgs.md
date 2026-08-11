@@ -136,15 +136,34 @@ redirect.
 ### DELETE /api/v1/orgs/:org
 Delete an organization. Auth: required (**owner**) — an admin gets
 `403 FORBIDDEN`. Body: `{"slug":"<org-slug>"}`, retyped as confirmation;
-a mismatch is a `422 VALIDATION_ERROR`. Returns `204`.
+a mismatch is a `422 VALIDATION_ERROR`. Returns `200` with a login-shaped
+session payload (see below).
 
 Deletion stops every check immediately (the org's scheduler rows are removed),
-soft-deletes its checks and memberships, and revokes every org-scoped token —
-including the caller's own, so the dashboard drops to the org switcher. From
-that instant the slug **404s everywhere**: dashboard API, public status pages,
-badges and the embed widget. The slug is released for reuse and no alias,
+soft-deletes its checks and memberships, and revokes every org-scoped token.
+From that instant the slug **404s everywhere**: dashboard API, public status
+pages, badges and the embed widget. The slug is released for reuse and no alias,
 tombstone or redirect is left behind. There is no restore endpoint; recovery is
 a manual database intervention.
+
+**The deleter stays signed in.** Every *other* member's session dies with the
+org (deliberate — spec `2026-08-08-11`), but the caller's own token named the
+org that just vanished, so the response hands back a replacement session rather
+than a bare `204`:
+
+| Caller's remaining memberships | Response |
+|---|---|
+| ≥ 1 | `accessToken` + `refreshToken` scoped to the first surviving org, `organization` set, `loginAction: "orgRedirect"` |
+| 0 | org-less `accessToken`, no `refreshToken` (refresh grants are org-scoped), `organization` absent, `loginAction: "noOrg"` |
+
+`organizations` always lists what is left, so a client can repopulate its org
+switcher without a second round-trip. The access-token cookie is refreshed with
+the new token, mirroring the slug-rename path on `PATCH /api/v1/orgs/:org`.
+
+Relatedly, `GET /api/v1/auth/me` no longer `401`s when the token's org slug does
+not resolve: it degrades to the org-less response (`organization: null`). A
+stale tab reloading after the org was deleted therefore lands on the empty-state
+page instead of being logged out.
 
 ### GET /api/v1/orgs/:org/settings
 Get organization settings. Auth: required

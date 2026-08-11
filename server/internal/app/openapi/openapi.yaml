@@ -5317,6 +5317,18 @@ paths:
         every surface: the dashboard API, public status pages, badges and the
         embed widget. The slug is released and may be claimed by a new
         organization. There is no restore endpoint.
+
+
+        Every OTHER member is signed out for good. The **caller** is not: the
+        200 response carries a freshly minted replacement session, because the
+        token they used names an organization that no longer resolves. If they
+        still belong to at least one organization, the session is scoped to the
+        first one (`organization` is set, and a `refreshToken` is issued). If
+        they belong to none, the session is org-less — `organization` is absent,
+        `loginAction` is `noOrg`, and there is no `refreshToken` (refresh grants
+        are organization-scoped), exactly like a login by a user with no
+        organization. Either way the caller stays authenticated and
+        `GET /api/v1/auth/me` keeps answering 200.
       operationId: deleteOrg
       security:
         - bearerAuth: []
@@ -5329,8 +5341,13 @@ paths:
             schema:
               $ref: "#/components/schemas/DeleteOrgRequest"
       responses:
-        "204":
-          description: Organization deleted
+        "200":
+          description: >-
+            Organization deleted, plus the replacement session for the caller.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
