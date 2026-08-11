@@ -2,9 +2,14 @@
 
 ## [Unreleased]
 
+### Features
+
+* **notifications:** every ready notification method now carries the Test button, and the visibility rule became generic. The dashboard used to decide per contact type — which is how a connected Telegram contact ended up as the one method without a Test button even after the backend learned to send Telegram tests. The row now shows the button for any route whose contact is ready to be paged (types with a setup round-trip — phone, WhatsApp, Telegram — once verified or connected; every other type, including future ones, from creation), and the backend matches: SMS tests ride the org's default Twilio connection like a verification code does, WhatsApp tests go out through the approved alert template with self-describing values, and a contact whose setup round-trip is incomplete is refused instead of tested. A structural test pins the rule by walking every pageable contact type through the test dispatcher and failing on any that reaches the "provider not configured" default
+
 ### Bug Fixes
 
 * **telegram:** a bot username derived at boot is written down even when the startup lookup missed it. The synchronous resolver gets one `getMe` bounded to three seconds so it cannot delay boot; when that call lost a race with a cold DNS cache the username stayed unknown and nothing was persisted, so the connect surface answered "telegram is not configured" on every later request while the asynchronous bootstrap — which has a far more generous budget — had already succeeded and logged "Telegram bot ready". The bootstrap now persists what it learned, so the next restart resolves the username from the database with no network call at all
+* **availability:** a 365-day or year-to-date availability window reports on the whole window instead of silently covering only the most recent ~2 months. The window query never read the terminal `month` rollups, and with the tightened default retention everything older than the day tier's two months lives only there; the union now includes the month tier — the tiers stay disjoint by construction, so nothing double-counts — and the endpoint's 12-month lookback rejection, a data-horizon guard the same change made obsolete, became a 10-year input-sanity cap, so multi-year windows are now valid
 * **telegram:** the notifications page's Test button reaches Telegram. Test dispatch knew email, Slack and web push but had no Telegram case, so it fell through to a generic "provider not configured" 422 — on the one button a user presses to confirm the setup they have just finished, while real escalation delivery through the same contact worked. Sending a test needs only the bot token, matching alert dispatch, so it also works on an instance whose bot username is not known yet
 
 ## [0.12.0](https://github.com/fclairamb/solidping/compare/v0.11.0...v0.12.0) (2026-08-10)

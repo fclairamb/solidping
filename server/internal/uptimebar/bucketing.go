@@ -6,10 +6,18 @@
 //
 // The core is BucketAvailability: one query over a raw+hour+day union for the
 // whole window. Because the aggregation job deletes source rows after each rollup
-// (raw → hour → day → month), the three tiers cover non-overlapping age bands, so
+// (raw → hour → day → month), the tiers cover non-overlapping age bands, so
 // unioning them never double-counts. A bucket whose raw rows haven't been rolled
 // up yet is still filled immediately from raw — this is what fixes status-page
 // buckets reading "No data" while the badge showed data.
+//
+// The month tier is deliberately NOT part of the per-bucket union: a month rollup
+// spans many hour/day ticks and cannot be honestly attributed to any single one —
+// truncating it to its period_start would dump a whole month's counts into one
+// bucket. Ticks older than the day-tier horizon (RetentionDay, 2 months by
+// default) therefore render as "no data", which is the truthful answer at that
+// granularity. Whole-window folds don't have this problem — WindowAvailability
+// (window.go) does include the month tier.
 package uptimebar
 
 import (
@@ -86,9 +94,10 @@ func (b *BucketStats) accumulateRaw(result *models.Result) {
 	}
 }
 
-// accumulateAgg merges an hour/day aggregated rollup row into the bucket. Rollup
-// rows already encode the CountsAsUp rule in SuccessfulChecks (the aggregation
-// job counts warning as up), so this path needs no per-status logic.
+// accumulateAgg merges an aggregated rollup row (hour/day, plus month on the
+// WindowAvailability path) into the bucket. Rollup rows already encode the
+// CountsAsUp rule in SuccessfulChecks (the aggregation job counts warning as
+// up), so this path needs no per-status logic.
 func (b *BucketStats) accumulateAgg(result *models.Result) {
 	if result.TotalChecks != nil {
 		b.Total += *result.TotalChecks

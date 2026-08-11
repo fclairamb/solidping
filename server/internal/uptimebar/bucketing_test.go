@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 	"testing"
 	"time"
@@ -17,9 +18,10 @@ import (
 // fakeLister returns a fixed result set, capturing the filter it was called
 // with. It mimics the real DB's "ORDER BY period_start DESC" + "LIMIT" behavior
 // (see postgres.ListResults / sqlite.ListResults) so tests can catch a
-// regression where a row-count Limit gets reintroduced: without this fidelity,
-// the fake would just return the whole fixture regardless of Limit and the
-// truncation bug would go undetected.
+// regression where a row-count Limit gets reintroduced, and honors the filter's
+// PeriodTypes so a fixture row from a tier the query doesn't ask for is NOT
+// returned — without that fidelity, a test seeding month rows would pass even
+// if the union query dropped the month tier and the under-count went undetected.
 type fakeLister struct {
 	results   []*models.Result
 	gotFilter *models.ListResultsFilter
@@ -30,17 +32,25 @@ func (f *fakeLister) ListResults(
 ) (*models.ListResultsResponse, error) {
 	f.gotFilter = filter
 
-	sorted := make([]*models.Result, len(f.results))
-	copy(sorted, f.results)
-	sort.SliceStable(sorted, func(i, j int) bool {
-		return sorted[i].PeriodStart.After(sorted[j].PeriodStart)
-	})
+	matching := make([]*models.Result, 0, len(f.results))
 
-	if filter.Limit > 0 && filter.Limit < len(sorted) {
-		sorted = sorted[:filter.Limit]
+	for _, row := range f.results {
+		if len(filter.PeriodTypes) > 0 && !slices.Contains(filter.PeriodTypes, row.PeriodType) {
+			continue
+		}
+
+		matching = append(matching, row)
 	}
 
-	return &models.ListResultsResponse{Results: sorted}, nil
+	sort.SliceStable(matching, func(i, j int) bool {
+		return matching[i].PeriodStart.After(matching[j].PeriodStart)
+	})
+
+	if filter.Limit > 0 && filter.Limit < len(matching) {
+		matching = matching[:filter.Limit]
+	}
+
+	return &models.ListResultsResponse{Results: matching}, nil
 }
 
 func rawRow(checkUID string, status models.ResultStatus, start time.Time, dur float32) *models.Result {

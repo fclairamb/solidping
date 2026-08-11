@@ -33,6 +33,9 @@ func TestParseDurationToken(t *testing.T) {
 		{"-3d", 0, true},
 		{"abc", 0, true},
 		{"", 0, true},
+		// Overflows int64 nanoseconds and would wrap into a garbage duration;
+		// the parser must reject it rather than hand back a wrapped value.
+		{"9999999999999d", 0, true},
 	}
 
 	for _, tc := range tests {
@@ -56,7 +59,7 @@ func TestParseDurationToken(t *testing.T) {
 }
 
 // TestParsePeriods covers the full token set, calendar tokens against a tz, and
-// the validation rules (empty list, too many, unknown token, over-retention).
+// the validation rules (empty list, too many, unknown token, sanity lookback cap).
 func TestParsePeriods(t *testing.T) {
 	t.Parallel()
 
@@ -142,13 +145,30 @@ func TestParsePeriods(t *testing.T) {
 		r.ErrorIs(err, ErrInvalidPeriod)
 	})
 
-	t.Run("rejects lookback beyond day-tier retention", func(t *testing.T) {
+	t.Run("accepts multi-year lookbacks (month tier is terminal)", func(t *testing.T) {
 		t.Parallel()
 
 		r := require.New(t)
 
-		_, err := parsePeriods([]string{"800d"}, now, time.UTC)
-		r.ErrorIs(err, ErrInvalidPeriod)
+		// The union query includes the never-deleted month tier, so windows far
+		// past the day-tier retention horizon (~2 months by default) are
+		// answerable. 800d used to be rejected by the old 12-month cap.
+		windows, err := parsePeriods([]string{"800d", "5y"}, now, time.UTC)
+		r.NoError(err)
+		r.Len(windows, 2)
+		r.True(windows[0].start.Equal(now.Add(-800 * 24 * time.Hour)))
+		r.True(windows[1].start.Equal(now.Add(-5 * 365 * 24 * time.Hour)))
+	})
+
+	t.Run("rejects lookback beyond the sanity cap", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+
+		for _, token := range []string{"11y", "4000d"} {
+			_, err := parsePeriods([]string{token}, now, time.UTC)
+			r.ErrorIs(err, ErrInvalidPeriod, "token %q", token)
+		}
 	})
 }
 
