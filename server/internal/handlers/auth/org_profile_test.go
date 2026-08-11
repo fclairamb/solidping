@@ -205,7 +205,8 @@ func TestDeletedOrgIsUnreachableThroughItsAlias(t *testing.T) {
 	_, err = dbService.GetOrganizationByPreviousSlug(ctx, "gone-old")
 	r.NoError(err)
 
-	r.NoError(svc.DeleteOrg(ctx, "gone-new", DeleteOrgRequest{Slug: "gone-new"}))
+	_, err = svc.DeleteOrg(ctx, "gone-new", owner.UID, DeleteOrgRequest{Slug: "gone-new"}, Context{})
+	r.NoError(err)
 
 	_, err = dbService.GetOrganizationBySlug(ctx, "gone-new")
 	r.Error(err)

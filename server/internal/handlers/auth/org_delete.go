@@ -40,7 +40,10 @@ type DeleteOrgRequest struct {
 //  3. memberships are soft-deleted — the org disappears from every member's
 //     org switcher.
 //  4. org-scoped tokens are revoked so no live session (including the
-//     caller's own) keeps org-scoped API access.
+//     caller's own) keeps org-scoped API access. The caller does not lose their
+//     *authentication* over it: step 6 hands them a brand-new session. Every
+//     OTHER member is signed out of the org for good, which is the deliberate
+//     behaviour from spec 2026-08-08-11.
 //  5. the organization row itself is soft-deleted LAST. From that instant every
 //     lookup 404s: dashboard API, status pages, badges and the embed widget all
 //     resolve the org through GetOrganizationBySlug, which filters
@@ -48,34 +51,40 @@ type DeleteOrgRequest struct {
 //     slug index is partial on `deleted_at is null` — with no alias, tombstone
 //     or redirect left behind (a *renamed* org's previous slug is a different
 //     mechanism entirely and must not resolve deleted orgs).
+//  6. the CALLER is handed a replacement session. Steps 3-4 took away the org
+//     their access token names, so without this they would be logged out by
+//     their own maintenance action (GitHub issue #206). See
+//     mintPostDeletionSession.
 //
 // There is deliberately no restore path: soft-delete is an implementation
 // detail, and recovery is a manual database intervention.
-func (s *Service) DeleteOrg(ctx context.Context, orgSlug string, req DeleteOrgRequest) error {
+func (s *Service) DeleteOrg(
+	ctx context.Context, orgSlug, callerUserUID string, req DeleteOrgRequest, authContext Context,
+) (*LoginResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrOrganizationNotFound
+			return nil, ErrOrganizationNotFound
 		}
 
-		return err
+		return nil, err
 	}
 
 	if req.Slug != org.Slug {
-		return ErrOrgSlugConfirmationMismatch
+		return nil, ErrOrgSlugConfirmationMismatch
 	}
 
 	if stopErr := s.stopOrgChecks(ctx, org.UID); stopErr != nil {
-		return stopErr
+		return nil, stopErr
 	}
 
 	if memberErr := s.deleteOrgMemberships(ctx, org.UID); memberErr != nil {
-		return memberErr
+		return nil, memberErr
 	}
 
 	revoked, tokenErr := s.db.DeleteUserTokensByOrg(ctx, org.UID)
 	if tokenErr != nil {
-		return fmt.Errorf("failed to revoke organization tokens: %w", tokenErr)
+		return nil, fmt.Errorf("failed to revoke organization tokens: %w", tokenErr)
 	}
 
 	// Rename aliases go too. The alias lookup already refuses to resolve a
@@ -83,18 +92,86 @@ func (s *Service) DeleteOrg(ctx context.Context, orgSlug string, req DeleteOrgRe
 	// the org was still holding as a previous slug, matching "the slug becomes
 	// claimable again" for every slug the org ever answered on.
 	if aliasErr := s.db.ReleaseOrganizationPreviousSlugsForOrg(ctx, org.UID); aliasErr != nil {
-		return fmt.Errorf("failed to release organization previous slugs: %w", aliasErr)
+		return nil, fmt.Errorf("failed to release organization previous slugs: %w", aliasErr)
 	}
 
 	if delErr := s.db.DeleteOrganization(ctx, org.UID); delErr != nil {
-		return fmt.Errorf("failed to delete organization: %w", delErr)
+		return nil, fmt.Errorf("failed to delete organization: %w", delErr)
 	}
 
 	slog.InfoContext(ctx, "organization deleted",
 		"orgUID", org.UID, "orgSlug", org.Slug, "revokedTokens", revoked)
 
-	return nil
+	return s.mintPostDeletionSession(ctx, callerUserUID, authContext)
 }
+
+// mintPostDeletionSession issues the session the caller carries on with after
+// they deleted an organization.
+//
+// It runs AFTER the teardown, so the memberships it reads are exactly the ones
+// that survived: the deleted org's membership is already soft-deleted and
+// cannot come back. Two outcomes, both of which keep the user signed in:
+//
+//   - at least one org left → a full org-scoped session for the first survivor,
+//     minted by the ordinary SwitchOrg machinery (fresh refresh-token row +
+//     access token whose orgSlug claim names that org). The dashboard adopts it
+//     and lands on that org's dashboard.
+//   - no org left → an org-less access token, the same shape completeLogin
+//     issues for a user who belongs to nothing (resolvedOrg == nil). There is
+//     deliberately no refresh token: a refresh row is org-scoped. The dashboard
+//     lands on /no-org, exactly as after a zero-org login.
+//
+// A caller with no user UID at all (an unauthenticated code path that somehow
+// reached here, or a test driving the service directly) gets a nil response
+// rather than an error — the deletion itself already succeeded and must not be
+// reported as failed.
+func (s *Service) mintPostDeletionSession(
+	ctx context.Context, callerUserUID string, authContext Context,
+) (*LoginResponse, error) {
+	if callerUserUID == "" {
+		return nil, nil //nolint:nilnil // "deleted, no session to hand back" is a legitimate result.
+	}
+
+	remaining, err := s.getOrganizationsForUser(ctx, callerUserUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve remaining organizations: %w", err)
+	}
+
+	if len(remaining) > 0 {
+		session, switchErr := s.SwitchOrg(ctx, callerUserUID, remaining[0].Slug, authContext)
+		if switchErr != nil {
+			return nil, fmt.Errorf("failed to mint a session for the remaining organization: %w", switchErr)
+		}
+
+		// SwitchOrg answers a single-org question and leaves Organizations
+		// empty; the dashboard needs the full switcher list here because the one
+		// it was holding still contains the org that just died.
+		session.Organizations = remaining
+		session.LoginAction = LoginActionOrgRedirect
+
+		return session, nil
+	}
+
+	user, err := s.db.GetUser(ctx, callerUserUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+
+		return nil, err
+	}
+
+	role := ""
+	if user.SuperAdmin {
+		role = RoleSuperAdmin
+	}
+
+	return s.completeLogin(ctx, user, nil, role, LoginActionNoOrg, remaining, methodOrgDeleted, authContext)
+}
+
+// methodOrgDeleted tags the session minted by mintPostDeletionSession, so a
+// forensic read of a token's created_with.method says why it exists.
+const methodOrgDeleted = "org-deleted"
 
 // internalFilterAll is the ListChecksFilter.Internal sentinel meaning "do not
 // filter on internal at all" (both dialects switch on the string; see the

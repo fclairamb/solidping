@@ -15,6 +15,7 @@ import (
 // what they need without a row of blank identifiers.
 type seededOrg struct {
 	org   *models.Organization
+	owner *models.User
 	check *models.Check
 	job   *models.CheckJob
 	token *models.UserToken
@@ -54,18 +55,17 @@ func seedDeletableOrg(
 	token := models.NewUserToken(user.UID, &org.UID, "refresh-"+slug, models.TokenTypeRefresh)
 	require.NoError(t, dbService.CreateUserToken(ctx, token))
 
-	return seededOrg{org: org, check: check, job: job, token: token}
+	return seededOrg{org: org, owner: user, check: check, job: job, token: token}
 }
 
-// mustSeedOrgOnly is seedDeletableOrg for callers that only need the org.
-func mustSeedOrgOnly(
-	ctx context.Context, t *testing.T, dbService db.Service, slug string,
-) *models.Organization {
+// deleteOrgAsOwner drives Service.DeleteOrg the way the handler does — with the
+// seeded owner as the caller — and returns the replacement session.
+func deleteOrgAsOwner(
+	ctx context.Context, t *testing.T, svc *Service, seeded seededOrg, confirm string,
+) (*LoginResponse, error) {
 	t.Helper()
 
-	seeded := seedDeletableOrg(ctx, t, dbService, slug)
-
-	return seeded.org
+	return svc.DeleteOrg(ctx, seeded.org.Slug, seeded.owner.UID, DeleteOrgRequest{Slug: confirm}, Context{})
 }
 
 // TestDeleteOrgTearsEverythingDown is the happy path: after DeleteOrg the org no
@@ -86,7 +86,8 @@ func TestDeleteOrgTearsEverythingDown(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, jobsBefore, 1)
 
-	require.NoError(t, svc.DeleteOrg(ctx, org.Slug, DeleteOrgRequest{Slug: org.Slug}))
+	_, err = deleteOrgAsOwner(ctx, t, svc, seeded, org.Slug)
+	require.NoError(t, err)
 
 	// The org no longer resolves — this is what makes every surface 404.
 	_, err = dbService.GetOrganizationBySlug(ctx, org.Slug)
@@ -168,7 +169,8 @@ func TestDeleteOrgStopsInternalChecksToo(t *testing.T) {
 		require.NotEmpty(t, jobs, "check %s must be scheduled before the delete", *check.Name)
 	}
 
-	require.NoError(t, svc.DeleteOrg(ctx, org.Slug, DeleteOrgRequest{Slug: org.Slug}))
+	_, err := svc.DeleteOrg(ctx, org.Slug, user.UID, DeleteOrgRequest{Slug: org.Slug}, Context{})
+	require.NoError(t, err)
 
 	// Both checks must be unscheduled. Deleting the jobs is what actually stops
 	// the probes — soft-deleting the check row alone does not.
@@ -207,9 +209,9 @@ func TestDeleteOrgSlugConfirmation(t *testing.T) {
 			t.Parallel()
 
 			svc, dbService, ctx := setupAuthTestService(t)
-			org := mustSeedOrgOnly(ctx, t, dbService, "confirm-me")
+			seeded := seedDeletableOrg(ctx, t, dbService, "confirm-me")
 
-			err := svc.DeleteOrg(ctx, org.Slug, DeleteOrgRequest{Slug: tc.confirm})
+			_, err := deleteOrgAsOwner(ctx, t, svc, seeded, tc.confirm)
 
 			if tc.wantErr != nil {
 				require.ErrorIs(t, err, tc.wantErr)
@@ -217,7 +219,7 @@ func TestDeleteOrgSlugConfirmation(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			_, getErr := dbService.GetOrganizationBySlug(ctx, org.Slug)
+			_, getErr := dbService.GetOrganizationBySlug(ctx, seeded.org.Slug)
 			if tc.wantAlive {
 				require.NoError(t, getErr, "a refused delete must leave the org alone")
 			} else {
@@ -234,7 +236,7 @@ func TestDeleteOrgUnknownSlug(t *testing.T) {
 
 	svc, _, ctx := setupAuthTestService(t)
 
-	err := svc.DeleteOrg(ctx, "never-existed", DeleteOrgRequest{Slug: "never-existed"})
+	_, err := svc.DeleteOrg(ctx, "never-existed", "", DeleteOrgRequest{Slug: "never-existed"}, Context{})
 	require.ErrorIs(t, err, ErrOrganizationNotFound)
 }
 
@@ -249,7 +251,8 @@ func TestDeletedOrgSlugIsFreedAndDoesNotResolve(t *testing.T) {
 	seeded := seedDeletableOrg(ctx, t, dbService, "reusable")
 	oldOrg, oldCheck := seeded.org, seeded.check
 
-	require.NoError(t, svc.DeleteOrg(ctx, oldOrg.Slug, DeleteOrgRequest{Slug: oldOrg.Slug}))
+	_, delErr := deleteOrgAsOwner(ctx, t, svc, seeded, oldOrg.Slug)
+	require.NoError(t, delErr)
 
 	// Immediately unresolvable: this single lookup is what every surface uses
 	// (dashboard API via RequireOrgAccess, status pages, badges, embed widget).
@@ -318,11 +321,12 @@ func TestDeleteOrgLeavesOtherOrgsAlone(t *testing.T) {
 	t.Parallel()
 
 	svc, dbService, ctx := setupAuthTestService(t)
-	victim := mustSeedOrgOnly(ctx, t, dbService, "victim")
+	victim := seedDeletableOrg(ctx, t, dbService, "victim")
 	bystanderSeed := seedDeletableOrg(ctx, t, dbService, "bystander")
 	bystander, bystanderCheck, bystanderToken := bystanderSeed.org, bystanderSeed.check, bystanderSeed.token
 
-	require.NoError(t, svc.DeleteOrg(ctx, victim.Slug, DeleteOrgRequest{Slug: victim.Slug}))
+	_, delErr := deleteOrgAsOwner(ctx, t, svc, victim, victim.org.Slug)
+	require.NoError(t, delErr)
 
 	survivor, err := dbService.GetOrganizationBySlug(ctx, bystander.Slug)
 	require.NoError(t, err)
