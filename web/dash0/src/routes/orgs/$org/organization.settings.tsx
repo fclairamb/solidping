@@ -178,7 +178,10 @@ function SettingsPage() {
       if (nextOrg) {
         await navigate({ to: "/orgs/$org", params: { org: nextOrg } });
       } else {
-        await navigate({ to: "/no-org", search: { membershipPending: undefined } });
+        await navigate({
+          to: "/no-org",
+          search: { membershipPending: undefined },
+        });
       }
 
       // Only now, off the dead org's routes, drop its cached queries. Every
