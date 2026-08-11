@@ -61,6 +61,26 @@ export interface RenamedOrgSession {
   expiresIn?: number;
 }
 
+// DeletedOrgSession is the login-shaped payload DELETE /orgs/:org answers with.
+// Every field is optional on purpose: the org-less variant (the caller has no
+// organization left) carries no `organization` and no `refreshToken` at all,
+// and the server may answer an empty object when it could not mint anything.
+export interface DeletedOrgSession {
+  accessToken?: string;
+  refreshToken?: string;
+  expiresIn?: number;
+  user?: {
+    uid: string;
+    email: string;
+    name?: string;
+    avatarUrl?: string;
+    role: string;
+  };
+  organization?: { uid: string; slug: string; name?: string };
+  organizations?: OrganizationSummary[];
+  loginAction?: string;
+}
+
 interface AuthContextType {
   user: User | null;
   org: string | null;
@@ -83,6 +103,13 @@ interface AuthContextType {
   // navigates to the new URL — this is switchOrg's problem without the
   // round-trip, since the server already minted the session.
   adoptRenamedOrgSession: (session: RenamedOrgSession) => Promise<void>;
+  // Adopts the session DELETE /orgs/:org hands back after an owner deletes the
+  // organization. The org the current token names no longer exists, so without
+  // this the user would be logged out by their own maintenance action (issue
+  // #206). Returns the slug the session landed on, or null for an org-less
+  // session (the caller belongs to no organization any more) — the caller uses
+  // it to decide between the next org's dashboard and /no-org.
+  adoptOrgDeletionSession: (session: DeletedOrgSession) => string | null;
   refreshUser: () => Promise<void>;
   // Completes a 2FA login from a temp token + a TOTP / recovery code.
   // Both call paths return the same shape as a normal login result so
@@ -462,6 +489,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setOrganizations(data.organizations || []);
   };
 
+  // Synchronous on purpose: the caller navigates away the moment this returns,
+  // and an awaited /auth/me round-trip in between is exactly the window in
+  // which a query addressed to the deleted org can escalate to "session
+  // expired". Everything needed (user, org, switcher list) is already in the
+  // DELETE response.
+  const adoptOrgDeletionSession = (session: DeletedOrgSession): string | null => {
+    const nextOrg = session.organization?.slug ?? null;
+
+    if (session.accessToken) {
+      // Drop the whole previous session first. The refresh token it holds was
+      // scoped to the org that was just deleted and is revoked server-side, and
+      // setSession does NOT overwrite a stored refresh token when the new
+      // session has none (the org-less case) — leaving it in place would make
+      // the next proactive refresh spend a dead token and log the user out.
+      clearToken();
+      setSession(session.accessToken, session.refreshToken, session.expiresIn);
+    }
+
+    if (nextOrg) {
+      setStoredOrg(nextOrg);
+      setOrg(nextOrg);
+      setOrgUid(session.organization?.uid ?? null);
+    } else {
+      // Nothing may keep pointing at the deleted slug: both routes/login.tsx
+      // and redirectToExpiredLogin fall back to the stored org.
+      clearStoredOrg();
+      setOrg(null);
+      setOrgUid(null);
+    }
+
+    if (session.user) {
+      setUser({
+        uid: session.user.uid,
+        email: session.user.email,
+        name: session.user.name,
+        avatarUrl: session.user.avatarUrl,
+        roles: [session.user.role],
+        isAdmin:
+          session.user.role === "owner" ||
+          session.user.role === "admin" ||
+          session.user.role === "superadmin",
+        isOwner:
+          session.user.role === "owner" || session.user.role === "superadmin",
+        isSuperAdmin: session.user.role === "superadmin",
+      });
+    }
+
+    // Always overwrite: the list the app was holding still contains the org
+    // that just died.
+    setOrganizations(session.organizations || []);
+
+    return nextOrg;
+  };
+
   const refreshUser = useCallback(async () => {
     const data = await apiFetch<MeResponse>(`/api/v1/auth/me`);
     setOrgUid(data.organization?.uid ?? null);
@@ -516,6 +597,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         switchOrg,
         adoptRenamedOrgSession,
+        adoptOrgDeletionSession,
         refreshUser,
         verify2FA,
         useRecoveryCode,

@@ -14,7 +14,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { AlertCircle, Check, Loader2 } from "lucide-react";
-import { ApiError } from "@/api/client";
+import { ApiError, markOrgDeleted } from "@/api/client";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Select,
   SelectContent,
@@ -47,7 +48,8 @@ function SettingsPage() {
   const { t: tc } = useTranslation("common");
   const { org } = Route.useParams();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, adoptOrgDeletionSession } = useAuth();
+  const queryClient = useQueryClient();
   const { data: settings, isLoading } = useOrgSettings(org);
   const deleteOrg = useDeleteOrg(org);
   const { data: policies } = useEscalationPolicies(org);
@@ -158,13 +160,33 @@ function SettingsPage() {
 
   const handleDeleteOrg = async () => {
     try {
-      await deleteOrg.mutateAsync(org);
+      // Tombstone the slug BEFORE the request settles: list queries and the
+      // live-events socket are still addressed to this org and start failing
+      // the instant it is gone. Without this, redirectToExpiredLogin would
+      // hard-navigate to the deleted org's login page (which 404s) and beat the
+      // deliberate navigation below.
+      markOrgDeleted(org);
+
+      const session = await deleteOrg.mutateAsync(org);
       toast.success(t("settings.dangerZone.deleted", { org }));
-      // The org-scoped session died with the org, so there is nothing to
-      // navigate *within*. Drop the session and land on the login/org-switcher
-      // surface rather than replaying a token that now 404s.
-      await logout();
-      await navigate({ to: "/login", search: { returnTo: undefined } });
+
+      // Deleting an org must not sign the owner out (issue #206). The server
+      // hands back a replacement session — scoped to a surviving org, or
+      // org-less — and adopting it is what keeps the user authenticated.
+      const nextOrg = adoptOrgDeletionSession(session);
+
+      if (nextOrg) {
+        await navigate({ to: "/orgs/$org", params: { org: nextOrg } });
+      } else {
+        await navigate({ to: "/no-org", search: { membershipPending: undefined } });
+      }
+
+      // Only now, off the dead org's routes, drop its cached queries. Every
+      // org-scoped key carries the slug, so this evicts exactly that org and
+      // leaves the surviving one's cache (already being refetched) alone.
+      queryClient.removeQueries({
+        predicate: (query) => query.queryKey.includes(org),
+      });
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : t("settings.unexpectedError"),

@@ -142,20 +142,53 @@ function extractOrgFromPath(path: string): string | null {
 }
 
 /**
+ * Slugs of organizations this tab has just deleted. In-memory and never
+ * persisted: it only has to outlive the requests that were already in flight
+ * when the DELETE landed (list queries, the live-events WebSocket), which all
+ * fail against the now-404ing org and would otherwise escalate through
+ * `redirectToExpiredLogin` and hard-navigate to the dead org's login page —
+ * beating the intentional navigation to the surviving org / `/no-org`.
+ */
+const deletedOrgs = new Set<string>();
+
+/** Records that `org` was just deleted by this tab. See `deletedOrgs`. */
+export function markOrgDeleted(org: string): void {
+  deletedOrgs.add(org);
+}
+
+/** True when `org` is one this tab deleted — exported for tests. */
+export function isOrgDeleted(org: string | null): boolean {
+  return org !== null && deletedOrgs.has(org);
+}
+
+/**
  * Sends the browser to the org login page with `session_expired=true` and a
  * `returnTo` back to the current page. Idempotent (no-ops if already on the
  * login page) so it's safe to call from multiple failure paths without
  * coordinating who "owns" the redirect — both `handleResponse` below and
  * token-refresh.ts's immediate-escalation cases call this.
+ *
+ * When the org in play is one this tab just deleted, there is no login page to
+ * send anyone to: the slug 404s, and its SSO buttons render a raw
+ * "Organization not found" JSON body. Land on `/no-org` instead — the same
+ * empty state a zero-org login reaches.
  */
 export function redirectToExpiredLogin(): void {
   const currentPath = window.location.pathname;
-  if (!currentPath.endsWith("/login")) {
-    const basepath = import.meta.env.VITE_BASE_URL || "";
-    const org = extractOrgFromPath(currentPath) || getStoredOrg() || "default";
-    const returnTo = currentPath + window.location.search;
-    window.location.href = `${basepath}/orgs/${org}/login?session_expired=true&returnTo=${encodeURIComponent(returnTo)}`;
+  if (currentPath.endsWith("/login")) return;
+
+  const basepath = import.meta.env.VITE_BASE_URL || "";
+  const pathOrg = extractOrgFromPath(currentPath);
+  const storedOrg = getStoredOrg();
+
+  if (isOrgDeleted(pathOrg) || isOrgDeleted(storedOrg)) {
+    window.location.href = `${basepath}/no-org`;
+    return;
   }
+
+  const org = pathOrg || storedOrg || "default";
+  const returnTo = currentPath + window.location.search;
+  window.location.href = `${basepath}/orgs/${org}/login?session_expired=true&returnTo=${encodeURIComponent(returnTo)}`;
 }
 
 async function doFetch(url: string, headers: Headers, fetchOptions: RequestInit): Promise<Response> {
