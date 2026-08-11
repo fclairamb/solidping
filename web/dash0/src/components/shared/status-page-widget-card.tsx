@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Copy, Check as CheckIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
+import { useIsDarkTheme } from "@/hooks/use-is-dark-theme";
 
 type WidgetMode = "inline" | "floating";
 type WidgetTheme = "auto" | "light" | "dark";
@@ -73,28 +74,6 @@ function CopyButton({ text, label }: { text: string; label: string }) {
       {copied ? t("copied") : label}
     </Button>
   );
-}
-
-/**
- * Tracks dash0's own light/dark theme (the `html.dark` class toggled by
- * `ThemeToggle`) so the preview iframe's "auto" background can mirror it
- * reactively, without a shared theme context to plug into.
- */
-function useIsDashDark(): boolean {
-  const [dark, setDark] = useState(
-    () => document.documentElement.classList.contains("dark"),
-  );
-
-  useEffect(() => {
-    const target = document.documentElement;
-    const observer = new MutationObserver(() => {
-      setDark(target.classList.contains("dark"));
-    });
-    observer.observe(target, { attributes: true, attributeFilter: ["class"] });
-    return () => observer.disconnect();
-  }, []);
-
-  return dark;
 }
 
 function buildAttributes({
@@ -171,7 +150,7 @@ export function StatusPageWidgetCard({
 }) {
   const { t } = useTranslation("badges");
   const { t: tStatusPages } = useTranslation("statusPages");
-  const dashDark = useIsDashDark();
+  const dashDark = useIsDarkTheme();
 
   const [mode, setMode] = useState<WidgetMode>("inline");
   const [theme, setTheme] = useState<WidgetTheme>("auto");

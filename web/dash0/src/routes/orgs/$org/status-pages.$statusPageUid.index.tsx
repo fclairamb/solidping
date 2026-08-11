@@ -1120,7 +1120,6 @@ function StatusPageDetailPage() {
               >
                 <Button
                   variant="outline"
-                  size="sm"
                   aria-label={t("statusPages:detail.view")}
                 >
                   <ExternalLink className="sm:mr-2 h-4 w-4" />
@@ -1142,7 +1141,6 @@ function StatusPageDetailPage() {
               >
                 <Button
                   variant="outline"
-                  size="sm"
                   aria-label={t("statusPages:appearance.title")}
                   data-testid="status-page-appearance-nav"
                 >
@@ -1165,7 +1163,6 @@ function StatusPageDetailPage() {
               >
                 <Button
                   variant="outline"
-                  size="sm"
                   aria-label={t("statusPages:edit")}
                 >
                   <Pencil className="sm:mr-2 h-4 w-4" />
@@ -1182,7 +1179,6 @@ function StatusPageDetailPage() {
               <TooltipTrigger asChild>
                 <Button
                   variant="outline"
-                  size="sm"
                   className="text-destructive hover:text-destructive"
                   onClick={() => setPageDeleteOpen(true)}
                   aria-label={t("statusPages:delete")}

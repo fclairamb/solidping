@@ -41,8 +41,8 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
     case "up":
     case "ok":
       return {
-        color: "bg-green-500",
-        dotColor: "bg-green-400",
+        color: "bg-status-ok",
+        dotColor: "bg-status-ok/75",
         chartColor: NEUTRAL_CHART,
         badgeVariant: "success",
         labelKey: "status.up",
@@ -51,8 +51,8 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
       };
     case "warning":
       return {
-        color: "bg-yellow-500",
-        dotColor: "bg-yellow-400",
+        color: "bg-status-warning",
+        dotColor: "bg-status-warning/75",
         chartColor: WARNING_CHART,
         badgeVariant: "warning",
         labelKey: "status.warning",
@@ -61,8 +61,8 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
       };
     case "degraded":
       return {
-        color: "bg-yellow-500",
-        dotColor: "bg-yellow-400",
+        color: "bg-status-warning",
+        dotColor: "bg-status-warning/75",
         chartColor: WARNING_CHART,
         badgeVariant: "warning",
         labelKey: "status.degraded",
@@ -71,8 +71,8 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
       };
     case "validating":
       return {
-        color: "bg-yellow-500",
-        dotColor: "bg-yellow-400",
+        color: "bg-status-warning",
+        dotColor: "bg-status-warning/75",
         chartColor: WARNING_CHART,
         badgeVariant: "warning",
         labelKey: "status.validating",
@@ -83,8 +83,8 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
     case "error":
     case "timeout":
       return {
-        color: "bg-red-500",
-        dotColor: "bg-red-400",
+        color: "bg-status-error",
+        dotColor: "bg-status-error/75",
         chartColor: DOWN_CHART,
         badgeVariant: "destructive",
         labelKey: "status.down",

@@ -135,6 +135,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { CodeTextarea } from "@/components/ui/code-textarea";
 import { UptimeStrip } from "@/components/ui/uptime-strip";
+import { useIsDarkTheme } from "@/hooks/use-is-dark-theme";
 import { useDebounce } from "@/lib/use-debounce";
 import { slugify } from "@/lib/utils";
 
@@ -557,22 +558,22 @@ import { PageHeader } from "@/components/shared/page-header";
               <Button variant="ghost" size="icon" aria-label="Back">
                 <ArrowLeft />
               </Button>
-              <Button variant="outline" size="sm" aria-label="Edit">
-                <Pencil className="sm:mr-2 h-4 w-4" />
+              <Button variant="outline" aria-label="Edit">
+                <Pencil className="h-4 w-4 sm:mr-2" />
                 <span className="hidden sm:inline">Edit</span>
               </Button>
               <Button variant="outline" aria-label="Refresh">
                 <RotateCw className="h-4 w-4 sm:mr-2" />
                 <span className="hidden sm:inline">Refresh</span>
               </Button>
-              <Button variant="destructive" size="sm" aria-label="Delete">
-                <Trash2 />
+              <Button variant="destructive" aria-label="Delete">
+                <Trash2 className="h-4 w-4 sm:mr-2" />
                 <span className="hidden sm:inline">Delete</span>
               </Button>
             </div>
           </div>
         }
-        importLine={`<div className="flex items-start justify-between gap-3">\n  <div className="min-w-0 flex-1">\n    <h1 className="truncate text-2xl sm:text-3xl font-bold tracking-tight">{title}</h1>\n    {subtitle && <p className="mt-1 text-muted-foreground truncate">{subtitle}</p>}\n  </div>\n  <div className="flex gap-2 shrink-0">\n    <Button asChild variant="ghost" size="icon" aria-label="Back">\n      <Link to="/orgs/$org/things" params={{ org }}>\n        <ArrowLeft className="h-4 w-4" />\n      </Link>\n    </Button>\n    <Button variant="outline" size="sm" onClick={handleEdit} aria-label="Edit">\n      <Pencil className="sm:mr-2 h-4 w-4" />\n      <span className="hidden sm:inline">Edit</span>\n    </Button>\n    <Button variant="outline" onClick={handleRefresh} aria-label="Refresh">\n      <RotateCw className="h-4 w-4 sm:mr-2" />\n      <span className="hidden sm:inline">Refresh</span>\n    </Button>\n    <Button variant="destructive" size="sm" onClick={handleDelete}>\n      <Trash2 />\n      <span className="hidden sm:inline">Delete</span>\n    </Button>\n  </div>\n</div>`}
+        importLine={`<div className="flex items-start justify-between gap-3">\n  <div className="min-w-0 flex-1">\n    <h1 className="truncate text-2xl sm:text-3xl font-bold tracking-tight">{title}</h1>\n    {subtitle && <p className="mt-1 text-muted-foreground truncate">{subtitle}</p>}\n  </div>\n  <div className="flex gap-2 shrink-0">\n    <Button asChild variant="ghost" size="icon" aria-label="Back">\n      <Link to="/orgs/$org/things" params={{ org }}>\n        <ArrowLeft className="h-4 w-4" />\n      </Link>\n    </Button>\n    {/* One cluster = one button height. Don't mix size="sm" with the default. */}\n    <Button variant="outline" onClick={handleEdit} aria-label="Edit">\n      <Pencil className="h-4 w-4 sm:mr-2" />\n      <span className="hidden sm:inline">Edit</span>\n    </Button>\n    <Button variant="outline" onClick={handleRefresh} aria-label="Refresh">\n      <RotateCw className="h-4 w-4 sm:mr-2" />\n      <span className="hidden sm:inline">Refresh</span>\n    </Button>\n    <Button variant="destructive" onClick={handleDelete} aria-label="Delete">\n      <Trash2 className="h-4 w-4 sm:mr-2" />\n      <span className="hidden sm:inline">Delete</span>\n    </Button>\n  </div>\n</div>`}
       />
 
       <h3 className="text-sm font-medium">Detail &amp; edit pages: collapse the action cluster into an overflow menu on mobile</h3>
@@ -807,9 +808,12 @@ const COLOR_TOKENS: { name: string; varName: string; description?: string }[] = 
   { name: "destructive", varName: "--destructive", description: "Delete / irreversible action confirms" },
   { name: "accent", varName: "--accent", description: "Hover/highlight surface" },
   { name: "muted-foreground", varName: "--muted-foreground", description: "Secondary text" },
-  { name: "status-ok", varName: "--status-ok", description: "Healthy / passing" },
-  { name: "status-warning", varName: "--status-warning", description: "Degraded" },
-  { name: "status-error", varName: "--status-error", description: "Failing" },
+  { name: "status-ok", varName: "--status-ok", description: "Healthy / passing — swatch color (dots, bars, soft tints)" },
+  { name: "status-ok-foreground", varName: "--status-ok-foreground", description: "Text on a soft status-ok tint (badges, alerts)" },
+  { name: "status-warning", varName: "--status-warning", description: "Degraded — swatch color" },
+  { name: "status-warning-foreground", varName: "--status-warning-foreground", description: "Text on a soft status-warning tint" },
+  { name: "status-error", varName: "--status-error", description: "Failing — swatch color" },
+  { name: "status-error-foreground", varName: "--status-error-foreground", description: "Text on a soft status-error tint" },
 ];
 
 const CHART_TOKENS = ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5"];
@@ -1876,8 +1880,16 @@ function demoEscapeHtmlAttr(value: string): string {
 
 function SandboxedPreviewSection() {
   const [label, setLabel] = useState('Try: "><b>bold</b>');
-  const srcDoc = `<!doctype html><html><body style="margin:0;padding:16px;font-family:ui-sans-serif,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100%;box-sizing:border-box;">
-  <span data-label="${demoEscapeHtmlAttr(label)}" style="border:1px solid #d1d5db;border-radius:9999px;padding:6px 12px;">${demoEscapeHtmlAttr(label)}</span>
+  // The frame has an opaque origin, so it cannot read the app's CSS variables —
+  // it renders on browser defaults (black on transparent) and goes unreadable
+  // over a dark page. Hand it concrete colors instead, the same way
+  // StatusPageWidgetCard builds its own preview.
+  const dark = useIsDarkTheme();
+  const surface = dark
+    ? { background: "#0b1220", color: "#e5e7eb", border: "#374151" }
+    : { background: "#f8fafc", color: "#1f2937", border: "#d1d5db" };
+  const srcDoc = `<!doctype html><html><body style="margin:0;padding:16px;font-family:ui-sans-serif,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100%;box-sizing:border-box;background:${surface.background};color:${surface.color};">
+  <span data-label="${demoEscapeHtmlAttr(label)}" style="border:1px solid ${surface.border};border-radius:9999px;padding:6px 12px;">${demoEscapeHtmlAttr(label)}</span>
 </body></html>`;
 
   return (
@@ -1919,11 +1931,14 @@ function SandboxedPreviewSection() {
           <p className="text-xs text-muted-foreground">
             The typed value renders as inert text even when it contains
             markup — escaping happens before the string ever reaches the
-            iframe's HTML parser.
+            iframe's HTML parser. The frame also gets explicit background and
+            text colors: an opaque origin can't read the app's CSS variables,
+            so a frame left on browser defaults renders black-on-transparent
+            and disappears against dark mode.
           </p>
         </div>
         <CodeSnippet
-          code={`function escapeHtmlAttr(value: string): string {\n  return value\n    .replace(/&/g, "&amp;")\n    .replace(/"/g, "&quot;")\n    .replace(/</g, "&lt;")\n    .replace(/>/g, "&gt;");\n}\n\nconst srcDoc = \`<!doctype html><html>...\n  <span>\${escapeHtmlAttr(userValue)}</span>\n...</html>\`;\n\n<iframe srcDoc={srcDoc} sandbox="allow-scripts" title="Preview" />`}
+          code={`function escapeHtmlAttr(value: string): string {\n  return value\n    .replace(/&/g, "&amp;")\n    .replace(/"/g, "&quot;")\n    .replace(/</g, "&lt;")\n    .replace(/>/g, "&gt;");\n}\n\n// Sandboxed frames can't see --background / --foreground: hand them\n// concrete colors, tracked off the app's own light/dark class.\nconst dark = useIsDarkTheme();\nconst surface = dark\n  ? { background: "#0b1220", color: "#e5e7eb" }\n  : { background: "#f8fafc", color: "#1f2937" };\n\nconst srcDoc = \`<!doctype html><html>...\n  <body style="background:\${surface.background};color:\${surface.color}">\n    <span>\${escapeHtmlAttr(userValue)}</span>\n  </body>\n...</html>\`;\n\n<iframe srcDoc={srcDoc} sandbox="allow-scripts" title="Preview" />`}
         />
       </div>
     </Section>
@@ -2061,7 +2076,7 @@ function FeedbackSection() {
                 confirmValue="acme"
                 confirmLabel="Delete organization"
                 onConfirm={() => {
-                  toast("Confirmed");
+                  toast.success("Confirmed");
                 }}
               />
             </DangerZone>
@@ -2070,17 +2085,49 @@ function FeedbackSection() {
         />
 
         <h3 className="text-sm font-medium">Toast (sonner)</h3>
+        <p className="text-sm text-muted-foreground">
+          Confirmation for an action the operator just took — never for
+          information they have to keep. A toast keeps the neutral popover
+          surface and carries its meaning in the{" "}
+          <strong>icon color alone</strong> (
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">--status-ok</code>{" "}
+          /{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">--status-warning</code>{" "}
+          /{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">--status-error</code>
+          ), so success and failure read apart at a glance without a saturated
+          banner sliding over the UI. That mapping lives once in{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">components/ui/sonner.tsx</code>{" "}
+          — call the typed helper and the color follows; never hand-color a
+          toast at the call site.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          <strong>Always use a typed helper.</strong> A bare{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">toast("…")</code>{" "}
+          has no type, and sonner gives an untyped toast no icon at all — it
+          arrives as unlabelled text, and there is no setting that adds one,
+          because the icon lookup is keyed on the type it's missing. A neutral,
+          non-status message is{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">toast.info()</code>,
+          which carries the blue (i).
+        </p>
         <ExampleRow
           preview={
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => toast("Hello from sonner")}>
-                Default toast
+              <Button variant="outline" onClick={() => toast.info("Maintenance window starts in 10 minutes")}>
+                Info toast
               </Button>
               <Button
                 variant="outline"
-                onClick={() => toast.success("Saved successfully")}
+                onClick={() => toast.success("Check enabled")}
               >
                 Success toast
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => toast.warning("Check is flapping")}
+              >
+                Warning toast
               </Button>
               <Button
                 variant="outline"
@@ -2090,7 +2137,7 @@ function FeedbackSection() {
               </Button>
             </div>
           }
-          importLine={`import { toast } from "sonner";`}
+          importLine={`import { toast } from "sonner";\n\n// Typed helpers only — the icon and its color come from the type.\ntoast.success("Check enabled");\ntoast.warning("Check is flapping");\ntoast.error("Something went wrong");\ntoast.info("Maintenance window starts in 10 minutes");\n\n// Never a bare toast("…"): an untyped toast renders with no icon at\n// all, and sonner exposes no way to give it one.`}
         />
 
         <h3 className="text-sm font-medium">Tooltip</h3>
@@ -2162,7 +2209,7 @@ function FeedbackSection() {
           preview={
             <ErrorFallbackCard
               error={new Error("Example failure — shown inside a collapsible details block")}
-              onRetry={() => toast("Retry clicked")}
+              onRetry={() => toast.info("Retry clicked")}
             />
           }
           importLine={`import { ErrorFallbackCard, RouteErrorFallback } from "@/components/shared/error-boundary";\n// RouteErrorFallback is already wired as the router's defaultErrorComponent\n// (main.tsx): route errors render this card inside the layout, keeping the\n// sidebar usable. Reuse ErrorFallbackCard for any custom error surface.`}
@@ -2321,7 +2368,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
       <Icon className="h-4 w-4 text-muted-foreground" />
     </CardHeader>
     <CardContent>
-      <div className="text-3xl font-bold">42</div>
+      <div className="text-3xl font-bold tracking-tight tabular-nums">42</div>
       <p className="text-xs text-muted-foreground mt-1">2 disabled</p>
     </CardContent>
   </Card>
@@ -2346,7 +2393,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
               <AlertTriangle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">42</div>
+              <div className="text-3xl font-bold tracking-tight tabular-nums">42</div>
               <p className="text-xs text-muted-foreground mt-1">2 disabled</p>
             </CardContent>
           </Card>
@@ -2359,7 +2406,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
             <AlertTriangle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">99.98%</div>
+            <div className="text-3xl font-bold tracking-tight tabular-nums">99.98%</div>
             <p className="text-xs text-muted-foreground mt-1">24h window</p>
           </CardContent>
         </Card>

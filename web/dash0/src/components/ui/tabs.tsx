@@ -84,7 +84,7 @@ export function TabsTrigger({
       className={cn(
         "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         selected
-          ? "bg-background text-foreground shadow"
+          ? "bg-card text-foreground shadow"
           : "text-muted-foreground hover:text-foreground",
         className,
       )}

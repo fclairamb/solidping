@@ -30,7 +30,12 @@ export function StatTile({
         className,
       )}
     >
-      <div className={cn("text-2xl font-semibold tabular-nums", toneClass[tone])}>
+      <div
+        className={cn(
+          "text-2xl font-semibold tracking-tight tabular-nums",
+          toneClass[tone],
+        )}
+      >
         {value}
       </div>
       <div className="mt-0.5 text-xs text-muted-foreground">{label}</div>
