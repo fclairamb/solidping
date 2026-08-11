@@ -4,14 +4,17 @@ Time-series check results, the incident lifecycle, notification delivery
 records, and the audit log. See [README.md](README.md) for the full index.
 
 ### results
-Time-series check execution results (raw and aggregated).
+Time-series check execution results (raw and aggregated). This page covers the
+schema; the rollup behavior (job, boundaries, transactional compaction,
+retention) is in
+[features/results-aggregation.md](../features/results-aggregation.md).
 
 | Column | Type | Description |
 |--------|------|-------------|
 | uid | uuid PK | Primary key |
 | organization_uid | uuid | FK to organizations |
 | check_uid | uuid | FK to checks |
-| period_type | text | Granularity: raw, hour, day, month, year |
+| period_type | text | Granularity: raw, hour, day, month (no code path produces anything finer than `month`) |
 | period_start | timestamptz | Period start |
 | period_end | timestamptz | Period end |
 | region | text | Execution region |

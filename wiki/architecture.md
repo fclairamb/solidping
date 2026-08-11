@@ -122,7 +122,7 @@ Background job processing system for asynchronous tasks:
 - **Email**: Sends notification and alert emails
 - **Webhook**: Delivers webhook payloads to external endpoints
 - **Startup**: Initialization tasks on server start
-- **Aggregation**: Computes aggregated metrics from raw results (daily, monthly, yearly)
+- **Aggregation**: Rolls check results up one tier per run (`raw → hour → day → month`) and deletes the sources transactionally — see [features/results-aggregation.md](features/results-aggregation.md)
 - **StateCleanup**: Cleans up expired leases, stale workers, and old data
 - **Notification**: Dispatches notifications across all configured channels
 
