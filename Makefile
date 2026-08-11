@@ -76,21 +76,21 @@ kill:
 
 build: sync-brand-assets build-dash copy-dash build-dash0 copy-dash0 build-status0 copy-status0 build-docs copy-docs build-backend ## Build complete application
 
-sync-brand-assets: ## Copy res/logo.svg + favicon set into web/{dash0,status0}/public/
-	@mkdir -p web/dash0/public web/status0/public
+sync-brand-assets: ## Copy res/logo.svg + favicon set into web/{dash0,status0}/public/ (favicons under public/assets/)
+	@mkdir -p web/dash0/public/assets web/status0/public/assets
 	@cp res/logo.svg web/dash0/public/logo.svg
 	@cp res/logo.svg web/status0/public/logo.svg
-	@cp res/logo.svg web/dash0/public/favicon.svg
-	@cp res/logo.svg web/status0/public/favicon.svg
+	@cp res/logo.svg web/dash0/public/assets/favicon.svg
+	@cp res/logo.svg web/status0/public/assets/favicon.svg
 	@cp res/logo.png web/dash0/public/logo.png
 	@cp res/logo.png web/status0/public/logo.png
 	@if [ -d res/favicons ]; then \
-		cp res/favicons/*.png web/dash0/public/; \
-		cp res/favicons/*.png web/status0/public/; \
+		cp res/favicons/*.png web/dash0/public/assets/; \
+		cp res/favicons/*.png web/status0/public/assets/; \
 	fi
 	@mkdir -p web/docs/static/img
 	@cp res/logo.png web/docs/static/img/logo.png
-	@echo "Brand assets synced to web/dash0/public/, web/status0/public/, and web/docs/static/"
+	@echo "Brand assets synced to web/dash0/public/ (favicons in assets/), web/status0/public/ (favicons in assets/), and web/docs/static/"
 
 build-favicons: ## Generate favicon PNG set from res/logo.svg into res/favicons/
 	@./scripts/build-favicons.sh

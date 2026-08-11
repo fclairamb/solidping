@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Generates the favicon PNG set from res/logo.svg and copies the result
-# into both web/dash0/public/ and web/status0/public/. Spec
-# 2026-05-09-01-brand-design-tokens-and-logo-pipeline.md.
+# Generates the favicon PNG set from res/logo.svg; `make sync-brand-assets`
+# then copies it into web/dash0/public/assets/ and web/status0/public/assets/.
+# Spec 2026-05-09-01-brand-design-tokens-and-logo-pipeline.md.
 #
 # Requires either rsvg-convert (preferred, sharpest scaling at small
 # sizes) or ImageMagick `magick`. Falls back gracefully and prints which
@@ -46,4 +46,4 @@ done
 render "$APPLE_SIZE" "$OUTDIR/apple-touch-icon.png"
 echo "wrote $OUTDIR/apple-touch-icon.png"
 
-echo "done. run 'make sync-brand-assets' to copy into web/{dash0,status0}/public/"
+echo "done. run 'make sync-brand-assets' to copy into web/{dash0,status0}/public/assets/"
