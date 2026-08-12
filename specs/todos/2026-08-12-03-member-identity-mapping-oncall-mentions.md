@@ -170,3 +170,83 @@ phases in order, committing each phase's work separately, and make sure the
 Phase 3 invariant ("an admin can never create or flip a contact to verified")
 is covered by an explicit negative test. Teams mentions remain out of scope as
 the spec states.
+
+## Implementation Plan
+
+Three phases, committed separately. Backend first in each phase, then REST, then dash0.
+
+### Phase 1 — identity mapping + on-call mention in Slack channel alerts
+
+1. **Model** — `server/internal/db/models/user_integration_identity.go`:
+   `UserIntegrationIdentity` (`uid`, `organization_uid`, `integration_uid`,
+   `user_uid`, `external_id`, `display_name`, `source`, timestamps) plus
+   `IdentitySourceAuto` / `IdentitySourceManual` and a constructor.
+2. **Migration** — scratch migration `011_user_integration_identities.up.sql` /
+   `.down.sql` in BOTH `server/internal/db/postgres/migrations/` and
+   `server/internal/db/sqlite/migrations/` (highest existing number today is
+   `010_v0_10_0`). Unique indexes on `(integration_uid, user_uid)` and
+   `(integration_uid, external_id)`.
+3. **db.Service** — `ListUserIntegrationIdentities`,
+   `GetUserIntegrationIdentity`, `UpsertUserIntegrationIdentity`,
+   `DeleteUserIntegrationIdentity`, implemented for postgres + sqlite.
+4. **SlackSettings.MentionOnCall** (`mention_on_call`) — `false` at the
+   struct/JSON level so every stored integration is unchanged; the CREATE path
+   in `integrations.Service.CreateIntegration` sets it to `true` when a new
+   Slack integration does not specify it. No backfill.
+5. **Slack client** — `LookupUserByEmail` (`users.lookupByEmail`, form-encoded)
+   returning found / not-found without erroring on `users_not_found`.
+6. **Identity service** (`server/internal/handlers/integrations/identities.go`)
+   — `ListIdentities` (per-member mapping status), `SyncIdentities` (buckets:
+   matched / notFound / ambiguous, never silently guessed; `manual` rows are
+   never overwritten by `auto`), `SetIdentity`, `DeleteIdentity`.
+7. **REST** — `GET /orgs/:org/integrations/:uid/identities`,
+   `POST …/identities/sync`, `PUT`/`DELETE …/identities/:userUid` (admin for
+   the writes). OpenAPI + `wiki/api-specification/` updated.
+8. **Auto-match on connect** — best-effort sync after the Slack OAuth callback.
+9. **Mention resolution** — `ResolveEscalationPolicyUID` moved to `jobtypes`
+   (incidents delegates), new `jobtypes/mentions.go` resolving check →
+   effective policy → first step → `schedule` targets (via the on-call
+   resolver) + direct `user` targets, deduplicated by user uid and ordered by
+   display name; each user maps to its identity row for this integration.
+   `Payload.OnCallMentions` carries them; `slack.go` prepends the mention line
+   to `incident.created` and `incident.escalated` only. Every failure path is
+   swallowed (logged) so a mention never fails a send.
+10. **dash0** — Slack panel in `integration-form.tsx`: "Mention the on-call
+    person in alerts" switch (pre-enabled on create) + "Member mapping" section
+    (matched / not-found buckets, re-sync button, manual override picker,
+    `Trash2` destructive clear). i18n in en/fr/de/es.
+
+### Phase 2 — paging-coverage visibility
+
+1. **Admin coverage endpoint** — `GET /orgs/:org/members/coverage` aggregating
+   `user_notification_routes` per member. Exposes only channel *type* +
+   `verified` + `enabled`, never contact values.
+2. **Members page** — coverage column with small channel icons and an explicit
+   "email fallback only" state.
+3. **On-call schedule form/detail + escalation policy editor** — warning badge
+   next to any rostered member / `user` target reachable only by the email
+   fallback.
+4. **Account notifications page** — first-class "Connect Slack" row showing the
+   linked workspace name (promoted from the post-sign-in suggestion banner).
+
+### Phase 3 — admin pre-provisioning
+
+1. `POST /orgs/:org/members/:uid/contacts` (admin) creates a phone/WhatsApp
+   contact for another member in **unverified** state, plus its route.
+   Invariant enforced in the service: the admin path can never set
+   `verified_at` and can never flip an existing contact to verified.
+2. `POST /orgs/:org/members/:uid/paging-nudge` (admin) sends the "set up your
+   paging" email.
+3. **Members page** — "Set up paging…" row action navigating to
+   `/orgs/$org/organization/members/$userUid/paging` (a route, not a modal).
+
+### Testing
+
+- Backend table-driven tests: auto-match buckets (matched / not found /
+  ambiguous / manual-preserved); mention resolution (policy chain, schedule
+  resolver, direct user targets, dedup + ordering); negative tests — toggle
+  off ⇒ no mention, no identity ⇒ plain-text name and no `<@`, resolved and
+  reopened messages mention-free, resolution failure never fails the send;
+  admin-cannot-verify invariant (create unverified, and cannot flip verified).
+- Playwright: Slack member-mapping section, members coverage column, on-call
+  warning badge.
