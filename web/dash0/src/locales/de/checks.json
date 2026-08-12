@@ -128,6 +128,7 @@
     "indicatorTooltip": "Eskalationsrichtlinie: {{name}}"
   },
   "noChecks": "Keine Prüfungen in dieser Gruppe",
+  "addCheckToGroup": "Prüfung zu dieser Gruppe hinzufügen",
   "noUngroupedChecks": "Keine nicht gruppierten Prüfungen entsprechen Ihrer Suche",
   "failedToLoadChecks": "Prüfungen konnten nicht geladen werden",
   "noChecksAtAll": "Noch keine Prüfungen",

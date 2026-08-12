@@ -780,7 +780,17 @@ function CheckGroupSection({
            * A still-empty bucket reads as loading (skeletons) as long as the
            * stream can still deliver more (`isLoading` folds in
            * hasNextPage/isFetchingNextPage) — the truthful "no checks" empty
-           * state only shows once the stream is fully drained. */}
+           * state only shows once the stream is fully drained.
+           *
+           * Exception: when NOT filtering, `group.checkCount` is the
+           * authoritative server-side total (independent of the loaded
+           * pages — see the comment above `checksByGroup`). If it's already
+           * 0, no page of the stream can ever deliver a row for this group,
+           * so treating an empty bucket as "still loading" would show
+           * skeletons forever on orgs with more checks than one page. Skip
+           * straight to the empty state instead. While filtering, keep
+           * deferring to the stream — `checkCount` is the unfiltered total,
+           * so a filtered-to-zero bucket may still be genuinely loading. */}
           {error ? (
             <div className="p-4 text-sm text-destructive">
               {t("failedToLoadChecks")}
@@ -794,7 +804,7 @@ function CheckGroupSection({
               groups={groups}
               checksByUid={checksByUid}
             />
-          ) : isLoading ? (
+          ) : isLoading && (isFiltering || group.checkCount !== 0) ? (
             <div className="p-4 space-y-2">
               {[...Array(3)].map((_, i) => (
                 <Skeleton key={i} className="h-10 rounded-lg" />
@@ -802,7 +812,18 @@ function CheckGroupSection({
             </div>
           ) : (
             <div className="p-4 text-center text-sm text-muted-foreground">
-              {t("noChecks")}
+              <p>{t("noChecks")}</p>
+              {!isFiltering && (
+                <Link
+                  to="/orgs/$org/checks/new"
+                  params={{ org }}
+                  search={{ checkType: undefined, checkPeriod: undefined, checkName: undefined, checkSlug: undefined, httpUrl: undefined, httpMethod: undefined, host: undefined, port: undefined, url: undefined, domain: undefined, username: undefined, database: undefined, expectedStatus: undefined, timeout: undefined, label: undefined, region: undefined, group: group.slug, confirmationPeriod: undefined, recoveryPeriod: undefined, section: undefined }}
+                  className="mt-1 inline-flex items-center gap-1 text-primary hover:underline"
+                  data-testid="group-empty-new-check-link"
+                >
+                  {t("addCheckToGroup")}
+                </Link>
+              )}
             </div>
           )}
         </div>
