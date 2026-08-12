@@ -2732,6 +2732,129 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/integrations/{uid}/identities:
+    get:
+      tags: [Channels]
+      summary: List member identity mappings for an integration
+      description: >-
+        Returns every organization member together with their identity on this
+        integration (e.g. their Slack user id on the connected workspace).
+        Identities are used to mention the on-call person in channel alerts;
+        they are never used for paging. Read-only and cheap: this never calls
+        out to the provider. Slack-only — other integration types return 400.
+      operationId: listIntegrationIdentities
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ChannelUidPath"
+      responses:
+        "200":
+          description: Per-member mapping status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationIdentityListResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/integrations/{uid}/identities/sync:
+    post:
+      tags: [Channels]
+      summary: Re-run the member identity auto-match
+      description: >-
+        Looks every organization member up in the connected Slack workspace by
+        email (`users.lookupByEmail`) and records the matches. Manual overrides
+        are never overwritten, and a workspace account that two members both
+        resolve to is reported ambiguous and written nowhere. Admin only.
+      operationId: syncIntegrationIdentities
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ChannelUidPath"
+      responses:
+        "200":
+          description: Post-sync state and bucket counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationIdentitySyncResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The integration has no connected workspace
+
+  /api/v1/orgs/{org}/integrations/{uid}/identities/{userUid}:
+    put:
+      tags: [Channels]
+      summary: Set a member's identity on an integration
+      description: >-
+        Records an admin-chosen mapping between an organization member and a
+        workspace user. The external id may be claimed by at most one member
+        per integration. Admin only.
+      operationId: setIntegrationIdentity
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ChannelUidPath"
+        - $ref: "#/components/parameters/IdentityUserUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetIntegrationIdentityRequest"
+      responses:
+        "200":
+          description: The stored mapping
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationIdentity"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: That workspace user is already mapped to another member
+    delete:
+      tags: [Channels]
+      summary: Clear a member's identity on an integration
+      operationId: deleteIntegrationIdentity
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ChannelUidPath"
+        - $ref: "#/components/parameters/IdentityUserUidPath"
+      responses:
+        "204":
+          description: Mapping cleared
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/checks/{check}/channels:
     get:
       tags: [Channels]
@@ -6053,6 +6176,15 @@ components:
         format: uuid
       description: Channel (connection) UID
 
+    IdentityUserUidPath:
+      name: userUid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Organization member's user UID
+
     MemberUidPath:
       name: uid
       in: path
@@ -8424,6 +8556,69 @@ components:
         detail:
           type: string
           description: Optional human-readable success note
+
+    IntegrationIdentity:
+      type: object
+      required: [userUid, email, status]
+      properties:
+        userUid:
+          type: string
+          format: uuid
+        email:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [matched, notFound, ambiguous]
+          description: >-
+            matched = the member has an identity on this integration;
+            notFound = their email resolved to nobody in the workspace;
+            ambiguous = the match collided with another member and was
+            deliberately not written.
+        externalId:
+          type: string
+          description: Provider-side identifier (Slack user id) rendered as <@id>
+        displayName:
+          type: string
+        source:
+          type: string
+          enum: [auto, manual]
+          description: auto = email auto-match; manual = an admin picked it. A re-sync never overwrites manual.
+
+    IntegrationIdentityListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntegrationIdentity"
+
+    IntegrationIdentitySyncResponse:
+      type: object
+      required: [data, matchedCount, notFoundCount, ambiguousCount]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntegrationIdentity"
+        matchedCount:
+          type: integer
+        notFoundCount:
+          type: integer
+        ambiguousCount:
+          type: integer
+
+    SetIntegrationIdentityRequest:
+      type: object
+      required: [externalId]
+      properties:
+        externalId:
+          type: string
+          description: Workspace user id to map this member to
+        displayName:
+          type: string
 
     CheckChannel:
       type: object

@@ -35,6 +35,59 @@ secret stops working immediately. Auth: required
 ### POST /api/v1/orgs/:org/integrations/:uid/test
 Send a test notification through the integration. Auth: required
 
+## Member identity mapping (Slack)
+
+"Who is this org member on this integration instance" — the Slack user id used
+to mention the on-call person in channel alerts. Deliberately separate from
+`user_contacts`: contacts are *how to page me* (and carry verification state),
+identities are *who I am there*. Nothing in the paging path reads them, so a
+wrong mapping can annoy but can never misdirect a page.
+
+Only Slack integrations support identities today (Teams is out of scope); other
+types return `400 VALIDATION_ERROR`.
+
+### GET /api/v1/orgs/:org/integrations/:uid/identities
+List every member with their mapping status on this integration. Never calls
+Slack. Auth: required (any member).
+
+```json
+{ "data": [
+  { "userUid": "…", "email": "alice@acme.test", "name": "Alice",
+    "status": "matched", "externalId": "U123ABC",
+    "displayName": "Alice A", "source": "auto" }
+] }
+```
+
+`status` is `matched`, `notFound`, or `ambiguous`. `source` is `auto` (email
+auto-match) or `manual` (an admin picked it).
+
+### POST /api/v1/orgs/:org/integrations/:uid/identities/sync
+Re-run the email auto-match (`users.lookupByEmail`, which the bot's existing
+`users:read.email` scope already covers). Auth: **admin**.
+
+Returns the post-sync state plus `matchedCount` / `notFoundCount` /
+`ambiguousCount`. Manual rows are never overwritten; a workspace account two
+members both resolve to is reported ambiguous and written nowhere. `409` when
+the integration has no connected workspace.
+
+### PUT /api/v1/orgs/:org/integrations/:uid/identities/:userUid
+Manual override — body `{ "externalId": "U123ABC", "displayName": "Alice" }`.
+Auth: **admin**. `409` when that workspace user is already mapped to another
+member.
+
+### DELETE /api/v1/orgs/:org/integrations/:uid/identities/:userUid
+Clear a member's mapping. Idempotent, `204`. Auth: **admin**.
+
+### Slack settings: `mention_on_call`
+A Slack integration's `settings.mention_on_call` (boolean) makes
+`incident.created` and `incident.escalated` channel messages lead with a
+mention of everyone the effective escalation policy's first step would page —
+schedule targets resolved through the on-call resolver plus direct `user`
+targets, deduplicated and ordered by display name. Members with no identity are
+named in plain text (no ping). Resolved/reopened messages are always
+mention-free. Defaults to `false`, so integrations created before this field
+existed are unchanged; a **newly installed** Slack integration gets `true`.
+
 ## Check notify channels
 
 Manage the notify-capable integrations ("channels") attached to individual
