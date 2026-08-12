@@ -141,6 +141,16 @@ type SlackSettings struct {
 	DisplayName       string   `json:"display_name,omitempty"`     // "#alerts" or "@alice"
 	InstalledByUserID string   `json:"installed_by_user_id"`
 	Scopes            []string `json:"scopes"`
+	// MentionOnCall makes channel alerts ping the humans the escalation policy
+	// would page first (`<@U123ABC>`), so a channel message tells the
+	// responsible person it is theirs.
+	//
+	// Zero value is deliberately false: every integration stored before this
+	// field existed has no such key in its settings JSON, decodes to false, and
+	// keeps behaving exactly as before — no backfill, no migration. New Slack
+	// integrations get `true` written explicitly by the install flow (see
+	// slack.Service.createOrUpdateConnection).
+	MentionOnCall bool `json:"mention_on_call"`
 }
 
 // ToJSONMap converts SlackSettings to JSONMap for storage.

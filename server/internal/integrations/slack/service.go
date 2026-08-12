@@ -149,6 +149,10 @@ type Service struct {
 	// real HandleOAuthCallback against httptest stand-ins.
 	oauthURL    string
 	userInfoURL string
+
+	// identitySync auto-matches org members to workspace users after an
+	// install. Nil until wired (see SetIdentitySync).
+	identitySync IdentitySyncFn
 }
 
 // NewService creates a new Slack integration service.
@@ -409,6 +413,12 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 
 	resultChannelUID := resolveResultChannelUID(targetChannelUID, targetOrgSlug, connUID)
 
+	// Auto-match org members to workspace users so the very first alert can
+	// already mention the on-call person. Detached and best-effort: it makes
+	// one Slack call per member, and the human is waiting on a browser
+	// redirect — a slow or failing workspace must never break the install.
+	s.runIdentitySync(ctx, org.Slug, connUID)
+
 	slog.InfoContext(ctx, "Slack OAuth completed successfully",
 		"org_uid", org.UID,
 		"org_slug", org.Slug,
@@ -506,6 +516,9 @@ func (s *Service) updateExistingChannel(
 		AccessToken:       oauthResp.AccessToken,
 		InstalledByUserID: oauthResp.AuthedUser.ID,
 		Scopes:            strings.Split(oauthResp.Scope, ","),
+		// The row already exists, so this is not a "new integration": carry the
+		// operator's current choice over instead of flipping it on.
+		MentionOnCall: s.existingMentionOnCall(ctx, channelUID),
 	}
 
 	settingsMap, err := settings.ToJSONMap()
@@ -519,6 +532,63 @@ func (s *Service) updateExistingChannel(
 	}
 
 	return channelUID, nil
+}
+
+// IdentitySyncFn re-runs the member identity auto-match for one integration.
+// Wired at server startup to integrations.Service.SyncIdentities — a function
+// seam rather than a direct call because handlers/integrations already imports
+// this package, so the dependency can only point one way.
+type IdentitySyncFn func(ctx context.Context, orgSlug, integrationUID string) error
+
+// SetIdentitySync installs the post-install member identity auto-match. Optional:
+// with no sync wired, an install simply leaves the mapping empty until an admin
+// presses "Re-sync" in the Slack panel.
+func (s *Service) SetIdentitySync(fn IdentitySyncFn) {
+	s.identitySync = fn
+}
+
+// runIdentitySync fires the auto-match without blocking the OAuth redirect.
+// Every failure is logged and swallowed: a workspace that rate-limits us, or a
+// bot missing users:read.email, must not turn a successful install into an
+// error page.
+func (s *Service) runIdentitySync(ctx context.Context, orgSlug, integrationUID string) {
+	if s.identitySync == nil || orgSlug == "" || integrationUID == "" {
+		return
+	}
+
+	// Detached from the request: the HTTP handler returns a redirect long
+	// before a per-member Slack lookup loop finishes.
+	syncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), identitySyncTimeout)
+
+	go func() {
+		defer cancel()
+
+		if err := s.identitySync(syncCtx, orgSlug, integrationUID); err != nil {
+			slog.WarnContext(syncCtx, "Slack member identity auto-match failed",
+				"org_slug", orgSlug, "integration_uid", integrationUID, "error", err)
+		}
+	}()
+}
+
+// identitySyncTimeout bounds the detached post-install auto-match.
+const identitySyncTimeout = 2 * time.Minute
+
+// existingMentionOnCall reads the mention_on_call flag off a stored Slack
+// integration. Defaults to false — for a row that already exists, "no opinion
+// recorded" means the historical behavior (no mentions), which is exactly what
+// the spec asks for existing integrations.
+func (s *Service) existingMentionOnCall(ctx context.Context, channelUID string) bool {
+	conn, err := s.db.GetChannel(ctx, channelUID)
+	if err != nil || conn == nil {
+		return false
+	}
+
+	settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
+	if err != nil {
+		return false
+	}
+
+	return settings.MentionOnCall
 }
 
 // resolveOrganization derives the org display name and slug candidates from
@@ -568,7 +638,12 @@ func (s *Service) createOrUpdateConnection(
 		return "", err
 	}
 
-	// Create Slack settings
+	// Create Slack settings.
+	//
+	// mention_on_call is ON for a brand-new integration and preserved for an
+	// existing one (spec 2026-08-12-03, resolved question 1): a re-install must
+	// never flip a setting the operator already decided, and no stored row is
+	// ever backfilled.
 	settings := &models.SlackSettings{
 		TeamID:            oauthResp.Team.ID,
 		TeamName:          oauthResp.Team.Name,
@@ -576,6 +651,11 @@ func (s *Service) createOrUpdateConnection(
 		AccessToken:       oauthResp.AccessToken,
 		InstalledByUserID: oauthResp.AuthedUser.ID,
 		Scopes:            strings.Split(oauthResp.Scope, ","),
+		MentionOnCall:     true,
+	}
+
+	if existingConn != nil {
+		settings.MentionOnCall = s.existingMentionOnCall(ctx, existingConn.UID)
 	}
 
 	settingsMap, err := settings.ToJSONMap()

@@ -1272,6 +1272,21 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		group.POST("/:uid/test", integrationsHandler.TestIntegration)
 	}
 
+	// Per-integration member identity mapping (spec 2026-08-12-03) — "who is
+	// this org member on this Slack workspace", used to mention the on-call
+	// person in channel alerts. Reading the mapping is open to any member (the
+	// Slack panel renders it); every write is admin-only, because a wrong
+	// mapping makes an alert ping the wrong human.
+	orgIntegrationIdentities := orgGroup("/orgs/:org/integrations/:uid/identities")
+	orgIntegrationIdentities.GET("", integrationsHandler.ListIdentities)
+
+	orgIntegrationIdentitiesAdmin := api.NewGroup("/orgs/:org/integrations/:uid/identities").
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+	orgIntegrationIdentitiesAdmin.POST("/sync", integrationsHandler.SyncIdentities)
+	orgIntegrationIdentitiesAdmin.PUT("/:userUid", integrationsHandler.SetIdentity)
+	orgIntegrationIdentitiesAdmin.DELETE("/:userUid", integrationsHandler.DeleteIdentity)
+
 	// Freebox pairing endpoints — separate from the generic CRUD because
 	// they wrap the multi-step LCD-approval handshake. POST creates the
 	// integration in `pairing` status and asks the Freebox for an
@@ -1387,6 +1402,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Slack integration routes (inbound from Slack - no org auth)
 	slackService := slack.NewService(s.dbService, s.config, s.authService, checksService, incidentsService)
+	// Auto-match members to workspace users right after an install so the first
+	// alert can already mention the on-call person (spec 2026-08-12-03). The
+	// dependency can only point this way — handlers/integrations imports the
+	// slack package — hence the function seam.
+	slackService.SetIdentitySync(func(ctx context.Context, orgSlug, integrationUID string) error {
+		_, err := integrationsService.SyncIdentities(ctx, orgSlug, integrationUID)
+
+		return err
+	})
 	slackHandler := slack.NewHandler(slackService, s.config)
 
 	// Build the Socket Mode supervisor up-front when enabled so its status is
