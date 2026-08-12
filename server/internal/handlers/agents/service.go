@@ -60,8 +60,10 @@ func NewService(dbService db.Service, creds credentials.Service, entSvc *entitle
 }
 
 // PrivateRegionResponse is a private region as returned by the API. `Region` is
-// the fully-qualified, namespaced string actually stored on checks/jobs
-// (`@<org>/<slug>`); `Slug` is the raw slug the operator typed.
+// the namespaced string actually stored on checks/jobs — org-relative
+// (`@<slug>`), because the org is already implied by the `/orgs/:org/…` path
+// and by every row's organization_uid; `Slug` is the raw slug the operator
+// typed.
 type PrivateRegionResponse struct {
 	Slug  string `json:"slug"`
 	Name  string `json:"name"`
@@ -109,7 +111,7 @@ func (s *Service) ListPrivateRegions(ctx context.Context, orgSlug string) (*List
 	data := make([]PrivateRegionResponse, 0, len(defs))
 
 	for i := range defs {
-		full := regions.PrivateRegionSlug(orgSlug, defs[i].Slug)
+		full := regions.PrivateRegionSlug(defs[i].Slug)
 
 		active, listErr := s.db.ListActiveAgentsByRegion(ctx, org.UID, full)
 		if listErr != nil {
@@ -172,7 +174,7 @@ func (s *Service) CreatePrivateRegion(
 		Slug:   req.Slug,
 		Name:   name,
 		Emoji:  emoji,
-		Region: regions.PrivateRegionSlug(orgSlug, req.Slug),
+		Region: regions.PrivateRegionSlug(req.Slug),
 	}, nil
 }
 
@@ -207,7 +209,7 @@ func (s *Service) DeletePrivateRegion(ctx context.Context, orgSlug, slug string)
 		return fmt.Errorf("%w: %s", ErrRegionNotFound, slug)
 	}
 
-	full := regions.PrivateRegionSlug(orgSlug, slug)
+	full := regions.PrivateRegionSlug(slug)
 
 	active, err := s.db.ListActiveAgentsByRegion(ctx, org.UID, full)
 	if err != nil {
@@ -289,7 +291,7 @@ func (s *Service) MintEnrollmentToken(
 		return nil, err
 	}
 
-	full := regions.PrivateRegionSlug(orgSlug, req.RegionSlug)
+	full := regions.PrivateRegionSlug(req.RegionSlug)
 	expiresAt := time.Now().Add(ttl)
 
 	row := models.NewAgentEnrollmentToken(org.UID, full, hash, expiresAt, createdByUserUID)

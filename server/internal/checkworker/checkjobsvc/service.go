@@ -150,15 +150,7 @@ func (s *serviceImpl) ClaimJobs(
 	_, isPostgres := s.db.Dialect().(*pgdialect.Dialect)
 
 	cloudScope := func(query *bun.SelectQuery) *bun.SelectQuery {
-		if region != nil {
-			query = query.WhereGroup(" AND ", func(sub *bun.SelectQuery) *bun.SelectQuery {
-				return sub.
-					WhereOr("region IS NULL").
-					WhereOr("? LIKE region || '%'", *region)
-			})
-		}
-
-		return query
+		return applyCloudRegionScope(query, region)
 	}
 
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -348,6 +340,38 @@ func (s AgentScope) apply(query *bun.SelectQuery) *bun.SelectQuery {
 // single character rather than imported so this low-level claim package keeps
 // depending on nothing but models (regions pulls in the whole db service).
 const privateRegionPrefix = "@"
+
+// applyCloudRegionScope adds the region predicate for the CLOUD claim lane (the
+// in-process worker and its express variant). Two independent clauses, both
+// load-bearing:
+//
+//   - private-region jobs are excluded OUTRIGHT. Since spec 2026-08-13-01 a
+//     private region is stored org-relatively (`@aws-paris`), so it is unique
+//     only WITHIN an org — and this lane deliberately carries no organization
+//     predicate, because a cloud region is shared across every org. Excluding
+//     `@…` in SQL is therefore what keeps the cloud lane out of tenant-private
+//     work, rather than relying on the prefix match happening to fail. It also
+//     closes the case of a worker with no configured region at all, which used
+//     to drop the region predicate entirely and claim everything.
+//   - within what remains, a NULL region means "any region" and a non-NULL one
+//     prefix-matches the worker (SP_REGION=eu-fr-paris claims region=eu-fr).
+func applyCloudRegionScope(query *bun.SelectQuery, region *string) *bun.SelectQuery {
+	query = query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+		return q.
+			WhereOr("region IS NULL").
+			WhereOr("region NOT LIKE ?", privateRegionPrefix+"%")
+	})
+
+	if region == nil {
+		return query
+	}
+
+	return query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+		return q.
+			WhereOr("region IS NULL").
+			WhereOr("? LIKE region || '%'", *region)
+	})
+}
 
 // ClaimJobsForAgent claims due jobs hard-scoped by the agent's scope.
 // See the interface doc — this is the deported-agent claim path and its scope
@@ -545,13 +569,7 @@ func (s *serviceImpl) selectAvailableJobsForCheck(
 		Order("scheduled_at ASC").
 		Limit(expressClaimLimit)
 
-	if region != nil {
-		query = query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
-			return q.
-				WhereOr("region IS NULL").
-				WhereOr("? LIKE region || '%'", *region)
-		})
-	}
+	query = applyCloudRegionScope(query, region)
 
 	if isPostgres {
 		query = query.For("UPDATE SKIP LOCKED")
@@ -738,15 +756,7 @@ func (s *serviceImpl) selectAvailableJobs(
 		OrderExpr("effective_scheduled_at ASC").
 		Limit(limit)
 
-	// Region matching: NULL region or prefix matching
-	// A worker with SP_REGION=eu-fr-paris claims jobs where region=eu-fr
-	if region != nil {
-		query = query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
-			return q.
-				WhereOr("region IS NULL").
-				WhereOr("? LIKE region || '%'", *region)
-		})
-	}
+	query = applyCloudRegionScope(query, region)
 
 	// PostgreSQL: Use FOR UPDATE SKIP LOCKED for efficient row-level locking
 	if isPostgres {

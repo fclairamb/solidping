@@ -240,12 +240,14 @@ func checkLabel(check *models.Check) string {
 	return check.UID
 }
 
-// regionDisplay renders a region for an error message. A private region stored
-// fully-qualified as `@<org>/<slug>` is shown as the friendlier `@<slug>`; a
-// cloud region is shown verbatim.
+// regionDisplay renders a region for an error message. Private regions are
+// stored org-relatively (`@<slug>`) and cloud regions verbatim, so both are
+// already display-ready; the legacy fully-qualified `@<org>/<slug>` spelling is
+// still folded down here so a row migration 012 has not reached (or an operator
+// hand-edit) never leaks another org's slug into a user-facing message.
 func regionDisplay(region string) string {
-	if _, slug, ok := regions.ParsePrivateRegion(region); ok {
-		return regions.PrivateRegionPrefix + slug
+	if _, slug, ok := regions.ParseLegacyPrivateRegion(region); ok {
+		return regions.PrivateRegionSlug(slug)
 	}
 
 	return region

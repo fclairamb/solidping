@@ -29,14 +29,23 @@ const (
 	ParamCustomRegions = "custom_regions"
 	// PrivateRegionPrefix is the reserved character that namespaces a private
 	// (org-scoped) region. A stored job region for a private location is
-	// `@<org-slug>/<region-slug>`. The character is reserved: cloud/in-process
-	// workers may never carry it in their region (ValidateWorkerRegion rejects
-	// it, and the workers.region DB check constraint forbids it), which makes it
-	// structurally impossible for a cloud worker's prefix match to ever claim a
-	// private-region job.
+	// `@<region-slug>` — ORG-RELATIVE, with no org slug inside it. The character
+	// is reserved: cloud/in-process workers may never carry it in their region
+	// (ValidateWorkerRegion rejects it, and the workers.region DB check
+	// constraint forbids it), which makes it structurally impossible for a cloud
+	// worker's prefix match to ever claim a private-region job.
+	//
+	// The org is deliberately NOT part of the string: every row carrying a
+	// region also carries an organization_uid, so an org rename is a pure
+	// metadata change instead of a rewrite of five denormalized copies (which is
+	// exactly what silently stranded checks before spec 2026-08-13-01). The flip
+	// side is that `@aws-paris` is not globally unique, so every path that
+	// resolves a private region to rows MUST filter by organization_uid — see
+	// wiki/conventions/regions.md for the audit of all of them.
 	PrivateRegionPrefix = "@"
-	// privateRegionSep separates the org slug from the region slug inside a
-	// fully-qualified private region string.
+	// privateRegionSep separated the org slug from the region slug inside the
+	// LEGACY fully-qualified private region string (`@<org>/<slug>`). Kept only
+	// to parse legacy input and reject it when it names a foreign org.
 	privateRegionSep = "/"
 )
 
@@ -51,6 +60,13 @@ var (
 	ErrInvalidPrivateRegionSlug = errors.New(
 		"private region slug must be 2-30 chars: lowercase letters, digits, and hyphens",
 	)
+	// ErrForeignPrivateRegion is returned when a caller supplies the legacy
+	// fully-qualified `@<org>/<slug>` spelling naming an organization that is
+	// NOT the one the request is scoped to. Silently stripping the org would let
+	// one org name another org's region, so this fails closed.
+	ErrForeignPrivateRegion = errors.New(
+		"private region belongs to another organization",
+	)
 )
 
 // privateRegionSlugRe validates a raw private-region slug (the part after the
@@ -64,16 +80,37 @@ func IsPrivateRegion(region string) bool {
 	return strings.HasPrefix(region, PrivateRegionPrefix)
 }
 
-// PrivateRegionSlug builds the fully-qualified stored job-region string for a
-// private location: `@<org-slug>/<region-slug>`.
-func PrivateRegionSlug(orgSlug, regionSlug string) string {
-	return PrivateRegionPrefix + orgSlug + privateRegionSep + regionSlug
+// PrivateRegionSlug builds the stored job-region string for a private location:
+// `@<region-slug>`. It takes NO org: the org is implicit in the row's
+// organization_uid, and removing the parameter is what stops a future caller
+// from reintroducing the rename bug (spec 2026-08-13-01).
+func PrivateRegionSlug(regionSlug string) string {
+	return PrivateRegionPrefix + regionSlug
 }
 
-// ParsePrivateRegion splits a fully-qualified private region string back into
-// its org slug and region slug, in that order. The final return reports whether
-// the string was a well-formed private region.
-func ParsePrivateRegion(region string) (string, string, bool) {
+// ParsePrivateRegion strips the reserved prefix off an org-relative private
+// region string, returning the raw region slug. The final return reports
+// whether the string was a well-formed org-relative private region; the legacy
+// `@<org>/<slug>` spelling is NOT accepted here (see ParseLegacyPrivateRegion).
+func ParsePrivateRegion(region string) (string, bool) {
+	if !IsPrivateRegion(region) {
+		return "", false
+	}
+
+	slug := strings.TrimPrefix(region, PrivateRegionPrefix)
+	if slug == "" || strings.Contains(slug, privateRegionSep) {
+		return "", false
+	}
+
+	return slug, true
+}
+
+// ParseLegacyPrivateRegion splits the LEGACY fully-qualified private region
+// string `@<org>/<slug>` into its org slug and region slug, in that order. It
+// exists only so input written against the pre-2026-08-13 API can be
+// normalized (when the org matches) or rejected (when it does not); nothing
+// ever writes this shape any more.
+func ParseLegacyPrivateRegion(region string) (string, string, bool) {
 	if !IsPrivateRegion(region) {
 		return "", "", false
 	}
@@ -81,7 +118,7 @@ func ParsePrivateRegion(region string) (string, string, bool) {
 	rest := strings.TrimPrefix(region, PrivateRegionPrefix)
 
 	org, reg, found := strings.Cut(rest, privateRegionSep)
-	if !found || org == "" || reg == "" {
+	if !found || org == "" || reg == "" || strings.Contains(reg, privateRegionSep) {
 		return "", "", false
 	}
 
@@ -193,10 +230,14 @@ func (s *Service) getSystemDefaultRegions(ctx context.Context) ([]string, error)
 
 // ResolveRegionsForCheck determines the effective regions for a check.
 // Priority: check regions > org default > system default > all defined regions.
+//
+// Caller-supplied regions go through NormalizeRegionsForOrg, so the legacy
+// fully-qualified `@<org>/<slug>` spelling is accepted for this org (current or
+// previous slug) and rejected for anybody else's.
 func (s *Service) ResolveRegionsForCheck(ctx context.Context, checkRegions []string, orgUID string) ([]string, error) {
 	// 1. If check specifies regions, use those
 	if len(checkRegions) > 0 {
-		return checkRegions, nil
+		return s.NormalizeRegionsForOrg(ctx, orgUID, checkRegions)
 	}
 
 	// 2. Check org default
@@ -206,7 +247,7 @@ func (s *Service) ResolveRegionsForCheck(ctx context.Context, checkRegions []str
 	}
 
 	if len(orgDefaults) > 0 {
-		return orgDefaults, nil
+		return s.normalizeStoredRegionsForOrg(ctx, orgUID, orgDefaults), nil
 	}
 
 	// 3. Check system default
@@ -266,10 +307,14 @@ func (s *Service) ValidateWorkerRegion(ctx context.Context, workerRegion string)
 
 // MatchesRegion reports whether a cloud worker in workerRegion may claim a job
 // tagged jobRegion. Cloud regions use prefix matching (a worker in "eu-west-1"
-// serves jobs tagged "eu"). Private regions (`@<org>/<region>`) are a security
+// serves jobs tagged "eu"). Private regions (`@<region>`) are a security
 // boundary, not a routing convenience: they match ONLY on exact equality, never
 // by prefix, so a cloud worker — which can never carry an `@`-prefixed region
 // (see ValidateWorkerRegion) — can never prefix-match its way into a private job.
+//
+// It is deliberately org-BLIND: `@aws-paris` is only unique within an org, so
+// this function alone never authorizes anything. Callers pair it with an
+// organization_uid predicate (see wiki/conventions/regions.md).
 func MatchesRegion(workerRegion, jobRegion string) bool {
 	if IsPrivateRegion(jobRegion) || IsPrivateRegion(workerRegion) {
 		return workerRegion == jobRegion
