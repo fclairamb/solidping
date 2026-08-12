@@ -26,17 +26,19 @@ var (
 	// ErrCheckNotFound is returned when the check identifier doesn't resolve to a check in the org.
 	ErrCheckNotFound = errors.New("check not found")
 	// ErrInvalidPeriod is returned when a period token is unknown, the list is
-	// empty/too long, or a window exceeds the day-tier retention horizon.
+	// empty/too long, or a window exceeds the sanity lookback cap.
 	ErrInvalidPeriod = errors.New("invalid period")
 )
 
 const (
 	// maxPeriods caps how many periods one request may ask for.
 	maxPeriods = 12
-	// dayTierRetentionMonths bounds the maximum lookback: the union covers raw +
-	// hour + day, and the day tier keeps ~12 months by default. Anything longer
-	// would need the month tier added to WindowAvailability.
-	dayTierRetentionMonths = 12
+	// maxLookbackYears is a pure input-sanity bound, not a data horizon: the
+	// uptimebar union includes the month tier, which is terminal (never rolled
+	// further, never deleted), so any lookback is answerable regardless of the
+	// raw/hour/day retention tuning. This only rejects absurd tokens like
+	// "999999d" that would produce meaningless multi-century windows.
+	maxLookbackYears = 10
 
 	// Calendar period tokens, resolved against the request timezone.
 	tokenToday = "today"
@@ -309,7 +311,7 @@ func parsePeriods(tokens []string, now time.Time, loc *time.Location) ([]periodW
 		return nil, fmt.Errorf("%w: at most %d periods allowed", ErrInvalidPeriod, maxPeriods)
 	}
 
-	maxLookback := time.Duration(dayTierRetentionMonths) * 31 * 24 * time.Hour
+	maxLookback := time.Duration(maxLookbackYears) * 365 * 24 * time.Hour
 
 	windows := make([]periodWindow, 0, len(tokens))
 
@@ -324,10 +326,10 @@ func parsePeriods(tokens []string, now time.Time, loc *time.Location) ([]periodW
 			return nil, err
 		}
 
-		if now.Sub(start) > maxLookback {
+		if start.After(now) || now.Sub(start) > maxLookback {
 			return nil, fmt.Errorf(
-				"%w: %q exceeds the maximum lookback (~%d months)",
-				ErrInvalidPeriod, token, dayTierRetentionMonths)
+				"%w: %q exceeds the maximum lookback (%d years)",
+				ErrInvalidPeriod, token, maxLookbackYears)
 		}
 
 		windows = append(windows, periodWindow{token: token, start: start, end: now})
@@ -382,16 +384,28 @@ func parseDurationToken(token string) (time.Duration, error) {
 		return 0, fmt.Errorf("%w: %q", ErrInvalidPeriod, token)
 	}
 
+	var unitDur time.Duration
+
 	switch unit {
 	case 'h':
-		return time.Duration(n) * time.Hour, nil
+		unitDur = time.Hour
 	case 'd':
-		return time.Duration(n) * 24 * time.Hour, nil
+		unitDur = 24 * time.Hour
 	case 'w':
-		return time.Duration(n) * 7 * 24 * time.Hour, nil
+		unitDur = 7 * 24 * time.Hour
 	case 'y':
-		return time.Duration(n) * 365 * 24 * time.Hour, nil
+		unitDur = 365 * 24 * time.Hour
 	default:
 		return 0, fmt.Errorf("%w: %q", ErrInvalidPeriod, token)
 	}
+
+	dur := time.Duration(n) * unitDur
+	// A huge n overflows the int64 nanosecond range and wraps; a wrapped value
+	// no longer divides back to n. Catch it here so the caller's lookback check
+	// sees a real error instead of a garbage window.
+	if dur/unitDur != time.Duration(n) {
+		return 0, fmt.Errorf("%w: %q", ErrInvalidPeriod, token)
+	}
+
+	return dur, nil
 }

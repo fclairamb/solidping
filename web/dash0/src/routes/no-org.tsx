@@ -80,11 +80,10 @@ function NoOrgPage() {
             size="sm"
             onClick={async () => {
               await logout();
-              navigate({
-                to: "/orgs/$org/login",
-                params: { org: "default" },
-                search: { session_expired: false, returnTo: undefined },
-              });
+              // /login owns the "which org's login page?" fallback (last
+              // visited, else the platform default) — hardcoding "default"
+              // here dead-ended on installs that have no such org.
+              navigate({ to: "/login", search: { returnTo: undefined } });
             }}
           >
             {t("noOrg.signOut")}

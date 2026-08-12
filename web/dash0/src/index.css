@@ -6,6 +6,8 @@
 @theme inline {
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif,
     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo,
+    Consolas, "Liberation Mono", monospace;
   --color-foreground: var(--foreground);
   --color-background: var(--background);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -16,6 +18,12 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+  --color-status-ok: var(--status-ok);
+  --color-status-ok-foreground: var(--status-ok-foreground);
+  --color-status-warning: var(--status-warning);
+  --color-status-warning-foreground: var(--status-warning-foreground);
+  --color-status-error: var(--status-error);
+  --color-status-error-foreground: var(--status-error-foreground);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -79,16 +87,17 @@
   --accent: oklch(0.88 0.08 250);
   --accent-foreground: oklch(0.25 0.08 250);
 
-  /* Background: Very light blue wash */
-  --background: oklch(0.98 0.008 250);
+  /* Background: light blue wash — deliberately a step darker than cards so
+     raised surfaces read as white-on-wash, not wash-on-white */
+  --background: oklch(0.97 0.01 250);
   --foreground: oklch(0.15 0.02 250);
 
-  /* Card: Slightly more saturated than background */
-  --card: oklch(0.97 0.012 250);
+  /* Card: near-white, lighter than the page wash (elevated surface) */
+  --card: oklch(0.995 0.004 250);
   --card-foreground: oklch(0.15 0.02 250);
 
-  /* Popover */
-  --popover: oklch(0.98 0.01 250);
+  /* Popover: same elevated near-white as cards */
+  --popover: oklch(0.995 0.004 250);
   --popover-foreground: oklch(0.15 0.02 250);
 
   /* Secondary */
@@ -117,10 +126,15 @@
   /* Destructive: Red */
   --destructive: oklch(0.6 0.22 25);
 
-  /* Status colors */
+  /* Status colors. The bare token is the swatch color (dots, bars, tints);
+     the -foreground variant is text sitting on a soft ~15% tint of it, so it
+     is darker in light mode and lighter in dark mode. */
   --status-ok: oklch(0.65 0.2 145);
+  --status-ok-foreground: oklch(0.44 0.14 145);
   --status-warning: oklch(0.75 0.18 85);
+  --status-warning-foreground: oklch(0.47 0.12 80);
   --status-error: oklch(0.6 0.22 25);
+  --status-error-foreground: oklch(0.48 0.19 25);
 
   /* Chart colors */
   --chart-1: oklch(0.55 0.18 250);
@@ -175,8 +189,11 @@
   --destructive: oklch(0.65 0.2 25);
 
   --status-ok: oklch(0.7 0.18 145);
+  --status-ok-foreground: oklch(0.8 0.15 145);
   --status-warning: oklch(0.8 0.16 85);
+  --status-warning-foreground: oklch(0.85 0.13 85);
   --status-error: oklch(0.65 0.2 25);
+  --status-error-foreground: oklch(0.78 0.15 25);
 
   --chart-1: oklch(0.65 0.16 250);
   --chart-2: oklch(0.7 0.18 145);

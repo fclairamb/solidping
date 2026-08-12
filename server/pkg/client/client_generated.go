@@ -5372,6 +5372,8 @@ type ClientInterface interface {
 	//
 	// Deletion stops every check, revokes every organization-scoped session (including the caller's own), and makes the slug 404 immediately on every surface: the dashboard API, public status pages, badges and the embed widget. The slug is released and may be claimed by a new organization. There is no restore endpoint.
 	//
+	// Every OTHER member is signed out for good. The **caller** is not: the 200 response carries a freshly minted replacement session, because the token they used names an organization that no longer resolves. If they still belong to at least one organization, the session is scoped to the first one (`organization` is set, and a `refreshToken` is issued). If they belong to none, the session is org-less — `organization` is absent, `loginAction` is `noOrg`, and there is no `refreshToken` (refresh grants are organization-scoped), exactly like a login by a user with no organization. Either way the caller stays authenticated and `GET /api/v1/auth/me` keeps answering 200.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with DELETE /api/v1/orgs/{org} (the `DeleteOrg` operationId).
@@ -5382,6 +5384,8 @@ type ClientInterface interface {
 	// Permanently deletes the organization. **Owner only** — an admin is refused with 403 FORBIDDEN. The request body must repeat the organization slug as an explicit confirmation; a mismatch is a 422 VALIDATION_ERROR.
 	//
 	// Deletion stops every check, revokes every organization-scoped session (including the caller's own), and makes the slug 404 immediately on every surface: the dashboard API, public status pages, badges and the embed widget. The slug is released and may be claimed by a new organization. There is no restore endpoint.
+	//
+	// Every OTHER member is signed out for good. The **caller** is not: the 200 response carries a freshly minted replacement session, because the token they used names an organization that no longer resolves. If they still belong to at least one organization, the session is scoped to the first one (`organization` is set, and a `refreshToken` is issued). If they belong to none, the session is org-less — `organization` is absent, `loginAction` is `noOrg`, and there is no `refreshToken` (refresh grants are organization-scoped), exactly like a login by a user with no organization. Either way the caller stays authenticated and `GET /api/v1/auth/me` keeps answering 200.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -7792,6 +7796,8 @@ func (c *Client) CreateOrg(ctx context.Context, body CreateOrgJSONRequestBody, r
 //
 // Deletion stops every check, revokes every organization-scoped session (including the caller's own), and makes the slug 404 immediately on every surface: the dashboard API, public status pages, badges and the embed widget. The slug is released and may be claimed by a new organization. There is no restore endpoint.
 //
+// Every OTHER member is signed out for good. The **caller** is not: the 200 response carries a freshly minted replacement session, because the token they used names an organization that no longer resolves. If they still belong to at least one organization, the session is scoped to the first one (`organization` is set, and a `refreshToken` is issued). If they belong to none, the session is org-less — `organization` is absent, `loginAction` is `noOrg`, and there is no `refreshToken` (refresh grants are organization-scoped), exactly like a login by a user with no organization. Either way the caller stays authenticated and `GET /api/v1/auth/me` keeps answering 200.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with DELETE /api/v1/orgs/{org} (the `DeleteOrg` operationId).
@@ -7812,6 +7818,8 @@ func (c *Client) DeleteOrgWithBody(ctx context.Context, org OrgPath, contentType
 // Permanently deletes the organization. **Owner only** — an admin is refused with 403 FORBIDDEN. The request body must repeat the organization slug as an explicit confirmation; a mismatch is a 422 VALIDATION_ERROR.
 //
 // Deletion stops every check, revokes every organization-scoped session (including the caller's own), and makes the slug 404 immediately on every surface: the dashboard API, public status pages, badges and the embed widget. The slug is released and may be claimed by a new organization. There is no restore endpoint.
+//
+// Every OTHER member is signed out for good. The **caller** is not: the 200 response carries a freshly minted replacement session, because the token they used names an organization that no longer resolves. If they still belong to at least one organization, the session is scoped to the first one (`organization` is set, and a `refreshToken` is issued). If they belong to none, the session is org-less — `organization` is absent, `loginAction` is `noOrg`, and there is no `refreshToken` (refresh grants are organization-scoped), exactly like a login by a user with no organization. Either way the caller stays authenticated and `GET /api/v1/auth/me` keeps answering 200.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -22936,6 +22944,8 @@ type ClientWithResponsesInterface interface {
 	//
 	// Deletion stops every check, revokes every organization-scoped session (including the caller's own), and makes the slug 404 immediately on every surface: the dashboard API, public status pages, badges and the embed widget. The slug is released and may be claimed by a new organization. There is no restore endpoint.
 	//
+	// Every OTHER member is signed out for good. The **caller** is not: the 200 response carries a freshly minted replacement session, because the token they used names an organization that no longer resolves. If they still belong to at least one organization, the session is scoped to the first one (`organization` is set, and a `refreshToken` is issued). If they belong to none, the session is org-less — `organization` is absent, `loginAction` is `noOrg`, and there is no `refreshToken` (refresh grants are organization-scoped), exactly like a login by a user with no organization. Either way the caller stays authenticated and `GET /api/v1/auth/me` keeps answering 200.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with DELETE /api/v1/orgs/{org} (the `DeleteOrg` operationId).
@@ -22946,6 +22956,8 @@ type ClientWithResponsesInterface interface {
 	// Permanently deletes the organization. **Owner only** — an admin is refused with 403 FORBIDDEN. The request body must repeat the organization slug as an explicit confirmation; a mismatch is a 422 VALIDATION_ERROR.
 	//
 	// Deletion stops every check, revokes every organization-scoped session (including the caller's own), and makes the slug 404 immediately on every surface: the dashboard API, public status pages, badges and the embed widget. The slug is released and may be claimed by a new organization. There is no restore endpoint.
+	//
+	// Every OTHER member is signed out for good. The **caller** is not: the 200 response carries a freshly minted replacement session, because the token they used names an organization that no longer resolves. If they still belong to at least one organization, the session is scoped to the first one (`organization` is set, and a `refreshToken` is issued). If they belong to none, the session is org-less — `organization` is absent, `loginAction` is `noOrg`, and there is no `refreshToken` (refresh grants are organization-scoped), exactly like a login by a user with no organization. Either way the caller stays authenticated and `GET /api/v1/auth/me` keeps answering 200.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -26331,6 +26343,8 @@ func (r CreateOrgResult) ContentType() string {
 type DeleteOrgResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *LoginResponse
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *Unauthorized
 	// JSON403 the response for an HTTP 403 `application/json` response
@@ -26339,6 +26353,11 @@ type DeleteOrgResult struct {
 	JSON404 *NotFound
 	// JSON422 the response for an HTTP 422 `application/json` response
 	JSON422 *ValidationError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteOrgResult) GetJSON200() *LoginResponse {
+	return r.JSON200
 }
 
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
@@ -37356,6 +37375,8 @@ func (c *ClientWithResponses) CreateOrgWithResponse(ctx context.Context, body Cr
 //
 // Deletion stops every check, revokes every organization-scoped session (including the caller's own), and makes the slug 404 immediately on every surface: the dashboard API, public status pages, badges and the embed widget. The slug is released and may be claimed by a new organization. There is no restore endpoint.
 //
+// Every OTHER member is signed out for good. The **caller** is not: the 200 response carries a freshly minted replacement session, because the token they used names an organization that no longer resolves. If they still belong to at least one organization, the session is scoped to the first one (`organization` is set, and a `refreshToken` is issued). If they belong to none, the session is org-less — `organization` is absent, `loginAction` is `noOrg`, and there is no `refreshToken` (refresh grants are organization-scoped), exactly like a login by a user with no organization. Either way the caller stays authenticated and `GET /api/v1/auth/me` keeps answering 200.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with DELETE /api/v1/orgs/{org} (the `DeleteOrg` operationId).
@@ -37372,6 +37393,8 @@ func (c *ClientWithResponses) DeleteOrgWithBodyWithResponse(ctx context.Context,
 // Permanently deletes the organization. **Owner only** — an admin is refused with 403 FORBIDDEN. The request body must repeat the organization slug as an explicit confirmation; a mismatch is a 422 VALIDATION_ERROR.
 //
 // Deletion stops every check, revokes every organization-scoped session (including the caller's own), and makes the slug 404 immediately on every surface: the dashboard API, public status pages, badges and the embed widget. The slug is released and may be claimed by a new organization. There is no restore endpoint.
+//
+// Every OTHER member is signed out for good. The **caller** is not: the 200 response carries a freshly minted replacement session, because the token they used names an organization that no longer resolves. If they still belong to at least one organization, the session is scoped to the first one (`organization` is set, and a `refreshToken` is issued). If they belong to none, the session is org-less — `organization` is absent, `loginAction` is `noOrg`, and there is no `refreshToken` (refresh grants are organization-scoped), exactly like a login by a user with no organization. Either way the caller stays authenticated and `GET /api/v1/auth/me` keeps answering 200.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -41757,8 +41780,12 @@ func ParseDeleteOrgResult(rsp *http.Response) (*DeleteOrgResult, error) {
 	}
 
 	switch {
-	case rsp.StatusCode == 204:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LoginResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized

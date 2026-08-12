@@ -2,10 +2,15 @@
 <html lang="en" translate="no">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/status0/favicon.svg" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/status0/favicon-32.png" />
-    <link rel="apple-touch-icon" href="/status0/apple-touch-icon.png" />
-    <link rel="manifest" href="/status0/manifest.webmanifest" />
+    <!--
+      Icon hrefs start with "/" (no /status0 prefix) so Vite rebases them onto
+      the configured app base at build time — hardcoding the base here breaks
+      the moment VITE_BASE_URL differs.
+    -->
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#e91e63" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SolidPing - Status Page</title>

@@ -151,6 +151,79 @@ authTest.describe("Account Notifications — Telegram", () => {
   );
 
   authTest(
+    "offers a working Test button on a connected contact",
+    async ({ authenticatedPage: page }) => {
+      await stubPublicConfig(page, true);
+
+      await page.route("**/notification-routes**", async (route) => {
+        if (route.request().method() === "GET") {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ data: [telegramRoute(true)] }),
+          });
+
+          return;
+        }
+
+        await route.continue();
+      });
+
+      let testPostReceived = false;
+      await page.route("**/notification-routes/route-telegram-1/test", async (route) => {
+        if (route.request().method() === "POST") {
+          testPostReceived = true;
+          await route.fulfill({ status: 204, body: "" });
+
+          return;
+        }
+
+        await route.continue();
+      });
+
+      await page.goto("orgs/test/account/notifications");
+      await page.waitForLoadState("networkidle");
+
+      // The generic Test affordance every other ready method has.
+      const testBtn = page.getByTestId("test-route-route-telegram-1");
+      await expect(testBtn).toBeVisible();
+      await testBtn.click();
+
+      await expect.poll(() => testPostReceived).toBe(true);
+      await expect(page.getByText("Test notification sent")).toBeVisible();
+    },
+  );
+
+  authTest(
+    "hides the Test button while a contact awaits reconnection",
+    async ({ authenticatedPage: page }) => {
+      await stubPublicConfig(page, true);
+
+      await page.route("**/notification-routes**", async (route) => {
+        if (route.request().method() === "GET") {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            // verifiedAt cleared: the bot cannot reach this chat anymore, so a
+            // test could only fail — reconnect is the one useful action.
+            body: JSON.stringify({ data: [telegramRoute(false)] }),
+          });
+
+          return;
+        }
+
+        await route.continue();
+      });
+
+      await page.goto("orgs/test/account/notifications");
+      await page.waitForLoadState("networkidle");
+
+      await expect(page.getByTestId("telegram-reconnect-contact-telegram-1")).toBeVisible();
+      await expect(page.getByTestId("test-route-route-telegram-1")).toHaveCount(0);
+    },
+  );
+
+  authTest(
     "shows 'reconnect needed' with a reconnect action for a contact the bot can no longer reach",
     async ({ authenticatedPage: page }) => {
       await stubPublicConfig(page, true);

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { TabNav } from "@/components/shared/tab-nav";
 import { useOrgMembershipRequests } from "@/api/hooks";
+import { isOrgDeleted } from "@/api/client";
 
 export const Route = createFileRoute("/orgs/$org/organization")({
   component: OrganizationLayout,
@@ -36,6 +37,16 @@ function OrganizationLayout() {
   ];
 
   if (isLoading) {
+    return null;
+  }
+  // An owner who just deleted THIS org from the settings tab below is already
+  // navigating away — to the surviving org's dashboard, or to /no-org — on a
+  // replacement session that carries no admin role here. The guard below would
+  // fire on that render and `replace: true` its way onto /orgs/<dead slug>,
+  // beating the deliberate navigation and stranding the user on a 404ing org
+  // (issue #206). Render nothing for the frame or two until the navigation
+  // commits and this layout unmounts.
+  if (isOrgDeleted(org)) {
     return null;
   }
   if (!user?.isAdmin) {

@@ -2499,20 +2499,43 @@ export function useRemoveMember(org: string) {
   });
 }
 
+// DeleteOrgResponse is the login-shaped session DELETE /orgs/:org answers with:
+// the org the caller's token named is gone, so the server mints a replacement
+// scoped to a surviving org — or an org-less one (no `organization`, no
+// `refreshToken`) when the caller belongs to nothing any more.
+export interface DeleteOrgResponse {
+  accessToken?: string;
+  refreshToken?: string;
+  expiresIn?: number;
+  user?: {
+    uid: string;
+    email: string;
+    name?: string;
+    avatarUrl?: string;
+    role: string;
+  };
+  organization?: { uid: string; slug: string; name?: string };
+  organizations?: { slug: string; name?: string; logoUrl?: string; role: string }[];
+  loginAction?: string;
+}
+
 // useDeleteOrg deletes the whole organization. Owner-only, enforced server-side
 // by the RequireOrgOwner middleware — an admin gets a 403 even if the UI slipped
 // and showed them the button. The body repeats the slug as confirmation.
+//
+// Deliberately NO cache invalidation here. `queryClient.clear()` used to run in
+// onSuccess, i.e. while the app was still mounted on the deleted org's routes:
+// every cleared query immediately refetched against a slug that now 404s, and
+// those failures raced the navigation into "session expired". The caller adopts
+// the returned session, navigates away, and only then evicts the dead org's
+// queries (see organization.settings.tsx).
 export function useDeleteOrg(org: string) {
-  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (slug: string) =>
-      apiFetch<void>(`/api/v1/orgs/${org}`, {
+      apiFetch<DeleteOrgResponse>(`/api/v1/orgs/${org}`, {
         method: "DELETE",
         body: JSON.stringify({ slug }),
       }),
-    onSuccess: () => {
-      queryClient.clear();
-    },
   });
 }
 

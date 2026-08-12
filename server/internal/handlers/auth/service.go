@@ -1389,8 +1389,16 @@ func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse,
 
 	org, err := s.db.GetOrganizationBySlug(ctx, claims.OrgSlug)
 	if err != nil {
+		// The org the token names is gone (deleted while this tab was open, or
+		// while a token minted for it was still in a client's hands). That is
+		// not an authentication failure: the USER is still perfectly
+		// authenticated, they simply no longer have that org context. Falling
+		// through to the zero-org response degrades the session instead of
+		// destroying it — handleUserInfoError maps ErrOrganizationNotFound to
+		// 401, so returning it here would log the user out on a plain reload
+		// right after they deleted their own organization (issue #206).
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrOrganizationNotFound
+			return s.getUserInfoNoOrg(ctx, claims)
 		}
 
 		return nil, err

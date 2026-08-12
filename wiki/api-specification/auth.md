@@ -49,6 +49,14 @@ Switch the user's active organization context. Auth: required
 ### GET /api/v1/auth/me
 Get the current authenticated user's profile. Auth: required
 
+`organization` is `null` for an org-less session. That covers two cases, both
+`200`: a token minted with no org slug (a user who belongs to nothing), and a
+token whose org slug **no longer resolves** — the org was deleted or renamed
+while the token was in flight. The second case used to `401`, which logged a
+user out on a plain reload right after they deleted their own org; the user's
+authentication is intact, only their org context is gone, so the response
+degrades instead.
+
 ### PATCH /api/v1/auth/me
 Update the current user's profile (name, password, etc.). Auth: required
 

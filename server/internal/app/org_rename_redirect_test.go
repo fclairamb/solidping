@@ -249,8 +249,9 @@ func TestRenamedThenDeletedOrgIs404OnBothSlugs(t *testing.T) {
 	status, _ := env.get("/api/v1/status-pages/doomed-old/" + env.pageSlug)
 	require.Equal(t, http.StatusMovedPermanently, status)
 
-	require.NoError(t, env.authSvc.DeleteOrg(context.Background(), "doomed-new",
-		auth.DeleteOrgRequest{Slug: "doomed-new"}))
+	_, delErr := env.authSvc.DeleteOrg(context.Background(), "doomed-new", "",
+		auth.DeleteOrgRequest{Slug: "doomed-new"}, auth.Context{})
+	require.NoError(t, delErr)
 
 	for _, slug := range []string{"doomed-old", "doomed-new"} {
 		status, location := env.get("/api/v1/status-pages/" + slug + "/" + env.pageSlug)

@@ -21,6 +21,17 @@ func dayRow(checkUID string, total, success int, start time.Time) *models.Result
 	}
 }
 
+// monthRow builds a terminal monthly rollup row.
+func monthRow(checkUID string, total, success int, start time.Time) *models.Result {
+	return &models.Result{
+		CheckUID:         checkUID,
+		PeriodType:       models.PeriodTypeMonth,
+		PeriodStart:      start,
+		TotalChecks:      &total,
+		SuccessfulChecks: &success,
+	}
+}
+
 // TestWindowAvailability folds a result set into a single BucketStats per check.
 // It exercises the canonical counting rules and the disjoint-tier no-double-count
 // guarantee that the per-period availability number relies on.
@@ -70,6 +81,25 @@ func TestWindowAvailability(t *testing.T) {
 			},
 			wantUp:    1086, // 1 + 95 + 990
 			wantTotal: 1102, // 2 + 100 + 1000
+			wantOK:    true,
+		},
+		{
+			// The regression this guards: with default retention the day tier keeps
+			// only ~2 months, so a 365d window's older data lives exclusively in
+			// month rows. fakeLister honors filter.PeriodTypes, so if the union
+			// query dropped the month tier these rows would vanish and the totals
+			// would silently shrink to the day-side numbers.
+			name: "window spanning the day→month boundary counts both tiers",
+			rows: []*models.Result{
+				// Young side of the boundary: day rollups within the day-tier band.
+				dayRow("c1", 1440, 1430, now.Add(-10*24*time.Hour)),
+				dayRow("c1", 1440, 1440, now.Add(-30*24*time.Hour)),
+				// Old side of the boundary: terminal month rollups.
+				monthRow("c1", 43200, 43000, now.Add(-120*24*time.Hour)),
+				monthRow("c1", 43200, 42800, now.Add(-150*24*time.Hour)),
+			},
+			wantUp:    88670, // 1430 + 1440 + 43000 + 42800
+			wantTotal: 89280, // 1440 + 1440 + 43200 + 43200
 			wantOK:    true,
 		},
 		{
@@ -158,8 +188,10 @@ func TestWindowAvailability_Empty(t *testing.T) {
 }
 
 // TestWindowAvailability_Filter asserts the query bounds the window with both
-// edges and unions the three disjoint tiers (so older buckets are never dropped
-// by a row cap the way the old client-side size:1000 limit did).
+// edges and unions all four disjoint tiers — month included, since with default
+// retention (day tier ≈ 2 months) everything older than that lives only in
+// month rows (so older buckets are never dropped by a row cap the way the old
+// client-side size:1000 limit did).
 func TestWindowAvailability_Filter(t *testing.T) {
 	t.Parallel()
 
@@ -176,7 +208,7 @@ func TestWindowAvailability_Filter(t *testing.T) {
 	r.Equal("org", lister.gotFilter.OrganizationUID)
 	r.Equal([]string{"c1"}, lister.gotFilter.CheckUIDs)
 	r.ElementsMatch(
-		[]string{models.PeriodTypeRaw, models.PeriodTypeHour, models.PeriodTypeDay},
+		[]string{models.PeriodTypeRaw, models.PeriodTypeHour, models.PeriodTypeDay, models.PeriodTypeMonth},
 		lister.gotFilter.PeriodTypes,
 	)
 	r.NotNil(lister.gotFilter.PeriodStartAfter)

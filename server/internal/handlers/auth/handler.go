@@ -702,7 +702,18 @@ func (h *Handler) CreateOrg(writer http.ResponseWriter, req *http.Request) error
 // middleware.RequireOrgOwner, so reaching this handler already proves the
 // caller owns the org (or is a super admin); the body must additionally repeat
 // the org slug as an explicit confirmation.
+//
+// It answers 200 with a login-shaped session payload rather than a bare 204:
+// the caller's old token names an org that no longer resolves, so the response
+// carries the replacement session (scoped to a remaining org, or org-less when
+// there is none) and refreshes the access-token cookie with it. This mirrors
+// the org-rename path below, which re-issues tokens for the same reason.
 func (h *Handler) DeleteOrg(writer http.ResponseWriter, req *http.Request) error {
+	claims, ok := getClaimsFromContext(req)
+	if !ok {
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
+	}
+
 	orgSlug := httpx.Param(req, fieldOrg)
 
 	var delReq DeleteOrgRequest
@@ -712,7 +723,13 @@ func (h *Handler) DeleteOrg(writer http.ResponseWriter, req *http.Request) error
 		})
 	}
 
-	if err := h.svc.DeleteOrg(req.Context(), orgSlug, delReq); err != nil {
+	authContext := Context{
+		UserAgent:  req.Header.Get("User-Agent"),
+		RemoteAddr: base.ExtractRemoteAddr(req),
+	}
+
+	resp, err := h.svc.DeleteOrg(req.Context(), orgSlug, claims.UserUID, delReq, authContext)
+	if err != nil {
 		switch {
 		case errors.Is(err, ErrOrgSlugConfirmationMismatch):
 			return h.WriteValidationError(writer, "Organization slug confirmation does not match",
@@ -727,14 +744,17 @@ func (h *Handler) DeleteOrg(writer http.ResponseWriter, req *http.Request) error
 		}
 	}
 
-	// The caller's own org-scoped session died with the org; clear the cookie
-	// so the dashboard drops to the org switcher instead of replaying a token
-	// that now 404s.
-	h.clearAuthCookie(writer)
+	if resp == nil || resp.AccessToken == "" {
+		// No replacement session could be minted. The deletion still happened,
+		// so drop the cookie rather than leaving a token that now 404s.
+		h.clearAuthCookie(writer)
 
-	writer.WriteHeader(http.StatusNoContent)
+		return h.WriteJSON(writer, http.StatusOK, &LoginResponse{})
+	}
 
-	return nil
+	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
 }
 
 // UpdateOrgProfile handles PATCH /api/v1/orgs/:org. The route is owner-gated by

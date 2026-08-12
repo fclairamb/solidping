@@ -9,7 +9,9 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "rounded-xl border bg-card text-card-foreground shadow-card",
+      // Dark mode gets its elevation from light, not shadow: a slightly
+      // lighter border plus a faint top-lit gradient over bg-card.
+      "rounded-xl border bg-card text-card-foreground shadow-card dark:border-white/10 dark:bg-gradient-to-b dark:from-white/[0.04] dark:to-transparent dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]",
       className
     )}
     {...props}

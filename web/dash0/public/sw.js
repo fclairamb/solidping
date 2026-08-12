@@ -18,7 +18,7 @@ self.addEventListener('push', (event) => {
     event.waitUntil(
         self.registration.showNotification(data.title || 'SolidPing alert', {
             body:  data.body  || '',
-            icon:  '/dash0/favicon-192.png',
+            icon:  '/dash0/assets/favicon-192.png',
             data:  { url },
             tag:   url,
             renotify: true,

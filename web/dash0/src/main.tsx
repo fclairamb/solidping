@@ -14,6 +14,7 @@ import {
   resolveHandoffDestination,
 } from "@/lib/oauth-handoff";
 import "@fontsource-variable/inter/index.css";
+import "@fontsource-variable/jetbrains-mono/index.css";
 import "./i18n";
 import "./index.css";
 

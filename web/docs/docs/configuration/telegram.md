@@ -1,5 +1,5 @@
 ---
-sidebar_position: 9
+sidebar_position: 10
 title: Telegram
 ---
 
@@ -123,8 +123,16 @@ secret rather than each generating its own.
 If Telegram is unreachable during that first `getMe`, startup still completes
 (within the 3-second bound) and everything except the *connect* surface works:
 the webhook route is live and alerts to already-connected chats still go out.
-The **Connect Telegram** button stays hidden until a later boot resolves the
-username — no operator action needed.
+The **Connect Telegram** button stays hidden until the username is resolved.
+
+That resolution does not depend on getting luckier next time. Startup's `getMe`
+is bounded at 3 seconds because it blocks the boot, but the asynchronous
+bootstrap that follows makes its own `getMe` with a 15-second budget — and when
+it succeeds, it **persists** the username. So the boot that lost the race is
+also the boot that writes the answer down, and the next restart resolves it
+from the database with no network call. A cold DNS cache on a cluster's first
+pod is enough to lose that race, and before the username was persisted this way
+the connect button could stay hidden indefinitely.
 :::
 
 :::tip An explicitly configured username is still checked at boot
@@ -249,7 +257,7 @@ it never fails the escalation step.
 | *Rate limited by Telegram* | Telegram throttled the send | Transient; the next escalation repeat honors Telegram's own `retry_after` |
 | *Telegram is not configured on this instance* | No bot token, or `SP_TELEGRAM_ENABLED=false` | Check `SP_TELEGRAM_BOT_TOKEN`; make sure `SP_TELEGRAM_ENABLED` is unset or `true` |
 | *Hourly Telegram runaway guard reached* | Too many sends for one org in one hour | Usually a flapping check; raise `SP_ENTITLEMENTS_TELEGRAM_RUNAWAY_PER_HOUR` only once you know why |
-| The **Connect Telegram** button never appears | The bot username is not resolved yet — the first `getMe` failed | Check outbound access to `api.telegram.org` and restart; or set `SP_TELEGRAM_BOT_USERNAME` explicitly |
+| The **Connect Telegram** button never appears | The bot username is not resolved yet — the first `getMe` failed | Restart: the boot that failed persists the username once its asynchronous `getMe` succeeds, so the next one picks it up. If it survives a restart, check outbound access to `api.telegram.org`, or set `SP_TELEGRAM_BOT_USERNAME` explicitly to skip the call |
 | Nothing happens after pressing Start | The webhook is not reaching you | `getWebhookInfo` shows `last_error_message`; check the URL, TLS, and that the secret matches |
 | Alerts stop after a hostname change | The old webhook URL is still registered | Restart SolidPing (it re-registers) or re-run the `setWebhook` call above |
 

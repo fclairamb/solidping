@@ -288,6 +288,7 @@ The SolidPing CLI client (`sp`) uses its own configuration:
 - [Authentication](/configuration/authentication) - OAuth providers, 2FA, and access control
 - [Security & Encryption](/configuration/security) - Credentials encryption at rest
 - [Product Analytics](/configuration/analytics) - Optional PostHog integration, off unless configured
+- [Data Retention](/configuration/data-retention) - How long raw results and summaries are kept, and how to tune it
 
 ## Security Recommendations
 

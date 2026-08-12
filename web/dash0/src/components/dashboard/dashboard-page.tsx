@@ -688,7 +688,11 @@ function KpiTile({ label, value, icon, sub, valueClassName, className }: KpiTile
         {icon}
       </CardHeader>
       <CardContent>
-        <div className={`text-3xl font-bold ${valueClassName || ""}`}>{value}</div>
+        <div
+          className={`text-3xl font-bold tracking-tight tabular-nums ${valueClassName || ""}`}
+        >
+          {value}
+        </div>
         {sub ? (
           <p className="text-xs text-muted-foreground mt-1">{sub}</p>
         ) : null}

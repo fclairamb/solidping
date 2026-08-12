@@ -8,23 +8,34 @@ import (
 )
 
 // windowQueryLimit bounds the single window query. A 1-minute check over a full
-// year touches at most raw≈1 440 (capped by RetentionRaw, ~24 h) + hourly≈720 +
-// daily≈365 rows per check ≈ 2.5 k. We use a generous ceiling so the accumulation
-// never silently truncates older buckets the way the old client-side size:1000
-// cap did. This data is summed server-side and never shipped to the browser.
+// year touches at most raw≈1 440 (capped by RetentionRaw, ~24 h) + hourly≈168
+// (capped by RetentionHour, 7 d default) + daily≈60 (capped by RetentionDay,
+// 2 mo default) + monthly≈12/yr rows per check-region — a few thousand even for
+// decade-long windows. We use a generous ceiling so the accumulation never
+// silently truncates older buckets the way the old client-side size:1000 cap
+// did. This data is summed server-side and never shipped to the browser.
 const windowQueryLimit = 200_000
 
-// WindowAvailability runs ONE raw+hour+day union query over [start, end) for all
-// checks and accumulates every row into a single BucketStats per check. Unlike
-// BucketAvailability (which keys per time-bucket for a tick strip), this folds the
-// whole window into one aggregate — exactly what a per-period availability number
-// needs.
+// WindowAvailability runs ONE raw+hour+day+month union query over [start, end)
+// for all checks and accumulates every row into a single BucketStats per check.
+// Unlike BucketAvailability (which keys per time-bucket for a tick strip), this
+// folds the whole window into one aggregate — exactly what a per-period
+// availability number needs.
 //
 // Because the aggregation job deletes source rows after each rollup (raw → hour →
-// day → month), the three tiers cover non-overlapping age bands, so unioning them
-// never double-counts. With the default retention tiers (raw 24 h, hour 30 d, day
-// 12 mo) the union covers 0 → ~365 d exactly — every period the check-detail
-// Availability table asks for.
+// day → month), the four tiers cover non-overlapping age bands, so unioning them
+// never double-counts. The month tier is terminal — never rolled further, never
+// deleted — so the union covers the check's entire history regardless of how the
+// raw/hour/day retention is tuned (the live defaults keep only 24 h / 7 d / 2 mo;
+// see jobtypes' defaultRetention* constants). Without month in the union, a 365d
+// window on a default deployment silently saw only ~2 months of data.
+//
+// Edge granularity: a rollup row is included iff its period_start falls inside
+// [start, end) — the same rule for every tier — so a rollup straddling the
+// window's left edge is excluded even though part of its span is wanted. For the
+// month tier that means up to a month of the oldest edge may be missing from a
+// duration window; calendar windows (mtd/ytd) start on month boundaries and are
+// exact.
 //
 // Counting rules stay canonical: raw rows go through accumulateRaw (lifecycle
 // markers excluded; up + warning count as success) and rollup rows through
@@ -45,9 +56,11 @@ func WindowAvailability(
 	endUTC := end.UTC()
 
 	filter := &models.ListResultsFilter{
-		OrganizationUID:  orgUID,
-		CheckUIDs:        checkUIDs,
-		PeriodTypes:      []string{models.PeriodTypeRaw, models.PeriodTypeHour, models.PeriodTypeDay},
+		OrganizationUID: orgUID,
+		CheckUIDs:       checkUIDs,
+		PeriodTypes: []string{
+			models.PeriodTypeRaw, models.PeriodTypeHour, models.PeriodTypeDay, models.PeriodTypeMonth,
+		},
 		PeriodStartAfter: &startUTC,
 		// PeriodEndBefore filters on period_start < value (see ListResultsFilter),
 		// so this bounds the upper edge of the window to [start, end).

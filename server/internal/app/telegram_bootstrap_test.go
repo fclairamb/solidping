@@ -212,3 +212,108 @@ func TestEnsureTelegramWebhook_SkipsWithoutBaseURL(t *testing.T) {
 
 	r.Equal(0, fake.callCount("setWebhook"))
 }
+
+// TestVerifyTelegramIdentity_PersistsUsernameStartupResolveMissed replays the
+// exact incident this fix exists for, on a real (in-memory) DB.
+//
+// The synchronous startup resolver makes ONE getMe bounded to 3s, because it
+// runs before any handler exists and must not delay boot. On the first pod of a
+// cluster with a cold DNS cache that call can time out — and when it does, the
+// old code wrote nothing down. cfg.Telegram.Active() stayed false, so
+// POST /users/me/telegram/link answered "telegram is not configured" forever
+// after, even though the async bootstrap's own getMe (15s budget) succeeded
+// seconds later and cheerfully logged "Telegram bot ready".
+//
+// The fix persists what bootstrap learned, so the NEXT boot resolves the
+// username from the DB with no network call at all.
+func TestVerifyTelegramIdentity_PersistsUsernameStartupResolveMissed(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	fake := newFakeTelegramAPI(t)
+	fake.getMeUsername = "solidping_dev_bot"
+	dbSvc := resolveTestDB(t)
+
+	// --- Boot 1, startup resolution: Telegram is briefly unreachable.
+	fake.failGetMe = true
+	cfg := resolveTestConfig(fake)
+	resolveTelegramSettings(ctx, dbSvc, cfg)
+
+	r.False(cfg.Telegram.Active(), "the incident: the connect surface is off")
+	_, stored := storedParam(t, dbSvc, TelegramBotUsernameParam)
+	r.False(stored, "nothing was written down, which is what made it permanent")
+
+	// --- Boot 1, async bootstrap: Telegram is reachable again.
+	fake.failGetMe = false
+	client, err := telegram.NewClientFromConfig(&cfg.Telegram)
+	r.NoError(err)
+
+	verifyTelegramIdentity(ctx, dbSvc, client, &cfg.Telegram)
+
+	username, stored := storedParam(t, dbSvc, TelegramBotUsernameParam)
+	r.True(stored, "bootstrap knows the username; it must write it down")
+	r.Equal("solidping_dev_bot", username)
+
+	// --- Boot 2: the connect surface comes back with no network call.
+	before := fake.callCount("getMe")
+	next := resolveTestConfig(fake)
+	resolveTelegramSettings(ctx, dbSvc, next)
+
+	r.True(next.Telegram.Active(), "the connect surface must self-heal on the next boot")
+	r.Equal("solidping_dev_bot", next.Telegram.ResolvedBotUsername())
+	r.Equal(before, fake.callCount("getMe"),
+		"a persisted username must be read from the DB, never re-fetched")
+}
+
+// TestVerifyTelegramIdentity_KeepsExplicitUsernameOutOfTheDB guards the
+// precedence rule the resolver documents: env/YAML outranks the stored
+// parameter. Persisting an explicitly configured username would plant a stale
+// value that keeps winning after the operator changes the env var.
+func TestVerifyTelegramIdentity_KeepsExplicitUsernameOutOfTheDB(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	fake := newFakeTelegramAPI(t)
+	fake.getMeUsername = "solidping_bot"
+	dbSvc := resolveTestDB(t)
+
+	cfg := resolveTestConfig(fake)
+	cfg.Telegram.BotUsername = "solidping_bot" // explicitly configured, and correct
+
+	client, err := telegram.NewClientFromConfig(&cfg.Telegram)
+	r.NoError(err)
+
+	verifyTelegramIdentity(ctx, dbSvc, client, &cfg.Telegram)
+
+	_, stored := storedParam(t, dbSvc, TelegramBotUsernameParam)
+	r.False(stored, "an explicitly configured username stays the operator's to change")
+}
+
+// TestVerifyTelegramIdentity_DoesNotPersistAMismatch keeps the loud-warning
+// path intact: when the operator's username disagrees with the token, the bot
+// the TOKEN belongs to must not be quietly written down as the answer.
+func TestVerifyTelegramIdentity_DoesNotPersistAMismatch(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	fake := newFakeTelegramAPI(t)
+	fake.getMeUsername = "the_real_bot"
+	dbSvc := resolveTestDB(t)
+
+	cfg := resolveTestConfig(fake)
+	cfg.Telegram.BotUsername = "a_stale_bot"
+
+	client, err := telegram.NewClientFromConfig(&cfg.Telegram)
+	r.NoError(err)
+
+	verifyTelegramIdentity(ctx, dbSvc, client, &cfg.Telegram)
+
+	_, stored := storedParam(t, dbSvc, TelegramBotUsernameParam)
+	r.False(stored, "a mismatch is a warning to the operator, not a value to adopt")
+}

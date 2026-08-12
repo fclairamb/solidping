@@ -49,6 +49,12 @@ Delete a contact (and the routes bound to it).
 
 ### POST /api/v1/orgs/:org/users/me/notification-routes/:routeUid/test
 Send a test notification through the route so the user can confirm it works.
+Every pageable contact type is covered: email, Slack DM, web push, Telegram,
+SMS (via the org's default Twilio connection) and WhatsApp (via the approved
+alert template). A contact whose setup round-trip is not complete (unverified
+phone/WhatsApp, disconnected Telegram) is refused with `VALIDATION_ERROR`
+rather than tested — the dashboard only shows the Test button once a route is
+ready.
 
 ### POST /api/v1/orgs/:org/users/me/telegram/link
 Mint a single-use Telegram connect link (`{url, expiresAt}`, TTL 15 minutes).

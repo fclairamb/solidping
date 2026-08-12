@@ -185,7 +185,7 @@ test.describe("Status page custom domain", () => {
     await expect(chip).toBeVisible();
     await expect(chip).toHaveText(/HTTPS active/i);
     // Success styling, same token as the Verified chip next to it.
-    await expect(chip).toHaveClass(/bg-green-500/);
+    await expect(chip).toHaveClass(/bg-status-ok\/15/);
 
     // Nothing is pending, so the "issued on first request" hint stays away.
     await expect(card).not.toContainText(/first HTTPS request/i);
@@ -205,7 +205,7 @@ test.describe("Status page custom domain", () => {
     await expect(chip).toBeVisible();
     await expect(chip).toHaveText(/HTTPS failed/i);
     // A failure must read as destructive, not as a neutral chip.
-    await expect(chip).toHaveClass(/bg-destructive/);
+    await expect(chip).toHaveClass(/bg-status-error\/15/);
   });
 
   test("certificate chip renders the pending state with its hint", async ({

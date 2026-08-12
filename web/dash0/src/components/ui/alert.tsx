@@ -7,13 +7,16 @@ const alertVariants = cva(
   {
     variants: {
       variant: {
-        default: "border-primary/40 bg-background text-foreground",
+        // Body text stays neutral for readability; the icon carries the hue so
+        // the banner's kind reads at a glance. Same rule as the typed toasts.
+        default:
+          "border-primary/40 bg-primary/5 text-foreground [&>svg]:text-primary",
         destructive:
-          "border-destructive/50 text-destructive bg-background [&>svg]:text-current *:data-[slot=alert-description]:text-destructive/90",
+          "border-status-error/40 bg-status-error/10 text-status-error-foreground [&>svg]:text-current *:data-[slot=alert-description]:text-status-error-foreground/90",
         success:
-          "border-green-500/50 text-green-700 dark:text-green-400 bg-background [&>svg]:text-current *:data-[slot=alert-description]:text-green-700/90 dark:*:data-[slot=alert-description]:text-green-400/90",
+          "border-status-ok/40 bg-status-ok/10 text-status-ok-foreground [&>svg]:text-current *:data-[slot=alert-description]:text-status-ok-foreground/90",
         warning:
-          "border-yellow-500/50 text-yellow-700 dark:text-yellow-400 bg-background [&>svg]:text-current *:data-[slot=alert-description]:text-yellow-700/90 dark:*:data-[slot=alert-description]:text-yellow-400/90",
+          "border-status-warning/40 bg-status-warning/10 text-status-warning-foreground [&>svg]:text-current *:data-[slot=alert-description]:text-status-warning-foreground/90",
       },
     },
     defaultVariants: {
