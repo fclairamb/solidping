@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -334,6 +335,64 @@ const (
 	colorSuccess = "#4CAF50" // Green for resolved
 )
 
+// renderMentions turns the resolved on-call targets into a Slack mrkdwn line.
+//
+// A target with an identity renders as `<@U123ABC>` (a real ping); one without
+// renders as its plain-text name, which names the responsible person without
+// notifying anyone — the deliberate degradation when a member has no mapping.
+// Returns "" for an empty list, which is what keeps a mention-free message
+// byte-identical to what it was before this feature.
+func renderMentions(targets []MentionTarget) string {
+	if len(targets) == 0 {
+		return ""
+	}
+
+	parts := make([]string, 0, len(targets))
+
+	for _, target := range targets {
+		if target.ExternalID != "" {
+			parts = append(parts, "<@"+target.ExternalID+">")
+
+			continue
+		}
+
+		if target.DisplayName != "" {
+			parts = append(parts, target.DisplayName)
+		}
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+
+	return strings.Join(parts, " ") + " — you are on call for this."
+}
+
+// mentionBlock returns the leading context block naming the on-call people, or
+// nil when there is nothing to say.
+func mentionBlock(targets []MentionTarget) *slack.Block {
+	text := renderMentions(targets)
+	if text == "" {
+		return nil
+	}
+
+	return &slack.Block{
+		Type: slack.BlockTypeSection,
+		Text: &slack.Text{Type: slack.BlockTypeMrkdwn, Text: text},
+	}
+}
+
+// prependMentionBlock puts the mention line at the top of an alert's blocks so
+// it is the first thing a reader (and Slack's notification preview) sees.
+func prependMentionBlock(blocks []slack.Block, targets []MentionTarget) []slack.Block {
+	block := mentionBlock(targets)
+	if block == nil {
+		return blocks
+	}
+
+	return append([]slack.Block{*block}, blocks...)
+}
+
 // buildIncidentCreatedMessage builds a rich Block Kit message for incident.created events.
 func (s *SlackSender) buildIncidentCreatedMessage(payload *Payload) *slack.MessageResponse {
 	checkName := getCheckName(payload.Check)
@@ -342,6 +401,7 @@ func (s *SlackSender) buildIncidentCreatedMessage(payload *Payload) *slack.Messa
 	fallbackText := "New incident for " + checkName
 	fields := s.buildIncidentFields(payload, checkName, checkURL)
 	blocks := s.buildIncidentCreatedBlocks(payload, checkName, fields, checkURL, incidentURL)
+	blocks = prependMentionBlock(blocks, payload.OnCallMentions)
 
 	return &slack.MessageResponse{
 		Text: fallbackText,
@@ -527,6 +587,8 @@ func (s *SlackSender) buildIncidentEscalatedMessage(payload *Payload) *slack.Mes
 			},
 		},
 	}
+
+	blocks = prependMentionBlock(blocks, payload.OnCallMentions)
 
 	return &slack.MessageResponse{
 		Text: fallbackText,

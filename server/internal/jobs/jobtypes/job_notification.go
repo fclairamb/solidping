@@ -153,6 +153,10 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		Integration: connection,
 		OrgSlug:     r.lookupOrgSlug(ctx, jctx, log, connection.OrganizationUID),
 		AppBaseURL:  appBaseURL(jctx),
+		// Resolved at send time, not at incident-open: the on-call rotation may
+		// have handed over since. Returns nil for every uncertain case, so a
+		// mention is only ever added when we know exactly who to name.
+		OnCallMentions: ResolveOnCallMentions(ctx, jctx, log, connection, check, r.config.EventType),
 	}
 
 	// 6. Send notification
