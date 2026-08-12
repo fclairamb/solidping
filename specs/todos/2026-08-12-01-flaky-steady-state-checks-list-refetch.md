@@ -144,3 +144,40 @@ and the transition-driven pair.
 7. Verify: ≥10 repeats, single worker, CI-equivalent; then temporarily
    reintroduce `orgRoot("checks")`/`infiniteOrgRoot("checks")` under
    `DEFAULT_QUERY_ROOTS.checks.results` and confirm the test fails.
+
+## Verification
+
+Run against a side-car `SP_RUNMODE=test` server (Postgres, `CI=true`,
+`E2E_BASE_URL`, `--workers=1 --retries=0`), i.e. the same shape as the CI job
+that flaked.
+
+| Run | Result |
+|---|---|
+| `-g "steady-state" --repeat-each=10` | 10/10 pass |
+| `-g "steady-state\|checks list page subscribes" --repeat-each=10` | 20/20 pass |
+| `-g "steady-state" --repeat-each=12` | 12/12 pass |
+| whole `live-updates.spec.ts`, one pass | 9/9 pass |
+
+**Positive control (proved, not assumed).** `orgRoot("checks")` and
+`infiniteOrgRoot("checks")` were temporarily added back under
+`DEFAULT_QUERY_ROOTS.checks.results` in
+`web/dash0/src/contexts/LiveEventsContext.tsx` — i.e. the exact v0.12.0
+regression this test guards — dash0 was rebuilt and re-embedded, and the test
+failed 3/3:
+
+```
+Error: a steady-state result write must not refetch the checks list
+       (0 genuine "checks" hint(s) in the window)
+expect(received).toBeLessThanOrEqual(expected)
+Expected: <= 1
+Received:    2
+```
+
+Note the `0 genuine "checks" hint(s)`: the refetches had no transition to
+explain them, so the hint-accounting allowance stays at 1 and the guard bites.
+The change was then reverted and the tree rebuilt back to green.
+
+The in-test positive control (`a genuine status transition must still refetch
+the checks list`) covers the other direction: it fails if the request filter
+ever stops observing real list refetches, so the budget assertion can never
+pass by counting nothing.
