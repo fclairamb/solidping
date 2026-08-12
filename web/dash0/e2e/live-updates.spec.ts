@@ -98,40 +98,61 @@ async function sendHeartbeat(
 }
 
 /**
- * Waits until the check really carries `status` server-side, re-sending an
- * `up` heartbeat between polls.
+ * Waits until the check really carries `status` server-side, re-sending the
+ * matching heartbeat whenever it does not.
  *
  * Creating a heartbeat check schedules its passive job immediately, and that
- * job writes a `No heartbeat received` → down result when it does not find a
- * recent signal. Its first run lands within ~2 s of creation, so it races the
- * setup heartbeat: lose the race and the check sits at `down` until the next
- * period (60 s by default) — long enough for a UI assertion on the `Up` badge
- * to fail outright. Re-sending the heartbeat on each poll makes the setup
- * converge instead of gambling on the ordering.
+ * job writes a `No heartbeat received` → down result when its read of the last
+ * result does not find a recent signal. That first run lands within ~1 s of
+ * creation, so it races the setup heartbeat: lose the race and the check sits
+ * at `down` until the next period (60 s by default) — long enough for a UI
+ * assertion on the `Up` badge to fail outright. Re-sending the heartbeat on
+ * each poll makes the setup converge instead of gambling on the ordering.
+ *
+ * `stableForMs` additionally requires the status to *hold* for that long. A
+ * test that counts refetches needs more than "up right now": it needs the
+ * guarantee that no status transition (and hence no legitimate `checks` hint)
+ * is still in flight from the setup. Holding for a few seconds outlasts the
+ * one and only passive run — with a long check period the next one is an hour
+ * out — so the status is settled for the rest of the test.
  */
 async function waitForCheckStatus(
   page: Page,
   token: string,
   check: HeartbeatCheck,
   status: "up" | "down",
+  stableForMs = 0,
 ): Promise<void> {
-  await expect
-    .poll(
-      async () => {
-        const resp = await page.request.get(
-          `${API_BASE}/api/v1/orgs/test/checks/${check.uid}`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
-        const body = await resp.json();
-        if (body.status !== status) await sendHeartbeat(page, check, status);
-        return body.status as string;
-      },
-      {
-        timeout: 20_000,
-        message: `the check must settle at status "${status}" before the page is measured`,
-      },
-    )
-    .toBe(status);
+  const deadline = Date.now() + 30_000;
+  let holdingSince: number | null = null;
+
+  for (;;) {
+    const resp = await page.request.get(
+      `${API_BASE}/api/v1/orgs/test/checks/${check.uid}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    const current = ((await resp.json()) as { status?: string }).status ?? "";
+
+    if (current === status) {
+      holdingSince ??= Date.now();
+      if (Date.now() - holdingSince >= stableForMs) return;
+    } else {
+      holdingSince = null;
+      await sendHeartbeat(page, check, status);
+    }
+
+    if (Date.now() >= deadline) {
+      expect(
+        current,
+        `the check must settle at status "${status}" before the page is measured`,
+      ).toBe(status);
+      throw new Error(
+        `the check reached "${status}" but never held it for ${stableForMs}ms`,
+      );
+    }
+
+    await page.waitForTimeout(500);
+  }
 }
 
 async function deleteCheck(
@@ -560,11 +581,14 @@ test.describe("Live dashboard updates", () => {
     );
 
     try {
-      // Settle the check at `up` before measuring anything: the first passive
-      // job runs within ~2 s of creation and races this heartbeat, and losing
-      // that race leaves the row at `down` (with a `checks` hint still in
-      // flight) right when the counter is about to be armed.
-      await waitForCheckStatus(page, token, check, "up");
+      // Settle the check at `up` before measuring anything, and require it to
+      // HOLD: the first passive job runs within ~1 s of creation and races
+      // this heartbeat, so a status that merely reads `up` once can still flip
+      // to `down` a moment later — either failing the Up-badge assertion or
+      // firing a legitimate `checks` hint inside the measurement window. With
+      // the 1 h period above, holding for 3 s means that single passive run is
+      // behind us and the next one is an hour away.
+      await waitForCheckStatus(page, token, check, "up", 3_000);
 
       const subscribedPromise = waitForScopeSubscribed(page, "checks");
       await page.goto("orgs/test/checks");
