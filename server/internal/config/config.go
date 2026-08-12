@@ -1017,6 +1017,14 @@ type ServerConfig struct {
 	// Scheduling holds the cost-aware, plan-weighted check-scheduling knobs.
 	// Multi-word keys → read via applySchedulingEnv. See project_koanf_env_quirk.
 	Scheduling SchedulingConfig `koanf:"scheduling"`
+	// ExitWithParent makes the server shut down when the process that started
+	// it disappears, instead of being reparented to PID 1 and outliving its
+	// session (spec 2026-08-12-05). Off by default: a normal deployment is
+	// started BY a supervisor whose death is not a reason to stop. Turn it on
+	// for anything spawned by a test harness or an ad-hoc wrapper.
+	// Multi-word koanf key → read via applyServerEnv (SP_EXIT_WITH_PARENT /
+	// SP_SERVER_EXIT_WITH_PARENT), not the auto env loader.
+	ExitWithParent bool `koanf:"exit_with_parent"`
 }
 
 // SchedulingConfig tunes cost-aware, plan-weighted check execution
@@ -1674,6 +1682,14 @@ func applyServerEnv(cfg *ServerConfig) {
 		cfg.CustomDomainCNAMEMode = v
 	} else if v := os.Getenv("SP_CUSTOM_DOMAIN_CNAME_MODE"); v != "" {
 		cfg.CustomDomainCNAMEMode = v
+	}
+
+	for _, name := range []string{"SP_SERVER_EXIT_WITH_PARENT", "SP_EXIT_WITH_PARENT"} {
+		if v := os.Getenv(name); v != "" {
+			cfg.ExitWithParent = v == envTrue || v == "1"
+
+			break
+		}
 	}
 }
 

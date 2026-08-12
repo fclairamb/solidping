@@ -233,8 +233,8 @@ marked failed.
 
 ### Infrastructure-error backoff
 
-Idle runners block, but a *broken* `GetJobWait` (dropped connection, missing
-table, permission error) returns instantly. A runner therefore backs off
+Idle runners block, but a *broken* `GetJobWait` (dropped connection,
+permission error) returns instantly. A runner therefore backs off
 between consecutive failures — 100 ms doubling to a 30 s cap, with full jitter
 (`[delay/2, delay]`) so runners do not retry in lockstep — and resets to zero on
 the first success. The wait is a `select` on the shutdown context, so a runner
@@ -254,6 +254,19 @@ incident wrote 201 GB of identical lines in 17 hours.
 
 A backing-off runner is *not* counted in `free_runners` — the availability
 counter is decremented before the wait.
+
+### Structural faults are not backed off — they end the process
+
+Backoff is for errors worth retrying. A *structural* database fault — the
+`jobs` table is gone, the database itself is gone — can never be fixed by
+retrying, because migrations only run at startup. Those are classified in
+`internal/db/dbfault` and are terminal: the runner returns, one clear line is
+logged, and the process shuts down gracefully so its supervisor can restart it
+(which re-runs migrations). The check worker's fetcher does the same.
+
+Backoff bounds a repeated failure's volume; this bounds its duration. See
+[database-faults.md](database-faults.md) for the classification table, the
+reproduction of the incident, and how to wire a new caller.
 
 ## Hard-coded values (for reference, not configurable)
 

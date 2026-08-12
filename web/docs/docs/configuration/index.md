@@ -34,6 +34,7 @@ SolidPing is configured primarily through environment variables. All environment
 | `SP_SERVER_JOB_WORKER_NB` | `2` | Number of job runner goroutines |
 | `SP_SERVER_CHECK_WORKER_NB` | `3` | Number of check runner goroutines |
 | `SP_SHUTDOWN_TIMEOUT` | `30s` | Graceful shutdown timeout |
+| `SP_EXIT_WITH_PARENT` | `false` | Shut down when the process that started SolidPing disappears, instead of being reparented to PID 1. For servers spawned by a test harness or a wrapper script; leave off under a normal supervisor |
 | `PORT` | - | Alternative to `SP_SERVER_LISTEN` (for PaaS compatibility) |
 
 ### Custom Domains & TLS
