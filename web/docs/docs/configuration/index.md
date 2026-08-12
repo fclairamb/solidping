@@ -48,6 +48,8 @@ SolidPing is configured primarily through environment variables. All environment
 | `SP_ACME_CA_URL` | Let's Encrypt prod | ACME directory URL (point at LE staging while testing) |
 | `SP_ACME_LISTEN_HTTP` | `:80` | HTTP-01 challenge listener; redirects everything else to HTTPS |
 | `SP_ACME_LISTEN_HTTPS` | `:443` | TLS listener, feeding the normal routing |
+| `SP_ACME_PROXY_PROTOCOL` | `false` | Read a PROXY protocol (v1/v2) preamble on both ACME listeners — needed behind a TLS passthrough, which has no `X-Forwarded-For` |
+| `SP_ACME_PROXY_PROTOCOL_TRUSTED_CIDRS` | - | Comma-separated CIDRs/IPs whose PROXY header is honored; headers from anywhere else are ignored. **Required** when `SP_ACME_PROXY_PROTOCOL=true` (empty fails startup) |
 
 Enabling `SP_ACME_ENABLED` makes the process bind two extra ports and removes
 the need for a TLS-terminating reverse proxy. Leave it off to keep TLS at your
