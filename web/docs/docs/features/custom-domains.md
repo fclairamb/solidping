@@ -149,6 +149,39 @@ Requirements:
   for known hostnames only, use SNI passthrough or a dedicated
   LoadBalancer/NodePort for the CNAME target.
 
+### Behind a TLS passthrough: PROXY protocol
+
+A TLS passthrough is opaque on purpose: the proxy in front (a Traefik
+``HostSNI(`*`)`` TCP router, an HAProxy `mode tcp` frontend, an NLB…) never sees
+HTTP, so there is no `X-Forwarded-For` and every request would appear to come
+from the proxy's own address. Per-IP rate limiting and abuse logging silently
+collapse to "everything comes from one IP".
+
+Set `SP_ACME_PROXY_PROTOCOL=true` and the two ACME listeners read a PROXY
+protocol preamble (v1 or v2) before the payload — on the TLS listener it is
+consumed *before* the handshake, so nothing else in the chain changes and
+handlers see the real client. Configure the proxy to send it (in Traefik, a TCP
+service with `proxyProtocol: {version: 2}`).
+
+`SP_ACME_PROXY_PROTOCOL_TRUSTED_CIDRS` is the security-relevant half. The
+preamble is unauthenticated — anyone able to open a TCP connection can prepend
+one — so it is only honored from the sources you list (CIDR ranges or bare IPs,
+comma-separated; for Kubernetes, the pod/node CIDRs the proxy dials from):
+
+- **Trusted source**: the header is used when present, and a connection *without*
+  one is still accepted. Health probes (kubelet, in-cluster checks) do not send
+  a preamble and must keep working.
+- **Any other source**: the connection is served normally, but its header is
+  ignored — the real peer address is what the rate limiter and the logs see. A
+  client connecting directly can never forge an arbitrary IP.
+- **Empty list**: startup fails. Trusting everyone by default would be an
+  IP-spoofing hole, so this fails closed rather than guessing. Unparseable
+  entries fail startup too instead of being silently dropped.
+
+Both listeners are wrapped, not just the TLS one: the plain listener carries the
+HTTP-01 challenge and the redirect to https, and its client IP feeds the same
+rate limiter.
+
 ### Alternative: an external TLS proxy
 
 In-server ACME is opt-in and entirely independent of the external-proxy path,
@@ -229,6 +262,8 @@ attempt is rejected with `409 Conflict`.
 | `acme.ca_url`                        | `SP_ACME_CA_URL`                                                         | Let's Encrypt prod | ACME directory URL. Point it at the LE staging directory while testing.            |
 | `acme.listen_http`                   | `SP_ACME_LISTEN_HTTP`                                                    | `:80`              | HTTP-01 challenge listener; redirects everything else to https with a `308`.        |
 | `acme.listen_https`                  | `SP_ACME_LISTEN_HTTPS`                                                   | `:443`             | TLS listener. Requests flow into the normal routing, so custom hosts behave alike.  |
+| `acme.proxy_protocol`                | `SP_ACME_PROXY_PROTOCOL`                                                 | `false`            | Read a PROXY protocol (v1/v2) preamble on **both** ACME listeners — see [Behind a TLS passthrough](#behind-a-tls-passthrough-proxy-protocol). |
+| `acme.proxy_protocol_trusted_cidrs`  | `SP_ACME_PROXY_PROTOCOL_TRUSTED_CIDRS`                                   | *(none)*           | Comma-separated CIDR ranges or IPs whose PROXY header is honored. **Required** when `acme.proxy_protocol` is true — an empty list fails startup. |
 
 ## Entitlements
 
