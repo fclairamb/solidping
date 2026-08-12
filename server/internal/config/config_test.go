@@ -651,6 +651,119 @@ func TestValidateCustomDomainTLSConfig(t *testing.T) {
 	}
 }
 
+// TestValidateACMEProxyProtocol pins the fail-closed precondition of the PROXY
+// protocol trust policy: the header is unauthenticated, so switching it on
+// without naming the sources allowed to send one would let any peer dictate the
+// client IP the rate limiter sees.
+func TestValidateACMEProxyProtocol(t *testing.T) {
+	t.Parallel()
+
+	base := func(mutate func(*ACMEConfig)) ACMEConfig {
+		cfg := ACMEConfig{
+			Enabled: true, Email: "ops@solidping.io",
+			ListenHTTP: DefaultACMEListenHTTP, ListenHTTPS: DefaultACMEListenHTTPS,
+		}
+		mutate(&cfg)
+
+		return cfg
+	}
+
+	tests := []struct {
+		name    string
+		acme    ACMEConfig
+		wantErr error
+	}{
+		{
+			name: "proxy protocol off needs no CIDRs",
+			acme: base(func(*ACMEConfig) {}),
+		},
+		{
+			name: "proxy protocol on with a CIDR range",
+			acme: base(func(c *ACMEConfig) {
+				c.ProxyProtocol = true
+				c.ProxyProtocolTrustedCIDRs = []string{"10.42.0.0/16"}
+			}),
+		},
+		{
+			name: "proxy protocol on with a bare IP",
+			acme: base(func(c *ACMEConfig) {
+				c.ProxyProtocol = true
+				c.ProxyProtocolTrustedCIDRs = []string{"10.42.0.7"}
+			}),
+		},
+		{
+			name: "proxy protocol on with no CIDRs rejected",
+			acme: base(func(c *ACMEConfig) {
+				c.ProxyProtocol = true
+			}),
+			wantErr: ErrACMEProxyProtocolCIDRsRequired,
+		},
+		{
+			name: "proxy protocol on with only blank CIDRs rejected",
+			acme: base(func(c *ACMEConfig) {
+				c.ProxyProtocol = true
+				c.ProxyProtocolTrustedCIDRs = []string{"", "   "}
+			}),
+			wantErr: ErrACMEProxyProtocolCIDRsRequired,
+		},
+		{
+			name: "an unparseable range is rejected rather than ignored",
+			acme: base(func(c *ACMEConfig) {
+				c.ProxyProtocol = true
+				c.ProxyProtocolTrustedCIDRs = []string{"10.42.0.0/99"}
+			}),
+			wantErr: ErrACMEProxyProtocolCIDRInvalid,
+		},
+		{
+			name: "a non-address entry is rejected rather than ignored",
+			acme: base(func(c *ACMEConfig) {
+				c.ProxyProtocol = true
+				c.ProxyProtocolTrustedCIDRs = []string{"traefik"}
+			}),
+			wantErr: ErrACMEProxyProtocolCIDRInvalid,
+		},
+		{
+			// The whole ACME block is inert when disabled, this key included.
+			name: "acme disabled ignores the proxy protocol block",
+			acme: ACMEConfig{ProxyProtocol: true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			server := ServerConfig{CustomDomainCNAMEMode: "shared"}
+			acme := tt.acme
+
+			err := validateCustomDomainTLSConfig(&server, &acme)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
+}
+
+// TestApplyACMEProxyProtocolEnv covers the koanf quirk: both new keys contain
+// underscores, so the env provider can never bind them and applyACMEEnv has to
+// read them by hand. Uses t.Setenv, which is incompatible with t.Parallel.
+func TestApplyACMEProxyProtocolEnv(t *testing.T) {
+	t.Setenv("SP_ACME_PROXY_PROTOCOL", "true")
+	t.Setenv("SP_ACME_PROXY_PROTOCOL_TRUSTED_CIDRS", " 10.42.0.0/16 ,10.43.0.0/16, ")
+
+	cfg := ACMEConfig{}
+	applyACMEEnv(&cfg)
+
+	r := require.New(t)
+	r.True(cfg.ProxyProtocol)
+	r.Equal([]string{"10.42.0.0/16", "10.43.0.0/16"}, cfg.ProxyProtocolTrustedCIDRs,
+		"entries are trimmed and a trailing comma must not become an empty range")
+}
+
 // TestApplyDatabasePoolEnv confirms the SP_DB_*_CONNS / SP_DB_CONN_MAX_LIFETIME /
 // SP_DB_CONN_MAX_IDLE_TIME pool knobs land on the snake_case-tagged
 // DatabaseConfig fields. Uses t.Setenv, which is incompatible with t.Parallel.
