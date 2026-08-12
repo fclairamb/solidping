@@ -57,6 +57,13 @@ func (l *Latch) Arm(action func()) {
 
 // Report classifies err and returns true when it is structural.
 //
+// ONLY report errors from SolidPing's own database. Report shuts the process
+// down, and the classifier cannot tell whose schema is missing — only the
+// caller knows that. internal/checkers/checkpostgres runs lib/pq against
+// CUSTOMER databases, where a 42P01 is an ordinary failed check; routing one
+// here would take our server down because their table is gone. For a probed
+// database, use IsStructural, which has no side effects.
+//
 // A structural error is latched: the first one logs exactly one line naming the
 // fault and triggers the terminal action; later ones are silent, because the
 // process is already on its way out and a second flood helps nobody. A nil or

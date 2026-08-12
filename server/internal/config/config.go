@@ -1684,12 +1684,13 @@ func applyServerEnv(cfg *ServerConfig) {
 		cfg.CustomDomainCNAMEMode = v
 	}
 
-	for _, name := range []string{"SP_SERVER_EXIT_WITH_PARENT", "SP_EXIT_WITH_PARENT"} {
-		if v := os.Getenv(name); v != "" {
-			cfg.ExitWithParent = v == envTrue || v == "1"
-
-			break
-		}
+	// Literal os.Getenv calls, like every other pair above: the registry guard
+	// in envvars_test.go scans this file for them, so a name read through a
+	// variable would slip past both the guard and the startup env check.
+	if v := os.Getenv("SP_SERVER_EXIT_WITH_PARENT"); v != "" {
+		cfg.ExitWithParent = v == envTrue || v == "1"
+	} else if v := os.Getenv("SP_EXIT_WITH_PARENT"); v != "" {
+		cfg.ExitWithParent = v == envTrue || v == "1"
 	}
 }
 

@@ -124,11 +124,31 @@ backoff means the next unclassified error still floods.
 
 ### Adding a caller
 
-Give the component a `*dbfault.Latch` field and call
-`latch.Report(ctx, err, "component", "...")` on its error path; return when it
-reports `true`. A nil latch reports everything as non-terminal, so tests, the
-integration harness and agent mode need no nil checks and keep their previous
-behaviour. If you only want the classification, use `dbfault.IsStructural`.
+> [!WARNING]
+> **Only errors from SolidPing's *own* database may be reported to the latch.**
+> Never report an error that came from a database SolidPing is *probing*, no
+> matter how it classifies. `Report` shuts the server down.
+>
+> This is not hypothetical: `internal/checkers/checkpostgres` runs `lib/pq`
+> against **customer** databases as part of normal monitoring, and a customer's
+> Postgres returning `42P01 undefined_table` is a perfectly ordinary check
+> result — their schema, their problem, reported as a failed check. Routed to
+> `Report`, it would take *our* server down because *their* table is missing.
+> The same applies to any future checker that speaks a database protocol.
+>
+> The rule is about provenance, not about the error: the classifier answers
+> "is this schema gone?", and only the caller knows *whose* schema it was. The
+> latch is installed in exactly two places today — the job runner and the check
+> worker's fetcher, both of which only ever touch our own database
+> (`internal/app/server.go`). Keep it that way.
+
+For a component that does talk to our own database: give it a `*dbfault.Latch`
+field and call `latch.Report(ctx, err, "component", "...")` on its error path;
+return when it reports `true`. A nil latch reports everything as non-terminal,
+so tests, the integration harness and agent mode need no nil checks and keep
+their previous behaviour. If you only want the classification — including for a
+probed database, where it is a useful label and nothing more — use
+`dbfault.IsStructural`, which has no side effects.
 
 ## Not being orphaned in the first place
 

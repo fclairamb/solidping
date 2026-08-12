@@ -155,6 +155,8 @@ func manualReaderServerEnvVars() []string {
 		"SP_CUSTOM_DOMAIN_CNAME_TARGET",
 		"SP_SERVER_CUSTOM_DOMAIN_CNAME_MODE",
 		"SP_CUSTOM_DOMAIN_CNAME_MODE",
+		"SP_SERVER_EXIT_WITH_PARENT",
+		"SP_EXIT_WITH_PARENT",
 		// applyACMEEnv (acme.enabled / acme.email are koanf-reachable)
 		"SP_ACME_CA_URL",
 		"SP_ACME_LISTEN_HTTP",
