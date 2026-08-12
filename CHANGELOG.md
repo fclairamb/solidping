@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.13.0](https://github.com/fclairamb/solidping/compare/v0.12.0...v0.13.0) (2026-08-12)
+
+
+### Features
+
+* org deletion keeps the owner signed in, Test buttons on every method, and a design-system pass ([#212](https://github.com/fclairamb/solidping/issues/212)) ([b90aec8](https://github.com/fclairamb/solidping/commit/b90aec8d1325b7ee0ef276b01e354a301bdd9873))
+
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/crypto to v0.55.0 ([#210](https://github.com/fclairamb/solidping/issues/210)) ([c0dbdff](https://github.com/fclairamb/solidping/commit/c0dbdff71172c6acecfcfb5e8513d62d709af356))
+
 ## [Unreleased]
 
 ### Features
