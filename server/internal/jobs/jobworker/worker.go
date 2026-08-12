@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -49,11 +50,31 @@ type JobWorker struct {
 	// soft-deletion; cancellation latency is bounded by one interval. Zero
 	// falls back to defaultCancelWatchInterval (tests shrink it).
 	cancelWatchInterval time.Duration
+
+	// backoffMin/backoffMax bound the retry delay a runner waits after a failed
+	// processNext. Zero falls back to errBackoffMin/errBackoffMax (tests pin
+	// them to make the wait observable without a wall-clock race).
+	backoffMin time.Duration
+	backoffMax time.Duration
+
+	// backoffAfter produces the channel a backing-off runner waits on. Zero
+	// falls back to time.After; tests substitute a recorder so the sequence of
+	// requested delays can be asserted without sleeping.
+	backoffAfter func(time.Duration) <-chan time.Time
 }
 
 // defaultCancelWatchInterval bounds how long a canceled (soft-deleted) job
 // keeps running before its context is canceled.
 const defaultCancelWatchInterval = 2 * time.Second
+
+// Retry backoff bounds for a runner whose processNext keeps failing. A failing
+// GetJobWait returns instantly (only "no work" blocks), so without a delay the
+// loop retries at CPU speed and turns any persistent infrastructure error into
+// a log bomb (one incident filled a 460 GB disk with the same two lines).
+const (
+	errBackoffMin = 100 * time.Millisecond
+	errBackoffMax = 30 * time.Second
+)
 
 // NewJobWorker creates a new job worker.
 func NewJobWorker(
@@ -109,6 +130,14 @@ func (w *JobWorker) Run(ctx context.Context) error {
 }
 
 // workerLoop is the main loop for a worker goroutine.
+//
+// processNext blocks while there is no work, but an error path returns
+// instantly, so consecutive failures are spaced by an exponential backoff
+// (errBackoffMin → errBackoffMax, full jitter so runners diverge) and their
+// logs are collapsed to the 1st, 2nd, 4th, 8th … occurrence. The backoff wait
+// sits outside the availableRunners window: a runner that is sleeping off a
+// failure is not available for work, and queue-depth metrics must not say
+// otherwise.
 func (w *JobWorker) workerLoop(ctx context.Context, runnerID int) {
 	defer w.wg.Done()
 
@@ -116,27 +145,122 @@ func (w *JobWorker) workerLoop(ctx context.Context, runnerID int) {
 	logger.InfoContext(ctx, "Job runner started")
 	defer logger.InfoContext(ctx, "Job runner stopped")
 
+	var (
+		backoff      time.Duration
+		consecutive  int
+		firstFailure time.Time
+	)
+
 	for {
+		if backoff > 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-w.after(jitter(backoff)):
+			}
+		}
+
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			// Signal: "I'm available for work"
-			w.availableRunners.Add(1)
+		}
 
-			err := w.processNext(ctx, logger)
+		// Signal: "I'm available for work"
+		w.availableRunners.Add(1)
 
-			// Signal: "I'm now busy" (or done)
-			w.availableRunners.Add(-1)
+		err := w.processNext(ctx, logger)
 
-			if err != nil {
-				// Don't log context.Canceled as an error during shutdown
-				if !errors.Is(err, context.Canceled) {
-					logger.ErrorContext(ctx, "Error processing job", "error", err)
-				}
+		// Signal: "I'm now busy" (or done)
+		w.availableRunners.Add(-1)
+
+		switch {
+		case err == nil:
+			if consecutive > 0 {
+				// One line per outage, not per failure: the count and the
+				// duration are the information the flood was hiding.
+				logger.InfoContext(ctx, "Job processing recovered",
+					"consecutive_failures", consecutive,
+					"outage", time.Since(firstFailure).String())
 			}
+
+			backoff, consecutive = 0, 0
+		case errors.Is(err, context.Canceled):
+			// Shutdown: not an error, and there is nothing left to do.
+			return
+		default:
+			if consecutive == 0 {
+				firstFailure = time.Now()
+			}
+
+			consecutive++
+
+			if shouldLog(consecutive) {
+				logger.ErrorContext(ctx, "Error processing job",
+					"error", err, "consecutive", consecutive)
+			}
+
+			backoff = w.nextBackoff(backoff)
 		}
 	}
+}
+
+// after is the backoff timer, indirected so tests can observe the requested
+// delays instead of waiting them out.
+func (w *JobWorker) after(delay time.Duration) <-chan time.Time {
+	if w.backoffAfter != nil {
+		return w.backoffAfter(delay)
+	}
+
+	return time.After(delay)
+}
+
+// nextBackoff doubles the retry delay, starting at the minimum and saturating
+// at the maximum.
+func (w *JobWorker) nextBackoff(current time.Duration) time.Duration {
+	minDelay, maxDelay := w.backoffMin, w.backoffMax
+	if minDelay <= 0 {
+		minDelay = errBackoffMin
+	}
+
+	if maxDelay <= 0 {
+		maxDelay = errBackoffMax
+	}
+
+	if current <= 0 {
+		if minDelay > maxDelay {
+			return maxDelay
+		}
+
+		return minDelay
+	}
+
+	if current >= maxDelay/2 {
+		return maxDelay
+	}
+
+	return current * 2
+}
+
+// jitter returns a full-jitter delay in [delay/2, delay], so two runners that
+// failed at the same instant do not keep retrying in lockstep.
+func jitter(delay time.Duration) time.Duration {
+	if delay <= 0 {
+		return 0
+	}
+
+	half := delay / 2
+
+	//nolint:gosec // non-cryptographic jitter
+	return half + time.Duration(rand.Int64N(int64(delay-half)+1))
+}
+
+// shouldLog reports whether a failure at this consecutive count deserves a log
+// line: the 1st, 2nd, 4th, 8th … Ten thousand identical lines carry no more
+// information than the first, and at the 30 s cap this keeps a permanently
+// broken runner at a handful of lines per hour.
+func shouldLog(consecutive int) bool {
+	return consecutive > 0 && consecutive&(consecutive-1) == 0
 }
 
 func (w *JobWorker) processNext(ctx context.Context, logger *slog.Logger) error {
