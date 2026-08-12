@@ -64,3 +64,83 @@ Root-cause it rather than raising the threshold or marking it `flaky`.
 - The test passes on first attempt across repeated CI-equivalent runs.
 - The positive control still fails if the refetch-on-steady-state behavior is
   reintroduced.
+
+## Implementation Plan
+
+### Root cause (measured, not guessed)
+
+It is the **measurement window / attribution**, not a refetch storm. Reproduced
+locally against a side-car `SP_RUNMODE=test` server (Postgres, `CI=true`,
+`--workers=1`) with the counted requests instrumented to log their query string
+and their offset from the moment the counter is armed:
+
+```
+[diag] listFetches=1
+  +302ms ?with=last_result&q=E2E+Steady+State+…&internal=false&limit=100&sort=group
+[diag-after-transition] listFetches=3
+  +302ms ?with=last_result&q=E2E+Steady+State+…&internal=false&limit=100&sort=group
+  +8970ms ?limit=10
+  +8970ms ?with=last_result&q=E2E+Steady+State+…&internal=false&limit=100&sort=group
+```
+
+Three independent defects add up to exactly the CI number (1 + 2 = 3):
+
+1. **The counter is armed before the search debounce has fired.**
+   `fill("Search checks...")` is followed by `expect(row).toBeVisible()`, which
+   is satisfied by the *pre-filter* list already on screen. 300 ms later the
+   debounced `q=` query key changes and TanStack Query fetches the filtered
+   list — **inside** the measurement window. That single fetch consumes the
+   whole `<= 1` budget, leaving zero headroom for anything else.
+
+2. **The counter matches by URL pathname, so it counts a different query.**
+   `/api/v1/orgs/test/checks` is also fetched by the org layout's
+   `CommandMenu` (`useChecks(org, { limit: 10 })`, key `["checks", org, …]`) —
+   see the `?limit=10` line above. Both that flat key and the page's
+   `["checks","infinite",org,…]` key match the `checks`/`checks` live roots, so
+   **one** invalidation costs **two** against the budget.
+
+3. **The window is not immune to a genuine `checks` transition — and the test
+   manufactures one itself.** A heartbeat check is scheduled like any other
+   (default period 60 s) and its passive job writes a `No heartbeat received`
+   → `down` result when the last signal is missing or stale. Its first run
+   fires within ~2 s of check creation and races the setup heartbeat: locally,
+   1 run in 8 ended up `down` before the window even opened (the test failed
+   at `row.getByText("Up")`, screenshot shows `… heartbeat-heartbeat Down 0ms`).
+   Under CI load that first passive run is delayed, lands **inside** the
+   window, flips `up → down`, and `publishStatusHint` →
+   `PublishImmediate(KindChecks)` invalidates both checks-list roots — the +2
+   above.
+
+**The polling boundary is ruled out.** `CHECKS_LIST_POLL_MS` is 10 s (not 30 s);
+every counted request is timestamped and across 8 local runs no poll tick ever
+landed in the ~6 s window. The extra fetches were always the +300 ms debounce
+and the transition-driven pair.
+
+### Steps
+
+1. `web/dash0/e2e/live-updates.spec.ts` — remove the self-inflicted transition:
+   let `createHeartbeatCheck` take an optional `period`, and create the
+   steady-state check with a 1 h period so its passive "no heartbeat" job
+   cannot re-fire during the test.
+2. Add a `waitForCheckStatus(page, token, uid, "up")` barrier that polls the API
+   until the check really is `up`, re-sending a heartbeat between polls — this
+   absorbs the create-vs-first-passive-job race (and fixes the second,
+   independent flake where the row rendered `Down`). Use it in both checks-list
+   tests that assert an `Up` badge.
+3. Arm the counter from a deliberate barrier: `page.waitForResponse` on the
+   list request that actually carries `q=<check name>`, so the debounced
+   filtered fetch is *outside* the window.
+4. Count only the page's own list query — `searchParams.get("q") === check.name`
+   — so the CommandMenu's `?limit=10` query can no longer inflate the count.
+5. Account for foreign transitions instead of hoping none happen: tally
+   `{"type":"update","entity":"checks","kinds":["checks"]}` frames on the live
+   socket during the window and allow one extra fetch per damper interval that
+   could have carried one —
+   `1 + min(checksHints, ceil(windowMs / LIVE_INVALIDATE_MIN_INTERVAL_MS))`.
+   A reintroduced results-driven invalidation produces refetches with **zero**
+   `checks` hints, so the guard keeps its teeth.
+6. Positive control inside the test: keep counting past the window and assert
+   the final genuine `down` transition produced at least one page-list fetch.
+7. Verify: ≥10 repeats, single worker, CI-equivalent; then temporarily
+   reintroduce `orgRoot("checks")`/`infiniteOrgRoot("checks")` under
+   `DEFAULT_QUERY_ROOTS.checks.results` and confirm the test fails.
