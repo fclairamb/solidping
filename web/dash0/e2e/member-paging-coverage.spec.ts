@@ -136,4 +136,53 @@ test.describe("Member paging coverage", () => {
     const zoeLabel = page.locator("label", { hasText: "zoe@acme.test" });
     await expect(zoeLabel.getByTestId("coverage-email-only")).toHaveCount(0);
   });
+
+  // The detail page is where an admin reviews an existing rotation, so the
+  // email-only signal has to be there too — not only while editing the roster.
+  test("on-call schedule detail warns next to email-only roster members", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await stubCoverage(page);
+
+    const scheduleUid = "sched-coverage";
+
+    await page.route(
+      `**/api/v1/orgs/test/on-call-schedules/${scheduleUid}`,
+      async (route) => {
+        if (route.request().method() !== "GET") {
+          await route.continue();
+
+          return;
+        }
+
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            uid: scheduleUid,
+            name: "Primary rotation",
+            timezone: "UTC",
+            rotationType: "weekly",
+            // Zoe is fully covered, Bob is email-only.
+            userUids: ["user-zoe", "user-bob"],
+            startsAt: new Date().toISOString(),
+          }),
+        });
+      },
+    );
+
+    await page.goto(`orgs/test/on-call/${scheduleUid}`);
+    await page.waitForLoadState("networkidle");
+
+    // The detail roster renders the member's NAME (name || email), unlike the
+    // schedule form's checkbox labels which render the email.
+    const bobRow = page.locator("li", { hasText: "Bob" });
+    await expect(bobRow).toBeVisible();
+    await expect(bobRow.getByTestId("coverage-email-only")).toBeVisible();
+
+    const zoeRow = page.locator("li", { hasText: "Zoe" });
+    await expect(zoeRow).toBeVisible();
+    await expect(zoeRow.getByTestId("coverage-email-only")).toHaveCount(0);
+  });
 });

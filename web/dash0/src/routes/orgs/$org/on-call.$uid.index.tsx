@@ -14,6 +14,10 @@ import {
   useRotateOnCallICalFeed,
   useMembers,
 } from "@/api/hooks";
+import {
+  EmailOnlyBadge,
+  useEmailOnlyUserUids,
+} from "@/components/notifications/member-coverage";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -80,6 +84,11 @@ function OnCallDetailPage() {
   const rotateFeed = useRotateOnCallICalFeed(org, uid);
   const [feedURL, setFeedURL] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+
+  // Same signal as the schedule editor: this page is where an admin reviews who
+  // is actually on the hook, so a rostered member nothing but email can reach
+  // has to be visible here too — not just while editing the roster.
+  const emailOnlyUsers = useEmailOnlyUserUids(org);
 
   const userByUID = useMemo(() => {
     const m = new Map<string, string>();
@@ -220,9 +229,15 @@ function OnCallDetailPage() {
           ) : (
             <ol className="space-y-1">
               {schedule.userUids.map((uid, idx) => (
-                <li key={uid} className="flex items-center gap-2 text-sm">
+                <li
+                  key={uid}
+                  // flex-wrap so the badge drops to its own line on narrow
+                  // screens instead of squeezing the name off the row.
+                  className="flex flex-wrap items-center gap-2 text-sm"
+                >
                   <span className="text-muted-foreground w-6 text-right">{idx + 1}.</span>
                   <span>{userByUID.get(uid) ?? uid}</span>
+                  {emailOnlyUsers.has(uid) && <EmailOnlyBadge />}
                 </li>
               ))}
             </ol>

@@ -221,6 +221,58 @@ func TestAdminCannotFlipExistingContactToVerified(t *testing.T) {
 	r.Nil(stored.VerifiedAt)
 }
 
+// TestAdminCannotDeVerifyRoutelessContact is the regression test for a real
+// downgrade bug: the duplicate guard used to read the ROUTE-JOINED contact list,
+// so a live contact with no route was invisible to it. The add then fell through
+// to the upsert, which matched the (user, org, type, value) unique key and landed
+// on that very row, and the unconditional verified-stamp clear wiped a stamp the
+// member had earned — silently making them unpageable on a number that worked.
+//
+// A contact goes routeless whenever the member removes the route but keeps the
+// number, so this is an ordinary state, not a corrupt one.
+func TestAdminCannotDeVerifyRoutelessContact(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+	fx := newMemberFixture(ctx, t, "provision-routeless")
+
+	user, member := fx.addMember(ctx, t, "colleague@acme.test", "Colleague")
+
+	// A VERIFIED contact with deliberately NO route.
+	verifiedAt := time.Now().UTC().Truncate(time.Second)
+	contact := models.NewUserContact(
+		user.UID, fx.org.UID, models.UserContactTypePhone, "+15557654321", "")
+	contact.VerifiedAt = &verifiedAt
+	r.NoError(fx.dbSvc.UpsertUserContact(ctx, contact))
+
+	// Guard the premise: this contact really is invisible to the route-joined
+	// view, so the test exercises the path the bug lived on rather than passing
+	// for an unrelated reason.
+	routed, err := fx.dbSvc.ListUserContactsWithRoutes(ctx, user.UID, fx.org.UID)
+	r.NoError(err)
+
+	for _, route := range routed {
+		if route.Contact != nil {
+			r.NotEqual("+15557654321", route.Contact.Value,
+				"premise broken: the fixture contact must have no route")
+		}
+	}
+
+	// The admin "sets up paging" with the number the member already verified.
+	_, err = fx.svc.AddMemberContact(ctx, fx.org.Slug, member.UID,
+		members.AdminAddContactRequest{
+			Type: models.UserContactTypePhone, Value: "+15557654321",
+		})
+	r.ErrorIs(err, members.ErrContactAlreadyExists)
+
+	// The verified stamp must survive untouched: the member stays pageable.
+	stored, err := fx.dbSvc.GetUserContact(ctx, contact.UID)
+	r.NoError(err)
+	r.NotNil(stored.VerifiedAt, "an admin add must never de-verify an existing contact")
+	r.WithinDuration(verifiedAt, *stored.VerifiedAt, time.Second)
+}
+
 // TestAdminContactTypeAllowList: only the types with a verification round-trip
 // may be provisioned. Anything else would be immediately pageable.
 func TestAdminContactTypeAllowList(t *testing.T) {

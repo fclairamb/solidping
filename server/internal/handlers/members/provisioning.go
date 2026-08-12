@@ -91,15 +91,20 @@ func (s *Service) AddMemberContact(
 		return nil, ErrInvalidContactValue
 	}
 
-	existing, err := s.db.ListUserContactsWithRoutes(ctx, member.UserUID, org.UID)
+	// The duplicate guard MUST be a type/value lookup, not a route-joined one.
+	// A live contact with no route (the member deleted the route, or the row
+	// predates routing) is invisible to ListUserContactsWithRoutes, so a
+	// route-joined guard would fall through to the upsert below — which matches
+	// the (user, org, type, value) unique key and lands on that very row, and
+	// the unconditional verified-stamp clear would then silently DE-VERIFY a
+	// number the member had already verified, quietly making them unpageable.
+	existing, err := s.findLiveContact(ctx, member.UserUID, org.UID, contactType, value)
 	if err != nil {
-		return nil, fmt.Errorf("list member contacts: %w", err)
+		return nil, err
 	}
 
-	for _, route := range existing {
-		if route.Contact != nil && route.Contact.Type == contactType && route.Contact.Value == value {
-			return nil, ErrContactAlreadyExists
-		}
+	if existing != nil {
+		return nil, ErrContactAlreadyExists
 	}
 
 	contact := models.NewUserContact(member.UserUID, org.UID, contactType, value, req.Label)
@@ -137,26 +142,21 @@ func (s *Service) AddMemberContact(
 	}, nil
 }
 
-// findContact reloads the contact the upsert just wrote or restored.
-func (s *Service) findContact(
+// findLiveContact returns this member's live contact with the given type and
+// value, or nil when they have none.
+//
+// It deliberately reads the type/value index rather than the route-joined view:
+// routing is a separate, user-editable concern, so "has a route" is not the same
+// question as "this row exists". Everything that must not silently write over an
+// existing contact has to ask it this way.
+func (s *Service) findLiveContact(
 	ctx context.Context, userUID, orgUID, contactType, value string,
 ) (*models.UserContact, error) {
-	routes, err := s.db.ListUserContactsWithRoutes(ctx, userUID, orgUID)
-	if err != nil {
-		return nil, fmt.Errorf("reload member contacts: %w", err)
-	}
-
-	for _, route := range routes {
-		if route.Contact != nil && route.Contact.Type == contactType && route.Contact.Value == value {
-			return route.Contact, nil
-		}
-	}
-
-	// No route exists yet (the usual case for a brand-new contact), so fall
-	// back to the type/value index, which is org-agnostic — filter it down.
+	// The index is org-agnostic (a value can legitimately repeat across orgs and
+	// users), so filter it down to this member in this org.
 	contacts, err := s.db.ListUserContactsByTypeValue(ctx, contactType, value)
 	if err != nil {
-		return nil, fmt.Errorf("reload member contact: %w", err)
+		return nil, fmt.Errorf("look up member contact: %w", err)
 	}
 
 	for _, contact := range contacts {
@@ -165,7 +165,23 @@ func (s *Service) findContact(
 		}
 	}
 
-	return nil, ErrContactNotFoundAfterCreate
+	return nil, nil //nolint:nilnil // "no such contact" is a normal, non-error outcome.
+}
+
+// findContact reloads the contact the upsert just wrote or restored.
+func (s *Service) findContact(
+	ctx context.Context, userUID, orgUID, contactType, value string,
+) (*models.UserContact, error) {
+	contact, err := s.findLiveContact(ctx, userUID, orgUID, contactType, value)
+	if err != nil {
+		return nil, err
+	}
+
+	if contact == nil {
+		return nil, ErrContactNotFoundAfterCreate
+	}
+
+	return contact, nil
 }
 
 // ErrContactNotFoundAfterCreate is returned when the just-written contact
