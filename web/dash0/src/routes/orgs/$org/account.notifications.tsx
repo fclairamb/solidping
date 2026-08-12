@@ -540,6 +540,91 @@ function RouteRow({
   );
 }
 
+/**
+ * First-class "Connect Slack" row (spec 2026-08-12-03, phase 2).
+ *
+ * Slack DMs used to be reachable only through a post-sign-in banner that a
+ * single stray click dismissed forever. It now sits permanently alongside the
+ * other methods, and names the workspace it would connect to — "Slack" alone
+ * is ambiguous the moment an org has more than one.
+ */
+function SlackConnectRow({
+  org,
+  suggestion,
+  connectedWorkspace,
+}: {
+  org: string;
+  suggestion?: SlackSuggestion;
+  connectedWorkspace?: string;
+}) {
+  const { t } = useTranslation("account");
+  const createContact = useCreateNotificationContact(org);
+
+  const handleAdd = async () => {
+    if (!suggestion) return;
+
+    try {
+      await createContact.mutateAsync({
+        type: "slack_user",
+        value: suggestion.slackUserId,
+        label: `Slack DM (${suggestion.workspaceName})`,
+      });
+      toast.success(t("notifications.slack.added", "Slack DM notifications added"));
+    } catch {
+      toast.error(t("notifications.slack.addFailed", "Failed to add Slack DM contact"));
+    }
+  };
+
+  const connected = Boolean(connectedWorkspace);
+
+  return (
+    <div
+      className="flex flex-col gap-2 border-t py-3 sm:flex-row sm:items-center sm:justify-between"
+      data-testid="slack-connect-row"
+    >
+      <div className="flex items-start gap-3 min-w-0">
+        <MessageSquare className="h-4 w-4 mt-0.5 flex-none" />
+        <div className="min-w-0">
+          <p className="text-sm font-medium">
+            {t("notifications.slack.title", "Slack direct messages")}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {connected
+              ? t("notifications.slack.connected", {
+                  defaultValue: "Connected to {{workspace}}",
+                  workspace: connectedWorkspace,
+                })
+              : suggestion
+                ? t("notifications.slack.available", {
+                    defaultValue: "Available on {{workspace}}",
+                    workspace: suggestion.workspaceName,
+                  })
+                : t(
+                    "notifications.slack.unavailable",
+                    "Sign in with Slack, and have an admin connect a Slack workspace, to receive alerts as direct messages.",
+                  )}
+          </p>
+        </div>
+      </div>
+      {!connected && suggestion && (
+        <Button
+          size="sm"
+          onClick={handleAdd}
+          disabled={createContact.isPending}
+          data-testid="slack-connect-button"
+        >
+          {createContact.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+          ) : (
+            <MessageSquare className="h-4 w-4 mr-2" />
+          )}
+          {t("notifications.slack.connectButton", "Connect Slack")}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function SlackBanner({
   suggestion,
   org,
@@ -821,6 +906,15 @@ function NotificationsPage() {
     (route: NotificationRoute) =>
       route.contact.type === "telegram" && !!route.contact.verifiedAt,
   );
+  // A Slack DM contact already exists → the row reports the workspace instead
+  // of offering to connect it. The label carries the workspace name written at
+  // connect time; the live suggestion is the fallback for older rows.
+  const slackRoute = routes.find(
+    (route: NotificationRoute) => route.contact.type === "slack_user",
+  );
+  const connectedSlackWorkspace = slackRoute
+    ? slackRoute.contact.label || data?.slackSuggestion?.workspaceName || "Slack"
+    : undefined;
 
   if (isLoading) {
     return (
@@ -879,6 +973,12 @@ function NotificationsPage() {
               ))}
             </div>
           )}
+
+          <SlackConnectRow
+            org={org}
+            suggestion={data?.slackSuggestion}
+            connectedWorkspace={connectedSlackWorkspace}
+          />
 
           {showAddForm ? (
             <AddContactForm

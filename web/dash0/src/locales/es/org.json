@@ -165,7 +165,8 @@
       "member": "Miembro",
       "email": "Correo",
       "role": "Rol",
-      "joinedAt": "Se unió"
+      "joinedAt": "Se unió",
+      "coverage": "Aviso"
     },
     "role": {
       "owner": "Propietario",
@@ -191,6 +192,32 @@
     "removeFailed": "No se pudo eliminar al miembro",
     "updateFailed": "No se pudo actualizar el rol",
     "ownerOnly": "Solo un propietario puede cambiar o eliminar a un propietario.",
-    "adminOnly": "Solo un administrador puede añadir, cambiar o eliminar a un miembro."
+    "adminOnly": "Solo un administrador puede añadir, cambiar o eliminar a un miembro.",
+    "setUpPaging": "Configurar avisos…",
+    "coverage": {
+      "emailOnly": "Solo correo",
+      "emailOnlyHelp": "Sin teléfono ni mensajería verificados. Las alertas recaen en el correo, que no despierta a nadie a las 3 de la mañana.",
+      "channelReady": "{{type}} — listo",
+      "channelNotReady": "{{type}} — sin verificar o desactivado"
+    },
+    "paging": {
+      "title": "Configurar avisos",
+      "backToMembers": "Volver a miembros",
+      "currentCoverage": "Cobertura actual",
+      "unverifiedTitle": "Los contactos añadidos aquí empiezan sin verificar",
+      "unverifiedBody": "Le ahorras escribirlo, no verificarlo. Nada avisará a ese número hasta que la persona lo confirme desde sus propios ajustes de notificación.",
+      "type": "Canal",
+      "typePhone": "Teléfono (SMS / voz)",
+      "typeWhatsApp": "WhatsApp",
+      "number": "Número (E.164)",
+      "add": "Añadir contacto sin verificar",
+      "added": "Contacto añadido — el miembro todavía debe verificarlo",
+      "addFailed": "No se pudo añadir ese contacto",
+      "nudgeTitle": "Recordatorio",
+      "nudgeBody": "Envía un correo pidiendo que añada y verifique un contacto de aviso. No incluye datos de contacto ni códigos de verificación.",
+      "nudgeAction": "Enviar recordatorio",
+      "nudgeSent": "Recordatorio enviado",
+      "nudgeFailed": "No se pudo enviar el recordatorio"
+    }
   }
 }

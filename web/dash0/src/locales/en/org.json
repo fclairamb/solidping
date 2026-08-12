@@ -168,7 +168,8 @@
       "member": "Member",
       "email": "Email",
       "role": "Role",
-      "joinedAt": "Joined"
+      "joinedAt": "Joined",
+      "coverage": "Paging"
     },
     "role": {
       "owner": "Owner",
@@ -194,6 +195,32 @@
     "removeFailed": "Failed to remove member",
     "updateFailed": "Failed to update role",
     "ownerOnly": "Only an owner can change or remove an owner.",
-    "adminOnly": "Only an admin can add, change or remove a member."
+    "adminOnly": "Only an admin can add, change or remove a member.",
+    "setUpPaging": "Set up paging…",
+    "coverage": {
+      "emailOnly": "Email only",
+      "emailOnlyHelp": "No verified phone or messaging contact. Alerts fall back to email, which is not a page at 3am.",
+      "channelReady": "{{type}} — ready",
+      "channelNotReady": "{{type}} — not verified or disabled"
+    },
+    "paging": {
+      "title": "Set up paging",
+      "backToMembers": "Back to members",
+      "currentCoverage": "Current coverage",
+      "unverifiedTitle": "Contacts you add here start unverified",
+      "unverifiedBody": "You are saving your colleague the typing, not the verification. Nothing pages this number until they confirm it is theirs from their own notification settings.",
+      "type": "Channel",
+      "typePhone": "Phone (SMS / voice)",
+      "typeWhatsApp": "WhatsApp",
+      "number": "Number (E.164)",
+      "add": "Add unverified contact",
+      "added": "Contact added — the member still has to verify it",
+      "addFailed": "Could not add that contact",
+      "nudgeTitle": "Nudge them",
+      "nudgeBody": "Sends an email asking them to add and verify a paging contact. Contains no contact data and no verification code.",
+      "nudgeAction": "Send nudge email",
+      "nudgeSent": "Nudge email sent",
+      "nudgeFailed": "Could not send the nudge email"
+    }
   }
 }

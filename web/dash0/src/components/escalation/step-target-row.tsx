@@ -18,6 +18,10 @@ import {
   integrationLabel,
 } from "@/components/integrations/integration-icon";
 import {
+  EmailOnlyBadge,
+  useEmailOnlyUserUids,
+} from "@/components/notifications/member-coverage";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -136,6 +140,10 @@ function UserSelect({
 }) {
   const { t } = useTranslation(["escalation"]);
   const { data, isLoading } = useMembers(org);
+  // Paging a person who can only be reached by email is the quiet failure this
+  // badge surfaces: the escalation job still "delivers", by email, which is not
+  // a page.
+  const emailOnlyUsers = useEmailOnlyUserUids(org);
 
   if (isLoading) {
     return <SelectShell placeholder={t("escalation:editor.loadingTargets")} />;
@@ -178,6 +186,7 @@ function UserSelect({
         </SelectContent>
       </Select>
       {missing ? <MissingTargetWarning kind="user" /> : null}
+      {!missing && value && emailOnlyUsers.has(value) ? <EmailOnlyBadge /> : null}
     </div>
   );
 }

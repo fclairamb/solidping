@@ -165,7 +165,8 @@
       "member": "Mitglied",
       "email": "E-Mail",
       "role": "Rolle",
-      "joinedAt": "Beigetreten"
+      "joinedAt": "Beigetreten",
+      "coverage": "Alarmierung"
     },
     "role": {
       "owner": "Eigentümer",
@@ -191,6 +192,32 @@
     "removeFailed": "Mitglied konnte nicht entfernt werden",
     "updateFailed": "Rolle konnte nicht aktualisiert werden",
     "ownerOnly": "Nur ein Eigentümer kann einen Eigentümer ändern oder entfernen.",
-    "adminOnly": "Nur ein Admin kann ein Mitglied hinzufügen, ändern oder entfernen."
+    "adminOnly": "Nur ein Admin kann ein Mitglied hinzufügen, ändern oder entfernen.",
+    "setUpPaging": "Alarmierung einrichten…",
+    "coverage": {
+      "emailOnly": "Nur E-Mail",
+      "emailOnlyHelp": "Kein verifizierter Telefon- oder Messenger-Kontakt. Warnungen fallen auf E-Mail zurück — und eine E-Mail weckt um 3 Uhr niemanden.",
+      "channelReady": "{{type}} — bereit",
+      "channelNotReady": "{{type}} — nicht verifiziert oder deaktiviert"
+    },
+    "paging": {
+      "title": "Alarmierung einrichten",
+      "backToMembers": "Zurück zu den Mitgliedern",
+      "currentCoverage": "Aktuelle Abdeckung",
+      "unverifiedTitle": "Hier hinzugefügte Kontakte starten unverifiziert",
+      "unverifiedBody": "Sie sparen Ihrer Kollegin das Tippen, nicht die Verifizierung. Diese Nummer wird erst alarmiert, wenn sie in den eigenen Benachrichtigungseinstellungen bestätigt wurde.",
+      "type": "Kanal",
+      "typePhone": "Telefon (SMS / Anruf)",
+      "typeWhatsApp": "WhatsApp",
+      "number": "Nummer (E.164)",
+      "add": "Unverifizierten Kontakt hinzufügen",
+      "added": "Kontakt hinzugefügt — das Mitglied muss ihn noch verifizieren",
+      "addFailed": "Kontakt konnte nicht hinzugefügt werden",
+      "nudgeTitle": "Erinnerung senden",
+      "nudgeBody": "Sendet eine E-Mail mit der Bitte, einen Alarmierungskontakt hinzuzufügen und zu verifizieren. Enthält keine Kontaktdaten und keinen Verifizierungscode.",
+      "nudgeAction": "Erinnerungs-E-Mail senden",
+      "nudgeSent": "Erinnerungs-E-Mail gesendet",
+      "nudgeFailed": "Erinnerungs-E-Mail konnte nicht gesendet werden"
+    }
   }
 }

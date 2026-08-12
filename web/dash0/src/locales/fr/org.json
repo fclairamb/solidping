@@ -165,7 +165,8 @@
       "member": "Membre",
       "email": "E-mail",
       "role": "Rôle",
-      "joinedAt": "Rejoint le"
+      "joinedAt": "Rejoint le",
+      "coverage": "Astreinte"
     },
     "role": {
       "owner": "Propriétaire",
@@ -191,6 +192,32 @@
     "removeFailed": "Échec du retrait du membre",
     "updateFailed": "Échec de la mise à jour du rôle",
     "ownerOnly": "Seul un propriétaire peut modifier ou retirer un propriétaire.",
-    "adminOnly": "Seul un administrateur peut ajouter, modifier ou retirer un membre."
+    "adminOnly": "Seul un administrateur peut ajouter, modifier ou retirer un membre.",
+    "setUpPaging": "Configurer l'alerte…",
+    "coverage": {
+      "emailOnly": "E-mail uniquement",
+      "emailOnlyHelp": "Aucun téléphone ni messagerie vérifiée. Les alertes retombent sur l'e-mail, ce qui ne réveille personne à 3 h du matin.",
+      "channelReady": "{{type}} — prêt",
+      "channelNotReady": "{{type}} — non vérifié ou désactivé"
+    },
+    "paging": {
+      "title": "Configurer l'alerte",
+      "backToMembers": "Retour aux membres",
+      "currentCoverage": "Couverture actuelle",
+      "unverifiedBody": "Vous épargnez la saisie à votre collègue, pas la vérification. Rien n'appellera ce numéro tant qu'il ne l'aura pas confirmé depuis ses propres réglages de notification.",
+      "unverifiedTitle": "Les contacts ajoutés ici démarrent non vérifiés",
+      "type": "Canal",
+      "typePhone": "Téléphone (SMS / voix)",
+      "typeWhatsApp": "WhatsApp",
+      "number": "Numéro (E.164)",
+      "add": "Ajouter un contact non vérifié",
+      "added": "Contact ajouté — le membre doit encore le vérifier",
+      "addFailed": "Impossible d'ajouter ce contact",
+      "nudgeTitle": "Relancer",
+      "nudgeBody": "Envoie un e-mail lui demandant d'ajouter et de vérifier un contact d'astreinte. Ne contient aucune donnée de contact ni code de vérification.",
+      "nudgeAction": "Envoyer la relance",
+      "nudgeSent": "E-mail de relance envoyé",
+      "nudgeFailed": "Impossible d'envoyer la relance"
+    }
   }
 }

@@ -122,6 +122,10 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Stepper } from "@/components/ui/stepper";
+import {
+  PagingCoverageCell,
+  EmailOnlyBadge,
+} from "@/components/notifications/member-coverage";
 import { Switch } from "@/components/ui/switch";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import {
@@ -172,6 +176,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "maintenance-schedule", label: "Maintenance schedule" },
   { id: "stats-strip", label: "Stats strip" },
   { id: "swatch-legend-chips", label: "Swatch-legend chips" },
+  { id: "paging-coverage", label: "Paging coverage" },
 ];
 
 function DesignReferencePage() {
@@ -211,6 +216,7 @@ function DesignReferencePage() {
       <MaintenanceScheduleSection />
       <StatsStripSection />
       <SwatchLegendChipsSection />
+      <PagingCoverageSection />
     </div>
   );
 }
@@ -1964,7 +1970,11 @@ function StepperSection() {
         />
       </div>
       <CodeSnippet
-        code={`import { Stepper } from "@/components/ui/stepper";\n\n<Stepper\n  steps={[{ label: "Pick location" }, { label: "Mint token" }, { label: "Run the agent" }, { label: "Wait for connection" }]}\n  current={step}\n/>`}
+        code={`import { Stepper } from "@/components/ui/stepper";
+import {
+  PagingCoverageCell,
+  EmailOnlyBadge,
+} from "@/components/notifications/member-coverage";\n\n<Stepper\n  steps={[{ label: "Pick location" }, { label: "Mint token" }, { label: "Run the agent" }, { label: "Wait for connection" }]}\n  current={step}\n/>`}
       />
     </Section>
   );
@@ -2892,6 +2902,70 @@ function SwatchLegendChipsSection() {
         }
         importLine={snippet}
       />
+    </Section>
+  );
+}
+
+function PagingCoverageSection() {
+  const snippet = `import {
+  PagingCoverageCell,
+  EmailOnlyBadge,
+  useEmailOnlyUserUids,
+} from "@/components/notifications/member-coverage";
+
+// In a member table row:
+<PagingCoverageCell coverage={coverageByUser.get(member.userUid)} />
+
+// Next to any rostered member / \`user\` escalation target:
+const emailOnly = useEmailOnlyUserUids(org);
+{emailOnly.has(member.userUid) && <EmailOnlyBadge />}`;
+
+  return (
+    <Section
+      id="paging-coverage"
+      title="Paging coverage"
+      description="How reachable a member actually is. Solid icon = enabled AND verified (it can page); dashed/muted = unverified or disabled (it cannot). When email is all that remains, the warning badge says so out loud — a row of quiet icons must never read as 'covered'. Data comes from the admin-only coverage endpoint, which exposes channel types and flags but never a contact value."
+    >
+      <div className="space-y-4 rounded-md border bg-card p-4">
+        <div className="flex flex-wrap items-center gap-6">
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Well covered</p>
+            <PagingCoverageCell
+              coverage={{
+                userUid: "u1",
+                email: "zoe@example.com",
+                role: "admin",
+                emailFallbackOnly: false,
+                channels: [
+                  { type: "email", verified: true, enabled: true },
+                  { type: "phone", verified: true, enabled: true },
+                  { type: "telegram", verified: true, enabled: true },
+                ],
+              }}
+            />
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Unverified phone</p>
+            <PagingCoverageCell
+              coverage={{
+                userUid: "u2",
+                email: "bob@example.com",
+                role: "user",
+                emailFallbackOnly: true,
+                channels: [
+                  { type: "email", verified: true, enabled: true },
+                  { type: "phone", verified: false, enabled: true },
+                ],
+              }}
+            />
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Badge on its own</p>
+            <EmailOnlyBadge />
+          </div>
+        </div>
+      </div>
+      <CodeSnippet code={snippet} />
     </Section>
   );
 }
