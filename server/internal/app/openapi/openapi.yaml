@@ -95,6 +95,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: >
+            The node cannot serve: a structural database fault (the schema it
+            needs is gone) was detected and the process is shutting down.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
 
   /api/mgmt/scheduling/cost-distribution:
     get:
@@ -6853,7 +6861,21 @@ components:
       properties:
         status:
           type: string
-          enum: [ok]
+          enum: [ok, unhealthy]
+        node:
+          type: object
+          properties:
+            role:
+              type: string
+            region:
+              type: string
+        fault:
+          type: string
+          description: >
+            Name of the structural database fault that made this node
+            unhealthy (e.g. undefined_table). Present only with status
+            "unhealthy", which is also served with HTTP 503; the node is
+            shutting down because no retry can recover the condition.
 
     # Authentication schemas
     DeviceAuthorizationRequest:

@@ -17,9 +17,13 @@ import (
 	"github.com/fclairamb/solidping/server/internal/stats"
 )
 
-// errBoom is the persistent, instantly-returned infrastructure error the
-// original incident was made of (a missing table failing in microseconds).
-var errBoom = errors.New("no such table: jobs")
+// errBoom is a persistent, instantly-returned infrastructure error — a dropped
+// connection, the kind that fails in microseconds and does eventually come
+// back. Deliberately NOT the incident's "no such table": that classifies as
+// structural now and ends the runner instead of backing off (spec
+// 2026-08-12-05, worker_fatal_test.go). The backoff spec is about errors worth
+// retrying.
+var errBoom = errors.New("dial tcp 127.0.0.1:5432: connect: connection refused")
 
 // errForeignCanceled mimics a processNext failure that wraps context.Canceled
 // without the worker's own context being done: the terminal write runs on the

@@ -28,6 +28,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/dbfault"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
@@ -162,6 +163,18 @@ type CheckWorker struct {
 	// Self-stats reporting fields
 	internalCheckUID string // UID of the internal check for this worker
 	defaultOrgUID    string // UID of the default organization
+
+	// faults classifies fetch errors and, on a structural one, takes the
+	// process down. Nil is safe (dbfault.Latch has nil-receiver methods), which
+	// is what agent mode and tests rely on: an agent has no database of its
+	// own, so it never installs a latch.
+	faults *dbfault.Latch
+}
+
+// SetFaultLatch installs the process-wide structural-fault latch. Set by the
+// server before Run; a worker without one never terminates the process.
+func (r *CheckWorker) SetFaultLatch(latch *dbfault.Latch) {
+	r.faults = latch
 }
 
 // NewCheckWorker creates a new check runner wired to the in-process
@@ -406,6 +419,11 @@ func (r *CheckWorker) fetcherLoop(ctx context.Context) {
 		nextIn, err := r.fetchAndDistributeJobs(ctx, logger)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
+				return
+			}
+			// A structural fault (the schema is gone) can never clear by
+			// retrying: stop fetching and let the latch take the process down.
+			if r.faults.Report(ctx, err, "component", "check_worker", "role", "fetcher") {
 				return
 			}
 			// Wait briefly before retry on error

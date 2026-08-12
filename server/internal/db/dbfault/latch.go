@@ -15,9 +15,11 @@ const LogMessage = "Structural database fault: the schema this process needs is 
 // Latch records the first structural database fault seen in this process and
 // runs a one-shot terminal action — in the server, a graceful shutdown.
 //
-// It is safe for concurrent use and safe to call on a nil receiver, so a
-// component that was constructed without one (tests, the integration harness,
-// the CLI) keeps its previous behavior with no nil checks at the call sites.
+// It is safe for concurrent use and safe to call on a nil receiver: a component
+// constructed without a latch (tests, the integration harness, agent mode)
+// keeps its previous behavior with no nil checks at the call sites — a nil
+// latch reports every error as non-terminal. Callers that want the
+// classification without the terminal action use IsStructural directly.
 type Latch struct {
 	logger *slog.Logger
 
@@ -59,17 +61,19 @@ func (l *Latch) Arm(action func()) {
 // fault and triggers the terminal action; later ones are silent, because the
 // process is already on its way out and a second flood helps nobody. A nil or
 // transient error returns false and changes nothing at all — the caller keeps
-// its existing retry and backoff behavior.
+// its existing retry and backoff behavior. A nil latch always returns false.
 //
 // attrs are appended to the log line (component, runner id, …).
 func (l *Latch) Report(ctx context.Context, err error, attrs ...any) bool {
-	fault := Describe(err)
-	if fault == nil {
+	if l == nil {
+		// No terminal action is configured, so nothing is terminal: the caller
+		// keeps retrying exactly as it did before the latch existed.
 		return false
 	}
 
-	if l == nil {
-		return true
+	fault := Describe(err)
+	if fault == nil {
+		return false
 	}
 
 	l.mu.Lock()

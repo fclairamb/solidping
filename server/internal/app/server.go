@@ -37,6 +37,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/credmigrate"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/dbfault"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
@@ -177,6 +178,14 @@ type Server struct {
 	status0FS             fs.FS                   // overridden in tests; nil means use the real embedded status0Files
 	cancelCtx             context.CancelFunc
 	workersWg             sync.WaitGroup // Tracks workers
+
+	// dbFault latches the first structural database fault (the schema this
+	// process needs is gone). Armed in Start to trigger a graceful shutdown:
+	// no retry can bring a missing table back, and exiting lets the supervisor
+	// restart us, which re-runs migrations and may fix it outright. Also flips
+	// /api/mgmt/health to 503 for the shutdown window, so an orchestrator sees
+	// the state even before the process is gone. See spec 2026-08-12-05.
+	dbFault *dbfault.Latch
 }
 
 // NewServer creates a new HTTP server instance.
@@ -394,6 +403,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		authService:       authService,
 		profilerSrv:       profiler.New(&cfg.Profiler),
 		customDomainCache: newCustomDomainCache(customDomainCacheTTL),
+		dbFault:           dbfault.NewLatch(slog.Default()),
 	}
 
 	return server, nil
@@ -1707,6 +1717,9 @@ func (s *Server) loggingMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
 type HealthResponse struct {
 	Status string          `json:"status"`
 	Node   *HealthNodeInfo `json:"node,omitempty"`
+	// Fault names the structural database fault that made this node
+	// unhealthy ("undefined_table", …). Empty on a healthy node.
+	Fault string `json:"fault,omitempty"`
 }
 
 // HealthNodeInfo contains node information for health response.
@@ -1717,7 +1730,6 @@ type HealthNodeInfo struct {
 
 func (s *Server) healthCheck(writer http.ResponseWriter, _ *http.Request) error {
 	writer.Header().Set("Content-Type", "application/json")
-	writer.WriteHeader(http.StatusOK)
 
 	response := HealthResponse{
 		Status: "ok",
@@ -1725,6 +1737,18 @@ func (s *Server) healthCheck(writer http.ResponseWriter, _ *http.Request) error 
 			Role: s.config.Node.Role,
 		},
 	}
+
+	// A process whose schema has vanished answers every query with an error; it
+	// must not answer "ok" here while it does. It is on its way out, but the
+	// shutdown window is long enough for an orchestrator to see this.
+	status := http.StatusOK
+	if fault := s.dbFault.Fault(); fault != nil {
+		status = http.StatusServiceUnavailable
+		response.Status = "unhealthy"
+		response.Fault = fault.Reason
+	}
+
+	writer.WriteHeader(status)
 
 	if s.config.Node.Region != "" {
 		response.Node.Region = s.config.Node.Region
@@ -2394,6 +2418,15 @@ func (s *Server) serveHTTP(ctx context.Context) error {
 
 // Start starts the HTTP server and blocks until shutdown.
 func (s *Server) Start(ctx context.Context) error {
+	// A structural database fault is terminal: arm the latch so the first one
+	// any runner sees unwinds this exact context, taking the whole process
+	// through the ordinary graceful-shutdown path (HTTP drained, runners given
+	// their timeout) rather than an os.Exit from a random goroutine. Armed
+	// before any runner starts; Arm also fires retroactively if a fault somehow
+	// beat us here.
+	ctx, faultShutdown := s.armDatabaseFaultShutdown(ctx)
+	defer faultShutdown()
+
 	// Start profiler server (no-op if disabled)
 	if err := s.profilerSrv.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start profiler server: %w", err)
@@ -2488,10 +2521,40 @@ func (s *Server) Start(ctx context.Context) error {
 	cancel()
 
 	// Wait for all workers to complete their current work
+	s.waitForRunners(ctx)
+
+	// A fault-driven stop is a failure, not a clean shutdown: return the fault
+	// so the process exits non-zero and the supervisor restarts it (which
+	// re-runs migrations). A signal-driven stop still returns context.Canceled.
+	if err := s.dbFault.Err(); err != nil {
+		return err
+	}
+
+	return ctx.Err()
+}
+
+// armDatabaseFaultShutdown returns a derived context that the first structural
+// database fault cancels, taking the process through the ordinary
+// graceful-shutdown path.
+func (s *Server) armDatabaseFaultShutdown(ctx context.Context) (context.Context, context.CancelFunc) {
+	faultCtx, shutdown := context.WithCancel(ctx)
+
+	s.dbFault.Arm(func() {
+		slog.ErrorContext(faultCtx, "Shutting down: the database fault above cannot be recovered by retrying")
+		shutdown()
+	})
+
+	return faultCtx, shutdown
+}
+
+// waitForRunners gives the runners their shutdown budget to finish in-flight
+// work.
+func (s *Server) waitForRunners(ctx context.Context) {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), s.config.Server.ShutdownTimeout)
 	defer shutdownCancel()
 
 	done := make(chan struct{})
+
 	go func() {
 		s.workersWg.Wait()
 		close(done)
@@ -2499,14 +2562,10 @@ func (s *Server) Start(ctx context.Context) error {
 
 	select {
 	case <-done:
-		//nolint:contextcheck // shutdownCtx intentionally separate for timeout management
-		slog.InfoContext(shutdownCtx, "All runners stopped")
+		slog.InfoContext(ctx, "All runners stopped")
 	case <-shutdownCtx.Done():
-		//nolint:contextcheck // shutdownCtx intentionally separate for timeout management
-		slog.WarnContext(shutdownCtx, "Timeout waiting for runners, forcing shutdown")
+		slog.WarnContext(ctx, "Timeout waiting for runners, forcing shutdown")
 	}
-
-	return ctx.Err()
 }
 
 // startJobWorker starts the job worker with internal runner goroutines.
@@ -2544,6 +2603,7 @@ func (s *Server) startJobWorker(ctx context.Context) {
 		s.services,
 		s.jobSvc,
 	)
+	worker.SetFaultLatch(s.dbFault)
 
 	s.workersWg.Add(1)
 	go func() {
@@ -2581,6 +2641,7 @@ func (s *Server) startCheckWorker(ctx context.Context) {
 		s.services,
 		s.services.CheckJobs,
 	)
+	worker.SetFaultLatch(s.dbFault)
 
 	s.workersWg.Add(1)
 	go func() {

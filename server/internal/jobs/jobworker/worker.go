@@ -18,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/dbfault"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
@@ -61,6 +62,18 @@ type JobWorker struct {
 	// falls back to time.After; tests substitute a recorder so the sequence of
 	// requested delays can be asserted without sleeping.
 	backoffAfter func(time.Duration) <-chan time.Time
+
+	// faults classifies processing errors and, on a structural one, takes the
+	// process down. Nil is safe (dbfault.Latch has nil-receiver methods): a
+	// worker built without one — the integration harness, tests — keeps the
+	// pure retry-forever behavior.
+	faults *dbfault.Latch
+}
+
+// SetFaultLatch installs the process-wide structural-fault latch. Set by the
+// server before Run; a worker without one never terminates the process.
+func (w *JobWorker) SetFaultLatch(latch *dbfault.Latch) {
+	w.faults = latch
 }
 
 // defaultCancelWatchInterval bounds how long a canceled (soft-deleted) job
@@ -197,6 +210,15 @@ func (w *JobWorker) workerLoop(ctx context.Context, runnerID int) {
 			// through and is treated as the ordinary failure it is.
 			return
 		default:
+			// Backoff bounds the volume of a repeated failure; this bounds its
+			// duration. No number of retries makes a missing table reappear, so
+			// a structural fault ends the runner (and, via the latch, the
+			// process) instead of joining the 30s-interval error stream
+			// forever. Transient errors fall through untouched.
+			if w.faults.Report(ctx, err, "component", "job_worker", "runner_id", runnerID) {
+				return
+			}
+
 			if consecutive == 0 {
 				firstFailure = time.Now()
 			}

@@ -118,11 +118,16 @@ func TestLatchNilReceiverIsSafe(t *testing.T) {
 
 	r.NotPanics(func() {
 		latch.Arm(func() {})
-		r.True(latch.Report(t.Context(), structuralErr()))
+		// No latch means no terminal action is configured, so nothing is
+		// terminal: the caller keeps its pre-existing retry behavior.
+		r.False(latch.Report(t.Context(), structuralErr()))
 		r.False(latch.Report(t.Context(), errPlainTransient))
 		r.Nil(latch.Fault())
 		r.NoError(latch.Err())
 	})
+
+	// The classification itself is still available without a latch.
+	r.True(dbfault.IsStructural(structuralErr()))
 }
 
 func TestLatchIsConcurrencySafe(t *testing.T) {
