@@ -30,9 +30,17 @@ type fakeJobSvc struct {
 	retryErr   error
 	leaseLost  bool
 	jobDeleted atomic.Bool // flips the cancellation watcher's row check
+
+	// waitFn, when set, replaces the canned waitJob answer so a test can script
+	// a sequence of failures and successes (see worker_backoff_test.go).
+	waitFn func(context.Context) (*models.Job, error)
 }
 
-func (f *fakeJobSvc) GetJobWait(_ context.Context) (*models.Job, error) {
+func (f *fakeJobSvc) GetJobWait(ctx context.Context) (*models.Job, error) {
+	if f.waitFn != nil {
+		return f.waitFn(ctx)
+	}
+
 	return f.waitJob, nil
 }
 

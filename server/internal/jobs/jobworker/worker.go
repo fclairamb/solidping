@@ -52,7 +52,7 @@ type JobWorker struct {
 	cancelWatchInterval time.Duration
 
 	// backoffMin/backoffMax bound the retry delay a runner waits after a failed
-	// processNext. Zero falls back to errBackoffMin/errBackoffMax (tests pin
+	// processNext. Zero falls back to errBackoffMinDelay/errBackoffMaxDelay (tests pin
 	// them to make the wait observable without a wall-clock race).
 	backoffMin time.Duration
 	backoffMax time.Duration
@@ -71,9 +71,11 @@ const defaultCancelWatchInterval = 2 * time.Second
 // GetJobWait returns instantly (only "no work" blocks), so without a delay the
 // loop retries at CPU speed and turns any persistent infrastructure error into
 // a log bomb (one incident filled a 460 GB disk with the same two lines).
+// (Bare "Min"/"Max" suffixes on a time.Duration read as minutes to the
+// linter, hence the explicit "Delay".)
 const (
-	errBackoffMin = 100 * time.Millisecond
-	errBackoffMax = 30 * time.Second
+	errBackoffMinDelay = 100 * time.Millisecond
+	errBackoffMaxDelay = 30 * time.Second
 )
 
 // NewJobWorker creates a new job worker.
@@ -133,7 +135,7 @@ func (w *JobWorker) Run(ctx context.Context) error {
 //
 // processNext blocks while there is no work, but an error path returns
 // instantly, so consecutive failures are spaced by an exponential backoff
-// (errBackoffMin → errBackoffMax, full jitter so runners diverge) and their
+// (errBackoffMinDelay → errBackoffMaxDelay, full jitter so runners diverge) and their
 // logs are collapsed to the 1st, 2nd, 4th, 8th … occurrence. The backoff wait
 // sits outside the availableRunners window: a runner that is sleeping off a
 // failure is not available for work, and queue-depth metrics must not say
@@ -220,11 +222,11 @@ func (w *JobWorker) after(delay time.Duration) <-chan time.Time {
 func (w *JobWorker) nextBackoff(current time.Duration) time.Duration {
 	minDelay, maxDelay := w.backoffMin, w.backoffMax
 	if minDelay <= 0 {
-		minDelay = errBackoffMin
+		minDelay = errBackoffMinDelay
 	}
 
 	if maxDelay <= 0 {
-		maxDelay = errBackoffMax
+		maxDelay = errBackoffMaxDelay
 	}
 
 	if current <= 0 {
@@ -251,7 +253,7 @@ func jitter(delay time.Duration) time.Duration {
 
 	half := delay / 2
 
-	//nolint:gosec // non-cryptographic jitter
+	// Non-cryptographic on purpose: this only spreads runners apart.
 	return half + time.Duration(rand.Int64N(int64(delay-half)+1))
 }
 
