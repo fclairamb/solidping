@@ -9,6 +9,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/email"
 )
 
 var (
@@ -38,13 +39,24 @@ var (
 // Service provides business logic for member management.
 type Service struct {
 	db db.Service
+	// email sends the admin-triggered "set up your paging" nudge. Nil on
+	// instances with no outbound email, which makes the nudge endpoint answer a
+	// clear error instead of silently doing nothing.
+	email email.Sender
+	// appBaseURL builds the dashboard link inside that nudge.
+	appBaseURL string
 }
 
-// NewService creates a new members service.
-func NewService(dbService db.Service) *Service {
-	return &Service{
-		db: dbService,
+// NewService creates a new members service. Options are only needed by the
+// admin pre-provisioning surface (spec 2026-08-12-03); the core member CRUD
+// works with none.
+func NewService(dbService db.Service, opts ...Option) *Service {
+	svc := &Service{db: dbService}
+	for _, opt := range opts {
+		opt(svc)
 	}
+
+	return svc
 }
 
 // MemberResponse represents a member in API responses.

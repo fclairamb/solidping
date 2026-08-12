@@ -1158,7 +1158,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// additionally requires *owner* to touch an owner or to grant ownership
 	// (spec 2026-08-08-11); this gate is the floor beneath that, not a
 	// replacement for it.
-	membersService := members.NewService(s.dbService)
+	membersService := members.NewService(s.dbService,
+		// Powers the admin "set up your paging" nudge email (spec 2026-08-12-03).
+		members.WithEmailSender(s.services.EmailSender),
+		members.WithAppBaseURL(s.config.Server.BaseURL))
 	membersHandler := members.NewHandler(membersService, s.config)
 	orgMembers := orgGroup("/orgs/:org/members")
 	orgMembers.GET("", membersHandler.ListMembers)
@@ -1167,9 +1170,19 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgMembersAdmin := api.NewGroup("/orgs/:org/members").
 		Use(orgSlugRedirect.Middleware,
 			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+	// Paging coverage (spec 2026-08-12-03). Admin-only and type-level only:
+	// per-user routes are otherwise `users/me`-scoped, and this view exposes
+	// channel types + verified/enabled flags, never a phone number or chat id.
+	orgMembersAdmin.GET("/coverage", membersHandler.ListCoverage)
 	orgMembersAdmin.POST("", membersHandler.AddMember)
 	orgMembersAdmin.PATCH("/:uid", membersHandler.UpdateMember)
 	orgMembersAdmin.DELETE("/:uid", membersHandler.RemoveMember)
+	// Admin pre-provisioning (spec 2026-08-12-03, phase 3). An admin may add a
+	// phone/WhatsApp contact for a colleague, but ONLY unverified: it becomes
+	// pageable when its owner completes the normal verification round-trip. The
+	// nudge simply asks them to do that.
+	orgMembersAdmin.POST("/:uid/contacts", membersHandler.AddMemberContact)
+	orgMembersAdmin.POST("/:uid/paging-nudge", membersHandler.SendPagingNudge)
 
 	// System parameters routes (super admin only)
 	systemService := system.NewService(s.dbService)

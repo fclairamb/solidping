@@ -37,6 +37,58 @@ func (h *Handler) ListMembers(writer http.ResponseWriter, req *http.Request) err
 	return h.WriteJSON(writer, http.StatusOK, members)
 }
 
+// ListCoverage handles listing per-member paging coverage.
+//
+// Route: GET /api/v1/orgs/:org/members/coverage (admin).
+func (h *Handler) ListCoverage(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+
+	coverage, err := h.svc.ListCoverage(req.Context(), orgSlug)
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, coverage)
+}
+
+// AddMemberContact pre-provisions an UNVERIFIED paging contact for a member.
+//
+// Route: POST /api/v1/orgs/:org/members/:uid/contacts (admin).
+func (h *Handler) AddMemberContact(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	memberUID := httpx.Param(req, "uid")
+
+	var body AdminAddContactRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: "body", Message: "Invalid JSON format"},
+		})
+	}
+
+	contact, err := h.svc.AddMemberContact(req.Context(), orgSlug, memberUID, body)
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusCreated, contact)
+}
+
+// SendPagingNudge emails a member asking them to finish their paging setup.
+//
+// Route: POST /api/v1/orgs/:org/members/:uid/paging-nudge (admin).
+func (h *Handler) SendPagingNudge(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	memberUID := httpx.Param(req, "uid")
+
+	if err := h.svc.SendPagingNudge(req.Context(), orgSlug, memberUID); err != nil {
+		return h.handleError(writer, err)
+	}
+
+	writer.WriteHeader(http.StatusNoContent)
+
+	return nil
+}
+
 // GetMember handles getting a specific member by UID.
 func (h *Handler) GetMember(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := httpx.Param(req, "org")
@@ -169,6 +221,18 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 		return h.WriteValidationError(writer, "Invalid role", []base.ValidationErrorField{
 			{Name: "role", Message: "Role must be one of: owner, admin, user, viewer"},
 		})
+	case errors.Is(err, ErrContactTypeNotProvisionable):
+		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
+			{Name: "type", Message: err.Error()},
+		})
+	case errors.Is(err, ErrInvalidContactValue):
+		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
+			{Name: "value", Message: err.Error()},
+		})
+	case errors.Is(err, ErrContactAlreadyExists):
+		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict, err.Error())
+	case errors.Is(err, ErrEmailSenderNotConfigured):
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	default:
 		return h.WriteInternalError(writer, err)
 	}
