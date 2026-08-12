@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -43,6 +44,38 @@ func getHealth(t *testing.T, srv *Server) (int, HealthResponse) {
 	r.NoError(json.Unmarshal(w.Body.Bytes(), &resp))
 
 	return w.Code, resp
+}
+
+// TestStructuralFaultCancelsTheServerContext proves the wiring between the
+// latch and the process lifecycle: the context Start runs on is canceled, which
+// is what unwinds the HTTP server and the runners, and the fault comes back as
+// an error so the process exits non-zero and the supervisor restarts it.
+func TestStructuralFaultCancelsTheServerContext(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	srv := newHealthServer()
+
+	ctx, stop := srv.armDatabaseFaultShutdown(context.Background())
+	defer stop()
+
+	r.NoError(ctx.Err(), "healthy: the server keeps running")
+	r.NoError(srv.dbFault.Err())
+
+	// A transient error must not take the process down.
+	r.False(srv.dbFault.Report(ctx, errDroppedConnection))
+	r.NoError(ctx.Err())
+
+	r.True(srv.dbFault.Report(ctx, errSchemaGone))
+
+	select {
+	case <-ctx.Done():
+	case <-time.After(10 * time.Second):
+		r.Fail("a structural fault must cancel the server context")
+	}
+
+	r.ErrorContains(srv.dbFault.Err(), "undefined_table",
+		"Start returns this, so the exit code is non-zero")
 }
 
 // TestHealthReportsStructuralDatabaseFault covers the exact gap the incident
