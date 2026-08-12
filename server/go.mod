@@ -230,6 +230,7 @@ require (
 	github.com/paulmach/orb v0.13.0 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.27 // indirect
+	github.com/pires/go-proxyproto v0.15.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect

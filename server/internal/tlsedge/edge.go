@@ -102,6 +102,11 @@ type Edge struct {
 
 	httpSrv  *http.Server
 	httpsSrv *http.Server
+	// httpLn / httpsLn are the bound listeners, kept so Start can fail
+	// synchronously on a bind error and so tests can inspect what the two
+	// servers are actually serving on.
+	httpLn  net.Listener
+	httpsLn net.Listener
 
 	mu sync.RWMutex
 	// lastErr records the most recent issuance failure per domain so the
@@ -287,6 +292,20 @@ func (e *Edge) TLSConfig() *tls.Config {
 // Start brings up the :80 and :443 listeners. It returns once both are bound
 // (or immediately on a bind failure) and serves in background goroutines.
 func (e *Edge) Start(ctx context.Context) error {
+	httpLn, err := e.listen(ctx, e.opts.ACME.ListenHTTP)
+	if err != nil {
+		return err
+	}
+
+	httpsLn, err := e.listen(ctx, e.opts.ACME.ListenHTTPS)
+	if err != nil {
+		_ = httpLn.Close()
+
+		return err
+	}
+
+	e.httpLn, e.httpsLn = httpLn, httpsLn
+
 	e.httpSrv = &http.Server{
 		Addr:              e.opts.ACME.ListenHTTP,
 		Handler:           e.challengeHandler(),
@@ -301,26 +320,49 @@ func (e *Edge) Start(ctx context.Context) error {
 	}
 
 	e.log.InfoContext(ctx, "tlsedge: starting in-server TLS",
-		"http", e.opts.ACME.ListenHTTP, "https", e.opts.ACME.ListenHTTPS, "ca", e.caLabel())
+		"http", e.opts.ACME.ListenHTTP, "https", e.opts.ACME.ListenHTTPS, "ca", e.caLabel(),
+		"proxy_protocol", e.opts.ACME.ProxyProtocol)
 
 	// The listeners outlive the caller's context (they are stopped by
 	// Shutdown), so log against a cancellation-free copy of it.
 	logCtx := context.WithoutCancel(ctx)
 
 	go func() {
-		if err := e.httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := e.httpSrv.Serve(httpLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			e.log.ErrorContext(logCtx, "tlsedge: ACME HTTP listener stopped", "error", err)
 		}
 	}()
 
 	go func() {
 		// Certificates come from the TLSConfig (on-demand), so no cert/key file.
-		if err := e.httpsSrv.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := e.httpsSrv.ServeTLS(httpsLn, "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			e.log.ErrorContext(logCtx, "tlsedge: HTTPS listener stopped", "error", err)
 		}
 	}()
 
 	return nil
+}
+
+// listen binds one of the edge's addresses and, when acme.proxy_protocol is on,
+// wraps it so the PROXY preamble is consumed below TLS. BOTH listeners are
+// wrapped: the plain one carries the ACME HTTP-01 challenge and the redirect to
+// https, and its client IP feeds the same rate limiter as the TLS one.
+func (e *Edge) listen(ctx context.Context, addr string) (net.Listener, error) {
+	var lc net.ListenConfig
+
+	listener, err := lc.Listen(ctx, "tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("tlsedge: cannot listen on %s: %w", addr, err)
+	}
+
+	wrapped, err := wrapProxyProtocol(listener, &e.opts.ACME)
+	if err != nil {
+		_ = listener.Close()
+
+		return nil, err
+	}
+
+	return wrapped, nil
 }
 
 // caLabel is a log-friendly name for the configured CA.
