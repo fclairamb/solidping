@@ -3941,6 +3941,122 @@ export function useSlackDestinations(
   });
 }
 
+// Per-integration member identity mapping (spec 2026-08-12-03).
+//
+// "Who is this org member on this Slack workspace" — used to mention the
+// on-call person in channel alerts. Never used for paging, which is why the
+// admin surface only ever shows workspace ids and names, no contact values.
+
+export type IntegrationIdentityStatus = "matched" | "notFound" | "ambiguous";
+
+export interface IntegrationIdentity {
+  userUid: string;
+  email: string;
+  name?: string;
+  status: IntegrationIdentityStatus;
+  externalId?: string;
+  displayName?: string;
+  /** `auto` = email auto-match, `manual` = an admin picked it. */
+  source?: "auto" | "manual";
+}
+
+export interface IntegrationIdentityListResponse {
+  data: IntegrationIdentity[];
+}
+
+export interface IntegrationIdentitySyncResponse
+  extends IntegrationIdentityListResponse {
+  matchedCount: number;
+  notFoundCount: number;
+  ambiguousCount: number;
+}
+
+export function useIntegrationIdentities(
+  org: string,
+  integrationUid: string,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["integration-identities", org, integrationUid],
+    queryFn: () =>
+      apiFetch<IntegrationIdentityListResponse>(
+        `/api/v1/orgs/${org}/integrations/${integrationUid}/identities`,
+      ),
+    enabled: enabled && Boolean(org && integrationUid),
+    staleTime: 30_000,
+  });
+}
+
+export function useSyncIntegrationIdentities(
+  org: string,
+  integrationUid: string,
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<IntegrationIdentitySyncResponse>(
+        `/api/v1/orgs/${org}/integrations/${integrationUid}/identities/sync`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["integration-identities", org, integrationUid],
+      });
+    },
+  });
+}
+
+export function useSetIntegrationIdentity(
+  org: string,
+  integrationUid: string,
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (vars: {
+      userUid: string;
+      externalId: string;
+      displayName?: string;
+    }) =>
+      apiFetch<IntegrationIdentity>(
+        `/api/v1/orgs/${org}/integrations/${integrationUid}/identities/${vars.userUid}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            externalId: vars.externalId,
+            displayName: vars.displayName,
+          }),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["integration-identities", org, integrationUid],
+      });
+    },
+  });
+}
+
+export function useDeleteIntegrationIdentity(
+  org: string,
+  integrationUid: string,
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (userUid: string) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/integrations/${integrationUid}/identities/${userUid}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["integration-identities", org, integrationUid],
+      });
+    },
+  });
+}
+
 // Microsoft Teams bot (msteams-bot) setup types and hooks.
 //
 // Unlike Slack there is no live channel list to fetch: a Teams bot cannot
