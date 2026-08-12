@@ -3082,6 +3082,100 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/orgs/{org}/members/coverage:
+    get:
+      tags: [Members]
+      summary: List per-member paging coverage
+      description: >-
+        Per-member notification coverage for the organization. Exposes channel
+        TYPES and verified/enabled flags only — never a contact value, since
+        per-user contacts belong to the member and are otherwise `users/me`
+        scoped. `emailFallbackOnly` marks members nothing but email can reach.
+        Admin only.
+      operationId: listMemberCoverage
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: Per-member coverage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberCoverageListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/members/{uid}/contacts:
+    post:
+      tags: [Members]
+      summary: Pre-provision an unverified paging contact for a member
+      description: >-
+        Lets an admin add a phone or WhatsApp contact for another member, in
+        UNVERIFIED state. The contact becomes pageable only after its owner
+        completes the normal verification round-trip — an admin can never create
+        or flip a contact to verified. Other contact types are refused.
+      operationId: addMemberContact
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MemberUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddMemberContactRequest"
+      responses:
+        "201":
+          description: The created (unverified) contact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminMemberContact"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The member already has that contact
+
+  /api/v1/orgs/{org}/members/{uid}/paging-nudge:
+    post:
+      tags: [Members]
+      summary: Email a member asking them to set up their paging
+      description: >-
+        Sends a "set up your alert notifications" email with a link to the
+        member's own notification settings. Carries no contact data and no
+        verification code. Admin only.
+      operationId: sendMemberPagingNudge
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MemberUidPath"
+      responses:
+        "204":
+          description: Nudge sent
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/members/{uid}:
     get:
       tags: [Members]
@@ -8556,6 +8650,81 @@ components:
         detail:
           type: string
           description: Optional human-readable success note
+
+    MemberChannelCoverage:
+      type: object
+      required: [type, verified, enabled]
+      properties:
+        type:
+          type: string
+          description: Contact channel type (email, phone, whatsapp, telegram, webpush, …)
+        verified:
+          type: boolean
+        enabled:
+          type: boolean
+
+    MemberCoverage:
+      type: object
+      required: [userUid, email, role, channels, emailFallbackOnly]
+      properties:
+        userUid:
+          type: string
+          format: uuid
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        channels:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberChannelCoverage"
+        emailFallbackOnly:
+          type: boolean
+          description: >-
+            True when no enabled AND verified channel other than email exists —
+            escalation can still reach this member, but only by email.
+
+    MemberCoverageListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberCoverage"
+
+    AddMemberContactRequest:
+      type: object
+      required: [type, value]
+      properties:
+        type:
+          type: string
+          enum: [phone, whatsapp]
+        value:
+          type: string
+          description: E.164 number (e.g. +15551234567)
+        label:
+          type: string
+
+    AdminMemberContact:
+      type: object
+      required: [uid, userUid, type, verified]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        userUid:
+          type: string
+          format: uuid
+        type:
+          type: string
+        label:
+          type: string
+        verified:
+          type: boolean
+          description: Always false — an admin can never create a verified contact.
 
     IntegrationIdentity:
       type: object
