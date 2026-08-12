@@ -240,6 +240,12 @@ between consecutive failures — 100 ms doubling to a 30 s cap, with full jitter
 the first success. The wait is a `select` on the shutdown context, so a runner
 parked at the cap still stops immediately.
 
+Only the *worker's own* cancellation stops a runner. A `context.Canceled`
+arriving from elsewhere — the detached per-job context that the mid-run
+cancellation watcher cancels on soft-delete, wrapped by `jobsvc` — is an
+ordinary failure and gets counted, logged and backed off like the rest, so the
+pool never shrinks silently.
+
 Failure logs are collapsed to the 1st, 2nd, 4th, 8th … occurrence, each
 carrying a `consecutive` attribute, and recovery emits one
 `Job processing recovered` line with `consecutive_failures` and `outage`. Before

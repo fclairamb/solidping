@@ -187,8 +187,14 @@ func (w *JobWorker) workerLoop(ctx context.Context, runnerID int) {
 			}
 
 			backoff, consecutive = 0, 0
-		case errors.Is(err, context.Canceled):
-			// Shutdown: not an error, and there is nothing left to do.
+		case errors.Is(err, context.Canceled) && ctx.Err() != nil:
+			// Our own shutdown: not an error, and nothing left to do. The
+			// ctx.Err() guard matters — processNext writes the terminal status
+			// on the detached jobExecCtx, which the cancellation watcher
+			// cancels when a job row is soft-deleted mid-run, and jobsvc wraps
+			// that error with %w. Returning on *that* would silently retire the
+			// runner and shrink the pool. While our context is alive it falls
+			// through and is treated as the ordinary failure it is.
 			return
 		default:
 			if consecutive == 0 {

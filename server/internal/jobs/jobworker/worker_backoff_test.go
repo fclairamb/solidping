@@ -3,6 +3,7 @@ package jobworker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"slices"
 	"sync"
@@ -19,6 +20,12 @@ import (
 // errBoom is the persistent, instantly-returned infrastructure error the
 // original incident was made of (a missing table failing in microseconds).
 var errBoom = errors.New("no such table: jobs")
+
+// errForeignCanceled mimics a processNext failure that wraps context.Canceled
+// without the worker's own context being done: the terminal write runs on the
+// detached jobExecCtx, which the cancellation watcher cancels when a job row is
+// soft-deleted mid-run, and jobsvc wraps the driver error with %w.
+var errForeignCanceled = fmt.Errorf("failed to update job status: %w", context.Canceled)
 
 // Log messages the runner emits around failures; asserted verbatim.
 const (
@@ -184,13 +191,13 @@ func newLoopTestWorker(svc *fakeJobSvc, rec *loopRecorder) *JobWorker {
 	}
 }
 
-// failingSvc returns a service whose every call fails instantly, like a
-// dropped connection or a missing table.
-func failingSvc(rec *loopRecorder) *fakeJobSvc {
+// failingSvc returns a service whose every call fails instantly with the given
+// error, like a dropped connection or a missing table.
+func failingSvc(rec *loopRecorder, failure error) *fakeJobSvc {
 	return &fakeJobSvc{waitFn: func(context.Context) (*models.Job, error) {
 		rec.add(loopEvent{kind: eventCall})
 
-		return nil, errBoom
+		return nil, failure
 	}}
 }
 
@@ -283,7 +290,7 @@ func TestWorkerLoopBacksOffAndThrottlesLogs(t *testing.T) {
 
 	defer cancel()
 
-	w := newLoopTestWorker(failingSvc(rec), rec)
+	w := newLoopTestWorker(failingSvc(rec, errBoom), rec)
 	w.backoffAfter = rec.instantAfter(failures, cancel)
 
 	runLoop(t, w, func() { w.workerLoop(ctx, 0) })
@@ -512,6 +519,89 @@ func TestWorkerLoopRecoverySummaryCountsOutage(t *testing.T) {
 	r.Equal(int64(2), logged[1].attrs["consecutive"])
 }
 
+// TestWorkerLoopSurvivesForeignCancellation guards the one error that must NOT
+// stop the runner even though it satisfies errors.Is(err, context.Canceled):
+// processNext writes the terminal status on the detached jobExecCtx, which the
+// cancellation watcher cancels when a job row is soft-deleted mid-run, and
+// jobsvc wraps that driver error with %w. Returning on it would silently retire
+// the runner — the pool would shrink with no log line but "Job runner stopped".
+// While the worker's own context is alive this is an ordinary failure: counted,
+// throttled and backed off like any other.
+func TestWorkerLoopSurvivesForeignCancellation(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	const failures = 4
+
+	rec := &loopRecorder{}
+	ctx, cancel := context.WithCancel(context.Background())
+
+	defer cancel()
+
+	w := newLoopTestWorker(failingSvc(rec, errForeignCanceled), rec)
+	w.backoffAfter = rec.instantAfter(failures, cancel)
+
+	runLoop(t, w, func() { w.workerLoop(ctx, 0) })
+
+	// The runner kept working: it only stopped because instantAfter canceled
+	// the worker context after the 4th backoff.
+	waits := rec.waits()
+	r.Len(waits, failures, "a cancellation from another context must not retire the runner")
+
+	expected := expectedBackoffs(failures)
+	for i, delay := range waits {
+		r.GreaterOrEqual(delay, expected[i]/2, "wait %d below the jitter floor", i)
+		r.LessOrEqual(delay, expected[i], "wait %d above the expected backoff", i)
+	}
+
+	// It is a failure like any other: counted, logged at 1, 2, 4, and not swallowed.
+	logged := rec.logs(msgProcessingError)
+	r.Len(logged, 3)
+
+	for i, want := range []int64{1, 2, 4} {
+		r.Equal(want, logged[i].attrs["consecutive"])
+		r.Equal(errForeignCanceled, logged[i].attrs["error"])
+	}
+
+	r.Empty(rec.logs(msgRecovered))
+	r.Zero(w.availableRunners.Load(), "availability accounting must survive this path")
+}
+
+// TestWorkerLoopStopsOnWorkerCancellation is the other half: when the error
+// wraps context.Canceled *because the worker context is done*, the runner
+// returns instead of logging a shutdown as a failure.
+func TestWorkerLoopStopsOnWorkerCancellation(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	rec := &loopRecorder{}
+	ctx, cancel := context.WithCancel(context.Background())
+
+	defer cancel()
+
+	// The service cancels the worker context and then reports the failure the
+	// cancellation caused, exactly as a shutdown mid-GetJobWait would.
+	svc := &fakeJobSvc{waitFn: func(context.Context) (*models.Job, error) {
+		rec.add(loopEvent{kind: eventCall})
+		cancel()
+
+		return nil, errForeignCanceled
+	}}
+
+	w := newLoopTestWorker(svc, rec)
+	w.backoffAfter = rec.instantAfter(1, cancel)
+
+	runLoop(t, w, func() { w.workerLoop(ctx, 0) })
+
+	r.Len(rec.timeline(), 1, "shutdown must not be logged or backed off")
+	r.Equal(eventCall, rec.timeline()[0].kind)
+	r.Empty(rec.waits())
+	r.Empty(rec.logs(msgProcessingError))
+	r.Zero(w.availableRunners.Load())
+}
+
 // parkedRunner starts a runner whose first failure parks it at the 30 s cap on
 // a *real* timer, and returns once it is parked.
 func parkedRunner(t *testing.T, rec *loopRecorder) (*JobWorker, chan struct{}, context.CancelFunc) {
@@ -520,7 +610,7 @@ func parkedRunner(t *testing.T, rec *loopRecorder) (*JobWorker, chan struct{}, c
 	entered := make(chan time.Duration, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 
-	w := newLoopTestWorker(failingSvc(rec), rec)
+	w := newLoopTestWorker(failingSvc(rec, errBoom), rec)
 	w.backoffMin, w.backoffMax = errBackoffMaxDelay, errBackoffMaxDelay // park at the cap at once
 	w.backoffAfter = func(delay time.Duration) <-chan time.Time {
 		select {
