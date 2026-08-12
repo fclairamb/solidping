@@ -503,19 +503,21 @@ test.describe("Dashboard", () => {
 
     // "up" renders the success (green) badge variant with the localized label.
     const upRow = rows.filter({ hasText: "Up Service" });
-    await expect(upRow.getByText("Up", { exact: true })).toHaveClass(/bg-green-500/);
+    await expect(upRow.getByText("Up", { exact: true })).toHaveClass(
+      /bg-status-ok\/15/,
+    );
 
     // "warning" renders the warning (amber) badge variant — previously a plain
     // gray "outline" chip indistinguishable from a healthy check.
     const warningRow = rows.filter({ hasText: "Warning Service" });
     await expect(warningRow.getByText("Warning", { exact: true })).toHaveClass(
-      /bg-yellow-500/,
+      /bg-status-warning\/15/,
     );
 
     // "down" renders the destructive (red) badge variant.
     const downRow = rows.filter({ hasText: "Down Service" });
     await expect(downRow.getByText("Down", { exact: true })).toHaveClass(
-      /bg-destructive/,
+      /bg-status-error\/15/,
     );
   });
 
