@@ -349,15 +349,15 @@ func renderMentions(targets []MentionTarget) string {
 
 	parts := make([]string, 0, len(targets))
 
-	for _, target := range targets {
-		if target.ExternalID != "" {
-			parts = append(parts, "<@"+target.ExternalID+">")
+	for i := range targets {
+		if targets[i].ExternalID != "" {
+			parts = append(parts, "<@"+targets[i].ExternalID+">")
 
 			continue
 		}
 
-		if target.DisplayName != "" {
-			parts = append(parts, target.DisplayName)
+		if targets[i].DisplayName != "" {
+			parts = append(parts, targets[i].DisplayName)
 		}
 	}
 
@@ -512,18 +512,29 @@ func (s *SlackSender) buildIncidentResolvedThreadReply(payload *Payload) *slack.
 // buildIncidentEscalatedMessage builds a rich Block Kit message for escalation.
 func (s *SlackSender) buildIncidentEscalatedMessage(payload *Payload) *slack.MessageResponse {
 	checkName := getCheckName(payload.Check)
-	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
-	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
 	fallbackText := "Incident escalated: " + checkName
 
-	// Calculate duration
-	duration := formatDuration(time.Since(payload.Incident.StartedAt))
+	blocks := prependMentionBlock(
+		s.buildIncidentEscalatedBlocks(payload, checkName), payload.OnCallMentions)
 
-	// Build section fields
+	return &slack.MessageResponse{
+		Text: fallbackText,
+		Attachments: []slack.Attachment{
+			{
+				Color:    colorWarning,
+				Fallback: fallbackText,
+				Blocks:   blocks,
+			},
+		},
+	}
+}
+
+// buildIncidentEscalatedFields builds the summary fields of an escalation message.
+func (s *SlackSender) buildIncidentEscalatedFields(payload *Payload, checkURL, checkName string) []slack.Text {
 	fields := []slack.Text{
 		{Type: slack.BlockTypeMrkdwn, Text: "*Monitor:*\n" + slackLink(checkURL, checkName)},
 		{Type: slack.BlockTypeMrkdwn, Text: fmt.Sprintf("*Failures:*\n%d", payload.Incident.FailureCount)},
-		{Type: slack.BlockTypeMrkdwn, Text: "*Duration:*\n" + duration},
+		{Type: slack.BlockTypeMrkdwn, Text: "*Duration:*\n" + formatDuration(time.Since(payload.Incident.StartedAt))},
 	}
 
 	// Add URL field for HTTP checks
@@ -535,7 +546,15 @@ func (s *SlackSender) buildIncidentEscalatedMessage(payload *Payload) *slack.Mes
 		})
 	}
 
-	blocks := []slack.Block{
+	return fields
+}
+
+// buildIncidentEscalatedBlocks builds the body blocks of an escalation message.
+func (s *SlackSender) buildIncidentEscalatedBlocks(payload *Payload, checkName string) []slack.Block {
+	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
+	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
+
+	return []slack.Block{
 		// Header
 		{
 			Type: slack.BlockTypeHeader,
@@ -548,7 +567,7 @@ func (s *SlackSender) buildIncidentEscalatedMessage(payload *Payload) *slack.Mes
 		// Section with fields
 		{
 			Type:   "section",
-			Fields: fields,
+			Fields: s.buildIncidentEscalatedFields(payload, checkURL, checkName),
 		},
 		// Explanation
 		{
@@ -584,19 +603,6 @@ func (s *SlackSender) buildIncidentEscalatedMessage(payload *Payload) *slack.Mes
 					Type: slack.BlockTypeMrkdwn,
 					Text: slackLink(incidentURL, ":rotating_light: Escalated") + "  " + slackLink(incidentURL, ":warning: Incident"),
 				},
-			},
-		},
-	}
-
-	blocks = prependMentionBlock(blocks, payload.OnCallMentions)
-
-	return &slack.MessageResponse{
-		Text: fallbackText,
-		Attachments: []slack.Attachment{
-			{
-				Color:    colorWarning,
-				Fallback: fallbackText,
-				Blocks:   blocks,
 			},
 		},
 	}

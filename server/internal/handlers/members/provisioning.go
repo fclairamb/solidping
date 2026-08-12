@@ -104,8 +104,8 @@ func (s *Service) AddMemberContact(
 
 	contact := models.NewUserContact(member.UserUID, org.UID, contactType, value, req.Label)
 	// VerifiedAt is left nil deliberately — see the doc comment.
-	if err := s.db.UpsertUserContact(ctx, contact); err != nil {
-		return nil, fmt.Errorf("create member contact: %w", err)
+	if upsertErr := s.db.UpsertUserContact(ctx, contact); upsertErr != nil {
+		return nil, fmt.Errorf("create member contact: %w", upsertErr)
 	}
 
 	stored, err := s.findContact(ctx, member.UserUID, org.UID, contactType, value)
@@ -117,15 +117,15 @@ func (s *Service) AddMemberContact(
 	// soft-deleted row, which could have carried an old verified stamp. An
 	// admin-provisioned contact is never pageable until its owner re-verifies.
 	if stored.VerifiedAt != nil {
-		if err := s.db.ClearUserContactVerified(ctx, stored.UID); err != nil {
-			return nil, fmt.Errorf("clear verified state: %w", err)
+		if clearErr := s.db.ClearUserContactVerified(ctx, stored.UID); clearErr != nil {
+			return nil, fmt.Errorf("clear verified state: %w", clearErr)
 		}
 
 		stored.VerifiedAt = nil
 	}
 
-	if err := s.db.EnsureUserNotificationRoute(ctx, member.UserUID, org.UID, stored.UID); err != nil {
-		return nil, fmt.Errorf("create member route: %w", err)
+	if routeErr := s.db.EnsureUserNotificationRoute(ctx, member.UserUID, org.UID, stored.UID); routeErr != nil {
+		return nil, fmt.Errorf("create member route: %w", routeErr)
 	}
 
 	return &AdminContactResponse{

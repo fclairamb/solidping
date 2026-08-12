@@ -35,7 +35,7 @@ type memberFixture struct {
 	mailer *capturingEmailSender
 }
 
-func newMemberFixture(t *testing.T, ctx context.Context, slug string) *memberFixture {
+func newMemberFixture(ctx context.Context, t *testing.T, slug string) *memberFixture {
 	t.Helper()
 
 	r := require.New(t)
@@ -58,7 +58,7 @@ func newMemberFixture(t *testing.T, ctx context.Context, slug string) *memberFix
 
 // addMember creates a user + membership and returns both.
 func (f *memberFixture) addMember(
-	t *testing.T, ctx context.Context, email, name string,
+	ctx context.Context, t *testing.T, email, name string,
 ) (*models.User, *models.OrganizationMember) {
 	t.Helper()
 
@@ -74,7 +74,7 @@ func (f *memberFixture) addMember(
 
 // addContact writes a contact + route for a user, optionally verified.
 func (f *memberFixture) addContact(
-	t *testing.T, ctx context.Context, user *models.User, contactType, value string, verified bool,
+	ctx context.Context, t *testing.T, user *models.User, contactType, value string, verified bool,
 ) *models.UserContact {
 	t.Helper()
 
@@ -110,18 +110,18 @@ func TestListCoverageFlagsEmailOnlyMembers(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newMemberFixture(t, ctx, "coverage-flags")
+	fx := newMemberFixture(ctx, t, "coverage-flags")
 
-	bare, _ := fx.addMember(t, ctx, "bare@acme.test", "Bare")
-	emailOnly, _ := fx.addMember(t, ctx, "emailonly@acme.test", "Email Only")
-	unverified, _ := fx.addMember(t, ctx, "unverified@acme.test", "Unverified")
-	paged, _ := fx.addMember(t, ctx, "paged@acme.test", "Paged")
+	bare, _ := fx.addMember(ctx, t, "bare@acme.test", "Bare")
+	emailOnly, _ := fx.addMember(ctx, t, "emailonly@acme.test", "Email Only")
+	unverified, _ := fx.addMember(ctx, t, "unverified@acme.test", "Unverified")
+	paged, _ := fx.addMember(ctx, t, "paged@acme.test", "Paged")
 
-	fx.addContact(t, ctx, emailOnly, models.UserContactTypeEmail, "emailonly@acme.test", true)
+	fx.addContact(ctx, t, emailOnly, models.UserContactTypeEmail, "emailonly@acme.test", true)
 	// An unverified phone is NOT paging coverage — verification is what makes a
 	// number pageable, so this member must still read as email-only.
-	fx.addContact(t, ctx, unverified, models.UserContactTypePhone, "+15550001111", false)
-	fx.addContact(t, ctx, paged, models.UserContactTypePhone, "+15550002222", true)
+	fx.addContact(ctx, t, unverified, models.UserContactTypePhone, "+15550001111", false)
+	fx.addContact(ctx, t, paged, models.UserContactTypePhone, "+15550002222", true)
 
 	resp, err := fx.svc.ListCoverage(ctx, fx.org.Slug)
 	r.NoError(err)
@@ -147,10 +147,10 @@ func TestListCoverageNeverExposesContactValues(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newMemberFixture(t, ctx, "coverage-privacy")
+	fx := newMemberFixture(ctx, t, "coverage-privacy")
 
-	user, _ := fx.addMember(t, ctx, "user@acme.test", "User")
-	fx.addContact(t, ctx, user, models.UserContactTypePhone, "+15550009999", true)
+	user, _ := fx.addMember(ctx, t, "user@acme.test", "User")
+	fx.addContact(ctx, t, user, models.UserContactTypePhone, "+15550009999", true)
 
 	resp, err := fx.svc.ListCoverage(ctx, fx.org.Slug)
 	r.NoError(err)
@@ -168,9 +168,9 @@ func TestAdminCannotCreateVerifiedContact(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newMemberFixture(t, ctx, "provision-unverified")
+	fx := newMemberFixture(ctx, t, "provision-unverified")
 
-	user, member := fx.addMember(t, ctx, "colleague@acme.test", "Colleague")
+	user, member := fx.addMember(ctx, t, "colleague@acme.test", "Colleague")
 
 	created, err := fx.svc.AddMemberContact(ctx, fx.org.Slug, member.UID,
 		members.AdminAddContactRequest{Type: models.UserContactTypePhone, Value: "+15551230000"})
@@ -207,10 +207,10 @@ func TestAdminCannotFlipExistingContactToVerified(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newMemberFixture(t, ctx, "provision-noflip")
+	fx := newMemberFixture(ctx, t, "provision-noflip")
 
-	user, member := fx.addMember(t, ctx, "colleague@acme.test", "Colleague")
-	existing := fx.addContact(t, ctx, user, models.UserContactTypePhone, "+15551230000", false)
+	user, member := fx.addMember(ctx, t, "colleague@acme.test", "Colleague")
+	existing := fx.addContact(ctx, t, user, models.UserContactTypePhone, "+15551230000", false)
 
 	_, err := fx.svc.AddMemberContact(ctx, fx.org.Slug, member.UID,
 		members.AdminAddContactRequest{Type: models.UserContactTypePhone, Value: "+15551230000"})
@@ -228,9 +228,9 @@ func TestAdminContactTypeAllowList(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newMemberFixture(t, ctx, "provision-types")
+	fx := newMemberFixture(ctx, t, "provision-types")
 
-	_, member := fx.addMember(t, ctx, "colleague@acme.test", "Colleague")
+	_, member := fx.addMember(ctx, t, "colleague@acme.test", "Colleague")
 
 	for _, contactType := range []string{
 		models.UserContactTypeEmail,
@@ -265,9 +265,9 @@ func TestAdminContactRejectsMalformedNumber(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newMemberFixture(t, ctx, "provision-e164")
+	fx := newMemberFixture(ctx, t, "provision-e164")
 
-	_, member := fx.addMember(t, ctx, "colleague@acme.test", "Colleague")
+	_, member := fx.addMember(ctx, t, "colleague@acme.test", "Colleague")
 
 	_, err := fx.svc.AddMemberContact(ctx, fx.org.Slug, member.UID,
 		members.AdminAddContactRequest{Type: models.UserContactTypePhone, Value: "0612345678"})
@@ -281,9 +281,9 @@ func TestSendPagingNudgeEmailsTheMember(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newMemberFixture(t, ctx, "nudge-send")
+	fx := newMemberFixture(ctx, t, "nudge-send")
 
-	_, member := fx.addMember(t, ctx, "colleague@acme.test", "Colleague")
+	_, member := fx.addMember(ctx, t, "colleague@acme.test", "Colleague")
 
 	r.NoError(fx.svc.SendPagingNudge(ctx, fx.org.Slug, member.UID))
 	r.Equal(1, fx.mailer.sent)
@@ -298,9 +298,9 @@ func TestSendPagingNudgeWithoutEmailSender(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newMemberFixture(t, ctx, "nudge-noemail")
+	fx := newMemberFixture(ctx, t, "nudge-noemail")
 
-	_, member := fx.addMember(t, ctx, "colleague@acme.test", "Colleague")
+	_, member := fx.addMember(ctx, t, "colleague@acme.test", "Colleague")
 
 	bare := members.NewService(fx.dbSvc)
 	r.ErrorIs(bare.SendPagingNudge(ctx, fx.org.Slug, member.UID), members.ErrEmailSenderNotConfigured)
@@ -313,7 +313,7 @@ func TestProvisioningRejectsForeignMember(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newMemberFixture(t, ctx, "provision-foreign")
+	fx := newMemberFixture(ctx, t, "provision-foreign")
 
 	other := models.NewOrganization("provision-foreign-2", "Other Org")
 	r.NoError(fx.dbSvc.CreateOrganization(ctx, other))

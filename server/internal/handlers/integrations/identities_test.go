@@ -53,7 +53,7 @@ type identityFixture struct {
 }
 
 // addMember creates a user and its membership, returning the user.
-func (f *identityFixture) addMember(t *testing.T, ctx context.Context, email, name string) *models.User {
+func (f *identityFixture) addMember(ctx context.Context, t *testing.T, email, name string) *models.User {
 	t.Helper()
 
 	user := models.NewUser(email)
@@ -76,7 +76,7 @@ func entryFor(entries []*integrations.MemberIdentityResponse, userUID string) *i
 	return nil
 }
 
-func newIdentityFixture(t *testing.T, ctx context.Context, slug string) *identityFixture {
+func newIdentityFixture(ctx context.Context, t *testing.T, slug string) *identityFixture {
 	t.Helper()
 
 	r := require.New(t)
@@ -118,12 +118,12 @@ func TestSyncIdentitiesBuckets(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newIdentityFixture(t, ctx, "sync-buckets")
+	fx := newIdentityFixture(ctx, t, "sync-buckets")
 
-	matched := fx.addMember(t, ctx, "alice@acme.test", "Alice")
-	missing := fx.addMember(t, ctx, "bob@acme.test", "Bob")
-	carol := fx.addMember(t, ctx, "carol@acme.test", "Carol")
-	dave := fx.addMember(t, ctx, "dave@acme.test", "Dave")
+	matched := fx.addMember(ctx, t, "alice@acme.test", "Alice")
+	missing := fx.addMember(ctx, t, "bob@acme.test", "Bob")
+	carol := fx.addMember(ctx, t, "carol@acme.test", "Carol")
+	dave := fx.addMember(ctx, t, "dave@acme.test", "Dave")
 
 	fx.lookup.byEmail["alice@acme.test"] = &slack.SlackUser{ID: "U-ALICE", RealName: "Alice A"}
 	// Carol and Dave both resolve to the SAME Slack account. Neither may be
@@ -164,10 +164,10 @@ func TestSyncIdentitiesRefusesAccountOwnedByAnotherMember(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newIdentityFixture(t, ctx, "sync-owned")
+	fx := newIdentityFixture(ctx, t, "sync-owned")
 
-	owner := fx.addMember(t, ctx, "owner@acme.test", "Owner")
-	intruder := fx.addMember(t, ctx, "intruder@acme.test", "Intruder")
+	owner := fx.addMember(ctx, t, "owner@acme.test", "Owner")
+	intruder := fx.addMember(ctx, t, "intruder@acme.test", "Intruder")
 
 	_, err := fx.svc.SetIdentity(ctx, fx.org.Slug, fx.conn.UID, owner.UID,
 		integrations.SetIdentityRequest{ExternalID: "U-SHARED"})
@@ -192,9 +192,9 @@ func TestSyncIdentitiesPreservesManualOverride(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newIdentityFixture(t, ctx, "sync-manual")
+	fx := newIdentityFixture(ctx, t, "sync-manual")
 
-	alice := fx.addMember(t, ctx, "alice@acme.test", "Alice")
+	alice := fx.addMember(ctx, t, "alice@acme.test", "Alice")
 	fx.lookup.byEmail["alice@acme.test"] = &slack.SlackUser{ID: "U-AUTO", RealName: "auto"}
 
 	_, err := fx.svc.SetIdentity(ctx, fx.org.Slug, fx.conn.UID, alice.UID,
@@ -219,9 +219,9 @@ func TestSyncIdentitiesKeepsMappingWhenLookupMisses(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newIdentityFixture(t, ctx, "sync-keeps")
+	fx := newIdentityFixture(ctx, t, "sync-keeps")
 
-	alice := fx.addMember(t, ctx, "alice@acme.test", "Alice")
+	alice := fx.addMember(ctx, t, "alice@acme.test", "Alice")
 	fx.lookup.byEmail["alice@acme.test"] = &slack.SlackUser{ID: "U-ALICE", RealName: "Alice A"}
 
 	_, err := fx.svc.SyncIdentities(ctx, fx.org.Slug, fx.conn.UID)
@@ -243,9 +243,9 @@ func TestSyncIdentitiesSurfacesLookupFailure(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newIdentityFixture(t, ctx, "sync-fails")
+	fx := newIdentityFixture(ctx, t, "sync-fails")
 
-	fx.addMember(t, ctx, "alice@acme.test", "Alice")
+	fx.addMember(ctx, t, "alice@acme.test", "Alice")
 	fx.lookup.fail = true
 
 	_, err := fx.svc.SyncIdentities(ctx, fx.org.Slug, fx.conn.UID)
@@ -259,10 +259,10 @@ func TestSetIdentityRejectsClaimedExternalID(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newIdentityFixture(t, ctx, "set-claimed")
+	fx := newIdentityFixture(ctx, t, "set-claimed")
 
-	alice := fx.addMember(t, ctx, "alice@acme.test", "Alice")
-	bob := fx.addMember(t, ctx, "bob@acme.test", "Bob")
+	alice := fx.addMember(ctx, t, "alice@acme.test", "Alice")
+	bob := fx.addMember(ctx, t, "bob@acme.test", "Bob")
 
 	_, err := fx.svc.SetIdentity(ctx, fx.org.Slug, fx.conn.UID, alice.UID,
 		integrations.SetIdentityRequest{ExternalID: "U-SHARED"})
@@ -280,9 +280,9 @@ func TestSetIdentityValidation(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newIdentityFixture(t, ctx, "set-validation")
+	fx := newIdentityFixture(ctx, t, "set-validation")
 
-	alice := fx.addMember(t, ctx, "alice@acme.test", "Alice")
+	alice := fx.addMember(ctx, t, "alice@acme.test", "Alice")
 
 	_, err := fx.svc.SetIdentity(ctx, fx.org.Slug, fx.conn.UID, alice.UID,
 		integrations.SetIdentityRequest{ExternalID: "   "})
@@ -302,9 +302,9 @@ func TestDeleteIdentityClearsMapping(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newIdentityFixture(t, ctx, "delete-identity")
+	fx := newIdentityFixture(ctx, t, "delete-identity")
 
-	alice := fx.addMember(t, ctx, "alice@acme.test", "Alice")
+	alice := fx.addMember(ctx, t, "alice@acme.test", "Alice")
 
 	_, err := fx.svc.SetIdentity(ctx, fx.org.Slug, fx.conn.UID, alice.UID,
 		integrations.SetIdentityRequest{ExternalID: "U-ALICE"})
@@ -325,10 +325,10 @@ func TestListIdentitiesNeverCallsSlack(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newIdentityFixture(t, ctx, "list-identities")
+	fx := newIdentityFixture(ctx, t, "list-identities")
 
-	alice := fx.addMember(t, ctx, "alice@acme.test", "Alice")
-	fx.addMember(t, ctx, "bob@acme.test", "Bob")
+	alice := fx.addMember(ctx, t, "alice@acme.test", "Alice")
+	fx.addMember(ctx, t, "bob@acme.test", "Bob")
 
 	_, err := fx.svc.SetIdentity(ctx, fx.org.Slug, fx.conn.UID, alice.UID,
 		integrations.SetIdentityRequest{ExternalID: "U-ALICE"})
@@ -352,7 +352,7 @@ func TestIdentitiesRejectNonSlackIntegration(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newIdentityFixture(t, ctx, "identities-type")
+	fx := newIdentityFixture(ctx, t, "identities-type")
 
 	hook := models.NewIntegration(fx.org.UID, models.ConnectionTypeWebhook, "hook")
 	hook.Settings = models.JSONMap{"webhook_url": "https://example.com/x"}
@@ -369,7 +369,7 @@ func TestSyncIdentitiesRequiresConnectedSlack(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newIdentityFixture(t, ctx, "identities-tokenless")
+	fx := newIdentityFixture(ctx, t, "identities-tokenless")
 
 	stub := models.NewIntegration(fx.org.UID, models.ConnectionTypeSlack, "stub")
 	r.NoError(fx.dbSvc.CreateChannel(ctx, stub))

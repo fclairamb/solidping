@@ -1,6 +1,7 @@
 package notifications
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -35,23 +36,25 @@ func flatten(t *testing.T, sender *SlackSender, payload *Payload) *slackMessageF
 	msg := sender.buildMessage(payload)
 	require.NotNil(t, msg)
 
-	out := msg.Text
+	var out strings.Builder
 
-	for _, attachment := range msg.Attachments {
-		for _, block := range attachment.Blocks {
-			if block.Text != nil {
-				out += "\n" + block.Text.Text
+	out.WriteString(msg.Text)
+
+	for i := range msg.Attachments {
+		for j := range msg.Attachments[i].Blocks {
+			if block := msg.Attachments[i].Blocks[j]; block.Text != nil {
+				out.WriteString("\n" + block.Text.Text)
 			}
 		}
 	}
 
-	for _, block := range msg.Blocks {
-		if block.Text != nil {
-			out += "\n" + block.Text.Text
+	for i := range msg.Blocks {
+		if msg.Blocks[i].Text != nil {
+			out.WriteString("\n" + msg.Blocks[i].Text.Text)
 		}
 	}
 
-	return &slackMessageForTest{all: out}
+	return &slackMessageForTest{all: out.String()}
 }
 
 // TestSlackMentionsRenderedOnAlertEvents is the positive control: created and

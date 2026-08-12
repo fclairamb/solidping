@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -62,7 +63,7 @@ type mentionFixture struct {
 	check *models.Check
 }
 
-func newMentionFixture(t *testing.T, ctx context.Context, slug string, mentionOnCall bool) *mentionFixture {
+func newMentionFixture(ctx context.Context, t *testing.T, slug string, mentionOnCall bool) *mentionFixture {
 	t.Helper()
 
 	r := require.New(t)
@@ -105,7 +106,7 @@ func newMentionFixture(t *testing.T, ctx context.Context, slug string, mentionOn
 
 // addUser creates a user (not necessarily a member — mention resolution keys
 // off the policy, not membership).
-func (f *mentionFixture) addUser(t *testing.T, ctx context.Context, email, name string) *models.User {
+func (f *mentionFixture) addUser(ctx context.Context, t *testing.T, email, name string) *models.User {
 	t.Helper()
 
 	user := models.NewUser(email)
@@ -118,8 +119,8 @@ func (f *mentionFixture) addUser(t *testing.T, ctx context.Context, email, name 
 // attachPolicy builds a one-step policy with the given targets and points the
 // check at it.
 func (f *mentionFixture) attachPolicy(
-	t *testing.T, ctx context.Context, targets []*models.EscalationPolicyTarget,
-) *models.EscalationPolicy {
+	ctx context.Context, t *testing.T, targets []*models.EscalationPolicyTarget,
+) {
 	t.Helper()
 
 	r := require.New(t)
@@ -133,13 +134,11 @@ func (f *mentionFixture) attachPolicy(
 
 	f.check.EscalationPolicyUID = &policy.UID
 	r.NoError(f.dbSvc.UpdateCheck(ctx, f.check.UID, &models.CheckUpdate{EscalationPolicyUID: &policy.UID}))
-
-	return policy
 }
 
 // mapIdentity records a Slack identity for a user on the fixture integration.
 func (f *mentionFixture) mapIdentity(
-	t *testing.T, ctx context.Context, user *models.User, externalID, displayName string,
+	ctx context.Context, t *testing.T, user *models.User, externalID, displayName string,
 ) {
 	t.Helper()
 
@@ -164,18 +163,18 @@ func TestResolveOnCallMentionsUnionsAndOrders(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newMentionFixture(t, ctx, "mentions-union", true)
+	fx := newMentionFixture(ctx, t, "mentions-union", true)
 
-	zoe := fx.addUser(t, ctx, "zoe@acme.test", "Zoe")
-	adam := fx.addUser(t, ctx, "adam@acme.test", "Adam")
+	zoe := fx.addUser(ctx, t, "zoe@acme.test", "Zoe")
+	adam := fx.addUser(ctx, t, "adam@acme.test", "Adam")
 
-	fx.mapIdentity(t, ctx, zoe, "U-ZOE", "Zoe")
-	fx.mapIdentity(t, ctx, adam, "U-ADAM", "Adam")
+	fx.mapIdentity(ctx, t, zoe, "U-ZOE", "Zoe")
+	fx.mapIdentity(ctx, t, adam, "U-ADAM", "Adam")
 
 	scheduleUID := "sched-union"
 	registerOnCall(t, scheduleUID, zoe)
 
-	fx.attachPolicy(t, ctx, []*models.EscalationPolicyTarget{
+	fx.attachPolicy(ctx, t, []*models.EscalationPolicyTarget{
 		scheduleTarget(scheduleUID, 0),
 		userTarget(adam.UID, 1),
 		// The same human twice (schedule + direct) must collapse to one mention.
@@ -199,11 +198,11 @@ func TestResolveOnCallMentionsOffEmitsNothing(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newMentionFixture(t, ctx, "mentions-off", false)
+	fx := newMentionFixture(ctx, t, "mentions-off", false)
 
-	adam := fx.addUser(t, ctx, "adam@acme.test", "Adam")
-	fx.mapIdentity(t, ctx, adam, "U-ADAM", "Adam")
-	fx.attachPolicy(t, ctx, []*models.EscalationPolicyTarget{userTarget(adam.UID, 0)})
+	adam := fx.addUser(ctx, t, "adam@acme.test", "Adam")
+	fx.mapIdentity(ctx, t, adam, "U-ADAM", "Adam")
+	fx.attachPolicy(ctx, t, []*models.EscalationPolicyTarget{userTarget(adam.UID, 0)})
 
 	r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created"))
 	r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.escalated"))
@@ -216,10 +215,10 @@ func TestResolveOnCallMentionsWithoutIdentityIsPlainText(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newMentionFixture(t, ctx, "mentions-noidentity", true)
+	fx := newMentionFixture(ctx, t, "mentions-noidentity", true)
 
-	adam := fx.addUser(t, ctx, "adam@acme.test", "Adam")
-	fx.attachPolicy(t, ctx, []*models.EscalationPolicyTarget{userTarget(adam.UID, 0)})
+	adam := fx.addUser(ctx, t, "adam@acme.test", "Adam")
+	fx.attachPolicy(ctx, t, []*models.EscalationPolicyTarget{userTarget(adam.UID, 0)})
 
 	targets := ResolveOnCallMentions(
 		ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created")
@@ -236,11 +235,11 @@ func TestResolveOnCallMentionsSkipsResolvedAndReopened(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newMentionFixture(t, ctx, "mentions-resolved", true)
+	fx := newMentionFixture(ctx, t, "mentions-resolved", true)
 
-	adam := fx.addUser(t, ctx, "adam@acme.test", "Adam")
-	fx.mapIdentity(t, ctx, adam, "U-ADAM", "Adam")
-	fx.attachPolicy(t, ctx, []*models.EscalationPolicyTarget{userTarget(adam.UID, 0)})
+	adam := fx.addUser(ctx, t, "adam@acme.test", "Adam")
+	fx.mapIdentity(ctx, t, adam, "U-ADAM", "Adam")
+	fx.attachPolicy(ctx, t, []*models.EscalationPolicyTarget{userTarget(adam.UID, 0)})
 
 	// Positive control: the same fixture DOES mention on created.
 	r.Len(ResolveOnCallMentions(
@@ -258,14 +257,14 @@ func TestResolveOnCallMentionsNoPolicyOrNoHumans(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newMentionFixture(t, ctx, "mentions-nopolicy", true)
+	fx := newMentionFixture(ctx, t, "mentions-nopolicy", true)
 
 	// No policy at any level.
 	r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created"))
 
 	// A policy whose only step targets a connection — not a human.
 	connUID := fx.conn.UID
-	fx.attachPolicy(t, ctx, []*models.EscalationPolicyTarget{
+	fx.attachPolicy(ctx, t, []*models.EscalationPolicyTarget{
 		models.NewEscalationPolicyTarget("", models.EscalationTargetConnection, &connUID, 0),
 		models.NewEscalationPolicyTarget("", models.EscalationTargetAllAdmins, nil, 1),
 	})
@@ -280,15 +279,15 @@ func TestResolveOnCallMentionsSurvivesScheduleFailure(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newMentionFixture(t, ctx, "mentions-schedfail", true)
+	fx := newMentionFixture(ctx, t, "mentions-schedfail", true)
 
-	adam := fx.addUser(t, ctx, "adam@acme.test", "Adam")
-	fx.mapIdentity(t, ctx, adam, "U-ADAM", "Adam")
+	adam := fx.addUser(ctx, t, "adam@acme.test", "Adam")
+	fx.mapIdentity(ctx, t, adam, "U-ADAM", "Adam")
 
 	// Install the resolver without registering this schedule, so it errors.
 	registerOnCall(t, "", nil)
 
-	fx.attachPolicy(t, ctx, []*models.EscalationPolicyTarget{
+	fx.attachPolicy(ctx, t, []*models.EscalationPolicyTarget{
 		scheduleTarget("sched-never-registered", 0),
 		userTarget(adam.UID, 1),
 	})
@@ -307,11 +306,11 @@ func TestResolveOnCallMentionsIgnoresNonSlackIntegrations(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newMentionFixture(t, ctx, "mentions-nonslack", true)
+	fx := newMentionFixture(ctx, t, "mentions-nonslack", true)
 
-	adam := fx.addUser(t, ctx, "adam@acme.test", "Adam")
-	fx.mapIdentity(t, ctx, adam, "U-ADAM", "Adam")
-	fx.attachPolicy(t, ctx, []*models.EscalationPolicyTarget{userTarget(adam.UID, 0)})
+	adam := fx.addUser(ctx, t, "adam@acme.test", "Adam")
+	fx.mapIdentity(ctx, t, adam, "U-ADAM", "Adam")
+	fx.attachPolicy(ctx, t, []*models.EscalationPolicyTarget{userTarget(adam.UID, 0)})
 
 	teams := models.NewIntegration(fx.org.UID, models.ConnectionTypeMSTeamsBot, "Teams")
 	teams.Settings = models.JSONMap{"mention_on_call": true}
@@ -327,7 +326,7 @@ func TestResolveOnCallMentionsNilSafe(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newMentionFixture(t, ctx, "mentions-nilsafe", true)
+	fx := newMentionFixture(ctx, t, "mentions-nilsafe", true)
 
 	r.Nil(ResolveOnCallMentions(ctx, nil, slog.Default(), fx.conn, fx.check, "incident.created"))
 	r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), fx.conn, nil, "incident.created"))
@@ -337,18 +336,19 @@ func TestResolveOnCallMentionsNilSafe(t *testing.T) {
 // renderMentionsForTest renders targets the way the Slack sender does, so the
 // "no ping without an identity" claim is asserted on real output.
 func renderMentionsForTest(targets []notifications.MentionTarget) string {
-	out := ""
-	for _, target := range targets {
-		if target.ExternalID != "" {
-			out += "<@" + target.ExternalID + ">"
+	var out strings.Builder
+
+	for i := range targets {
+		if targets[i].ExternalID != "" {
+			out.WriteString("<@" + targets[i].ExternalID + ">")
 
 			continue
 		}
 
-		out += target.DisplayName
+		out.WriteString(targets[i].DisplayName)
 	}
 
-	return out
+	return out.String()
 }
 
 // TestResolveOnCallMentionsSurvivesDatabaseFailure is the "never fail the send"
@@ -364,11 +364,11 @@ func TestResolveOnCallMentionsSurvivesDatabaseFailure(t *testing.T) {
 
 	ctx := t.Context()
 	r := require.New(t)
-	fx := newMentionFixture(t, ctx, "mentions-dbfail", true)
+	fx := newMentionFixture(ctx, t, "mentions-dbfail", true)
 
-	adam := fx.addUser(t, ctx, "adam@acme.test", "Adam")
-	fx.mapIdentity(t, ctx, adam, "U-ADAM", "Adam")
-	fx.attachPolicy(t, ctx, []*models.EscalationPolicyTarget{userTarget(adam.UID, 0)})
+	adam := fx.addUser(ctx, t, "adam@acme.test", "Adam")
+	fx.mapIdentity(ctx, t, adam, "U-ADAM", "Adam")
+	fx.attachPolicy(ctx, t, []*models.EscalationPolicyTarget{userTarget(adam.UID, 0)})
 
 	// Positive control first: with a working database this fixture DOES mention.
 	r.Len(ResolveOnCallMentions(
