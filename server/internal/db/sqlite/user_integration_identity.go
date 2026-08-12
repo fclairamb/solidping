@@ -2,6 +2,8 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -35,18 +37,21 @@ func (s *Service) GetUserIntegrationIdentity(
 ) (*models.UserIntegrationIdentity, error) {
 	identity := new(models.UserIntegrationIdentity)
 
-	count, err := s.db.NewSelect().
+	err := s.db.NewSelect().
 		Model(identity).
 		Where("integration_uid = ?", integrationUID).
 		Where("user_uid = ?", userUID).
 		Limit(1).
-		ScanAndCount(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("get user integration identity: %w", err)
+		Scan(ctx)
+
+	// "Unmapped" is the normal state for most members, not a failure — the
+	// caller degrades to a plain-text name rather than treating it as an error.
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil //nolint:nilnil // "no identity" is a normal, non-error outcome
 	}
 
-	if count == 0 {
-		return nil, nil //nolint:nilnil // "no identity" is a normal, non-error outcome
+	if err != nil {
+		return nil, fmt.Errorf("get user integration identity: %w", err)
 	}
 
 	return identity, nil

@@ -294,6 +294,21 @@ func (s *Service) SyncIdentities(
 	owners := externalIDOwners(rows)
 	client := s.slackIdentityClientFor(token)
 
+	// Phase 1 — ask Slack about every member, writing nothing yet. Resolving
+	// first makes the outcome independent of member iteration order: two people
+	// whose addresses collide on one Slack account must BOTH be reported
+	// ambiguous, not "whoever the query returned first wins".
+	resolved, err := s.lookupAll(ctx, client, ictx.members, byUser)
+	if err != nil {
+		return nil, err
+	}
+
+	claimCount := make(map[string]int, len(resolved))
+	for _, hit := range resolved {
+		claimCount[hit.ID]++
+	}
+
+	// Phase 2 — persist the unambiguous hits.
 	entries := make([]*MemberIdentityResponse, 0, len(ictx.members))
 
 	for _, member := range ictx.members {
@@ -302,7 +317,8 @@ func (s *Service) SyncIdentities(
 			continue
 		}
 
-		entry, syncErr := s.syncOneMember(ctx, ictx.conn, client, user, byUser[user.UID], owners)
+		entry, syncErr := s.applyResolution(
+			ctx, ictx.conn, user, byUser[user.UID], resolved[user.UID], owners, claimCount)
 		if syncErr != nil {
 			return nil, syncErr
 		}
@@ -313,6 +329,40 @@ func (s *Service) SyncIdentities(
 	sortIdentityResponses(entries)
 
 	return buildSyncResponse(entries), nil
+}
+
+// lookupAll resolves every member's email against the workspace. Members with a
+// manual mapping are skipped entirely — their answer is already settled, so
+// spending a Slack call on them would only add latency and rate-limit pressure.
+func (s *Service) lookupAll(
+	ctx context.Context,
+	client SlackIdentityLookup,
+	members []*models.OrganizationMember,
+	byUser map[string]*models.UserIntegrationIdentity,
+) (map[string]*slack.SlackUser, error) {
+	resolved := make(map[string]*slack.SlackUser, len(members))
+
+	for _, member := range members {
+		user := memberUser(member)
+		if user == nil || strings.TrimSpace(user.Email) == "" {
+			continue
+		}
+
+		if existing := byUser[user.UID]; existing != nil && existing.Source == models.IdentitySourceManual {
+			continue
+		}
+
+		slackUser, found, err := client.LookupUserByEmail(ctx, user.Email)
+		if err != nil {
+			return nil, fmt.Errorf("slack lookup for %s: %w", user.Email, err)
+		}
+
+		if found && slackUser != nil {
+			resolved[user.UID] = slackUser
+		}
+	}
+
+	return resolved, nil
 }
 
 // slackIdentityClientFor builds the lookup client, falling back to the real
@@ -335,36 +385,30 @@ func externalIDOwners(rows []*models.UserIntegrationIdentity) map[string]string 
 	return owners
 }
 
-// syncOneMember resolves and persists a single member's identity.
-func (s *Service) syncOneMember(
+// applyResolution turns one member's phase-1 answer into a persisted mapping
+// and a reported status.
+func (s *Service) applyResolution(
 	ctx context.Context,
 	conn *models.Integration,
-	client SlackIdentityLookup,
 	user *models.User,
 	existing *models.UserIntegrationIdentity,
+	hit *slack.SlackUser,
 	owners map[string]string,
+	claimCount map[string]int,
 ) (*MemberIdentityResponse, error) {
-	// A manual mapping is the admin's answer; the auto-match does not get a vote.
-	if existing != nil && existing.Source == models.IdentitySourceManual {
+	// A manual mapping is the admin's answer; the auto-match does not get a
+	// vote. Ditto for a member Slack could not place: keep whatever mapping
+	// they already had rather than destroying it on one unhelpful answer, and
+	// report "not found" only when there is nothing to keep.
+	if hit == nil {
 		return buildIdentityEntry(user, existing), nil
 	}
 
-	if strings.TrimSpace(user.Email) == "" {
-		return buildIdentityEntry(user, existing), nil
-	}
-
-	slackUser, found, err := client.LookupUserByEmail(ctx, user.Email)
-	if err != nil {
-		return nil, fmt.Errorf("slack lookup for %s: %w", user.Email, err)
-	}
-
-	if !found || slackUser == nil {
-		// Keep any pre-existing mapping rather than destroying it on one
-		// unhelpful answer; report "not found" only when there is nothing.
-		return buildIdentityEntry(user, existing), nil
-	}
-
-	if owner, claimed := owners[slackUser.ID]; claimed && owner != user.UID {
+	// Ambiguous either way round: the account already belongs to somebody else,
+	// or two members' addresses both resolved to it in this very sync. Guessing
+	// here would make an alert ping the wrong human, so nothing is written.
+	ownedByOther := owners[hit.ID] != "" && owners[hit.ID] != user.UID
+	if ownedByOther || claimCount[hit.ID] > 1 {
 		entry := buildIdentityEntry(user, existing)
 		entry.Status = IdentityStatusAmbiguous
 
@@ -373,14 +417,14 @@ func (s *Service) syncOneMember(
 
 	identity := models.NewUserIntegrationIdentity(
 		conn.OrganizationUID, conn.UID, user.UID,
-		slackUser.ID, slackDisplayName(slackUser), models.IdentitySourceAuto,
+		hit.ID, slackDisplayName(hit), models.IdentitySourceAuto,
 	)
 
 	if err := s.db.UpsertUserIntegrationIdentity(ctx, identity); err != nil {
 		return nil, fmt.Errorf("upsert identity for %s: %w", user.Email, err)
 	}
 
-	owners[slackUser.ID] = user.UID
+	owners[hit.ID] = user.UID
 
 	return buildIdentityEntry(user, identity), nil
 }
