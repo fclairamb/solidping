@@ -350,3 +350,35 @@ func renderMentionsForTest(targets []notifications.MentionTarget) string {
 
 	return out
 }
+
+// TestResolveOnCallMentionsSurvivesDatabaseFailure is the "never fail the send"
+// guarantee, stated against a database that cannot answer at all: the resolver
+// returns no mentions instead of erroring or panicking, and the caller sends
+// exactly the message it would have sent before this feature existed.
+//
+// Structurally, ResolveOnCallMentions has no error return — there is no channel
+// through which a resolution failure could reach the send path — and this test
+// pins the runtime half of that claim.
+func TestResolveOnCallMentionsSurvivesDatabaseFailure(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+	fx := newMentionFixture(t, ctx, "mentions-dbfail", true)
+
+	adam := fx.addUser(t, ctx, "adam@acme.test", "Adam")
+	fx.mapIdentity(t, ctx, adam, "U-ADAM", "Adam")
+	fx.attachPolicy(t, ctx, []*models.EscalationPolicyTarget{userTarget(adam.UID, 0)})
+
+	// Positive control first: with a working database this fixture DOES mention.
+	r.Len(ResolveOnCallMentions(
+		ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created"), 1)
+
+	// Now break the database underneath it.
+	r.NoError(fx.dbSvc.Close())
+
+	r.NotPanics(func() {
+		r.Nil(ResolveOnCallMentions(
+			ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created"))
+	})
+}
