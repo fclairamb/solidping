@@ -35,7 +35,13 @@ export function DocsLink({ href, className }: DocsLinkProps) {
             size="icon"
             className={cn("h-8 w-8 text-muted-foreground", className)}
           >
-            <a href={href} target="_blank" rel="noopener" aria-label={label}>
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener"
+              aria-label={label}
+              data-testid="docs-link"
+            >
               <BookOpen className="h-4 w-4" />
             </a>
           </Button>
