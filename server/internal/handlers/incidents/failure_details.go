@@ -2,6 +2,7 @@ package incidents
 
 import (
 	"encoding/json"
+	"fmt"
 	"sort"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -136,10 +137,14 @@ func resultSnapshot(result *models.Result) models.JSONMap {
 }
 
 // cappedOutput returns a copy of output bounded to maxFailureSnapshotBytes
-// once marshaled, always keeping checkerdef.OutputKeyError intact. Oversized
-// string values are truncated first; if that alone isn't enough, the largest
-// remaining keys are dropped (deterministic: largest marshaled size first)
-// until the map fits.
+// once marshaled. checkerdef.OutputKeyError is always present and is never
+// dropped by the ordinary passes below, but it is not exempt from the cap
+// itself: oversized string values (other keys) are truncated first, then the
+// largest remaining keys are dropped (deterministic: largest marshaled size
+// first) until the map fits, and — as a last resort, if the error value
+// alone still exceeds the budget once it's the only key left — the error
+// string itself is truncated by truncateErrorToFit so the result never
+// exceeds maxFailureSnapshotBytes.
 func cappedOutput(output models.JSONMap) models.JSONMap {
 	if len(output) == 0 {
 		return models.JSONMap{}
@@ -188,5 +193,57 @@ func cappedOutput(output models.JSONMap) models.JSONMap {
 		delete(capped, entry.key)
 	}
 
+	// Last resort: every other key has been dropped and the map (now
+	// dominated by checkerdef.OutputKeyError alone) still doesn't fit —
+	// truncate the error value itself rather than exceed the cap.
+	if raw, err := json.Marshal(capped); err != nil || len(raw) > maxFailureSnapshotBytes {
+		truncateErrorToFit(capped)
+	}
+
 	return capped
+}
+
+// truncateErrorToFit shrinks capped[checkerdef.OutputKeyError] down to the
+// longest prefix (plus a "…(truncated)" suffix) that keeps the whole map
+// within maxFailureSnapshotBytes once marshaled. Called only after every
+// other output key has already been dropped, so in practice this is
+// binary-searching against a map containing just that one field — cheap
+// even for a very large error string. Truncates on rune boundaries (not raw
+// bytes) so the result stays valid UTF-8; non-string error values are
+// stringified first so the cap still applies to them.
+func truncateErrorToFit(capped models.JSONMap) {
+	raw, ok := capped[checkerdef.OutputKeyError]
+	if !ok {
+		return
+	}
+
+	original, isString := raw.(string)
+	if !isString {
+		original = fmt.Sprintf("%v", raw)
+	}
+
+	const suffix = "…(truncated)"
+
+	runes := []rune(original)
+	lowRunes, highRunes, best := 0, len(runes), suffix
+
+	for lowRunes <= highRunes {
+		mid := (lowRunes + highRunes) / 2
+
+		candidate := string(runes[:mid])
+		if mid < len(runes) {
+			candidate += suffix
+		}
+
+		capped[checkerdef.OutputKeyError] = candidate
+
+		if marshaled, err := json.Marshal(capped); err == nil && len(marshaled) <= maxFailureSnapshotBytes {
+			best = candidate
+			lowRunes = mid + 1
+		} else {
+			highRunes = mid - 1
+		}
+	}
+
+	capped[checkerdef.OutputKeyError] = best
 }

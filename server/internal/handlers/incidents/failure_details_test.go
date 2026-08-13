@@ -227,3 +227,35 @@ func TestCappedOutput_TruncatesOversizedStringValue(t *testing.T) {
 	r.Less(len(body), 20*1024)
 	r.Equal("boom", capped[checkerdef.OutputKeyError])
 }
+
+// TestCappedOutput_TruncatesHugeErrorValue pins the last-resort branch: when
+// checkerdef.OutputKeyError alone is bigger than maxFailureSnapshotBytes, it
+// must still be present (never dropped) but truncated to a prefix of the
+// original, so the whole marshaled map respects the cap.
+func TestCappedOutput_TruncatesHugeErrorValue(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	hugeError := strings.Repeat("e", 20*1024)
+	output := models.JSONMap{
+		checkerdef.OutputKeyError: hugeError,
+	}
+
+	capped := cappedOutput(output)
+
+	errVal, ok := capped[checkerdef.OutputKeyError].(string)
+	r.True(ok, "error key must still be present")
+	r.NotEmpty(errVal)
+	r.Less(len(errVal), len(hugeError), "the error value itself must have been shortened")
+
+	// The retained text must be a genuine prefix of the original error
+	// (modulo the trailing truncation marker), not something unrelated.
+	prefix := strings.TrimSuffix(errVal, "…(truncated)")
+	r.True(strings.HasPrefix(hugeError, prefix),
+		"retained error text must be a prefix of the original")
+
+	raw, err := json.Marshal(capped)
+	r.NoError(err)
+	r.LessOrEqual(len(raw), maxFailureSnapshotBytes,
+		"the whole capped map — dominated by the error string — must respect the size cap")
+}
