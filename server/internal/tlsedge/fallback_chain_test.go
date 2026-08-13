@@ -433,3 +433,60 @@ func chainPlainRequest(t *testing.T, addr, host, path string, preamble []byte) (
 
 	return string(response), err
 }
+
+// TestFallbackChainLocalTLSHandshake covers the local half of the HTTPS
+// splitter without a CA: a connection for a host this instance DOES serve must
+// reach the TLS stack with a byte-for-byte identical ClientHello, or the
+// handshake fails. The forwarded path proves the replay towards the next hop;
+// this proves the replay into crypto/tls right here.
+func TestFallbackChainLocalTLSHandshake(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	downstream := startFakeTLSDownstream(t, chainDownstreamHost)
+
+	var lc net.ListenConfig
+
+	raw, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	r.NoError(err)
+
+	addr := raw.Addr().String()
+
+	split, err := newFallbackListener(t.Context(), raw, fallbackConfig{
+		listener:      listenerHTTPS,
+		upstream:      downstream.addr,
+		proxyProtocol: true,
+		peek:          peekTLSClientHello,
+		peekTimeout:   2 * time.Second,
+		isLocal: func(_ context.Context, host string) bool {
+			return host == chainUpstreamHost
+		},
+		log: slog.New(slog.DiscardHandler),
+	})
+	r.NoError(err)
+
+	tlsConfig := testTLSConfigFor(t, chainUpstreamHost)
+
+	srv := &http.Server{
+		Handler: http.HandlerFunc(func(writer http.ResponseWriter, req *http.Request) {
+			_, _ = io.WriteString(writer, "local-tls:"+req.Host)
+		}),
+		ReadHeaderTimeout: readHeaderTimeout,
+	}
+
+	go func() { _ = srv.Serve(tls.NewListener(split, tlsConfig)) }()
+
+	t.Cleanup(func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+	})
+
+	state, body, err := chainTLSRequest(t, addr, chainUpstreamHost, nil)
+	r.NoError(err, "a replayed ClientHello must still complete the local handshake")
+	r.NotEmpty(state.PeerCertificates)
+	r.Contains(state.PeerCertificates[0].DNSNames, chainUpstreamHost)
+	r.Contains(body, "local-tls:"+chainUpstreamHost)
+	r.Equal(int64(1), split.stats.local.Load())
+	r.Zero(split.stats.forwarded.Load())
+}
