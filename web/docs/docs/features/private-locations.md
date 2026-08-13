@@ -254,24 +254,18 @@ spec:
                 secretKeyRef: { name: solidping-agent-keys, key: keys }
 ```
 
-#### Alternative — keep the identity on a volume
-
-If you would rather the identity never leave the cluster, give the agent a PVC
-mounted at `/data`, leave `SP_AGENT_KEYS` unset, and pass
-`SP_AGENT_ENROLLMENT_TOKEN` (with `optional: true`) for the first start only —
-the agent generates and keeps its keys there. Set `fsGroup: 65532` as above, use
-`strategy: Recreate` since the volume is `ReadWriteOnce`, and note the
-trade-off: the pod is now pinned to that volume, and **losing the PVC loses the
-identity** with no way to recover it.
-
 #### High availability
 
-Enroll several agents into the same location — each with its **own**
-identity (own Secret) and one enrollment token each. They share
-the work through the same lease mechanism cloud workers use — if one agent
-dies, its leases expire and a sibling picks the checks up. Never point two
-pod replicas at the same PVC or the same keys Secret; that's exactly what
-`strategy: { type: Recreate }` on the PVC option guards against.
+Enroll several agents into the same location — each with its **own** identity
+(own Secret) and one enrollment token each. They share the work through the same
+lease mechanism cloud workers use — if one agent dies, its leases expire and a
+sibling picks the checks up. Never point two pod replicas at the same keys
+Secret: two agents presenting the same identity are indistinguishable to the
+server, so give every replica its own.
+
+Because the running agent keeps no local state, the Deployment needs no volume,
+no `fsGroup`, and no `strategy: Recreate` — it can use the default rolling
+update and be rescheduled onto any node freely.
 
 ## 4. Target the location from a check
 

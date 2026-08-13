@@ -98,8 +98,9 @@ kubectl exec solidping-agent-enroll -c extract \
 ```
 
 Piping it means the key material never lands in a terminal, a shell history or
-a log. (An earlier revision of this page claimed Kubernetes had no in-cluster
-extraction path and recommended a PVC on that basis — that was wrong.)
+a log. The distroless constraint never applies to the sidecar: it is an ordinary
+`alpine` image with a shell and `base64`, and it reads the file through the
+shared volume rather than out of the agent container.
 
 The steady-state deployment then runs from `SP_AGENT_KEYS` alone
 (it wins over the keys file — see
@@ -118,10 +119,15 @@ Load-bearing details that are easy to miss:
 - The Secret (plus whatever backup you take of it) is the **only** copy of the
   identity; losing it means revoking the agent and enrolling a new one.
 
-A PVC at `/data` with `SP_AGENT_KEYS` unset remains a valid alternative when
-you would rather the identity never leave the cluster — at the cost of pinning
-the pod to a `ReadWriteOnce` volume (`strategy: Recreate`) whose loss is
-unrecoverable.
+**Do not document or recommend a PVC-backed identity.** Persisting `/data` on a
+volume does work technically, but it is not the pattern we support: it pins the
+pod to a `ReadWriteOnce` volume (forcing `strategy: Recreate`), makes the agent
+stateful for no operational gain, and turns an ordinary volume loss into an
+unrecoverable identity loss. The supported shapes are exactly two —
+`SP_AGENT_KEYS` from an env var, or from a Secret. An earlier revision of this
+page recommended a PVC on the (incorrect) grounds that Kubernetes had no
+in-cluster extraction path; both that claim and the recommendation built on it
+are withdrawn.
 
 **Docker** has its own way out, and a simpler one: `docker cp` is implemented
 daemon-side against the container's filesystem — it never execs anything inside
@@ -137,9 +143,10 @@ docker run --rm -v agent-data:/data alpine base64 -w0 /data/agent-keys.json
 **`SP_AGENT_PRINT_KEYS=true` is a last resort, not a bootstrap procedure.**
 It prints the banner-wrapped base64 to stdout, i.e. into whatever aggregates
 container logs — Kubernetes' own log pipeline for a pod running in-cluster.
-Because the exec routes are broken, this flag was the *de-facto only*
-Kubernetes path before the PVC pattern was documented; it must not become the
-standard way to bootstrap an agent. Use it only when no volume is available:
+Because the in-container exec routes are broken, this flag looked like the
+*de-facto only* Kubernetes path before the sidecar extraction above was
+documented; it must not become the standard way to bootstrap an agent. Use it
+only when the sidecar route is unavailable:
 copy the banner-wrapped value into your secret store, then **unset the
 variable and restart**, and treat that agent as compromised (revoke +
 re-enroll) if the output was retained by a log drain. The flag is honoured on
