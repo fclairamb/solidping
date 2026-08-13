@@ -88,12 +88,12 @@ func TestCreateAndListPrivateRegion(t *testing.T) {
 	r.NoError(err)
 	r.Equal("dc1", created.Slug)
 	// The stored/dispatched region string is namespaced with the reserved prefix.
-	r.Equal("@acme/dc1", created.Region)
+	r.Equal("@dc1", created.Region)
 
 	list, err := s.svc.ListPrivateRegions(ctx, "acme")
 	r.NoError(err)
 	r.Len(list.Data, 1)
-	r.Equal("@acme/dc1", list.Data[0].Region)
+	r.Equal("@dc1", list.Data[0].Region)
 	r.Equal("Paris DC", list.Data[0].Name)
 	r.Equal(0, list.Data[0].AgentCount)
 }
@@ -132,7 +132,7 @@ func TestMintEnrollmentTokenShownOnceAndHashedAtRest(t *testing.T) {
 	minted, err := s.svc.MintEnrollmentToken(ctx, "acme", &agents.MintEnrollmentTokenRequest{RegionSlug: "dc1"}, nil)
 	r.NoError(err)
 	r.True(strings.HasPrefix(minted.Token, agentcrypto.EnrollmentTokenPrefix))
-	r.Equal("@acme/dc1", minted.Region)
+	r.Equal("@dc1", minted.Region)
 	// Defaults to the documented 24h TTL.
 	r.WithinDuration(before.Add(agents.DefaultEnrollmentTokenTTL), minted.ExpiresAt, time.Minute)
 
@@ -236,7 +236,7 @@ func TestListAgentsAndRevoke(t *testing.T) {
 	r.Equal("paris-1", list.Data[0].Name)
 	r.Equal("fp-abc", list.Data[0].Fingerprint)
 	r.Equal(models.AgentStatusActive, list.Data[0].Status)
-	r.Equal("@acme/dc1", list.Data[0].Region)
+	r.Equal("@dc1", list.Data[0].Region)
 
 	r.NoError(s.svc.RevokeAgent(ctx, "acme", agent.UID))
 
