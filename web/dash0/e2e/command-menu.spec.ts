@@ -23,15 +23,19 @@ test.describe("Command Menu (Cmd+K)", () => {
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Status Pages" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Badges" })).toBeVisible();
 
-    // Verify Account group
-    await expect(page.getByText("Account", { exact: true })).toBeVisible();
+    // Verify Account group. The group heading itself reads "Account", same as
+    // the new section-landing entry's title, so scope the heading assertion
+    // to the [cmdk-group-heading] element to avoid a strict-mode ambiguity.
+    await expect(page.locator("[cmdk-group-heading]", { hasText: "Account" })).toBeVisible();
+    await expect(page.getByTestId("command-menu-account")).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Profile" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Tokens" })).toBeVisible();
     await expect(page.getByTestId("command-menu-ai")).toBeVisible();
     await expect(page.getByTestId("command-menu-ai")).toContainText("AI assistants");
 
-    // Verify Organization group
-    await expect(page.getByText("Organization", { exact: true })).toBeVisible();
+    // Verify Organization group (same heading/entry-title collision as above).
+    await expect(page.locator("[cmdk-group-heading]", { hasText: "Organization" })).toBeVisible();
+    await expect(page.getByTestId("command-menu-organization")).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Members" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Invitations" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Settings" })).toBeVisible();
