@@ -319,3 +319,62 @@ func TestVerifyTelegramIdentity_DoesNotPersistAMismatch(t *testing.T) {
 	_, stored := storedParam(t, dbSvc, TelegramBotUsernameParam)
 	r.False(stored, "a mismatch is a warning to the operator, not a value to adopt")
 }
+
+// TestEnsureTelegramCommands_RegistersTheAdvertisedList pins the boot-time
+// setMyCommands call. It is unconditional and idempotent for the same reason
+// setWebhook is: the list lives on Telegram's side, nothing here can read back
+// what a previous deploy set, and a version that adds a command has to make it
+// discoverable without anyone opening BotFather.
+func TestEnsureTelegramCommands_RegistersTheAdvertisedList(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fake := newFakeTelegramAPI(t)
+	cfg := telegramTestConfig(fake, "some-secret")
+
+	client, err := telegram.NewClientFromConfig(&cfg.Telegram)
+	r.NoError(err)
+
+	ensureTelegramCommands(context.Background(), client)
+
+	r.Equal(1, fake.callCount("setMyCommands"))
+
+	commands, ok := fake.payload("setMyCommands")["commands"].([]any)
+	r.True(ok)
+	r.Len(commands, len(telegram.Commands))
+
+	names := make([]string, 0, len(commands))
+
+	for _, entry := range commands {
+		command, isMap := entry.(map[string]any)
+		r.True(isMap)
+		r.NotEmpty(command["description"], "a command with no description is invisible in the menu")
+
+		name, isString := command["command"].(string)
+		r.True(isString)
+		names = append(names, name)
+	}
+
+	// The whole point of registering is that the menu matches what the running
+	// version actually answers.
+	r.Subset(names, []string{"status", "incidents", "ack", "incident", "help"})
+}
+
+// TestBootstrapTelegram_RegistersCommandsAndWebhook proves the command
+// registration is actually wired into the boot path, not merely callable — a
+// helper nothing calls advertises nothing.
+func TestBootstrapTelegram_RegistersCommandsAndWebhook(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fake := newFakeTelegramAPI(t)
+	cfg := telegramTestConfig(fake, "some-secret")
+	cfg.Node.Role = "all"
+
+	bootstrapTelegram(context.Background(), nil, cfg)
+
+	r.Equal(1, fake.callCount("setMyCommands"))
+	r.Equal(1, fake.callCount("setWebhook"))
+}
