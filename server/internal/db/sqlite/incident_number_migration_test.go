@@ -10,11 +10,11 @@ import (
 )
 
 // incidentNumberBackfillSQL is the backfill block of
-// 012_incident_number.up.sql. The `alter table` that precedes it in the
+// 013_incident_number.up.sql. The `alter table` that precedes it in the
 // migration is NOT re-runnable (SQLite has no ADD COLUMN IF NOT EXISTS), so
 // this test inlines just the backfill — exactly like
 // owner_backfill_migration_test.go does for 011.
-// Keep in sync with migrations/012_incident_number.up.sql.
+// Keep in sync with migrations/013_incident_number.up.sql.
 const incidentNumberBackfillSQL = `
 update incidents
 set number = (
@@ -141,4 +141,33 @@ func TestIncidentNumberSkipsSoftDeletedRows(t *testing.T) {
 	// And the deleted incident is no longer reachable by its number.
 	_, err = svc.GetIncidentByNumber(ctx, org.UID, 2)
 	r.Error(err)
+}
+
+// TestIncidentNumberMigrationDoesNotReuseANumber guards the numbering hazard
+// that bit this change during development.
+//
+// bun keys applied migrations on the NUMERIC PREFIX alone. The v0.14.0 cycle
+// shipped scratch migrations 011 AND 012 before consolidating them into a single
+// 011_v0_14_0, so every database that ran the pre-consolidation branch carries a
+// recorded row for "012". A new file numbered 012 is therefore treated as
+// already applied, silently skipped, and the missing column only surfaces later
+// as a 500 on the first incident query — the exact failure this test exists to
+// make impossible to reintroduce.
+func TestIncidentNumberMigrationDoesNotReuseANumber(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	entries, err := migrationsFS.ReadDir("migrations")
+	r.NoError(err)
+
+	for _, entry := range entries {
+		r.NotContains(entry.Name(), "012_",
+			"012 was consumed by a v0.14.0 scratch migration; a file reusing it is silently skipped")
+	}
+
+	for _, name := range []string{"013_incident_number.up.sql", "013_incident_number.down.sql"} {
+		_, readErr := migrationsFS.ReadFile("migrations/" + name)
+		r.NoError(readErr, "%s must be embedded", name)
+	}
 }

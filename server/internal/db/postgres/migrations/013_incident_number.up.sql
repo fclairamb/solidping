@@ -1,6 +1,15 @@
--- Scratch migration for the current release cycle (011 shipped with v0.14.0 and
--- is frozen). Adds the short, human-scale incident reference: a per-org,
--- monotonically increasing number, GitHub-issue style.
+-- Scratch migration for the current release cycle. Adds the short, human-scale
+-- incident reference: a per-org, monotonically increasing number, GitHub-issue
+-- style.
+--
+-- It takes 013, NOT 012, and that is load-bearing. bun keys applied migrations
+-- on the NUMERIC PREFIX alone, and the v0.14.0 cycle burned BOTH 011 and 012 as
+-- scratch migrations before they were consolidated into 011_v0_14_0 (see the
+-- header of that file). Any database that ran the pre-consolidation branch —
+-- every dev box, and any install deployed from it — already has a row for "012"
+-- and would treat a 012 file here as applied, silently skipping the DDL below
+-- and 500ing on the first incident query. 013 is the first genuinely free
+-- number.
 --
 -- Why a column and not an ephemeral "index into the last listing": the mapping
 -- has to be durable (restarts, several API pods, weeks later), queryable
