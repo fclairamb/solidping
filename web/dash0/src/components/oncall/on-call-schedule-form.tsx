@@ -4,6 +4,10 @@ import { Command } from "cmdk";
 import { Check, ChevronsUpDown, Save } from "lucide-react";
 
 import { useMembers, type OnCallRotationType } from "@/api/hooks";
+import {
+  EmailOnlyBadge,
+  useEmailOnlyUserUids,
+} from "@/components/notifications/member-coverage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -100,6 +104,10 @@ export function OnCallScheduleForm({
 
   const { data: membersResp } = useMembers(org);
   const members = useMemo(() => membersResp?.data ?? [], [membersResp]);
+  // Rostering somebody who can only be reached by email is the failure this
+  // badge exists to prevent — the silent email fallback in the escalation job
+  // makes it look like paging works right up until nobody wakes up.
+  const emailOnlyUsers = useEmailOnlyUserUids(org);
   const browserTimezone = useMemo(() => defaultBrowserTimezone(), []);
 
   const set = <K extends keyof OnCallScheduleFormValues>(
@@ -267,11 +275,14 @@ export function OnCallScheduleForm({
                   checked={values.userUids.includes(m.userUid)}
                   onChange={() => toggleUser(m.userUid)}
                 />
-                <span className="text-sm">
-                  {m.name || m.email}
-                  {m.name ? (
-                    <span className="text-muted-foreground"> ({m.email})</span>
-                  ) : null}
+                <span className="flex flex-wrap items-center gap-2 text-sm">
+                  <span>
+                    {m.name || m.email}
+                    {m.name ? (
+                      <span className="text-muted-foreground"> ({m.email})</span>
+                    ) : null}
+                  </span>
+                  {emailOnlyUsers.has(m.userUid) && <EmailOnlyBadge />}
                 </span>
               </label>
             ))

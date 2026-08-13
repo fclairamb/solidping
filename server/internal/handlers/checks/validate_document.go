@@ -34,9 +34,12 @@ const issueDuplicateSlug = "duplicate slug"
 // reference workflow's LABEL_KEY_RE).
 var labelKeyRegex = regexp.MustCompile(`^[a-z0-9]+(?:[-.][a-z0-9]+)*$`)
 
-// regionRegex matches a plain region slug or an "@org/private-location"
-// reference (mirrors the reference workflow's REGION_RE).
-var regionRegex = regexp.MustCompile(`^(?:[a-z0-9-]+|@[a-z0-9-]+/[a-z0-9-]+)$`)
+// regionRegex matches a plain cloud region slug, an org-relative private region
+// ("@private-location", the stored form since spec 2026-08-13-01), or the LEGACY
+// fully-qualified "@org/private-location" spelling — which stays accepted here
+// because regions.NormalizeRegionsForOrg is what folds it down (for this org) or
+// rejects it (for anybody else's) on the way in.
+var regionRegex = regexp.MustCompile(`^(?:[a-z0-9-]+|@[a-z0-9-]+(?:/[a-z0-9-]+)?)$`)
 
 // secretConfigHints are substrings that, found in a config key, suggest a
 // credential was inlined instead of using a secret store / ${env:}/${param:}
@@ -323,7 +326,7 @@ func validateCheckFormats(where string, check *ExportCheck) []DocumentIssue {
 	for _, region := range check.Regions {
 		if !regionRegex.MatchString(region) {
 			issues = append(issues, DocumentIssue{
-				Where: where, Message: fmt.Sprintf("region %q must be a slug or \"@org/private-location\"", region),
+				Where: where, Message: fmt.Sprintf("region %q must be a slug or \"@private-location\"", region),
 			})
 		}
 	}

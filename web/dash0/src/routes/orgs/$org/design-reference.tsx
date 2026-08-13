@@ -49,6 +49,8 @@ import {
   CopyableInline,
 } from "@/components/shared/copyable-code";
 import { DnsRecordRow } from "@/components/shared/dns-record-row";
+import { DocsLink } from "@/components/shared/docs-link";
+import { LiveDurationAgo } from "@/components/shared/relative-time";
 import { ErrorFallbackCard } from "@/components/shared/error-boundary";
 import { MaintenanceScheduleSummary } from "@/components/shared/maintenance-schedule-summary";
 import { JsonViewer } from "@/components/shared/json-viewer";
@@ -122,6 +124,10 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Stepper } from "@/components/ui/stepper";
+import {
+  PagingCoverageCell,
+  EmailOnlyBadge,
+} from "@/components/notifications/member-coverage";
 import { Switch } from "@/components/ui/switch";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import {
@@ -143,10 +149,16 @@ export const Route = createFileRoute("/orgs/$org/design-reference")({
   component: DesignReferencePage,
 });
 
+// Computed once at module scope (not inside a component render) so the
+// "N ago" showcase below stays a pure render — see the LiveDurationAgo
+// example.
+const RELATIVE_TIME_DEMO_SINCE = new Date(Date.now() - 5 * 60_000).toISOString();
+
 const SECTIONS: { id: string; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "conventions", label: "Conventions" },
   { id: "page-header", label: "Page header" },
+  { id: "docs-link", label: "Docs link" },
   { id: "breadcrumbs", label: "Breadcrumbs" },
   { id: "color-tokens", label: "Color tokens" },
   { id: "brand", label: "Brand" },
@@ -172,6 +184,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "maintenance-schedule", label: "Maintenance schedule" },
   { id: "stats-strip", label: "Stats strip" },
   { id: "swatch-legend-chips", label: "Swatch-legend chips" },
+  { id: "paging-coverage", label: "Paging coverage" },
 ];
 
 function DesignReferencePage() {
@@ -186,6 +199,7 @@ function DesignReferencePage() {
       <OverviewSection />
       <ConventionsSection />
       <PageHeaderSection />
+      <DocsLinkSection />
       <BreadcrumbsSection />
       <ColorTokensSection />
       <BrandSection />
@@ -211,6 +225,7 @@ function DesignReferencePage() {
       <MaintenanceScheduleSection />
       <StatsStripSection />
       <SwatchLegendChipsSection />
+      <PagingCoverageSection />
     </div>
   );
 }
@@ -470,6 +485,7 @@ import { PageHeader } from "@/components/shared/page-header";
       </Link>
     </Button>
   }
+  docsHref="/docs/features/status-pages"
   className="flex-wrap"
 />`;
   return (
@@ -498,6 +514,7 @@ import { PageHeader } from "@/components/shared/page-header";
               New page
             </Button>
           }
+          docsHref="/docs/features/status-pages"
           className="flex-wrap"
         />
       </div>
@@ -512,7 +529,16 @@ import { PageHeader } from "@/components/shared/page-header";
         <code className="rounded bg-muted px-1 py-0.5 text-xs">actions</code>{" "}
         prop; leave filter/search toolbars on their own row below the header.
         Add <code className="rounded bg-muted px-1 py-0.5 text-xs">className="flex-wrap"</code>{" "}
-        so actions wrap instead of overflowing on mobile. The detail/edit-page
+        so actions wrap instead of overflowing on mobile. Pass{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">docsHref</code>{" "}
+        when a genuinely relevant docs page exists — it renders a small{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">DocsLink</code>{" "}
+        next to the actions; omit it rather than pointing at an unrelated page.
+        See the{" "}
+        <a href="#docs-link" className="text-primary hover:underline">
+          Docs link
+        </a>{" "}
+        section below for the standalone primitive. The detail/edit-page
         header — back arrow inside the right-aligned action cluster — is the
         same surface for detail pages; it is documented just below.
       </p>
@@ -726,6 +752,38 @@ import { PageHeader } from "@/components/shared/page-header";
           so the app stays consistent.
         </p>
       </div>
+    </Section>
+  );
+}
+
+function DocsLinkSection() {
+  const importLine = `import { DocsLink } from "@/components/shared/docs-link";
+
+<DocsLink href="/docs/features/check-types" />`;
+  return (
+    <Section
+      id="docs-link"
+      title="Docs link"
+      description="A small, discreet ghost icon button that opens the embedded docs site (served same-origin at /docs on every host) in a new tab. Intended for header-level placement via PageHeader's docsHref prop — see the Page header section above — but usable standalone anywhere a contextual doc link is warranted. Only wire it when a genuinely relevant docs page exists; never point it at a generic landing page like /docs/intro."
+    >
+      <ExampleRow
+        preview={<DocsLink href="/docs/features/check-types" />}
+        importLine={importLine}
+      />
+      <p className="text-sm text-muted-foreground">
+        Renders a <code className="rounded bg-muted px-1 py-0.5 text-xs">BookOpen</code>{" "}
+        icon in a ~h-8 w-8 ghost button, with a "Documentation" tooltip and{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">aria-label</code>. The{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">href</code> is a
+        same-origin relative path (e.g.{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">/docs/features/...</code>
+        ), opened with{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">
+          target=&quot;_blank&quot; rel=&quot;noopener&quot;
+        </code>
+        . Header-level links only for now — don't sprinkle field-level docs
+        links inside forms in this pass.
+      </p>
     </Section>
   );
 }
@@ -1074,6 +1132,35 @@ function ButtonsBadgesSection() {
             </span>
           }
           importLine={`import { LiveStatusDot } from "@/components/layout/live-status-dot";\n\n<LiveStatusDot />`}
+        />
+
+        <h3 className="text-sm font-medium">Relative time (live)</h3>
+        <p className="text-sm text-muted-foreground">
+          Live-ticking "N ago" text for a timestamp — used by the check summary
+          cards' "last checked" line and the private locations agents table's
+          "Last seen" column. Ticks on its own 1s interval (cleared on
+          unmount) via{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">LiveDurationAgo</code>,
+          formats with the shared{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">formatDuration()</code>{" "}
+          (caps at <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Xd Yh Zm</code>),
+          and wraps the result in the translated{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">checks:detail.summary.ago</code>{" "}
+          template so FR/DE/ES render correctly instead of a hard-coded "ago" suffix. Pair it with a{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">title</code> carrying the full
+          local timestamp so the exact moment stays reachable on hover, and keep a separate
+          "never" fallback for a null/undefined timestamp — the component itself has no empty state.
+        </p>
+        <ExampleRow
+          preview={
+            <span
+              className="text-sm text-muted-foreground"
+              title={new Date(RELATIVE_TIME_DEMO_SINCE).toLocaleString()}
+            >
+              <LiveDurationAgo since={RELATIVE_TIME_DEMO_SINCE} />
+            </span>
+          }
+          importLine={`import { LiveDurationAgo } from "@/components/shared/relative-time";\n\n{agent.lastSeenAt ? (\n  <span title={new Date(agent.lastSeenAt).toLocaleString()}>\n    <LiveDurationAgo since={agent.lastSeenAt} />\n  </span>\n) : (\n  t("privateLocations.agents.never", "never")\n)}`}
         />
 
         <h3 className="text-sm font-medium">Session card</h3>
@@ -1964,7 +2051,11 @@ function StepperSection() {
         />
       </div>
       <CodeSnippet
-        code={`import { Stepper } from "@/components/ui/stepper";\n\n<Stepper\n  steps={[{ label: "Pick location" }, { label: "Mint token" }, { label: "Run the agent" }, { label: "Wait for connection" }]}\n  current={step}\n/>`}
+        code={`import { Stepper } from "@/components/ui/stepper";
+import {
+  PagingCoverageCell,
+  EmailOnlyBadge,
+} from "@/components/notifications/member-coverage";\n\n<Stepper\n  steps={[{ label: "Pick location" }, { label: "Mint token" }, { label: "Run the agent" }, { label: "Wait for connection" }]}\n  current={step}\n/>`}
       />
     </Section>
   );
@@ -2892,6 +2983,70 @@ function SwatchLegendChipsSection() {
         }
         importLine={snippet}
       />
+    </Section>
+  );
+}
+
+function PagingCoverageSection() {
+  const snippet = `import {
+  PagingCoverageCell,
+  EmailOnlyBadge,
+  useEmailOnlyUserUids,
+} from "@/components/notifications/member-coverage";
+
+// In a member table row:
+<PagingCoverageCell coverage={coverageByUser.get(member.userUid)} />
+
+// Next to any rostered member / \`user\` escalation target:
+const emailOnly = useEmailOnlyUserUids(org);
+{emailOnly.has(member.userUid) && <EmailOnlyBadge />}`;
+
+  return (
+    <Section
+      id="paging-coverage"
+      title="Paging coverage"
+      description="How reachable a member actually is. Solid icon = enabled AND verified (it can page); dashed/muted = unverified or disabled (it cannot). When email is all that remains, the warning badge says so out loud — a row of quiet icons must never read as 'covered'. Data comes from the admin-only coverage endpoint, which exposes channel types and flags but never a contact value."
+    >
+      <div className="space-y-4 rounded-md border bg-card p-4">
+        <div className="flex flex-wrap items-center gap-6">
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Well covered</p>
+            <PagingCoverageCell
+              coverage={{
+                userUid: "u1",
+                email: "zoe@example.com",
+                role: "admin",
+                emailFallbackOnly: false,
+                channels: [
+                  { type: "email", verified: true, enabled: true },
+                  { type: "phone", verified: true, enabled: true },
+                  { type: "telegram", verified: true, enabled: true },
+                ],
+              }}
+            />
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Unverified phone</p>
+            <PagingCoverageCell
+              coverage={{
+                userUid: "u2",
+                email: "bob@example.com",
+                role: "user",
+                emailFallbackOnly: true,
+                channels: [
+                  { type: "email", verified: true, enabled: true },
+                  { type: "phone", verified: false, enabled: true },
+                ],
+              }}
+            />
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Badge on its own</p>
+            <EmailOnlyBadge />
+          </div>
+        </div>
+      </div>
+      <CodeSnippet code={snippet} />
     </Section>
   );
 }

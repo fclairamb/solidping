@@ -495,6 +495,48 @@ func (c *Client) ListUsers(ctx context.Context) ([]SlackUser, error) {
 	return users, nil
 }
 
+// slackErrUsersNotFound is the Slack error code returned by
+// users.lookupByEmail when no workspace member has that address. It is a
+// perfectly normal answer for the identity auto-match ("this colleague is not
+// in the workspace"), so LookupUserByEmail reports it as "not found" rather
+// than as a failure — otherwise one absent member would abort the whole sync.
+const slackErrUsersNotFound = "users_not_found"
+
+// LookupUserByEmail resolves a workspace member from their email address via
+// users.lookupByEmail. Requires the users:read.email scope, which the bot
+// already requests at install (see slackBotScopes), so no re-consent is needed.
+//
+// Returns (nil, false, nil) when the workspace has nobody with that address, and
+// an error only for real failures (auth, transport, rate limits). Bots and
+// deactivated members are treated as "not found": mentioning either is useless.
+func (c *Client) LookupUserByEmail(ctx context.Context, email string) (*SlackUser, bool, error) {
+	const method = "users.lookupByEmail"
+
+	// Form-encoded: like the other read methods, lookupByEmail ignores
+	// JSON-body arguments.
+	params := url.Values{}
+	params.Set("email", email)
+
+	var result struct {
+		OK   bool      `json:"ok"`
+		User SlackUser `json:"user"`
+	}
+
+	if err := c.callFormAPI(ctx, method, params, &result); err != nil {
+		if strings.Contains(err.Error(), slackErrUsersNotFound) {
+			return nil, false, nil
+		}
+
+		return nil, false, err
+	}
+
+	if result.User.ID == "" || result.User.IsBot || result.User.Deleted {
+		return nil, false, nil
+	}
+
+	return &result.User, true, nil
+}
+
 // callAPI makes a Slack API call with a JSON-encoded body. This is the right
 // transport for Slack's write methods (chat.*, views.*, reactions.*), which
 // accept application/json. It is NOT suitable for the cursor-paginated read

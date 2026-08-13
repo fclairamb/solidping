@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { DocsLink } from "@/components/shared/docs-link";
 import { cn } from "@/lib/utils";
 
 type PageHeaderProps = {
@@ -10,6 +11,8 @@ type PageHeaderProps = {
   actions?: ReactNode;
   className?: string;
   iconClassName?: string;
+  /** Same-origin relative docs path (e.g. "/docs/features/check-types"). Renders a small DocsLink next to actions. Only pass this when a genuinely relevant docs page exists. */
+  docsHref?: string;
 };
 
 export function PageHeader({
@@ -19,6 +22,7 @@ export function PageHeader({
   actions,
   className,
   iconClassName,
+  docsHref,
 }: PageHeaderProps) {
   return (
     <div className={cn("flex items-start gap-3", className)}>
@@ -36,8 +40,11 @@ export function PageHeader({
           <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         ) : null}
       </div>
-      {actions ? (
-        <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>
+      {actions || docsHref ? (
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {actions}
+          {docsHref ? <DocsLink href={docsHref} /> : null}
+        </div>
       ) : null}
     </div>
   );

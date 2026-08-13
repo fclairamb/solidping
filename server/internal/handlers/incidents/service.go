@@ -1568,62 +1568,15 @@ func (s *Service) scheduleEscalationPolicy(
 	}
 }
 
-// resolveEscalationPolicyUID picks the right policy for a check, in precedence
-// order: the check's own policy wins; otherwise the check group's; otherwise
-// the organization's default; otherwise none. Resolution runs once at
-// incident-open — changing any level later never retargets an in-flight cycle.
-//
-// The org default is opt-in: an org that never sets one keeps the historical
-// check → group → none behavior exactly (the extra lookups only fire when the
-// higher-precedence levels resolve to nothing).
-//
-// A candidate at any level is honored only when the referenced policy still
-// exists (livePolicyUID drops soft-deleted ones). This is what makes the
-// delete-guard promise true: policy deletion is a soft delete, so the FK
-// `on delete set null` never fires and the stale UID lingers on the row — but
-// the resolver ignores it and continues the chain, so a deleted policy's checks
-// "fall back to inherited escalation" (group → org default → none) exactly as
-// the delete confirmation says.
+// resolveEscalationPolicyUID picks the effective policy for a check
+// (check → group → org default → none). The precedence chain itself lives in
+// jobtypes.ResolveEscalationPolicyUID so the Slack on-call mention resolver
+// names exactly the humans this scheduling path would page — two copies of the
+// chain could drift, and a mention that disagrees with the actual page is
+// worse than no mention. This wrapper is kept so the package's white-box tests
+// and call sites read unchanged.
 func resolveEscalationPolicyUID(ctx context.Context, dbSvc db.Service, check *models.Check) string {
-	if uid := livePolicyUID(ctx, dbSvc, check.OrganizationUID, check.EscalationPolicyUID); uid != "" {
-		return uid
-	}
-
-	if check.CheckGroupUID != nil && *check.CheckGroupUID != "" {
-		group, err := dbSvc.GetCheckGroup(ctx, check.OrganizationUID, *check.CheckGroupUID)
-		if err == nil && group != nil {
-			if uid := livePolicyUID(ctx, dbSvc, check.OrganizationUID, group.EscalationPolicyUID); uid != "" {
-				return uid
-			}
-		}
-	}
-
-	// Neither the check nor its group named a live policy — fall back to the
-	// org default (null-safe: an org without one resolves to none).
-	org, err := dbSvc.GetOrganization(ctx, check.OrganizationUID)
-	if err == nil && org != nil {
-		if uid := livePolicyUID(ctx, dbSvc, check.OrganizationUID, org.DefaultEscalationPolicyUID); uid != "" {
-			return uid
-		}
-	}
-
-	return ""
-}
-
-// livePolicyUID returns *policyUID when it names a policy that still exists in
-// the org (not soft-deleted), else "". A nil/empty pointer, or a UID whose
-// policy has been deleted, both resolve to "" so the caller continues the
-// resolution chain.
-func livePolicyUID(ctx context.Context, dbSvc db.Service, orgUID string, policyUID *string) string {
-	if policyUID == nil || *policyUID == "" {
-		return ""
-	}
-
-	if _, err := dbSvc.GetEscalationPolicy(ctx, orgUID, *policyUID); err != nil {
-		return ""
-	}
-
-	return *policyUID
+	return jobtypes.ResolveEscalationPolicyUID(ctx, dbSvc, check)
 }
 
 // ListIncidentsOptions contains options for listing incidents.

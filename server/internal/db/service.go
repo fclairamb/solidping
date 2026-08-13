@@ -894,6 +894,34 @@ type Service interface {
 	// Returns nil, nil when no Slack channel is configured.
 	GetSlackChannelForOrg(ctx context.Context, orgUID string) (*models.Integration, error)
 
+	// --- UserIntegrationIdentities ---
+	//
+	// "Who is this member on this integration instance" — used for mentions and
+	// attribution only. Deliberately separate from UserContacts, which answer
+	// "how to page me" and carry verification state.
+
+	// ListUserIntegrationIdentities returns every identity mapped on one
+	// integration, ordered by display name.
+	ListUserIntegrationIdentities(
+		ctx context.Context, integrationUID string,
+	) ([]*models.UserIntegrationIdentity, error)
+
+	// GetUserIntegrationIdentity returns one member's identity on an
+	// integration. Returns nil, nil when the member has no identity there —
+	// "unmapped" is a normal state, not an error.
+	GetUserIntegrationIdentity(
+		ctx context.Context, integrationUID, userUID string,
+	) (*models.UserIntegrationIdentity, error)
+
+	// UpsertUserIntegrationIdentity writes an identity keyed on
+	// (integration_uid, user_uid), so re-syncing never duplicates rows.
+	UpsertUserIntegrationIdentity(ctx context.Context, identity *models.UserIntegrationIdentity) error
+
+	// DeleteUserIntegrationIdentity removes a member's identity on an
+	// integration. Hard delete — the unique (integration_uid, external_id)
+	// index must be freed immediately so the id can be reassigned.
+	DeleteUserIntegrationIdentity(ctx context.Context, integrationUID, userUID string) error
+
 	// AppSettings operations
 
 	// GetAppSetting returns the value for the given key.

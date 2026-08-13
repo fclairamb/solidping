@@ -134,6 +134,7 @@ function EscalationPoliciesListPage() {
         icon={ArrowUpRight}
         title={t("escalation:list.title")}
         description={t("escalation:list.subtitle")}
+        docsHref="/docs/features/on-call"
         actions={
           <Button asChild>
             <Link to="/orgs/$org/escalation-policies/new" params={{ org }}>

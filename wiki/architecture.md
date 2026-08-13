@@ -75,7 +75,7 @@ The system uses a lease-based mechanism for distributing checks across workers:
   directly against the database, as described above.
 - **Deported agents** run inside a customer network and never touch the
   database. They connect outbound over a WebSocket (`/api/v1/agent/ws`), claim
-  jobs through the protocol, and serve **private regions** (`@org/region`).
+  jobs through the protocol, and serve **private regions** (`@region`).
   Credentials for private-only checks are sealed to the agent, so the server
   cannot decrypt them. See
   [features/deported-agents.md](features/deported-agents.md).

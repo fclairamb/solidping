@@ -51,6 +51,9 @@
   "actions": "Actions",
   "viewDetails": "Voir les détails",
   "searchPlaceholder": "Rechercher...",
+  "docsLink": {
+    "label": "Documentation"
+  },
   "rename": "Renommer",
   "liveStatus": {
     "live": "Mises à jour en direct actives",

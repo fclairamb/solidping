@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { Loader2, Trash2 } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { Loader2, Trash2, BellPlus } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -52,6 +53,12 @@ import {
 } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
 import { CreateInvitationDialog } from "@/components/shared/create-invitation-dialog";
+import {
+  PagingCoverageCell,
+  type MemberCoverageMap,
+  buildCoverageMap,
+} from "@/components/notifications/member-coverage";
+import { useMemberCoverage } from "@/api/hooks";
 
 export const Route = createFileRoute("/orgs/$org/organization/members")({
   component: MembersPage,
@@ -89,6 +96,13 @@ function MembersPage() {
   // treatment below.
   const isAdmin = user?.isAdmin ?? false;
   const { data, isLoading, error } = useMembers(org);
+  // Paging coverage is admin-only server-side; a non-admin simply gets no
+  // coverage column rather than a failed request they cannot act on.
+  const { data: coverageData } = useMemberCoverage(org, isAdmin);
+  const coverageByUser: MemberCoverageMap = useMemo(
+    () => buildCoverageMap(coverageData?.data),
+    [coverageData],
+  );
   const updateMember = useUpdateMember(org);
   const removeMember = useRemoveMember(org);
 
@@ -203,8 +217,11 @@ function MembersPage() {
                   <TableHead>{t("members.column.member")}</TableHead>
                   <TableHead>{t("members.column.email")}</TableHead>
                   <TableHead>{t("members.column.role")}</TableHead>
+                  {isAdmin && (
+                    <TableHead>{t("members.column.coverage")}</TableHead>
+                  )}
                   <TableHead>{t("members.column.joinedAt")}</TableHead>
-                  <TableHead className="w-[80px]" />
+                  <TableHead className="w-[120px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -289,10 +306,41 @@ function MembersPage() {
                           </Select>
                         )}
                       </TableCell>
+                      {isAdmin && (
+                        <TableCell>
+                          <PagingCoverageCell
+                            coverage={coverageByUser.get(member.userUid)}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell className="text-muted-foreground">
                         {new Date(joined).toLocaleDateString()}
                       </TableCell>
                       <TableCell>
+                        <div className="flex items-center justify-end gap-1">
+                        {isAdmin && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                asChild
+                                aria-label={t("members.setUpPaging")}
+                                data-testid={`member-paging-${member.email}`}
+                              >
+                                <Link
+                                  to="/orgs/$org/organization/members/$memberUid/paging"
+                                  params={{ org, memberUid: member.uid }}
+                                >
+                                  <BellPlus className="h-4 w-4" />
+                                </Link>
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {t("members.setUpPaging")}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
                         {reason ? (
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -320,6 +368,7 @@ function MembersPage() {
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );

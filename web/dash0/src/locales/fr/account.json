@@ -176,6 +176,15 @@
       "expired": "Ce lien de connexion a expiré.",
       "regenerate": "Générer un nouveau lien",
       "linkFailed": "Impossible de créer un lien de connexion Telegram"
+    },
+    "slack": {
+      "title": "Messages directs Slack",
+      "connected": "Connecté à {{workspace}}",
+      "available": "Disponible sur {{workspace}}",
+      "unavailable": "Connectez-vous avec Slack, et demandez à un administrateur de relier un espace de travail Slack, pour recevoir les alertes en message direct.",
+      "connectButton": "Connecter Slack",
+      "added": "Notifications Slack ajoutées",
+      "addFailed": "Impossible d'ajouter le contact Slack"
     }
   }
 }

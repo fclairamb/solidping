@@ -145,6 +145,15 @@
       "expired": "Dieser Verbindungslink ist abgelaufen.",
       "regenerate": "Neuen Link erzeugen",
       "linkFailed": "Telegram-Verbindungslink konnte nicht erstellt werden"
+    },
+    "slack": {
+      "title": "Slack-Direktnachrichten",
+      "connected": "Verbunden mit {{workspace}}",
+      "available": "Verfügbar in {{workspace}}",
+      "unavailable": "Melden Sie sich mit Slack an und lassen Sie eine Administratorin einen Slack-Workspace verbinden, um Warnungen als Direktnachricht zu erhalten.",
+      "connectButton": "Slack verbinden",
+      "added": "Slack-Direktnachrichten hinzugefügt",
+      "addFailed": "Slack-Kontakt konnte nicht hinzugefügt werden"
     }
   }
 }

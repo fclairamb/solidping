@@ -51,6 +51,9 @@
   "actions": "Acciones",
   "viewDetails": "Ver detalles",
   "searchPlaceholder": "Buscar...",
+  "docsLink": {
+    "label": "Documentación"
+  },
   "rename": "Renombrar",
   "liveStatus": {
     "live": "Actualizaciones en vivo activas",

@@ -49,6 +49,14 @@ and to forward plain `:80` for HTTP-01.
   deployment, and the pod able to bind `:80`/`:443` (either run with
   `NET_BIND_SERVICE`, or set `SP_ACME_LISTEN_HTTP` / `SP_ACME_LISTEN_HTTPS` to
   high ports and target those in the Service).
+- **Client IP**: a passthrough is opaque, so the pod sees the proxy's address on
+  every custom-domain request and per-IP rate limiting collapses to one bucket.
+  Have the proxy send PROXY protocol v2 (Traefik: `proxyProtocol: {version: 2}`
+  on the TCP service) and set `SP_ACME_PROXY_PROTOCOL=true` plus
+  `SP_ACME_PROXY_PROTOCOL_TRUSTED_CIDRS=<pod/node CIDRs the proxy dials from>`.
+  Headers from untrusted sources are ignored (no spoofing), bare connections
+  from trusted ones are still accepted (health probes), and an empty CIDR list
+  fails startup.
 
 ### Option B — dedicated LoadBalancer / NodePort
 
@@ -89,6 +97,8 @@ invisible and verification could never succeed.
 | `SP_ACME_CA_URL`                 | *(unset = LE production; use the LE staging directory for a dry run first)* |
 | `SP_ACME_LISTEN_HTTP`            | `:80` (or a high port + Service port mapping) |
 | `SP_ACME_LISTEN_HTTPS`           | `:443` (idem)                        |
+| `SP_ACME_PROXY_PROTOCOL`         | `true` behind a TLS passthrough, otherwise unset |
+| `SP_ACME_PROXY_PROTOCOL_TRUSTED_CIDRS` | pod/node CIDRs the proxy connects from — **required** when the above is true |
 
 Do a first pass against **Let's Encrypt staging**
 (`https://acme-staging-v02.api.letsencrypt.org/directory`) so a

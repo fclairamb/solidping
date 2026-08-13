@@ -51,6 +51,8 @@ import {
   type MintedEnrollmentToken,
   type PrivateRegion,
 } from "@/api/hooks";
+import { DocsLink } from "@/components/shared/docs-link";
+import { LiveDurationAgo } from "@/components/shared/relative-time";
 
 export const Route = createFileRoute("/orgs/$org/organization/private-locations/")({
   component: PrivateLocationsPage,
@@ -130,12 +132,15 @@ function RegionsCard({ org }: { org: string }) {
             )}
           </CardDescription>
         </div>
-        <Button asChild size="sm" data-testid="register-agent-button">
-          <Link to="/orgs/$org/organization/private-locations/register" params={{ org }}>
-            <Bot className="mr-2 h-4 w-4" />
-            {t("privateLocations.regions.registerAgent", "Register an agent")}
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button asChild size="sm" data-testid="register-agent-button">
+            <Link to="/orgs/$org/organization/private-locations/register" params={{ org }}>
+              <Bot className="mr-2 h-4 w-4" />
+              {t("privateLocations.regions.registerAgent", "Register an agent")}
+            </Link>
+          </Button>
+          <DocsLink href="/docs/features/private-locations" />
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {isLoading ? (
@@ -413,10 +418,17 @@ function AgentsCard({ org }: { org: string }) {
                     <TableCell>
                       <code className="text-xs text-muted-foreground">{agent.fingerprint}</code>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {agent.lastSeenAt
-                        ? new Date(agent.lastSeenAt).toLocaleString()
-                        : t("privateLocations.agents.never", "never")}
+                    <TableCell
+                      className="text-sm text-muted-foreground"
+                      data-testid={`agent-last-seen-${agent.uid}`}
+                    >
+                      {agent.lastSeenAt ? (
+                        <span title={new Date(agent.lastSeenAt).toLocaleString()}>
+                          <LiveDurationAgo since={agent.lastSeenAt} />
+                        </span>
+                      ) : (
+                        t("privateLocations.agents.never", "never")
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge variant={agent.status === "active" ? "default" : "destructive"}>

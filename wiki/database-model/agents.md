@@ -8,13 +8,14 @@ stores only public keys — no usable agent credential is ever persisted. See
 
 ### agents
 One row per enrolled agent, hard-scoped to exactly one private region
-(`@<org>/<region>`).
+(`@<region>`, org-relative — the org is `organization_uid`, never part of the
+string; see [../conventions/regions.md](../conventions/regions.md)).
 
 | Column | Type | Description |
 |--------|------|-------------|
 | uid | uuid PK | Primary key |
 | organization_uid | uuid | FK to organizations |
-| region | text | Fully-qualified private-region slug (`@<org>/<region>`) the agent is bound to |
+| region | text | Org-relative private-region slug (`@<region>`) the agent is bound to |
 | name | text | Human-readable agent name |
 | ed25519_public_key | text | Base64 Ed25519 identity public key; verifies reconnect signatures |
 | x25519_public_key | text | age X25519 recipient (`age1...`) credentials are sealed to |

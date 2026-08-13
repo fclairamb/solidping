@@ -176,6 +176,15 @@
       "expired": "This connect link has expired.",
       "regenerate": "Generate a new link",
       "linkFailed": "Could not create a Telegram connect link"
+    },
+    "slack": {
+      "title": "Slack direct messages",
+      "connected": "Connected to {{workspace}}",
+      "available": "Available on {{workspace}}",
+      "unavailable": "Sign in with Slack, and have an admin connect a Slack workspace, to receive alerts as direct messages.",
+      "connectButton": "Connect Slack",
+      "added": "Slack DM notifications added",
+      "addFailed": "Failed to add Slack DM contact"
     }
   }
 }

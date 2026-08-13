@@ -206,6 +206,7 @@ function MaintenanceWindowsIndexPage() {
         icon={Wrench}
         title={t("maintenanceWindows:title")}
         description={t("maintenanceWindows:subtitle")}
+        docsHref="/docs/features/maintenance-windows"
         actions={
           <>
             <Button

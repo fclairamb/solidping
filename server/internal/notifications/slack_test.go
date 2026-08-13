@@ -2023,6 +2023,30 @@ func (m *mockDBService) GetSlackChannelForOrg(_ context.Context, _ string) (*mod
 	return nil, nil //nolint:nilnil
 }
 
+// --- UserIntegrationIdentity stubs ---
+
+func (m *mockDBService) ListUserIntegrationIdentities(
+	_ context.Context, _ string,
+) ([]*models.UserIntegrationIdentity, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) GetUserIntegrationIdentity(
+	_ context.Context, _, _ string,
+) (*models.UserIntegrationIdentity, error) {
+	return nil, nil //nolint:nilnil
+}
+
+func (m *mockDBService) UpsertUserIntegrationIdentity(
+	_ context.Context, _ *models.UserIntegrationIdentity,
+) error {
+	return nil
+}
+
+func (m *mockDBService) DeleteUserIntegrationIdentity(_ context.Context, _, _ string) error {
+	return nil
+}
+
 // --- StatusUpdate stubs ---
 
 func (m *mockDBService) ListStatusUpdates(

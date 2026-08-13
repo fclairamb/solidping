@@ -192,7 +192,7 @@ func TestSystemAgentClaimsAcrossOrgs(t *testing.T) {
 
 	private := models.NewCheck(e.org.UID, "private", "http")
 	private.Config = models.JSONMap{"url": "https://example.com"}
-	private.Regions = []string{"@acme/dc1"}
+	private.Regions = []string{"@dc1"}
 	r.NoError(e.dbSvc.CreateCheck(t.Context(), private))
 
 	conn, _, enrolled := e.enroll(e.mintSystemToken(systemRegion), "fly-machine-1")
@@ -233,19 +233,19 @@ func TestOrgAgentStaysOrgScoped(t *testing.T) {
 	// Two orgs, both with a job in the SAME private-region slug string.
 	mine := models.NewCheck(e.org.UID, "mine", "http")
 	mine.Config = models.JSONMap{"url": "https://example.com"}
-	mine.Regions = []string{"@acme/dc1"}
+	mine.Regions = []string{"@dc1"}
 	r.NoError(e.dbSvc.CreateCheck(t.Context(), mine))
 
 	theirs := models.NewCheck(e.orgB.UID, "theirs", "http")
 	theirs.Config = models.JSONMap{"url": "https://example.com"}
-	theirs.Regions = []string{"@acme/dc1"}
+	theirs.Regions = []string{"@dc1"}
 	r.NoError(e.dbSvc.CreateCheck(t.Context(), theirs))
 
 	// An ORG token for org A's private region.
 	token, hash, err := agentcrypto.GenerateEnrollmentToken()
 	r.NoError(err)
 	r.NoError(e.dbSvc.CreateAgentEnrollmentToken(t.Context(),
-		models.NewAgentEnrollmentToken(e.org.UID, "@acme/dc1", hash, time.Now().Add(time.Hour), nil)))
+		models.NewAgentEnrollmentToken(e.org.UID, "@dc1", hash, time.Now().Add(time.Hour), nil)))
 
 	conn, _, enrolled := e.enroll(token, "dc1-agent")
 
@@ -267,7 +267,7 @@ func TestSystemEnrollmentValidatesRegion(t *testing.T) {
 
 	for name, region := range map[string]string{
 		"undefined region": "nope-1",
-		"private region":   "@acme/dc1",
+		"private region":   "@dc1",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

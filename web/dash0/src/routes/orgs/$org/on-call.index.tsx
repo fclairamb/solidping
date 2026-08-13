@@ -79,6 +79,7 @@ function OnCallListPage() {
         icon={CalendarClock}
         title={t("oncall:list.title")}
         description={t("oncall:list.subtitle")}
+        docsHref="/docs/features/on-call"
         actions={
           <Button asChild aria-label={t("oncall:list.create")}>
             <Link to="/orgs/$org/on-call/new" params={{ org }}>

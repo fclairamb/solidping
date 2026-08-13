@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
 	"os"
 	"slices"
@@ -121,6 +122,20 @@ var (
 	// listen addresses was blanked out; both listeners are mandatory (HTTP-01
 	// needs :80, TLS-ALPN-01 and serving need :443).
 	ErrACMEListenRequired = errors.New("acme.listen_http and acme.listen_https are required when acme.enabled is true")
+	// ErrACMEProxyProtocolCIDRsRequired is returned when acme.proxy_protocol is
+	// switched on with an empty acme.proxy_protocol_trusted_cidrs list. The
+	// PROXY header is an unauthenticated preamble, so trusting every source
+	// would let anyone who can open a TCP connection forge a client IP into the
+	// rate limiter — fail closed instead of defaulting to trust-everyone.
+	ErrACMEProxyProtocolCIDRsRequired = errors.New(
+		"acme.proxy_protocol_trusted_cidrs must list at least one CIDR when acme.proxy_protocol is true",
+	)
+	// ErrACMEProxyProtocolCIDRInvalid is returned when an entry of
+	// acme.proxy_protocol_trusted_cidrs is neither a CIDR range ("10.0.0.0/8")
+	// nor a bare IP address ("10.0.0.10").
+	ErrACMEProxyProtocolCIDRInvalid = errors.New(
+		"acme.proxy_protocol_trusted_cidrs entries must be a CIDR range or an IP address",
+	)
 )
 
 // Supported password-hashing algorithm identifiers.
@@ -382,6 +397,20 @@ type ACMEConfig struct {
 	// Requests flow into the same handler chain as the plain listener, so
 	// custom-host routing applies unchanged.
 	ListenHTTPS string `koanf:"listen_https"`
+	// ProxyProtocol makes both ACME listeners read a PROXY protocol (v1/v2)
+	// preamble before the payload (SP_ACME_PROXY_PROTOCOL, default false).
+	// Needed behind a TLS passthrough (a Traefik `HostSNI(`*`)` TCP router, for
+	// instance): the proxy never sees HTTP, so there is no X-Forwarded-For and
+	// every request would otherwise appear to come from the proxy's own IP —
+	// collapsing per-IP rate limiting and abuse logging.
+	ProxyProtocol bool `koanf:"proxy_protocol"`
+	// ProxyProtocolTrustedCIDRs lists the sources whose PROXY header is honored
+	// (SP_ACME_PROXY_PROTOCOL_TRUSTED_CIDRS, comma-separated). Entries are CIDR
+	// ranges or bare IPs. A connection from a trusted source may or may not send
+	// a header (health probes do not); one from anywhere else keeps its real
+	// peer address no matter what preamble it sends. Required — and validated
+	// non-empty — when ProxyProtocol is true.
+	ProxyProtocolTrustedCIDRs []string `koanf:"proxy_protocol_trusted_cidrs"`
 }
 
 // Default listen addresses for in-server ACME. Remap them when the process
@@ -1017,6 +1046,14 @@ type ServerConfig struct {
 	// Scheduling holds the cost-aware, plan-weighted check-scheduling knobs.
 	// Multi-word keys → read via applySchedulingEnv. See project_koanf_env_quirk.
 	Scheduling SchedulingConfig `koanf:"scheduling"`
+	// ExitWithParent makes the server shut down when the process that started
+	// it disappears, instead of being reparented to PID 1 and outliving its
+	// session (spec 2026-08-12-05). Off by default: a normal deployment is
+	// started BY a supervisor whose death is not a reason to stop. Turn it on
+	// for anything spawned by a test harness or an ad-hoc wrapper.
+	// Multi-word koanf key → read via applyServerEnv (SP_EXIT_WITH_PARENT /
+	// SP_SERVER_EXIT_WITH_PARENT), not the auto env loader.
+	ExitWithParent bool `koanf:"exit_with_parent"`
 }
 
 // SchedulingConfig tunes cost-aware, plan-weighted check execution
@@ -1675,6 +1712,15 @@ func applyServerEnv(cfg *ServerConfig) {
 	} else if v := os.Getenv("SP_CUSTOM_DOMAIN_CNAME_MODE"); v != "" {
 		cfg.CustomDomainCNAMEMode = v
 	}
+
+	// Literal os.Getenv calls, like every other pair above: the registry guard
+	// in envvars_test.go scans this file for them, so a name read through a
+	// variable would slip past both the guard and the startup env check.
+	if v := os.Getenv("SP_SERVER_EXIT_WITH_PARENT"); v != "" {
+		cfg.ExitWithParent = v == envTrue || v == "1"
+	} else if v := os.Getenv("SP_EXIT_WITH_PARENT"); v != "" {
+		cfg.ExitWithParent = v == envTrue || v == "1"
+	}
 }
 
 // applyACMEEnv reads the multi-word SP_ACME_* keys koanf's env loader cannot
@@ -1693,6 +1739,32 @@ func applyACMEEnv(cfg *ACMEConfig) {
 	if v := os.Getenv("SP_ACME_LISTEN_HTTPS"); v != "" {
 		cfg.ListenHTTPS = v
 	}
+
+	// Literal os.Getenv calls rather than a loop over a slice of names: the
+	// registry guard in envvars_test.go scans this file for them, so a name read
+	// indirectly would slip past both the guard and the startup env check.
+	if v := os.Getenv("SP_ACME_PROXY_PROTOCOL"); v != "" {
+		cfg.ProxyProtocol = v == envTrue || v == "1"
+	}
+
+	if v := os.Getenv("SP_ACME_PROXY_PROTOCOL_TRUSTED_CIDRS"); v != "" {
+		cfg.ProxyProtocolTrustedCIDRs = splitAndTrim(v)
+	}
+}
+
+// splitAndTrim turns a comma-separated env value into a slice, dropping empty
+// entries so a trailing comma or a stray space cannot become a "" CIDR.
+func splitAndTrim(value string) []string {
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+
+	return out
 }
 
 // applySchedulingEnv reads the multi-word SP_SCHEDULING_* knobs koanf's env
@@ -2190,6 +2262,44 @@ func validateACMEConfig(cfg *ACMEConfig) error {
 
 	if strings.TrimSpace(cfg.ListenHTTP) == "" || strings.TrimSpace(cfg.ListenHTTPS) == "" {
 		return ErrACMEListenRequired
+	}
+
+	return validateACMEProxyProtocol(cfg)
+}
+
+// validateACMEProxyProtocol enforces the trust policy's precondition: PROXY
+// protocol support may only be switched on together with an explicit list of
+// sources whose header is honored. An empty list would mean "trust every peer",
+// i.e. let anyone who can open a TCP connection dictate the client IP the rate
+// limiter and the abuse logs see.
+func validateACMEProxyProtocol(cfg *ACMEConfig) error {
+	if !cfg.ProxyProtocol {
+		return nil
+	}
+
+	trusted := make([]string, 0, len(cfg.ProxyProtocolTrustedCIDRs))
+
+	for _, entry := range cfg.ProxyProtocolTrustedCIDRs {
+		trimmed := strings.TrimSpace(entry)
+		if trimmed == "" {
+			continue
+		}
+
+		// Same shape go-proxyproto accepts: a "/" means a CIDR range, anything
+		// else must be a bare IP address.
+		if strings.Contains(trimmed, "/") {
+			if _, _, err := net.ParseCIDR(trimmed); err != nil {
+				return fmt.Errorf("%w, got '%s'", ErrACMEProxyProtocolCIDRInvalid, entry)
+			}
+		} else if net.ParseIP(trimmed) == nil {
+			return fmt.Errorf("%w, got '%s'", ErrACMEProxyProtocolCIDRInvalid, entry)
+		}
+
+		trusted = append(trusted, trimmed)
+	}
+
+	if len(trusted) == 0 {
+		return ErrACMEProxyProtocolCIDRsRequired
 	}
 
 	return nil

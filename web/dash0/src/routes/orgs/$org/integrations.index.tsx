@@ -127,6 +127,7 @@ function IntegrationsListPage() {
           "subtitle",
           "Slack, webhooks, email, and more — wire how SolidPing reaches you.",
         )}
+        docsHref="/docs/configuration/notifications"
         actions={
           <Button asChild aria-label={t("new", "New integration")}>
             <Link to="/orgs/$org/integrations/new" params={{ org }}>

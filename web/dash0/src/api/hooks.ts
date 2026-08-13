@@ -3941,6 +3941,204 @@ export function useSlackDestinations(
   });
 }
 
+// Per-member paging coverage (spec 2026-08-12-03, phase 2).
+//
+// Admin-only, and type-level only: the API deliberately returns channel types
+// and verified/enabled flags, never a phone number or chat id.
+
+export interface MemberChannelCoverage {
+  type: string;
+  verified: boolean;
+  enabled: boolean;
+}
+
+export interface MemberCoverage {
+  userUid: string;
+  email: string;
+  name?: string;
+  role: string;
+  channels: MemberChannelCoverage[];
+  /** Nothing but email can reach this member — escalation's silent fallback. */
+  emailFallbackOnly: boolean;
+}
+
+export interface MemberCoverageListResponse {
+  data: MemberCoverage[];
+}
+
+export function useMemberCoverage(org: string, enabled = true) {
+  return useQuery({
+    queryKey: ["member-coverage", org],
+    queryFn: () =>
+      apiFetch<MemberCoverageListResponse>(
+        `/api/v1/orgs/${org}/members/coverage`,
+      ),
+    enabled: enabled && Boolean(org),
+    staleTime: 30_000,
+    // A non-admin gets a 403 here; the members page simply renders no coverage
+    // column rather than retrying a call it is not allowed to make.
+    retry: false,
+  });
+}
+
+/**
+ * Adds an UNVERIFIED phone/WhatsApp contact for another member. The server
+ * refuses to create it verified — the member still has to complete the code
+ * round-trip before anything pages that number.
+ */
+export function useAddMemberContact(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (vars: {
+      memberUid: string;
+      type: "phone" | "whatsapp";
+      value: string;
+      label?: string;
+    }) =>
+      apiFetch<{ uid: string; verified: boolean }>(
+        `/api/v1/orgs/${org}/members/${vars.memberUid}/contacts`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            type: vars.type,
+            value: vars.value,
+            label: vars.label,
+          }),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["member-coverage", org] });
+    },
+  });
+}
+
+/** Emails a member asking them to finish setting up their paging contacts. */
+export function useSendPagingNudge(org: string) {
+  return useMutation({
+    mutationFn: (memberUid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/members/${memberUid}/paging-nudge`, {
+        method: "POST",
+      }),
+  });
+}
+
+// Per-integration member identity mapping (spec 2026-08-12-03).
+//
+// "Who is this org member on this Slack workspace" — used to mention the
+// on-call person in channel alerts. Never used for paging, which is why the
+// admin surface only ever shows workspace ids and names, no contact values.
+
+export type IntegrationIdentityStatus = "matched" | "notFound" | "ambiguous";
+
+export interface IntegrationIdentity {
+  userUid: string;
+  email: string;
+  name?: string;
+  status: IntegrationIdentityStatus;
+  externalId?: string;
+  displayName?: string;
+  /** `auto` = email auto-match, `manual` = an admin picked it. */
+  source?: "auto" | "manual";
+}
+
+export interface IntegrationIdentityListResponse {
+  data: IntegrationIdentity[];
+}
+
+export interface IntegrationIdentitySyncResponse
+  extends IntegrationIdentityListResponse {
+  matchedCount: number;
+  notFoundCount: number;
+  ambiguousCount: number;
+}
+
+export function useIntegrationIdentities(
+  org: string,
+  integrationUid: string,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["integration-identities", org, integrationUid],
+    queryFn: () =>
+      apiFetch<IntegrationIdentityListResponse>(
+        `/api/v1/orgs/${org}/integrations/${integrationUid}/identities`,
+      ),
+    enabled: enabled && Boolean(org && integrationUid),
+    staleTime: 30_000,
+  });
+}
+
+export function useSyncIntegrationIdentities(
+  org: string,
+  integrationUid: string,
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<IntegrationIdentitySyncResponse>(
+        `/api/v1/orgs/${org}/integrations/${integrationUid}/identities/sync`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["integration-identities", org, integrationUid],
+      });
+    },
+  });
+}
+
+export function useSetIntegrationIdentity(
+  org: string,
+  integrationUid: string,
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (vars: {
+      userUid: string;
+      externalId: string;
+      displayName?: string;
+    }) =>
+      apiFetch<IntegrationIdentity>(
+        `/api/v1/orgs/${org}/integrations/${integrationUid}/identities/${vars.userUid}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            externalId: vars.externalId,
+            displayName: vars.displayName,
+          }),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["integration-identities", org, integrationUid],
+      });
+    },
+  });
+}
+
+export function useDeleteIntegrationIdentity(
+  org: string,
+  integrationUid: string,
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (userUid: string) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/integrations/${integrationUid}/identities/${userUid}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["integration-identities", org, integrationUid],
+      });
+    },
+  });
+}
+
 // Microsoft Teams bot (msteams-bot) setup types and hooks.
 //
 // Unlike Slack there is no live channel list to fetch: a Teams bot cannot
@@ -5047,7 +5245,7 @@ export interface PrivateRegion {
   slug: string;
   name: string;
   emoji: string;
-  /** Fully-qualified stored region string, e.g. `@acme/dc1`. */
+  /** Stored region string, org-relative, e.g. `@dc1`. */
   region: string;
   agentCount: number;
 }

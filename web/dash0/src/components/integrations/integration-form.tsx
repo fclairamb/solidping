@@ -46,6 +46,7 @@ import type {
   SlackUser,
   MSTeamsDestination,
   IntegrationTestResult,
+  IntegrationIdentity,
 } from "@/api/hooks";
 import {
   useSlackDestinations,
@@ -56,6 +57,10 @@ import {
   useMSTeamsBotStatus,
   useStartMSTeamsLink,
   downloadMSTeamsManifest,
+  useIntegrationIdentities,
+  useSyncIntegrationIdentities,
+  useSetIntegrationIdentity,
+  useDeleteIntegrationIdentity,
 } from "@/api/hooks";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { WebPushEnableButton } from "@/components/notifications/WebPushEnableButton";
@@ -1182,13 +1187,14 @@ function SlackDestinationPanel({ settings, onChange, org, channelUid }: SlackDes
 
   if (!isEditMode) {
     return (
-      <div className="rounded border bg-muted/30 p-3 text-sm space-y-2">
+      <div className="rounded border bg-muted/30 p-3 text-sm space-y-3">
         <p>
           {t(
             "form.slackOauthHint",
             "Slack channels are configured via the Slack OAuth install. The bot will populate workspace and channel names on completion.",
           )}
         </p>
+        <MentionOnCallSwitch settings={settings} onChange={onChange} isCreate />
       </div>
     );
   }
@@ -1284,7 +1290,264 @@ function SlackDestinationPanel({ settings, onChange, org, channelUid }: SlackDes
           onSelect={(u) => handleSelect("dm", u.id, u.realName || u.name)}
         />
       )}
+
+      <MentionOnCallSwitch settings={settings} onChange={onChange} />
+
+      {org && channelUid && (
+        <SlackMemberMapping
+          org={org}
+          integrationUid={channelUid}
+          workspaceUsers={data?.users ?? []}
+        />
+      )}
     </div>
+  );
+}
+
+// ---- Mention the on-call person ----
+
+interface MentionOnCallSwitchProps {
+  settings: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+  /**
+   * True on the create page. A brand-new Slack integration defaults to
+   * mentioning the on-call person (spec 2026-08-12-03); an existing one whose
+   * settings never carried the key keeps the historical "no mentions" behavior,
+   * so the switch must not silently appear enabled there.
+   */
+  isCreate?: boolean;
+}
+
+function MentionOnCallSwitch({
+  settings,
+  onChange,
+  isCreate = false,
+}: MentionOnCallSwitchProps) {
+  const { t } = useTranslation("integrations");
+
+  const stored = settings.mention_on_call;
+  const checked = typeof stored === "boolean" ? stored : isCreate;
+
+  return (
+    <div className="flex items-start justify-between gap-3 rounded border bg-background p-3">
+      <div>
+        <Label htmlFor="slack-mention-on-call" className="font-medium">
+          {t("form.slackMentionOnCall", "Mention the on-call person in alerts")}
+        </Label>
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "form.slackMentionOnCallHelp",
+            "New and escalated incident messages start by @-mentioning whoever the escalation policy pages first. Members without a mapped Slack account are named in plain text.",
+          )}
+        </p>
+      </div>
+      <Switch
+        id="slack-mention-on-call"
+        checked={checked}
+        onCheckedChange={(value) =>
+          onChange({ ...settings, mention_on_call: value })
+        }
+        data-testid="slack-mention-on-call"
+      />
+    </div>
+  );
+}
+
+// ---- Member mapping ----
+
+interface SlackMemberMappingProps {
+  org: string;
+  integrationUid: string;
+  workspaceUsers: SlackUser[];
+}
+
+/**
+ * Shows which org members SolidPing can @-mention on this workspace. Purely an
+ * identity surface — it never displays a phone number or any other contact
+ * value, because identities are "who I am there", not "how to page me".
+ */
+function SlackMemberMapping({
+  org,
+  integrationUid,
+  workspaceUsers,
+}: SlackMemberMappingProps) {
+  const { t } = useTranslation("integrations");
+  const { data, isLoading, isError } = useIntegrationIdentities(
+    org,
+    integrationUid,
+  );
+  const sync = useSyncIntegrationIdentities(org, integrationUid);
+  const setIdentity = useSetIntegrationIdentity(org, integrationUid);
+  const clearIdentity = useDeleteIntegrationIdentity(org, integrationUid);
+
+  const identities = data?.data ?? [];
+  const matched = identities.filter((i) => i.status === "matched");
+  const unmatched = identities.filter((i) => i.status !== "matched");
+
+  const runSync = () => {
+    sync.mutate(undefined, {
+      onSuccess: (result) => {
+        toast.success(
+          t("form.slackMappingSynced", {
+            defaultValue:
+              "{{matched}} matched, {{notFound}} not found, {{ambiguous}} ambiguous",
+            matched: result.matchedCount,
+            notFound: result.notFoundCount,
+            ambiguous: result.ambiguousCount,
+          }),
+        );
+      },
+      onError: () =>
+        toast.error(t("form.slackMappingSyncFailed", "Member sync failed")),
+    });
+  };
+
+  return (
+    <div className="rounded border bg-background p-3 space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="font-medium">
+            {t("form.slackMemberMapping", "Member mapping")}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "form.slackMemberMappingHelp",
+              "Which SolidPing members we can @-mention on this workspace. Matched automatically by email; override any row manually.",
+            )}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={runSync}
+          disabled={sync.isPending}
+          data-testid="slack-mapping-sync"
+        >
+          {sync.isPending ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="mr-2 h-4 w-4" />
+          )}
+          {t("form.slackMappingResync", "Re-sync")}
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>{t("form.slackLoading", "Loading…")}</span>
+        </div>
+      ) : isError ? (
+        <p className="text-destructive text-xs">
+          {t("form.slackMappingError", "Could not load the member mapping.")}
+        </p>
+      ) : identities.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {t("form.slackMappingEmpty", "No organization members yet.")}
+        </p>
+      ) : (
+        <div className="space-y-3" data-testid="slack-member-mapping">
+          <p className="text-xs text-muted-foreground">
+            {t("form.slackMappingCounts", {
+              defaultValue: "{{matched}} matched · {{unmatched}} not mapped",
+              matched: matched.length,
+              unmatched: unmatched.length,
+            })}
+          </p>
+          <ul className="divide-y rounded border">
+            {identities.map((identity) => (
+              <li
+                key={identity.userUid}
+                className="flex flex-col gap-2 p-2 sm:flex-row sm:items-center sm:justify-between"
+                data-testid={`slack-mapping-row-${identity.email}`}
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">
+                    {identity.name || identity.email}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {identity.email}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <IdentityStatusBadge identity={identity} />
+                  <div className="w-full sm:w-[220px]">
+                    <SlackUserCombobox
+                      users={workspaceUsers}
+                      currentId={identity.externalId ?? ""}
+                      onSelect={(u) =>
+                        setIdentity.mutate(
+                          {
+                            userUid: identity.userUid,
+                            externalId: u.id,
+                            displayName: u.realName || u.name,
+                          },
+                          {
+                            onError: (err) =>
+                              toast.error(
+                                err instanceof Error
+                                  ? err.message
+                                  : t(
+                                      "form.slackMappingSetFailed",
+                                      "Could not save that mapping",
+                                    ),
+                              ),
+                          },
+                        )
+                      }
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    disabled={!identity.externalId || clearIdentity.isPending}
+                    onClick={() => clearIdentity.mutate(identity.userUid)}
+                    aria-label={t("form.slackMappingClear", "Clear mapping")}
+                    data-testid={`slack-mapping-clear-${identity.email}`}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IdentityStatusBadge({
+  identity,
+}: {
+  identity: IntegrationIdentity;
+}) {
+  const { t } = useTranslation("integrations");
+
+  if (identity.status === "matched") {
+    return (
+      <Badge variant="secondary" data-testid="slack-mapping-status-matched">
+        {identity.source === "manual"
+          ? t("form.slackMappingManual", "Manual")
+          : t("form.slackMappingMatched", "Matched")}
+      </Badge>
+    );
+  }
+
+  if (identity.status === "ambiguous") {
+    return (
+      <Badge variant="destructive" data-testid="slack-mapping-status-ambiguous">
+        {t("form.slackMappingAmbiguous", "Ambiguous")}
+      </Badge>
+    );
+  }
+
+  return (
+    <Badge variant="outline" data-testid="slack-mapping-status-notfound">
+      {t("form.slackMappingNotFound", "Not found")}
+    </Badge>
   );
 }
 

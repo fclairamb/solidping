@@ -128,6 +128,7 @@
     "indicatorTooltip": "Politique d'escalade : {{name}}"
   },
   "noChecks": "Aucun contrôle dans ce groupe",
+  "addCheckToGroup": "Ajouter un contrôle à ce groupe",
   "noUngroupedChecks": "Aucun contrôle non groupé ne correspond à votre recherche",
   "failedToLoadChecks": "Échec du chargement des contrôles",
   "noChecksAtAll": "Aucun contrôle pour le moment",

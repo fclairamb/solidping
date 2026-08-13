@@ -160,7 +160,7 @@ function EventsPage() {
                         <Link
                           to="/orgs/$org/checks/$checkUid"
                           params={{ org, checkUid: event.checkUid }}
-                          search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }}
+                          search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
                           className="text-xs text-primary hover:underline"
                         >
                           {getEventCheckName(event) ?? t("links.check")}

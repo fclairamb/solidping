@@ -52,6 +52,9 @@
   "actions": "Actions",
   "viewDetails": "View Details",
   "searchPlaceholder": "Search...",
+  "docsLink": {
+    "label": "Documentation"
+  },
   "liveStatus": {
     "live": "Live updates active",
     "connecting": "Connecting…",

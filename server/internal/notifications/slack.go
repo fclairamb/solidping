@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -334,6 +335,64 @@ const (
 	colorSuccess = "#4CAF50" // Green for resolved
 )
 
+// renderMentions turns the resolved on-call targets into a Slack mrkdwn line.
+//
+// A target with an identity renders as `<@U123ABC>` (a real ping); one without
+// renders as its plain-text name, which names the responsible person without
+// notifying anyone — the deliberate degradation when a member has no mapping.
+// Returns "" for an empty list, which is what keeps a mention-free message
+// byte-identical to what it was before this feature.
+func renderMentions(targets []MentionTarget) string {
+	if len(targets) == 0 {
+		return ""
+	}
+
+	parts := make([]string, 0, len(targets))
+
+	for i := range targets {
+		if targets[i].ExternalID != "" {
+			parts = append(parts, "<@"+targets[i].ExternalID+">")
+
+			continue
+		}
+
+		if targets[i].DisplayName != "" {
+			parts = append(parts, targets[i].DisplayName)
+		}
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+
+	return strings.Join(parts, " ") + " — you are on call for this."
+}
+
+// mentionBlock returns the leading context block naming the on-call people, or
+// nil when there is nothing to say.
+func mentionBlock(targets []MentionTarget) *slack.Block {
+	text := renderMentions(targets)
+	if text == "" {
+		return nil
+	}
+
+	return &slack.Block{
+		Type: slack.BlockTypeSection,
+		Text: &slack.Text{Type: slack.BlockTypeMrkdwn, Text: text},
+	}
+}
+
+// prependMentionBlock puts the mention line at the top of an alert's blocks so
+// it is the first thing a reader (and Slack's notification preview) sees.
+func prependMentionBlock(blocks []slack.Block, targets []MentionTarget) []slack.Block {
+	block := mentionBlock(targets)
+	if block == nil {
+		return blocks
+	}
+
+	return append([]slack.Block{*block}, blocks...)
+}
+
 // buildIncidentCreatedMessage builds a rich Block Kit message for incident.created events.
 func (s *SlackSender) buildIncidentCreatedMessage(payload *Payload) *slack.MessageResponse {
 	checkName := getCheckName(payload.Check)
@@ -342,6 +401,7 @@ func (s *SlackSender) buildIncidentCreatedMessage(payload *Payload) *slack.Messa
 	fallbackText := "New incident for " + checkName
 	fields := s.buildIncidentFields(payload, checkName, checkURL)
 	blocks := s.buildIncidentCreatedBlocks(payload, checkName, fields, checkURL, incidentURL)
+	blocks = prependMentionBlock(blocks, payload.OnCallMentions)
 
 	return &slack.MessageResponse{
 		Text: fallbackText,
@@ -452,18 +512,29 @@ func (s *SlackSender) buildIncidentResolvedThreadReply(payload *Payload) *slack.
 // buildIncidentEscalatedMessage builds a rich Block Kit message for escalation.
 func (s *SlackSender) buildIncidentEscalatedMessage(payload *Payload) *slack.MessageResponse {
 	checkName := getCheckName(payload.Check)
-	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
-	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
 	fallbackText := "Incident escalated: " + checkName
 
-	// Calculate duration
-	duration := formatDuration(time.Since(payload.Incident.StartedAt))
+	blocks := prependMentionBlock(
+		s.buildIncidentEscalatedBlocks(payload, checkName), payload.OnCallMentions)
 
-	// Build section fields
+	return &slack.MessageResponse{
+		Text: fallbackText,
+		Attachments: []slack.Attachment{
+			{
+				Color:    colorWarning,
+				Fallback: fallbackText,
+				Blocks:   blocks,
+			},
+		},
+	}
+}
+
+// buildIncidentEscalatedFields builds the summary fields of an escalation message.
+func (s *SlackSender) buildIncidentEscalatedFields(payload *Payload, checkURL, checkName string) []slack.Text {
 	fields := []slack.Text{
 		{Type: slack.BlockTypeMrkdwn, Text: "*Monitor:*\n" + slackLink(checkURL, checkName)},
 		{Type: slack.BlockTypeMrkdwn, Text: fmt.Sprintf("*Failures:*\n%d", payload.Incident.FailureCount)},
-		{Type: slack.BlockTypeMrkdwn, Text: "*Duration:*\n" + duration},
+		{Type: slack.BlockTypeMrkdwn, Text: "*Duration:*\n" + formatDuration(time.Since(payload.Incident.StartedAt))},
 	}
 
 	// Add URL field for HTTP checks
@@ -475,7 +546,15 @@ func (s *SlackSender) buildIncidentEscalatedMessage(payload *Payload) *slack.Mes
 		})
 	}
 
-	blocks := []slack.Block{
+	return fields
+}
+
+// buildIncidentEscalatedBlocks builds the body blocks of an escalation message.
+func (s *SlackSender) buildIncidentEscalatedBlocks(payload *Payload, checkName string) []slack.Block {
+	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
+	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
+
+	return []slack.Block{
 		// Header
 		{
 			Type: slack.BlockTypeHeader,
@@ -488,7 +567,7 @@ func (s *SlackSender) buildIncidentEscalatedMessage(payload *Payload) *slack.Mes
 		// Section with fields
 		{
 			Type:   "section",
-			Fields: fields,
+			Fields: s.buildIncidentEscalatedFields(payload, checkURL, checkName),
 		},
 		// Explanation
 		{
@@ -524,17 +603,6 @@ func (s *SlackSender) buildIncidentEscalatedMessage(payload *Payload) *slack.Mes
 					Type: slack.BlockTypeMrkdwn,
 					Text: slackLink(incidentURL, ":rotating_light: Escalated") + "  " + slackLink(incidentURL, ":warning: Incident"),
 				},
-			},
-		},
-	}
-
-	return &slack.MessageResponse{
-		Text: fallbackText,
-		Attachments: []slack.Attachment{
-			{
-				Color:    colorWarning,
-				Fallback: fallbackText,
-				Blocks:   blocks,
 			},
 		},
 	}

@@ -35,6 +35,7 @@ import {
   DangerZone,
 } from "@/components/shared/danger-zone";
 import { OrgProfileCard } from "@/components/shared/org-profile-card";
+import { DocsLink } from "@/components/shared/docs-link";
 
 // Sentinel Select value for "no org default" (Radix needs a non-empty value).
 const NO_DEFAULT = "__none__";
@@ -223,11 +224,14 @@ function SettingsPage() {
       {user?.isOwner && <OrgProfileCard org={org} />}
 
       <Card className={user?.isOwner ? "mt-6" : undefined}>
-        <CardHeader>
-          <CardTitle>{t("settings.autoJoin")}</CardTitle>
-          <CardDescription>
-            {t("settings.autoJoinFullDescription")}
-          </CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+          <div>
+            <CardTitle>{t("settings.autoJoin")}</CardTitle>
+            <CardDescription>
+              {t("settings.autoJoinFullDescription")}
+            </CardDescription>
+          </div>
+          <DocsLink href="/docs/configuration/authentication" />
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSave} className="space-y-4">

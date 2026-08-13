@@ -421,7 +421,7 @@ function BadgesPage() {
           <Link
             to="/orgs/$org/checks/$checkUid"
             params={{ org, checkUid: selectedCheck.uid }}
-            search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }}
+            search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
             className="text-sm text-primary hover:underline inline-flex items-center gap-1"
             data-testid="badge-back-to-check"
           >

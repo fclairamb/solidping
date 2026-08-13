@@ -16,7 +16,7 @@
  * Only server readiness check is performed.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { API_BASE } from "./fixtures";
 
@@ -119,10 +119,42 @@ async function waitForServer(url: string, maxRetries: number): Promise<void> {
 }
 
 /**
+ * Stop a server this setup started: SIGTERM, then SIGKILL if it is still there.
+ * Best-effort — a failure to kill must never mask the error that got us here.
+ */
+async function stopServer(pid: number): Promise<void> {
+  console.log(`[setup] Stopping server process ${pid} before teardown...`);
+
+  try {
+    process.kill(pid, "SIGTERM");
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    try {
+      process.kill(pid, 0);
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // Already gone.
+    }
+  } catch (err) {
+    console.warn(`[setup] Could not stop server ${pid}:`, err);
+  }
+
+  try {
+    unlinkSync(PID_FILE);
+  } catch {
+    // No PID file yet, or already removed.
+  }
+}
+
+/**
  * Global setup function executed before all tests.
  */
 export default async function globalSetup(): Promise<void> {
   console.log("[setup] Starting global setup for E2E tests...\n");
+
+  // Tracked so the failure path below can stop the server BEFORE tearing the
+  // database down. Playwright does not run globalTeardown when globalSetup
+  // throws, so anything left running here is left running for good.
+  let serverProcess: ChildProcess | undefined;
 
   // In CI, the server is already started by the CI workflow
   // We only need to wait for it to be ready
@@ -156,7 +188,7 @@ export default async function globalSetup(): Promise<void> {
 
     // Step 3: Start solidping server in test mode with database reset
     console.log("[setup] Step 3: Starting solidping server...");
-    const serverProcess = startBackgroundProcess("./solidping", ["serve"], {
+    serverProcess = startBackgroundProcess("./solidping", ["serve"], {
       cwd: PROJECT_ROOT,
       env: {
         ...process.env,
@@ -165,6 +197,12 @@ export default async function globalSetup(): Promise<void> {
         SP_DB_RESET: "true",
         SP_DB_TYPE: "postgres",
         SP_DB_URL: POSTGRES_TEST_DB_URL,
+        // Belt and braces for the case no teardown can cover: if this
+        // Playwright process is killed outright, the server would otherwise be
+        // reparented to PID 1 and keep running against a database we are about
+        // to destroy. One such orphan spent seventeen hours logging
+        // "no such table: jobs" until the disk filled (spec 2026-08-12-05).
+        SP_EXIT_WITH_PARENT: "true",
       },
     });
 
@@ -180,7 +218,14 @@ export default async function globalSetup(): Promise<void> {
     console.log("[setup] Global setup completed successfully!\n");
   } catch (err) {
     console.error("[setup] Global setup failed:", err);
-    // Clean up on failure
+    // Clean up on failure. ORDER MATTERS: stop the server we started before
+    // tearing its database down. Doing it the other way round leaves a live
+    // server pointed at a database that no longer exists — the exact shape of
+    // the incident in spec 2026-08-12-05 — and Playwright will not run
+    // globalTeardown to fix it, because this setup threw.
+    if (serverProcess?.pid) {
+      await stopServer(serverProcess.pid);
+    }
     try {
       await execCommand("docker", ["compose", "down"], { cwd: PROJECT_ROOT });
     } catch {

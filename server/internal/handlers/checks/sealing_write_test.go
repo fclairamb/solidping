@@ -13,7 +13,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 )
 
-const sealTestRegion = "@encrypt-test/dc1"
+// sealTestRegion is the ORG-RELATIVE private region string (spec
+// 2026-08-13-01): no org slug inside it, so an org rename cannot desync the
+// agent's bound region from the check's.
+const sealTestRegion = "@dc1"
 
 // enrollSealAgent enrolls a fresh agent into the given private region and
 // returns its keys (so tests can prove/unprove decryptability).

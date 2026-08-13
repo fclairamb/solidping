@@ -13,6 +13,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
 var (
@@ -39,11 +40,33 @@ const (
 // Service provides business logic for results.
 type Service struct {
 	db db.Service
+	// regions normalizes the `?region=` filter. A read filter is an input path
+	// like any other, so it accepts the legacy `@<org>/<slug>` spelling for this
+	// org and rejects a foreign one (spec 2026-08-13-01).
+	regions *regions.Service
 }
 
 // NewService creates a new results service.
 func NewService(dbService db.Service) *Service {
-	return &Service{db: dbService}
+	return &Service{db: dbService, regions: regions.NewService(dbService)}
+}
+
+// normalizeRegionFilter canonicalizes a caller-supplied `?region=` list.
+//
+// Without this, a bookmarked or shared link carrying the pre-2026-08-13
+// spelling (`?region=@stonaltech/aws-paris`) silently returns an EMPTY series
+// once migration 012 has rewritten the rows — the same unexplained-nothing
+// failure mode this whole spec exists to remove. A foreign org slug is a hard
+// 400 rather than an empty chart: an explicit error beats a silent nothing, and
+// it keeps one rule across every input path (check writes reject it too).
+func (s *Service) normalizeRegionFilter(
+	ctx context.Context, orgUID string, regionSlugs []string,
+) ([]string, error) {
+	if len(regionSlugs) == 0 {
+		return regionSlugs, nil
+	}
+
+	return s.regions.NormalizeRegionsForOrg(ctx, orgUID, regionSlugs)
 }
 
 // ListResultsOptions provides filtering and pagination options for listing results.
@@ -125,9 +148,14 @@ func (s *Service) ListResults(
 		filter.Statuses = s.mapStatusStringsToInts(opts.Statuses)
 	}
 
+	normalizedRegions, err := s.normalizeRegionFilter(ctx, org.UID, opts.Regions)
+	if err != nil {
+		return nil, err
+	}
+
 	// Set other filters
 	filter.CheckTypes = opts.CheckTypes
-	filter.Regions = opts.Regions
+	filter.Regions = normalizedRegions
 	filter.PeriodTypes = opts.PeriodTypes
 	filter.PeriodStartAfter = opts.PeriodStartAfter
 	filter.PeriodEndBefore = opts.PeriodEndBefore
@@ -428,22 +456,42 @@ type GetResultResponse struct {
 	NextUID string `json:"nextUid,omitempty"`
 }
 
-// GetResult fetches a single result by UID, falling back to the smallest-period
-// aggregation that covers the UID's embedded UUIDv7 timestamp when the raw
-// row has been rolled up. checkIdent may be the check UID or slug. regions
-// (optional) narrows the previous/next neighbor scope only — the row itself
-// is still resolved by UID regardless of region.
-func (s *Service) GetResult(
-	ctx context.Context, orgSlug, checkIdent, resultUID string, regions []string,
-) (*GetResultResponse, error) {
+// resolveResultScope resolves the org, the check, and the normalized region
+// scope a GetResult call operates in. Split out of GetResult so the fallback
+// walk below stays inside the cyclomatic budget.
+func (s *Service) resolveResultScope(
+	ctx context.Context, orgSlug, checkIdent string, regionFilter []string,
+) (*models.Organization, *models.Check, []string, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
-		return nil, ErrOrganizationNotFound
+		return nil, nil, nil, ErrOrganizationNotFound
 	}
 
 	check, err := s.db.GetCheckByUidOrSlug(ctx, org.UID, checkIdent)
 	if err != nil || check == nil {
-		return nil, ErrCheckNotFound
+		return nil, nil, nil, ErrCheckNotFound
+	}
+
+	regionScope, err := s.normalizeRegionFilter(ctx, org.UID, regionFilter)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return org, check, regionScope, nil
+}
+
+// GetResult fetches a single result by UID, falling back to the smallest-period
+// aggregation that covers the UID's embedded UUIDv7 timestamp when the raw
+// row has been rolled up. checkIdent may be the check UID or slug. regionFilter
+// (optional) narrows the previous/next neighbor scope only — the row itself
+// is still resolved by UID regardless of region — and is normalized exactly
+// like the list filter, so a legacy `@<org>/<slug>` link keeps working.
+func (s *Service) GetResult(
+	ctx context.Context, orgSlug, checkIdent, resultUID string, regionFilter []string,
+) (*GetResultResponse, error) {
+	org, check, regionScope, err := s.resolveResultScope(ctx, orgSlug, checkIdent, regionFilter)
+	if err != nil {
+		return nil, err
 	}
 
 	withAll := allWithFields()
@@ -453,7 +501,7 @@ func (s *Service) GetResult(
 			resp := s.convertResultToResponse(direct, withAll)
 
 			prevUID, nextUID, neighborErr := s.db.GetResultNeighbors(
-				ctx, org.UID, check.UID, resp.PeriodType, regions, resp.PeriodStart, resp.UID)
+				ctx, org.UID, check.UID, resp.PeriodType, regionScope, resp.PeriodStart, resp.UID)
 			if neighborErr != nil {
 				return nil, neighborErr
 			}
@@ -489,7 +537,7 @@ func (s *Service) GetResult(
 		// (same periodType as the effective row), not the requested raw UID —
 		// every step then lands on a real row with no fallback banner.
 		prevUID, nextUID, neighborErr := s.db.GetResultNeighbors(
-			ctx, org.UID, check.UID, resp.PeriodType, regions, resp.PeriodStart, resp.UID)
+			ctx, org.UID, check.UID, resp.PeriodType, regionScope, resp.PeriodStart, resp.UID)
 		if neighborErr != nil {
 			return nil, neighborErr
 		}

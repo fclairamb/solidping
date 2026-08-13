@@ -43,8 +43,10 @@ function hasFingerprint(check: Check): boolean {
   return typeof fingerprint === "string" && fingerprint.length > 0;
 }
 
-// privateRegionLabel renders a fully-qualified private region (`@org/paris`) as
-// the friendlier `@paris` used in the server's own validation messages.
+// privateRegionLabel renders a private region the way the server's own
+// validation messages do: `@paris`. Private regions are stored org-relatively
+// since spec 2026-08-13-01, so this is usually the identity — the slash case
+// only fires on a legacy `@org/paris` row a client is still holding.
 function privateRegionLabel(region: string): string {
   const slash = region.lastIndexOf("/");
   return slash >= 0 ? `@${region.slice(slash + 1)}` : region;

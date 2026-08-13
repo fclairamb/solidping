@@ -34,6 +34,7 @@ SolidPing is configured primarily through environment variables. All environment
 | `SP_SERVER_JOB_WORKER_NB` | `2` | Number of job runner goroutines |
 | `SP_SERVER_CHECK_WORKER_NB` | `3` | Number of check runner goroutines |
 | `SP_SHUTDOWN_TIMEOUT` | `30s` | Graceful shutdown timeout |
+| `SP_EXIT_WITH_PARENT` | `false` | Shut down when the process that started SolidPing disappears, instead of being reparented to PID 1. For servers spawned by a test harness or a wrapper script; leave off under a normal supervisor |
 | `PORT` | - | Alternative to `SP_SERVER_LISTEN` (for PaaS compatibility) |
 
 ### Custom Domains & TLS
@@ -47,6 +48,8 @@ SolidPing is configured primarily through environment variables. All environment
 | `SP_ACME_CA_URL` | Let's Encrypt prod | ACME directory URL (point at LE staging while testing) |
 | `SP_ACME_LISTEN_HTTP` | `:80` | HTTP-01 challenge listener; redirects everything else to HTTPS |
 | `SP_ACME_LISTEN_HTTPS` | `:443` | TLS listener, feeding the normal routing |
+| `SP_ACME_PROXY_PROTOCOL` | `false` | Read a PROXY protocol (v1/v2) preamble on both ACME listeners — needed behind a TLS passthrough, which has no `X-Forwarded-For` |
+| `SP_ACME_PROXY_PROTOCOL_TRUSTED_CIDRS` | - | Comma-separated CIDRs/IPs whose PROXY header is honored; headers from anywhere else are ignored. **Required** when `SP_ACME_PROXY_PROTOCOL=true` (empty fails startup) |
 
 Enabling `SP_ACME_ENABLED` makes the process bind two extra ports and removes
 the need for a TLS-terminating reverse proxy. Leave it off to keep TLS at your

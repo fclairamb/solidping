@@ -212,6 +212,42 @@ change an owner's role). Demoting the last owner is a `409 CONFLICT`.
 Remove a member from the organization. Auth: required (admin; **owner** to
 remove an owner). Removing the last owner is a `409 CONFLICT`.
 
+### GET /api/v1/orgs/:org/members/coverage
+Per-member paging coverage. Auth: required (**admin**).
+
+Exposes channel **types** plus `verified` / `enabled` flags — never a contact
+value. Per-user contacts are otherwise `users/me`-scoped and belong to the
+member; an admin needs "Bob has an unverified phone", not Bob's number.
+
+```json
+{ "data": [
+  { "userUid": "…", "email": "bob@acme.test", "name": "Bob", "role": "user",
+    "channels": [ { "type": "phone", "verified": false, "enabled": true } ],
+    "emailFallbackOnly": true }
+] }
+```
+
+`emailFallbackOnly` is true when no **enabled and verified** channel other than
+email exists. Escalation still reaches such a member — through the silent email
+fallback — but an email is not a page, which is what the on-call and escalation
+editors warn about.
+
+### POST /api/v1/orgs/:org/members/:uid/contacts
+Pre-provision a paging contact for another member, in **unverified** state.
+Auth: required (**admin**). Body `{ "type": "phone" | "whatsapp", "value":
+"+15551234567", "label": "" }`.
+
+**Invariant: an admin can never create or flip a contact to verified.** Only
+types that require a verification code round-trip may be provisioned; an
+already-present contact is refused with `409` rather than updated; and the
+written row is never verified. The member becomes pageable on it once they
+complete the normal verification flow themselves.
+
+### POST /api/v1/orgs/:org/members/:uid/paging-nudge
+Email the member a "set up your alert notifications" nudge linking to their own
+notification settings. Carries no contact data and no verification code. Auth:
+required (**admin**). `204` on success.
+
 ## Membership Requests
 
 A confirmed user with no membership in an org can ask to join by slug.

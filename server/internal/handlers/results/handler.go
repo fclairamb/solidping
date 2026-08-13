@@ -10,6 +10,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
 // Handler handles HTTP requests for results.
@@ -124,6 +125,12 @@ func (h *Handler) handleListError(writer http.ResponseWriter, err error) error {
 	case errors.Is(err, ErrInvalidCursor):
 		return h.WriteErrorErr(
 			writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid cursor", err)
+	case errors.Is(err, regions.ErrForeignPrivateRegion):
+		// A legacy `@<org>/<slug>` region naming somebody else's org. Answering
+		// 400 rather than an empty series is deliberate: an unexplained empty
+		// chart is the exact failure mode this spec exists to remove.
+		return h.WriteErrorErr(
+			writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 	default:
 		return h.WriteInternalError(writer, err)
 	}
@@ -139,12 +146,12 @@ func (h *Handler) GetResult(writer http.ResponseWriter, req *http.Request) error
 	checkIdent := httpx.Param(req, "check")
 	resultUID := httpx.Param(req, "uid")
 
-	var regions []string
+	var regionFilter []string
 	if regionParam := req.URL.Query().Get("region"); regionParam != "" {
-		regions = strings.Split(regionParam, ",")
+		regionFilter = strings.Split(regionParam, ",")
 	}
 
-	resp, err := h.svc.GetResult(req.Context(), orgSlug, checkIdent, resultUID, regions)
+	resp, err := h.svc.GetResult(req.Context(), orgSlug, checkIdent, resultUID, regionFilter)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrOrganizationNotFound):
@@ -156,6 +163,9 @@ func (h *Handler) GetResult(writer http.ResponseWriter, req *http.Request) error
 		case errors.Is(err, ErrResultNotFound):
 			return h.WriteErrorErr(
 				writer, http.StatusNotFound, base.ErrorCodeResultNotFound, "Result not found", err)
+		case errors.Is(err, regions.ErrForeignPrivateRegion):
+			return h.WriteErrorErr(
+				writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 		default:
 			return h.WriteInternalError(writer, err)
 		}

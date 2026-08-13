@@ -43,7 +43,7 @@ type env struct {
 	org    *models.Organization
 }
 
-const testRegion = "@acme/dc1"
+const testRegion = "@dc1"
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
@@ -262,7 +262,7 @@ func TestEnrollClaimResultIncident(t *testing.T) {
 	check := e.createCheck("web", []string{testRegion})
 	// Foreign scopes the agent must never see: another private region, a cloud
 	// region, and a region-less check.
-	e.createCheck("other-dc", []string{"@acme/dc2"})
+	e.createCheck("other-dc", []string{"@dc2"})
 	e.createCheck("cloud", []string{"eu"})
 	e.createCheck("bare", nil)
 
@@ -351,7 +351,7 @@ func TestResultOutsideScopeRejected(t *testing.T) {
 	e := newEnv(t)
 	ctx := t.Context()
 
-	foreign := e.createCheck("foreign", []string{"@acme/dc2"})
+	foreign := e.createCheck("foreign", []string{"@dc2"})
 
 	foreignJobs, err := e.dbSvc.ListCheckJobsByCheckUID(ctx, foreign.UID)
 	r.NoError(err)
@@ -754,7 +754,7 @@ func TestTunnelJobDroppedWhenBastionDeregioned(t *testing.T) {
 	dep := e.createTunneledDependent("private-api", []string{testRegion}, ssh.UID)
 
 	// Mid-flight: the bastion leaves the agent's region.
-	moved := []string{"@acme/dc2"}
+	moved := []string{"@dc2"}
 	r.NoError(e.dbSvc.UpdateCheck(ctx, ssh.UID, &models.CheckUpdate{Regions: &moved}))
 
 	jobsResp := roundTrip(t, conn, agentcrypto.ClientFrame{Type: agentcrypto.MsgTypeClaim, ID: "c1", MaxJobs: 10})

@@ -31,6 +31,16 @@ async function createHeartbeatCheck(
   token: string,
   name: string,
   checkGroupUid?: string,
+  /**
+   * Check period, e.g. "01:00:00". A heartbeat check is scheduled like any
+   * other: its passive job writes a `No heartbeat received` → down result
+   * whenever the last signal is older than this period. The default (60 s) is
+   * fine for tests that only care about the heartbeats they send themselves,
+   * but a test that measures *how many* refetches a window costs must make
+   * sure that job cannot fire inside the window and manufacture a status
+   * transition of its own — those pass a long period.
+   */
+  period?: string,
 ): Promise<HeartbeatCheck> {
   const hbToken = `e2e-live-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
   const resp = await page.request.post(`${API_BASE}/api/v1/orgs/test/checks`, {
@@ -44,6 +54,7 @@ async function createHeartbeatCheck(
       confirmationPeriodSeconds: 0,
       recoveryPeriodSeconds: 0,
       ...(checkGroupUid ? { checkGroupUid } : {}),
+      ...(period ? { period } : {}),
     },
   });
   expect(resp.status()).toBe(201);
@@ -84,6 +95,64 @@ async function sendHeartbeat(
     `${API_BASE}/api/v1/heartbeat/test/${check.uid}?token=${check.hbToken}&status=${status}`,
   );
   expect(resp.status()).toBe(200);
+}
+
+/**
+ * Waits until the check really carries `status` server-side, re-sending the
+ * matching heartbeat whenever it does not.
+ *
+ * Creating a heartbeat check schedules its passive job immediately, and that
+ * job writes a `No heartbeat received` → down result when its read of the last
+ * result does not find a recent signal. That first run lands within ~1 s of
+ * creation, so it races the setup heartbeat: lose the race and the check sits
+ * at `down` until the next period (60 s by default) — long enough for a UI
+ * assertion on the `Up` badge to fail outright. Re-sending the heartbeat on
+ * each poll makes the setup converge instead of gambling on the ordering.
+ *
+ * `stableForMs` additionally requires the status to *hold* for that long. A
+ * test that counts refetches needs more than "up right now": it needs the
+ * guarantee that no status transition (and hence no legitimate `checks` hint)
+ * is still in flight from the setup. Holding for a few seconds outlasts the
+ * one and only passive run — with a long check period the next one is an hour
+ * out — so the status is settled for the rest of the test.
+ */
+async function waitForCheckStatus(
+  page: Page,
+  token: string,
+  check: HeartbeatCheck,
+  status: "up" | "down",
+  stableForMs = 0,
+): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  let holdingSince: number | null = null;
+
+  for (;;) {
+    const resp = await page.request.get(
+      `${API_BASE}/api/v1/orgs/test/checks/${check.uid}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    const current = ((await resp.json()) as { status?: string }).status ?? "";
+
+    if (current === status) {
+      holdingSince ??= Date.now();
+      if (Date.now() - holdingSince >= stableForMs) return;
+    } else {
+      holdingSince = null;
+      await sendHeartbeat(page, check, status);
+    }
+
+    if (Date.now() >= deadline) {
+      expect(
+        current,
+        `the check must settle at status "${status}" before the page is measured`,
+      ).toBe(status);
+      throw new Error(
+        `the check reached "${status}" but never held it for ${stableForMs}ms`,
+      );
+    }
+
+    await page.waitForTimeout(500);
+  }
 }
 
 async function deleteCheck(
@@ -458,7 +527,10 @@ test.describe("Live dashboard updates", () => {
     );
 
     try {
-      await sendHeartbeat(page, check, "up");
+      // Settle the check at `up` before loading the page: the passive
+      // "no heartbeat received" job races check creation, so a single
+      // fire-and-forget heartbeat is not enough to guarantee an Up badge.
+      await waitForCheckStatus(page, token, check, "up");
 
       const subscribed = waitForScopeSubscribed(page, "checks");
       await page.goto("orgs/test/checks");
@@ -499,15 +571,63 @@ test.describe("Live dashboard updates", () => {
       page,
       token,
       `E2E Steady State ${Date.now()}`,
+      undefined,
+      // One hour, so the check's own passive job cannot fire inside the
+      // measurement window. At the default 60 s period that job writes a
+      // `No heartbeat received` → down result, i.e. a *genuine* status
+      // transition, whose `checks` hint refetches the list legitimately — it
+      // was the biggest single source of this test's flakiness.
+      "01:00:00",
     );
 
     try {
-      await sendHeartbeat(page, check, "up");
+      // Settle the check at `up` before measuring anything, and require it to
+      // HOLD: the first passive job runs within ~1 s of creation and races
+      // this heartbeat, so a status that merely reads `up` once can still flip
+      // to `down` a moment later — either failing the Up-badge assertion or
+      // firing a legitimate `checks` hint inside the measurement window. With
+      // the 1 h period above, holding for 3 s means that single passive run is
+      // behind us and the next one is an hour away.
+      await waitForCheckStatus(page, token, check, "up", 3_000);
 
-      const subscribed = waitForScopeSubscribed(page, "checks");
+      const subscribedPromise = waitForScopeSubscribed(page, "checks");
       await page.goto("orgs/test/checks");
-      await subscribed;
+      const ws = await subscribedPromise;
+
+      // The counter must only ever see THIS page's list query. Two different
+      // queries hit `/api/v1/orgs/test/checks`: the page's infinite list
+      // (`?q=<name>&with=last_result&…`) and the org layout's CommandMenu
+      // (`useChecks(org, { limit: 10 })` → `?limit=10`). Both match the
+      // `checks`/`checks` live roots, so counting by pathname made a single
+      // invalidation cost two against the budget. Keying on the search term
+      // pins the count to the list under test.
+      const isPageListRequest = (url: string): boolean => {
+        let parsed: URL;
+        try {
+          parsed = new URL(url);
+        } catch {
+          return false;
+        }
+        return (
+          parsed.pathname === "/api/v1/orgs/test/checks" &&
+          parsed.searchParams.get("q") === check.name
+        );
+      };
+
+      // Barrier #1 — the filtered query's OWN first fetch must land before the
+      // counter is armed. `fill()` only sets the input; the page debounces for
+      // 300 ms before the `q=` query key changes and fetches. Meanwhile the
+      // row is already visible (rendered from the pre-filter list), so the
+      // visibility assertions below settle *sooner* than that fetch: arming on
+      // them alone put the debounced fetch inside the window, where it ate the
+      // entire budget of one.
+      const filteredListLoaded = page.waitForResponse(
+        (resp) => isPageListRequest(resp.url()),
+        { timeout: 15_000 },
+      );
       await page.getByPlaceholder("Search checks...").fill(check.name);
+      await filteredListLoaded;
+
       const row = page.getByRole("row").filter({ hasText: check.name });
       await expect(row).toBeVisible();
       await expect(row.getByText("Up", { exact: true })).toBeVisible();
@@ -515,15 +635,39 @@ test.describe("Live dashboard updates", () => {
       let listFetches = 0;
       const onRequest = (req: { url: () => string; method: () => string }) => {
         if (req.method() !== "GET") return;
-        let parsed: URL;
-        try {
-          parsed = new URL(req.url());
-        } catch {
-          return;
-        }
-        if (parsed.pathname === "/api/v1/orgs/test/checks") listFetches += 1;
+        if (isPageListRequest(req.url())) listFetches += 1;
       };
+
+      // Barrier #2 — tally the `checks`-kind hints the server actually
+      // delivers during the window. The org-scoped `checks` subscription is
+      // not limited to this test's check: any check in the shared test org
+      // (including ones other specs are driving) can transition and publish a
+      // legitimate `checks` hint, which legitimately refetches this list. The
+      // budget below accounts for those instead of pretending they never
+      // happen — a reintroduced results-driven invalidation still fails,
+      // because it refetches with ZERO `checks` hints to explain it.
+      let checksHints = 0;
+      const onFrame = (frame: { payload: string | Buffer }) => {
+        const text = typeof frame.payload === "string" ? frame.payload : "";
+        if (!text.includes('"type":"update"')) return;
+        try {
+          const msg = JSON.parse(text) as {
+            type?: string;
+            entity?: string;
+            kinds?: unknown;
+          };
+          if (msg.type !== "update" || msg.entity !== "checks") return;
+          const kinds = Array.isArray(msg.kinds) ? msg.kinds : [];
+          // An empty `kinds` means "all" on the wire — count it, since it
+          // covers the transition kind too.
+          if (kinds.length === 0 || kinds.includes("checks")) checksHints += 1;
+        } catch {
+          // Not JSON — not an update frame we can attribute.
+        }
+      };
+
       page.on("request", onRequest);
+      ws.on("framereceived", onFrame);
 
       // Four more passing heartbeats: results are written, no status change.
       for (let i = 0; i < 4; i += 1) {
@@ -531,21 +675,43 @@ test.describe("Live dashboard updates", () => {
         await page.waitForTimeout(1000);
       }
       await page.waitForTimeout(2000);
-      page.off("request", onRequest);
+      ws.off("framereceived", onFrame);
+      const steadyStateFetches = listFetches;
 
-      // At most one CHECKS_LIST_POLL_MS (10 s) tick can land in this ~6 s
-      // window; the former behavior produced one refetch per hint instead —
-      // roughly one every 3 s, per open tab, forever.
+      // Budget for the ~6 s window above:
+      //  • 1 — at most one CHECKS_LIST_POLL_MS (10 s) tick can land in it;
+      //  • plus one refetch per damper interval that could have carried a
+      //    genuine `checks` hint (hint-driven invalidations are coalesced to
+      //    one per LIVE_INVALIDATE_MIN_INTERVAL_MS, 3 s).
+      // The former results-driven behavior produced one refetch per hint —
+      // roughly one every 3 s, per open tab, forever — with no `checks` hint
+      // anywhere in sight, so it still busts this budget.
+      const STEADY_STATE_WINDOW_MS = 6_000;
+      const LIVE_INVALIDATE_MIN_INTERVAL_MS = 3_000; // LiveEventsContext
+      const allowance =
+        1 +
+        Math.min(
+          checksHints,
+          Math.ceil(STEADY_STATE_WINDOW_MS / LIVE_INVALIDATE_MIN_INTERVAL_MS),
+        );
       expect(
-        listFetches,
-        "a steady-state result write must not refetch the checks list",
-      ).toBeLessThanOrEqual(1);
+        steadyStateFetches,
+        `a steady-state result write must not refetch the checks list (${checksHints} genuine "checks" hint(s) in the window)`,
+      ).toBeLessThanOrEqual(allowance);
 
-      // …while a genuine transition still refreshes the row live.
+      // …while a genuine transition still refreshes the row live. This is the
+      // counter's positive control: it proves the request filter above still
+      // observes real list refetches, so a `toBeLessThanOrEqual` pass above
+      // can never be an artifact of counting nothing at all.
       await sendHeartbeat(page, check, "down");
       await expect(row.getByText("Down", { exact: true })).toBeVisible({
         timeout: 8000,
       });
+      page.off("request", onRequest);
+      expect(
+        listFetches - steadyStateFetches,
+        "a genuine status transition must still refetch the checks list",
+      ).toBeGreaterThanOrEqual(1);
     } finally {
       await deleteCheck(page, token, check.uid);
     }

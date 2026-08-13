@@ -128,6 +128,7 @@
     "indicatorTooltip": "Escalation policy: {{name}}"
   },
   "noChecks": "No checks in this group",
+  "addCheckToGroup": "Add a check to this group",
   "noUngroupedChecks": "No ungrouped checks match your search",
   "failedToLoadChecks": "Failed to load checks",
   "noChecksAtAll": "No checks yet",

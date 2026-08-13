@@ -128,6 +128,7 @@
     "indicatorTooltip": "Política de escalado: {{name}}"
   },
   "noChecks": "No hay comprobaciones en este grupo",
+  "addCheckToGroup": "Añadir una comprobación a este grupo",
   "noUngroupedChecks": "Ninguna comprobación sin grupo coincide con su búsqueda",
   "failedToLoadChecks": "No se pudieron cargar las comprobaciones",
   "noChecksAtAll": "Aún no hay comprobaciones",

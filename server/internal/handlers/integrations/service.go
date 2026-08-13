@@ -141,6 +141,10 @@ type Service struct {
 	// JobContext (webhook, discord, …).
 	registry  *services.Registry
 	appConfig *config.Config
+	// slackIdentityClient builds the Slack lookup client used by the member
+	// identity auto-match. Per-instance seam (see SetSlackIdentityClient) so
+	// parallel tests never race on a shared package-level override.
+	slackIdentityClient SlackIdentityClientFactory
 }
 
 // NewService creates a new connections service. registry and cfg may be nil

@@ -23,15 +23,19 @@ test.describe("Command Menu (Cmd+K)", () => {
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Status Pages" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Badges" })).toBeVisible();
 
-    // Verify Account group
-    await expect(page.getByText("Account", { exact: true })).toBeVisible();
+    // Verify Account group. The group heading itself reads "Account", same as
+    // the new section-landing entry's title, so scope the heading assertion
+    // to the [cmdk-group-heading] element to avoid a strict-mode ambiguity.
+    await expect(page.locator("[cmdk-group-heading]", { hasText: "Account" })).toBeVisible();
+    await expect(page.getByTestId("command-menu-account")).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Profile" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Tokens" })).toBeVisible();
     await expect(page.getByTestId("command-menu-ai")).toBeVisible();
     await expect(page.getByTestId("command-menu-ai")).toContainText("AI assistants");
 
-    // Verify Organization group
-    await expect(page.getByText("Organization", { exact: true })).toBeVisible();
+    // Verify Organization group (same heading/entry-title collision as above).
+    await expect(page.locator("[cmdk-group-heading]", { hasText: "Organization" })).toBeVisible();
+    await expect(page.getByTestId("command-menu-organization")).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Members" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Invitations" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Settings" })).toBeVisible();
@@ -189,6 +193,56 @@ test.describe("Command Menu (Cmd+K)", () => {
     await expect(
       page.getByRole("heading", { name: /ai assistants/i }),
     ).toBeVisible();
+  });
+
+  test("exposes the Organization entry, findable by 'organization', → parent redirects to invitations", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
+
+    await page.keyboard.press("Meta+k");
+    const input = page.locator('[cmdk-input]');
+    await expect(input).toBeVisible({ timeout: 3000 });
+
+    // Searching "organization" surfaces the section landing entry (not just
+    // its sub-pages, whose titles don't contain the word).
+    const orgItem = page.getByTestId("command-menu-organization");
+    await input.fill("organization");
+    await expect(orgItem).toBeVisible();
+    await expect(orgItem).toContainText("Organization");
+
+    // Selecting it navigates to the parent route, whose index redirects to
+    // the current default child (invitations).
+    await orgItem.click();
+    await page.waitForURL(/\/organization\/invitations/, { timeout: 5000 });
+    expect(page.url()).toContain("/organization/invitations");
+    await expect(input).not.toBeVisible();
+  });
+
+  test("exposes the Account entry, findable by 'account', → parent redirects to profile", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
+
+    await page.keyboard.press("Meta+k");
+    const input = page.locator('[cmdk-input]');
+    await expect(input).toBeVisible({ timeout: 3000 });
+
+    // Searching "account" surfaces the section landing entry (not just its
+    // sub-pages, whose titles don't contain the word).
+    const accountItem = page.getByTestId("command-menu-account");
+    await input.fill("account");
+    await expect(accountItem).toBeVisible();
+    await expect(accountItem).toContainText("Account");
+
+    // Selecting it navigates to the parent route, whose index redirects to
+    // the current default child (profile).
+    await accountItem.click();
+    await page.waitForURL(/\/account\/profile/, { timeout: 5000 });
+    expect(page.url()).toContain("/account/profile");
+    await expect(input).not.toBeVisible();
   });
 
   test("should show checks and navigate to a check", async ({

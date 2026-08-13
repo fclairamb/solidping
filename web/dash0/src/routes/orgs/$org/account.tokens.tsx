@@ -58,6 +58,7 @@ import {
 } from "@/components/ui/select";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { DocsLink } from "@/components/shared/docs-link";
 
 export const Route = createFileRoute("/orgs/$org/account/tokens")({
   component: TokensPage,
@@ -212,8 +213,8 @@ function TokensPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="relative flex-1 min-w-[160px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder={t("tokens.searchPlaceholder")}
@@ -237,6 +238,7 @@ function TokensPage() {
           <Plus className="mr-2 h-4 w-4" />
           {t("tokens.newToken")}
         </Button>
+        <DocsLink href="/docs/api" />
       </div>
 
       {error ? (

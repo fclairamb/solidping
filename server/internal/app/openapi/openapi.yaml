@@ -95,6 +95,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: >
+            The node cannot serve: a structural database fault (the schema it
+            needs is gone) was detected and the process is shutting down.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
 
   /api/mgmt/scheduling/cost-distribution:
     get:
@@ -2732,6 +2740,129 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/integrations/{uid}/identities:
+    get:
+      tags: [Channels]
+      summary: List member identity mappings for an integration
+      description: >-
+        Returns every organization member together with their identity on this
+        integration (e.g. their Slack user id on the connected workspace).
+        Identities are used to mention the on-call person in channel alerts;
+        they are never used for paging. Read-only and cheap: this never calls
+        out to the provider. Slack-only — other integration types return 400.
+      operationId: listIntegrationIdentities
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ChannelUidPath"
+      responses:
+        "200":
+          description: Per-member mapping status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationIdentityListResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/integrations/{uid}/identities/sync:
+    post:
+      tags: [Channels]
+      summary: Re-run the member identity auto-match
+      description: >-
+        Looks every organization member up in the connected Slack workspace by
+        email (`users.lookupByEmail`) and records the matches. Manual overrides
+        are never overwritten, and a workspace account that two members both
+        resolve to is reported ambiguous and written nowhere. Admin only.
+      operationId: syncIntegrationIdentities
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ChannelUidPath"
+      responses:
+        "200":
+          description: Post-sync state and bucket counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationIdentitySyncResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The integration has no connected workspace
+
+  /api/v1/orgs/{org}/integrations/{uid}/identities/{userUid}:
+    put:
+      tags: [Channels]
+      summary: Set a member's identity on an integration
+      description: >-
+        Records an admin-chosen mapping between an organization member and a
+        workspace user. The external id may be claimed by at most one member
+        per integration. Admin only.
+      operationId: setIntegrationIdentity
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ChannelUidPath"
+        - $ref: "#/components/parameters/IdentityUserUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetIntegrationIdentityRequest"
+      responses:
+        "200":
+          description: The stored mapping
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationIdentity"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: That workspace user is already mapped to another member
+    delete:
+      tags: [Channels]
+      summary: Clear a member's identity on an integration
+      operationId: deleteIntegrationIdentity
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ChannelUidPath"
+        - $ref: "#/components/parameters/IdentityUserUidPath"
+      responses:
+        "204":
+          description: Mapping cleared
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/checks/{check}/channels:
     get:
       tags: [Channels]
@@ -2958,6 +3089,100 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /api/v1/orgs/{org}/members/coverage:
+    get:
+      tags: [Members]
+      summary: List per-member paging coverage
+      description: >-
+        Per-member notification coverage for the organization. Exposes channel
+        TYPES and verified/enabled flags only — never a contact value, since
+        per-user contacts belong to the member and are otherwise `users/me`
+        scoped. `emailFallbackOnly` marks members nothing but email can reach.
+        Admin only.
+      operationId: listMemberCoverage
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: Per-member coverage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberCoverageListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/members/{uid}/contacts:
+    post:
+      tags: [Members]
+      summary: Pre-provision an unverified paging contact for a member
+      description: >-
+        Lets an admin add a phone or WhatsApp contact for another member, in
+        UNVERIFIED state. The contact becomes pageable only after its owner
+        completes the normal verification round-trip — an admin can never create
+        or flip a contact to verified. Other contact types are refused.
+      operationId: addMemberContact
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MemberUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddMemberContactRequest"
+      responses:
+        "201":
+          description: The created (unverified) contact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminMemberContact"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The member already has that contact
+
+  /api/v1/orgs/{org}/members/{uid}/paging-nudge:
+    post:
+      tags: [Members]
+      summary: Email a member asking them to set up their paging
+      description: >-
+        Sends a "set up your alert notifications" email with a link to the
+        member's own notification settings. Carries no contact data and no
+        verification code. Admin only.
+      operationId: sendMemberPagingNudge
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MemberUidPath"
+      responses:
+        "204":
+          description: Nudge sent
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/orgs/{org}/members/{uid}:
     get:
@@ -6053,6 +6278,15 @@ components:
         format: uuid
       description: Channel (connection) UID
 
+    IdentityUserUidPath:
+      name: userUid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Organization member's user UID
+
     MemberUidPath:
       name: uid
       in: path
@@ -6627,7 +6861,21 @@ components:
       properties:
         status:
           type: string
-          enum: [ok]
+          enum: [ok, unhealthy]
+        node:
+          type: object
+          properties:
+            role:
+              type: string
+            region:
+              type: string
+        fault:
+          type: string
+          description: >
+            Name of the structural database fault that made this node
+            unhealthy (e.g. undefined_table). Present only with status
+            "unhealthy", which is also served with HTTP 503; the node is
+            shutting down because no retry can recover the condition.
 
     # Authentication schemas
     DeviceAuthorizationRequest:
@@ -8424,6 +8672,144 @@ components:
         detail:
           type: string
           description: Optional human-readable success note
+
+    MemberChannelCoverage:
+      type: object
+      required: [type, verified, enabled]
+      properties:
+        type:
+          type: string
+          description: Contact channel type (email, phone, whatsapp, telegram, webpush, …)
+        verified:
+          type: boolean
+        enabled:
+          type: boolean
+
+    MemberCoverage:
+      type: object
+      required: [userUid, email, role, channels, emailFallbackOnly]
+      properties:
+        userUid:
+          type: string
+          format: uuid
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        channels:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberChannelCoverage"
+        emailFallbackOnly:
+          type: boolean
+          description: >-
+            True when no enabled AND verified channel other than email exists —
+            escalation can still reach this member, but only by email.
+
+    MemberCoverageListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberCoverage"
+
+    AddMemberContactRequest:
+      type: object
+      required: [type, value]
+      properties:
+        type:
+          type: string
+          enum: [phone, whatsapp]
+        value:
+          type: string
+          description: E.164 number (e.g. +15551234567)
+        label:
+          type: string
+
+    AdminMemberContact:
+      type: object
+      required: [uid, userUid, type, verified]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        userUid:
+          type: string
+          format: uuid
+        type:
+          type: string
+        label:
+          type: string
+        verified:
+          type: boolean
+          description: Always false — an admin can never create a verified contact.
+
+    IntegrationIdentity:
+      type: object
+      required: [userUid, email, status]
+      properties:
+        userUid:
+          type: string
+          format: uuid
+        email:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [matched, notFound, ambiguous]
+          description: >-
+            matched = the member has an identity on this integration;
+            notFound = their email resolved to nobody in the workspace;
+            ambiguous = the match collided with another member and was
+            deliberately not written.
+        externalId:
+          type: string
+          description: Provider-side identifier (Slack user id) rendered as <@id>
+        displayName:
+          type: string
+        source:
+          type: string
+          enum: [auto, manual]
+          description: auto = email auto-match; manual = an admin picked it. A re-sync never overwrites manual.
+
+    IntegrationIdentityListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntegrationIdentity"
+
+    IntegrationIdentitySyncResponse:
+      type: object
+      required: [data, matchedCount, notFoundCount, ambiguousCount]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntegrationIdentity"
+        matchedCount:
+          type: integer
+        notFoundCount:
+          type: integer
+        ambiguousCount:
+          type: integer
+
+    SetIntegrationIdentityRequest:
+      type: object
+      required: [externalId]
+      properties:
+        externalId:
+          type: string
+          description: Workspace user id to map this member to
+        displayName:
+          type: string
 
     CheckChannel:
       type: object

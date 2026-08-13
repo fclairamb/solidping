@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -93,6 +94,89 @@ func TestManualReaderEnvVarsBind(t *testing.T) {
 	r.Equal(1234, cfg.Realtime.MaxConnections)
 	r.Equal(42, cfg.Entitlements.SMSRunawayPerHour)
 	r.Equal(7, cfg.Entitlements.CallRunawayPerHour)
+}
+
+// TestExitWithParentEnvVarBinds proves SP_EXIT_WITH_PARENT both lands on its
+// struct field AND is advertised as recognized. The second half is the point:
+// server.exit_with_parent has a snake_case segment, so it is excluded from the
+// koanf-reflected set by construction and must be earned through the manual
+// list. Without the list entry the variable still worked, but every e2e run —
+// and every operator following the documented row — got a spurious
+// "unrecognized SP_* environment variable" warning at startup, which is how
+// startup warnings get trained into noise (spec 2026-08-12-05).
+func TestExitWithParentEnvVarBinds(t *testing.T) {
+	t.Setenv("SP_EXIT_WITH_PARENT", "true")
+
+	r := require.New(t)
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.True(cfg.Server.ExitWithParent)
+
+	recognized := RecognizedEnvVars()
+	r.Contains(recognized, "SP_EXIT_WITH_PARENT")
+	r.Contains(recognized, "SP_SERVER_EXIT_WITH_PARENT")
+}
+
+// TestExitWithParentPrefersTheServerScopedName pins the precedence shared by
+// every other dual-name pair in applyServerEnv.
+func TestExitWithParentPrefersTheServerScopedName(t *testing.T) {
+	t.Setenv("SP_SERVER_EXIT_WITH_PARENT", "false")
+	t.Setenv("SP_EXIT_WITH_PARENT", "true")
+
+	r := require.New(t)
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.False(cfg.Server.ExitWithParent, "the server-scoped name wins")
+}
+
+// TestEverySPEnvVarReadIsRecognized is the general guard the single-case tests
+// above cannot be: it scans this package's own source for every literal
+// os.Getenv("SP_…") call and requires each name to be advertised by
+// RecognizedEnvVars.
+//
+// It exists because the previous coverage was circular — the old test iterated
+// the registry list, so a name missing from the list was untested by
+// construction, which is exactly how SP_EXIT_WITH_PARENT shipped unregistered.
+// The one thing this cannot see is a name read through a variable rather than a
+// literal, so manual readers spell their names out (see applyServerEnv).
+func TestEverySPEnvVarReadIsRecognized(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	entries, err := os.ReadDir(".")
+	r.NoError(err)
+
+	pattern := regexp.MustCompile(`os\.Getenv\("(SP_[A-Z0-9_]+)"\)`)
+	recognized := RecognizedEnvVars()
+	seen := map[string]struct{}{}
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+
+		source, readErr := os.ReadFile(name)
+		r.NoError(readErr)
+
+		for _, match := range pattern.FindAllStringSubmatch(string(source), -1) {
+			if _, done := seen[match[1]]; done {
+				continue
+			}
+
+			seen[match[1]] = struct{}{}
+
+			r.Contains(recognized, match[1],
+				"%s is read by config.Load but is not advertised by RecognizedEnvVars: "+
+					"add it to manualReaderEnvVars, or the startup env check will warn about a "+
+					"variable that in fact binds", match[1])
+		}
+	}
+
+	r.NotEmpty(seen, "the scan must actually find os.Getenv calls")
 }
 
 // TestWhatsAppEnvVarsBind proves every SP_WHATSAPP_* name in the manual-reader

@@ -133,6 +133,7 @@ function IncidentsIndexPage() {
         icon={AlertTriangle}
         title={t("title")}
         description={t("subtitle")}
+        docsHref="/docs/features/incidents"
         className="flex-wrap"
       />
 
@@ -261,7 +262,7 @@ function IncidentsIndexPage() {
                     <Link
                       to="/orgs/$org/checks/$checkUid"
                       params={{ org, checkUid: incident.checkUid! }}
-                      search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }}
+                      search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
                       className="hover:underline text-sm text-muted-foreground"
                     >
                       {incident.checkSlug || incident.checkName}

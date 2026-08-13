@@ -5,7 +5,6 @@ import {
   Bot,
   Eye,
   KeyRound,
-  ExternalLink,
   AlertTriangle,
   Compass,
   MessageSquare,
@@ -23,6 +22,7 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { CopyableCode, CollapsibleCode } from "@/components/shared/copyable-code";
+import { DocsLink } from "@/components/shared/docs-link";
 
 type McpSearch = {
   /** "get" when the user landed here from opening GET /api/v1/mcp in a browser. */
@@ -105,9 +105,12 @@ function McpPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">{t("ai.title")}</h1>
-        <p className="text-muted-foreground">{t("ai.description")}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">{t("ai.title")}</h1>
+          <p className="text-muted-foreground">{t("ai.description")}</p>
+        </div>
+        <DocsLink href="/docs/features/mcp" />
       </div>
 
       {from === "get" && (
@@ -261,18 +264,6 @@ function McpPage() {
             <AlertTitle>{t("ai.selfHosted.title")}</AlertTitle>
             <AlertDescription>{t("ai.selfHosted.description")}</AlertDescription>
           </Alert>
-
-          <div className="border-t pt-4">
-            <a
-              href="/docs/features/mcp"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-            >
-              {t("ai.docsLink")}
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-          </div>
         </CardContent>
       </Card>
     </div>

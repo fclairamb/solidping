@@ -28,10 +28,16 @@ Key properties:
 ## 1. Create a private location
 
 In the dashboard: **Organization → Private locations → Add location**. A
-location is an org-private region with a slug like `dc1`; its fully-qualified
-region identity is `@<org>/<slug>` (e.g. `@acme/dc1`). Cloud workers can
-structurally never match an `@…` region — private locations are served
-exclusively by your agents.
+location is an org-private region with a slug like `dc1`; its region identity
+is `@<slug>` (e.g. `@dc1`) — org-relative, because the organization is already
+implied by the URL and by every row that stores it, so **renaming your
+organization never breaks a private location**. Cloud workers can structurally
+never match an `@…` region — private locations are served exclusively by your
+agents.
+
+> The older fully-qualified spelling `@<org>/<slug>` is still accepted on input
+> (for your organization's current or previous slug) and is normalized away;
+> existing installs are rewritten automatically on upgrade.
 
 ## 2. Mint an enrollment token
 
@@ -72,23 +78,57 @@ there is no bearer token to steal, and the database only ever holds public keys.
 
 ### Getting the `SP_AGENT_KEYS` value
 
-To run an agent from the environment alone, read the file the agent already
-wrote:
+The identity is generated **in the container on first start**. Read it out
+once, keep it in your secret store, and inject it as `SP_AGENT_KEYS`: the agent
+then holds no local state, so its pod or container can be rescheduled,
+restarted or rebuilt freely.
+
+Reading it out is the only fiddly part, because the agent image's runtime stage
+is distroless (`gcr.io/distroless/base-debian13:nonroot`): no shell, no
+`base64`, no `tar`. That rules out the commands that look like the obvious
+first move:
+
+- `kubectl exec … base64 …` fails: `exec: "base64": executable file not found
+  in $PATH`.
+- `kubectl cp` fails too — it streams the copy through `tar` running **inside
+  the container**, and distroless doesn't ship that either.
+- `fly ssh console` needs `hallpass` baked into the image; it isn't there.
+
+The answer in every case is the same: read the file from somewhere **other than
+the agent container**.
+
+**Kubernetes** — run the first start in a throwaway Pod that shares an
+`emptyDir` with an ordinary `alpine` sidecar, then read the file from the
+*sidecar*. Piping it straight into the Secret keeps the key material off your
+terminal as well as out of the logs:
 
 ```bash
-# docker
-docker exec <container> base64 -w0 /data/agent-keys.json
-# fly
-fly ssh console -a <app> -C "base64 -w0 /data/agent-keys.json"
-# kubernetes (first run with a temporary volume)
-kubectl exec deploy/solidping-agent -- base64 -w0 /data/agent-keys.json
+kubectl exec solidping-agent-enroll -c extract \
+  -- sh -c "base64 /data/agent-keys.json | tr -d '\n'" \
+  | kubectl create secret generic solidping-agent-keys --from-file=keys=/dev/stdin
 ```
 
-If the agent has no readable file at all (no writable volume, no shell), start
-it once with `SP_AGENT_PRINT_KEYS=true`. It then prints the base64 to stdout
-inside a `!!! PRIVATE KEY MATERIAL !!!` banner. Copy it into your secret store,
-then unset the variable and restart — and treat the agent as compromised (revoke
-and re-enroll it) if that output was retained by a log drain.
+The enrollment Pod that goes with it is in [Kubernetes](#kubernetes) below.
+
+**Docker** — `docker cp` reads
+the container's filesystem from the daemon side — it doesn't execute anything
+inside the container, so the missing shell/`base64`/`tar` don't matter:
+
+```bash
+# straight from the daemon — no shell or tar needed inside the container
+docker cp <container>:/data/agent-keys.json - | tar -xO | base64 -w0
+
+# or, against a named volume with no running container at all:
+docker run --rm -v agent-data:/data alpine base64 -w0 /data/agent-keys.json
+```
+
+**Last resort — `SP_AGENT_PRINT_KEYS=true`.** If neither of the above is an
+option, start the agent once with `SP_AGENT_PRINT_KEYS=true`. It prints the
+base64 identity to stdout inside a `!!! PRIVATE KEY MATERIAL !!!` banner —
+i.e. into whatever aggregates your container logs. Copy it into your secret
+store, then unset the variable and restart — and treat the agent as
+compromised (revoke and re-enroll it) if that output was retained by a log
+drain.
 
 ### Environment variables
 
@@ -100,14 +140,86 @@ and re-enroll it) if that output was retained by a log drain.
 | `SP_AGENT_KEYS_FILE` | `/data/agent-keys.json` | Where the identity JSON is persisted |
 | `SP_AGENT_KEYS` | — | Base64 identity JSON for env-only deployments (wins over the file) |
 | `SP_AGENT_NAME` | hostname | Display name shown in the dashboard |
+| `SP_NODE_NAME` | hostname | Pins the worker identity. Without it the worker slug is derived from the (truncated) hostname, so a pod that gets a new name on every restart lands on a new `workers` row each time |
 | `SP_AGENT_PRINT_KEYS` | `false` | Prints the agent's **private key material** to stdout — opt-in bootstrap only (honoured on every start); unset it again afterwards |
 
-### Kubernetes (env-only keys)
+### Kubernetes
 
-After the first enrollment, read the `SP_AGENT_KEYS` value out of the agent's
-keys file (`kubectl exec deploy/solidping-agent -- base64 -w0
-/data/agent-keys.json`) and store it in a Secret — the pod then needs no
-persistent volume:
+Keep the identity in a Secret and inject it as `SP_AGENT_KEYS`. The agent then
+needs no volume at all, which is what you want in a cluster: the pod is
+stateless, so it can be rescheduled onto any node, recreated, or rebuilt from
+the manifest without ever losing or migrating storage.
+
+Enrollment happens **once**, in a throwaway Pod, and produces that Secret.
+
+#### 1. Enroll
+
+Mint an enrollment token, put it in a Secret, and run the Pod below. The
+`extract` sidecar shares an `emptyDir` with the agent, which is how the keys
+file becomes readable at all — the agent's own container is distroless and has
+no shell.
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: solidping-agent-enroll
+spec:
+  restartPolicy: Never
+  securityContext:
+    # distroless :nonroot runs as uid 65532. Without this fsGroup the shared
+    # volume stays root-owned and the agent cannot write the 0600 keys file.
+    fsGroup: 65532
+  containers:
+    - name: agent
+      image: ghcr.io/fclairamb/solidping:latest
+      env:
+        - name: SP_NODE_ROLE
+          value: agent
+        - name: SP_AGENT_SERVER_URL
+          value: https://solidping.example.com
+        - name: SP_AGENT_ENROLLMENT_TOKEN
+          valueFrom:
+            secretKeyRef: { name: solidping-agent-enrollment, key: token }
+      volumeMounts:
+        - name: keys
+          mountPath: /data
+    - name: extract
+      image: alpine:3.22
+      command: ["sleep", "900"]
+      volumeMounts:
+        - name: keys
+          mountPath: /data
+  volumes:
+    - name: keys
+      emptyDir: {}
+```
+
+```bash
+printf '%s' "$TOKEN" | kubectl create secret generic solidping-agent-enrollment \
+  --from-file=token=/dev/stdin
+kubectl apply -f agent-enroll-pod.yaml
+kubectl logs solidping-agent-enroll -c agent | grep "agent enrolled"
+```
+
+#### 2. Capture the identity
+
+Pipe it from the sidecar straight into its own Secret — never echo it into a
+terminal or a shell history:
+
+```bash
+kubectl exec solidping-agent-enroll -c extract \
+  -- sh -c "base64 /data/agent-keys.json | tr -d '\n'" \
+  | kubectl create secret generic solidping-agent-keys --from-file=keys=/dev/stdin
+
+kubectl delete pod solidping-agent-enroll
+kubectl delete secret solidping-agent-enrollment
+```
+
+That Secret is now the **only** copy of the identity — back it up wherever you
+keep secrets. Losing it means revoking the agent and enrolling a new one.
+
+#### 3. Run
 
 ```yaml
 apiVersion: apps/v1
@@ -122,6 +234,8 @@ spec:
     metadata:
       labels: { app: solidping-agent }
     spec:
+      securityContext:
+        runAsNonRoot: true
       containers:
         - name: agent
           image: ghcr.io/fclairamb/solidping:latest
@@ -130,15 +244,28 @@ spec:
               value: agent
             - name: SP_AGENT_SERVER_URL
               value: https://solidping.example.com
+            # Pins the worker identity across restarts.
+            - name: SP_NODE_NAME
+              value: dc1-agent
+            # The whole identity — takes precedence over SP_AGENT_KEYS_FILE,
+            # so no volume is needed.
             - name: SP_AGENT_KEYS
               valueFrom:
                 secretKeyRef: { name: solidping-agent-keys, key: keys }
 ```
 
-For **high availability**, enroll several agents into the same location (one
-token each). They share the work through the same lease mechanism cloud
-workers use — if one agent dies, its leases expire and a sibling picks the
-checks up.
+#### High availability
+
+Enroll several agents into the same location — each with its **own** identity
+(own Secret) and one enrollment token each. They share the work through the same
+lease mechanism cloud workers use — if one agent dies, its leases expire and a
+sibling picks the checks up. Never point two pod replicas at the same keys
+Secret: two agents presenting the same identity are indistinguishable to the
+server, so give every replica its own.
+
+Because the running agent keeps no local state, the Deployment needs no volume,
+no `fsGroup`, and no `strategy: Recreate` — it can use the default rolling
+update and be rescheduled onto any node freely.
 
 ## 4. Target the location from a check
 

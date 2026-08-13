@@ -504,6 +504,12 @@ func (s *serviceImpl) CancelJob(ctx context.Context, uid string) error {
 // runner within milliseconds on both SQLite (LocalEventNotifier channels)
 // and Postgres (LISTEN/NOTIFY). A 5-minute fallback ticker handles missed
 // signals and jobs whose scheduled_at passed without a signal.
+//
+// Only sql.ErrNoRows means "no work": every other error is returned to the
+// caller unchanged and unwrapped-through, which is what lets the runner
+// classify it (internal/db/dbfault) and treat a structural fault as terminal.
+// Deciding here would be wrong — the same error means "back off" to one caller
+// and "stop the process" to another (spec 2026-08-12-05).
 func (s *serviceImpl) GetJobWait(ctx context.Context) (*models.Job, error) {
 	wakeup := s.notifier.Listen(eventTypeJobCreated)
 	// GetJobWait subscribes on every call (job runners loop over it), so it MUST

@@ -94,8 +94,9 @@ test.describe("Private locations", () => {
 
     const row = page.getByTestId("private-region-e2e-dc");
     await expect(row).toBeVisible();
-    // The fully-qualified region string is shown (the reserved @-namespace).
-    await expect(row).toContainText("@test/e2e-dc");
+    // The org-relative region string is shown (the reserved @-namespace, with
+    // NO org slug in it — that is what survives an org rename).
+    await expect(row).toContainText("@e2e-dc");
 
     // Mint an enrollment token: the secret is revealed exactly once.
     await page.getByTestId("mint-token-e2e-dc").click();
@@ -111,7 +112,7 @@ test.describe("Private locations", () => {
     // WITHOUT the secret.
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("pending-tokens-card")).toBeVisible();
-    await expect(page.getByTestId("pending-tokens-card")).toContainText("@test/e2e-dc");
+    await expect(page.getByTestId("pending-tokens-card")).toContainText("@e2e-dc");
     await expect(page.getByTestId("pending-tokens-card")).not.toContainText("spe_");
 
     // Cancel the pending token (destructive icon), then delete the region.
@@ -155,6 +156,68 @@ test.describe("Private locations", () => {
     await assertContainedWithinDialog(page, ["minted-token", "docker-run-command"]);
   });
 
+  // Regression guard for spec 2026-08-13-07: the "Last seen" agent cell
+  // used to render a raw toLocaleString() timestamp; it now shows a
+  // live-ticking relative time with the exact timestamp on hover, and
+  // still falls back to "never" when lastSeenAt is absent. Stub the agents
+  // list (driving a real agent connection over the WS protocol isn't
+  // practical from Playwright — same rationale as deported-agent-wizard.spec.ts)
+  // and assert the format, not an exact tick value, since it changes every
+  // second and would otherwise flake.
+  test("agents table shows a live relative last-seen time with an exact-timestamp tooltip", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    const resp = await page.request.post(`${API_BASE}/api/v1/orgs/test/private-regions`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { slug: "e2e-dc", name: "E2E Datacenter" },
+    });
+    expect(resp.ok()).toBeTruthy();
+
+    const lastSeenAt = new Date(Date.now() - 5 * 60_000).toISOString();
+    const seenAgent = {
+      uid: "e2e-lastseen-agent",
+      name: "seen-agent",
+      region: "@e2e-dc",
+      fingerprint: "fp-seen",
+      status: "active",
+      enrolledAt: new Date().toISOString(),
+      lastSeenAt,
+    };
+    const neverAgent = {
+      uid: "e2e-neverseen-agent",
+      name: "never-agent",
+      region: "@e2e-dc",
+      fingerprint: "fp-never",
+      status: "active",
+      enrolledAt: new Date().toISOString(),
+    };
+
+    await page.route("**/api/v1/orgs/test/agents", async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      await route.fulfill({ json: { data: [seenAgent, neverAgent] } });
+    });
+
+    await page.goto("orgs/test/organization/private-locations");
+    await page.waitForLoadState("networkidle");
+
+    // Relative time, not the old absolute toLocaleString() format — assert
+    // the shape only, never an exact "Ns ago" value (it ticks every second).
+    const seenCell = page.getByTestId(`agent-last-seen-${seenAgent.uid}`);
+    await expect(seenCell).toBeVisible();
+    await expect(seenCell).toHaveText(/ago/i);
+
+    // The exact local timestamp stays reachable via the title tooltip.
+    const title = await seenCell.locator("span[title]").getAttribute("title");
+    expect(title).toBeTruthy();
+
+    // No lastSeenAt at all still falls back to "never".
+    const neverCell = page.getByTestId(`agent-last-seen-${neverAgent.uid}`);
+    await expect(neverCell).toHaveText("never");
+  });
+
   test("private region appears in the check-form region picker", async ({
     authenticatedPage,
   }) => {
@@ -174,9 +237,9 @@ test.describe("Private locations", () => {
     // Pick a check type so the form (and its region picker) renders.
     await page.getByText("HTTP", { exact: false }).first().click();
 
-    // The private region is offered under its fully-qualified slug with the
+    // The private region is offered under its org-relative slug with the
     // Private badge.
-    const option = page.getByTestId("region-option-@test/e2e-dc");
+    const option = page.getByTestId("region-option-@e2e-dc");
     await expect(option).toBeVisible();
     await expect(option).toContainText("E2E Datacenter");
     await expect(option).toContainText("Private");

@@ -11,6 +11,13 @@ import (
 	"github.com/fclairamb/solidping/server/internal/middleware"
 )
 
+// Validation field/message constants for a malformed request body. Extracted so
+// the three endpoints that decode a body stay word-for-word consistent.
+const (
+	invalidJSONField   = "body"
+	invalidJSONMessage = "Invalid JSON format"
+)
+
 // Handler provides HTTP handlers for member management endpoints.
 type Handler struct {
 	base.HandlerBase
@@ -37,6 +44,58 @@ func (h *Handler) ListMembers(writer http.ResponseWriter, req *http.Request) err
 	return h.WriteJSON(writer, http.StatusOK, members)
 }
 
+// ListCoverage handles listing per-member paging coverage.
+//
+// Route: GET /api/v1/orgs/:org/members/coverage (admin).
+func (h *Handler) ListCoverage(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+
+	coverage, err := h.svc.ListCoverage(req.Context(), orgSlug)
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, coverage)
+}
+
+// AddMemberContact pre-provisions an UNVERIFIED paging contact for a member.
+//
+// Route: POST /api/v1/orgs/:org/members/:uid/contacts (admin).
+func (h *Handler) AddMemberContact(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	memberUID := httpx.Param(req, "uid")
+
+	var body AdminAddContactRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: invalidJSONField, Message: invalidJSONMessage},
+		})
+	}
+
+	contact, err := h.svc.AddMemberContact(req.Context(), orgSlug, memberUID, body)
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusCreated, contact)
+}
+
+// SendPagingNudge emails a member asking them to finish their paging setup.
+//
+// Route: POST /api/v1/orgs/:org/members/:uid/paging-nudge (admin).
+func (h *Handler) SendPagingNudge(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	memberUID := httpx.Param(req, "uid")
+
+	if err := h.svc.SendPagingNudge(req.Context(), orgSlug, memberUID); err != nil {
+		return h.handleError(writer, err)
+	}
+
+	writer.WriteHeader(http.StatusNoContent)
+
+	return nil
+}
+
 // GetMember handles getting a specific member by UID.
 func (h *Handler) GetMember(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := httpx.Param(req, "org")
@@ -57,7 +116,7 @@ func (h *Handler) AddMember(writer http.ResponseWriter, req *http.Request) error
 	var addReq AddMemberRequest
 	if err := json.NewDecoder(req.Body).Decode(&addReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: invalidJSONField, Message: invalidJSONMessage},
 		})
 	}
 
@@ -101,7 +160,7 @@ func (h *Handler) UpdateMember(writer http.ResponseWriter, req *http.Request) er
 	var updateReq UpdateMemberRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: invalidJSONField, Message: invalidJSONMessage},
 		})
 	}
 
@@ -142,33 +201,67 @@ func callerFrom(req *http.Request) Caller {
 
 // handleError maps service errors to HTTP responses.
 func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+	if handled, writeErr := h.handleMembershipError(writer, err); handled {
+		return writeErr
+	}
+
+	return h.handleProvisioningError(writer, err)
+}
+
+// handleMembershipError maps the member-management errors. Returns handled=false
+// when the error belongs to another family, so the caller can keep looking.
+func (h *Handler) handleMembershipError(writer http.ResponseWriter, err error) (bool, error) {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
-		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
+		return true, h.WriteError(writer, http.StatusNotFound,
+			base.ErrorCodeOrganizationNotFound, "Organization not found")
 	case errors.Is(err, ErrMemberNotFound):
-		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Member not found")
+		return true, h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Member not found")
 	case errors.Is(err, ErrUserNotFound):
-		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeUserNotFound, "User not found")
+		return true, h.WriteError(writer, http.StatusNotFound, base.ErrorCodeUserNotFound, "User not found")
 	case errors.Is(err, ErrAlreadyMember):
-		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict,
+		return true, h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict,
 			"User is already a member of this organization")
 	case errors.Is(err, ErrCannotRemoveLastAdmin):
-		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict,
+		return true, h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict,
 			"Cannot remove the last admin from the organization")
 	case errors.Is(err, ErrCannotDemoteLastAdmin):
-		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict, "Cannot demote the last admin")
+		return true, h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict,
+			"Cannot demote the last admin")
 	case errors.Is(err, ErrCannotRemoveLastOwner):
-		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict,
+		return true, h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict,
 			"Cannot remove the last owner from the organization")
 	case errors.Is(err, ErrCannotDemoteLastOwner):
-		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict, "Cannot demote the last owner")
+		return true, h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict,
+			"Cannot demote the last owner")
 	case errors.Is(err, ErrOwnerRoleRequired):
-		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden,
+		return true, h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden,
 			"Only an owner can grant, revoke or remove ownership")
 	case errors.Is(err, ErrInvalidRole):
-		return h.WriteValidationError(writer, "Invalid role", []base.ValidationErrorField{
+		return true, h.WriteValidationError(writer, "Invalid role", []base.ValidationErrorField{
 			{Name: "role", Message: "Role must be one of: owner, admin, user, viewer"},
 		})
+	}
+
+	return false, nil
+}
+
+// handleProvisioningError maps the admin pre-provisioning errors, falling back
+// to a 500 for anything unrecognized.
+func (h *Handler) handleProvisioningError(writer http.ResponseWriter, err error) error {
+	switch {
+	case errors.Is(err, ErrContactTypeNotProvisionable):
+		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
+			{Name: "type", Message: err.Error()},
+		})
+	case errors.Is(err, ErrInvalidContactValue):
+		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
+			{Name: "value", Message: err.Error()},
+		})
+	case errors.Is(err, ErrContactAlreadyExists):
+		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict, err.Error())
+	case errors.Is(err, ErrEmailSenderNotConfigured):
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	default:
 		return h.WriteInternalError(writer, err)
 	}

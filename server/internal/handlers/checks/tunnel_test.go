@@ -399,8 +399,12 @@ func TestDeletedDependentDoesNotBlockBastion(t *testing.T) {
 // build stay mixed-region (a cloud region alongside the private ones) which
 // keeps them server-resolvable and out of the "no agents to seal to" path.
 const (
-	parisRegion  = "@tunnel-test/paris"
-	londonRegion = "@tunnel-test/london"
+	// Org-relative since spec 2026-08-13-01: no org slug inside the string.
+	// It matters here beyond cosmetics — checks created through the service are
+	// normalized, so a fixture planted directly into the DB with a legacy
+	// spelling would silently stop matching them.
+	parisRegion  = "@paris"
+	londonRegion = "@london"
 	cloudRegion  = "eu"
 )
 

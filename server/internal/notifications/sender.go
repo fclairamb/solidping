@@ -36,6 +36,23 @@ type Payload struct {
 	// the audit row. Nil for senders/attempts that produce no artifacts.
 	// Senders MUST never place secrets (signing secret, auth header) here.
 	DeliveryDetails *models.DeliveryDetails
+	// OnCallMentions names the humans the incident's escalation policy would
+	// page first, so a channel message can tell them it is theirs. Populated by
+	// the notification job runner only for `incident.created` and
+	// `incident.escalated` on integrations whose settings enable it; always nil
+	// otherwise, which is what makes "mentions off" and "resolved/reopened are
+	// mention-free" true by construction rather than by sender discipline.
+	OnCallMentions []MentionTarget
+}
+
+// MentionTarget is one human an alert should ping. ExternalID is the
+// provider-side id (a Slack user id); it is empty when the person has no
+// identity mapped on this integration, in which case the sender renders their
+// plain-text name and nobody gets pinged.
+type MentionTarget struct {
+	UserUID     string
+	DisplayName string
+	ExternalID  string
 }
 
 // Sender is the interface for sending notifications via different channels.

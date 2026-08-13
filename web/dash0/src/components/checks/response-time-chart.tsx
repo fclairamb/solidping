@@ -34,12 +34,14 @@ interface ResponseTimeChartProps {
   periodMs?: number;
   initialPeriod?: TimeRange;
   initialFullRange?: boolean;
-  initialRegion?: string;
-  onSettingsChange?: (
-    period: TimeRange,
-    fullRange: boolean,
-    region: string | null,
-  ) => void;
+  // Controlled by the URL (spec 2026-08-13-02): the page owns the region
+  // value and passes it straight through, so an external region change
+  // (Recent Results filter, back/forward, in-app link) re-renders the chart
+  // in place instead of requiring a remount. No local seeding — see
+  // effectiveRegion below for the chart's own stale-slug guard.
+  region?: string;
+  onRegionChange?: (region?: string) => void;
+  onSettingsChange?: (period: TimeRange, fullRange: boolean) => void;
   // Zoom window (X/time axis only), driven by the URL. Absent → full default
   // range. When set (from < to) the results fetch requests only this window.
   zoomFrom?: number;
@@ -442,7 +444,8 @@ export function ResponseTimeChart({
   periodMs,
   initialPeriod,
   initialFullRange,
-  initialRegion,
+  region,
+  onRegionChange,
   onSettingsChange,
   zoomFrom,
   zoomTo,
@@ -453,9 +456,6 @@ export function ResponseTimeChart({
   const { t } = useTranslation("checks");
   const [timeRange, setTimeRange] = useState<TimeRange>(initialPeriod ?? "day");
   const [fullRange, setFullRange] = useState(initialFullRange ?? false);
-  const [selectedRegion, setSelectedRegion] = useState<string | null>(
-    initialRegion ?? null,
-  );
   // A zoom is active only for a well-formed forward window.
   const zoom: ZoomWindow | undefined =
     zoomFrom != null && zoomTo != null && zoomTo > zoomFrom
@@ -504,17 +504,16 @@ export function ResponseTimeChart({
 
   const updateTimeRange = (range: TimeRange) => {
     setTimeRange(range);
-    onSettingsChange?.(range, fullRange, selectedRegion);
+    onSettingsChange?.(range, fullRange);
   };
 
   const updateFullRange = (full: boolean) => {
     setFullRange(full);
-    onSettingsChange?.(timeRange, full, selectedRegion);
+    onSettingsChange?.(timeRange, full);
   };
 
-  const updateRegion = (region: string | null) => {
-    setSelectedRegion(region);
-    onSettingsChange?.(timeRange, fullRange, region);
+  const updateRegion = (nextRegion?: string) => {
+    onRegionChange?.(nextRegion);
   };
 
   const handleDotClick = (uid: string) => {
@@ -602,10 +601,10 @@ export function ResponseTimeChart({
 
     // Stale-selection guard: only apply the filter when the selected
     // region is actually present in the unfiltered data. This keeps a
-    // stale `?graphRegion=` deep link (regions changed, older data aged
+    // stale `?region=` deep link (regions changed, older data aged
     // out) from silently emptying the chart — it falls back to "All".
     const effectiveRegion =
-      selectedRegion && regionSet.has(selectedRegion) ? selectedRegion : null;
+      region && regionSet.has(region) ? region : null;
 
     // Filter before gap detection, gradient stops, and domain/tick
     // computation so all of those operate on a single region's steady
@@ -704,7 +703,7 @@ export function ResponseTimeChart({
     };
     // zoomFrom/zoomTo drive the derived `zoom` window used above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [results, fullRange, periodStartAfter, selectedRegion, zoomFrom, zoomTo]);
+  }, [results, fullRange, periodStartAfter, region, zoomFrom, zoomTo]);
 
   const ticks = useMemo(
     () => computeTicks(domainMin, domainMax, chartData),
@@ -951,7 +950,7 @@ export function ResponseTimeChart({
             <Button
               variant={effectiveRegion === null ? "default" : "outline"}
               size="sm"
-              onClick={() => updateRegion(null)}
+              onClick={() => updateRegion(undefined)}
               className="px-2 text-xs"
             >
               {t("detail.chart.allRegions")}
@@ -988,6 +987,7 @@ export function ResponseTimeChart({
           <div
             ref={chartWrapperRef}
             className="relative select-none"
+            data-testid="response-time-chart-wrapper"
             // Double-click anywhere on the chart resets an active zoom.
             onDoubleClick={() => {
               if (zoomed) resetZoom();

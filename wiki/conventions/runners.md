@@ -231,6 +231,43 @@ unrelated jobs.
 Failed jobs marked retryable are retried up to **2 times** (hard-coded), then
 marked failed.
 
+### Infrastructure-error backoff
+
+Idle runners block, but a *broken* `GetJobWait` (dropped connection,
+permission error) returns instantly. A runner therefore backs off
+between consecutive failures — 100 ms doubling to a 30 s cap, with full jitter
+(`[delay/2, delay]`) so runners do not retry in lockstep — and resets to zero on
+the first success. The wait is a `select` on the shutdown context, so a runner
+parked at the cap still stops immediately.
+
+Only the *worker's own* cancellation stops a runner. A `context.Canceled`
+arriving from elsewhere — the detached per-job context that the mid-run
+cancellation watcher cancels on soft-delete, wrapped by `jobsvc` — is an
+ordinary failure and gets counted, logged and backed off like the rest, so the
+pool never shrinks silently.
+
+Failure logs are collapsed to the 1st, 2nd, 4th, 8th … occurrence, each
+carrying a `consecutive` attribute, and recovery emits one
+`Job processing recovered` line with `consecutive_failures` and `outage`. Before
+this, a persistent instant error logged every iteration at CPU speed: one
+incident wrote 201 GB of identical lines in 17 hours.
+
+A backing-off runner is *not* counted in `free_runners` — the availability
+counter is decremented before the wait.
+
+### Structural faults are not backed off — they end the process
+
+Backoff is for errors worth retrying. A *structural* database fault — the
+`jobs` table is gone, the database itself is gone — can never be fixed by
+retrying, because migrations only run at startup. Those are classified in
+`internal/db/dbfault` and are terminal: the runner returns, one clear line is
+logged, and the process shuts down gracefully so its supervisor can restart it
+(which re-runs migrations). The check worker's fetcher does the same.
+
+Backoff bounds a repeated failure's volume; this bounds its duration. See
+[database-faults.md](database-faults.md) for the classification table, the
+reproduction of the incident, and how to wire a new caller.
+
 ## Hard-coded values (for reference, not configurable)
 
 These live in the source and are not tunable via env vars today. Listed so
@@ -240,6 +277,7 @@ operators know what to expect:
 - Check job lease duration: **500ms** (renewed on the fly during execution)
 - Job retry cap: **2** retries
 - Fetcher error backoff (check worker): **5s**
+- Job runner error backoff: **100ms → 30s** (doubling, full jitter)
 - Fetcher periodic safety wake (check worker): **60s**
 - Per-check execution timeout: **30s**
 

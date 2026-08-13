@@ -57,7 +57,7 @@ function GenerateDataTab() {
             navigate({
               to: "/orgs/$org/checks/$checkUid",
               params: { org, checkUid: result.checkSlug },
-              search: { graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined },
+              search: { graphPeriod: undefined, graphFull: undefined, region: undefined },
             }),
         },
       });

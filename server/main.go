@@ -23,6 +23,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/envcheck"
 	"github.com/fclairamb/solidping/server/internal/memlimit"
 	"github.com/fclairamb/solidping/server/internal/otelsetup"
+	"github.com/fclairamb/solidping/server/internal/procwatch"
 	slogutil "github.com/fclairamb/solidping/server/internal/utils/slog"
 	"github.com/fclairamb/solidping/server/internal/version"
 	spCli "github.com/fclairamb/solidping/server/pkg/cli"
@@ -237,6 +238,10 @@ func serve(ctx context.Context, _ *cli.Command) error {
 	)
 	defer stop()
 
+	// Opt-in: die with whoever started us instead of being adopted by PID 1.
+	ctx, stopParentWatch := watchParent(ctx, cfg)
+	defer stopParentWatch()
+
 	// Start server (blocks until context is canceled)
 	err = server.Start(ctx)
 
@@ -251,6 +256,24 @@ func serve(ctx context.Context, _ *cli.Command) error {
 	}
 
 	return err
+}
+
+// watchParent wires the opt-in parent-death watch (SP_EXIT_WITH_PARENT): the
+// returned context is canceled when the process that started this one
+// disappears, so a server spawned by a test harness or an ad-hoc wrapper shuts
+// down with it instead of being adopted by PID 1 and outliving its session
+// (spec 2026-08-12-05). Disabled, it returns ctx untouched — a normal
+// deployment is started BY a supervisor whose death is not a reason to stop.
+func watchParent(ctx context.Context, cfg *config.Config) (context.Context, context.CancelFunc) {
+	if !cfg.Server.ExitWithParent {
+		return ctx, func() {}
+	}
+
+	watchCtx, orphaned := context.WithCancel(ctx)
+
+	go procwatch.ParentWatcher{}.Run(watchCtx, orphaned)
+
+	return watchCtx, orphaned
 }
 
 // runStartupDataFixups runs the idempotent one-shot data migrations that must
