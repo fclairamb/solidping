@@ -122,13 +122,18 @@ fly deploy -c fly.cdg.toml
 **Never set `SP_AGENT_KEYS` on a fly agent app.** fly secrets are app-wide, so
 every machine would boot with the same identity; each machine enrolls itself and
 keeps its own keys on its own volume instead (see
-`specs/done/2026/07/2026-07-27-01-fly-io-system-agents.md`). If you ever do need
-the base64 for a single-machine app, read it from the volume rather than the
-logs:
+`specs/done/2026/07/2026-07-27-01-fly-io-system-agents.md`).
 
-```bash
-fly ssh console -a solidping-agent-cdg -C "base64 -w0 /data/agent-keys.json"
-```
+There is no working way to extract that volume's `agent-keys.json` from
+outside the machine: the image ships no shell and no `base64` (`FROM
+gcr.io/distroless/base-debian13:nonroot`, see below), and `fly ssh console`
+additionally needs `hallpass` baked into the image, which this one doesn't
+carry — so a `-C "base64 -w0 …"` one-liner fails before it even gets to the
+missing binary. If you ever genuinely need the base64 for a single-machine
+app, there is no in-machine extraction path: start it once with
+`SP_AGENT_PRINT_KEYS=true` instead (prints the private key material to
+stdout, i.e. into `fly logs`; unset it and restart afterwards, and treat the
+machine as compromised if that log line was retained by a log drain).
 
 **Leave `SP_AGENT_NAME` unset.** The agent already defaults its name to
 `os.Hostname()` ([`agentmode.go`](../../server/internal/agentmode/agentmode.go)),
