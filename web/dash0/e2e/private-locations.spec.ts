@@ -156,6 +156,68 @@ test.describe("Private locations", () => {
     await assertContainedWithinDialog(page, ["minted-token", "docker-run-command"]);
   });
 
+  // Regression guard for spec 2026-08-13-07: the "Last seen" agent cell
+  // used to render a raw toLocaleString() timestamp; it now shows a
+  // live-ticking relative time with the exact timestamp on hover, and
+  // still falls back to "never" when lastSeenAt is absent. Stub the agents
+  // list (driving a real agent connection over the WS protocol isn't
+  // practical from Playwright — same rationale as deported-agent-wizard.spec.ts)
+  // and assert the format, not an exact tick value, since it changes every
+  // second and would otherwise flake.
+  test("agents table shows a live relative last-seen time with an exact-timestamp tooltip", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    const resp = await page.request.post(`${API_BASE}/api/v1/orgs/test/private-regions`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { slug: "e2e-dc", name: "E2E Datacenter" },
+    });
+    expect(resp.ok()).toBeTruthy();
+
+    const lastSeenAt = new Date(Date.now() - 5 * 60_000).toISOString();
+    const seenAgent = {
+      uid: "e2e-lastseen-agent",
+      name: "seen-agent",
+      region: "@e2e-dc",
+      fingerprint: "fp-seen",
+      status: "active",
+      enrolledAt: new Date().toISOString(),
+      lastSeenAt,
+    };
+    const neverAgent = {
+      uid: "e2e-neverseen-agent",
+      name: "never-agent",
+      region: "@e2e-dc",
+      fingerprint: "fp-never",
+      status: "active",
+      enrolledAt: new Date().toISOString(),
+    };
+
+    await page.route("**/api/v1/orgs/test/agents", async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      await route.fulfill({ json: { data: [seenAgent, neverAgent] } });
+    });
+
+    await page.goto("orgs/test/organization/private-locations");
+    await page.waitForLoadState("networkidle");
+
+    // Relative time, not the old absolute toLocaleString() format — assert
+    // the shape only, never an exact "Ns ago" value (it ticks every second).
+    const seenCell = page.getByTestId(`agent-last-seen-${seenAgent.uid}`);
+    await expect(seenCell).toBeVisible();
+    await expect(seenCell).toHaveText(/ago/i);
+
+    // The exact local timestamp stays reachable via the title tooltip.
+    const title = await seenCell.locator("span[title]").getAttribute("title");
+    expect(title).toBeTruthy();
+
+    // No lastSeenAt at all still falls back to "never".
+    const neverCell = page.getByTestId(`agent-last-seen-${neverAgent.uid}`);
+    await expect(neverCell).toHaveText("never");
+  });
+
   test("private region appears in the check-form region picker", async ({
     authenticatedPage,
   }) => {
