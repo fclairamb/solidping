@@ -136,6 +136,18 @@ var (
 	ErrACMEProxyProtocolCIDRInvalid = errors.New(
 		"acme.proxy_protocol_trusted_cidrs entries must be a CIDR range or an IP address",
 	)
+	// ErrACMEFallbackUpstreamInvalid is returned when a fallback upstream is not
+	// a dialable "host:port". A typo'd next hop would otherwise only surface as
+	// every unknown-host connection being dropped, long after startup.
+	ErrACMEFallbackUpstreamInvalid = errors.New(
+		"acme.fallback_upstream_http / acme.fallback_upstream_https must be a 'host:port' address",
+	)
+	// ErrACMEFallbackUpstreamRequiresACME is returned when a fallback upstream is
+	// configured with acme.enabled false: the two ACME listeners are the only
+	// ones that forward, so without them the setting is a silent no-op.
+	ErrACMEFallbackUpstreamRequiresACME = errors.New(
+		"acme.fallback_upstream_http / acme.fallback_upstream_https require acme.enabled to be true",
+	)
 )
 
 // Supported password-hashing algorithm identifiers.
@@ -411,6 +423,25 @@ type ACMEConfig struct {
 	// peer address no matter what preamble it sends. Required — and validated
 	// non-empty — when ProxyProtocol is true.
 	ProxyProtocolTrustedCIDRs []string `koanf:"proxy_protocol_trusted_cidrs"`
+	// FallbackUpstreamHTTPS is the next hop for TLS connections whose SNI this
+	// instance does not serve (SP_ACME_FALLBACK_UPSTREAM_HTTPS, "host:port").
+	// Empty (the default) = no forwarding: an unknown SNI is refused here
+	// exactly as before. Set it to chain a second instance behind the same
+	// single-catch-all edge — this instance keeps its own domains and hands
+	// everything else on, unterminated, with a PROXY v2 header carrying the
+	// original client.
+	FallbackUpstreamHTTPS string `koanf:"fallback_upstream_https"`
+	// FallbackUpstreamHTTP is the same next hop for the plaintext :80 listener
+	// (SP_ACME_FALLBACK_UPSTREAM_HTTP). Without it the downstream instance can
+	// never solve an HTTP-01 challenge for its own domains, so it is normally
+	// set together with FallbackUpstreamHTTPS.
+	FallbackUpstreamHTTP string `koanf:"fallback_upstream_http"`
+	// FallbackUpstreamProxyProtocol prefixes every forwarded connection with a
+	// PROXY protocol v2 header (SP_ACME_FALLBACK_UPSTREAM_PROXY_PROTOCOL,
+	// default true). Without it the downstream sees this instance's address as
+	// the client on every forwarded connection. Turn it off only when the next
+	// hop cannot parse a PROXY preamble.
+	FallbackUpstreamProxyProtocol bool `koanf:"fallback_upstream_proxy_protocol"`
 }
 
 // Default listen addresses for in-server ACME. Remap them when the process
@@ -422,6 +453,8 @@ const (
 	// DefaultACMEListenHTTPS is where the TLS listener binds; a CA always starts
 	// TLS-ALPN-01 validation on port 443.
 	DefaultACMEListenHTTPS = ":443"
+	// maxTCPPort bounds the port of a fallback upstream address.
+	maxTCPPort = 65535
 )
 
 // DeploymentConfig picks per-org entitlement defaults. SP_DEPLOYMENT_MODE
@@ -1209,6 +1242,10 @@ func Load() (*Config, error) {
 			Enabled:     false,
 			ListenHTTP:  DefaultACMEListenHTTP,
 			ListenHTTPS: DefaultACMEListenHTTPS,
+			// Only meaningful once an upstream is configured, and then it is
+			// what an operator wants: a chained hop that hides the client from
+			// the downstream would collapse its rate limiting to one bucket.
+			FallbackUpstreamProxyProtocol: true,
 		},
 		Database: DatabaseConfig{
 			Type:            DatabaseTypeSQLite,
@@ -1750,6 +1787,18 @@ func applyACMEEnv(cfg *ACMEConfig) {
 	if v := os.Getenv("SP_ACME_PROXY_PROTOCOL_TRUSTED_CIDRS"); v != "" {
 		cfg.ProxyProtocolTrustedCIDRs = splitAndTrim(v)
 	}
+
+	if v := os.Getenv("SP_ACME_FALLBACK_UPSTREAM_HTTPS"); v != "" {
+		cfg.FallbackUpstreamHTTPS = v
+	}
+
+	if v := os.Getenv("SP_ACME_FALLBACK_UPSTREAM_HTTP"); v != "" {
+		cfg.FallbackUpstreamHTTP = v
+	}
+
+	if v := os.Getenv("SP_ACME_FALLBACK_UPSTREAM_PROXY_PROTOCOL"); v != "" {
+		cfg.FallbackUpstreamProxyProtocol = v == envTrue || v == "1"
+	}
 }
 
 // splitAndTrim turns a comma-separated env value into a slice, dropping empty
@@ -2252,6 +2301,13 @@ func validateCustomDomainTLSConfig(server *ServerConfig, acme *ACMEConfig) error
 // address, and both listeners are mandatory (HTTP-01 needs the :80 listener,
 // TLS-ALPN-01 and actually serving need the :443 one).
 func validateACMEConfig(cfg *ACMEConfig) error {
+	// Checked before the enabled gate: a fallback upstream set on a disabled
+	// edge forwards nothing at all, which is exactly the misconfiguration that
+	// would look like "the chain silently drops every unknown host".
+	if err := validateACMEFallbackUpstreams(cfg); err != nil {
+		return err
+	}
+
 	if !cfg.Enabled {
 		return nil
 	}
@@ -2265,6 +2321,35 @@ func validateACMEConfig(cfg *ACMEConfig) error {
 	}
 
 	return validateACMEProxyProtocol(cfg)
+}
+
+// validateACMEFallbackUpstreams enforces that a configured next hop is both
+// dialable and reachable by the code that would use it: a "host:port" address
+// with a non-empty host and a numeric port, on an edge that actually listens.
+// The alternative is a chain that looks configured and silently drops every
+// unknown-host connection.
+func validateACMEFallbackUpstreams(cfg *ACMEConfig) error {
+	for _, upstream := range []string{cfg.FallbackUpstreamHTTPS, cfg.FallbackUpstreamHTTP} {
+		trimmed := strings.TrimSpace(upstream)
+		if trimmed == "" {
+			continue
+		}
+
+		if !cfg.Enabled {
+			return fmt.Errorf("%w, got '%s'", ErrACMEFallbackUpstreamRequiresACME, trimmed)
+		}
+
+		host, port, err := net.SplitHostPort(trimmed)
+		if err != nil || strings.TrimSpace(host) == "" {
+			return fmt.Errorf("%w, got '%s'", ErrACMEFallbackUpstreamInvalid, upstream)
+		}
+
+		if portNum, convErr := strconv.Atoi(port); convErr != nil || portNum <= 0 || portNum > maxTCPPort {
+			return fmt.Errorf("%w, got '%s'", ErrACMEFallbackUpstreamInvalid, upstream)
+		}
+	}
+
+	return nil
 }
 
 // validateACMEProxyProtocol enforces the trust policy's precondition: PROXY
