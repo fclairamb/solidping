@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.14.0](https://github.com/fclairamb/solidping/compare/v0.13.0...v0.14.0) (2026-08-13)
+
+
+### Features
+
+* Slack on-call mentions, paging coverage, worker resilience, PROXY protocol and org-relative private regions ([#215](https://github.com/fclairamb/solidping/issues/215)) ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
+
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/net to v0.58.0 ([#213](https://github.com/fclairamb/solidping/issues/213)) ([0b2a7c9](https://github.com/fclairamb/solidping/commit/0b2a7c944c9e401d0cd49263be0e6bd0253e9d33))
+
 ## [Unreleased]
 
 ### Features
