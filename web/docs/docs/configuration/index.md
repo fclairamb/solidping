@@ -48,6 +48,9 @@ SolidPing is configured primarily through environment variables. All environment
 | `SP_ACME_CA_URL` | Let's Encrypt prod | ACME directory URL (point at LE staging while testing) |
 | `SP_ACME_LISTEN_HTTP` | `:80` | HTTP-01 challenge listener; redirects everything else to HTTPS |
 | `SP_ACME_LISTEN_HTTPS` | `:443` | TLS listener, feeding the normal routing |
+| `SP_ACME_FALLBACK_UPSTREAM_HTTPS` | - | `host:port` of a second instance to hand unknown-SNI TLS connections to |
+| `SP_ACME_FALLBACK_UPSTREAM_HTTP` | - | Same next hop for plaintext `:80` (HTTP-01 for the downstream's domains) |
+| `SP_ACME_FALLBACK_UPSTREAM_PROXY_PROTOCOL` | `true` | Send a PROXY v2 header with the original client to that next hop |
 | `SP_ACME_PROXY_PROTOCOL` | `false` | Read a PROXY protocol (v1/v2) preamble on both ACME listeners — needed behind a TLS passthrough, which has no `X-Forwarded-For` |
 | `SP_ACME_PROXY_PROTOCOL_TRUSTED_CIDRS` | - | Comma-separated CIDRs/IPs whose PROXY header is honored; headers from anywhere else are ignored. **Required** when `SP_ACME_PROXY_PROTOCOL=true` (empty fails startup) |
 

@@ -69,6 +69,55 @@ that address instead of at the shared ingress.
 - Cons: an extra load balancer to pay for and monitor; the instance's own
   hostname must also be served from it (or split-DNS'd).
 
+### Option D — chain a second instance behind the first
+
+The edge has exactly **one** catch-all slot, but two instances (prod and dev)
+may both need dynamic custom domains. Point Traefik's `HostSNI(*)` router at
+the **prod** instance as today, and give prod a *fallback upstream* so anything
+it does not own is handed to dev, unterminated:
+
+```
+SP_ACME_FALLBACK_UPSTREAM_HTTPS=<dev address>:443
+SP_ACME_FALLBACK_UPSTREAM_HTTP=<dev address>:80
+SP_ACME_FALLBACK_UPSTREAM_PROXY_PROTOCOL=true   # default
+```
+
+How it works: prod peeks the TLS ClientHello (SNI) on `:443` and the `Host`
+header on `:80` **below** any TLS termination. A host prod serves — one of its
+own hostnames or a verified custom domain — is terminated by prod exactly as
+before. Anything else is dialed to the next hop, prefixed with a PROXY v2
+header carrying the **original client**, and the peeked bytes are replayed
+byte-for-byte, so dev completes its own handshake with its own certificate and
+solves its own HTTP-01 / TLS-ALPN-01 challenges through the chain. Chains
+deeper than two hops work the same way (one next hop each).
+
+Requirements and consequences:
+
+- **The downstream must trust the upstream**: set
+  `SP_ACME_PROXY_PROTOCOL=true` and add the upstream's egress IPs to
+  `SP_ACME_PROXY_PROTOCOL_TRUSTED_CIDRS` on the **dev** instance. Without it
+  dev ignores the forwarded header and every custom-domain request appears to
+  come from prod's IP, collapsing per-IP rate limiting to one bucket. (The
+  inbound trust mechanism itself is unchanged — this is the same knob Option A
+  already uses for Traefik.)
+- **Both listeners or neither**: forwarding only `:443` leaves dev unable to
+  solve HTTP-01. Set both unless dev is known to use TLS-ALPN-01 exclusively.
+- **Failure is a closed connection**: if the next hop is unreachable, the
+  client connection is dropped. It is never served locally — prod has no
+  certificate for a domain it forwards, so "falling back" would only produce a
+  misleading TLS error.
+- **Never routable to itself**: a chain misconfigured into a cycle (prod → dev
+  → prod) is refused rather than ping-ponged, both when the immediate peer is
+  the configured upstream and when a connection has already crossed four hops.
+  The refusal is logged once per offending peer.
+- Both upstreams are validated at startup (`host:port`, and `SP_ACME_ENABLED`
+  must be true), so a typo fails the pod rather than silently dropping every
+  unknown-host connection.
+
+Watch it with `solidping_tlsedge_connections_total{listener,outcome}` —
+`outcome` is `local`, `forwarded`, `refused` or `dial_failed` — plus the
+`tlsedge: forwarding to the fallback upstream` log line.
+
 ### Option C — keep the external TLS proxy
 
 Leave `SP_ACME_ENABLED` unset and run a Caddy sidecar with `on_demand_tls`
@@ -99,6 +148,9 @@ invisible and verification could never succeed.
 | `SP_ACME_LISTEN_HTTPS`           | `:443` (idem)                        |
 | `SP_ACME_PROXY_PROTOCOL`         | `true` behind a TLS passthrough, otherwise unset |
 | `SP_ACME_PROXY_PROTOCOL_TRUSTED_CIDRS` | pod/node CIDRs the proxy connects from — **required** when the above is true |
+| `SP_ACME_FALLBACK_UPSTREAM_HTTPS` | `host:port` of the next hop for unknown-SNI TLS connections (Option D); unset = no forwarding |
+| `SP_ACME_FALLBACK_UPSTREAM_HTTP`  | `host:port` of the next hop for plaintext `:80` (HTTP-01); unset = no forwarding |
+| `SP_ACME_FALLBACK_UPSTREAM_PROXY_PROTOCOL` | `true` (default) — send PROXY v2 with the original client to the next hop |
 
 Do a first pass against **Let's Encrypt staging**
 (`https://acme-staging-v02.api.letsencrypt.org/directory`) so a
@@ -173,6 +225,9 @@ kubectl -n solidping-dev logs deploy/solidping | grep tlsedge
 | `HTTPS pending` forever | No HTTPS request has reached the process yet — issuance is on-demand. Curl the host once. |
 | `refusing certificate for unknown host` in the log | Working as intended: the hostname is not verified/servable. That is the guard protecting the CA rate limit. |
 | Bind error on `:80`/`:443` at startup | The process lacks the privilege. Grant `NET_BIND_SERVICE` or move the listeners to high ports with `SP_ACME_LISTEN_HTTP`/`SP_ACME_LISTEN_HTTPS`. |
+| Chained setup: the downstream's domain gets no certificate | Check `solidping_tlsedge_connections_total{outcome="dial_failed"}` and the `cannot reach the fallback upstream` log line on the upstream. If forwarding works but issuance still fails, `SP_ACME_FALLBACK_UPSTREAM_HTTP` is probably unset, so HTTP-01 never reaches the downstream. |
+| Chained setup: `the fallback chain loops back here` in the log | The next hop forwards back here. Fix the topology: exactly one instance may point at another, and the last hop must have no upstream. |
+| Chained setup: the downstream sees the upstream's IP as every client | The downstream is not trusting the upstream — set `SP_ACME_PROXY_PROTOCOL=true` and list the upstream's egress IPs in `SP_ACME_PROXY_PROTOCOL_TRUSTED_CIDRS` **on the downstream**. |
 
 ## 6. Security notes
 
