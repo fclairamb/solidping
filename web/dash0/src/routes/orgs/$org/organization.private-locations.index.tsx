@@ -52,6 +52,7 @@ import {
   type PrivateRegion,
 } from "@/api/hooks";
 import { DocsLink } from "@/components/shared/docs-link";
+import { LiveDurationAgo } from "@/components/shared/relative-time";
 
 export const Route = createFileRoute("/orgs/$org/organization/private-locations/")({
   component: PrivateLocationsPage,
@@ -417,10 +418,17 @@ function AgentsCard({ org }: { org: string }) {
                     <TableCell>
                       <code className="text-xs text-muted-foreground">{agent.fingerprint}</code>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {agent.lastSeenAt
-                        ? new Date(agent.lastSeenAt).toLocaleString()
-                        : t("privateLocations.agents.never", "never")}
+                    <TableCell
+                      className="text-sm text-muted-foreground"
+                      data-testid={`agent-last-seen-${agent.uid}`}
+                    >
+                      {agent.lastSeenAt ? (
+                        <span title={new Date(agent.lastSeenAt).toLocaleString()}>
+                          <LiveDurationAgo since={agent.lastSeenAt} />
+                        </span>
+                      ) : (
+                        t("privateLocations.agents.never", "never")
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge variant={agent.status === "active" ? "default" : "destructive"}>

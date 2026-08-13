@@ -50,6 +50,7 @@ import {
 } from "@/components/shared/copyable-code";
 import { DnsRecordRow } from "@/components/shared/dns-record-row";
 import { DocsLink } from "@/components/shared/docs-link";
+import { LiveDurationAgo } from "@/components/shared/relative-time";
 import { ErrorFallbackCard } from "@/components/shared/error-boundary";
 import { MaintenanceScheduleSummary } from "@/components/shared/maintenance-schedule-summary";
 import { JsonViewer } from "@/components/shared/json-viewer";
@@ -147,6 +148,11 @@ import { slugify } from "@/lib/utils";
 export const Route = createFileRoute("/orgs/$org/design-reference")({
   component: DesignReferencePage,
 });
+
+// Computed once at module scope (not inside a component render) so the
+// "N ago" showcase below stays a pure render — see the LiveDurationAgo
+// example.
+const RELATIVE_TIME_DEMO_SINCE = new Date(Date.now() - 5 * 60_000).toISOString();
 
 const SECTIONS: { id: string; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -1126,6 +1132,35 @@ function ButtonsBadgesSection() {
             </span>
           }
           importLine={`import { LiveStatusDot } from "@/components/layout/live-status-dot";\n\n<LiveStatusDot />`}
+        />
+
+        <h3 className="text-sm font-medium">Relative time (live)</h3>
+        <p className="text-sm text-muted-foreground">
+          Live-ticking "N ago" text for a timestamp — used by the check summary
+          cards' "last checked" line and the private locations agents table's
+          "Last seen" column. Ticks on its own 1s interval (cleared on
+          unmount) via{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">LiveDurationAgo</code>,
+          formats with the shared{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">formatDuration()</code>{" "}
+          (caps at <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Xd Yh Zm</code>),
+          and wraps the result in the translated{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">checks:detail.summary.ago</code>{" "}
+          template so FR/DE/ES render correctly instead of a hard-coded "ago" suffix. Pair it with a{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">title</code> carrying the full
+          local timestamp so the exact moment stays reachable on hover, and keep a separate
+          "never" fallback for a null/undefined timestamp — the component itself has no empty state.
+        </p>
+        <ExampleRow
+          preview={
+            <span
+              className="text-sm text-muted-foreground"
+              title={new Date(RELATIVE_TIME_DEMO_SINCE).toLocaleString()}
+            >
+              <LiveDurationAgo since={RELATIVE_TIME_DEMO_SINCE} />
+            </span>
+          }
+          importLine={`import { LiveDurationAgo } from "@/components/shared/relative-time";\n\n{agent.lastSeenAt ? (\n  <span title={new Date(agent.lastSeenAt).toLocaleString()}>\n    <LiveDurationAgo since={agent.lastSeenAt} />\n  </span>\n) : (\n  t("privateLocations.agents.never", "never")\n)}`}
         />
 
         <h3 className="text-sm font-medium">Session card</h3>
