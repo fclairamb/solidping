@@ -321,6 +321,7 @@ function IntegrationDetailPage() {
         icon={integrationIconComponent(integration.type)}
         title={integration.name}
         iconClassName="bg-transparent"
+        docsHref="/docs/configuration/notifications"
         actions={
           <>
             <Button asChild variant="ghost" size="icon" aria-label={backLabel}>

@@ -106,8 +106,7 @@
     "selfHosted": {
       "title": "Selbst gehostet oder nur lokal?",
       "description": "Gehostete Clients (claude.ai) erreichen nur öffentlich über HTTPS zugängliche Instanzen. Wenn diese Instanz lokal oder nur per VPN erreichbar ist, verwenden Sie stattdessen Claude Code, Cursor oder VS Code — diese verbinden sich von Ihrem eigenen Rechner aus."
-    },
-    "docsLink": "Vollständige MCP-Dokumentation lesen"
+    }
   },
   "requests": {
     "title": "Mitgliedschaftsanfragen",

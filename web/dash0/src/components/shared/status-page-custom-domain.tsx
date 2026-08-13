@@ -40,6 +40,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { DnsRecordRow } from "@/components/shared/dns-record-row";
+import { DocsLink } from "@/components/shared/docs-link";
 
 export function StatusPageCustomDomain({
   org,
@@ -111,12 +112,15 @@ export function StatusPageCustomDomain({
 
   return (
     <Card data-testid="status-page-custom-domain">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Globe className="h-4 w-4" />
-          {t("customDomain.title")}
-        </CardTitle>
-        <CardDescription>{t("customDomain.description")}</CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-4 w-4" />
+            {t("customDomain.title")}
+          </CardTitle>
+          <CardDescription>{t("customDomain.description")}</CardDescription>
+        </div>
+        <DocsLink href="/docs/features/custom-domains" />
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">

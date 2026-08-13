@@ -109,8 +109,7 @@
     "selfHosted": {
       "title": "Self-hosted or local-only?",
       "description": "Hosted clients (claude.ai) can only reach instances that are publicly accessible over HTTPS. If this instance is local or VPN-only, use Claude Code, Cursor, or VS Code instead — they connect from your own machine."
-    },
-    "docsLink": "Read the full MCP documentation"
+    }
   },
   "requests": {
     "title": "Membership requests",

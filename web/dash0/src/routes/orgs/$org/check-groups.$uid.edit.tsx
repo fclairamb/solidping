@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorView } from "@/components/shared/error-views";
+import { DocsLink } from "@/components/shared/docs-link";
 import { EscalationSelect } from "@/components/checks/form/sections/escalation";
 
 export const Route = createFileRoute("/orgs/$org/check-groups/$uid/edit")({
@@ -241,17 +242,19 @@ function CheckGroupEditForm({
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
           {t("groupForm.title")}
         </h1>
-        <Button
-          type="button"
-          variant="destructive"
-          className="ml-auto"
-          onClick={onDelete}
-          aria-label={t("menu.deleteGroup")}
-          data-testid="group-delete-button"
-        >
-          <Trash2 className="sm:mr-2 h-4 w-4" />
-          <span className="hidden sm:inline">{t("menu.deleteGroup")}</span>
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <DocsLink href="/docs/features/check-groups" />
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={onDelete}
+            aria-label={t("menu.deleteGroup")}
+            data-testid="group-delete-button"
+          >
+            <Trash2 className="sm:mr-2 h-4 w-4" />
+            <span className="hidden sm:inline">{t("menu.deleteGroup")}</span>
+          </Button>
+        </div>
       </div>
 
       <Card>

@@ -73,6 +73,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { TunnelDependents, TunnelVia } from "@/components/checks/tunnel-detail";
 import { StatusDot } from "@/components/shared/status-dot";
 import { QueryErrorView } from "@/components/shared/error-views";
+import { DocsLink } from "@/components/shared/docs-link";
 import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { SslChainCard } from "@/components/checks/ssl-chain-card";
@@ -926,6 +927,7 @@ function CheckDetailPage() {
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
+          <DocsLink href="/docs/features/check-types" />
 
           {/* Inline toolbar — always visible; icon-only below lg, icon + label at lg+ */}
           <div className="flex items-center gap-2">

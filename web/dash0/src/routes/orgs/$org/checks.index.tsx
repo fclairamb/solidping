@@ -1352,6 +1352,7 @@ function ChecksIndexPage() {
             </Link>
           </>
         }
+        docsHref="/docs/features/check-types"
         className="flex-wrap"
       />
 

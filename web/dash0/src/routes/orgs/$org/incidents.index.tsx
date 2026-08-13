@@ -133,6 +133,7 @@ function IncidentsIndexPage() {
         icon={AlertTriangle}
         title={t("title")}
         description={t("subtitle")}
+        docsHref="/docs/features/incidents"
         className="flex-wrap"
       />
 

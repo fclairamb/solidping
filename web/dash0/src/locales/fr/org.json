@@ -106,8 +106,7 @@
     "selfHosted": {
       "title": "Auto-hébergé ou local uniquement ?",
       "description": "Les clients hébergés (claude.ai) ne peuvent atteindre que des instances accessibles publiquement en HTTPS. Si cette instance est locale ou accessible uniquement via VPN, utilisez plutôt Claude Code, Cursor ou VS Code — ils se connectent depuis votre propre machine."
-    },
-    "docsLink": "Lire la documentation complète du MCP"
+    }
   },
   "requests": {
     "title": "Demandes d'adhésion",

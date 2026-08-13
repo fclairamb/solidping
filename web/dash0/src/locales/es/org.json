@@ -106,8 +106,7 @@
     "selfHosted": {
       "title": "¿Autoalojado o solo local?",
       "description": "Los clientes alojados (claude.ai) solo pueden acceder a instancias accesibles públicamente por HTTPS. Si esta instancia es local o solo VPN, usa Claude Code, Cursor o VS Code — se conectan desde tu propio equipo."
-    },
-    "docsLink": "Leer la documentación completa de MCP"
+    }
   },
   "requests": {
     "title": "Solicitudes de adhesión",

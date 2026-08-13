@@ -8,7 +8,6 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
-  ExternalLink,
   KeyRound,
   Loader2,
   Plus,
@@ -30,6 +29,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Stepper } from "@/components/ui/stepper";
 import { CopyableCode } from "@/components/shared/copyable-code";
+import { DocsLink } from "@/components/shared/docs-link";
 import { slugify } from "@/lib/utils";
 import {
   useAgents,
@@ -599,14 +599,17 @@ spec:
 
   return (
     <Card data-testid="wizard-step-run-agent">
-      <CardHeader>
-        <CardTitle>{t("privateLocations.wizard.step3.title", "3. Run the agent")}</CardTitle>
-        <CardDescription>
-          {t(
-            "privateLocations.wizard.step3.description",
-            "The agent is the standard SolidPing container in agent mode — no separate binary, no database.",
-          )}
-        </CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+        <div>
+          <CardTitle>{t("privateLocations.wizard.step3.title", "3. Run the agent")}</CardTitle>
+          <CardDescription>
+            {t(
+              "privateLocations.wizard.step3.description",
+              "The agent is the standard SolidPing container in agent mode — no separate binary, no database.",
+            )}
+          </CardDescription>
+        </div>
+        <DocsLink href="/docs/features/private-locations" />
       </CardHeader>
       <CardContent className="space-y-4">
         <Alert variant="warning">
@@ -651,25 +654,13 @@ spec:
               <p className="mb-2 text-xs text-muted-foreground">
                 {t(
                   "privateLocations.wizard.step3.k8sNote",
-                  "This first run persists the identity on a PVC, exactly like the docker run volume. For a no-persistent-volume setup, read the value out of the file the agent wrote (kubectl exec deploy/solidping-agent -- base64 -w0 /data/agent-keys.json) and store it as SP_AGENT_KEYS in a Secret. The agent never prints its private keys to the logs — see the docs link below.",
+                  "This first run persists the identity on a PVC, exactly like the docker run volume. For a no-persistent-volume setup, read the value out of the file the agent wrote (kubectl exec deploy/solidping-agent -- base64 -w0 /data/agent-keys.json) and store it as SP_AGENT_KEYS in a Secret. The agent never prints its private keys to the logs — see the docs link at the top of this card.",
                 )}
               </p>
               <CopyableCode code={kubernetes} data-testid="wizard-snippet-kubernetes" />
             </TabsContent>
           </Tabs>
         </div>
-
-        <p className="text-sm text-muted-foreground">
-          <a
-            href="/docs/features/private-locations"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 text-primary hover:underline"
-          >
-            {t("privateLocations.wizard.step3.docsLink", "Full reference in the docs")}
-            <ExternalLink className="h-3.5 w-3.5" />
-          </a>
-        </p>
 
         <div className="flex justify-end">
           <Button

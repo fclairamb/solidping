@@ -203,6 +203,7 @@ function StatusPagesIndexPage() {
         icon={Globe}
         title={t("statusPages:title")}
         description={t("statusPages:subtitle")}
+        docsHref="/docs/features/status-pages"
         actions={
           <>
             <Button

@@ -28,6 +28,7 @@ import { Switch } from "@/components/ui/switch";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { LabelInput } from "@/components/shared/label-input";
+import { DocsLink } from "@/components/shared/docs-link";
 import { ApiError } from "@/api/client";
 import type { Check as CheckModel, CheckGroup, RegionDefinition, SampleConfig } from "@/api/hooks";
 import {
@@ -844,10 +845,11 @@ export function CheckForm({
           <Button variant="ghost" size="icon" onClick={onCancel}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div>
+          <div className="min-w-0 flex-1">
             <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
             <p className="text-muted-foreground">{subtitle}</p>
           </div>
+          <DocsLink href="/docs/features/check-types" className="ml-auto" />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
