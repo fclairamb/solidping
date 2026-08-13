@@ -107,6 +107,11 @@ func testIncidentNumbers(t *testing.T, svc db.Service) {
 		t.Parallel()
 		testGetIncidentByNumber(ctx, t, svc)
 	})
+
+	t.Run("RealDriverCollisionIsClassifiedAsRetryable", func(t *testing.T) {
+		t.Parallel()
+		testRealNumberCollisionIsClassified(ctx, t, svc)
+	})
 }
 
 // seedIncidentOrg creates an org plus one check to hang incidents off.
@@ -231,4 +236,36 @@ func testGetIncidentByNumber(ctx context.Context, t *testing.T, svc db.Service) 
 	// this incident, or a Telegram chat linked to org B could ack org A's page.
 	_, err = svc.GetIncidentByNumber(ctx, orgB, incident.Number)
 	r.Error(err)
+}
+
+// testRealNumberCollisionIsClassified is the positive control behind the
+// narrowed retry classifier.
+//
+// db.IsIncidentNumberCollision matches on DRIVER ERROR TEXT — Postgres names the
+// index, SQLite names the columns — and the unit tests feed it strings a human
+// typed. If either driver ever worded it differently, those tests would still
+// pass while the real retry loop stopped retrying, and the parallel race test
+// above would only notice on the unlucky run where a collision actually
+// happened. So the violation is produced here by the REAL database, and the
+// classifier is asked about the real error.
+func testRealNumberCollisionIsClassified(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+	orgUID, checkUID := seedIncidentOrg(ctx, t, svc, "inc-num-classify")
+
+	first := models.NewIncident(orgUID, checkUID, time.Now(), "first")
+	r.NoError(svc.CreateIncident(ctx, first))
+	r.Positive(first.Number)
+
+	// An EXPLICIT number skips the assignment loop, so this insert hits the
+	// unique index head-on instead of being retried into a free slot.
+	clash := models.NewIncident(orgUID, checkUID, time.Now(), "clash")
+	clash.Number = first.Number
+
+	err := svc.CreateIncident(ctx, clash)
+	r.Error(err, "reusing a number must violate the unique index")
+	r.True(db.IsUniqueViolation(err), "unexpected driver wording: %v", err)
+	r.True(db.IsIncidentNumberCollision(err),
+		"the retry classifier must recognize this engine's real wording: %v", err)
 }

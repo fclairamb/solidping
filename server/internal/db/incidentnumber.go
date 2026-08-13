@@ -23,13 +23,23 @@ const IncidentNumberAttempts = 8
 // can retry.
 var ErrIncidentNumberExhausted = errors.New("could not assign a per-organization incident number")
 
+// IncidentNumberIndex is the unique index on (organization_uid, number). Named
+// here rather than only in the migrations because the retry loop has to
+// recognize a violation OF THIS INDEX in a driver error string.
+const IncidentNumberIndex = "incidents_organization_number_idx"
+
+// sqliteIncidentNumberColumns is how SQLite words the same violation. It names
+// the COLUMNS, not the index ("UNIQUE constraint failed:
+// incidents.organization_uid, incidents.number"), so the index name alone would
+// never match there.
+const sqliteIncidentNumberColumns = "incidents.number"
+
 // IsUniqueViolation reports whether err looks like a unique-constraint
 // violation from either engine.
 //
 // It is a string match because the two drivers wrap their errors differently
-// and the only distinction that matters here is "this exact row already
-// exists" versus anything else. Over-matching is safe: the single caller
-// simply recomputes the next number and tries again.
+// and expose no portable typed error. It says nothing about WHICH constraint —
+// use IsIncidentNumberCollision for that.
 func IsUniqueViolation(err error) bool {
 	if err == nil {
 		return false
@@ -41,6 +51,33 @@ func IsUniqueViolation(err error) bool {
 		strings.Contains(msg, "duplicate key value") ||
 		strings.Contains(msg, "SQLSTATE 23505") ||
 		strings.Contains(msg, "constraint failed: UNIQUE")
+}
+
+// IsIncidentNumberCollision narrows IsUniqueViolation to the ONE constraint the
+// retry loop can actually resolve by trying again.
+//
+// Exported so a test can feed it a violation produced by a REAL database on
+// each engine: it matches on driver error text, and driver error text is not
+// something a hand-written fake can be trusted to reproduce.
+//
+// This distinction is not pedantry. `incidents` also carries
+// `uq_active_group_incident` on (organization_uid, check_group_uid), and the
+// group-incident open path at handlers/incidents/service.go deliberately RACES
+// on it: two workers seeing the same group fail simultaneously, one losing, and
+// the loser re-fetching the winner's incident. Retrying that violation cannot
+// ever succeed — the number changes, the group key does not — so a broad match
+// would burn all IncidentNumberAttempts round trips before surfacing an outcome
+// the caller was already prepared to handle on the first one.
+func IsIncidentNumberCollision(err error) bool {
+	if !IsUniqueViolation(err) {
+		return false
+	}
+
+	msg := err.Error()
+
+	// Postgres names the index; SQLite names the columns.
+	return strings.Contains(msg, IncidentNumberIndex) ||
+		strings.Contains(msg, sqliteIncidentNumberColumns)
 }
 
 // CreateIncidentWithNumber is the engine-agnostic half of incident creation:
@@ -86,7 +123,10 @@ func CreateIncidentWithNumber(
 			return nil
 		}
 
-		if !IsUniqueViolation(insertErr) {
+		// Only a collision on the NUMBER index is worth another go. Anything
+		// else — including a violation of the group-incident unique index the
+		// caller races on deliberately — is surfaced on the first attempt.
+		if !IsIncidentNumberCollision(insertErr) {
 			// Reset so a caller that inspects the model after a hard failure
 			// does not see a number that was never persisted.
 			incident.Number = 0
