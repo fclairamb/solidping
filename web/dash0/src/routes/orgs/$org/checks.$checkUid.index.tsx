@@ -41,7 +41,7 @@ import { Button } from "@/components/ui/button";
 import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { regionDisplayLabel } from "@/lib/region-label";
+import { regionDisplayLabel, sortRegionSlugs } from "@/lib/region-label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Card,
@@ -609,13 +609,15 @@ function CheckDetailPage() {
     refetchInterval,
   });
 
+  const { data: regionsData } = useRegions(org);
+
   const observedRegions = useMemo(() => {
     const set = new Set<string>();
     for (const r of chartWindowResults?.data ?? []) {
       if (r.region) set.add(r.region);
     }
-    return Array.from(set).sort();
-  }, [chartWindowResults]);
+    return sortRegionSlugs(regionsData?.regions, Array.from(set));
+  }, [chartWindowResults, regionsData]);
 
   // Stale-selection guard, mirroring the chart's own effectiveRegion: only
   // honor ?region= when that slug is actually present in the current
@@ -665,7 +667,6 @@ function CheckDetailPage() {
     enabled: !!check?.uid,
   });
 
-  const { data: regionsData } = useRegions(org);
   const deleteCheck = useDeleteCheck(org);
   const cloneCheck = useCloneCheck(org);
   const updateCheck = useUpdateCheck(org, checkUid);
