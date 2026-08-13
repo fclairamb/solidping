@@ -299,4 +299,38 @@ test.describe("Incidents", () => {
       "unchecked"
     );
   });
+
+  // The short `#42` reference is the same identifier a Telegram `/ack #42` and a
+  // Slack alert header use. If the dashboard is the only surface that does NOT
+  // show it, an on-call person cannot get from the page they are looking at to
+  // the command they need to type.
+  test("incidents carry their short #ref on the list and the detail page", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.goto("orgs/test/incidents");
+    await page.waitForLoadState("networkidle");
+
+    const hasIncidents = await waitForIncidentsLoaded(page);
+    if (!hasIncidents) {
+      test.skip(true, "No incidents available to check the reference on");
+      return;
+    }
+
+    const firstRow = page.getByTestId("incident-row").first();
+    const ref = firstRow.getByTestId("incident-number");
+    await expect(ref).toBeVisible();
+
+    const refText = ((await ref.textContent()) ?? "").trim();
+    expect(refText).toMatch(/^#\d+$/);
+
+    // The very same reference heads the detail page.
+    await firstRow.getByRole("link").first().click();
+    await page.waitForURL(
+      /\/incidents\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+      { timeout: 10000 },
+    );
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(refText);
+  });
 });

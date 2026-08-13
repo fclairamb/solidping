@@ -29,6 +29,12 @@ token.
   thread; later alerts reply to it, and the original is edited to ✅ when the
   incident resolves. Threading is a nicety: if it cannot be done, the alert is
   still delivered as a standalone message.
+- **Alerts carry an Acknowledge button, and the bot answers commands.** Every
+  open incident alert ships with an inline **✅ Acknowledge** button; pressing it
+  acknowledges the incident, answers with a toast and rewrites the message to
+  "✅ Acknowledged by …" with the button removed. Typed commands (`/status`,
+  `/incidents`, `/ack`, `/incident`, `/help`) cover the read paths and the
+  fallback — see [In-chat commands](#in-chat-commands).
 
 ## Step 1 — Create the bots with @BotFather
 
@@ -47,23 +53,15 @@ Talk to [@BotFather](https://t.me/BotFather) and run:
 | `/setabouttext` | Short blurb shown on the bot's profile. |
 | `/setdescription` | What users see before they press Start. |
 | `/setuserpic` | Your logo. |
-| `/setcommands` | Exactly the two commands below — nothing more. |
+| `/setcommands` | Nothing — SolidPing registers its own list at every boot. |
 | `/setprivacy` | **Enable** (the bot only sees commands addressed to it). |
 | `/setjoingroups` | **Enable** — see the note below. |
 | `/setinline` | **Disable** (SolidPing implements no inline queries). |
 
-For `/setcommands`, paste exactly:
-
-```text
-start - Connect this chat to your SolidPing account
-stop - Stop receiving SolidPing alerts here
-```
-
-:::note Do not advertise commands that answer nothing
-It is tempting to add `status` or `mute`. SolidPing does not implement them in
-this version, and a bot whose command menu offers a command that silently does
-nothing is worse than one with a short menu.
-:::
+You do **not** need to set `/setcommands` by hand: SolidPing calls
+`setMyCommands` on every startup, so the menu always matches the commands the
+running version actually implements. Setting it manually only risks advertising
+a command that answers nothing — which is worse than a short menu.
 
 `/setjoingroups` stays **enabled** even though this version only supports
 per-user direct messages. Group routing is a plausible later addition, and
@@ -143,9 +141,48 @@ and utterly baffling failure ("the link opens a bot that does nothing"). A
 derived username has nothing to disagree with, so it warns about nothing.
 :::
 
+## In-chat commands
+
+Commands work in any chat that is **connected** to a SolidPing account; an
+unconnected chat gets one identical "link your account" reply for every command,
+so the bot cannot be used to probe whether an organization or an incident exists.
+
+| Command | What it answers |
+|---|---|
+| `/status` | One line of org health — `✅ all 45 checks up` or `🔥 3 incidents open, 42/45 checks up`. |
+| `/incidents` | The open incidents, oldest first, each as its own message with an **Acknowledge** button. |
+| `/ack #42` | Acknowledges an incident. With **no** number it acks the single open incident, and lists the candidates when there are several. |
+| `/incident #42` | State, duration, failing regions, last error, and who acknowledged it. |
+| `/help` | The command list. `/start` with no token on a connected chat shows the same thing. |
+| `/stop` | Disconnects this chat (also `/unlink`). |
+
+### `#42` — the short incident reference
+
+Every incident carries a short, per-organization number, GitHub-issue style. It
+is assigned when the incident opens, never reused (a deleted incident keeps its
+number), and it is the SAME reference the dashboard, Slack messages and Telegram
+alerts all display — so a number read off an alert can be typed straight back as
+`/ack #42`. The `#` is optional when you type it.
+
+### Acknowledging from a button
+
+An alert for an open, unacknowledged incident carries an inline
+**✅ Acknowledge** button. Pressing it acknowledges the incident, answers the
+press with a toast, and **rewrites the alert** to "✅ Acknowledged by … at …"
+with the button removed — so the next person scrolling the chat does not read a
+claimed page as unclaimed. Pressing it twice, or on an already-resolved
+incident, reports the current state instead of erroring.
+
+**Attribution.** The acknowledgement is credited to the SolidPing account the
+chat is connected to. In a group the person who pressed the button is often
+somebody else, so the incident timeline additionally records
+`via Telegram (<first name>)`. A full Telegram-user → org-member mapping is not
+implemented yet.
+
 ## Step 3 — Register the webhook
 
-Inbound updates (the connect flow, `/stop`, block notifications) arrive at:
+Inbound updates (the commands, the Acknowledge button, block notifications)
+arrive at:
 
 ```text
 https://<your-solidping-host>/api/v1/integrations/telegram/webhook
@@ -302,6 +339,6 @@ boot re-fetches it with `getMe`.
   group is refused with a note to open a direct chat instead — and the link is
   *not* consumed, so the same one still works in a DM.
 - **No bring-your-own bot per organization** — credentials are instance-level.
-- **No interactive buttons or commands beyond `/start` and `/stop`.** You cannot
-  acknowledge an incident by replying (use the SMS ack link or the dashboard).
+- **No `/mute` or `/snooze`, and no acknowledging by replying in a thread.**
+  Acknowledge with the inline button or `/ack #42`.
 - Status-page subscribers cannot subscribe over Telegram.
