@@ -344,6 +344,9 @@ type Service interface {
 	// Incident operations
 	CreateIncident(ctx context.Context, incident *models.Incident) error
 	GetIncident(ctx context.Context, orgUID, uid string) (*models.Incident, error)
+	// GetIncidentByNumber resolves the short per-org `#42` reference — the form
+	// humans type into Telegram and read in Slack. Returns sql.ErrNoRows if none.
+	GetIncidentByNumber(ctx context.Context, orgUID string, number int64) (*models.Incident, error)
 	// FindActiveIncidentByCheckUID returns the incident a check is participating in, whether
 	// per-check (incidents.check_uid = $1) or via a group (incident_member_checks row exists
 	// with currently_failing = true). Returns sql.ErrNoRows if none.

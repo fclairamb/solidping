@@ -396,6 +396,10 @@ func (m *mockDBService) GetIncident(_ context.Context, _, _ string) (*models.Inc
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetIncidentByNumber(_ context.Context, _ string, _ int64) (*models.Incident, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) FindActiveIncidentByCheckUID(_ context.Context, _ string) (*models.Incident, error) {
 	panic("not implemented")
 }

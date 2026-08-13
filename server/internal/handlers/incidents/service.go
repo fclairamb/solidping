@@ -1612,7 +1612,10 @@ type CheckResponse struct {
 
 // IncidentResponse represents an incident in API responses.
 type IncidentResponse struct {
-	UID                 string                   `json:"uid"`
+	UID string `json:"uid"`
+	// Number is the short per-org reference rendered as `#42`. Every human-facing
+	// surface (dashboard, Slack, Telegram) addresses the incident by this.
+	Number              int64                    `json:"number"`
 	CheckUID            string                   `json:"checkUid"`
 	CheckSlug           *string                  `json:"checkSlug,omitempty"`
 	CheckName           *string                  `json:"checkName,omitempty"`
@@ -1686,6 +1689,7 @@ func stateToString(state models.IncidentState) string {
 func incidentToResponse(inc *models.Incident) IncidentResponse {
 	return IncidentResponse{
 		UID:                 inc.UID,
+		Number:              inc.Number,
 		CheckUID:            inc.CheckUID,
 		State:               stateToString(inc.State),
 		StartedAt:           inc.StartedAt,

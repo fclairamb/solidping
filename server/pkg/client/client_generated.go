@@ -2738,11 +2738,14 @@ type IncidentDetail struct {
 	Details      *map[string]interface{} `json:"details,omitempty"`
 	EscalatedAt  *time.Time              `json:"escalatedAt,omitempty"`
 	FailureCount *int                    `json:"failureCount,omitempty"`
-	ResolvedAt   *time.Time              `json:"resolvedAt,omitempty"`
-	StartedAt    *time.Time              `json:"startedAt,omitempty"`
-	State        *IncidentDetailState    `json:"state,omitempty"`
-	Title        *string                 `json:"title,omitempty"`
-	Uid          *openapi_types.UUID     `json:"uid,omitempty"`
+
+	// Number Short per-organization incident reference, rendered as `#42` in the dashboard, Slack and Telegram. Assigned at creation, never reused.
+	Number     *int64               `json:"number,omitempty"`
+	ResolvedAt *time.Time           `json:"resolvedAt,omitempty"`
+	StartedAt  *time.Time           `json:"startedAt,omitempty"`
+	State      *IncidentDetailState `json:"state,omitempty"`
+	Title      *string              `json:"title,omitempty"`
+	Uid        *openapi_types.UUID  `json:"uid,omitempty"`
 }
 
 // IncidentDetailState defines model for IncidentDetail.State.

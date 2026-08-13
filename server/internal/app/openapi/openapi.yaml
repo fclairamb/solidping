@@ -8205,6 +8205,12 @@ components:
         uid:
           type: string
           format: uuid
+        number:
+          type: integer
+          format: int64
+          description: >-
+            Short per-organization incident reference, rendered as `#42` in the
+            dashboard, Slack and Telegram. Assigned at creation, never reused.
         checkUid:
           type: string
           format: uuid
