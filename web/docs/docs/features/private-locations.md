@@ -78,23 +78,43 @@ there is no bearer token to steal, and the database only ever holds public keys.
 
 ### Getting the `SP_AGENT_KEYS` value
 
-To run an agent from the environment alone, read the file the agent already
-wrote:
+The identity is generated **in the container on first start** and is meant to
+stay there — prefer the [PVC-backed Kubernetes option](#kubernetes) below over
+extracting it into an environment variable at all.
+
+The agent image's runtime stage is distroless
+(`gcr.io/distroless/base-debian13:nonroot`): no shell, no `base64`, no `tar`.
+That rules out the commands that look like the obvious first move:
+
+- `kubectl exec … base64 …` fails: `exec: "base64": executable file not found
+  in $PATH`.
+- `kubectl cp` fails too — it streams the copy through `tar` running **inside
+  the container**, and distroless doesn't ship that either.
+- `fly ssh console` needs `hallpass` baked into the image; it isn't there.
+
+**Kubernetes has no in-cluster extraction path.** Use the
+[PVC-backed identity](#kubernetes) option instead: the agent keeps its own
+identity on a volume and you never touch the keys file at all.
+
+**Docker** is the one place extraction still works, because `docker cp` reads
+the container's filesystem from the daemon side — it doesn't execute anything
+inside the container, so the missing shell/`base64`/`tar` don't matter:
 
 ```bash
-# docker
-docker exec <container> base64 -w0 /data/agent-keys.json
-# fly
-fly ssh console -a <app> -C "base64 -w0 /data/agent-keys.json"
-# kubernetes (first run with a temporary volume)
-kubectl exec deploy/solidping-agent -- base64 -w0 /data/agent-keys.json
+# straight from the daemon — no shell or tar needed inside the container
+docker cp <container>:/data/agent-keys.json - | tar -xO | base64 -w0
+
+# or, against a named volume with no running container at all:
+docker run --rm -v agent-data:/data alpine base64 -w0 /data/agent-keys.json
 ```
 
-If the agent has no readable file at all (no writable volume, no shell), start
-it once with `SP_AGENT_PRINT_KEYS=true`. It then prints the base64 to stdout
-inside a `!!! PRIVATE KEY MATERIAL !!!` banner. Copy it into your secret store,
-then unset the variable and restart — and treat the agent as compromised (revoke
-and re-enroll it) if that output was retained by a log drain.
+**Last resort — `SP_AGENT_PRINT_KEYS=true`.** If neither of the above is an
+option, start the agent once with `SP_AGENT_PRINT_KEYS=true`. It prints the
+base64 identity to stdout inside a `!!! PRIVATE KEY MATERIAL !!!` banner —
+i.e. into whatever aggregates your container logs. Copy it into your secret
+store, then unset the variable and restart — and treat the agent as
+compromised (revoke and re-enroll it) if that output was retained by a log
+drain.
 
 ### Environment variables
 
@@ -108,26 +128,49 @@ and re-enroll it) if that output was retained by a log drain.
 | `SP_AGENT_NAME` | hostname | Display name shown in the dashboard |
 | `SP_AGENT_PRINT_KEYS` | `false` | Prints the agent's **private key material** to stdout — opt-in bootstrap only (honoured on every start); unset it again afterwards |
 
-### Kubernetes (env-only keys)
+### Kubernetes
 
-After the first enrollment, read the `SP_AGENT_KEYS` value out of the agent's
-keys file (`kubectl exec deploy/solidping-agent -- base64 -w0
-/data/agent-keys.json`) and store it in a Secret — the pod then needs no
-persistent volume:
+Two supported patterns, in order of preference.
+
+#### Recommended — PVC-backed identity
+
+Give the agent its own volume and let it generate and keep its identity
+in-pod, the same way the Docker example above does. Nothing to extract,
+nothing to put in a Secret except the one-shot enrollment token.
 
 ```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: solidping-agent-keys
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: solidping-agent
 spec:
   replicas: 1
+  # The keys PVC is ReadWriteOnce: never run two pods against it at once.
+  strategy:
+    type: Recreate
   selector:
     matchLabels: { app: solidping-agent }
   template:
     metadata:
       labels: { app: solidping-agent }
     spec:
+      securityContext:
+        runAsNonRoot: true
+        # distroless :nonroot runs as uid 65532. Without this fsGroup the
+        # mounted volume stays owned by root and the agent can't write the
+        # 0600 agent-keys.json file onto it at all.
+        fsGroup: 65532
       containers:
         - name: agent
           image: ghcr.io/fclairamb/solidping:latest
@@ -136,15 +179,68 @@ spec:
               value: agent
             - name: SP_AGENT_SERVER_URL
               value: https://solidping.example.com
+            # First start only — ignored once /data/agent-keys.json exists.
+            - name: SP_AGENT_ENROLLMENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: solidping-agent-enrollment
+                  key: token
+                  optional: true
+            # SP_AGENT_KEYS is deliberately unset here: it takes precedence
+            # over the keys file, so setting it would defeat the PVC.
+          volumeMounts:
+            - name: keys
+              mountPath: /data
+      volumes:
+        - name: keys
+          persistentVolumeClaim:
+            claimName: solidping-agent-keys
+```
+
+Bootstrap sequence:
+
+1. Create the one-shot enrollment Secret out of band:
+   ```bash
+   kubectl create secret generic solidping-agent-enrollment \
+     --from-literal=token=spe_…
+   ```
+2. `kubectl apply -f` the manifest above.
+3. Watch the logs until `Agent identity persisted` appears and the agent
+   shows up **active** in the dashboard — that means the token was consumed
+   and the identity is written to the PVC.
+4. Delete the enrollment Secret. `optional: true` on the env var keeps the
+   pod schedulable without it:
+   ```bash
+   kubectl delete secret solidping-agent-enrollment
+   ```
+
+**Losing the PVC loses the identity.** There is no way to recover it — revoke
+the agent server-side and re-enroll it with a fresh token.
+
+#### Alternative — `SP_AGENT_KEYS` from a Secret
+
+For environments with no volume available, store the identity directly in a
+Secret instead — the pod then needs no persistent volume:
+
+```yaml
             - name: SP_AGENT_KEYS
               valueFrom:
                 secretKeyRef: { name: solidping-agent-keys, key: keys }
 ```
 
-For **high availability**, enroll several agents into the same location (one
-token each). They share the work through the same lease mechanism cloud
-workers use — if one agent dies, its leases expire and a sibling picks the
-checks up.
+You still need to get the base64 value in the first place, and Kubernetes
+gives you no way to do that in-cluster (see above) — extract it from a
+Docker/local first run (the `docker cp` recipe above) or accept the
+`SP_AGENT_PRINT_KEYS` exposure, then store the result in the Secret.
+
+#### High availability
+
+Enroll several agents into the same location — each with its **own**
+identity (own PVC or own Secret) and one enrollment token each. They share
+the work through the same lease mechanism cloud workers use — if one agent
+dies, its leases expire and a sibling picks the checks up. Never point two
+pod replicas at the same PVC or the same keys Secret; that's exactly what
+`strategy: { type: Recreate }` on the PVC option guards against.
 
 ## 4. Target the location from a check
 
