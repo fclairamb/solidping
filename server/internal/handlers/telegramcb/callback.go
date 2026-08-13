@@ -183,6 +183,13 @@ func callbackChatID(query *telegram.CallbackQuery) string {
 // callbackActorName is the display name of whoever pressed the button. In a
 // group this is very often NOT the person the chat is linked to, which is
 // precisely why it is recorded separately from the credited user.
+//
+// The group case is UNREACHABLE today, and that is deliberate rather than dead
+// code left behind: v1 refuses to link anything but a private chat
+// (chatIsConnectable in handler.go), so no group chat can hold a verified
+// contact and no group press gets past linkedContacts. The separate actor label
+// is kept because it is what makes group routing additive when it lands —
+// mapping a Telegram user id onto an org member is explicitly out of scope here.
 func callbackActorName(query *telegram.CallbackQuery) string {
 	if query.From == nil {
 		return ""

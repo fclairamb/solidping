@@ -207,10 +207,10 @@ func ParseCallbackData(data string) (string, string) {
 	return action, strings.TrimSpace(arg)
 }
 
-// ParseIncidentRef reads a short incident reference — "#42", "42", or "n42" —
-// and reports whether it was one. The leading '#' is optional because phone
-// keyboards bury it and because copy-pasting "#42" out of a Slack message is
-// the other half of the same workflow; both must work.
+// ParseIncidentRef reads a short incident reference — "#42" or "42" — and
+// reports whether it was one. The leading '#' is optional because phone
+// keyboards bury it, and accepted because copy-pasting "#42" out of a Slack
+// message is the other half of the same workflow; both must work.
 func ParseIncidentRef(s string) (int64, bool) {
 	trimmed := strings.TrimSpace(s)
 	trimmed = strings.TrimPrefix(trimmed, "#")
