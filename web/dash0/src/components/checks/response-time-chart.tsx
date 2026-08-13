@@ -987,6 +987,7 @@ export function ResponseTimeChart({
           <div
             ref={chartWrapperRef}
             className="relative select-none"
+            data-testid="response-time-chart-wrapper"
             // Double-click anywhere on the chart resets an active zoom.
             onDoubleClick={() => {
               if (zoomed) resetZoom();

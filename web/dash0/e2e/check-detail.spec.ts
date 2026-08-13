@@ -150,7 +150,7 @@ test.describe("Check Detail Page", () => {
     await expect(regionCell.getByText(/default/i)).toBeVisible();
   });
 
-  test("Response Times chart: region chips filter to a single region's points", async ({
+  test("Response Times chart: region chips filter to a single region's points, cross-filter Recent Results, carry a single ?region= param, and never remount the chart", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -158,14 +158,32 @@ test.describe("Check Detail Page", () => {
 
     // Mock a multi-region results response: a low-latency "us-1" cluster and
     // a high-latency "eu-1" cluster, interleaved in time — the exact shape
-    // that renders as a cross-region sawtooth without the filter.
+    // that renders as a cross-region sawtooth without the filter. The same
+    // handler backs both the chart's window fetch and the Recent Results
+    // list fetch (which additionally echoes back whichever `region=` it
+    // received), and counts each distinct call style separately so the test
+    // can prove the chart itself never re-fetches on a region change.
+    let chartFetchCount = 0;
+    let listFetchCount = 0;
     await page.route("**/api/v1/orgs/*/results*", (route) => {
-      const url = route.request().url();
-      if (!url.includes("/results")) return route.continue();
-      const points = [];
+      const url = new URL(route.request().url());
+      if (!url.pathname.includes("/results")) return route.continue();
+      const region = url.searchParams.get("region");
+      // Recent Results requests `limit=10` (useResults); the chart's own
+      // window fetch (useAllResults, shared with the page's
+      // chartWindowResults) always requests `limit=1000` and never sends
+      // `region` at all — region filtering there is client-side.
+      const isListCall = url.searchParams.get("limit") === "10";
+      if (isListCall) {
+        listFetchCount++;
+      } else {
+        chartFetchCount++;
+      }
+
+      const chartPoints = [];
       for (let i = 0; i < 8; i++) {
         const ts = now - (16 - i * 2) * 60_000;
-        points.push({
+        chartPoints.push({
           uid: `us1-${i}`,
           durationMs: 55 + (i % 2) * 5,
           status: "up",
@@ -173,7 +191,7 @@ test.describe("Check Detail Page", () => {
           periodStart: new Date(ts).toISOString(),
           periodType: "raw",
         });
-        points.push({
+        chartPoints.push({
           uid: `eu1-${i}`,
           durationMs: 650 + (i % 2) * 10,
           status: "up",
@@ -182,12 +200,23 @@ test.describe("Check Detail Page", () => {
           periodType: "raw",
         });
       }
+      // The Recent Results list (size=10) uses its own small fixed dataset —
+      // one row per region — so its expected row counts below stay simple
+      // regardless of the chart's denser point cloud. It additionally
+      // narrows server-side by whichever region= param it received, matching
+      // the real API's filtering behavior.
+      const listPoints = [chartPoints[0], chartPoints[1]];
+      const data = isListCall
+        ? region
+          ? listPoints.filter((p) => p.region === region)
+          : listPoints
+        : chartPoints;
       return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          data: points,
-          pagination: { total: points.length, size: points.length },
+          data,
+          pagination: { total: data.length, size: data.length },
         }),
       });
     });
@@ -241,6 +270,12 @@ test.describe("Check Detail Page", () => {
     await expect(usChip).toBeVisible();
     await expect(euChip).toBeVisible();
 
+    // Recent Results starts with both rows (its own filter row is visible
+    // too, since >1 region is observed).
+    const resultsFilter = page.getByTestId("results-region-filter");
+    await expect(resultsFilter).toBeVisible();
+    await expect(page.locator('[data-testid^="result-row-"]')).toHaveCount(2);
+
     await expect(page.locator(".recharts-wrapper")).toBeVisible();
     // Count only the per-point data dots — each carries a <title> child. The
     // hover/selected activeDot is a childless <circle> whose nondeterministic
@@ -249,22 +284,49 @@ test.describe("Check Detail Page", () => {
     const dataDots = page.locator(".recharts-wrapper circle:has(title)");
     const allDotCount = await dataDots.count();
 
-    // Selecting the US chip narrows the chart to fewer points (only the
-    // us-1 cluster) and writes ?graphRegion=us-1 into the URL.
+    // Mark the chart's own wrapper DOM node directly (bypassing React) so a
+    // remount — which would create a brand-new node — is distinguishable
+    // from an in-place re-render, which keeps this expando attribute intact.
+    const chartWrapper = page.getByTestId("response-time-chart-wrapper");
+    await chartWrapper.evaluate((el) => el.setAttribute("data-e2e-no-remount", "still-here"));
+    await page.waitForLoadState("networkidle");
+    const chartFetchCountBeforeRegionChange = chartFetchCount;
+
+    // Selecting the US chip narrows the chart AND cross-filters Recent
+    // Results (spec 2026-08-13-02), and writes a single ?region=us-1 param —
+    // no separate graphRegion/resultsRegion keys.
     await usChip.click();
-    await page.waitForURL(/graphRegion=us-1/);
+    await page.waitForURL(/[?&]region=us-1(&|$)/);
+    expect(page.url()).not.toContain("graphRegion");
+    expect(page.url()).not.toContain("resultsRegion");
     await expect(dataDots).toHaveCount(allDotCount / 2);
+    await expect(page.locator('[data-testid^="result-row-"]')).toHaveCount(1);
+
+    // No remount: the wrapper DOM node is the same one marked above, and the
+    // chart's own results fetch (query key has no region in it — region
+    // filtering is client-side) never re-fired, only the Recent Results list
+    // call (which does carry region= server-side) did.
+    await expect(chartWrapper).toHaveAttribute("data-e2e-no-remount", "still-here");
+    expect(chartFetchCount).toBe(chartFetchCountBeforeRegionChange);
+    expect(listFetchCount).toBeGreaterThan(0);
 
     // Switching to the EU chip updates the URL and keeps a single-region
-    // point count (same size class as the US selection, different region).
+    // point count (same size class as the US selection, different region),
+    // still without remounting the chart.
     await euChip.click();
-    await page.waitForURL(/graphRegion=eu-1/);
+    await page.waitForURL(/[?&]region=eu-1(&|$)/);
     await expect(dataDots).toHaveCount(allDotCount / 2);
+    await expect(page.locator('[data-testid^="result-row-"]')).toHaveCount(1);
+    await expect(chartWrapper).toHaveAttribute("data-e2e-no-remount", "still-here");
+    expect(chartFetchCount).toBe(chartFetchCountBeforeRegionChange);
 
-    // Back to "All regions" restores every point and clears the param.
+    // Back to "All regions" restores every point (chart and Recent Results
+    // alike) and clears the param.
     await allChip.click();
     await expect(dataDots).toHaveCount(allDotCount);
-    expect(page.url()).not.toContain("graphRegion");
+    await expect(page.locator('[data-testid^="result-row-"]')).toHaveCount(2);
+    expect(page.url()).not.toContain("region=");
+    await expect(chartWrapper).toHaveAttribute("data-e2e-no-remount", "still-here");
   });
 
   test("Response Times chart: single-region check shows no region chips", async ({
@@ -602,7 +664,7 @@ test.describe("Check Detail Page", () => {
     });
   });
 
-  test("Recent Results: region filter narrows the list server-side and a row badge click selects that region", async ({
+  test("Recent Results: region filter narrows the list server-side, cross-filters the chart, and a row badge click selects that region", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -693,27 +755,39 @@ test.describe("Check Detail Page", () => {
     // Both rows visible under "All" (no region= param sent).
     await expect(page.locator('[data-testid^="result-row-"]')).toHaveCount(2);
 
-    // Selecting the US chip narrows the list to one row and writes
-    // ?resultsRegion=us-1 — independent from the chart's own ?graphRegion.
+    // The chart observes the same two regions (its own fetch is unfiltered —
+    // region isn't part of the chart's query params), so its chip row shows
+    // too and starts at 2 points (one per region).
+    const chartDataDots = page.locator(".recharts-wrapper circle:has(title)");
+    await expect(page.getByTestId("response-time-chart-region-filter")).toBeVisible();
+    await expect(chartDataDots).toHaveCount(2);
+
+    // Selecting the US chip narrows the list to one row, cross-filters the
+    // chart to that region's single point too, and writes a single
+    // ?region=us-1 param (no separate graphRegion/resultsRegion keys).
     await resultsFilter.getByRole("button", { name: /US East/ }).click();
-    await page.waitForURL(/resultsRegion=us-1/);
+    await page.waitForURL(/[?&]region=us-1(&|$)/);
     await expect(page.locator('[data-testid^="result-row-"]')).toHaveCount(1);
+    await expect(chartDataDots).toHaveCount(1);
     expect(page.url()).not.toContain("graphRegion");
+    expect(page.url()).not.toContain("resultsRegion");
 
     // The narrowed request actually carried region=us-1 to the API.
     expect(requestedRegionParams).toContain("us-1");
 
-    // Back to "All" restores both rows and clears the param.
+    // Back to "All" restores both rows (and the chart's two points) and
+    // clears the param.
     await resultsFilter.getByRole("button", { name: "All" }).click();
-    await page.waitForURL((url) => !url.search.includes("resultsRegion"));
+    await page.waitForURL((url) => !url.search.includes("region="));
     await expect(page.locator('[data-testid^="result-row-"]')).toHaveCount(2);
+    await expect(chartDataDots).toHaveCount(2);
 
     // Clicking a row's own region Badge selects that region too.
     const euRow = page.locator('[data-testid^="result-row-"]', {
       hasText: "EU West",
     });
     await euRow.getByTestId(/result-region-badge-/).click();
-    await page.waitForURL(/resultsRegion=eu-1/);
+    await page.waitForURL(/[?&]region=eu-1(&|$)/);
     await expect(page.locator('[data-testid^="result-row-"]')).toHaveCount(1);
     // The badge click must not also trigger the row's own navigate-to-detail
     // onClick (stopPropagation) — still on the check detail page, not a
@@ -826,7 +900,7 @@ test.describe("Check Detail Page", () => {
     // Recent Results header shows no filter row (only >1 region shows it) —
     // this test drives the strip via the URL directly instead, since a
     // single-region "select region" affordance isn't the point under test.
-    await page.goto(`${page.url()}?resultsRegion=us-1&graphPeriod=week`);
+    await page.goto(`${page.url()}?region=us-1&graphPeriod=week`);
     await page.waitForLoadState("networkidle");
 
     const stats = page.getByTestId("results-duration-stats");
