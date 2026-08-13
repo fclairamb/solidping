@@ -107,13 +107,28 @@ type MyChatMemberUpdate struct {
 	NewChatMember *ChatMember `json:"new_chat_member"`
 }
 
-// Update is one inbound webhook update. Only the two update types the bot
-// subscribes to are decoded; anything else arrives with both fields nil and is
+// CallbackQuery is an inline-button press.
+//
+// Message is the message the button was attached to, and it carries both the
+// chat id and the message id — which is why acknowledging from a button needs
+// no stored incident→message mapping to edit the alert afterwards: the press
+// itself says exactly which message to rewrite.
+type CallbackQuery struct {
+	ID      string           `json:"id"`
+	From    *User            `json:"from"`
+	Message *IncomingMessage `json:"message"`
+	Data    string           `json:"data"`
+}
+
+// Update is one inbound webhook update. Only the update types the bot
+// subscribes to are decoded; anything else arrives with every field nil and is
 // acknowledged untouched.
 type Update struct {
 	//nolint:tagliatelle // Telegram's Bot API wire format uses snake_case.
 	UpdateID int64            `json:"update_id"`
 	Message  *IncomingMessage `json:"message"`
+	//nolint:tagliatelle // Telegram's Bot API wire format uses snake_case.
+	CallbackQuery *CallbackQuery `json:"callback_query"`
 	//nolint:tagliatelle // Telegram's Bot API wire format uses snake_case.
 	MyChatMember *MyChatMemberUpdate `json:"my_chat_member"`
 }
@@ -171,6 +186,45 @@ func Command(text string) (string, string) {
 	}
 
 	return strings.ToLower(command), strings.TrimSpace(arg)
+}
+
+// CallbackActionAck is the verb of the Acknowledge button's callback_data.
+// The full payload is "ack:<incident uid>" — 4 + 36 bytes, comfortably inside
+// Telegram's 64-byte callback_data limit, which is why the button can carry the
+// UUID directly and does not need the short `#42` reference at all.
+const CallbackActionAck = "ack"
+
+// ParseCallbackData splits an inline button's callback_data into its action and
+// argument. Returns ("", "") when the payload has no action.
+func ParseCallbackData(data string) (string, string) {
+	action, arg, _ := strings.Cut(strings.TrimSpace(data), ":")
+
+	action = strings.ToLower(strings.TrimSpace(action))
+	if action == "" {
+		return "", ""
+	}
+
+	return action, strings.TrimSpace(arg)
+}
+
+// ParseIncidentRef reads a short incident reference — "#42", "42", or "n42" —
+// and reports whether it was one. The leading '#' is optional because phone
+// keyboards bury it and because copy-pasting "#42" out of a Slack message is
+// the other half of the same workflow; both must work.
+func ParseIncidentRef(s string) (int64, bool) {
+	trimmed := strings.TrimSpace(s)
+	trimmed = strings.TrimPrefix(trimmed, "#")
+
+	if trimmed == "" {
+		return 0, false
+	}
+
+	number, err := strconv.ParseInt(trimmed, 10, 64)
+	if err != nil || number <= 0 {
+		return 0, false
+	}
+
+	return number, true
 }
 
 // DisplayLabel builds the human label stored on a Telegram contact: the

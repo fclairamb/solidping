@@ -751,6 +751,11 @@ function IncidentDetailPage() {
               <CheckCircle className="h-6 w-6 text-green-500" />
             )}
             <h1 className="text-3xl font-bold tracking-tight">
+              {incident.number ? (
+                <span className="text-muted-foreground tabular-nums mr-2">
+                  #{incident.number}
+                </span>
+              ) : null}
               {incident.title ||
                 incident.checkName ||
                 incident.checkSlug ||

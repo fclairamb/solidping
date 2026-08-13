@@ -32,6 +32,12 @@ func StateEmoji(state string) string {
 type AlertParams struct {
 	// State is one of StateDown / StateEscalated / StateResolved.
 	State string
+	// Number is the short per-org incident reference rendered as `#42`. Zero
+	// omits it (an incident predating the numbers).
+	Number int64
+	// IncidentUID backs the Acknowledge button's callback_data. Empty renders
+	// no button.
+	IncidentUID string
 	// CheckName is the check (or incident) the alert is about.
 	CheckName string
 	// Detail is the one-line detail: the incident title, or how long it has
@@ -87,6 +93,15 @@ func buildAlertHTML(params *AlertParams, prefix string) string {
 	body.WriteString(StateEmoji(state))
 	body.WriteString(" ")
 	body.WriteString(headline)
+
+	// The short reference, right in the headline: it is what someone types back
+	// as `/ack #42` or `/incident #42`, so it has to be readable on a lock
+	// screen without opening the message.
+	if params.Number > 0 {
+		body.WriteString(" ")
+		body.WriteString(IncidentRef(params.Number))
+	}
+
 	body.WriteString(" — ")
 	body.WriteString(EscapeHTML(name))
 	body.WriteString("</b>\n\n")
@@ -165,10 +180,9 @@ func BuildGroupNotSupportedHTML() string {
 		"Open a private chat with this bot and use your connect link again."
 }
 
-// BuildUnknownCommandHTML is the reply to a message the bot does not handle. v1
-// implements /start and /stop only, and the bot's advertised command list is
-// trimmed to match — no command is offered that answers nothing.
+// BuildUnknownCommandHTML is the reply to a command the bot does not handle:
+// the help text, so the answer names every command that DOES work rather than
+// only the one that did not.
 func BuildUnknownCommandHTML() string {
-	return "SolidPing only understands /start and /stop here. " +
-		"Manage your alerts from the dashboard."
+	return "I don't know that command.\n\n" + BuildHelpHTML()
 }

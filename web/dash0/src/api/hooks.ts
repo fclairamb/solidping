@@ -237,6 +237,8 @@ export interface IncidentDetails {
 
 export interface IncidentDetail {
   uid?: string;
+  /** Short per-org reference, rendered as `#42`. Assigned at creation, never reused. */
+  number?: number;
   checkUid?: string;
   checkName?: string;
   checkSlug?: string;

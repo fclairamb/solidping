@@ -303,7 +303,9 @@ func TestSetWebhook_SendsSecretAndAllowedUpdates(t *testing.T) {
 
 	updates, ok := fake.body["allowed_updates"].([]any)
 	r.True(ok)
-	r.Equal([]any{"message", "my_chat_member"}, updates)
+	// callback_query is what carries the Acknowledge button press; without it in
+	// the subscription Telegram simply never delivers one.
+	r.Equal([]any{"message", "callback_query", "my_chat_member"}, updates)
 }
 
 func TestGetWebhookInfo(t *testing.T) {
