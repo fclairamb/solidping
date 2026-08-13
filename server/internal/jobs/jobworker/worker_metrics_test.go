@@ -254,6 +254,8 @@ func TestProcessNextRecordsUnknownTypeFailure(t *testing.T) {
 	const jobType = "totally-unknown-type-for-metrics-test"
 
 	before := testutil.ToFloat64(prommetrics.JobsProcessed.WithLabelValues(jobType, outcomeFailed))
+	beforeDur := histogramSampleCount(r, prommetrics.JobDuration.WithLabelValues(jobType, outcomeFailed))
+	beforeDelay := histogramSampleCount(r, prommetrics.JobSchedulingDelay.WithLabelValues(jobType))
 
 	svc := &fakeJobSvc{
 		waitJob: func() *models.Job {
@@ -272,10 +274,13 @@ func TestProcessNextRecordsUnknownTypeFailure(t *testing.T) {
 	after := testutil.ToFloat64(prommetrics.JobsProcessed.WithLabelValues(jobType, outcomeFailed))
 	r.InDelta(before+1, after, 0.001)
 
-	// Duration and scheduling-delay histograms got an observation for this type.
-	r.Equal(uint64(1), histogramSampleCount(r,
+	// Duration and scheduling-delay histograms got exactly one new observation
+	// for this type (relative delta, not an absolute count: these vectors are
+	// process-global and never reset between test iterations, so repeated
+	// -count=N runs keep observing into the same child histogram).
+	r.Equal(beforeDur+1, histogramSampleCount(r,
 		prommetrics.JobDuration.WithLabelValues(jobType, outcomeFailed)))
-	r.Equal(uint64(1), histogramSampleCount(r,
+	r.Equal(beforeDelay+1, histogramSampleCount(r,
 		prommetrics.JobSchedulingDelay.WithLabelValues(jobType)))
 }
 
@@ -350,11 +355,17 @@ func TestRecordJobMetricsSchedulingDelay(t *testing.T) {
 
 	w := newTestWorker(&fakeJobSvc{})
 
+	beforePast := histogramSampleCount(r, prommetrics.JobSchedulingDelay.WithLabelValues(jobTypePast))
+	beforeZero := histogramSampleCount(r, prommetrics.JobSchedulingDelay.WithLabelValues(jobTypeZero))
+
 	w.recordJobMetrics(jobTypePast, outcomeSuccess, 100*time.Millisecond, 5*time.Second)
 	w.recordJobMetrics(jobTypeZero, outcomeSuccess, 100*time.Millisecond, 0)
 
-	r.Equal(uint64(1), histogramSampleCount(r,
+	// Relative delta: the vector is process-global and never reset between
+	// test iterations, so repeated -count=N runs keep observing into the
+	// same child histogram.
+	r.Equal(beforePast+1, histogramSampleCount(r,
 		prommetrics.JobSchedulingDelay.WithLabelValues(jobTypePast)))
-	r.Equal(uint64(1), histogramSampleCount(r,
+	r.Equal(beforeZero+1, histogramSampleCount(r,
 		prommetrics.JobSchedulingDelay.WithLabelValues(jobTypeZero)))
 }
