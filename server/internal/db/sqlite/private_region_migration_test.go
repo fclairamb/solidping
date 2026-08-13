@@ -3,8 +3,11 @@ package sqlite
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 )
 
 // privateRegionMigrationSQL is migration 012 read straight out of the embedded
@@ -95,6 +98,19 @@ func TestPrivateRegionMigrationCollapsesBothSpellings(t *testing.T) {
 	exec(`insert into results (uid, organization_uid, check_uid, period_type, period_start, region, status)
 	      values ('res-raw', 'org-renamed', 'chk-stranded', 'raw', '2026-08-01T00:05:00Z', '@oldname/aws-paris', 3)`)
 
+	// The worker row the agent's leases hang off, plus the BEFORE half of the
+	// repair proof: with the check's job on `@newname/aws-paris` and the agent
+	// bound to `@oldname/aws-paris`, an agent scoped to the org-relative
+	// `@aws-paris` matches neither. This empty claim IS the live incident.
+	exec(`insert into workers (uid, slug, name, region) values ('wrk-1', 'agent-wrk-1', 'agent', null)`)
+
+	claimSvc := checkjobsvc.NewService(svc.DB())
+	agentScope := checkjobsvc.AgentScope{OrgUID: "org-renamed", Region: "@aws-paris"}
+
+	stranded, _, err := claimSvc.ClaimJobsForAgent(ctx, "wrk-1", agentScope, "", 10, 5*time.Minute)
+	r.NoError(err)
+	r.Empty(stranded, "before the migration the stranded check is unclaimable — that is the bug")
+
 	exec(privateRegionMigrationSQL(t))
 
 	scalar := func(query string, args ...any) string {
@@ -149,6 +165,17 @@ func TestPrivateRegionMigrationCollapsesBothSpellings(t *testing.T) {
 	r.Equal(0, count(`select count(*) from agents where region like '@%/%'`))
 	r.Equal(0, count(`select count(*) from results where region like '@%/%'`))
 	r.Equal(1, count(`select count(*) from check_jobs where check_uid = 'chk-stranded'`))
+
+	// The AFTER half: the very same claim, on the very same scope, now returns
+	// the check that sat in `validating` forever.
+	claimed, _, err := claimSvc.ClaimJobsForAgent(ctx, "wrk-1", agentScope, "", 10, 5*time.Minute)
+	r.NoError(err)
+	r.Len(claimed, 1, "the previously-stranded check must be claimable after the migration")
+	r.Equal("chk-stranded", claimed[0].CheckUID)
+
+	// Negative control from the same claim: the bystander org's job carries the
+	// byte-identical region string and must still be invisible.
+	r.Equal("org-renamed", claimed[0].OrganizationUID)
 }
 
 // TestPrivateRegionMigrationLeavesCloudRowsAlone is the negative control for the
