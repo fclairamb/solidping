@@ -19,7 +19,7 @@ import (
 func privateRegionMigrationSQL(t *testing.T) string {
 	t.Helper()
 
-	body, err := migrationsFS.ReadFile("migrations/012_private_region_org_relative.up.sql")
+	body, err := migrationsFS.ReadFile("migrations/011_v0_14_0.up.sql")
 	require.NoError(t, err)
 
 	return string(body)
@@ -201,7 +201,7 @@ func TestPrivateRegionMigrationLeavesCloudRowsAlone(t *testing.T) {
 	mustExec(ctx, t, svc, `insert into check_jobs (uid, organization_uid, check_uid, region, period)
 	      values ('job-2', 'org-c', 'chk-1', 'us-east-1', '00:01:00')`)
 
-	body, err := migrationsFS.ReadFile("migrations/012_private_region_org_relative.up.sql")
+	body, err := migrationsFS.ReadFile("migrations/011_v0_14_0.up.sql")
 	r.NoError(err)
 
 	_, err = svc.DB().ExecContext(ctx, string(body))

@@ -124,7 +124,14 @@ spelling and silently stripping it would let org A name org B's region.
 Normalization also de-duplicates, so posting both `@old/paris` and `@paris`
 yields exactly one `@paris`.
 
-## Migration `012_private_region_org_relative`
+## The org-relative migration (part 2 of `011_v0_14_0`)
+
+Authored as the scratch migration `012_private_region_org_relative` and folded
+into the consolidated v0.14.0 release migration at consolidation time, per
+[database.md](database.md) — it is PART 2 of `011_v0_14_0.up.sql` in both
+dialects. It is a **data** migration, not DDL, so it must survive every future
+consolidation: dropping it as "the fresh-database schema doesn't need it" would
+silently strand every install that still holds the old spelling.
 
 One-time, both dialects, rewriting `@<anything>/<slug>` → `@<slug>` in
 `agents.region`, `checks.regions`, `check_jobs.region`,

@@ -38,7 +38,7 @@ func TestPrivateRegionMigrationCollapsesBothSpellings_Postgres(t *testing.T) {
 		t.Skipf("embedded postgres init failed: %v", initErr)
 	}
 
-	migration, err := migrationsFS.ReadFile("migrations/012_private_region_org_relative.up.sql")
+	migration, err := migrationsFS.ReadFile("migrations/011_v0_14_0.up.sql")
 	r.NoError(err)
 
 	exec := func(query string, args ...any) {
