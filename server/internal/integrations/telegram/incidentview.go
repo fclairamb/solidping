@@ -303,6 +303,25 @@ func BuildBadRefHTML(command string) string {
 	return fmt.Sprintf("I need an incident number, like <code>/%s #42</code>.", EscapeHTML(command))
 }
 
+// ActorLabel renders who actually acted from Telegram: "via Telegram (Alice)".
+//
+// A Telegram ack is CREDITED to the SolidPing account the chat is linked to,
+// because that is the only identity the platform knows. In a group the presser
+// is frequently somebody else, and the user UID alone cannot say so — this
+// label is what keeps the timeline honest about it.
+func ActorLabel(firstName string) string {
+	if name := strings.TrimSpace(firstName); name != "" {
+		return "via Telegram (" + name + ")"
+	}
+
+	return "via Telegram"
+}
+
+// BuildAckFailedHTML is the answer when the acknowledgement itself failed.
+func BuildAckFailedHTML() string {
+	return "Could not acknowledge that incident — please try again, or use the dashboard."
+}
+
 // BuildNotLinkedHTML is the reply to a command from a chat bound to no
 // SolidPing account.
 //
