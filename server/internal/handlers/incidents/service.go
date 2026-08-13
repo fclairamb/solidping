@@ -697,6 +697,7 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 	title := s.generateIncidentTitle(check)
 
 	incident := models.NewIncident(check.OrganizationUID, check.UID, result.PeriodStart, title)
+	incident.Details = failureDetails(result)
 
 	// Roll up under a hard parent if one is open within the correlation window.
 	s.applyRollup(ctx, check, incident)
@@ -863,6 +864,7 @@ func (s *Service) reopenIncident(
 	activeState := models.IncidentStateActive
 	newRelapseCount := incident.RelapseCount + 1
 	newFailureCount := incident.FailureCount + 1
+	newDetails := lastFailureDetails(incident.Details, result)
 
 	update := models.IncidentUpdate{
 		State:               &activeState,
@@ -870,6 +872,7 @@ func (s *Service) reopenIncident(
 		RelapseCount:        &newRelapseCount,
 		LastReopenedAt:      &now,
 		FailureCount:        &newFailureCount,
+		Details:             &newDetails,
 		ClearAcknowledgedAt: true,
 		ClearAcknowledgedBy: true,
 	}
@@ -893,6 +896,7 @@ func (s *Service) reopenIncident(
 
 	incident.PagingSuppressed = suppressed
 	incident.CausedByIncidentUID = tmp.CausedByIncidentUID
+	incident.Details = newDetails
 
 	if err := s.db.UpdateIncident(ctx, incident.UID, &update); err != nil {
 		return fmt.Errorf("failed to reopen incident: %w", err)
@@ -1111,6 +1115,7 @@ func (s *Service) createGroupIncident(
 	title := formatGroupTitle(group, 1, totalMembers)
 	incident := models.NewIncident(check.OrganizationUID, check.UID, result.PeriodStart, title)
 	incident.CheckGroupUID = check.CheckGroupUID
+	incident.Details = failureDetails(result)
 
 	if err := s.db.CreateIncident(ctx, incident); err != nil {
 		// Race: another concurrent failure beat us to it. Re-fetch the existing
@@ -1166,6 +1171,7 @@ func (s *Service) reopenGroupIncident(
 	activeState := models.IncidentStateActive
 	newRelapseCount := incident.RelapseCount + 1
 	newFailureCount := incident.FailureCount + 1
+	newDetails := lastFailureDetails(incident.Details, result)
 
 	update := models.IncidentUpdate{
 		State:               &activeState,
@@ -1173,6 +1179,7 @@ func (s *Service) reopenGroupIncident(
 		RelapseCount:        &newRelapseCount,
 		LastReopenedAt:      &now,
 		FailureCount:        &newFailureCount,
+		Details:             &newDetails,
 		ClearAcknowledgedAt: true,
 		ClearAcknowledgedBy: true,
 	}
@@ -1180,6 +1187,8 @@ func (s *Service) reopenGroupIncident(
 	if err := s.db.UpdateIncident(ctx, incident.UID, &update); err != nil {
 		return fmt.Errorf("failed to reopen group incident: %w", err)
 	}
+
+	incident.Details = newDetails
 
 	// Reset / insert this check's member row to "currently failing".
 	failing := true
@@ -1629,6 +1638,10 @@ type IncidentResponse struct {
 	Members             []IncidentMemberResponse `json:"members,omitempty"`
 	CausedByIncidentUID *string                  `json:"causedByIncidentUid,omitempty"`
 	PagingSuppressed    bool                     `json:"pagingSuppressed,omitempty"`
+	// Details carries the first-failure / latest-relapse snapshot recorded at
+	// incident open/reopen (failure_reason, first_result, and — after a
+	// relapse — last_failure). See failureDetails / lastFailureDetails.
+	Details models.JSONMap `json:"details,omitempty"`
 }
 
 // IncidentMemberResponse represents a single member of a group incident.
@@ -1693,6 +1706,7 @@ func incidentToResponse(inc *models.Incident) IncidentResponse {
 		CheckGroupUID:       inc.CheckGroupUID,
 		CausedByIncidentUID: inc.CausedByIncidentUID,
 		PagingSuppressed:    inc.PagingSuppressed,
+		Details:             inc.Details,
 	}
 }
 
