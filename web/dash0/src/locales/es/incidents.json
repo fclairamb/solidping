@@ -86,7 +86,18 @@
     "checkLabel": "Comprobación",
     "checkTypeLabel": "Tipo de comprobación",
     "totalDuration": "Duración total",
-    "ongoing": "(en curso)"
+    "ongoing": "(en curso)",
+    "failureDetails": {
+      "title": "Primer fallo",
+      "description": "Instantánea del resultado que provocó este incidente — capturada antes de que los resultados en bruto salgan del período de retención.",
+      "unknown": "La comprobación falló",
+      "firstFailure": "Primer fallo",
+      "latestRelapse": "Última recaída",
+      "status": "Estado",
+      "region": "Región",
+      "duration": "Duración",
+      "time": "Hora"
+    }
   },
   "timeline": {
     "title": "Cronología",

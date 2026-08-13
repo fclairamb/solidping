@@ -86,7 +86,18 @@
     "checkLabel": "Contrôle",
     "checkTypeLabel": "Type de contrôle",
     "totalDuration": "Durée totale",
-    "ongoing": "(en cours)"
+    "ongoing": "(en cours)",
+    "failureDetails": {
+      "title": "Première défaillance",
+      "description": "Instantané du résultat ayant déclenché cet incident — capturé avant que les résultats bruts ne sortent de la période de rétention.",
+      "unknown": "Le contrôle a échoué",
+      "firstFailure": "Première défaillance",
+      "latestRelapse": "Dernière rechute",
+      "status": "Statut",
+      "region": "Région",
+      "duration": "Durée",
+      "time": "Heure"
+    }
   },
   "timeline": {
     "title": "Chronologie",

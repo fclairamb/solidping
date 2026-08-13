@@ -86,7 +86,18 @@
     "checkLabel": "Prüfung",
     "checkTypeLabel": "Prüfungstyp",
     "totalDuration": "Gesamtdauer",
-    "ongoing": "(läuft noch)"
+    "ongoing": "(läuft noch)",
+    "failureDetails": {
+      "title": "Erster Fehler",
+      "description": "Momentaufnahme des Ergebnisses, das diesen Vorfall ausgelöst hat — erfasst, bevor Rohergebnisse die Aufbewahrungsfrist überschreiten.",
+      "unknown": "Prüfung fehlgeschlagen",
+      "firstFailure": "Erster Fehler",
+      "latestRelapse": "Letzter Rückfall",
+      "status": "Status",
+      "region": "Region",
+      "duration": "Dauer",
+      "time": "Zeit"
+    }
   },
   "timeline": {
     "title": "Zeitleiste",
