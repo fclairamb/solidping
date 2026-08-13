@@ -70,26 +70,62 @@ identity to stdout inside a `!!! PRIVATE KEY MATERIAL … !!!` banner (see
 
 #### Bootstrapping `SP_AGENT_KEYS`
 
-Env-only deployments (Kubernetes Secret, fly app-wide secret) pin the identity
-with `SP_AGENT_KEYS`. Get that value by **reading the file the agent already
-wrote** — never from the logs:
+**The distroless runtime stage is deliberate** (smaller attack surface, no
+shell to pivot from if the agent is ever compromised), and it has a direct
+consequence here: there is no `base64`, no `tar`, no `sh` in the image, so
+none of the exec-based recipes that look obvious actually work.
+
+- `kubectl exec … base64 …` fails outright: `exec: "base64": executable file
+  not found in $PATH`. Verified against the real image — a filesystem export
+  of `ghcr.io/fclairamb/solidping:latest` has no `base64`/`tar`/`sh`/`bash`/
+  `busybox` binary anywhere in it, and `docker exec <container> /bin/sh` fails
+  with `stat /bin/sh: no such file or directory`.
+- `kubectl cp` fails too, and for a different reason: it doesn't ask the API
+  server to read the file directly, it execs `tar` **inside the pod** to
+  stream the copy — same missing binary, same failure.
+- `fly ssh console -C "…"` needs `hallpass` compiled into the image; it isn't.
+
+So **Kubernetes has no in-cluster extraction path**, full stop. The default
+recommendation — and what our own production deployment moved to — is
+**don't extract the keys at all**: mount a PVC at `/data`, let the agent
+generate its identity in-pod on first start, and leave `SP_AGENT_KEYS` unset
+(it wins over the keys file, so setting it anywhere would defeat the PVC —
+see [`config.go:183`](../../server/internal/config/config.go)). The
+production manifest pattern is documented in the public doc's
+[Kubernetes section](../../web/docs/docs/features/private-locations.md#kubernetes);
+load-bearing details it carries that are easy to miss:
+
+- `securityContext.fsGroup: 65532` — distroless `:nonroot` runs as uid 65532,
+  and without the `fsGroup` the mounted volume stays root-owned and the agent
+  can't write the `0600` keys file at all.
+- `strategy: { type: Recreate }` — the PVC is `ReadWriteOnce`; two pods on it
+  at once corrupts nothing but will fight over the keys file.
+- `SP_AGENT_ENROLLMENT_TOKEN` sourced from a Secret with `optional: true`, so
+  the Secret can be deleted right after the one-shot token is consumed and the
+  pod still schedules on restart.
+
+**Docker** is the one place extraction genuinely still works, because
+`docker cp` is implemented daemon-side against the container's filesystem —
+it never execs anything inside the container, so the missing shell doesn't
+matter. Also verified against the real image:
 
 ```bash
-# docker
-docker exec <container> base64 -w0 /data/agent-keys.json
-# fly
-fly ssh console -a solidping-agent-nrt -C "base64 -w0 /data/agent-keys.json"
-# kubernetes (first run with a temporary PVC)
-kubectl exec deploy/solidping-agent -- base64 -w0 /data/agent-keys.json
+docker cp <container>:/data/agent-keys.json - | tar -xO | base64 -w0
+# or, against a named volume with no running container:
+docker run --rm -v agent-data:/data alpine base64 -w0 /data/agent-keys.json
 ```
 
-If there is genuinely no readable file (no writable volume, no shell), start the
-agent once with `SP_AGENT_PRINT_KEYS=true`, copy the banner-wrapped value into
-your secret store, then **unset the variable and restart**. Anything printed
-that way is captured by your log drain — treat that agent as compromised and
-re-enroll it if the output was retained. The flag is honoured on every start,
-not just at enrollment, so an already-enrolled agent's value can be recovered
-without shell access.
+**`SP_AGENT_PRINT_KEYS=true` is a last resort, not a bootstrap procedure.**
+It prints the banner-wrapped base64 to stdout, i.e. into whatever aggregates
+container logs — Kubernetes' own log pipeline for a pod running in-cluster.
+Because the exec routes are broken, this flag was the *de-facto only*
+Kubernetes path before the PVC pattern was documented; it must not become the
+standard way to bootstrap an agent. Use it only when no volume is available:
+copy the banner-wrapped value into your secret store, then **unset the
+variable and restart**, and treat that agent as compromised (revoke +
+re-enroll) if the output was retained by a log drain. The flag is honoured on
+every start, not just at enrollment, so an already-enrolled agent's value can
+still be recovered this way without shell access.
 
 ### 2. Reconnection (every time after)
 
