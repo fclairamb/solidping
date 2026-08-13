@@ -97,8 +97,13 @@ const IP_VERSION_CONFIG_KEY = "ipVersion";
 interface CheckDetailSearch {
   graphPeriod?: "hour" | "day" | "week" | "month";
   graphFull?: true;
-  graphRegion?: string;
-  resultsRegion?: string;
+  // Single region scope shared by the chart, Recent Results table, and the
+  // duration-stats strip — selecting a region anywhere on the page filters
+  // all three together (spec 2026-08-13-02). No back-compat for the old
+  // split `graphRegion`/`resultsRegion` keys: an old deep link carrying
+  // either simply falls back to "All regions" since validateSearch ignores
+  // unrecognized keys.
+  region?: string;
   graphFrom?: number;
   graphTo?: number;
   graphSelected?: string;
@@ -117,13 +122,8 @@ export const Route = createFileRoute("/orgs/$org/checks/$checkUid/")({
       search.graphFull === true || search.graphFull === "true"
         ? true
         : undefined,
-    graphRegion:
-      typeof search.graphRegion === "string" ? search.graphRegion : undefined,
-    // Independent from graphRegion: the chart isolates a region's view, the
-    // Recent Results table narrows its own list. Coupling them is a possible
-    // follow-up, not assumed here (see spec 2026-07-05-13).
-    resultsRegion:
-      typeof search.resultsRegion === "string" ? search.resultsRegion : undefined,
+    region:
+      typeof search.region === "string" ? search.region : undefined,
     // Drag-to-zoom X (time) window, epoch-ms. Maps onto the results endpoint's
     // periodStartAfter/periodEndBefore so a shared link fetches just this
     // window. Coerced to a finite number; anything else → undefined (full
@@ -501,7 +501,7 @@ function EmailEndpoint({ check }: { check: { config?: Record<string, unknown> } 
 function CheckDetailPage() {
   const { t } = useTranslation(["checks", "common"]);
   const { org, checkUid } = Route.useParams();
-  const { graphPeriod, graphFull, graphRegion, resultsRegion, graphFrom, graphTo, graphSelected } =
+  const { graphPeriod, graphFull, region, graphFrom, graphTo, graphSelected } =
     Route.useSearch();
   const navigate = useNavigate();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -618,31 +618,38 @@ function CheckDetailPage() {
   }, [chartWindowResults]);
 
   // Stale-selection guard, mirroring the chart's own effectiveRegion: only
-  // honor ?resultsRegion= when that slug is actually present in the current
+  // honor ?region= when that slug is actually present in the current
   // window's observed regions. A stale deep link (regions changed, data aged
   // out) falls back to "All" instead of silently emptying the table.
-  const effectiveResultsRegion =
-    resultsRegion && observedRegions.includes(resultsRegion)
-      ? resultsRegion
-      : undefined;
+  const effectiveRegion =
+    region && observedRegions.includes(region) ? region : undefined;
 
-  const setResultsRegion = (region: string | undefined) => {
+  // Single navigate shared by the chart's region chips/controlled prop, the
+  // Recent Results filter chips, and the region badge in each result row —
+  // selecting a region anywhere scopes chart + Recent Results + stats
+  // together (spec 2026-08-13-02). `replace: true` since this is an
+  // incidental refinement, not primary navigation. Clearing graphSelected is
+  // a deliberate judgment call: a pinned point may belong to a region the new
+  // filter excludes, so drop the pin rather than leave a stale/unanchored box
+  // (see response-time-chart.tsx's own effectiveRegion guard, which behaves
+  // the same way for the chart's dot-selection state).
+  const setRegion = (nextRegion: string | undefined) => {
     navigate({
       to: ".",
-      search: (prev) => ({ ...prev, resultsRegion: region }),
+      search: (prev) => ({ ...prev, region: nextRegion, graphSelected: undefined }),
       replace: true,
     });
   };
 
   const durationStats = useMemo(
-    () => computeDurationStats(chartWindowResults?.data ?? [], effectiveResultsRegion),
-    [chartWindowResults, effectiveResultsRegion],
+    () => computeDurationStats(chartWindowResults?.data ?? [], effectiveRegion),
+    [chartWindowResults, effectiveRegion],
   );
 
   const { data: results } = useResults(org, {
     checkUid,
     size: 10,
-    region: effectiveResultsRegion,
+    region: effectiveRegion,
     with: "durationMs,region",
     refetchInterval,
   });
@@ -685,8 +692,7 @@ function CheckDetailPage() {
         search: {
           graphPeriod: undefined,
           graphFull: undefined,
-          graphRegion: undefined,
-          resultsRegion: undefined,
+          region: undefined,
           graphFrom: undefined,
           graphTo: undefined,
           graphSelected: undefined,
@@ -837,8 +843,7 @@ function CheckDetailPage() {
                     search={{
                       graphPeriod: undefined,
                       graphFull: undefined,
-                      graphRegion: undefined,
-                      resultsRegion: undefined,
+                      region: undefined,
                       graphFrom: undefined,
                       graphTo: undefined,
                       graphSelected: undefined,
@@ -897,8 +902,7 @@ function CheckDetailPage() {
                     search={{
                       graphPeriod: undefined,
                       graphFull: undefined,
-                      graphRegion: undefined,
-                      resultsRegion: undefined,
+                      region: undefined,
                       graphFrom: undefined,
                       graphTo: undefined,
                       graphSelected: undefined,
@@ -1080,16 +1084,17 @@ function CheckDetailPage() {
         periodMs={periodMs}
         initialPeriod={graphPeriod}
         initialFullRange={graphFull}
-        initialRegion={graphRegion}
+        region={region}
+        onRegionChange={setRegion}
         zoomFrom={graphFrom}
         zoomTo={graphTo}
         selectedUid={graphSelected}
-        onSettingsChange={(period, full, region) =>
+        onSettingsChange={(period, full) =>
           navigate({
             to: ".",
-            // Functional form so the independent resultsRegion param (Recent
-            // Results' own filter) survives chart period/range/region changes
-            // instead of being wiped by this literal-object search.
+            // Functional form so the region param (shared with Recent
+            // Results/stats) survives chart period/range changes instead of
+            // being wiped by this literal-object search.
             search: (prev) => {
               const nextPeriod = period !== "day" ? period : undefined;
               // Changing the time range invalidates the zoom window (and its
@@ -1099,7 +1104,6 @@ function CheckDetailPage() {
                 ...prev,
                 graphPeriod: nextPeriod,
                 graphFull: full ? true : undefined,
-                graphRegion: region ?? undefined,
                 ...(periodChanged
                   ? {
                       graphFrom: undefined,
@@ -1376,9 +1380,9 @@ function CheckDetailPage() {
               data-testid="results-region-filter"
             >
               <Button
-                variant={effectiveResultsRegion === undefined ? "default" : "outline"}
+                variant={effectiveRegion === undefined ? "default" : "outline"}
                 size="sm"
-                onClick={() => setResultsRegion(undefined)}
+                onClick={() => setRegion(undefined)}
                 className="px-2 text-xs"
               >
                 {t("checks:detail.results.filterAll")}
@@ -1386,9 +1390,9 @@ function CheckDetailPage() {
               {observedRegions.map((slug) => (
                 <Button
                   key={slug}
-                  variant={effectiveResultsRegion === slug ? "default" : "outline"}
+                  variant={effectiveRegion === slug ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setResultsRegion(slug)}
+                  onClick={() => setRegion(slug)}
                   className="px-2 text-xs"
                   data-testid={`results-region-chip-${slug}`}
                 >
@@ -1399,7 +1403,7 @@ function CheckDetailPage() {
           )}
         </CardHeader>
         <CardContent className="space-y-4">
-          {effectiveResultsRegion && durationStats && (
+          {effectiveRegion && durationStats && (
             <div
               className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border bg-muted/30 px-3 py-2 text-sm"
               data-testid="results-duration-stats"
@@ -1458,7 +1462,7 @@ function CheckDetailPage() {
                       navigate({
                         to: "/orgs/$org/checks/$checkUid/results/$resultUid",
                         params: { org, checkUid, resultUid: result.uid },
-                        search: { region: effectiveResultsRegion },
+                        search: { region: effectiveRegion },
                       });
                     }}
                   >
@@ -1497,7 +1501,7 @@ function CheckDetailPage() {
                               data-testid={`result-region-badge-${result.uid}`}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setResultsRegion(slug);
+                                setRegion(slug);
                               }}
                             >
                               {regionDisplayLabel(regionsData?.regions, slug)}

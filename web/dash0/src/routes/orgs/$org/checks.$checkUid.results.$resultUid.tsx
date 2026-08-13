@@ -22,7 +22,7 @@ export const Route = createFileRoute(
 )({
   validateSearch: (search: Record<string, unknown>) => ({
     // Narrows the previous/next neighbor scope to match the region the
-    // Recent Results table was filtered to (resultsRegion) when the row was
+    // Recent Results table was filtered to (region) when the row was
     // clicked; preserved across prev/next so stepping stays in-region.
     region: typeof search.region === "string" ? search.region : undefined,
   }),
@@ -175,7 +175,7 @@ function ResultDetailPage() {
             navigate({
               to: "/orgs/$org/checks/$checkUid",
               params: { org, checkUid },
-              search: { graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined },
+              search: { graphPeriod: undefined, graphFull: undefined, region: undefined },
             })
           }
         >

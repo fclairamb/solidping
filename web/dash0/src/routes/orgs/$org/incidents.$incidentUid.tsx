@@ -900,7 +900,7 @@ function IncidentDetailPage() {
               <Link
                 to="/orgs/$org/checks/$checkUid"
                 params={{ org, checkUid: incident.checkUid! }}
-                search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }}
+                search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
                 className="text-primary hover:underline inline-flex items-center gap-1"
               >
                 {incident.checkName ||

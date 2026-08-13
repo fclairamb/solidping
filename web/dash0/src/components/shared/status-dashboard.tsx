@@ -105,7 +105,7 @@ function CheckCard({ check, org }: { check: Check; org: string }) {
     <Link
       to="/orgs/$org/checks/$checkUid"
       params={{ org, checkUid: check.uid }}
-      search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }}
+      search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
       className="block no-underline"
     >
       <Card className="hover:shadow-md transition-shadow cursor-pointer">

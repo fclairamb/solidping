@@ -449,8 +449,7 @@ function DependencyCheckLink({ org, check }: { org: string; check: CheckRef }) {
       search={{
         graphPeriod: undefined,
         graphFull: undefined,
-        graphRegion: undefined,
-        resultsRegion: undefined,
+        region: undefined,
       }}
       className="font-medium hover:underline"
     >

@@ -342,7 +342,7 @@ function MaintenanceWindowDetailPage() {
                   key={a.uid}
                   to="/orgs/$org/checks/$checkUid"
                   params={{ org, checkUid: a.checkUid! }}
-                  search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }}
+                  search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
                 >
                   <Badge variant="secondary" className="hover:bg-secondary/70">
                     {checkNameByUid.get(a.checkUid!) ?? a.checkUid!.slice(0, 8)}

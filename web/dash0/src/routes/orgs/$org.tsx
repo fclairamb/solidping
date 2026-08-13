@@ -345,7 +345,7 @@ function Breadcrumbs({ org }: { org: string }) {
           <>
             <BreadcrumbSeparator />
             {isCheckEdit || isCheckResult ? (
-              <Link to="/orgs/$org/checks/$checkUid" params={{ org, checkUid }} search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }} className={linkClass}>
+              <Link to="/orgs/$org/checks/$checkUid" params={{ org, checkUid }} search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }} className={linkClass}>
                 {checkName}
               </Link>
             ) : (
