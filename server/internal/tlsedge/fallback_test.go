@@ -175,7 +175,7 @@ func TestFallbackListenerForwardsOriginalClient(t *testing.T) {
 			},
 		})
 
-		preamble := proxyHeader(t, 2, advertisedClient, advertisedDest)
+		preamble := proxyHeader(t, 2)
 
 		_, err := harness.roundTripWithPreamble(t,
 			preamble, "GET / HTTP/1.1\r\nHost: "+foreignHost+"\r\n\r\n")
