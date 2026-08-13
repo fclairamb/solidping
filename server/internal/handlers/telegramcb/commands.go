@@ -2,6 +2,7 @@ package telegramcb
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"time"
 
@@ -291,6 +292,13 @@ func (h *Handler) openIncidents(ctx context.Context, orgUID string) []*models.In
 
 		return nil
 	}
+
+	// The DB hands these back newest-first (the dashboard's order). A chat
+	// listing is triaged top-down, so the longest-running incident — the one
+	// nobody has taken — has to be the first thing read, not the last.
+	sort.SliceStable(incidents, func(i, j int) bool {
+		return incidents[i].StartedAt.Before(incidents[j].StartedAt)
+	})
 
 	return incidents
 }

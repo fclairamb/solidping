@@ -21,15 +21,15 @@ import (
 const portIncidentNumberPG = 15470
 
 // concurrentIncidentCreations is how many incidents the race test opens at
-// once: enough that MAX(number)+1 reads overlap, and low enough to stay inside
-// the embedded-Postgres max_connections (which answers "sorry, too many
-// clients already" long before it would answer a duplicate key).
+// once — enough that MAX(number)+1 reads overlap. The Postgres connection pool
+// is bounded below the embedded server's max_connections (see below), so extra
+// goroutines queue on the pool instead of being refused by the server.
 //
 // Whether the unique-violation RETRY fires on a given run is up to the
 // scheduler, so it is pinned deterministically by
 // TestCreateIncidentWithNumber_RetriesOnUniqueViolation rather than left to
 // this test's timing.
-const concurrentIncidentCreations = 8
+const concurrentIncidentCreations = 12
 
 // TestIncidentNumbers_SQLite proves the per-org numbering contract on SQLite.
 func TestIncidentNumbers_SQLite(t *testing.T) {
@@ -75,6 +75,14 @@ func TestIncidentNumbers_Postgres(t *testing.T) {
 		t.Skipf("embedded postgres init failed: %v", initErr)
 	}
 
+	// The embedded server runs with max_connections=10 and the embedded
+	// constructor leaves the pool unbounded, so the racing goroutines would each
+	// open their own connection and be refused with "sorry, too many clients
+	// already" long before the server could answer a duplicate key — masking the
+	// very contention this test exists to create. Bounded below 10, the extra
+	// goroutines queue on the pool instead.
+	svc.DB().SetMaxOpenConns(6)
+
 	testIncidentNumbers(t, svc)
 }
 
@@ -86,14 +94,17 @@ func testIncidentNumbers(t *testing.T, svc db.Service) {
 	ctx := t.Context()
 
 	t.Run("ParallelCreationsGetDistinctSequentialNumbers", func(t *testing.T) {
+		t.Parallel()
 		testParallelIncidentNumbers(ctx, t, svc)
 	})
 
 	t.Run("NumbersArePerOrganization", func(t *testing.T) {
+		t.Parallel()
 		testIncidentNumbersArePerOrg(ctx, t, svc)
 	})
 
 	t.Run("LookupByNumber", func(t *testing.T) {
+		t.Parallel()
 		testGetIncidentByNumber(ctx, t, svc)
 	})
 }

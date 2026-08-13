@@ -16,6 +16,16 @@ import (
 // loop does not retry (or swallow) anything else.
 var errBoom = errors.New("boom")
 
+// The two engines word a unique-constraint violation completely differently,
+// and the retry classifier is a string match, so both wordings are pinned here
+// verbatim as the driver emits them.
+var (
+	errPostgresDuplicate = errors.New(
+		`ERROR: duplicate key value violates unique constraint "incidents_organization_number_idx" (SQLSTATE=23505)`)
+	errSQLiteDuplicate = errors.New(
+		"UNIQUE constraint failed: incidents.organization_uid, incidents.number")
+)
+
 // TestCreateIncidentWithNumber_RetriesOnUniqueViolation is the deterministic
 // positive control behind the parallel race test: whether two goroutines
 // actually collide is up to the scheduler, so the retry is pinned here by
@@ -41,8 +51,7 @@ func TestCreateIncidentWithNumber_RetriesOnUniqueViolation(t *testing.T) {
 				// Somebody else claimed #8 between our SELECT and our INSERT.
 				highest = 8
 
-				return errors.New("ERROR: duplicate key value violates unique constraint " +
-					"\"incidents_organization_number_idx\" (SQLSTATE=23505)")
+				return errPostgresDuplicate
 			}
 
 			return nil
@@ -93,7 +102,7 @@ func TestCreateIncidentWithNumber_GivesUpAfterTooManyCollisions(t *testing.T) {
 		func(_ context.Context) error {
 			attempts++
 
-			return errors.New("UNIQUE constraint failed: incidents.organization_uid, incidents.number")
+			return errSQLiteDuplicate
 		})
 
 	r.ErrorIs(err, db.ErrIncidentNumberExhausted)
