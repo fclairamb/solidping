@@ -41,6 +41,14 @@ const maxFailureSnapshotBytes = 8 * 1024
 // out.
 const maxOutputFieldStringLen = 512
 
+// Status-derived failure_reason fallbacks, used when the result carries no
+// checkerdef.OutputKeyError string.
+const (
+	reasonDown    = "down"
+	reasonTimeout = "timeout"
+	reasonError   = "error"
+)
+
 // failureDetails builds the incident.Details snapshot written when an
 // incident opens: failure_reason (the exact key the Slack formatters already
 // read) plus a first_result snapshot of the triggering result, copied (not
@@ -77,16 +85,19 @@ func failureReasonFromResult(result *models.Result) string {
 	}
 
 	if result == nil || result.Status == nil {
-		return "down"
+		return reasonDown
 	}
 
 	switch models.ResultStatus(*result.Status) {
 	case models.ResultStatusTimeout:
-		return "timeout"
+		return reasonTimeout
 	case models.ResultStatusError:
-		return "error"
+		return reasonError
+	case models.ResultStatusCreated, models.ResultStatusRunning, models.ResultStatusUp,
+		models.ResultStatusDown, models.ResultStatusDegraded, models.ResultStatusWarning:
+		return reasonDown
 	default:
-		return "down"
+		return reasonDown
 	}
 }
 
@@ -147,34 +158,34 @@ func cappedOutput(output models.JSONMap) models.JSONMap {
 
 	others := make([]sizedKey, 0, len(output))
 
-	for k, v := range output {
-		if k == checkerdef.OutputKeyError {
-			capped[k] = v
+	for key, fieldValue := range output {
+		if key == checkerdef.OutputKeyError {
+			capped[key] = fieldValue
 			continue
 		}
 
-		if s, ok := v.(string); ok && len(s) > maxOutputFieldStringLen {
-			v = s[:maxOutputFieldStringLen] + "…(truncated)"
+		if s, ok := fieldValue.(string); ok && len(s) > maxOutputFieldStringLen {
+			fieldValue = s[:maxOutputFieldStringLen] + "…(truncated)"
 		}
 
 		size := 0
-		if raw, err := json.Marshal(v); err == nil {
+		if raw, err := json.Marshal(fieldValue); err == nil {
 			size = len(raw)
 		}
 
-		capped[k] = v
-		others = append(others, sizedKey{key: k, size: size})
+		capped[key] = fieldValue
+		others = append(others, sizedKey{key: key, size: size})
 	}
 
 	sort.Slice(others, func(i, j int) bool { return others[i].size > others[j].size })
 
-	for _, o := range others {
+	for _, entry := range others {
 		raw, err := json.Marshal(capped)
 		if err == nil && len(raw) <= maxFailureSnapshotBytes {
 			break
 		}
 
-		delete(capped, o.key)
+		delete(capped, entry.key)
 	}
 
 	return capped
