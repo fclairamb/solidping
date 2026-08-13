@@ -85,29 +85,48 @@ none of the exec-based recipes that look obvious actually work.
   stream the copy — same missing binary, same failure.
 - `fly ssh console -C "…"` needs `hallpass` compiled into the image; it isn't.
 
-So **Kubernetes has no in-cluster extraction path**, full stop. The default
-recommendation — and what our own production deployment moved to — is
-**don't extract the keys at all**: mount a PVC at `/data`, let the agent
-generate its identity in-pod on first start, and leave `SP_AGENT_KEYS` unset
-(it wins over the keys file, so setting it anywhere would defeat the PVC —
-see [`config.go:183`](../../server/internal/config/config.go)). The
-production manifest pattern is documented in the public doc's
-[Kubernetes section](../../web/docs/docs/features/private-locations.md#kubernetes);
-load-bearing details it carries that are easy to miss:
+What all three have in common is that they try to run something *inside the
+agent container*. Nothing has to: **enroll in a throwaway Pod where an ordinary
+`alpine` sidecar shares an `emptyDir` with the agent, and read the keys file
+from the sidecar.** Verified in production on 2026-08-13 while standing up the
+`@stonal/s3ns-paris` agent on a GKE Autopilot cluster:
 
-- `securityContext.fsGroup: 65532` — distroless `:nonroot` runs as uid 65532,
-  and without the `fsGroup` the mounted volume stays root-owned and the agent
-  can't write the `0600` keys file at all.
-- `strategy: { type: Recreate }` — the PVC is `ReadWriteOnce`; two pods on it
-  at once corrupts nothing but will fight over the keys file.
-- `SP_AGENT_ENROLLMENT_TOKEN` sourced from a Secret with `optional: true`, so
-  the Secret can be deleted right after the one-shot token is consumed and the
-  pod still schedules on restart.
+```bash
+kubectl exec solidping-agent-enroll -c extract \
+  -- sh -c "base64 /data/agent-keys.json | tr -d '\n'" \
+  | kubectl create secret generic solidping-agent-keys --from-file=keys=/dev/stdin
+```
 
-**Docker** is the one place extraction genuinely still works, because
-`docker cp` is implemented daemon-side against the container's filesystem —
-it never execs anything inside the container, so the missing shell doesn't
-matter. Also verified against the real image:
+Piping it means the key material never lands in a terminal, a shell history or
+a log. (An earlier revision of this page claimed Kubernetes had no in-cluster
+extraction path and recommended a PVC on that basis — that was wrong.)
+
+The steady-state deployment then runs from `SP_AGENT_KEYS` alone
+(it wins over the keys file — see
+[`config.go:183`](../../server/internal/config/config.go)), so the pod is
+**stateless**: no volume to pin it to a node, nothing to migrate, nothing to
+lose on recreate. That is the recommendation, and what our own production
+deployment runs. The full sequence is in the public doc's
+[Kubernetes section](../../web/docs/docs/features/private-locations.md#kubernetes).
+Load-bearing details that are easy to miss:
+
+- `securityContext.fsGroup: 65532` on the **enrollment** Pod — distroless
+  `:nonroot` runs as uid 65532, and without the `fsGroup` the shared volume
+  stays root-owned and the agent can't write the `0600` keys file at all.
+- `SP_NODE_NAME` on the Deployment — without it the worker slug comes from the
+  truncated pod hostname, so every restart lands on a new `workers` row.
+- The Secret (plus whatever backup you take of it) is the **only** copy of the
+  identity; losing it means revoking the agent and enrolling a new one.
+
+A PVC at `/data` with `SP_AGENT_KEYS` unset remains a valid alternative when
+you would rather the identity never leave the cluster — at the cost of pinning
+the pod to a `ReadWriteOnce` volume (`strategy: Recreate`) whose loss is
+unrecoverable.
+
+**Docker** has its own way out, and a simpler one: `docker cp` is implemented
+daemon-side against the container's filesystem — it never execs anything inside
+the container, so the missing shell doesn't matter. Also verified against the
+real image:
 
 ```bash
 docker cp <container>:/data/agent-keys.json - | tar -xO | base64 -w0
