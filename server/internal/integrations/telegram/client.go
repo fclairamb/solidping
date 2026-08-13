@@ -209,8 +209,7 @@ type InlineButton struct {
 	Text string `json:"text"`
 	//nolint:tagliatelle // Telegram's Bot API wire format uses snake_case.
 	CallbackData string `json:"callback_data,omitempty"`
-	//nolint:tagliatelle // Telegram's Bot API wire format uses snake_case.
-	URL string `json:"url,omitempty"`
+	URL          string `json:"url,omitempty"`
 }
 
 // InlineKeyboard is the reply_markup of a message: rows of buttons.

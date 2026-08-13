@@ -35,20 +35,20 @@ func AckKeyboard(incidentUID string) *InlineKeyboard {
 
 // FormatOpenFor renders how long an incident has been open, in the compact form
 // an on-call person reads at a glance ("23m", "3h12m", "2d4h").
-func FormatOpenFor(d time.Duration) string {
-	if d < 0 {
-		d = 0
+func FormatOpenFor(elapsed time.Duration) string {
+	if elapsed < 0 {
+		elapsed = 0
 	}
 
 	switch {
-	case d < time.Minute:
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	case d < time.Hour:
-		return fmt.Sprintf("%dm", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh%02dm", int(d.Hours()), int(d.Minutes())%60)
+	case elapsed < time.Minute:
+		return fmt.Sprintf("%ds", int(elapsed.Seconds()))
+	case elapsed < time.Hour:
+		return fmt.Sprintf("%dm", int(elapsed.Minutes()))
+	case elapsed < 24*time.Hour:
+		return fmt.Sprintf("%dh%02dm", int(elapsed.Hours()), int(elapsed.Minutes())%60)
 	default:
-		return fmt.Sprintf("%dd%dh", int(d.Hours())/24, int(d.Hours())%24)
+		return fmt.Sprintf("%dd%dh", int(elapsed.Hours())/24, int(elapsed.Hours())%24)
 	}
 }
 
@@ -60,7 +60,7 @@ func FormatOpenFor(d time.Duration) string {
 // person scrolling the chat reads. An alert still showing a live Acknowledge
 // button after someone took the page is how two people end up debugging the
 // same outage.
-func BuildAcknowledgedHTML(params *AlertParams, who string, at time.Time) string {
+func BuildAcknowledgedHTML(params *AlertParams, who string, ackedAt time.Time) string {
 	acked := *params
 
 	var body strings.Builder
@@ -69,7 +69,7 @@ func BuildAcknowledgedHTML(params *AlertParams, who string, at time.Time) string
 	body.WriteString("\n\n<b>Acknowledged by ")
 	body.WriteString(EscapeHTML(strings.TrimSpace(who)))
 	body.WriteString("</b> at ")
-	body.WriteString(EscapeHTML(at.UTC().Format("2006-01-02 15:04 UTC")))
+	body.WriteString(EscapeHTML(ackedAt.UTC().Format("2006-01-02 15:04 UTC")))
 
 	return body.String()
 }
@@ -93,13 +93,13 @@ func BuildStatusHTML(view *StatusView) string {
 		return fmt.Sprintf("✅ <b>%s</b> — all %d checks up.", org, view.TotalChecks)
 	}
 
-	up := view.TotalChecks - view.ChecksDown
-	if up < 0 {
-		up = 0
+	checksUp := view.TotalChecks - view.ChecksDown
+	if checksUp < 0 {
+		checksUp = 0
 	}
 
 	return fmt.Sprintf("🔥 <b>%s</b> — %s open, %d/%d checks up.\nSend /incidents for the list.",
-		org, pluralize(view.OpenIncidents, "incident"), up, view.TotalChecks)
+		org, pluralize(view.OpenIncidents, "incident"), checksUp, view.TotalChecks)
 }
 
 // IncidentLine is one row of the /incidents listing.
@@ -253,14 +253,14 @@ func BuildAckedHTML(number int64, checkName string) string {
 // reports the state rather than an error. Two people pressing the same button
 // within a second of each other is the normal case during an outage, not an
 // exception.
-func BuildAlreadyAckedHTML(number int64, who string, at time.Time) string {
+func BuildAlreadyAckedHTML(number int64, who string, ackedAt time.Time) string {
 	if who = strings.TrimSpace(who); who != "" {
 		return fmt.Sprintf("✅ %s was already acknowledged by %s at %s.",
-			IncidentRef(number), EscapeHTML(who), at.UTC().Format("15:04 UTC"))
+			IncidentRef(number), EscapeHTML(who), ackedAt.UTC().Format("15:04 UTC"))
 	}
 
 	return fmt.Sprintf("✅ %s was already acknowledged at %s.",
-		IncidentRef(number), at.UTC().Format("15:04 UTC"))
+		IncidentRef(number), ackedAt.UTC().Format("15:04 UTC"))
 }
 
 // BuildIncidentResolvedHTML is the answer to acking a closed incident.
@@ -374,13 +374,13 @@ func joinNonEmpty(values []string) string {
 	return strings.Join(kept, ", ")
 }
 
-func truncate(s string, limit int) string {
-	s = strings.Join(strings.Fields(s), " ")
-	if len(s) <= limit {
-		return s
+func truncate(text string, limit int) string {
+	text = strings.Join(strings.Fields(text), " ")
+	if len(text) <= limit {
+		return text
 	}
 
-	return s[:limit-1] + "…"
+	return text[:limit-1] + "…"
 }
 
 func pluralize(count int, noun string) string {
