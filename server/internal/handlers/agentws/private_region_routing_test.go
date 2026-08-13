@@ -44,7 +44,7 @@ func regionRowSnapshot(ctx context.Context, t *testing.T, e *env) map[string]int
 	out := map[string]int{}
 
 	collect := func(table, query string) {
-		rows, err := e.dbSvc.DB().QueryContext(ctx, query) //nolint:rowserrcheck // checked below
+		rows, err := e.dbSvc.DB().QueryContext(ctx, query)
 		r.NoError(err)
 
 		defer func() { _ = rows.Close() }()

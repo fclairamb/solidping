@@ -190,9 +190,9 @@ func TestPrivateRegionMigrationLeavesCloudRowsAlone(t *testing.T) {
 }
 
 // mustExec runs a statement and fails the test on error.
-func mustExec(ctx context.Context, t *testing.T, svc *Service, query string, args ...any) {
+func mustExec(ctx context.Context, t *testing.T, svc *Service, query string) {
 	t.Helper()
 
-	_, err := svc.DB().ExecContext(ctx, query, args...)
+	_, err := svc.DB().ExecContext(ctx, query)
 	require.NoError(t, err)
 }
