@@ -49,6 +49,7 @@ import {
   CopyableInline,
 } from "@/components/shared/copyable-code";
 import { DnsRecordRow } from "@/components/shared/dns-record-row";
+import { DocsLink } from "@/components/shared/docs-link";
 import { ErrorFallbackCard } from "@/components/shared/error-boundary";
 import { MaintenanceScheduleSummary } from "@/components/shared/maintenance-schedule-summary";
 import { JsonViewer } from "@/components/shared/json-viewer";
@@ -151,6 +152,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "conventions", label: "Conventions" },
   { id: "page-header", label: "Page header" },
+  { id: "docs-link", label: "Docs link" },
   { id: "breadcrumbs", label: "Breadcrumbs" },
   { id: "color-tokens", label: "Color tokens" },
   { id: "brand", label: "Brand" },
@@ -191,6 +193,7 @@ function DesignReferencePage() {
       <OverviewSection />
       <ConventionsSection />
       <PageHeaderSection />
+      <DocsLinkSection />
       <BreadcrumbsSection />
       <ColorTokensSection />
       <BrandSection />
@@ -476,6 +479,7 @@ import { PageHeader } from "@/components/shared/page-header";
       </Link>
     </Button>
   }
+  docsHref="/docs/features/status-pages"
   className="flex-wrap"
 />`;
   return (
@@ -504,6 +508,7 @@ import { PageHeader } from "@/components/shared/page-header";
               New page
             </Button>
           }
+          docsHref="/docs/features/status-pages"
           className="flex-wrap"
         />
       </div>
@@ -518,7 +523,16 @@ import { PageHeader } from "@/components/shared/page-header";
         <code className="rounded bg-muted px-1 py-0.5 text-xs">actions</code>{" "}
         prop; leave filter/search toolbars on their own row below the header.
         Add <code className="rounded bg-muted px-1 py-0.5 text-xs">className="flex-wrap"</code>{" "}
-        so actions wrap instead of overflowing on mobile. The detail/edit-page
+        so actions wrap instead of overflowing on mobile. Pass{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">docsHref</code>{" "}
+        when a genuinely relevant docs page exists — it renders a small{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">DocsLink</code>{" "}
+        next to the actions; omit it rather than pointing at an unrelated page.
+        See the{" "}
+        <a href="#docs-link" className="text-primary hover:underline">
+          Docs link
+        </a>{" "}
+        section below for the standalone primitive. The detail/edit-page
         header — back arrow inside the right-aligned action cluster — is the
         same surface for detail pages; it is documented just below.
       </p>
@@ -732,6 +746,38 @@ import { PageHeader } from "@/components/shared/page-header";
           so the app stays consistent.
         </p>
       </div>
+    </Section>
+  );
+}
+
+function DocsLinkSection() {
+  const importLine = `import { DocsLink } from "@/components/shared/docs-link";
+
+<DocsLink href="/docs/features/check-types" />`;
+  return (
+    <Section
+      id="docs-link"
+      title="Docs link"
+      description="A small, discreet ghost icon button that opens the embedded docs site (served same-origin at /docs on every host) in a new tab. Intended for header-level placement via PageHeader's docsHref prop — see the Page header section above — but usable standalone anywhere a contextual doc link is warranted. Only wire it when a genuinely relevant docs page exists; never point it at a generic landing page like /docs/intro."
+    >
+      <ExampleRow
+        preview={<DocsLink href="/docs/features/check-types" />}
+        importLine={importLine}
+      />
+      <p className="text-sm text-muted-foreground">
+        Renders a <code className="rounded bg-muted px-1 py-0.5 text-xs">BookOpen</code>{" "}
+        icon in a ~h-8 w-8 ghost button, with a "Documentation" tooltip and{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">aria-label</code>. The{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">href</code> is a
+        same-origin relative path (e.g.{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">/docs/features/...</code>
+        ), opened with{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">
+          target=&quot;_blank&quot; rel=&quot;noopener&quot;
+        </code>
+        . Header-level links only for now — don't sprinkle field-level docs
+        links inside forms in this pass.
+      </p>
     </Section>
   );
 }
