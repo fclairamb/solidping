@@ -19,7 +19,7 @@ where uid in (
                           case when region like '@%/%'
                                then '@' || substr(region, instr(region, '/') + 1)
                                else region end
-             order by scheduled_at asc, uid asc
+             order by scheduled_at asc nulls last, uid asc
            ) as rn
     from check_jobs
     where region like '@%'
@@ -111,7 +111,10 @@ where exists (
 
 -- ---------------------------------------------------------------------------
 -- 5. results.region — synchronous, one statement, not batched (see the
---    Postgres file for the decision and its rationale). Aggregated rows are
+--    Postgres file for the decision, its rationale, and the note on atomicity:
+--    this file is NOT `.tx.up.sql`, so bun does not wrap it and SQLite runs the
+--    statements one at a time. Every statement here is idempotent and the file
+--    is re-runnable, which is what makes a partial apply safe.) Aggregated rows are
 --    de-duplicated first because they are UNIQUE on
 --    (organization_uid, check_uid, coalesce(region,''), period_type,
 --    period_start); the row with the most data wins.
@@ -126,7 +129,7 @@ where uid in (
                                then '@' || substr(region, instr(region, '/') + 1)
                                else region end,
                           period_type, period_start
-             order by total_checks desc, created_at desc, uid asc
+             order by total_checks desc nulls last, created_at desc, uid asc
            ) as rn
     from results
     where period_type <> 'raw'

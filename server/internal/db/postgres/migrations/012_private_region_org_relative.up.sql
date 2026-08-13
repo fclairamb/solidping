@@ -133,11 +133,20 @@ where p.uid = r.uid
 --    DECISION (explicit, per spec): synchronous, one statement, NOT batched.
 --    The predicate only matches rows produced by a deported agent, so the write
 --    volume is tiny; the cost is one sequential scan of `results` at migration
---    time. Batching would not remove that scan (there is no index on `region`)
---    and bun runs a migration file in a single transaction anyway, so batching
---    would buy nothing but complexity. Escape hatch for an install where a
+--    time. Batching would not remove that scan (there is no index on `region`),
+--    so it would buy nothing but complexity. Escape hatch for an install where a
 --    one-pass scan at boot is unacceptable: run the same UPDATE out of band
 --    beforehand — it is idempotent, and the migration then finds nothing to do.
+--
+--    NOTE ON ATOMICITY — do not assume this file runs in a transaction. bun
+--    wraps a migration file ONLY when its name ends in `.tx.up.sql`
+--    (bun/migrate/migration.go); this one does not, so on SQLite the statements
+--    run one at a time and a crash halfway leaves a partial apply. On Postgres
+--    the multi-statement simple query gets an implicit server-side transaction,
+--    which is atomicity by accident, not by design. What actually makes a
+--    partial apply safe here is that EVERY statement above is idempotent and
+--    the whole file is re-runnable: re-running finds nothing left matching
+--    `@%/%` and no duplicates left to collapse. Keep it that way.
 --
 --    results is UNIQUE on (organization_uid, check_uid, coalesce(region,''),
 --    period_type, period_start) for aggregated rows, so collapsed keys are
