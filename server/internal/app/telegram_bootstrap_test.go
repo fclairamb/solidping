@@ -170,7 +170,9 @@ func TestEnsureTelegramWebhook_RegistersEvenWhenURLMatches(t *testing.T) {
 	r.Equal("https://solidping.test"+TelegramWebhookPath, payload["url"])
 	r.Equal("rotated-secret-value", payload["secret_token"],
 		"the CURRENT secret must reach Telegram; it can never be read back")
-	r.Equal([]any{"message", "my_chat_member"}, payload["allowed_updates"])
+	// callback_query is what carries the Acknowledge button press; without it in
+	// the subscription Telegram never delivers one.
+	r.Equal([]any{"message", "callback_query", "my_chat_member"}, payload["allowed_updates"])
 }
 
 // TestEnsureTelegramWebhook_RegistersWhenInfoUnreadable proves the diagnostics

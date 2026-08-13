@@ -519,8 +519,8 @@ func (s *SlackSender) buildIncidentResolvedThreadReply(payload *Payload) *slack.
 	checkName := getCheckName(payload.Check)
 	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
 	text := fmt.Sprintf(
-		":white_check_mark: %s — incident resolved after %s.",
-		slackLink(checkURL, checkName), duration,
+		":white_check_mark: %s%s — incident resolved after %s.",
+		incidentRefPrefix(payload.Incident), slackLink(checkURL, checkName), duration,
 	)
 
 	return &slack.MessageResponse{Text: text}
@@ -818,8 +818,10 @@ func (s *SlackSender) buildIncidentReopenedThreadReply(payload *Payload) *slack.
 	checkName := getCheckName(payload.Check)
 	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
 	text := fmt.Sprintf(
-		":warning: %s — incident reopened (relapse #%d). Recovery requires the check to stay up for %d seconds.",
-		slackLink(checkURL, checkName), relapseCount, payload.Check.RecoveryPeriodSeconds,
+		":warning: %s%s — incident reopened (relapse #%d). "+
+			"Recovery requires the check to stay up for %d seconds.",
+		incidentRefPrefix(payload.Incident), slackLink(checkURL, checkName),
+		relapseCount, payload.Check.RecoveryPeriodSeconds,
 	)
 
 	return &slack.MessageResponse{Text: text}

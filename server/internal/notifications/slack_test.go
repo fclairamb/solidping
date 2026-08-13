@@ -2410,3 +2410,59 @@ func TestFormatDuration(t *testing.T) {
 		})
 	}
 }
+
+// TestSlackSender_IncidentHeadersCarryTheRef pins the short `#42` reference in
+// Slack headers. It is the SAME identifier a Telegram `/ack #42` takes, so a
+// Slack-only reader has to be able to read it off the alert; and an incident
+// created before the numbers existed must render no ref rather than "#0".
+func TestSlackSender_IncidentHeadersCarryTheRef(t *testing.T) {
+	t.Parallel()
+
+	checkName := "API Health"
+
+	newPayload := func(eventType string, number int64) *Payload {
+		return &Payload{
+			EventType:  eventType,
+			OrgSlug:    "acme",
+			AppBaseURL: "https://app.example.com",
+			Incident: &models.Incident{
+				UID:          "incident-42",
+				Number:       number,
+				StartedAt:    time.Now().Add(-5 * time.Minute),
+				RelapseCount: 1,
+				ResolvedAt:   ptr(time.Now()),
+			},
+			Check: &models.Check{Name: &checkName, Slug: ptr("api-health")},
+		}
+	}
+
+	builders := map[string]func(*SlackSender, *Payload) *slack.MessageResponse{
+		"incident.created":   (*SlackSender).buildIncidentCreatedMessage,
+		"incident.escalated": (*SlackSender).buildIncidentEscalatedMessage,
+		"incident.resolved":  (*SlackSender).buildIncidentResolvedThreadReply,
+		"incident.reopened":  (*SlackSender).buildIncidentReopenedThreadReply,
+	}
+
+	sender := &SlackSender{}
+
+	for name, build := range builders {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			// The resolved/reopened variants are plain-text thread replies with
+			// no blocks, so both surfaces are folded together here.
+			rendered := func(number int64) string {
+				msg := build(sender, newPayload(eventTypeIncidentCreated, number))
+
+				return msg.Text + "\n" + collectBlockText(msg)
+			}
+
+			r.Contains(rendered(42), "#42",
+				"the incident reference must reach the %s message", name)
+			r.NotContains(rendered(0), "#0",
+				"an unnumbered incident must render no reference")
+		})
+	}
+}

@@ -207,7 +207,9 @@ func TestDispatch_TelegramFilterSendsAndSkipsEmail(t *testing.T) {
 
 	text, ok := body["text"].(string)
 	r.True(ok)
-	r.Contains(text, "🔴 Incident — API health")
+	// The headline carries the short per-org reference, which is what an on-call
+	// person types back as /ack #1.
+	r.Contains(text, "🔴 Incident #1 — API health")
 	r.Contains(text, "<b>Status:</b> DOWN")
 	r.Contains(text, "<b>Org:</b> "+env.org.Slug)
 	r.Contains(text, "https://app.example.com/dash0/orgs/"+env.org.Slug+"/incidents/incident-1")
@@ -867,4 +869,105 @@ func TestDispatch_TelegramDoesNotWaitOutALongCooldown(t *testing.T) {
 	r.Equal(0, sent)
 	r.Equal(1, fake.sendCount(), "an hour-long cooldown must not be retried inline")
 	r.Less(time.Since(start), 10*time.Second)
+}
+
+// TestDispatch_TelegramAlertCarriesTheAckButton pins the button-first path: an
+// open, unacknowledged incident ships with an inline Acknowledge button whose
+// callback_data addresses THAT incident.
+func TestDispatch_TelegramAlertCarriesTheAckButton(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, false, "")
+	fake, baseURL := newFakeBotAPI(t, botReply{http.StatusOK, botOK(100)})
+	enableTelegram(env, baseURL)
+
+	r.Equal(1, newRun().dispatchRoute(
+		ctx, env.jctx, slog.Default(), env.incident,
+		telegramRoute(env.org.UID, true), map[string]bool{"telegram": true}))
+
+	body := fake.callsFor("sendMessage")[0].body
+
+	markup, ok := body["reply_markup"].(map[string]any)
+	r.True(ok, "an open incident alert must carry the Acknowledge button")
+
+	rows, ok := markup["inline_keyboard"].([]any)
+	r.True(ok)
+	r.Len(rows, 1)
+
+	buttons, ok := rows[0].([]any)
+	r.True(ok)
+	r.Len(buttons, 1)
+
+	button, ok := buttons[0].(map[string]any)
+	r.True(ok)
+	r.Equal(telegram.AckCallbackData(env.incident.UID), button["callback_data"])
+}
+
+// TestDispatch_TelegramAckedIncidentCarriesNoButton: a button that answers
+// "already done" is noise, and worse, an alert still offering it reads as an
+// unclaimed page.
+func TestDispatch_TelegramAckedIncidentCarriesNoButton(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, false, "")
+	fake, baseURL := newFakeBotAPI(t, botReply{http.StatusOK, botOK(100)})
+	enableTelegram(env, baseURL)
+
+	acked := *env.incident
+	now := time.Now()
+	acked.AcknowledgedAt = &now
+
+	r.Equal(1, newRun().dispatchRoute(
+		ctx, env.jctx, slog.Default(), &acked,
+		telegramRoute(env.org.UID, true), map[string]bool{"telegram": true}))
+
+	body := fake.callsFor("sendMessage")[0].body
+	r.NotContains(body, "reply_markup")
+}
+
+// TestDispatch_TelegramResolutionRemovesTheAckButton: Telegram treats an ABSENT
+// reply_markup on an edit as "leave the buttons alone", so the resolution edit
+// has to send an explicitly EMPTY keyboard — otherwise a resolved incident keeps
+// offering Acknowledge forever.
+func TestDispatch_TelegramResolutionRemovesTheAckButton(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, false, "")
+	fake, baseURL := newFakeBotAPI(t,
+		botReply{http.StatusOK, botOK(100)},
+		botReply{http.StatusOK, botOK(101)},
+		botReply{http.StatusOK, `{"ok":true,"result":{"message_id":100}}`},
+	)
+	enableTelegram(env, baseURL)
+
+	filter := map[string]bool{"telegram": true}
+	r.Equal(1, newRun().dispatchRoute(
+		ctx, env.jctx, slog.Default(), env.incident, telegramRoute(env.org.UID, true), filter))
+
+	resolved := *env.incident
+	resolved.State = models.IncidentStateResolved
+
+	r.Equal(1, newRun().dispatchRoute(
+		ctx, env.jctx, slog.Default(), &resolved, telegramRoute(env.org.UID, true), filter))
+
+	edits := fake.callsFor("editMessageText")
+	r.Len(edits, 1)
+
+	markup, ok := edits[0].body["reply_markup"].(map[string]any)
+	r.True(ok, "the resolution edit must SEND reply_markup to clear the button")
+	r.Empty(markup["inline_keyboard"], "and it must be the empty keyboard")
+
+	// The resolution message itself carries no button either.
+	sends := fake.callsFor("sendMessage")
+	r.Len(sends, 2)
+	r.NotContains(sends[1].body, "reply_markup")
 }
