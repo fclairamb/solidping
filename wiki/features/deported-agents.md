@@ -11,7 +11,9 @@ User-facing docs: [`web/docs/docs/features/private-locations.md`](../../web/docs
 
 > **Naming.** "Deported agent" is the internal/engineering term; the dashboard and
 > public docs say **private location**. They are the same thing. The region a
-> deported agent serves is a **private region**, written `@<org>/<region>`.
+> deported agent serves is a **private region**, written `@<region>` —
+> org-relative, so an org rename touches nothing (spec 2026-08-13-01; the
+> matching audit lives in [`../conventions/regions.md`](../conventions/regions.md)).
 
 ---
 
@@ -47,7 +49,7 @@ read.
 
 ### 1. Enrollment (once per agent)
 
-1. An org admin creates a private region (`@acme/dc1`) and mints an enrollment
+1. An org admin creates a private region (`@dc1`) and mints an enrollment
    token. The token is displayed once; only its SHA-256 is persisted
    (`server/internal/agents/crypto.go`).
 2. The operator starts the agent with `SP_AGENT_ENROLLMENT_TOKEN=spe_…`.
@@ -141,6 +143,13 @@ This is the part worth understanding before changing any of it.
   match can never widen into an `@…` job.
 - Agent claims are scoped **server-side** to the agent's `org_uid` and its exact
   bound region. The agent's own claim parameters are not trusted.
+- The **`org_uid` half is now the load-bearing one.** Since regions are stored
+  org-relatively, `@dc1` is unique only inside an org and two tenants can hold
+  the identical string, so no path may rely on the region string alone. Every
+  claim/dispatch/reseal path and its org predicate is enumerated in
+  [`../conventions/regions.md`](../conventions/regions.md) — read that before
+  adding a new one. The cloud claim lane, which deliberately has no org
+  predicate, excludes `@…` jobs outright in SQL instead.
 
 **Secrets are sealed to the agents, not to the server.**
 
@@ -210,7 +219,7 @@ An agent now carries a **kind**:
 |---|---|---|
 | Who runs it | the customer, in their network | SolidPing, e.g. a fly.io machine |
 | Owning org | exactly one (`organization_uid` NOT NULL) | **none** (`organization_uid` NULL) |
-| Region | private, `@<org>/<region>` | a **shared cloud region slug** |
+| Region | private, `@<region>` | a **shared cloud region slug** |
 | Claim scope | that org **and** that exact region | that exact region, **across every org** |
 | Enrollment token | org admin mints it, strictly **one-shot** | env-seeded, **multi-use** and revocable |
 | Credentials | sealed at *save* to the region's agents; server cannot read them | sealed at *claim* to the claiming agent |

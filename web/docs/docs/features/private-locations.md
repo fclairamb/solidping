@@ -28,10 +28,16 @@ Key properties:
 ## 1. Create a private location
 
 In the dashboard: **Organization → Private locations → Add location**. A
-location is an org-private region with a slug like `dc1`; its fully-qualified
-region identity is `@<org>/<slug>` (e.g. `@acme/dc1`). Cloud workers can
-structurally never match an `@…` region — private locations are served
-exclusively by your agents.
+location is an org-private region with a slug like `dc1`; its region identity
+is `@<slug>` (e.g. `@dc1`) — org-relative, because the organization is already
+implied by the URL and by every row that stores it, so **renaming your
+organization never breaks a private location**. Cloud workers can structurally
+never match an `@…` region — private locations are served exclusively by your
+agents.
+
+> The older fully-qualified spelling `@<org>/<slug>` is still accepted on input
+> (for your organization's current or previous slug) and is normalized away;
+> existing installs are rewritten automatically on upgrade.
 
 ## 2. Mint an enrollment token
 

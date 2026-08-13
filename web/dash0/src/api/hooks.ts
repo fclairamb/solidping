@@ -5245,7 +5245,7 @@ export interface PrivateRegion {
   slug: string;
   name: string;
   emoji: string;
-  /** Fully-qualified stored region string, e.g. `@acme/dc1`. */
+  /** Stored region string, org-relative, e.g. `@dc1`. */
   region: string;
   agentCount: number;
 }
