@@ -319,7 +319,10 @@ func (l *fallbackListener) refuse(ctx context.Context, conn net.Conn, host, reas
 	l.record(outcomeRefused)
 
 	peer := peerAddr(conn)
-	if _, seen := l.loopLogged.LoadOrStore(peer, struct{}{}); !seen {
+	// Keyed on the address without its port: a cycle opens a new ephemeral
+	// source port per connection, so keying on the full address would log every
+	// one of them.
+	if _, seen := l.loopLogged.LoadOrStore(hostOfAddr(peer), struct{}{}); !seen {
 		l.cfg.log.ErrorContext(ctx, "tlsedge: refusing to forward, the fallback chain loops back here",
 			"listener", l.cfg.listener, "host", host, "peer", peer,
 			"upstream", l.cfg.upstream, "reason", reason)
@@ -494,6 +497,16 @@ func closeWrite(conn net.Conn) {
 	if half, ok := rawConn(conn).(closeWriter); ok {
 		_ = half.CloseWrite()
 	}
+}
+
+// hostOfAddr strips the port from a "host:port" address, leaving anything
+// unparseable untouched.
+func hostOfAddr(addr string) string {
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		return host
+	}
+
+	return addr
 }
 
 // peerAddr is the address of the IMMEDIATE peer — before any PROXY header
