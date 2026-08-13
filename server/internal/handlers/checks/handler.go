@@ -21,6 +21,7 @@ import (
 	entitlementshandler "github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	mw "github.com/fclairamb/solidping/server/internal/middleware"
+	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
 // errInvalidStatus is returned when an unknown status token appears in ?status=.
@@ -793,6 +794,10 @@ func isCheckFieldValidationError(err error) bool {
 
 	return errors.Is(err, errIncidentPeriodOutOfRange) ||
 		errors.Is(err, errRegionSpreadOutOfRange) ||
+		// A legacy `@<org>/<slug>` region naming somebody ELSE's org is a
+		// caller mistake (or an attempt), not a server fault — 400, never 500.
+		errors.Is(err, regions.ErrForeignPrivateRegion) ||
+		errors.Is(err, regions.ErrInvalidPrivateRegionSlug) ||
 		errors.Is(err, errFlappingWindowNegative) ||
 		errors.Is(err, errFlapBackoffTooSmall) ||
 		errors.Is(err, errMaxRecoveryMultTooSmall) ||
