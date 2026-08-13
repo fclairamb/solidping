@@ -22,6 +22,8 @@ import {
   Users,
   Search,
   PlusCircle,
+  Building2,
+  CircleUser,
 } from "lucide-react";
 import { useChecks } from "@/api/hooks";
 
@@ -55,6 +57,13 @@ const pages: PageEntry[] = [
   { titleKey: "integrations", path: "/orgs/$org/integrations", icon: Bell, group: "pages" },
   { titleKey: "statusPages", path: "/orgs/$org/status-pages", icon: Globe, group: "pages" },
   { titleKey: "badges", path: "/orgs/$org/badges", icon: BadgeCheck, group: "pages" },
+  {
+    titleKey: "account",
+    path: "/orgs/$org/account",
+    icon: CircleUser,
+    group: "account",
+    testId: "command-menu-account",
+  },
   { titleKey: "profile", path: "/orgs/$org/account/profile", icon: User2, group: "account" },
   { titleKey: "tokens", path: "/orgs/$org/account/tokens", icon: KeyRound, group: "account" },
   {
@@ -64,6 +73,13 @@ const pages: PageEntry[] = [
     icon: Bot,
     group: "account",
     testId: "command-menu-ai",
+  },
+  {
+    titleKey: "organization",
+    path: "/orgs/$org/organization",
+    icon: Building2,
+    group: "organization",
+    testId: "command-menu-organization",
   },
   { titleKey: "members", path: "/orgs/$org/organization/members", icon: Users, group: "organization" },
   { titleKey: "invitations", path: "/orgs/$org/organization/invitations", icon: Mail, group: "organization" },
