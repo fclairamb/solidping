@@ -94,8 +94,9 @@ test.describe("Private locations", () => {
 
     const row = page.getByTestId("private-region-e2e-dc");
     await expect(row).toBeVisible();
-    // The fully-qualified region string is shown (the reserved @-namespace).
-    await expect(row).toContainText("@test/e2e-dc");
+    // The org-relative region string is shown (the reserved @-namespace, with
+    // NO org slug in it — that is what survives an org rename).
+    await expect(row).toContainText("@e2e-dc");
 
     // Mint an enrollment token: the secret is revealed exactly once.
     await page.getByTestId("mint-token-e2e-dc").click();
@@ -111,7 +112,7 @@ test.describe("Private locations", () => {
     // WITHOUT the secret.
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("pending-tokens-card")).toBeVisible();
-    await expect(page.getByTestId("pending-tokens-card")).toContainText("@test/e2e-dc");
+    await expect(page.getByTestId("pending-tokens-card")).toContainText("@e2e-dc");
     await expect(page.getByTestId("pending-tokens-card")).not.toContainText("spe_");
 
     // Cancel the pending token (destructive icon), then delete the region.
@@ -174,9 +175,9 @@ test.describe("Private locations", () => {
     // Pick a check type so the form (and its region picker) renders.
     await page.getByText("HTTP", { exact: false }).first().click();
 
-    // The private region is offered under its fully-qualified slug with the
+    // The private region is offered under its org-relative slug with the
     // Private badge.
-    const option = page.getByTestId("region-option-@test/e2e-dc");
+    const option = page.getByTestId("region-option-@e2e-dc");
     await expect(option).toBeVisible();
     await expect(option).toContainText("E2E Datacenter");
     await expect(option).toContainText("Private");

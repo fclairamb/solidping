@@ -86,15 +86,15 @@ test.describe("Check form — Region Spread", () => {
     // Only "default" selected (the org's single default region) — the field
     // must not render with just one region picked.
     await ensureRegionChecked(page, "region-option-default");
-    await expect(page.getByTestId(`region-option-@test/${regionSlug}`).getByRole("checkbox")).not.toBeChecked();
+    await expect(page.getByTestId(`region-option-@${regionSlug}`).getByRole("checkbox")).not.toBeChecked();
     await expect(page.getByTestId("check-region-spread-input")).toHaveCount(0);
 
     // Selecting the second region reveals it.
-    await ensureRegionChecked(page, `region-option-@test/${regionSlug}`);
+    await ensureRegionChecked(page, `region-option-@${regionSlug}`);
     await expect(page.getByTestId("check-region-spread-input")).toBeVisible();
 
     // Deselecting back down to one region hides it again.
-    await page.getByTestId(`region-option-@test/${regionSlug}`).click();
+    await page.getByTestId(`region-option-@${regionSlug}`).click();
     await expect(page.getByTestId("check-region-spread-input")).toHaveCount(0);
 
     await deletePrivateRegion(page, token, regionSlug);
@@ -114,7 +114,7 @@ test.describe("Check form — Region Spread", () => {
     await page.getByTestId("check-url-input").fill("https://example.com/region-spread-persist");
 
     await ensureRegionChecked(page, "region-option-default");
-    await ensureRegionChecked(page, `region-option-@test/${regionSlug}`);
+    await ensureRegionChecked(page, `region-option-@${regionSlug}`);
 
     // 2 regions over a 1-minute period -> automatic default is 30s.
     await expect(page.getByTestId("region-spread-help")).toContainText("30 s");
@@ -166,7 +166,7 @@ test.describe("Check form — Region Spread", () => {
     await page.getByTestId("check-url-input").fill("https://example.com/region-spread-range");
 
     await ensureRegionChecked(page, "region-option-default");
-    await ensureRegionChecked(page, `region-option-@test/${regionSlug}`);
+    await ensureRegionChecked(page, `region-option-@${regionSlug}`);
 
     // Period is pinned to 1 minute (60s); a spread equal to the period is out
     // of range (must be strictly less).

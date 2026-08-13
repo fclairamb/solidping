@@ -80,7 +80,7 @@ test.describe.serial("Register an agent wizard", () => {
     // Step 1: pick the existing location.
     await expect(page.getByTestId("wizard-step-pick-location")).toBeVisible();
     await page.getByTestId(`wizard-region-${REGION_SLUG}`).click();
-    await expect(page.getByTestId("wizard-location-banner")).toContainText(`@test/${REGION_SLUG}`);
+    await expect(page.getByTestId("wizard-location-banner")).toContainText(`@${REGION_SLUG}`);
 
     // Step 2: mint the enrollment token — shown exactly once.
     await expect(page.getByTestId("wizard-step-mint-token")).toBeVisible();
@@ -139,7 +139,7 @@ test.describe.serial("Register an agent wizard", () => {
     const fakeAgent = {
       uid: "e2e-race-agent",
       name: "race-agent",
-      region: `@test/${REGION_SLUG}`,
+      region: `@${REGION_SLUG}`,
       fingerprint: "fp-race",
       status: "active",
       enrolledAt: new Date().toISOString(),
@@ -162,7 +162,7 @@ test.describe.serial("Register an agent wizard", () => {
         ? [
             {
               uid: mintedUid,
-              region: `@test/${REGION_SLUG}`,
+              region: `@${REGION_SLUG}`,
               status: "used",
               expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
               createdAt: new Date().toISOString(),

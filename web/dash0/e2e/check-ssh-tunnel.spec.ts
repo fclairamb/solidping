@@ -247,7 +247,7 @@ test.describe("SSH tunnel UX gaps", () => {
     await page.waitForLoadState("networkidle");
 
     // Put the check in the private region the bastion doesn't cover.
-    await page.getByTestId(`region-option-@test/${regionSlug}`).click();
+    await page.getByTestId(`region-option-@${regionSlug}`).click();
 
     await expandSection(page, "section-advanced-trigger");
     await page.getByTestId("check-tunnel-select").click();
@@ -310,7 +310,7 @@ test.describe("SSH tunnel UX gaps", () => {
     // Edit the dependent and add the private region the bastion doesn't cover.
     await page.goto(`orgs/test/checks/${dependent.uid}/edit`);
     await page.waitForLoadState("networkidle");
-    await page.getByTestId(`region-option-@test/${regionSlug}`).click();
+    await page.getByTestId(`region-option-@${regionSlug}`).click();
 
     // The live validation rejects it, inline on BOTH the regions field and the
     // tunnel field (a region change can now be blocked by a tunnel dependency).
