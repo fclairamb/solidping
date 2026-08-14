@@ -187,16 +187,26 @@ spec rebases trivially):
    with `resolved after <duration>` (`StartedAt` → `ResolvedAt`).
 3. **Anchor pass.** `ListStateEntries(prefix "telegram_msg:<incidentUID>:")`;
    the chat id is the key suffix. Per chat:
-   - claim the marker `telegram_resolved:<incidentUID>:<chatID>` with
-     `SetStateEntryIfNotExists` (7d TTL) — not created ⇒ already notified, skip;
-   - reserve `Entitlements.ReserveTelegram` — denied ⇒ release the marker,
-     write a skipped audit row, continue (never fail the job);
+   - skip when the marker `telegram_resolved:<incidentUID>:<chatID>` already
+     exists (a read failure also skips — a missed notice beats a duplicate one);
+   - reserve `Entitlements.ReserveTelegram` — denied ⇒ write a skipped audit row
+     and continue (never fail the job);
    - send through `sendTelegramAlertShared`, which threads under the anchor,
      rewrites the original red alert with an explicitly empty keyboard, degrades
      to standalone on a rejected reply target and honors `retry_after`;
-   - on failure: release the marker (so a retry can still deliver), remember
-     whether the failure was network-class;
-   - on success: delete the anchor and record a sent audit row.
+   - on failure: leave marker and anchor untouched (so a retry still delivers),
+     remember whether the failure was network-class;
+   - on success: write the marker (7d TTL), delete the anchor, record a sent
+     audit row.
+
+   **Deviation from §3's suggested primitive, deliberate:** the marker is
+   written *after* a delivery with `SetStateEntry`, not reserved before one with
+   `SetStateEntryIfNotExists`. `DeleteStateEntry` only soft-deletes while the
+   `(organization_uid, key)` uniqueness still covers the dead row, so a
+   reserve-then-release scheme could never re-claim a released marker — one
+   throttled send would gag that chat forever. Writing on success keeps the
+   same double-send protection (the job runner leases a job to one worker at a
+   time, and the anchor deletion is the second guard) without that trap.
 4. **Fallback pass** — only for chats no anchor covered.
    `ListIncidentNotifications(incidentUID, status=sent)` filtered to
    `channel_type=telegram` **and** `event_type=incident.escalated` (that is what
@@ -205,6 +215,9 @@ spec rebases trivially):
    contact is resolved through `ListUserContactsWithRoutes`; users who unlinked
    are skipped. Same marker/reserve/send flow, standalone (no anchor to thread
    under or edit).
+
+   Documented in `wiki/features/notifications-and-escalation.md` under
+   "Closing the loop with person contacts".
 5. Return a `jobdef.RetryableError` only when at least one chat failed with a
    network-class error (`telegram.ErrRateLimited`, `telegram.ErrRequestFailed`,
    `notifications.IsNetworkError`); every other per-chat failure is logged and

@@ -271,6 +271,36 @@ The "no notifications on ack/snooze" decision is intentional: at 3 AM
 you already know you acked your own page; channel members don't need an
 "acked!" buzz. If you need that signal, watch the events stream.
 
+### Closing the loop with person contacts
+
+The table above is about **channels**. Person contacts (Telegram today;
+WhatsApp/SMS are the planned follow-ups) are never reached by
+`queueNotifications` — only the escalation step pages them, and it stops firing
+the moment the incident is acked or resolved. Left there, the on-call engineer
+gets a red Telegram alert and is never told it ended.
+
+`incident.resolved` therefore also queues one **`incident_resolution_notice`**
+job (`jobtypes/job_incident_resolution_notice.go`), enqueued after the
+`PagingSuppressed` early return and before the group branch, so rolled-up
+children stay silent and group incidents are covered. The job:
+
+- fans out over the **thread anchors** (`telegram_msg:<incidentUID>:<chatID>`
+  state entries) — the exact set of chats that received a page — sending the
+  RESOLVED notice through the same send path as an alert, so it threads under
+  the original message, rewrites that message with `BuildResolvedOriginalHTML`
+  and an explicitly empty keyboard (which is what removes the stale Acknowledge
+  button), and honors Telegram's `retry_after`;
+- falls back to the `incident_notifications` audit trail (channel `telegram`,
+  status `sent`, event `incident.escalated`) for chats whose anchor expired past
+  its 7-day TTL, resolving each paged user's *current* verified contact;
+- writes a `telegram_resolved:<incidentUID>:<chatID>` marker after each
+  delivery and drops the anchor, which is what makes retries and a
+  reopen → re-resolve cycle send **exactly one** notice — a relapse never
+  re-pages person contacts, so announcing its end would be noise;
+- reserves the hourly Telegram runaway guard per send (a mass recovery must not
+  turn into an unbounded burst) and returns a retryable error only for
+  network-class failures.
+
 ### Event payload
 
 `emitEvent` writes an `Event` row with `UID`, `OrganizationUID`,
