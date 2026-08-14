@@ -470,6 +470,33 @@ func TestResolutionNotice_PagingSuppressedSendsNothing(t *testing.T) {
 	r.True(anchorExists(t, env, resolutionChatA), "and must not consume the anchor")
 }
 
+// An ack racing the resolution must not silence the all-clear. The escalation
+// step stops on an acked incident by design; this job must not, or pressing the
+// Acknowledge button on a just-resolved alert would cost the very message that
+// removes that button.
+func TestResolutionNotice_AcknowledgedIncidentStillNotified(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, false, "")
+	fake, baseURL := newFakeBotAPI(t, botReply{http.StatusOK, botOK(201)}, botReply{http.StatusOK, botOK(100)})
+	enableTelegram(env, baseURL)
+
+	seedThreadAnchor(t, env, resolutionChatA, 100)
+	resolveTestIncident(t, env, time.Minute)
+
+	acked := time.Now()
+	r.NoError(env.db.UpdateIncident(ctx, env.incident.UID, &models.IncidentUpdate{
+		AcknowledgedAt: &acked,
+	}))
+
+	r.NoError(newResolutionRun(env).Run(ctx, env.jctx))
+	r.Equal(1, fake.sendCount(), "an acknowledged incident still owes its notice")
+	r.Len(fake.callsFor("editMessageText"), 1, "and the original alert is still cleaned up")
+}
+
 // A relapse that beat the job to the punch: announcing "resolved" for an
 // incident that is open again would be a lie. The anchor survives, so the next
 // genuine resolution still notifies.

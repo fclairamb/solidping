@@ -107,6 +107,42 @@ func TestGroupIncidentResolveQueuesResolutionNotice(t *testing.T) {
 		"a group incident resolution must queue the notice job too")
 }
 
+// TestAckAfterResolveKeepsTheResolutionNotice is the regression guard for the
+// ordering that defeats the whole feature: the incident resolves, the notice
+// job is queued, and BEFORE a worker picks it up the on-call person presses the
+// still-live Acknowledge button on the red Telegram alert. The ack path cancels
+// every pending job carrying this incident's UID — which would delete the
+// all-clear they were about to receive, leaving the stale Acknowledge button in
+// place forever.
+func TestAckAfterResolveKeepsTheResolutionNotice(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+	s := newResolveSetup(t)
+
+	_, err := s.svc.ResolveIncident(ctx, s.org.Slug, &incidents.ResolveIncidentRequest{
+		IncidentUID: s.incident.UID,
+		Via:         "web",
+	})
+	r.NoError(err)
+	r.Equal(1, pendingResolutionNoticeJobs(t, s.dbSvc, s.org.UID))
+	r.Equal(1, pendingNotificationJobs(t, s.dbSvc, s.org.UID),
+		"the channel notification is queued too, and IS sweepable")
+
+	// The ack lands while the notice job is still pending.
+	_, err = s.svc.AcknowledgeIncident(ctx, s.org.Slug, &incidents.AcknowledgeIncidentRequest{
+		IncidentUID: s.incident.UID,
+		Via:         "telegram",
+	})
+	r.NoError(err)
+
+	r.Equal(1, pendingResolutionNoticeJobs(t, s.dbSvc, s.org.UID),
+		"an ack must never cancel the resolution notice — that is the message it makes obsolete")
+	r.Equal(0, pendingNotificationJobs(t, s.dbSvc, s.org.UID),
+		"the ordinary paging jobs are still swept, so the exemption is narrow")
+}
+
 // Only a resolution queues the job: an ack or a comment must not.
 func TestNonResolveEventsQueueNoResolutionNotice(t *testing.T) {
 	t.Parallel()

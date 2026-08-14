@@ -74,6 +74,12 @@ type Service interface {
 	// pending notification jobs from firing on an incident the operator has
 	// taken responsibility for.
 	//
+	// The incident_resolution_notice job type is deliberately exempt: it is not
+	// a page, it is the all-clear owed to people who already got one. Sweeping
+	// it would mean an ack landing between a resolution and the job's pickup
+	// silently cancels the "it is over" message — the exact bug the job exists
+	// to fix.
+	//
 	// If notBefore is non-nil, only jobs scheduled strictly before that
 	// timestamp are canceled — used by snooze, where notifications scheduled
 	// for after the snooze window are kept (they fire only if the incident
@@ -393,6 +399,14 @@ func (s *serviceImpl) ListJobs(
 	return jobs, nil
 }
 
+// jobTypeIncidentResolutionNotice is the one job type CancelPendingForIncident
+// must never sweep — see the interface doc for why.
+//
+// Spelled as a literal rather than jobdef.JobTypeIncidentResolutionNotice
+// because jobdef imports app/services, which imports this package; the two
+// constants are pinned to each other by TestCancelPendingExemptsResolutionNotice.
+const jobTypeIncidentResolutionNotice = "incident_resolution_notice"
+
 // CancelPendingForIncident soft-deletes pending jobs that reference an
 // incident UID in their config. The expression varies by dialect because
 // PostgreSQL uses ->> and SQLite uses json_extract.
@@ -418,6 +432,7 @@ func (s *serviceImpl) CancelPendingForIncident(
 		Set("updated_at = ?", now).
 		Where("status = ?", models.JobStatusPending).
 		Where("deleted_at IS NULL").
+		Where("type != ?", jobTypeIncidentResolutionNotice).
 		Where(configExpr, incidentUID)
 
 	if notBefore != nil {
