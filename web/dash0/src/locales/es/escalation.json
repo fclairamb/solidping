@@ -3,16 +3,26 @@
     "title": "Políticas de escalada",
     "subtitle": "Orquestación reutilizable de pasos de notificación con retrasos y cancelación al confirmar, posponer o resolver.",
     "create": "Nueva política",
-    "empty": "No hay políticas de escalada todavía. Crea una para empezar a notificar incidentes.",
-    "repeats": "Se repite {{count}}× cada {{seconds}} segundos",
+    "empty": "Cree una para empezar a avisar sobre incidencias.",
+    "repeats": "Repite {{count}}× cada {{duration}}",
     "editToSeeSteps": "Abrir para ver los pasos.",
     "searchPlaceholder": "Buscar por nombre…",
     "noMatches": "Ninguna política coincide con tu búsqueda.",
     "col": {
       "name": "Nombre",
       "description": "Descripción",
-      "repeats": "Repeticiones"
-    }
+      "repeats": "Repeticiones",
+      "steps": "Pasos",
+      "usedBy": "Usada por"
+    },
+    "usedChecks_one": "{{count}} comprobación",
+    "usedChecks_other": "{{count}} comprobaciones",
+    "usedGroups_one": "{{count}} grupo",
+    "usedGroups_other": "{{count}} grupos",
+    "unused": "Sin usar",
+    "emptyTitle": "Aún no hay políticas de escalado",
+    "stepsLabel_one": "paso",
+    "stepsLabel_other": "pasos"
   },
   "new": {
     "title": "Nueva política de escalada"

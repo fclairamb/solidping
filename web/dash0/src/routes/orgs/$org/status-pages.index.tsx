@@ -62,27 +62,39 @@ function StatusPageRow({
 }) {
   const { t } = useTranslation("statusPages");
   return (
-    <TableRow>
+    <TableRow className="hover:bg-muted/40 transition-colors">
       <TableCell>
         <Link
           to="/orgs/$org/status-pages/$statusPageUid"
           params={{ org, statusPageUid: page.uid }}
-          className="flex items-center gap-2 hover:underline font-medium"
+          className="flex items-center gap-2 font-medium text-foreground hover:text-primary hover:underline transition-colors"
         >
           {page.name}
-          {page.isDefault && <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />}
+          {page.isDefault && <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" />}
         </Link>
       </TableCell>
-      <TableCell className="text-muted-foreground">{page.slug}</TableCell>
       <TableCell>
-        <Badge variant={page.visibility === "public" ? "default" : "secondary"}>
+        <div className="flex items-center gap-1 font-mono text-xs text-muted-foreground">
+          <Globe className="h-3 w-3 text-muted-foreground/70" />
+          <span>/{page.slug}</span>
+        </div>
+      </TableCell>
+      <TableCell>
+        <Badge
+          variant={page.visibility === "public" ? "default" : "secondary"}
+          className={
+            page.visibility === "public"
+              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-medium"
+              : "font-normal"
+          }
+        >
           {page.visibility === "public"
             ? t("visibility.public")
             : t("visibility.restricted")}
         </Badge>
       </TableCell>
       <TableCell>
-        <Badge variant={page.enabled ? "default" : "outline"}>
+        <Badge variant={page.enabled ? "default" : "outline"} className="font-normal text-xs">
           {page.enabled ? t("enabled") : t("disabled")}
         </Badge>
       </TableCell>
@@ -245,15 +257,15 @@ function StatusPagesIndexPage() {
           ))}
         </div>
       ) : filteredPages.length > 0 ? (
-        <div className="rounded-md border">
+        <div className="rounded-xl border bg-card shadow-card overflow-hidden">
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-muted/30">
               <TableRow>
                 <TableHead>{t("statusPages:table.name")}</TableHead>
                 <TableHead>{t("statusPages:table.slug")}</TableHead>
                 <TableHead>{t("statusPages:table.visibility")}</TableHead>
                 <TableHead>{t("statusPages:table.status")}</TableHead>
-                <TableHead className="w-[50px]" />
+                <TableHead className="w-[100px] text-right" />
               </TableRow>
             </TableHeader>
             <TableBody>

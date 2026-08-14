@@ -3,16 +3,26 @@
     "title": "Eskalationsrichtlinien",
     "subtitle": "Wiederverwendbare Orchestrierung von Paging-Schritten mit Verzögerungen und Abbruch bei Bestätigung/Snooze/Lösung.",
     "create": "Neue Richtlinie",
-    "empty": "Noch keine Eskalationsrichtlinien. Erstelle eine, um beim Vorfall zu paginieren.",
-    "repeats": "Wiederholt {{count}}× alle {{seconds}} Sekunden",
+    "empty": "Erstellen Sie eine, um bei Vorfällen zu alarmieren.",
+    "repeats": "Wiederholt {{count}}× alle {{duration}}",
     "editToSeeSteps": "Öffnen, um die Schritte anzuzeigen.",
     "searchPlaceholder": "Nach Name suchen…",
     "noMatches": "Keine Richtlinie entspricht der Suche.",
     "col": {
       "name": "Name",
       "description": "Beschreibung",
-      "repeats": "Wiederholungen"
-    }
+      "repeats": "Wiederholungen",
+      "steps": "Schritte",
+      "usedBy": "Verwendet von"
+    },
+    "usedChecks_one": "{{count}} Prüfung",
+    "usedChecks_other": "{{count}} Prüfungen",
+    "usedGroups_one": "{{count}} Gruppe",
+    "usedGroups_other": "{{count}} Gruppen",
+    "unused": "Unbenutzt",
+    "emptyTitle": "Noch keine Eskalationsrichtlinien",
+    "stepsLabel_one": "Schritt",
+    "stepsLabel_other": "Schritte"
   },
   "new": {
     "title": "Neue Eskalationsrichtlinie"

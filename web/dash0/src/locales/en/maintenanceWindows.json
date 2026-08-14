@@ -112,5 +112,10 @@
   "delete": {
     "confirmTitle": "Delete maintenance window?",
     "confirmBody": "Are you sure you want to delete this maintenance window? This action cannot be undone."
-  }
+  },
+  "noChecks": "No checks",
+  "noChecksTitle": "This window is attached to no checks, so it suppresses nothing.",
+  "checksLabel_one": "check",
+  "checksLabel_other": "checks",
+  "emptyHint": "Create one to suppress incident alerts during planned work."
 }

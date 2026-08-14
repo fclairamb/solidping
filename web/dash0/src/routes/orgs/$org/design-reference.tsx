@@ -24,6 +24,7 @@ import {
   Moon,
   Monitor,
   Globe,
+  Inbox,
   MoreVertical,
   Palette,
   Pencil,
@@ -38,6 +39,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { getEventTone } from "@/components/dashboard/event-display";
 import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
 import { CheckGroupPicker } from "@/components/shared/check-group-picker";
 import { RecipientsInput } from "@/components/shared/recipients-input";
@@ -143,7 +145,7 @@ import { CodeTextarea } from "@/components/ui/code-textarea";
 import { UptimeStrip } from "@/components/ui/uptime-strip";
 import { useIsDarkTheme } from "@/hooks/use-is-dark-theme";
 import { useDebounce } from "@/lib/use-debounce";
-import { slugify } from "@/lib/utils";
+import { cn, slugify } from "@/lib/utils";
 
 export const Route = createFileRoute("/orgs/$org/design-reference")({
   component: DesignReferencePage,
@@ -164,8 +166,12 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "brand", label: "Brand" },
   { id: "elevation", label: "Elevation & aurora" },
   { id: "buttons-badges", label: "Buttons & badges" },
+  { id: "protocol-badge", label: "Protocol badge" },
+  { id: "event-tone", label: "Event tone badge" },
+  { id: "live-dot", label: "Live & pulse dots" },
   { id: "forms", label: "Forms" },
   { id: "data-display", label: "Data display" },
+  { id: "list-surface", label: "List surface" },
   { id: "copyable-code", label: "Copyable code" },
   { id: "copyable-inline", label: "Copyable inline" },
   { id: "dns-record-row", label: "DNS record row" },
@@ -205,8 +211,12 @@ function DesignReferencePage() {
       <BrandSection />
       <ElevationSection />
       <ButtonsBadgesSection />
+      <ProtocolBadgeSection />
+      <EventToneSection />
+      <LiveDotSection />
       <FormsSection />
       <DataDisplaySection />
+      <ListSurfaceSection />
       <CopyableCodeSection />
       <CopyableInlineSection />
       <DnsRecordRowSection />
@@ -2358,16 +2368,265 @@ function BrandSection() {
   );
 }
 
+const PROTOCOL_BADGE_BASE =
+  "text-[10px] font-mono font-medium uppercase px-1.5 py-0.5";
+
+const PROTOCOL_BADGE_TONES: Record<string, string> = {
+  HTTP: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/25",
+  TCP: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/25",
+  DNS: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/25",
+  ICMP: "bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/25",
+  TLS: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/25",
+};
+
+function ProtocolBadgeSection() {
+  return (
+    <Section
+      id="protocol-badge"
+      title="Protocol badge"
+      description="The check-type chip used in list rows. Uppercase mono at 10px so a column of them aligns like a fixed-width key, with one tinted family per protocol — the tint is decoration, never the only signal, so the label always spells the protocol out. An unrecognized type falls back to the plain outline badge rather than inventing a sixth color."
+    >
+      <ExampleRow
+        preview={
+          <div className="flex flex-wrap items-center gap-2">
+            {Object.entries(PROTOCOL_BADGE_TONES).map(([label, tone]) => (
+              <Badge
+                key={label}
+                variant="outline"
+                className={cn(PROTOCOL_BADGE_BASE, tone)}
+              >
+                {label}
+              </Badge>
+            ))}
+            <Badge variant="outline" className={PROTOCOL_BADGE_BASE}>
+              custom
+            </Badge>
+          </div>
+        }
+        importLine={`import { Badge } from "@/components/ui/badge";\n\n// One tinted family per protocol; the fallback keeps the plain outline.\n<Badge\n  variant="outline"\n  className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5\n             bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/25"\n>\n  HTTP\n</Badge>\n\n// http/https → blue · tcp → cyan · dns → amber · icmp/ping → purple\n// tls/ssl → emerald · anything else → no tint classes at all`}
+      />
+    </Section>
+  );
+}
+
+const EVENT_TONE_SAMPLES: { type: string; label: string }[] = [
+  { type: "incident.created", label: "Incident Opened" },
+  { type: "incident.resolved", label: "Incident Resolved" },
+  { type: "incident.acknowledged", label: "Incident Acknowledged" },
+  { type: "check.updated", label: "Check Updated" },
+  { type: "org.activation.signup_completed", label: "Signup Completed" },
+  { type: "something.unmapped", label: "Unmapped" },
+];
+
+function EventToneSection() {
+  return (
+    <Section
+      id="event-tone"
+      title="Event tone badge"
+      description="The badge used for one row of an audit log, tinted by what KIND of thing happened so a long log can be triaged by color before it is read: failure and escalation red, recovery emerald, operator acknowledgement amber, configuration blue, onboarding milestones violet. Get the classes from getEventTone(eventType) rather than hand-picking a tint — that keeps every surface showing the same event agreeing on its color. Same rule as the protocol badge: the tint is decoration layered on the translated label, never the only signal, and an unmapped type falls back to the plain outline badge instead of inventing a seventh color."
+    >
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Tone families</h3>
+        <ExampleRow
+          preview={
+            <div className="flex flex-wrap items-center gap-2">
+              {EVENT_TONE_SAMPLES.map((sample) => (
+                <Badge
+                  key={sample.type}
+                  variant="outline"
+                  className={cn(
+                    "gap-1.5 text-xs font-medium",
+                    getEventTone(sample.type),
+                  )}
+                >
+                  {sample.label}
+                </Badge>
+              ))}
+            </div>
+          }
+          importLine={`import { getEventLabel, getEventTone } from "@/components/dashboard/event-display";\n\n<Badge\n  variant="outline"\n  className={cn("gap-1.5 text-xs font-medium", getEventTone(event.eventType))}\n>\n  {getEventLabel(event.eventType, t)}\n</Badge>\n\n// Pair it with a relative timestamp rather than a full locale string —\n// DurationAgo (non-ticking) is the right one for a historical log:\n//   <span title={new Date(event.createdAt).toLocaleString()}>\n//     <DurationAgo since={event.createdAt} />\n//   </span>`}
+        />
+      </div>
+    </Section>
+  );
+}
+
+function LiveDotSection() {
+  return (
+    <Section
+      id="live-dot"
+      title="Live & pulse dots"
+      description="Bare status dots for list rows, where a full StatusDot with its label is too heavy. The pulsing variant marks a condition that is live RIGHT NOW (an active incident) — reserve the animation for that, because a page where several things pulse reads as noise and nothing draws the eye. Everything settled uses the static dot. For a labelled dot with an enabled/disabled state, use StatusDot instead."
+    >
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Pulsing (active incident)</h3>
+        <ExampleRow
+          preview={
+            <div className="flex items-center gap-6">
+              <span className="relative flex h-3 w-3" title="Active">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
+                <span className="relative inline-flex h-3 w-3 rounded-full bg-destructive" />
+              </span>
+              <span className="text-muted-foreground text-xs">
+                destructive · animate-ping
+              </span>
+            </div>
+          }
+          importLine={`// Two stacked spans: the ping expands and fades, the solid dot stays put.\n// The wrapper carries the tooltip so the animation never eats the hover.\n<span className="relative flex h-3 w-3" title={t("active")}>\n  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />\n  <span className="relative inline-flex h-3 w-3 rounded-full bg-destructive" />\n</span>`}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Static (settled state)</h3>
+        <ExampleRow
+          preview={
+            <div className="flex items-center gap-6">
+              <span
+                className="flex h-2.5 w-2.5 rounded-full bg-emerald-500"
+                title="Resolved"
+              />
+              <span className="text-muted-foreground text-xs">
+                emerald · no animation
+              </span>
+            </div>
+          }
+          importLine={`<span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500" title={t("resolved")} />`}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">
+          radar-ping utility (heartbeat halo)
+        </h3>
+        <ExampleRow
+          preview={
+            <div className="flex items-center gap-6">
+              <span className="radar-ping flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+              <span className="text-muted-foreground text-xs">
+                box-shadow halo · 2.5s loop
+              </span>
+            </div>
+          }
+          importLine={`// Defined in index.css (@utility radar-ping + @keyframes radar-pulse).\n// Unlike animate-ping this needs no second element — the halo is a\n// box-shadow on the dot itself, so it drops into a flex row cleanly.\n<span className="radar-ping flex h-2.5 w-2.5 rounded-full bg-emerald-500" />`}
+        />
+      </div>
+    </Section>
+  );
+}
+
+function ListSurfaceSection() {
+  return (
+    <Section
+      id="list-surface"
+      title="List surface"
+      description="How an index page wraps its table: a card-elevated surface with the header tinted a step down from the rows, and a hover tint that makes the whole row read as one click target. Row titles are the only thing that underlines on hover — everything else in the row stays quiet so the eye lands on the name. Pair with the empty state below; a list that renders nothing must say so rather than showing an empty frame."
+    >
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Card-wrapped table</h3>
+        <ExampleRow
+          preview={
+            <div className="w-full overflow-hidden rounded-xl border bg-card shadow-card">
+              <Table>
+                <TableHeader className="bg-muted/30">
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead className="w-[100px] text-right">
+                      Interval
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[
+                    { name: "api.example.com", type: "HTTP" },
+                    { name: "db.internal", type: "TCP" },
+                  ].map((row) => (
+                    <TableRow
+                      key={row.name}
+                      className="transition-colors hover:bg-muted/40"
+                    >
+                      <TableCell>
+                        <span className="font-medium text-foreground transition-colors hover:text-primary hover:underline">
+                          {row.name}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            PROTOCOL_BADGE_BASE,
+                            PROTOCOL_BADGE_TONES[row.type],
+                          )}
+                        >
+                          {row.type}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                        60s
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          }
+          importLine={`// The card wrapper owns the radius + shadow; overflow-hidden keeps the\n// table's own corners inside it.\n<div className="rounded-xl border bg-card shadow-card overflow-hidden">\n  <Table>\n    <TableHeader className="bg-muted/30">…</TableHeader>\n    <TableBody>\n      <TableRow className="hover:bg-muted/40 transition-colors">\n        <TableCell>\n          <Link className="font-medium text-foreground hover:text-primary hover:underline transition-colors">\n            {check.name}\n          </Link>\n        </TableCell>\n      </TableRow>\n    </TableBody>\n  </Table>\n</div>`}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Empty state</h3>
+        <ExampleRow
+          preview={
+            <div className="w-full space-y-3 rounded-xl border bg-card p-12 text-center shadow-card">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                <Inbox className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-medium text-foreground">
+                No checks yet
+              </p>
+              <p className="mx-auto max-w-sm text-xs text-muted-foreground">
+                Create your first check to start monitoring.
+              </p>
+            </div>
+          }
+          importLine={`// Same card surface as the table it replaces, so the page doesn't jump.\n// Tint the icon circle when the emptiness is GOOD news (no open incidents):\n//   bg-emerald-500/10 text-emerald-600 dark:text-emerald-400\n<div className="rounded-xl border bg-card p-12 text-center shadow-card space-y-3">\n  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">\n    <Inbox className="h-6 w-6 text-muted-foreground" />\n  </div>\n  <p className="font-medium text-sm text-foreground">No checks yet</p>\n  <p className="text-xs text-muted-foreground max-w-sm mx-auto">…</p>\n</div>`}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Row accents</h3>
+        <ExampleRow
+          preview={
+            <div className="flex flex-wrap items-center gap-4">
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/60">
+                <Inbox className="h-3.5 w-3.5 text-muted-foreground/70" />
+              </span>
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+                3
+              </span>
+              <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs font-semibold text-muted-foreground">
+                #42
+              </span>
+            </div>
+          }
+          importLine={`// Icon tile — a squircle behind a row-leading glyph\n<span className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/60" />\n\n// Ordinal pip — position in an ordered list (escalation steps, rotation order)\n<span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary" />\n\n// Mono ref chip — incident numbers, short ids\n<span className="font-mono text-xs font-semibold text-muted-foreground px-1.5 py-0.5 rounded bg-muted" />`}
+        />
+      </div>
+    </Section>
+  );
+}
+
 function ElevationSection() {
   return (
     <Section
       id="elevation"
       title="Elevation, aurora & glass"
-      description="Depth tokens that add polish without adding a new color. Tinted shadows carry the primary hue and are already baked into Button's default variant and Card — reach for the utilities only when styling a bespoke surface. The aurora panel + glass utility are for marketing surfaces ONLY (login split-screen, hero strips, empty-state splashes) — never operator data views."
+      description="Depth tokens that add polish without adding a new color, already baked into Button's default variant and Card — reach for the utilities only when styling a bespoke surface. Two families: the action shadows (--shadow-primary / --shadow-destructive) tint with their own hue via color-mix and so track the theme automatically, while --shadow-card is a fixed neutral slate for ambient lift. The aurora panel + glass utility are for marketing surfaces ONLY (login split-screen, hero strips, empty-state splashes) — never operator data views."
     >
       <div className="space-y-2">
         <h3 className="text-sm font-medium">
-          Tinted elevation (shadows carry the primary hue, auto-adapt to dark)
+          Elevation (action shadows tint with their hue; card shadow is neutral)
         </h3>
         <ExampleRow
           preview={
@@ -2380,7 +2639,7 @@ function ElevationSection() {
               </div>
             </>
           }
-          importLine={`// Defined in index.css @theme; color-mix keeps them tracking --primary.\n<div className="shadow-card" />      {/* cards, KPI tiles — soft ambient lift */}\n<Button className="shadow-primary" /> {/* primary CTA glow (default variant has it) */}\n<Card className="hover:shadow-card-hover transition" /> {/* lift on hover */}`}
+          importLine={`// Defined in index.css @theme.\n<div className="shadow-card" />      {/* cards, KPI tiles, list surfaces — ambient lift */}\n<Button className="shadow-primary" /> {/* primary CTA glow (default variant has it) */}\n<Card className="hover:shadow-card-hover transition" /> {/* lift on hover */}\n\n// --shadow-primary / --shadow-destructive use color-mix against their own\n// token, so they follow the theme. --shadow-card is a fixed slate rgba: it\n// reads correctly on light surfaces and stays deliberately near-invisible in\n// dark mode, where the card's own border does the separating instead.`}
         />
       </div>
 

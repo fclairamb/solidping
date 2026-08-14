@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { Plus, Search, RefreshCw, Pencil, Trash2, Wrench } from "lucide-react";
+import {
+  Plus,
+  Search,
+  RefreshCw,
+  Pencil,
+  Trash2,
+  Wrench,
+  Repeat,
+  AlertTriangle,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   useMaintenanceWindows,
@@ -31,7 +40,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Card, CardContent } from "@/components/ui/card";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { PageHeader } from "@/components/shared/page-header";
 import { ApiError } from "@/api/client";
@@ -57,9 +65,31 @@ function ChecksCountCell({ org, uid }: { org: string; uid: string }) {
   const { t } = useTranslation("maintenanceWindows");
   const { data: checks } = useMaintenanceWindowChecks(org, uid);
   const count = checks?.length ?? 0;
+
+  // A window with no attached checks suppresses nothing at all — the backend
+  // resolves membership purely through the join table, so an empty window is
+  // inert rather than org-wide. That is almost always a misconfiguration, so
+  // it gets the warning tint instead of reading as a neutral "0".
+  if (count === 0) {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-amber-700 dark:text-amber-400"
+        title={t("noChecksTitle")}
+      >
+        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+        {t("noChecks")}
+      </span>
+    );
+  }
+
   return (
-    <span className="text-muted-foreground">
-      {t("checksCount", { count })}
+    <span className="inline-flex items-center gap-1.5">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+        {count}
+      </span>
+      <span className="text-xs text-muted-foreground">
+        {t("checksLabel", { count })}
+      </span>
     </span>
   );
 }
@@ -76,28 +106,66 @@ function MaintenanceWindowRow({
   const { t } = useTranslation("maintenanceWindows");
   // Prefer the server-computed status when present (newer backends).
   const status = window.status ?? computeMaintenanceStatus(window);
+  const isRecurring = !!window.recurrence && window.recurrence !== "none";
   return (
-    <TableRow>
+    <TableRow className="transition-colors hover:bg-muted/40">
       <TableCell>
-        <Link
-          to="/orgs/$org/maintenance-windows/$maintenanceWindowUid"
-          params={{ org, maintenanceWindowUid: window.uid }}
-          className="font-medium hover:underline"
-          data-testid={`mw-row-view-${window.uid}`}
-        >
-          {window.title}
-        </Link>
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted/60">
+            {isRecurring ? (
+              <Repeat className="h-3.5 w-3.5 text-muted-foreground/70" />
+            ) : (
+              <Wrench className="h-3.5 w-3.5 text-muted-foreground/70" />
+            )}
+          </span>
+          <div className="min-w-0">
+            <Link
+              to="/orgs/$org/maintenance-windows/$maintenanceWindowUid"
+              params={{ org, maintenanceWindowUid: window.uid }}
+              className="font-medium text-foreground transition-colors hover:text-primary hover:underline"
+              data-testid={`mw-row-view-${window.uid}`}
+            >
+              {window.title}
+            </Link>
+            {window.description && (
+              <p className="max-w-[24rem] truncate text-xs text-muted-foreground">
+                {window.description}
+              </p>
+            )}
+          </div>
+        </div>
       </TableCell>
       <TableCell
-        className="text-muted-foreground max-w-[18rem] sm:max-w-none truncate"
+        // Capped at every breakpoint: the schedule string is unbounded
+        // ("Every Sunday, … · no end date"), and letting it size the column on
+        // desktop pushed the whole table past the viewport.
+        className="max-w-[18rem] truncate font-mono text-xs text-muted-foreground lg:max-w-[26rem]"
         data-testid={`mw-row-schedule-${window.uid}`}
+        title={describeSchedule(window, t)}
       >
         {describeSchedule(window, t)}
       </TableCell>
       <TableCell>
-        <Badge variant={maintenanceStatusBadgeVariant(status)}>
-          {t(`status.${status}`)}
-        </Badge>
+        {status === "active" ? (
+          // "Active" means suppression is happening RIGHT NOW — the pulse is
+          // reserved for exactly that kind of live condition.
+          <span className="inline-flex items-center gap-2">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500 opacity-75" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-500" />
+            </span>
+            <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
+              {t("status.active")}
+            </span>
+          </span>
+        ) : (
+          <Badge
+            variant={maintenanceStatusBadgeVariant(status)}
+            className="text-xs font-normal"
+          >
+            {t(`status.${status}`)}
+          </Badge>
+        )}
       </TableCell>
       <TableCell>
         <ChecksCountCell org={org} uid={window.uid} />
@@ -255,14 +323,19 @@ function MaintenanceWindowsIndexPage() {
           ))}
         </div>
       ) : filtered.length > 0 ? (
-        <div className="rounded-md border overflow-x-auto">
+        <div className="overflow-hidden rounded-xl border bg-card shadow-card">
+          <div className="overflow-x-auto">
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-muted/30">
               <TableRow>
                 <TableHead>{t("maintenanceWindows:table.title")}</TableHead>
                 <TableHead>{t("maintenanceWindows:table.schedule")}</TableHead>
-                <TableHead>{t("maintenanceWindows:table.status")}</TableHead>
-                <TableHead>{t("maintenanceWindows:table.checks")}</TableHead>
+                <TableHead className="w-[120px]">
+                  {t("maintenanceWindows:table.status")}
+                </TableHead>
+                <TableHead className="w-[140px]">
+                  {t("maintenanceWindows:table.checks")}
+                </TableHead>
                 <TableHead className="w-[50px]" />
               </TableRow>
             </TableHeader>
@@ -277,19 +350,29 @@ function MaintenanceWindowsIndexPage() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </div>
       ) : windows && windows.length > 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p>{t("maintenanceWindows:noMatch")}</p>
+        <div className="space-y-3 rounded-xl border bg-card p-12 text-center shadow-card">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <Search className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <p className="text-sm font-medium text-foreground">
+            {t("maintenanceWindows:noMatch")}
+          </p>
         </div>
       ) : (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <Wrench className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p>{t("maintenanceWindows:empty")}</p>
-          </CardContent>
-        </Card>
+        <div className="space-y-3 rounded-xl border bg-card p-12 text-center shadow-card">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <Wrench className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <p className="text-sm font-medium text-foreground">
+            {t("maintenanceWindows:empty")}
+          </p>
+          <p className="mx-auto max-w-sm text-xs text-muted-foreground">
+            {t("maintenanceWindows:emptyHint")}
+          </p>
+        </div>
       )}
 
       <AlertDialog

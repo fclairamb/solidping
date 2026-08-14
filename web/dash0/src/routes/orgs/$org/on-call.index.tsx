@@ -8,7 +8,6 @@ import {
   Plus,
   RefreshCw,
   Trash2,
-  UserCheck,
   Users,
 } from "lucide-react";
 import { toast } from "sonner";

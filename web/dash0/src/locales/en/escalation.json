@@ -3,8 +3,8 @@
     "title": "Escalation policies",
     "subtitle": "Reusable orchestration of paging steps with delays and cancellation on ack/snooze/resolve.",
     "create": "New policy",
-    "empty": "No escalation policies yet. Create one to start paging on incidents.",
-    "repeats": "Repeats {{count}}× every {{seconds}} seconds",
+    "empty": "Create one to start paging on incidents.",
+    "repeats": "Repeats {{count}}× every {{duration}}",
     "editToSeeSteps": "Open to see the steps.",
     "searchPlaceholder": "Search by name…",
     "noMatches": "No policies match your search.",
@@ -13,8 +13,18 @@
     "col": {
       "name": "Name",
       "description": "Description",
-      "repeats": "Repeats"
-    }
+      "repeats": "Repeats",
+      "steps": "Steps",
+      "usedBy": "Used by"
+    },
+    "usedChecks_one": "{{count}} check",
+    "usedChecks_other": "{{count}} checks",
+    "usedGroups_one": "{{count}} group",
+    "usedGroups_other": "{{count}} groups",
+    "unused": "Unused",
+    "emptyTitle": "No escalation policies yet",
+    "stepsLabel_one": "step",
+    "stepsLabel_other": "steps"
   },
   "new": {
     "title": "New escalation policy"

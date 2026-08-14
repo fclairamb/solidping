@@ -3,16 +3,26 @@
     "title": "Politiques d'escalade",
     "subtitle": "Orchestration réutilisable d'étapes d'alerte avec délais et annulation lors de l'acquittement, de la mise en sourdine ou de la résolution.",
     "create": "Nouvelle politique",
-    "empty": "Aucune politique d'escalade pour l'instant. Créez-en une pour commencer à recevoir des alertes lors d'incidents.",
-    "repeats": "Répète {{count}}× toutes les {{seconds}} secondes",
+    "empty": "Créez-en une pour commencer à alerter sur les incidents.",
+    "repeats": "Répète {{count}}× toutes les {{duration}}",
     "editToSeeSteps": "Ouvrez pour voir les étapes.",
     "searchPlaceholder": "Rechercher par nom…",
     "noMatches": "Aucune politique ne correspond à votre recherche.",
     "col": {
       "name": "Nom",
       "description": "Description",
-      "repeats": "Répétitions"
-    }
+      "repeats": "Répétitions",
+      "steps": "Étapes",
+      "usedBy": "Utilisée par"
+    },
+    "usedChecks_one": "{{count}} contrôle",
+    "usedChecks_other": "{{count}} contrôles",
+    "usedGroups_one": "{{count}} groupe",
+    "usedGroups_other": "{{count}} groupes",
+    "unused": "Inutilisée",
+    "emptyTitle": "Aucune politique d'escalade",
+    "stepsLabel_one": "étape",
+    "stepsLabel_other": "étapes"
   },
   "new": {
     "title": "Nouvelle politique d'escalade"

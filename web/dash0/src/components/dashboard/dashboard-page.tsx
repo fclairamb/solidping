@@ -15,9 +15,7 @@ import {
   LayoutDashboard,
   ListChecks,
   RefreshCw,
-  ShieldCheck,
   TrendingUp,
-  Zap,
 } from "lucide-react";
 import {
   useCheckStats,
@@ -803,11 +801,6 @@ interface ChecksGlanceListProps {
   isError: boolean;
   onRetry: () => void;
   tickNow: number;
-}
-
-function formatLatency(durationMs?: number): string {
-  if (durationMs === undefined) return "—";
-  return `${Math.round(durationMs)}ms`;
 }
 
 function ChecksGlanceList({
