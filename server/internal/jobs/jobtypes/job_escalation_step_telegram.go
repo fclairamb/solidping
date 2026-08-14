@@ -27,6 +27,9 @@ const (
 	// incident lifetime, but bounded so the state table cannot grow without
 	// limit.
 	telegramThreadTTL = 7 * 24 * time.Hour
+	// telegramThreadMessageIDField is the key holding the anchor message id
+	// inside a thread-anchor state entry.
+	telegramThreadMessageIDField = "messageId"
 )
 
 // pageTelegram delivers an escalation alert to a user's connected Telegram chat
@@ -87,9 +90,9 @@ func (r *EscalationStepJobRun) pageTelegram(
 		return 0
 	}
 
-	params := r.telegramAlertParams(ctx, jctx, log, incident)
+	params := telegramAlertParams(ctx, jctx, log, incident)
 
-	messageID, err := r.sendTelegramAlert(ctx, jctx, log, client, incident, contact.Value, params)
+	messageID, err := sendTelegramAlert(ctx, jctx, log, client, incident, contact.Value, params)
 	if err != nil {
 		reason := telegram.FailureReason(err)
 
@@ -145,17 +148,11 @@ func (r *EscalationStepJobRun) reserveTelegram(
 // telegramAlertParams assembles the RAW (unescaped) alert values. Escaping
 // happens exactly once, inside telegram.BuildAlertHTML — pre-escaping here
 // would double-escape and render "&amp;amp;".
-func (r *EscalationStepJobRun) telegramAlertParams(
-	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, incident *models.Incident,
-) *telegram.AlertParams {
-	return telegramAlertParamsFor(ctx, jctx, log, incident)
-}
-
-// telegramAlertParamsFor is the run-independent form of telegramAlertParams.
-// Nothing here reads escalation-step state, and the resolution-notice job needs
-// the very same values, so the body lives outside the run type and both callers
-// share ONE definition of what a Telegram incident message says.
-func telegramAlertParamsFor(
+//
+// A plain function rather than a method on the escalation run: nothing here
+// reads run state, and the resolution-notice job needs the very same values, so
+// both callers share ONE definition of what a Telegram message says.
+func telegramAlertParams(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, incident *models.Incident,
 ) *telegram.AlertParams {
 	orgSlug := orgSlugForOrg(ctx, jctx, log, incident.OrganizationUID)
@@ -189,27 +186,19 @@ func telegramAckKeyboard(incident *models.Incident) *telegram.InlineKeyboard {
 // Threading is a nicety and may NEVER cost a delivery: a missing or expired
 // thread anchor sends standalone, and a reply id Telegram rejects (the user
 // deleted the original) is retried immediately without it.
-func (r *EscalationStepJobRun) sendTelegramAlert(
-	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
-	client *telegram.Client, incident *models.Incident, chatID string,
-	params *telegram.AlertParams,
-) (int64, error) {
-	return sendTelegramAlertShared(ctx, jctx, log, client, incident, chatID, params)
-}
-
-// sendTelegramAlertShared is the run-independent send path: threading, the
-// rejected-anchor degradation, the resolution edit and the retry_after handling
-// all live here exactly once. The escalation step and the resolution-notice job
-// both go through it — duplicating any of this is how the two paths would drift
-// into disagreeing about what a resolved incident looks like in a chat.
-func sendTelegramAlertShared(
+//
+// Threading, that degradation, the resolution edit and the retry_after handling
+// live here exactly once: the escalation step and the resolution-notice job both
+// go through this function, because duplicating any of it is how the two paths
+// would drift into disagreeing about what a resolved incident looks like.
+func sendTelegramAlert(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	client *telegram.Client, incident *models.Incident, chatID string,
 	params *telegram.AlertParams,
 ) (int64, error) {
 	body := telegram.BuildAlertHTML(params)
 	keyboard := telegramAckKeyboard(incident)
-	replyTo := telegramThreadAnchorFor(ctx, jctx, log, incident, chatID)
+	replyTo := telegramThreadAnchor(ctx, jctx, log, incident, chatID)
 
 	messageID, err := sendTelegramHonoringRetryAfter(ctx, log, client, &telegram.Message{
 		ChatID:           chatID,
@@ -221,7 +210,7 @@ func sendTelegramAlertShared(
 	if err != nil && replyTo != 0 && errors.Is(err, telegram.ErrReplyTargetMissing) {
 		log.InfoContext(ctx, "telegram thread anchor is gone; sending standalone",
 			"incidentUID", incident.UID, "chatId", chatID)
-		clearTelegramThreadAnchorFor(ctx, jctx, log, incident, chatID)
+		clearTelegramThreadAnchor(ctx, jctx, log, incident, chatID)
 
 		messageID, err = sendTelegramHonoringRetryAfter(
 			ctx, log, client, &telegram.Message{ChatID: chatID, HTML: body, ReplyMarkup: keyboard},
@@ -302,15 +291,7 @@ func telegramThreadKey(incidentUID, chatID string) string {
 
 // telegramThreadAnchor returns the message id to reply to, or 0 when this is
 // the first alert for the incident in this chat (or the anchor expired).
-func (r *EscalationStepJobRun) telegramThreadAnchor(
-	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
-	incident *models.Incident, chatID string,
-) int64 {
-	return telegramThreadAnchorFor(ctx, jctx, log, incident, chatID)
-}
-
-// telegramThreadAnchorFor is the run-independent form of telegramThreadAnchor.
-func telegramThreadAnchorFor(
+func telegramThreadAnchor(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	incident *models.Incident, chatID string,
 ) int64 {
@@ -330,7 +311,7 @@ func telegramThreadAnchorFor(
 	}
 
 	// JSONMap round-trips numbers as float64 through JSON.
-	switch id := (*entry.Value)["messageId"].(type) {
+	switch id := (*entry.Value)[telegramThreadMessageIDField].(type) {
 	case float64:
 		return int64(id)
 	case int64:
@@ -355,12 +336,12 @@ func (r *EscalationStepJobRun) recordTelegramThread(
 	orgUID := incident.OrganizationUID
 	key := telegramThreadKey(incident.UID, chatID)
 
-	if existing := r.telegramThreadAnchor(ctx, jctx, log, incident, chatID); existing != 0 {
+	if existing := telegramThreadAnchor(ctx, jctx, log, incident, chatID); existing != 0 {
 		return
 	}
 
 	ttl := telegramThreadTTL
-	value := &models.JSONMap{"messageId": messageID}
+	value := &models.JSONMap{telegramThreadMessageIDField: messageID}
 
 	if err := jctx.DBService.SetStateEntry(ctx, &orgUID, key, value, &ttl); err != nil {
 		// Threading is cosmetic; losing the anchor only means the next alert
@@ -372,16 +353,7 @@ func (r *EscalationStepJobRun) recordTelegramThread(
 
 // clearTelegramThreadAnchor drops an anchor Telegram no longer accepts, so the
 // next alert does not pay the same rejected round-trip again.
-func (r *EscalationStepJobRun) clearTelegramThreadAnchor(
-	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
-	incident *models.Incident, chatID string,
-) {
-	clearTelegramThreadAnchorFor(ctx, jctx, log, incident, chatID)
-}
-
-// clearTelegramThreadAnchorFor is the run-independent form of
-// clearTelegramThreadAnchor.
-func clearTelegramThreadAnchorFor(
+func clearTelegramThreadAnchor(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	incident *models.Incident, chatID string,
 ) {

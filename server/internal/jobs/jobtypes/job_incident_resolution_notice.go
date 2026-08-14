@@ -183,7 +183,7 @@ func telegramClientFor(
 func resolutionAlertParams(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, incident *models.Incident,
 ) *telegram.AlertParams {
-	params := telegramAlertParamsFor(ctx, jctx, log, incident)
+	params := telegramAlertParams(ctx, jctx, log, incident)
 	params.State = telegram.StateResolved
 
 	if detail := telegramResolvedDetail(incident); detail != "" {
@@ -370,7 +370,7 @@ func (r *IncidentResolutionNoticeJobRun) notifyChat(
 		return
 	}
 
-	messageID, err := sendTelegramAlertShared(ctx, jctx, log, client, incident, chatID, params)
+	messageID, err := sendTelegramAlert(ctx, jctx, log, client, incident, chatID, params)
 	if err != nil {
 		if telegramFailureIsTransient(err) {
 			r.transient = true
@@ -388,7 +388,7 @@ func (r *IncidentResolutionNoticeJobRun) notifyChat(
 		// The anchor has done its job. Dropping it is what stops a later reopen →
 		// re-resolve from sending a second notice for a relapse the person was
 		// never paged about.
-		clearTelegramThreadAnchorFor(ctx, jctx, log, incident, chatID)
+		clearTelegramThreadAnchor(ctx, jctx, log, incident, chatID)
 	}
 
 	auditResolutionSend(ctx, jctx, log, incident, chatID, messageID)

@@ -51,7 +51,7 @@ func seedThreadAnchor(t *testing.T, env *phoneTestEnv, chatID string, messageID 
 	ctx := context.Background()
 	orgUID := env.org.UID
 	ttl := telegramThreadTTL
-	value := &models.JSONMap{"messageId": messageID}
+	value := &models.JSONMap{telegramThreadMessageIDField: messageID}
 
 	require.NoError(t, env.db.SetStateEntry(
 		ctx, &orgUID, telegramThreadKey(env.incident.UID, chatID), value, &ttl,
@@ -89,10 +89,11 @@ func newResolutionRun(env *phoneTestEnv) *IncidentResolutionNoticeJobRun {
 
 // seedTelegramUser creates a user with a verified Telegram contact AND an
 // enabled notification route, which is how the fallback path finds a chat id.
-func seedTelegramUser(t *testing.T, env *phoneTestEnv, chatID string, verified bool) *models.User {
+func seedTelegramUser(t *testing.T, env *phoneTestEnv, verified bool) *models.User {
 	t.Helper()
 
 	ctx := context.Background()
+	chatID := resolutionChatA
 
 	user := models.NewUser("oncall-" + chatID + "@example.com")
 	require.NoError(t, env.db.CreateUser(ctx, user))
@@ -254,7 +255,7 @@ func TestResolutionNotice_RecordsASentAuditRow(t *testing.T) {
 	_, baseURL := newFakeBotAPI(t, botReply{http.StatusOK, botOK(201)})
 	enableTelegram(env, baseURL)
 
-	user := seedTelegramUser(t, env, resolutionChatA, true)
+	user := seedTelegramUser(t, env, true)
 	seedThreadAnchor(t, env, resolutionChatA, 100)
 	resolveTestIncident(t, env, time.Minute)
 
@@ -352,7 +353,7 @@ func TestResolutionNotice_FallsBackToAuditRowsWhenAnchorIsGone(t *testing.T) {
 	fake, baseURL := newFakeBotAPI(t, botReply{http.StatusOK, botOK(201)})
 	enableTelegram(env, baseURL)
 
-	user := seedTelegramUser(t, env, resolutionChatA, true)
+	user := seedTelegramUser(t, env, true)
 	seedPageAuditRow(t, env, user.UID)
 	// Deliberately NO thread anchor: this is the expired-TTL case.
 	resolveTestIncident(t, env, 3*time.Minute)
@@ -385,7 +386,7 @@ func TestResolutionNotice_AuditFallbackSkipsAnchoredChats(t *testing.T) {
 	fake, baseURL := newFakeBotAPI(t)
 	enableTelegram(env, baseURL)
 
-	user := seedTelegramUser(t, env, resolutionChatA, true)
+	user := seedTelegramUser(t, env, true)
 	seedPageAuditRow(t, env, user.UID)
 	seedThreadAnchor(t, env, resolutionChatA, 100)
 	resolveTestIncident(t, env, time.Minute)
@@ -406,7 +407,7 @@ func TestResolutionNotice_UnlinkedContactIsSkipped(t *testing.T) {
 	fake, baseURL := newFakeBotAPI(t)
 	enableTelegram(env, baseURL)
 
-	user := seedTelegramUser(t, env, resolutionChatA, false)
+	user := seedTelegramUser(t, env, false)
 	seedPageAuditRow(t, env, user.UID)
 	resolveTestIncident(t, env, time.Minute)
 
@@ -426,7 +427,7 @@ func TestResolutionNotice_AuditFallbackIgnoresItsOwnRows(t *testing.T) {
 	fake, baseURL := newFakeBotAPI(t)
 	enableTelegram(env, baseURL)
 
-	user := seedTelegramUser(t, env, resolutionChatA, true)
+	user := seedTelegramUser(t, env, true)
 	resolveTestIncident(t, env, time.Minute)
 
 	// A resolved-event row exists (as this job writes), but no page ever happened.
@@ -509,7 +510,7 @@ func TestResolutionNotice_ReopenRelapseSendsExactlyOneNotice(t *testing.T) {
 	fake, baseURL := newFakeBotAPI(t)
 	enableTelegram(env, baseURL)
 
-	user := seedTelegramUser(t, env, resolutionChatA, true)
+	user := seedTelegramUser(t, env, true)
 	seedPageAuditRow(t, env, user.UID)
 	seedThreadAnchor(t, env, resolutionChatA, 100)
 
@@ -561,7 +562,7 @@ func TestResolutionNotice_GroupIncidentNotifies(t *testing.T) {
 	orgUID := env.org.UID
 	ttl := telegramThreadTTL
 	r.NoError(env.db.SetStateEntry(ctx, &orgUID,
-		telegramThreadKey(groupIncident.UID, resolutionChatA), &models.JSONMap{"messageId": 100}, &ttl))
+		telegramThreadKey(groupIncident.UID, resolutionChatA), &models.JSONMap{telegramThreadMessageIDField: 100}, &ttl))
 
 	run := &IncidentResolutionNoticeJobRun{
 		config: IncidentResolutionNoticeJobConfig{
