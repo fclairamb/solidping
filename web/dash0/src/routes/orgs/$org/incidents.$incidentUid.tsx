@@ -19,7 +19,6 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import {
   useIncident,
@@ -84,6 +83,7 @@ import { Trans } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TimeAgo } from "@/components/ui/time-ago";
 import {
   Card,
   CardContent,
@@ -164,7 +164,11 @@ function TimelineItem({
       <div className="flex-1">
         <div className="font-medium">{label}</div>
         <div className="text-sm text-muted-foreground">
-          {timestamp ? new Date(timestamp).toLocaleString() : "-"}
+          {timestamp ? (
+            <TimeAgo date={timestamp} variant="inline" data-testid="incident-timeline-time" />
+          ) : (
+            "-"
+          )}
         </div>
       </div>
     </div>
@@ -427,7 +431,11 @@ function StatusUpdatesPanel({ org, incidentUid }: { org: string; incidentUid: st
                   <div className="min-w-0">
                     <div className="font-medium text-sm truncate">{u.title}</div>
                     <div className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(u.publishedAt), { addSuffix: true })}
+                      <TimeAgo
+                        date={u.publishedAt}
+                        variant="inline"
+                        data-testid="status-update-time"
+                      />
                     </div>
                   </div>
                 </div>
@@ -572,9 +580,11 @@ function CommentsCard({ org, incidentUid }: { org: string; incidentUid: string }
                     </Badge>
                   )}
                   <span className="text-xs text-muted-foreground">
-                    {c.createdAt
-                      ? formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })
-                      : ""}
+                    {c.createdAt ? (
+                      <TimeAgo date={c.createdAt} variant="inline" data-testid="comment-time" />
+                    ) : (
+                      ""
+                    )}
                   </span>
                 </div>
                 <p className="whitespace-pre-wrap break-words text-sm">
