@@ -1,7 +1,16 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { CalendarClock, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import {
+  CalendarClock,
+  Globe,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Trash2,
+  UserCheck,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -10,6 +19,7 @@ import {
   type OnCallSchedule,
 } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -104,26 +114,40 @@ function OnCallListPage() {
         </Button>
       </div>
 
-      <div className="rounded-md border">
+      <div className="rounded-xl border bg-card shadow-card overflow-hidden">
         {isLoading ? (
-          <div className="space-y-2 p-2">
-            {[...Array(6)].map((_, i) => (
-              <Skeleton key={i} className="h-12 rounded-lg" />
+          <div className="space-y-2 p-4">
+            {[...Array(3)].map((_, i) => (
+              <Skeleton key={i} className="h-14 rounded-lg" />
             ))}
           </div>
         ) : isEmpty ? (
-          <p className="py-12 text-center text-sm text-muted-foreground">
-            {t("oncall:list.empty")}
-          </p>
+          <div className="py-16 text-center space-y-3">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+              <Users className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="font-semibold text-sm">{t("oncall:list.empty")}</h3>
+              <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                Create a rotation to route alerts to active responders during scheduled shifts.
+              </p>
+            </div>
+            <Button asChild size="sm">
+              <Link to="/orgs/$org/on-call/new" params={{ org }}>
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                {t("oncall:list.create")}
+              </Link>
+            </Button>
+          </div>
         ) : (
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-muted/30">
               <TableRow>
                 <TableHead>{t("oncall:list.col.name")}</TableHead>
                 <TableHead>{t("oncall:list.col.timezone")}</TableHead>
                 <TableHead>{t("oncall:list.col.rotation")}</TableHead>
                 <TableHead>{t("oncall:list.col.currentlyOnCall")}</TableHead>
-                <TableHead className="w-[100px]" />
+                <TableHead className="w-[100px] text-right" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -182,33 +206,55 @@ function ScheduleRow({ org, schedule, onDelete }: ScheduleRowProps) {
       ? t("oncall:detail.rotationDaily")
       : t("oncall:detail.rotationWeekly");
 
+  const initials = schedule.currentlyOnCall?.name
+    ? schedule.currentlyOnCall.name
+        .split(" ")
+        .map((p) => p[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : "—";
+
   return (
-    <TableRow data-testid="oncall-row">
+    <TableRow data-testid="oncall-row" className="hover:bg-muted/40 transition-colors">
       <TableCell>
         <Link
           to="/orgs/$org/on-call/$uid"
           params={{ org, uid: schedule.uid }}
-          className="font-medium hover:underline"
+          className="font-medium text-foreground hover:text-primary hover:underline transition-colors"
         >
           {schedule.name}
         </Link>
       </TableCell>
       <TableCell className="text-sm text-muted-foreground">
-        {schedule.timezone}
+        <div className="flex items-center gap-1.5 font-mono text-xs">
+          <Globe className="h-3.5 w-3.5 text-muted-foreground/70" />
+          {schedule.timezone}
+        </div>
       </TableCell>
-      <TableCell className="text-sm text-muted-foreground">
-        {rotationLabel}
+      <TableCell>
+        <Badge variant="outline" className="text-xs font-normal">
+          {rotationLabel}
+        </Badge>
       </TableCell>
-      <TableCell className="text-sm">
+      <TableCell>
         {schedule.currentlyOnCall ? (
-          <span className="font-medium">{schedule.currentlyOnCall.name}</span>
+          <div className="flex items-center gap-2">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+              {initials}
+            </span>
+            <div className="flex flex-col">
+              <span className="font-medium text-sm text-foreground">{schedule.currentlyOnCall.name}</span>
+            </div>
+            <span className="flex h-2 w-2 rounded-full bg-emerald-500" title="Active on duty" />
+          </div>
         ) : (
-          <span className="text-muted-foreground">
+          <span className="text-muted-foreground text-xs">
             {t("oncall:list.noOneOnCall")}
           </span>
         )}
       </TableCell>
-      <TableCell>
+      <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
           <Button asChild variant="ghost" size="icon" aria-label={t("oncall:detail.edit")}>
             <Link
