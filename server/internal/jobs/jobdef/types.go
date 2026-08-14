@@ -25,6 +25,13 @@ const (
 	// Canceled via the same incidentUid match the notification job uses, so
 	// ack/snooze/resolve drops the rest of the policy without extra wiring.
 	JobTypeEscalationStep JobType = "escalation_step"
+	// JobTypeIncidentResolutionNotice tells the PEOPLE who were paged for an
+	// incident that it is over. Channel connections hear the whole lifecycle
+	// through JobTypeNotification, but person contacts are only ever reached by
+	// the escalation step, whose contract is "fire while the incident is
+	// unhandled" — so without this job the on-call engineer is paged and then
+	// never told the incident ended. V1 covers Telegram (spec 2026-08-14-01).
+	JobTypeIncidentResolutionNotice JobType = "incident_resolution_notice"
 	// JobTypeNetworkDiscovery scans a set of CIDR ranges for responsive hosts and
 	// records suggested checks in the discovered_checks table (grouped by IP) for
 	// operator review and promotion.
