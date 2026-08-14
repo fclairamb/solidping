@@ -1,11 +1,11 @@
 import { useTranslation } from "react-i18next";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Workflow } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TimeAgoOrDash } from "@/components/ui/time-ago";
 import {
   Card,
   CardContent,
@@ -46,15 +46,6 @@ function jobStatusVariant(status: string): BadgeVariant {
       return "destructive";
     default:
       return "outline";
-  }
-}
-
-function relative(value: string | null | undefined): string {
-  if (!value) return "—";
-  try {
-    return formatDistanceToNow(new Date(value), { addSuffix: true });
-  } catch {
-    return "—";
   }
 }
 
@@ -129,9 +120,15 @@ function BackgroundJobDetailPage() {
                 {t(`status.${job.status}`, job.status)}
               </Badge>
             </MetaRow>
-            <MetaRow label={t("columns.scheduled")}>{relative(job.scheduledAt)}</MetaRow>
-            <MetaRow label="Created">{relative(job.createdAt)}</MetaRow>
-            <MetaRow label={t("columns.updated")}>{relative(job.updatedAt)}</MetaRow>
+            <MetaRow label={t("columns.scheduled")}>
+              <TimeAgoOrDash date={job.scheduledAt} data-testid="job-scheduled-at" />
+            </MetaRow>
+            <MetaRow label="Created">
+              <TimeAgoOrDash date={job.createdAt} data-testid="job-created-at" />
+            </MetaRow>
+            <MetaRow label={t("columns.updated")}>
+              <TimeAgoOrDash date={job.updatedAt} data-testid="job-updated-at" />
+            </MetaRow>
             <MetaRow label={t("columns.retries")}>{job.retryCount}</MetaRow>
           </dl>
         </CardContent>
@@ -185,7 +182,7 @@ function BackgroundJobDetailPage() {
                       </Link>
                     )}
                     <span className="text-xs text-muted-foreground">
-                      {relative(entry.updatedAt)}
+                      <TimeAgoOrDash date={entry.updatedAt} />
                     </span>
                   </li>
                 );
