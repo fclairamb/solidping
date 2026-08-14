@@ -2,7 +2,7 @@
 
 Operator runbook for spec `2026-07-26-01` (CNAME-only verification + in-server
 ACME). Covers the k8xp deployment prerequisite and the live acceptance
-checklist for `status-page.webingenia.com`.
+checklist for `status.webingenia.com`.
 
 Everything in the repo (code, migrations, tests) is done; the items below are
 **infrastructure and DNS actions a human has to take**, plus the manual
@@ -29,7 +29,7 @@ acceptance run that closes the spec.
 
 The dev/SaaS deployment at `solidping.k8xp.com` runs behind an ingress that
 terminates TLS for **known hostnames only**. Custom domains are by definition
-not known ahead of time, so today a request to `https://status-page.webingenia.com/`
+not known ahead of time, so today a request to `https://status.webingenia.com/`
 never reaches the pod with a usable TLS handshake.
 
 Pick **one** of the following. This is an explicit ops decision — it is out of
@@ -124,8 +124,37 @@ Leave `SP_ACME_ENABLED` unset and run a Caddy sidecar with `on_demand_tls`
 gated on `/api/v1/public/custom-domains/allowed`. This is the pre-existing
 setup and needs no code from this spec beyond the single-CNAME change.
 
-**Record the option actually chosen, the date, and the applied manifests in
-this file when the change lands.**
+### ✅ Chosen: option A, applied 2026-08-14 (k8xp `solidping-dev`)
+
+Traefik SNI passthrough with PROXY protocol v2, on solidping `v0.15.1`.
+Manifests live in the `k8xp` repo under `k8s/solidping/overlays/dev/`:
+
+| File | What it does |
+| --- | --- |
+| `ingressroute-tcp.yaml` | `IngressRouteTCP`, entrypoint `websecure`, ``HostSNI(`*`)``, `tls.passthrough: true`, → `solidping:443` with `proxyProtocol.version: 2` |
+| `ingressroute-http.yaml` | `IngressRoute`, entrypoint `web`, ``PathPrefix(`/`)`` at `priority: 1`, → `solidping:80` (HTTP-01 + the 308) |
+| `service-patch.yaml` | adds ports 80/443 to the `solidping` Service |
+| `environment-patch.yaml` | `SP_ACME_ENABLED`, `SP_ACME_EMAIL`, `SP_ACME_PROXY_PROTOCOL`, `SP_ACME_PROXY_PROTOCOL_TRUSTED_CIDRS=10.42.0.0/16`, `SP_CUSTOM_DOMAIN_CNAME_TARGET` |
+
+Two things about this edge that are not obvious and cost time to establish:
+
+- **The catch-all does not starve the other hosts.** Traefik's `ServeTCP`
+  (v3.7.4, `pkg/server/router/tcp/router.go`) tries host-specific HTTPS routers
+  first, then host-specific TCP routers, *then* the HTTPS catch-all, and only
+  then the TCP catch-all. So ``HostSNI(`*`)`` is a fallback, not a competitor —
+  verified live against 8 unrelated cluster hosts, all unaffected. The trap is
+  the ordering of the last two: **any TLS router with no Host rule registers as
+  an HTTPS catch-all and outranks this router**, silently starving it. Keep
+  every Ingress host-scoped.
+- **:80 must be an HTTP router, not a TCP one.** Traefik's non-TLS branch
+  matches the TCP muxer *without* the catch-all guard, so a ``HostSNI(`*`)``
+  TCP router on `web` swallows plain HTTP cluster-wide, cert-manager's own
+  HTTP-01 solvers included. The HTTP router at `priority: 1` is safe because it
+  merely loses every priority comparison.
+
+TLS-ALPN-01 does **not** survive the passthrough: Traefik answers ACME-TLS/1
+ALPN connections itself, above the muxers. Issuance goes through HTTP-01, which
+is why both routes are required rather than just the TCP one.
 
 ### Token mode extra requirement
 
@@ -160,53 +189,88 @@ Then clear `SP_ACME_CA_URL`, wipe the staging assets
 (`delete from tls_storage;` — safe: everything is re-issued on demand) and
 repeat on production.
 
-## 4. Live acceptance checklist — `status-page.webingenia.com`
+## 4. Live acceptance run — ✅ `status.webingenia.com`, 2026-08-14
 
-Run this by hand once section 2 has landed. DNS for `webingenia.com` is
-controlled by the operator; pre-create:
+Run against org `webingenia`, status page `webingenia`
+(`a31cd829-ca4d-4f4c-bbe7-7e8da4bdbd7f`). The hostname is `status.` and not the
+`status-page.` this runbook originally proposed. DNS record added directly via
+the OVH record API (**not** `import-zones-to-ovh.py --import`, which rewrites
+every record in the zone) and mirrored into `k8xp` `domain_zones/webingenia.com.txt`:
 
 ```
-status-page.webingenia.com.  CNAME  solidping.k8xp.com.
+status.webingenia.com.  CNAME  solidping.k8xp.com.
 ```
 
-- [ ] Claim `status-page.webingenia.com` on a status page in dash0; verify
-      turns green via the Verify button.
-- [ ] `https://status-page.webingenia.com/` serves the status page with a valid
-      publicly-trusted certificate (first request may take a few seconds — on-demand
-      issuance).
-- [ ] Cert material present in `tls_storage` (survives a pod restart — restart
-      and confirm no re-issuance in logs).
-- [ ] `http://status-page.webingenia.com/` 308-redirects to https.
-- [ ] `/dash0` and non-allowlisted API paths return 404 on the custom host.
-- [ ] Clearing the domain in dash0 → host stops serving within the cache TTL;
-      re-adding restores it.
+A first full pass was done against Let's Encrypt **staging**, then
+`SP_ACME_CA_URL` was cleared and the staging rows dropped from `tls_storage`
+(`delete from tls_storage where key like '%acme-staging-v02%'` — certmagic
+namespaces storage per CA, so the production assets were never at risk).
+
+- [x] Verify turns green — `customDomainStatus: verified`.
+- [x] `https://status.webingenia.com/` serves the status page with a
+      publicly-trusted certificate (`ssl_verify_result=0`, LE `YE1`). First
+      handshake took ~14 s while the certificate was obtained.
+- [x] Cert material present in `tls_storage`; survives a pod restart with **no**
+      re-issuance line in the log.
+- [x] `http://status.webingenia.com/` 308-redirects to https.
+- [x] `/dash0`, `/docs` and org API paths all return 404 on the custom host.
+- [x] PROXY v2 carries the real client: the pod logs the external client IP,
+      not the Traefik pod's `10.42.x.x`.
+- [x] An unrelated hostname pointed at the edge (`nope.example.com`) is refused
+      before any CA traffic — `tlsedge: refusing certificate for unknown host`.
+- [x] Re-adding a cleared domain restores serving from the stored certificate
+      (`customDomainCertStatus: issued`, no new issuance).
+- [⚠️] Clearing the domain stops the **status page** but not the host — see below.
+
+### ⚠️ Finding: a cleared domain still serves the dashboard
+
+Clearing `customDomain` behaves as documented for everything the decision func
+governs — `/api/v1/public/custom-domains/allowed` flips to 404 immediately, the
+status page stops being served, renewal stops. But the hostname does **not**
+stop responding:
+
+- The certificate is already in `tls_storage`, and the decision func gates
+  *issuance*, not serving from cache. So the TLS handshake keeps succeeding
+  with a valid publicly-trusted certificate until it expires (up to 90 days).
+- With no custom-domain mapping, the request falls through to the instance's
+  own-host routing instead of being rejected, so the host now `302`s to
+  `/dash0/` and serves the dashboard SPA — on a hostname the installation no
+  longer claims. The custom-host path allowlist (which correctly 404s `/dash0`)
+  only applies while the mapping exists.
+
+Not an authentication hole — the dashboard still requires a login — but it does
+mean a released or transferred domain keeps a working certificate and a
+SolidPing dashboard on it, which is exactly the takeover scenario section 3 of
+the feature doc says the re-verification sweep exists to close. Worth either
+dropping the cached certificate when a domain is unmapped, or refusing unmapped
+hostnames outright at the edge.
 
 Useful commands while running it:
 
 ```bash
 # 1. Verification state and the record the dashboard is showing.
 TOKEN=$(curl -s -X POST -H 'Content-Type: application/json' \
-  -d '{"org":"default","email":"...","password":"..."}' \
+  -d '{"org":"webingenia","email":"...","password":"..."}' \
   'https://solidping.k8xp.com/api/v1/auth/login' | jq -r '.accessToken')
 curl -s -H "Authorization: Bearer $TOKEN" \
-  'https://solidping.k8xp.com/api/v1/orgs/default/status-pages/<uid>' \
+  'https://solidping.k8xp.com/api/v1/orgs/webingenia/status-pages/a31cd829-ca4d-4f4c-bbe7-7e8da4bdbd7f' \
   | jq '{customDomain, customDomainStatus, customDomainCertStatus, customDomainRecords}'
 
 # 2. The external-proxy contract still answers (unchanged by this spec).
 curl -so /dev/null -w '%{http_code}\n' \
-  'https://solidping.k8xp.com/api/v1/public/custom-domains/allowed?domain=status-page.webingenia.com'
+  'https://solidping.k8xp.com/api/v1/public/custom-domains/allowed?domain=status.webingenia.com'
 
 # 3. Certificate actually presented on the custom host.
-openssl s_client -connect status-page.webingenia.com:443 \
-  -servername status-page.webingenia.com </dev/null 2>/dev/null \
+openssl s_client -connect status.webingenia.com:443 \
+  -servername status.webingenia.com </dev/null 2>/dev/null \
   | openssl x509 -noout -subject -issuer -dates
 
 # 4. HTTP -> HTTPS redirect.
-curl -sI http://status-page.webingenia.com/ | head -3
+curl -sI http://status.webingenia.com/ | head -3
 
 # 5. Custom-host allowlist (both must be 404).
-curl -so /dev/null -w '%{http_code}\n' https://status-page.webingenia.com/dash0
-curl -so /dev/null -w '%{http_code}\n' https://status-page.webingenia.com/api/v1/orgs/default/checks
+curl -so /dev/null -w '%{http_code}\n' https://status.webingenia.com/dash0
+curl -so /dev/null -w '%{http_code}\n' https://status.webingenia.com/api/v1/orgs/webingenia/checks
 
 # 6. Stored TLS assets (keys only — NEVER dump values, they are private keys).
 psql "$DSN" -c "select key, length(value), modified_at from tls_storage order by key;"
@@ -220,7 +284,7 @@ kubectl -n solidping-dev logs deploy/solidping | grep tlsedge
 
 | Symptom | Likely cause |
 | --- | --- |
-| Verify stays red | The `CNAME` does not resolve to the expected target. Check `dig +short CNAME status-page.webingenia.com` against the value the dashboard shows — in `token` mode the plain instance target is deliberately rejected. |
+| Verify stays red | The `CNAME` does not resolve to the expected target. Check `dig +short CNAME status.webingenia.com` against the value the dashboard shows — in `token` mode the plain instance target is deliberately rejected. |
 | `HTTPS failed` chip | Issuance failed. `grep tlsedge` the server log; the domain is in the log line. Common causes: `:80`/`:443` not reachable from the internet, or the LE rate limit. |
 | `HTTPS pending` forever | No HTTPS request has reached the process yet — issuance is on-demand. Curl the host once. |
 | `refusing certificate for unknown host` in the log | Working as intended: the hostname is not verified/servable. That is the guard protecting the CA rate limit. |

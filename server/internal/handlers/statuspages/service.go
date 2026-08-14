@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,132 @@ import (
 
 // slugRegex validates slug format: lowercase letter, then 2-99 lowercase letters/digits/hyphens.
 var slugRegex = regexp.MustCompile(`^[a-z][a-z0-9-]{2,99}$`)
+
+// slugInvalidCharsRegex matches every character a slug may not contain.
+var slugInvalidCharsRegex = regexp.MustCompile(`[^a-z0-9-]`)
+
+const (
+	// minSlugLen and maxSlugLen mirror slugRegex, which is itself kept in step
+	// with the `status_pages_slug_check` / `status_page_sections_slug_check`
+	// database constraints (migration 009).
+	minSlugLen = 3
+	maxSlugLen = 100
+
+	// maxSlugSuffix bounds the -2, -3, ... disambiguation walk for generated
+	// slugs. Past this we would rather surface a conflict than keep probing.
+	maxSlugSuffix = 99
+
+	// Fallbacks for names that normalize away entirely ("###", "…", "ok").
+	// Both satisfy slugRegex by construction, which is what makes
+	// generateSlug total.
+	slugFallbackPage    = "status-page"
+	slugFallbackSection = "section"
+)
+
+// generateSlug derives a slug from a display name. It is TOTAL: every input,
+// including "" and strings made purely of punctuation, yields a string that
+// satisfies slugRegex — see TestGenerateSlugAlwaysValid.
+//
+// That totality is the point. Both create paths used to pass an absent slug
+// straight through to the insert, where the CHECK constraint rejected it and
+// the driver error surfaced as a 500 with a raw SQLSTATE in the body.
+func generateSlug(name, fallback string) string {
+	slug := strings.ToLower(name)
+	slug = slugInvalidCharsRegex.ReplaceAllString(slug, "-")
+
+	for strings.Contains(slug, "--") {
+		slug = strings.ReplaceAll(slug, "--", "-")
+	}
+
+	slug = strings.Trim(slug, "-")
+
+	// A slug has to START with a letter. Trimming the leading digits reads
+	// better than prefixing a filler character would ("2024 Recap" becomes
+	// "recap", not "x2024-recap").
+	slug = strings.TrimLeft(slug, "0123456789-")
+
+	if len(slug) > maxSlugLen {
+		slug = strings.TrimRight(slug[:maxSlugLen], "-")
+	}
+
+	if len(slug) < minSlugLen {
+		return fallback
+	}
+
+	return slug
+}
+
+// suffixSlug appends "-<n>", shortening the base first so the result still
+// fits maxSlugLen. The base stays >= minSlugLen because the longest suffix
+// this is called with is 3 characters against a 100-character budget.
+func suffixSlug(base string, n int) string {
+	suffix := "-" + strconv.Itoa(n)
+
+	if len(base)+len(suffix) > maxSlugLen {
+		base = strings.TrimRight(base[:maxSlugLen-len(suffix)], "-")
+	}
+
+	return base + suffix
+}
+
+// slugTaken reports whether a candidate slug is already used within a scope.
+type slugTaken func(ctx context.Context, slug string) (bool, error)
+
+// resolveGeneratedSlug walks base, base-2, base-3, ... until one is free.
+// Only ever used for slugs WE generated: a slug the caller supplied must
+// collide loudly (ErrSlugConflict) rather than be silently renamed.
+func resolveGeneratedSlug(ctx context.Context, base string, taken slugTaken) (string, error) {
+	slug := base
+
+	for i := 2; i <= maxSlugSuffix+1; i++ {
+		used, err := taken(ctx, slug)
+		if err != nil {
+			return "", err
+		}
+
+		if !used {
+			return slug, nil
+		}
+
+		slug = suffixSlug(base, i)
+	}
+
+	return "", ErrSlugConflict
+}
+
+// resolveCreateSlug settles the slug for a newly created page or section.
+//
+// The two branches deliberately differ on collision. A slug the caller typed
+// is part of their request, so a clash is an error they need to see
+// (ErrSlugConflict); silently storing something else would be a surprise. A
+// slug we generated carries no such intent, so it is disambiguated with a
+// numeric suffix instead.
+//
+// Only a wholly absent slug ("") is generated. Whitespace ("   ") still fails
+// validation as it does today — it is far more likely a mistake than an
+// intent to auto-name, and turning it into a silent success would hide that.
+func (s *Service) resolveCreateSlug(
+	ctx context.Context, requested, name, fallback string, taken slugTaken,
+) (string, error) {
+	if requested == "" {
+		return resolveGeneratedSlug(ctx, generateSlug(name, fallback), taken)
+	}
+
+	if err := validateSlug(requested); err != nil {
+		return "", err
+	}
+
+	used, err := taken(ctx, requested)
+	if err != nil {
+		return "", err
+	}
+
+	if used {
+		return "", ErrSlugConflict
+	}
+
+	return requested, nil
+}
 
 var (
 	// ErrOrganizationNotFound is returned when an organization is not found.
@@ -687,10 +814,6 @@ func (s *Service) CreateStatusPage(
 		return StatusPageResponse{}, ErrOrganizationNotFound
 	}
 
-	if errSlug := validateSlug(req.Slug); errSlug != nil {
-		return StatusPageResponse{}, errSlug
-	}
-
 	if errPeriod := validateHistoryPeriod(req.HistoryPeriod); errPeriod != nil {
 		return StatusPageResponse{}, errPeriod
 	}
@@ -703,16 +826,21 @@ func (s *Service) CreateStatusPage(
 		return StatusPageResponse{}, errThresholds
 	}
 
-	// Check slug conflict
-	existing, err := s.db.GetStatusPageBySlug(ctx, org.UID, req.Slug)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return StatusPageResponse{}, err
-	}
-	if existing != nil {
-		return StatusPageResponse{}, ErrSlugConflict
+	taken := func(ctx context.Context, slug string) (bool, error) {
+		existing, errGet := s.db.GetStatusPageBySlug(ctx, org.UID, slug)
+		if errGet != nil && !errors.Is(errGet, sql.ErrNoRows) {
+			return false, errGet
+		}
+
+		return existing != nil, nil
 	}
 
-	page := models.NewStatusPage(org.UID, req.Name, req.Slug)
+	slug, err := s.resolveCreateSlug(ctx, req.Slug, req.Name, slugFallbackPage, taken)
+	if err != nil {
+		return StatusPageResponse{}, err
+	}
+
+	page := models.NewStatusPage(org.UID, req.Name, slug)
 	applyCreateFields(page, req)
 
 	// Check if this should be default (first page or explicitly set)
@@ -1000,17 +1128,18 @@ func (s *Service) CreateSection(
 		return StatusPageSectionResponse{}, err
 	}
 
-	if errSlug := validateSlug(req.Slug); errSlug != nil {
-		return StatusPageSectionResponse{}, errSlug
+	taken := func(ctx context.Context, slug string) (bool, error) {
+		existing, errGet := s.db.GetStatusPageSectionBySlug(ctx, page.UID, slug)
+		if errGet != nil && !errors.Is(errGet, sql.ErrNoRows) {
+			return false, errGet
+		}
+
+		return existing != nil, nil
 	}
 
-	// Check slug conflict within the page
-	existing, errGet := s.db.GetStatusPageSectionBySlug(ctx, page.UID, req.Slug)
-	if errGet != nil && !errors.Is(errGet, sql.ErrNoRows) {
-		return StatusPageSectionResponse{}, errGet
-	}
-	if existing != nil {
-		return StatusPageSectionResponse{}, ErrSlugConflict
+	slug, err := s.resolveCreateSlug(ctx, req.Slug, req.Name, slugFallbackSection, taken)
+	if err != nil {
+		return StatusPageSectionResponse{}, err
 	}
 
 	position, err := s.resolveSectionPosition(ctx, page.UID, req.Position)
@@ -1018,7 +1147,7 @@ func (s *Service) CreateSection(
 		return StatusPageSectionResponse{}, err
 	}
 
-	section := models.NewStatusPageSection(page.UID, req.Name, req.Slug, position)
+	section := models.NewStatusPageSection(page.UID, req.Name, slug, position)
 
 	if errCreate := s.db.CreateStatusPageSection(ctx, section); errCreate != nil {
 		return StatusPageSectionResponse{}, errCreate
