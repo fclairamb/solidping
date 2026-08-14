@@ -36,18 +36,21 @@ function formatDuration(ms: number) {
   return `${Math.round(ms)}ms`;
 }
 
+// Themed via the same `--status-*` CSS custom properties as statusStyle()
+// (lib/status-style.ts) and badge.tsx, rather than hardcoded hex — those are
+// the only two failure tones the rest of the app uses (error/destructive red,
+// warning amber), so this collapses to the same two colors instead of
+// inventing a third that has no dark-mode value and no badge equivalent.
 function statusColor(status?: string) {
   switch (status) {
     case "down":
-      return "#ef4444";
-    case "timeout":
-      return "#facc15";
     case "error":
-      return "#f97316";
+      return "var(--status-error)";
+    case "timeout":
     case "warning":
     case "degraded":
       // "up, but something to report" / aggregated rollup — amber, neutral.
-      return "#facc15";
+      return "var(--status-warning)";
     default:
       return "transparent";
   }
