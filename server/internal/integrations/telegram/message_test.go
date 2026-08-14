@@ -245,3 +245,32 @@ func TestBuildConversationalBodies(t *testing.T) {
 	r.Contains(group, "direct chat")
 	assertWellFormedTelegramHTML(t, group)
 }
+
+// TestBuildAlertHTML_QualifiesTheHeadlineRef is the positive control both ways:
+// the same alert renders "#42" for a single-org chat and "#acme:42" for a chat
+// linked in several orgs — where "#42" would be genuinely ambiguous, since the
+// number is per-org sequential and exists in every one of them.
+func TestBuildAlertHTML_QualifiesTheHeadlineRef(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	params := &telegram.AlertParams{
+		State:     telegram.StateDown,
+		Number:    42,
+		CheckName: "API health",
+		OrgSlug:   "acme",
+	}
+
+	short := telegram.BuildAlertHTML(params)
+	r.Contains(short, "#42 — API health")
+	r.NotContains(short, "#acme:42")
+
+	params.QualifyRef = true
+	qualified := telegram.BuildAlertHTML(params)
+	r.Contains(qualified, "#acme:42 — API health")
+
+	// The derived bodies inherit the flag, so a resolution or an acknowledgement
+	// cannot disagree with the alert it rewrites.
+	r.Contains(telegram.BuildResolvedOriginalHTML(params), "#acme:42")
+}

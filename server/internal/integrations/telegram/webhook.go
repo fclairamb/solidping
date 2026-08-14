@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -207,24 +208,56 @@ func ParseCallbackData(data string) (string, string) {
 	return action, strings.TrimSpace(arg)
 }
 
-// ParseIncidentRef reads a short incident reference — "#42" or "42" — and
-// reports whether it was one. The leading '#' is optional because phone
-// keyboards bury it, and accepted because copy-pasting "#42" out of a Slack
-// message is the other half of the same workflow; both must work.
-func ParseIncidentRef(s string) (int64, bool) {
+// orgSlugRefRegex mirrors auth.orgSlugRegex — the canonical organization slug
+// rule (3-20 chars, [a-z0-9] at both ends, [a-z0-9-] in the body). Mirrored
+// rather than imported because this package must not depend on the auth
+// handlers; the shape is stable and a drift would only ever cost a qualified
+// reference being read as unparseable, never a wrong org.
+//
+//nolint:gochecknoglobals // compiled once, immutable.
+var orgSlugRefRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$`)
+
+// ParseIncidentRef reads an incident reference and reports whether it was one.
+//
+// Four forms are accepted:
+//
+//	42          bare number
+//	#42         bare number, the way it is rendered
+//	acme:42     org-qualified
+//	#acme:42    org-qualified, the way it is rendered
+//
+// The leading '#' is optional because phone keyboards bury it, and accepted
+// because copy-pasting "#42" out of a Slack message is the other half of the
+// same workflow; both must work. The org slug is matched case-insensitively —
+// autocapitalize on a phone keyboard would otherwise break every qualified
+// reference typed on mobile — and returned lowercased, which is the only form
+// an org slug is ever stored in. An empty returned slug means a bare reference,
+// which the caller resolves against whichever orgs the chat is linked to.
+func ParseIncidentRef(s string) (string, int64, bool) {
 	trimmed := strings.TrimSpace(s)
 	trimmed = strings.TrimPrefix(trimmed, "#")
 
 	if trimmed == "" {
-		return 0, false
+		return "", 0, false
+	}
+
+	orgSlug := ""
+
+	if slug, rest, qualified := strings.Cut(trimmed, ":"); qualified {
+		orgSlug = strings.ToLower(strings.TrimSpace(slug))
+		if !orgSlugRefRegex.MatchString(orgSlug) {
+			return "", 0, false
+		}
+
+		trimmed = strings.TrimSpace(rest)
 	}
 
 	number, err := strconv.ParseInt(trimmed, 10, 64)
 	if err != nil || number <= 0 {
-		return 0, false
+		return "", 0, false
 	}
 
-	return number, true
+	return orgSlug, number, true
 }
 
 // DisplayLabel builds the human label stored on a Telegram contact: the

@@ -45,6 +45,10 @@ type AlertParams struct {
 	Detail string
 	// OrgSlug is the organization the incident belongs to.
 	OrgSlug string
+	// QualifyRef renders the headline reference as "#org:42" instead of "#42".
+	// Set when the destination chat is linked in more than one organization, so
+	// that the reference the reader types back is self-routing.
+	QualifyRef bool
 	// IncidentURL is the dashboard deep link. Empty omits the link line.
 	IncidentURL string
 }
@@ -94,12 +98,13 @@ func buildAlertHTML(params *AlertParams, prefix string) string {
 	body.WriteString(" ")
 	body.WriteString(headline)
 
-	// The short reference, right in the headline: it is what someone types back
-	// as `/ack #42` or `/incident #42`, so it has to be readable on a lock
-	// screen without opening the message.
+	// The reference, right in the headline: it is what someone types back as
+	// `/ack #42` or `/incident #42`, so it has to be readable on a lock screen
+	// without opening the message. In a chat linked to several orgs it is
+	// org-qualified, because "#42" exists in every one of them.
 	if params.Number > 0 {
 		body.WriteString(" ")
-		body.WriteString(IncidentRef(params.Number))
+		body.WriteString(EscapeHTML(incidentRefOf(params.QualifyRef, params.OrgSlug, params.Number)))
 	}
 
 	body.WriteString(" — ")

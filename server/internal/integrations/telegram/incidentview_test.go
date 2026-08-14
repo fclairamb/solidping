@@ -17,10 +17,11 @@ func TestParseIncidentRef(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name  string
-		input string
-		want  int64
-		ok    bool
+		name    string
+		input   string
+		wantOrg string
+		want    int64
+		ok      bool
 	}{
 		{name: "hash prefixed", input: "#42", want: 42, ok: true},
 		{name: "bare number", input: "42", want: 42, ok: true},
@@ -31,6 +32,28 @@ func TestParseIncidentRef(t *testing.T) {
 		{name: "zero is not an incident", input: "#0", ok: false},
 		{name: "negative", input: "-3", ok: false},
 		{name: "trailing junk", input: "42x", ok: false},
+
+		// Org-qualified forms. Both the rendered "#org:42" and the bare
+		// "org:42" have to work, because a human copies one and types the other.
+		{name: "qualified with hash", input: "#acme:42", wantOrg: "acme", want: 42, ok: true},
+		{name: "qualified without hash", input: "acme:42", wantOrg: "acme", want: 42, ok: true},
+		{name: "qualified padded", input: "  #acme:7 ", wantOrg: "acme", want: 7, ok: true},
+		// Autocapitalize on a phone keyboard must not break a reference.
+		{name: "qualified uppercase", input: "ACME:123", wantOrg: "acme", want: 123, ok: true},
+		{name: "qualified mixed case with hash", input: "#AcMe-Two:9", wantOrg: "acme-two", want: 9, ok: true},
+		{name: "hyphenated slug", input: "#acme-eu:5", wantOrg: "acme-eu", want: 5, ok: true},
+		{name: "digits in slug", input: "#org2:5", wantOrg: "org2", want: 5, ok: true},
+		{name: "shortest legal slug", input: "#abc:1", wantOrg: "abc", want: 1, ok: true},
+
+		{name: "empty slug", input: "#:123", ok: false},
+		{name: "empty number", input: "#acme:", ok: false},
+		{name: "non numeric after slug", input: "#acme:abc", ok: false},
+		{name: "slug too short", input: "#ab:1", ok: false},
+		{name: "slug too long", input: "#" + "abcdefghijklmnopqrstuvwxyz" + ":1", ok: false},
+		{name: "slug ends with a hyphen", input: "#acme-:1", ok: false},
+		{name: "slug starts with a hyphen", input: "#-acme:1", ok: false},
+		{name: "illegal slug character", input: "#acme_eu:1", ok: false},
+		{name: "two separators", input: "#acme:1:2", ok: false},
 	}
 
 	for _, tt := range tests {
@@ -39,14 +62,65 @@ func TestParseIncidentRef(t *testing.T) {
 
 			r := require.New(t)
 
-			got, ok := telegram.ParseIncidentRef(tt.input)
+			org, got, ok := telegram.ParseIncidentRef(tt.input)
 			r.Equal(tt.ok, ok)
 
 			if tt.ok {
 				r.Equal(tt.want, got)
+				r.Equal(tt.wantOrg, org)
+
+				return
 			}
+
+			// A rejected reference must never leak a half-parsed value the
+			// caller could accidentally use.
+			r.Empty(org)
+			r.Zero(got)
 		})
 	}
+}
+
+// TestQualifiedIncidentRef pins the rendered form and its one degradation:
+// with no slug to qualify with there is nothing to gain from emitting "#:42",
+// which nothing can parse back.
+func TestQualifiedIncidentRef(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.Equal("#acme:42", telegram.QualifiedIncidentRef("acme", 42))
+	r.Equal("#42", telegram.QualifiedIncidentRef("", 42))
+	r.Equal("#42", telegram.QualifiedIncidentRef("   ", 42))
+
+	// And the rendered form round-trips through the parser.
+	org, number, ok := telegram.ParseIncidentRef(telegram.QualifiedIncidentRef("acme", 42))
+	r.True(ok)
+	r.Equal("acme", org)
+	r.EqualValues(42, number)
+}
+
+// TestIncidentLineRef is the positive control both ways: the very same row
+// renders short in a single-org chat and qualified in a multi-org one.
+func TestIncidentLineRef(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	line := telegram.IncidentLine{Number: 42, OrgSlug: "acme", CheckName: "api"}
+	r.Equal("#42", line.Ref())
+	r.Contains(telegram.BuildIncidentLineHTML(&line), "<b>#42</b>")
+	r.NotContains(telegram.BuildIncidentLineHTML(&line), "acme:42")
+
+	line.QualifyRef = true
+	r.Equal("#acme:42", line.Ref())
+	r.Contains(telegram.BuildIncidentLineHTML(&line), "<b>#acme:42</b>")
+
+	view := telegram.IncidentDetailView{Number: 42, OrgSlug: "acme", CheckName: "api"}
+	r.Contains(telegram.BuildIncidentDetailHTML(&view), "#42")
+	r.NotContains(telegram.BuildIncidentDetailHTML(&view), "acme:42")
+
+	view.QualifyRef = true
+	r.Contains(telegram.BuildIncidentDetailHTML(&view), "#acme:42")
 }
 
 // TestParseCallbackData pins the inline-button payload split.
