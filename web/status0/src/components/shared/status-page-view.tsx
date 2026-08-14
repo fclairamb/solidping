@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { AvailabilityBar } from "./availability-bar";
 import { ResponseTimeChart } from "./response-time-chart";
 import { LanguageSwitcher } from "./language-switcher";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { StatusUpdatesTimeline } from "./status-updates-timeline";
 import { SubscribeWidget } from "./subscribe-widget";
 import { statusStyle } from "@/lib/status-style";
@@ -308,6 +309,7 @@ export function StatusPageView({
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <LanguageSwitcher />
           </div>
         </div>

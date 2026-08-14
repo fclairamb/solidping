@@ -25,6 +25,8 @@
   "noData": "Keine Daten",
   "responseTime": "Antwortzeit",
   "unknownRegion": "Unbekannte Region",
+  "switchToDarkMode": "Zum dunklen Modus wechseln",
+  "switchToLightMode": "Zum hellen Modus wechseln",
   "status": {
     "up": "Verfügbar",
     "down": "Ausgefallen",

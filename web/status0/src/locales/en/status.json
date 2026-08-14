@@ -25,6 +25,8 @@
   "noData": "No data",
   "responseTime": "Response Time",
   "unknownRegion": "Unknown region",
+  "switchToDarkMode": "Switch to dark mode",
+  "switchToLightMode": "Switch to light mode",
   "status": {
     "up": "Up",
     "down": "Down",
