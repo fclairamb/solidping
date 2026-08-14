@@ -4,9 +4,10 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/fclairamb/solidping/server/internal/orgslug"
 )
 
 // SecretTokenHeader is the header Telegram echoes on every webhook delivery
@@ -208,13 +209,6 @@ func ParseCallbackData(data string) (string, string) {
 	return action, strings.TrimSpace(arg)
 }
 
-// orgSlugRefRegex mirrors auth.orgSlugRegex — the canonical organization slug
-// rule (3-20 chars, [a-z0-9] at both ends, [a-z0-9-] in the body). Mirrored
-// rather than imported because this package must not depend on the auth
-// handlers; the shape is stable and a drift would only ever cost a qualified
-// reference being read as unparseable, never a wrong org.
-var orgSlugRefRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$`)
-
 // ParseIncidentRef reads an incident reference and reports whether it was one.
 //
 // Four forms are accepted:
@@ -242,8 +236,11 @@ func ParseIncidentRef(s string) (string, int64, bool) {
 	orgSlug := ""
 
 	if slug, rest, qualified := strings.Cut(trimmed, ":"); qualified {
+		// The slug rule is owned by internal/orgslug, deliberately not restated
+		// here: this parser and org creation must accept exactly the same set,
+		// or organizations become silently unable to use qualified references.
 		orgSlug = strings.ToLower(strings.TrimSpace(slug))
-		if !orgSlugRefRegex.MatchString(orgSlug) {
+		if !orgslug.IsValid(orgSlug) {
 			return "", 0, false
 		}
 

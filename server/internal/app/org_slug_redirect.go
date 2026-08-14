@@ -4,14 +4,10 @@ import (
 	"context"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
-)
 
-// spaOrgSlugRegex mirrors auth.orgSlugRegex. It is a cheap pre-filter: a path
-// segment that could never have been an org slug is not worth two database
-// lookups on every static-asset request.
-var spaOrgSlugRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$`)
+	"github.com/fclairamb/solidping/server/internal/orgslug"
+)
 
 // dash0OrgsPrefixSegments is the "/dash0/orgs/<slug>/..." shape: ["", "dash0",
 // "orgs", "<slug>", ...].
@@ -78,10 +74,10 @@ func spaOrgSegmentIndex(path string) (int, bool) {
 	switch {
 	case len(segments) > dash0OrgSegmentIndex &&
 		segments[1] == "dash0" && segments[dash0OrgsMarkerIndex] == "orgs":
-		return dash0OrgSegmentIndex, spaOrgSlugRegex.MatchString(segments[dash0OrgSegmentIndex])
+		return dash0OrgSegmentIndex, orgslug.IsValid(segments[dash0OrgSegmentIndex])
 	case len(segments) > status0OrgSegmentIndex && len(segments) <= status0MaxSegments &&
 		segments[1] == "status0":
-		return status0OrgSegmentIndex, spaOrgSlugRegex.MatchString(segments[status0OrgSegmentIndex])
+		return status0OrgSegmentIndex, orgslug.IsValid(segments[status0OrgSegmentIndex])
 	default:
 		return 0, false
 	}
