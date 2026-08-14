@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/fclairamb/solidping/compare/v0.14.0...v0.15.0) (2026-08-14)
+
+
+### Features
+
+* incident refs ([#42](https://github.com/fclairamb/solidping/issues/42)), Telegram incident commands, first-failure snapshots and TLS edge chaining ([#217](https://github.com/fclairamb/solidping/issues/217)) ([a8cbaf3](https://github.com/fclairamb/solidping/commit/a8cbaf3c5222526d4094430cde36a0733a9113cf))
+
 ## [Unreleased]
 
 ### Features
