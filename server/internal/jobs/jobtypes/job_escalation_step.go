@@ -787,6 +787,14 @@ func (r *EscalationStepJobRun) auditPhoneSkip(
 func (r *EscalationStepJobRun) orgSlugFor(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, orgUID string,
 ) string {
+	return orgSlugForOrg(ctx, jctx, log, orgUID)
+}
+
+// orgSlugForOrg is the run-independent form of orgSlugFor, shared with the
+// incident-resolution-notice job.
+func orgSlugForOrg(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, orgUID string,
+) string {
 	org, err := jctx.DBService.GetOrganization(ctx, orgUID)
 	if err != nil || org == nil {
 		log.WarnContext(ctx, "failed to load org slug for phone ack URL", "orgUid", orgUID, "error", err)
@@ -819,6 +827,14 @@ func (r *EscalationStepJobRun) buildPhoneAckToken(
 // phoneCheckName returns the incident's check name, falling back to the
 // incident UID when the check has been deleted.
 func (r *EscalationStepJobRun) phoneCheckName(
+	ctx context.Context, jctx *jobdef.JobContext, incident *models.Incident,
+) string {
+	return incidentCheckName(ctx, jctx, incident)
+}
+
+// incidentCheckName is the run-independent form of phoneCheckName, shared with
+// the incident-resolution-notice job.
+func incidentCheckName(
 	ctx context.Context, jctx *jobdef.JobContext, incident *models.Incident,
 ) string {
 	check, err := jctx.DBService.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID)

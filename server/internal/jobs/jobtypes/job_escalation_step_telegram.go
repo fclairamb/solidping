@@ -148,13 +148,23 @@ func (r *EscalationStepJobRun) reserveTelegram(
 func (r *EscalationStepJobRun) telegramAlertParams(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, incident *models.Incident,
 ) *telegram.AlertParams {
-	orgSlug := r.orgSlugFor(ctx, jctx, log, incident.OrganizationUID)
+	return telegramAlertParamsFor(ctx, jctx, log, incident)
+}
+
+// telegramAlertParamsFor is the run-independent form of telegramAlertParams.
+// Nothing here reads escalation-step state, and the resolution-notice job needs
+// the very same values, so the body lives outside the run type and both callers
+// share ONE definition of what a Telegram incident message says.
+func telegramAlertParamsFor(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, incident *models.Incident,
+) *telegram.AlertParams {
+	orgSlug := orgSlugForOrg(ctx, jctx, log, incident.OrganizationUID)
 
 	return &telegram.AlertParams{
 		State:       telegramStateLabel(incident),
 		Number:      incident.Number,
 		IncidentUID: incident.UID,
-		CheckName:   r.phoneCheckName(ctx, jctx, incident),
+		CheckName:   incidentCheckName(ctx, jctx, incident),
 		Detail:      telegramDetail(incident),
 		OrgSlug:     orgSlug,
 		IncidentURL: telegramIncidentURL(appBaseURL(jctx), orgSlug, incident.UID),
@@ -184,9 +194,22 @@ func (r *EscalationStepJobRun) sendTelegramAlert(
 	client *telegram.Client, incident *models.Incident, chatID string,
 	params *telegram.AlertParams,
 ) (int64, error) {
+	return sendTelegramAlertShared(ctx, jctx, log, client, incident, chatID, params)
+}
+
+// sendTelegramAlertShared is the run-independent send path: threading, the
+// rejected-anchor degradation, the resolution edit and the retry_after handling
+// all live here exactly once. The escalation step and the resolution-notice job
+// both go through it — duplicating any of this is how the two paths would drift
+// into disagreeing about what a resolved incident looks like in a chat.
+func sendTelegramAlertShared(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	client *telegram.Client, incident *models.Incident, chatID string,
+	params *telegram.AlertParams,
+) (int64, error) {
 	body := telegram.BuildAlertHTML(params)
 	keyboard := telegramAckKeyboard(incident)
-	replyTo := r.telegramThreadAnchor(ctx, jctx, log, incident, chatID)
+	replyTo := telegramThreadAnchorFor(ctx, jctx, log, incident, chatID)
 
 	messageID, err := sendTelegramHonoringRetryAfter(ctx, log, client, &telegram.Message{
 		ChatID:           chatID,
@@ -198,7 +221,7 @@ func (r *EscalationStepJobRun) sendTelegramAlert(
 	if err != nil && replyTo != 0 && errors.Is(err, telegram.ErrReplyTargetMissing) {
 		log.InfoContext(ctx, "telegram thread anchor is gone; sending standalone",
 			"incidentUID", incident.UID, "chatId", chatID)
-		r.clearTelegramThreadAnchor(ctx, jctx, log, incident, chatID)
+		clearTelegramThreadAnchorFor(ctx, jctx, log, incident, chatID)
 
 		messageID, err = sendTelegramHonoringRetryAfter(
 			ctx, log, client, &telegram.Message{ChatID: chatID, HTML: body, ReplyMarkup: keyboard},
@@ -283,6 +306,14 @@ func (r *EscalationStepJobRun) telegramThreadAnchor(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	incident *models.Incident, chatID string,
 ) int64 {
+	return telegramThreadAnchorFor(ctx, jctx, log, incident, chatID)
+}
+
+// telegramThreadAnchorFor is the run-independent form of telegramThreadAnchor.
+func telegramThreadAnchorFor(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, chatID string,
+) int64 {
 	orgUID := incident.OrganizationUID
 
 	entry, err := jctx.DBService.GetStateEntry(ctx, &orgUID, telegramThreadKey(incident.UID, chatID))
@@ -342,6 +373,15 @@ func (r *EscalationStepJobRun) recordTelegramThread(
 // clearTelegramThreadAnchor drops an anchor Telegram no longer accepts, so the
 // next alert does not pay the same rejected round-trip again.
 func (r *EscalationStepJobRun) clearTelegramThreadAnchor(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, chatID string,
+) {
+	clearTelegramThreadAnchorFor(ctx, jctx, log, incident, chatID)
+}
+
+// clearTelegramThreadAnchorFor is the run-independent form of
+// clearTelegramThreadAnchor.
+func clearTelegramThreadAnchorFor(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	incident *models.Incident, chatID string,
 ) {
