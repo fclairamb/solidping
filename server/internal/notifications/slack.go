@@ -204,6 +204,19 @@ func getCheckName(check *models.Check) string {
 	return "Unknown check"
 }
 
+// incidentRefPrefix renders the short per-org incident reference as a header
+// prefix ("#42 · "), or "" for an incident created before the numbers existed
+// and never backfilled. Every human-facing surface names the incident the same
+// way, so someone reading Slack can type `/ack #42` into Telegram without
+// translating anything.
+func incidentRefPrefix(incident *models.Incident) string {
+	if incident == nil || incident.Number <= 0 {
+		return ""
+	}
+
+	return fmt.Sprintf("#%d · ", incident.Number)
+}
+
 // checkDashURL builds the SolidPing dashboard URL for a check's detail page.
 // Returns "" when any required component is missing so callers fall back to
 // plain text.
@@ -436,7 +449,11 @@ func (s *SlackSender) buildIncidentCreatedBlocks(
 	return []slack.Block{
 		{
 			Type: slack.BlockTypeHeader,
-			Text: &slack.Text{Type: slack.BlockTypePlainText, Text: "New incident for " + checkName, Emoji: true},
+			Text: &slack.Text{
+				Type:  slack.BlockTypePlainText,
+				Text:  incidentRefPrefix(payload.Incident) + "New incident for " + checkName,
+				Emoji: true,
+			},
 		},
 		{Type: slack.BlockTypeSection, Fields: fields},
 		{
@@ -502,8 +519,8 @@ func (s *SlackSender) buildIncidentResolvedThreadReply(payload *Payload) *slack.
 	checkName := getCheckName(payload.Check)
 	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
 	text := fmt.Sprintf(
-		":white_check_mark: %s — incident resolved after %s.",
-		slackLink(checkURL, checkName), duration,
+		":white_check_mark: %s%s — incident resolved after %s.",
+		incidentRefPrefix(payload.Incident), slackLink(checkURL, checkName), duration,
 	)
 
 	return &slack.MessageResponse{Text: text}
@@ -560,7 +577,7 @@ func (s *SlackSender) buildIncidentEscalatedBlocks(payload *Payload, checkName s
 			Type: slack.BlockTypeHeader,
 			Text: &slack.Text{
 				Type:  slack.BlockTypePlainText,
-				Text:  ":rotating_light: Incident escalated: " + checkName,
+				Text:  ":rotating_light: " + incidentRefPrefix(payload.Incident) + "Incident escalated: " + checkName,
 				Emoji: true,
 			},
 		},
@@ -704,8 +721,9 @@ func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.Messag
 		{
 			Type: slack.BlockTypeHeader,
 			Text: &slack.Text{
-				Type:  slack.BlockTypePlainText,
-				Text:  fmt.Sprintf(":white_check_mark: Automatically resolved %s incident", checkName),
+				Type: slack.BlockTypePlainText,
+				Text: fmt.Sprintf(":white_check_mark: %sAutomatically resolved %s incident",
+					incidentRefPrefix(payload.Incident), checkName),
 				Emoji: true,
 			},
 		},
@@ -800,8 +818,10 @@ func (s *SlackSender) buildIncidentReopenedThreadReply(payload *Payload) *slack.
 	checkName := getCheckName(payload.Check)
 	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
 	text := fmt.Sprintf(
-		":warning: %s — incident reopened (relapse #%d). Recovery requires the check to stay up for %d seconds.",
-		slackLink(checkURL, checkName), relapseCount, payload.Check.RecoveryPeriodSeconds,
+		":warning: %s%s — incident reopened (relapse #%d). "+
+			"Recovery requires the check to stay up for %d seconds.",
+		incidentRefPrefix(payload.Incident), slackLink(checkURL, checkName),
+		relapseCount, payload.Check.RecoveryPeriodSeconds,
 	)
 
 	return &slack.MessageResponse{Text: text}
@@ -820,8 +840,9 @@ func (s *SlackSender) buildReopenedUpdateMessage(payload *Payload) *slack.Messag
 		{
 			Type: slack.BlockTypeHeader,
 			Text: &slack.Text{
-				Type:  slack.BlockTypePlainText,
-				Text:  fmt.Sprintf("Incident reopened for %s (relapse #%d)", checkName, payload.Incident.RelapseCount),
+				Type: slack.BlockTypePlainText,
+				Text: fmt.Sprintf("%sIncident reopened for %s (relapse #%d)",
+					incidentRefPrefix(payload.Incident), checkName, payload.Incident.RelapseCount),
 				Emoji: true,
 			},
 		},

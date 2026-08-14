@@ -214,8 +214,31 @@ export interface OrgResultDetail extends OrgResult {
   nextUid?: string;
 }
 
+/** Snapshot of one failing result captured on incident.details, either as
+ * `first_result` (incident open) or `last_failure` (most recent relapse).
+ * Copied at write time — retention may since have deleted the raw result. */
+export interface IncidentResultSnapshot {
+  resultUid?: string;
+  status?: string;
+  region?: string;
+  duration?: number;
+  periodStart?: string;
+  output?: Record<string, unknown>;
+}
+
+export interface IncidentDetails {
+  /** Human-readable cause, same key the Slack notifier reads. */
+  failure_reason?: string;
+  /** The result that opened the incident. */
+  first_result?: IncidentResultSnapshot;
+  /** The result from the most recent reopen, if the incident has relapsed. */
+  last_failure?: IncidentResultSnapshot;
+}
+
 export interface IncidentDetail {
   uid?: string;
+  /** Short per-org reference, rendered as `#42`. Assigned at creation, never reused. */
+  number?: number;
   checkUid?: string;
   checkName?: string;
   checkSlug?: string;
@@ -242,6 +265,7 @@ export interface IncidentDetail {
   lastReopenedAt?: string;
   causedByIncidentUid?: string;
   pagingSuppressed?: boolean;
+  details?: IncidentDetails;
 }
 
 export interface Event {

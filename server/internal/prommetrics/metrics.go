@@ -21,6 +21,7 @@ const (
 	labelJobType      = "job_type"
 	labelLane         = "lane"
 	labelMessageType  = "type"
+	labelListener     = "listener"
 )
 
 // Lane label values for CheckLaneClaims (spec 2026-07-01-03).
@@ -411,6 +412,19 @@ var (
 		},
 	)
 
+	// TLSEdgeConnections counts connections classified by the TLS edge's
+	// fallback splitter, per listener ("http"/"https") and outcome
+	// ("local", "forwarded", "refused", "dial_failed"). A chained deployment
+	// is otherwise silent: without this, "the downstream instance stopped
+	// getting traffic" and "the next hop is unreachable" look identical.
+	TLSEdgeConnections = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_tlsedge_connections_total",
+			Help: "Connections classified by the TLS edge fallback splitter",
+		},
+		[]string{labelListener, labelOutcome},
+	)
+
 	allCollectors = []prometheus.Collector{
 		CheckExecutions, CheckDuration, SchedulingDelay,
 		CheckUp, CheckStatusStreak, ChecksConfigured,
@@ -427,6 +441,7 @@ var (
 		RealtimeHintsCoalesced, RealtimeHintsDelivered,
 		RealtimeSubscriptions, RealtimeMessagesReceived,
 		CheckRunnerAbandoned, CheckRunnerAbandonedActive,
+		TLSEdgeConnections,
 	}
 )
 

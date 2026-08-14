@@ -18,6 +18,24 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AddMemberContactRequestType.
+const (
+	AddMemberContactRequestTypePhone    AddMemberContactRequestType = "phone"
+	AddMemberContactRequestTypeWhatsapp AddMemberContactRequestType = "whatsapp"
+)
+
+// Valid indicates whether the value is a known member of the AddMemberContactRequestType enum.
+func (e AddMemberContactRequestType) Valid() bool {
+	switch e {
+	case AddMemberContactRequestTypePhone:
+		return true
+	case AddMemberContactRequestTypeWhatsapp:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AddMemberRequestRole.
 const (
 	AddMemberRequestRoleAdmin  AddMemberRequestRole = "admin"
@@ -680,13 +698,16 @@ func (e GetOrgResultResponseStatus) Valid() bool {
 
 // Defines values for HealthResponseStatus.
 const (
-	HealthResponseStatusOk HealthResponseStatus = "ok"
+	HealthResponseStatusOk        HealthResponseStatus = "ok"
+	HealthResponseStatusUnhealthy HealthResponseStatus = "unhealthy"
 )
 
 // Valid indicates whether the value is a known member of the HealthResponseStatus enum.
 func (e HealthResponseStatus) Valid() bool {
 	switch e {
 	case HealthResponseStatusOk:
+		return true
+	case HealthResponseStatusUnhealthy:
 		return true
 	default:
 		return false
@@ -705,6 +726,45 @@ func (e IncidentDetailState) Valid() bool {
 	case IncidentDetailStateActive:
 		return true
 	case IncidentDetailStateResolved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IntegrationIdentitySource.
+const (
+	IntegrationIdentitySourceAuto   IntegrationIdentitySource = "auto"
+	IntegrationIdentitySourceManual IntegrationIdentitySource = "manual"
+)
+
+// Valid indicates whether the value is a known member of the IntegrationIdentitySource enum.
+func (e IntegrationIdentitySource) Valid() bool {
+	switch e {
+	case IntegrationIdentitySourceAuto:
+		return true
+	case IntegrationIdentitySourceManual:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IntegrationIdentityStatus.
+const (
+	IntegrationIdentityStatusAmbiguous IntegrationIdentityStatus = "ambiguous"
+	IntegrationIdentityStatusMatched   IntegrationIdentityStatus = "matched"
+	IntegrationIdentityStatusNotFound  IntegrationIdentityStatus = "notFound"
+)
+
+// Valid indicates whether the value is a known member of the IntegrationIdentityStatus enum.
+func (e IntegrationIdentityStatus) Valid() bool {
+	switch e {
+	case IntegrationIdentityStatusAmbiguous:
+		return true
+	case IntegrationIdentityStatusMatched:
+		return true
+	case IntegrationIdentityStatusNotFound:
 		return true
 	default:
 		return false
@@ -1311,6 +1371,18 @@ type ActivationFunnelRow struct {
 	Slug            string     `json:"slug"`
 }
 
+// AddMemberContactRequest defines model for AddMemberContactRequest.
+type AddMemberContactRequest struct {
+	Label *string                     `json:"label,omitempty"`
+	Type  AddMemberContactRequestType `json:"type"`
+
+	// Value E.164 number (e.g. +15551234567)
+	Value string `json:"value"`
+}
+
+// AddMemberContactRequestType defines model for AddMemberContactRequest.Type.
+type AddMemberContactRequestType string
+
 // AddMemberRequest defines model for AddMemberRequest.
 type AddMemberRequest struct {
 	Email openapi_types.Email `json:"email"`
@@ -1362,6 +1434,17 @@ type AdminJobListResponse struct {
 type AdminJobResponse struct {
 	// Data A background-jobs queue row as returned by the admin/system views.
 	Data *AdminJob `json:"data,omitempty"`
+}
+
+// AdminMemberContact defines model for AdminMemberContact.
+type AdminMemberContact struct {
+	Label   *string            `json:"label,omitempty"`
+	Type    string             `json:"type"`
+	Uid     openapi_types.UUID `json:"uid"`
+	UserUid openapi_types.UUID `json:"userUid"`
+
+	// Verified Always false — an admin can never create a verified contact.
+	Verified bool `json:"verified"`
 }
 
 // ApproveMembershipRequestRequest defines model for ApproveMembershipRequestRequest.
@@ -2610,6 +2693,12 @@ type GetOrgResultResponseStatus string
 
 // HealthResponse defines model for HealthResponse.
 type HealthResponse struct {
+	// Fault Name of the structural database fault that made this node unhealthy (e.g. undefined_table). Present only with status "unhealthy", which is also served with HTTP 503; the node is shutting down because no retry can recover the condition.
+	Fault *string `json:"fault,omitempty"`
+	Node  *struct {
+		Region *string `json:"region,omitempty"`
+		Role   *string `json:"role,omitempty"`
+	} `json:"node,omitempty"`
 	Status *HealthResponseStatus `json:"status,omitempty"`
 }
 
@@ -2639,18 +2728,24 @@ type IncidentDetail struct {
 	AcknowledgedAt *time.Time `json:"acknowledgedAt,omitempty"`
 
 	// Check Embedded check details for incidents
-	Check        *IncidentCheck       `json:"check,omitempty"`
-	CheckName    *string              `json:"checkName,omitempty"`
-	CheckSlug    *string              `json:"checkSlug,omitempty"`
-	CheckUid     *openapi_types.UUID  `json:"checkUid,omitempty"`
-	Description  *string              `json:"description,omitempty"`
-	EscalatedAt  *time.Time           `json:"escalatedAt,omitempty"`
-	FailureCount *int                 `json:"failureCount,omitempty"`
-	ResolvedAt   *time.Time           `json:"resolvedAt,omitempty"`
-	StartedAt    *time.Time           `json:"startedAt,omitempty"`
-	State        *IncidentDetailState `json:"state,omitempty"`
-	Title        *string              `json:"title,omitempty"`
-	Uid          *openapi_types.UUID  `json:"uid,omitempty"`
+	Check       *IncidentCheck      `json:"check,omitempty"`
+	CheckName   *string             `json:"checkName,omitempty"`
+	CheckSlug   *string             `json:"checkSlug,omitempty"`
+	CheckUid    *openapi_types.UUID `json:"checkUid,omitempty"`
+	Description *string             `json:"description,omitempty"`
+
+	// Details Snapshot of the failing result captured at incident open/reopen: `failure_reason` (string), `first_result` (object — resultUid/status/region/duration/periodStart/output), and, after a relapse, `last_failure` (same shape as `first_result`).
+	Details      *map[string]interface{} `json:"details,omitempty"`
+	EscalatedAt  *time.Time              `json:"escalatedAt,omitempty"`
+	FailureCount *int                    `json:"failureCount,omitempty"`
+
+	// Number Short per-organization incident reference, rendered as `#42` in the dashboard, Slack and Telegram. Assigned at creation, never reused.
+	Number     *int64               `json:"number,omitempty"`
+	ResolvedAt *time.Time           `json:"resolvedAt,omitempty"`
+	StartedAt  *time.Time           `json:"startedAt,omitempty"`
+	State      *IncidentDetailState `json:"state,omitempty"`
+	Title      *string              `json:"title,omitempty"`
+	Uid        *openapi_types.UUID  `json:"uid,omitempty"`
 }
 
 // IncidentDetailState defines model for IncidentDetail.State.
@@ -2668,6 +2763,42 @@ type IncidentSnoozeRequest struct {
 	Duration *string    `json:"duration,omitempty"`
 	Reason   *string    `json:"reason,omitempty"`
 	Until    *time.Time `json:"until,omitempty"`
+}
+
+// IntegrationIdentity defines model for IntegrationIdentity.
+type IntegrationIdentity struct {
+	DisplayName *string `json:"displayName,omitempty"`
+	Email       string  `json:"email"`
+
+	// ExternalId Provider-side identifier (Slack user id) rendered as <@id>
+	ExternalId *string `json:"externalId,omitempty"`
+	Name       *string `json:"name,omitempty"`
+
+	// Source auto = email auto-match; manual = an admin picked it. A re-sync never overwrites manual.
+	Source *IntegrationIdentitySource `json:"source,omitempty"`
+
+	// Status matched = the member has an identity on this integration; notFound = their email resolved to nobody in the workspace; ambiguous = the match collided with another member and was deliberately not written.
+	Status  IntegrationIdentityStatus `json:"status"`
+	UserUid openapi_types.UUID        `json:"userUid"`
+}
+
+// IntegrationIdentitySource auto = email auto-match; manual = an admin picked it. A re-sync never overwrites manual.
+type IntegrationIdentitySource string
+
+// IntegrationIdentityStatus matched = the member has an identity on this integration; notFound = their email resolved to nobody in the workspace; ambiguous = the match collided with another member and was deliberately not written.
+type IntegrationIdentityStatus string
+
+// IntegrationIdentityListResponse defines model for IntegrationIdentityListResponse.
+type IntegrationIdentityListResponse struct {
+	Data []IntegrationIdentity `json:"data"`
+}
+
+// IntegrationIdentitySyncResponse defines model for IntegrationIdentitySyncResponse.
+type IntegrationIdentitySyncResponse struct {
+	AmbiguousCount int                   `json:"ambiguousCount"`
+	Data           []IntegrationIdentity `json:"data"`
+	MatchedCount   int                   `json:"matchedCount"`
+	NotFoundCount  int                   `json:"notFoundCount"`
 }
 
 // InviteInfoResponse defines model for InviteInfoResponse.
@@ -2958,6 +3089,32 @@ type Member struct {
 
 // MemberRole defines model for Member.Role.
 type MemberRole string
+
+// MemberChannelCoverage defines model for MemberChannelCoverage.
+type MemberChannelCoverage struct {
+	Enabled bool `json:"enabled"`
+
+	// Type Contact channel type (email, phone, whatsapp, telegram, webpush, …)
+	Type     string `json:"type"`
+	Verified bool   `json:"verified"`
+}
+
+// MemberCoverage defines model for MemberCoverage.
+type MemberCoverage struct {
+	Channels []MemberChannelCoverage `json:"channels"`
+	Email    string                  `json:"email"`
+
+	// EmailFallbackOnly True when no enabled AND verified channel other than email exists — escalation can still reach this member, but only by email.
+	EmailFallbackOnly bool               `json:"emailFallbackOnly"`
+	Name              *string            `json:"name,omitempty"`
+	Role              string             `json:"role"`
+	UserUid           openapi_types.UUID `json:"userUid"`
+}
+
+// MemberCoverageListResponse defines model for MemberCoverageListResponse.
+type MemberCoverageListResponse struct {
+	Data []MemberCoverage `json:"data"`
+}
 
 // MemberListResponse defines model for MemberListResponse.
 type MemberListResponse struct {
@@ -3587,6 +3744,14 @@ type SetEntitlementsRequest struct {
 	Source *string `json:"source,omitempty"`
 }
 
+// SetIntegrationIdentityRequest defines model for SetIntegrationIdentityRequest.
+type SetIntegrationIdentityRequest struct {
+	DisplayName *string `json:"displayName,omitempty"`
+
+	// ExternalId Workspace user id to map this member to
+	ExternalId string `json:"externalId"`
+}
+
 // SetMaintenanceWindowChecksRequest defines model for SetMaintenanceWindowChecksRequest.
 type SetMaintenanceWindowChecksRequest struct {
 	CheckGroupUids *[]openapi_types.UUID `json:"checkGroupUids,omitempty"`
@@ -4210,6 +4375,9 @@ type EscalationPolicyUidPath = openapi_types.UUID
 
 // FileUidPath defines model for FileUidPath.
 type FileUidPath = openapi_types.UUID
+
+// IdentityUserUidPath defines model for IdentityUserUidPath.
+type IdentityUserUidPath = openapi_types.UUID
 
 // IncidentUidPath defines model for IncidentUidPath.
 type IncidentUidPath = openapi_types.UUID
@@ -4884,6 +5052,9 @@ type ResolveIncidentJSONRequestBody = IncidentAckRequest
 // SnoozeIncidentJSONRequestBody defines body for SnoozeIncident for application/json ContentType.
 type SnoozeIncidentJSONRequestBody = IncidentSnoozeRequest
 
+// SetIntegrationIdentityJSONRequestBody defines body for SetIntegrationIdentity for application/json ContentType.
+type SetIntegrationIdentityJSONRequestBody = SetIntegrationIdentityRequest
+
 // CreateInvitationJSONRequestBody defines body for CreateInvitation for application/json ContentType.
 type CreateInvitationJSONRequestBody = CreateInvitationRequest
 
@@ -4907,6 +5078,9 @@ type AddMemberJSONRequestBody = AddMemberRequest
 
 // UpdateMemberJSONRequestBody defines body for UpdateMember for application/json ContentType.
 type UpdateMemberJSONRequestBody = UpdateMemberRequest
+
+// AddMemberContactJSONRequestBody defines body for AddMemberContact for application/json ContentType.
+type AddMemberContactJSONRequestBody = AddMemberContactRequest
 
 // ApproveMembershipRequestJSONRequestBody defines body for ApproveMembershipRequest for application/json ContentType.
 type ApproveMembershipRequestJSONRequestBody = ApproveMembershipRequestRequest
@@ -6102,6 +6276,43 @@ type ClientInterface interface {
 	// Corresponds with POST /api/v1/orgs/{org}/incidents/{uid}/unsnooze (the `UnsnoozeIncident` operationId).
 	UnsnoozeIncident(ctx context.Context, org OrgPath, uid IncidentUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListIntegrationIdentities List member identity mappings for an integration
+	//
+	// Returns every organization member together with their identity on this integration (e.g. their Slack user id on the connected workspace). Identities are used to mention the on-call person in channel alerts; they are never used for paging. Read-only and cheap: this never calls out to the provider. Slack-only — other integration types return 400.
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/integrations/{uid}/identities (the `ListIntegrationIdentities` operationId).
+	ListIntegrationIdentities(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SyncIntegrationIdentities Re-run the member identity auto-match
+	//
+	// Looks every organization member up in the connected Slack workspace by email (`users.lookupByEmail`) and records the matches. Manual overrides are never overwritten, and a workspace account that two members both resolve to is reported ambiguous and written nowhere. Admin only.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/integrations/{uid}/identities/sync (the `SyncIntegrationIdentities` operationId).
+	SyncIntegrationIdentities(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteIntegrationIdentity Clear a member's identity on an integration
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org}/integrations/{uid}/identities/{userUid} (the `DeleteIntegrationIdentity` operationId).
+	DeleteIntegrationIdentity(ctx context.Context, org OrgPath, uid ChannelUidPath, userUid IdentityUserUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetIntegrationIdentityWithBody Set a member's identity on an integration
+	//
+	// Records an admin-chosen mapping between an organization member and a workspace user. The external id may be claimed by at most one member per integration. Admin only.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/v1/orgs/{org}/integrations/{uid}/identities/{userUid} (the `SetIntegrationIdentity` operationId).
+	SetIntegrationIdentityWithBody(ctx context.Context, org OrgPath, uid ChannelUidPath, userUid IdentityUserUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetIntegrationIdentity Set a member's identity on an integration
+	//
+	// Records an admin-chosen mapping between an organization member and a workspace user. The external id may be claimed by at most one member per integration. Admin only.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/v1/orgs/{org}/integrations/{uid}/identities/{userUid} (the `SetIntegrationIdentity` operationId).
+	SetIntegrationIdentity(ctx context.Context, org OrgPath, uid ChannelUidPath, userUid IdentityUserUidPath, body SetIntegrationIdentityJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListInvitations List pending invitations
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/invitations (the `ListInvitations` operationId).
@@ -6277,6 +6488,13 @@ type ClientInterface interface {
 	// Corresponds with POST /api/v1/orgs/{org}/members (the `AddMember` operationId).
 	AddMember(ctx context.Context, org OrgPath, body AddMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListMemberCoverage List per-member paging coverage
+	//
+	// Per-member notification coverage for the organization. Exposes channel TYPES and verified/enabled flags only — never a contact value, since per-user contacts belong to the member and are otherwise `users/me` scoped. `emailFallbackOnly` marks members nothing but email can reach. Admin only.
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/members/coverage (the `ListMemberCoverage` operationId).
+	ListMemberCoverage(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// RemoveMember Remove member from organization
 	//
 	// Corresponds with DELETE /api/v1/orgs/{org}/members/{uid} (the `RemoveMember` operationId).
@@ -6300,6 +6518,31 @@ type ClientInterface interface {
 	//
 	// Corresponds with PATCH /api/v1/orgs/{org}/members/{uid} (the `UpdateMember` operationId).
 	UpdateMember(ctx context.Context, org OrgPath, uid MemberUidPath, body UpdateMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AddMemberContactWithBody Pre-provision an unverified paging contact for a member
+	//
+	// Lets an admin add a phone or WhatsApp contact for another member, in UNVERIFIED state. The contact becomes pageable only after its owner completes the normal verification round-trip — an admin can never create or flip a contact to verified. Other contact types are refused.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/members/{uid}/contacts (the `AddMemberContact` operationId).
+	AddMemberContactWithBody(ctx context.Context, org OrgPath, uid MemberUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AddMemberContact Pre-provision an unverified paging contact for a member
+	//
+	// Lets an admin add a phone or WhatsApp contact for another member, in UNVERIFIED state. The contact becomes pageable only after its owner completes the normal verification round-trip — an admin can never create or flip a contact to verified. Other contact types are refused.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/members/{uid}/contacts (the `AddMemberContact` operationId).
+	AddMemberContact(ctx context.Context, org OrgPath, uid MemberUidPath, body AddMemberContactJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SendMemberPagingNudge Email a member asking them to set up their paging
+	//
+	// Sends a "set up your alert notifications" email with a link to the member's own notification settings. Carries no contact data and no verification code. Admin only.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/members/{uid}/paging-nudge (the `SendMemberPagingNudge` operationId).
+	SendMemberPagingNudge(ctx context.Context, org OrgPath, uid MemberUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListOrgMembershipRequests List an organization's membership requests
 	//
@@ -9546,6 +9789,93 @@ func (c *Client) UnsnoozeIncident(ctx context.Context, org OrgPath, uid Incident
 	return c.Client.Do(req)
 }
 
+// ListIntegrationIdentities List member identity mappings for an integration
+//
+// Returns every organization member together with their identity on this integration (e.g. their Slack user id on the connected workspace). Identities are used to mention the on-call person in channel alerts; they are never used for paging. Read-only and cheap: this never calls out to the provider. Slack-only — other integration types return 400.
+//
+// Corresponds with GET /api/v1/orgs/{org}/integrations/{uid}/identities (the `ListIntegrationIdentities` operationId).
+func (c *Client) ListIntegrationIdentities(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListIntegrationIdentitiesRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SyncIntegrationIdentities Re-run the member identity auto-match
+//
+// Looks every organization member up in the connected Slack workspace by email (`users.lookupByEmail`) and records the matches. Manual overrides are never overwritten, and a workspace account that two members both resolve to is reported ambiguous and written nowhere. Admin only.
+//
+// Corresponds with POST /api/v1/orgs/{org}/integrations/{uid}/identities/sync (the `SyncIntegrationIdentities` operationId).
+func (c *Client) SyncIntegrationIdentities(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSyncIntegrationIdentitiesRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteIntegrationIdentity Clear a member's identity on an integration
+//
+// Corresponds with DELETE /api/v1/orgs/{org}/integrations/{uid}/identities/{userUid} (the `DeleteIntegrationIdentity` operationId).
+func (c *Client) DeleteIntegrationIdentity(ctx context.Context, org OrgPath, uid ChannelUidPath, userUid IdentityUserUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteIntegrationIdentityRequest(c.Server, org, uid, userUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetIntegrationIdentityWithBody Set a member's identity on an integration
+//
+// Records an admin-chosen mapping between an organization member and a workspace user. The external id may be claimed by at most one member per integration. Admin only.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/v1/orgs/{org}/integrations/{uid}/identities/{userUid} (the `SetIntegrationIdentity` operationId).
+func (c *Client) SetIntegrationIdentityWithBody(ctx context.Context, org OrgPath, uid ChannelUidPath, userUid IdentityUserUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetIntegrationIdentityRequestWithBody(c.Server, org, uid, userUid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetIntegrationIdentity Set a member's identity on an integration
+//
+// Records an admin-chosen mapping between an organization member and a workspace user. The external id may be claimed by at most one member per integration. Admin only.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/v1/orgs/{org}/integrations/{uid}/identities/{userUid} (the `SetIntegrationIdentity` operationId).
+func (c *Client) SetIntegrationIdentity(ctx context.Context, org OrgPath, uid ChannelUidPath, userUid IdentityUserUidPath, body SetIntegrationIdentityJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetIntegrationIdentityRequest(c.Server, org, uid, userUid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListInvitations List pending invitations
 //
 // Corresponds with GET /api/v1/orgs/{org}/invitations (the `ListInvitations` operationId).
@@ -9991,6 +10321,23 @@ func (c *Client) AddMember(ctx context.Context, org OrgPath, body AddMemberJSONR
 	return c.Client.Do(req)
 }
 
+// ListMemberCoverage List per-member paging coverage
+//
+// Per-member notification coverage for the organization. Exposes channel TYPES and verified/enabled flags only — never a contact value, since per-user contacts belong to the member and are otherwise `users/me` scoped. `emailFallbackOnly` marks members nothing but email can reach. Admin only.
+//
+// Corresponds with GET /api/v1/orgs/{org}/members/coverage (the `ListMemberCoverage` operationId).
+func (c *Client) ListMemberCoverage(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListMemberCoverageRequest(c.Server, org)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // RemoveMember Remove member from organization
 //
 // Corresponds with DELETE /api/v1/orgs/{org}/members/{uid} (the `RemoveMember` operationId).
@@ -10045,6 +10392,61 @@ func (c *Client) UpdateMemberWithBody(ctx context.Context, org OrgPath, uid Memb
 // Corresponds with PATCH /api/v1/orgs/{org}/members/{uid} (the `UpdateMember` operationId).
 func (c *Client) UpdateMember(ctx context.Context, org OrgPath, uid MemberUidPath, body UpdateMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateMemberRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AddMemberContactWithBody Pre-provision an unverified paging contact for a member
+//
+// Lets an admin add a phone or WhatsApp contact for another member, in UNVERIFIED state. The contact becomes pageable only after its owner completes the normal verification round-trip — an admin can never create or flip a contact to verified. Other contact types are refused.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/members/{uid}/contacts (the `AddMemberContact` operationId).
+func (c *Client) AddMemberContactWithBody(ctx context.Context, org OrgPath, uid MemberUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddMemberContactRequestWithBody(c.Server, org, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AddMemberContact Pre-provision an unverified paging contact for a member
+//
+// Lets an admin add a phone or WhatsApp contact for another member, in UNVERIFIED state. The contact becomes pageable only after its owner completes the normal verification round-trip — an admin can never create or flip a contact to verified. Other contact types are refused.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/members/{uid}/contacts (the `AddMemberContact` operationId).
+func (c *Client) AddMemberContact(ctx context.Context, org OrgPath, uid MemberUidPath, body AddMemberContactJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddMemberContactRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SendMemberPagingNudge Email a member asking them to set up their paging
+//
+// Sends a "set up your alert notifications" email with a link to the member's own notification settings. Carries no contact data and no verification code. Admin only.
+//
+// Corresponds with POST /api/v1/orgs/{org}/members/{uid}/paging-nudge (the `SendMemberPagingNudge` operationId).
+func (c *Client) SendMemberPagingNudge(ctx context.Context, org OrgPath, uid MemberUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSendMemberPagingNudgeRequest(c.Server, org, uid)
 	if err != nil {
 		return nil, err
 	}
@@ -17212,6 +17614,197 @@ func NewUnsnoozeIncidentRequest(server string, org OrgPath, uid IncidentUidPath)
 	return req, nil
 }
 
+// NewListIntegrationIdentitiesRequest constructs an http.Request for the ListIntegrationIdentities method
+func NewListIntegrationIdentitiesRequest(server string, org OrgPath, uid ChannelUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/integrations/%s/identities", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSyncIntegrationIdentitiesRequest constructs an http.Request for the SyncIntegrationIdentities method
+func NewSyncIntegrationIdentitiesRequest(server string, org OrgPath, uid ChannelUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/integrations/%s/identities/sync", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteIntegrationIdentityRequest constructs an http.Request for the DeleteIntegrationIdentity method
+func NewDeleteIntegrationIdentityRequest(server string, org OrgPath, uid ChannelUidPath, userUid IdentityUserUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "userUid", userUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/integrations/%s/identities/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetIntegrationIdentityRequest calls the generic SetIntegrationIdentity builder with application/json body
+func NewSetIntegrationIdentityRequest(server string, org OrgPath, uid ChannelUidPath, userUid IdentityUserUidPath, body SetIntegrationIdentityJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetIntegrationIdentityRequestWithBody(server, org, uid, userUid, "application/json", bodyReader)
+}
+
+// NewSetIntegrationIdentityRequestWithBody constructs an http.Request for the SetIntegrationIdentity method, with any body, and a specified content type
+func NewSetIntegrationIdentityRequestWithBody(server string, org OrgPath, uid ChannelUidPath, userUid IdentityUserUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "userUid", userUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/integrations/%s/identities/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListInvitationsRequest constructs an http.Request for the ListInvitations method
 func NewListInvitationsRequest(server string, org OrgPath) (*http.Request, error) {
 	var err error
@@ -18254,6 +18847,40 @@ func NewAddMemberRequestWithBody(server string, org OrgPath, contentType string,
 	return req, nil
 }
 
+// NewListMemberCoverageRequest constructs an http.Request for the ListMemberCoverage method
+func NewListMemberCoverageRequest(server string, org OrgPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/members/coverage", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewRemoveMemberRequest constructs an http.Request for the RemoveMember method
 func NewRemoveMemberRequest(server string, org OrgPath, uid MemberUidPath) (*http.Request, error) {
 	var err error
@@ -18386,6 +19013,101 @@ func NewUpdateMemberRequestWithBody(server string, org OrgPath, uid MemberUidPat
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAddMemberContactRequest calls the generic AddMemberContact builder with application/json body
+func NewAddMemberContactRequest(server string, org OrgPath, uid MemberUidPath, body AddMemberContactJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAddMemberContactRequestWithBody(server, org, uid, "application/json", bodyReader)
+}
+
+// NewAddMemberContactRequestWithBody constructs an http.Request for the AddMemberContact method, with any body, and a specified content type
+func NewAddMemberContactRequestWithBody(server string, org OrgPath, uid MemberUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/members/%s/contacts", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSendMemberPagingNudgeRequest constructs an http.Request for the SendMemberPagingNudge method
+func NewSendMemberPagingNudgeRequest(server string, org OrgPath, uid MemberUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/members/%s/paging-nudge", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -23782,6 +24504,49 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/orgs/{org}/incidents/{uid}/unsnooze (the `UnsnoozeIncident` operationId).
 	UnsnoozeIncidentWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, reqEditors ...RequestEditorFn) (*UnsnoozeIncidentResult, error)
 
+	// ListIntegrationIdentitiesWithResponse List member identity mappings for an integration
+	//
+	// Returns every organization member together with their identity on this integration (e.g. their Slack user id on the connected workspace). Identities are used to mention the on-call person in channel alerts; they are never used for paging. Read-only and cheap: this never calls out to the provider. Slack-only — other integration types return 400.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/integrations/{uid}/identities (the `ListIntegrationIdentities` operationId).
+	ListIntegrationIdentitiesWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*ListIntegrationIdentitiesResult, error)
+
+	// SyncIntegrationIdentitiesWithResponse Re-run the member identity auto-match
+	//
+	// Looks every organization member up in the connected Slack workspace by email (`users.lookupByEmail`) and records the matches. Manual overrides are never overwritten, and a workspace account that two members both resolve to is reported ambiguous and written nowhere. Admin only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/integrations/{uid}/identities/sync (the `SyncIntegrationIdentities` operationId).
+	SyncIntegrationIdentitiesWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*SyncIntegrationIdentitiesResult, error)
+
+	// DeleteIntegrationIdentityWithResponse Clear a member's identity on an integration
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org}/integrations/{uid}/identities/{userUid} (the `DeleteIntegrationIdentity` operationId).
+	DeleteIntegrationIdentityWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, userUid IdentityUserUidPath, reqEditors ...RequestEditorFn) (*DeleteIntegrationIdentityResult, error)
+
+	// SetIntegrationIdentityWithBodyWithResponse Set a member's identity on an integration
+	//
+	// Records an admin-chosen mapping between an organization member and a workspace user. The external id may be claimed by at most one member per integration. Admin only.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/orgs/{org}/integrations/{uid}/identities/{userUid} (the `SetIntegrationIdentity` operationId).
+	SetIntegrationIdentityWithBodyWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, userUid IdentityUserUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetIntegrationIdentityResult, error)
+
+	// SetIntegrationIdentityWithResponse Set a member's identity on an integration
+	//
+	// Records an admin-chosen mapping between an organization member and a workspace user. The external id may be claimed by at most one member per integration. Admin only.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/orgs/{org}/integrations/{uid}/identities/{userUid} (the `SetIntegrationIdentity` operationId).
+	SetIntegrationIdentityWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, userUid IdentityUserUidPath, body SetIntegrationIdentityJSONRequestBody, reqEditors ...RequestEditorFn) (*SetIntegrationIdentityResult, error)
+
 	// ListInvitationsWithResponse List pending invitations
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -23985,6 +24750,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/orgs/{org}/members (the `AddMember` operationId).
 	AddMemberWithResponse(ctx context.Context, org OrgPath, body AddMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*AddMemberResult, error)
 
+	// ListMemberCoverageWithResponse List per-member paging coverage
+	//
+	// Per-member notification coverage for the organization. Exposes channel TYPES and verified/enabled flags only — never a contact value, since per-user contacts belong to the member and are otherwise `users/me` scoped. `emailFallbackOnly` marks members nothing but email can reach. Admin only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/members/coverage (the `ListMemberCoverage` operationId).
+	ListMemberCoverageWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListMemberCoverageResult, error)
+
 	// RemoveMemberWithResponse Remove member from organization
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -24012,6 +24786,33 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PATCH /api/v1/orgs/{org}/members/{uid} (the `UpdateMember` operationId).
 	UpdateMemberWithResponse(ctx context.Context, org OrgPath, uid MemberUidPath, body UpdateMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateMemberResult, error)
+
+	// AddMemberContactWithBodyWithResponse Pre-provision an unverified paging contact for a member
+	//
+	// Lets an admin add a phone or WhatsApp contact for another member, in UNVERIFIED state. The contact becomes pageable only after its owner completes the normal verification round-trip — an admin can never create or flip a contact to verified. Other contact types are refused.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/members/{uid}/contacts (the `AddMemberContact` operationId).
+	AddMemberContactWithBodyWithResponse(ctx context.Context, org OrgPath, uid MemberUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddMemberContactResult, error)
+
+	// AddMemberContactWithResponse Pre-provision an unverified paging contact for a member
+	//
+	// Lets an admin add a phone or WhatsApp contact for another member, in UNVERIFIED state. The contact becomes pageable only after its owner completes the normal verification round-trip — an admin can never create or flip a contact to verified. Other contact types are refused.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/members/{uid}/contacts (the `AddMemberContact` operationId).
+	AddMemberContactWithResponse(ctx context.Context, org OrgPath, uid MemberUidPath, body AddMemberContactJSONRequestBody, reqEditors ...RequestEditorFn) (*AddMemberContactResult, error)
+
+	// SendMemberPagingNudgeWithResponse Email a member asking them to set up their paging
+	//
+	// Sends a "set up your alert notifications" email with a link to the member's own notification settings. Carries no contact data and no verification code. Admin only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/members/{uid}/paging-nudge (the `SendMemberPagingNudge` operationId).
+	SendMemberPagingNudgeWithResponse(ctx context.Context, org OrgPath, uid MemberUidPath, reqEditors ...RequestEditorFn) (*SendMemberPagingNudgeResult, error)
 
 	// ListOrgMembershipRequestsWithResponse List an organization's membership requests
 	//
@@ -24857,11 +25658,18 @@ type GetHealthResult struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *HealthResponse
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *HealthResponse
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r GetHealthResult) GetJSON200() *HealthResponse {
 	return r.JSON200
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetHealthResult) GetJSON503() *HealthResponse {
+	return r.JSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -30726,6 +31534,268 @@ func (r UnsnoozeIncidentResult) ContentType() string {
 	return ""
 }
 
+type ListIntegrationIdentitiesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IntegrationIdentityListResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListIntegrationIdentitiesResult) GetJSON200() *IntegrationIdentityListResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListIntegrationIdentitiesResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListIntegrationIdentitiesResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListIntegrationIdentitiesResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ListIntegrationIdentitiesResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListIntegrationIdentitiesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListIntegrationIdentitiesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListIntegrationIdentitiesResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SyncIntegrationIdentitiesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IntegrationIdentitySyncResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SyncIntegrationIdentitiesResult) GetJSON200() *IntegrationIdentitySyncResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r SyncIntegrationIdentitiesResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r SyncIntegrationIdentitiesResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r SyncIntegrationIdentitiesResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r SyncIntegrationIdentitiesResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r SyncIntegrationIdentitiesResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SyncIntegrationIdentitiesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SyncIntegrationIdentitiesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SyncIntegrationIdentitiesResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteIntegrationIdentityResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r DeleteIntegrationIdentityResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteIntegrationIdentityResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeleteIntegrationIdentityResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteIntegrationIdentityResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteIntegrationIdentityResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteIntegrationIdentityResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteIntegrationIdentityResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteIntegrationIdentityResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetIntegrationIdentityResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IntegrationIdentity
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetIntegrationIdentityResult) GetJSON200() *IntegrationIdentity {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r SetIntegrationIdentityResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r SetIntegrationIdentityResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r SetIntegrationIdentityResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r SetIntegrationIdentityResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r SetIntegrationIdentityResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetIntegrationIdentityResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetIntegrationIdentityResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetIntegrationIdentityResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListInvitationsResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -31909,6 +32979,68 @@ func (r AddMemberResult) ContentType() string {
 	return ""
 }
 
+type ListMemberCoverageResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *MemberCoverageListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListMemberCoverageResult) GetJSON200() *MemberCoverageListResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListMemberCoverageResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListMemberCoverageResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListMemberCoverageResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ListMemberCoverageResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListMemberCoverageResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListMemberCoverageResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListMemberCoverageResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type RemoveMemberResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -32068,6 +33200,137 @@ func (r UpdateMemberResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UpdateMemberResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type AddMemberContactResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *AdminMemberContact
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r AddMemberContactResult) GetJSON201() *AdminMemberContact {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r AddMemberContactResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r AddMemberContactResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r AddMemberContactResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r AddMemberContactResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r AddMemberContactResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AddMemberContactResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AddMemberContactResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AddMemberContactResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SendMemberPagingNudgeResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r SendMemberPagingNudgeResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r SendMemberPagingNudgeResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r SendMemberPagingNudgeResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r SendMemberPagingNudgeResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r SendMemberPagingNudgeResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SendMemberPagingNudgeResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SendMemberPagingNudgeResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SendMemberPagingNudgeResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -38825,6 +40088,79 @@ func (c *ClientWithResponses) UnsnoozeIncidentWithResponse(ctx context.Context, 
 	return ParseUnsnoozeIncidentResult(rsp)
 }
 
+// ListIntegrationIdentitiesWithResponse List member identity mappings for an integration
+//
+// Returns every organization member together with their identity on this integration (e.g. their Slack user id on the connected workspace). Identities are used to mention the on-call person in channel alerts; they are never used for paging. Read-only and cheap: this never calls out to the provider. Slack-only — other integration types return 400.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/integrations/{uid}/identities (the `ListIntegrationIdentities` operationId).
+func (c *ClientWithResponses) ListIntegrationIdentitiesWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*ListIntegrationIdentitiesResult, error) {
+	rsp, err := c.ListIntegrationIdentities(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListIntegrationIdentitiesResult(rsp)
+}
+
+// SyncIntegrationIdentitiesWithResponse Re-run the member identity auto-match
+//
+// Looks every organization member up in the connected Slack workspace by email (`users.lookupByEmail`) and records the matches. Manual overrides are never overwritten, and a workspace account that two members both resolve to is reported ambiguous and written nowhere. Admin only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/integrations/{uid}/identities/sync (the `SyncIntegrationIdentities` operationId).
+func (c *ClientWithResponses) SyncIntegrationIdentitiesWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, reqEditors ...RequestEditorFn) (*SyncIntegrationIdentitiesResult, error) {
+	rsp, err := c.SyncIntegrationIdentities(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSyncIntegrationIdentitiesResult(rsp)
+}
+
+// DeleteIntegrationIdentityWithResponse Clear a member's identity on an integration
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/orgs/{org}/integrations/{uid}/identities/{userUid} (the `DeleteIntegrationIdentity` operationId).
+func (c *ClientWithResponses) DeleteIntegrationIdentityWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, userUid IdentityUserUidPath, reqEditors ...RequestEditorFn) (*DeleteIntegrationIdentityResult, error) {
+	rsp, err := c.DeleteIntegrationIdentity(ctx, org, uid, userUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteIntegrationIdentityResult(rsp)
+}
+
+// SetIntegrationIdentityWithBodyWithResponse Set a member's identity on an integration
+//
+// Records an admin-chosen mapping between an organization member and a workspace user. The external id may be claimed by at most one member per integration. Admin only.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/orgs/{org}/integrations/{uid}/identities/{userUid} (the `SetIntegrationIdentity` operationId).
+func (c *ClientWithResponses) SetIntegrationIdentityWithBodyWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, userUid IdentityUserUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetIntegrationIdentityResult, error) {
+	rsp, err := c.SetIntegrationIdentityWithBody(ctx, org, uid, userUid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetIntegrationIdentityResult(rsp)
+}
+
+// SetIntegrationIdentityWithResponse Set a member's identity on an integration
+//
+// Records an admin-chosen mapping between an organization member and a workspace user. The external id may be claimed by at most one member per integration. Admin only.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/orgs/{org}/integrations/{uid}/identities/{userUid} (the `SetIntegrationIdentity` operationId).
+func (c *ClientWithResponses) SetIntegrationIdentityWithResponse(ctx context.Context, org OrgPath, uid ChannelUidPath, userUid IdentityUserUidPath, body SetIntegrationIdentityJSONRequestBody, reqEditors ...RequestEditorFn) (*SetIntegrationIdentityResult, error) {
+	rsp, err := c.SetIntegrationIdentity(ctx, org, uid, userUid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetIntegrationIdentityResult(rsp)
+}
+
 // ListInvitationsWithResponse List pending invitations
 //
 // Returns a wrapper object for the known response body format(s).
@@ -39190,6 +40526,21 @@ func (c *ClientWithResponses) AddMemberWithResponse(ctx context.Context, org Org
 	return ParseAddMemberResult(rsp)
 }
 
+// ListMemberCoverageWithResponse List per-member paging coverage
+//
+// Per-member notification coverage for the organization. Exposes channel TYPES and verified/enabled flags only — never a contact value, since per-user contacts belong to the member and are otherwise `users/me` scoped. `emailFallbackOnly` marks members nothing but email can reach. Admin only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/members/coverage (the `ListMemberCoverage` operationId).
+func (c *ClientWithResponses) ListMemberCoverageWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListMemberCoverageResult, error) {
+	rsp, err := c.ListMemberCoverage(ctx, org, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListMemberCoverageResult(rsp)
+}
+
 // RemoveMemberWithResponse Remove member from organization
 //
 // Returns a wrapper object for the known response body format(s).
@@ -39240,6 +40591,51 @@ func (c *ClientWithResponses) UpdateMemberWithResponse(ctx context.Context, org 
 		return nil, err
 	}
 	return ParseUpdateMemberResult(rsp)
+}
+
+// AddMemberContactWithBodyWithResponse Pre-provision an unverified paging contact for a member
+//
+// Lets an admin add a phone or WhatsApp contact for another member, in UNVERIFIED state. The contact becomes pageable only after its owner completes the normal verification round-trip — an admin can never create or flip a contact to verified. Other contact types are refused.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/members/{uid}/contacts (the `AddMemberContact` operationId).
+func (c *ClientWithResponses) AddMemberContactWithBodyWithResponse(ctx context.Context, org OrgPath, uid MemberUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddMemberContactResult, error) {
+	rsp, err := c.AddMemberContactWithBody(ctx, org, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAddMemberContactResult(rsp)
+}
+
+// AddMemberContactWithResponse Pre-provision an unverified paging contact for a member
+//
+// Lets an admin add a phone or WhatsApp contact for another member, in UNVERIFIED state. The contact becomes pageable only after its owner completes the normal verification round-trip — an admin can never create or flip a contact to verified. Other contact types are refused.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/members/{uid}/contacts (the `AddMemberContact` operationId).
+func (c *ClientWithResponses) AddMemberContactWithResponse(ctx context.Context, org OrgPath, uid MemberUidPath, body AddMemberContactJSONRequestBody, reqEditors ...RequestEditorFn) (*AddMemberContactResult, error) {
+	rsp, err := c.AddMemberContact(ctx, org, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAddMemberContactResult(rsp)
+}
+
+// SendMemberPagingNudgeWithResponse Email a member asking them to set up their paging
+//
+// Sends a "set up your alert notifications" email with a link to the member's own notification settings. Carries no contact data and no verification code. Admin only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/members/{uid}/paging-nudge (the `SendMemberPagingNudge` operationId).
+func (c *ClientWithResponses) SendMemberPagingNudgeWithResponse(ctx context.Context, org OrgPath, uid MemberUidPath, reqEditors ...RequestEditorFn) (*SendMemberPagingNudgeResult, error) {
+	rsp, err := c.SendMemberPagingNudge(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSendMemberPagingNudgeResult(rsp)
 }
 
 // ListOrgMembershipRequestsWithResponse List an organization's membership requests
@@ -40754,6 +42150,13 @@ func ParseGetHealthResult(rsp *http.Response) (*GetHealthResult, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest HealthResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
 
 	}
 
@@ -45001,6 +46404,217 @@ func ParseUnsnoozeIncidentResult(rsp *http.Response) (*UnsnoozeIncidentResult, e
 	return response, nil
 }
 
+// ParseListIntegrationIdentitiesResult parses an HTTP response from a ListIntegrationIdentitiesWithResponse call
+func ParseListIntegrationIdentitiesResult(rsp *http.Response) (*ListIntegrationIdentitiesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListIntegrationIdentitiesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IntegrationIdentityListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSyncIntegrationIdentitiesResult parses an HTTP response from a SyncIntegrationIdentitiesWithResponse call
+func ParseSyncIntegrationIdentitiesResult(rsp *http.Response) (*SyncIntegrationIdentitiesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SyncIntegrationIdentitiesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IntegrationIdentitySyncResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case rsp.StatusCode == 409:
+		break // No content-type
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteIntegrationIdentityResult parses an HTTP response from a DeleteIntegrationIdentityWithResponse call
+func ParseDeleteIntegrationIdentityResult(rsp *http.Response) (*DeleteIntegrationIdentityResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteIntegrationIdentityResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetIntegrationIdentityResult parses an HTTP response from a SetIntegrationIdentityWithResponse call
+func ParseSetIntegrationIdentityResult(rsp *http.Response) (*SetIntegrationIdentityResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetIntegrationIdentityResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IntegrationIdentity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case rsp.StatusCode == 409:
+		break // No content-type
+
+	}
+
+	return response, nil
+}
+
 // ParseListInvitationsResult parses an HTTP response from a ListInvitationsWithResponse call
 func ParseListInvitationsResult(rsp *http.Response) (*ListInvitationsResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -45881,6 +47495,53 @@ func ParseAddMemberResult(rsp *http.Response) (*AddMemberResult, error) {
 	return response, nil
 }
 
+// ParseListMemberCoverageResult parses an HTTP response from a ListMemberCoverageWithResponse call
+func ParseListMemberCoverageResult(rsp *http.Response) (*ListMemberCoverageResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListMemberCoverageResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MemberCoverageListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseRemoveMemberResult parses an HTTP response from a RemoveMemberWithResponse call
 func ParseRemoveMemberResult(rsp *http.Response) (*RemoveMemberResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -45998,6 +47659,113 @@ func ParseUpdateMemberResult(rsp *http.Response) (*UpdateMemberResult, error) {
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAddMemberContactResult parses an HTTP response from a AddMemberContactWithResponse call
+func ParseAddMemberContactResult(rsp *http.Response) (*AddMemberContactResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AddMemberContactResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AdminMemberContact
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case rsp.StatusCode == 409:
+		break // No content-type
+
+	}
+
+	return response, nil
+}
+
+// ParseSendMemberPagingNudgeResult parses an HTTP response from a SendMemberPagingNudgeWithResponse call
+func ParseSendMemberPagingNudgeResult(rsp *http.Response) (*SendMemberPagingNudgeResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SendMemberPagingNudgeResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 

@@ -224,6 +224,14 @@ function IncidentsIndexPage() {
                 >
                   <TableCell>
                     <div className="flex items-center gap-2">
+                      {incident.number ? (
+                        <span
+                          className="text-muted-foreground tabular-nums text-sm"
+                          data-testid="incident-number"
+                        >
+                          #{incident.number}
+                        </span>
+                      ) : null}
                       <Link
                         to="/orgs/$org/incidents/$incidentUid"
                         params={{ org, incidentUid: incident.uid! }}

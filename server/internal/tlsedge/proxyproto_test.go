@@ -120,7 +120,7 @@ func TestProxyProtocolRemoteAddr(t *testing.T) {
 
 				var preamble []byte
 				if tc.version != 0 {
-					preamble = proxyHeader(t, tc.version, advertisedClient, advertisedDest)
+					preamble = proxyHeader(t, tc.version)
 				}
 
 				observed, localAddr, err := requestRemoteAddr(t, addr, preamble, transport.useTLS)
@@ -167,7 +167,7 @@ func TestProxyProtocolMalformedHeaderIsIsolated(t *testing.T) {
 
 			// ...and the listener is still serving.
 			observed, _, err := requestRemoteAddr(t,
-				addr, proxyHeader(t, 2, advertisedClient, advertisedDest), transport.useTLS)
+				addr, proxyHeader(t, 2), transport.useTLS)
 			r.NoError(err, "the listener must keep serving after a malformed preamble")
 			r.Equal(advertisedClient, observed)
 		})
@@ -390,16 +390,16 @@ func requestRemoteAddr(t *testing.T, addr string, preamble []byte, useTLS bool) 
 	return strings.TrimSpace(string(body)), localAddr, nil
 }
 
-// proxyHeader formats a real PROXY protocol header (v1 or v2) for the given
-// source/destination, using the same library a proxy would.
-func proxyHeader(t *testing.T, version byte, source, destination string) []byte {
+// proxyHeader formats a real PROXY protocol header (v1 or v2) advertising the
+// canonical test client, using the same library a proxy would.
+func proxyHeader(t *testing.T, version byte) []byte {
 	t.Helper()
 	r := require.New(t)
 
-	sourceAddr, err := net.ResolveTCPAddr("tcp", source)
+	sourceAddr, err := net.ResolveTCPAddr("tcp", advertisedClient)
 	r.NoError(err)
 
-	destinationAddr, err := net.ResolveTCPAddr("tcp", destination)
+	destinationAddr, err := net.ResolveTCPAddr("tcp", advertisedDest)
 	r.NoError(err)
 
 	header := &proxyproto.Header{
@@ -422,6 +422,14 @@ func proxyHeader(t *testing.T, version byte, source, destination string) []byte 
 // obtained.
 func testTLSConfig(t *testing.T) *tls.Config {
 	t.Helper()
+
+	return testTLSConfigFor(t, testSNI)
+}
+
+// testTLSConfigFor is testTLSConfig for an arbitrary hostname, which the
+// chained-fallback tests use to tell the two hops' certificates apart.
+func testTLSConfigFor(t *testing.T, host string) *tls.Config {
+	t.Helper()
 	r := require.New(t)
 
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -429,8 +437,8 @@ func testTLSConfig(t *testing.T) *tls.Config {
 
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: testSNI},
-		DNSNames:     []string{testSNI},
+		Subject:      pkix.Name{CommonName: host},
+		DNSNames:     []string{host},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,

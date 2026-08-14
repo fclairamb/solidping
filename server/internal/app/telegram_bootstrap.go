@@ -53,7 +53,27 @@ func bootstrapTelegram(ctx context.Context, dbSvc db.Service, cfg *config.Config
 	defer cancel()
 
 	verifyTelegramIdentity(callCtx, dbSvc, client, &cfg.Telegram)
+	ensureTelegramCommands(callCtx, client)
 	ensureTelegramWebhook(callCtx, client, cfg)
+}
+
+// ensureTelegramCommands publishes the bot's command list so Telegram
+// autocompletes it in the client.
+//
+// Unconditional and idempotent, exactly like setWebhook: the registration lives
+// on Telegram's side, nothing here can read back what a previous deploy set
+// without a second round trip, and a deploy that adds a command must make it
+// discoverable without anyone opening BotFather. Best-effort — a bot whose
+// autocomplete is stale still answers every command that is typed by hand.
+func ensureTelegramCommands(ctx context.Context, client *telegram.Client) {
+	if err := client.SetMyCommands(ctx, telegram.Commands); err != nil {
+		slog.WarnContext(ctx, "could not register the Telegram command list",
+			"reason", telegram.FailureReason(err), "error", err)
+
+		return
+	}
+
+	slog.InfoContext(ctx, "Telegram command list registered", "commands", len(telegram.Commands))
 }
 
 // verifyTelegramIdentity warns when the configured username does not match the

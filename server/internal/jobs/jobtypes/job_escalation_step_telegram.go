@@ -152,11 +152,25 @@ func (r *EscalationStepJobRun) telegramAlertParams(
 
 	return &telegram.AlertParams{
 		State:       telegramStateLabel(incident),
+		Number:      incident.Number,
+		IncidentUID: incident.UID,
 		CheckName:   r.phoneCheckName(ctx, jctx, incident),
 		Detail:      telegramDetail(incident),
 		OrgSlug:     orgSlug,
 		IncidentURL: telegramIncidentURL(appBaseURL(jctx), orgSlug, incident.UID),
 	}
+}
+
+// telegramAckKeyboard attaches the Acknowledge button to an alert — but only
+// while there is something to acknowledge. A resolved or already-acked incident
+// ships without one: a button that answers "already done" is noise, and worse,
+// an alert still offering it reads as an unclaimed page.
+func telegramAckKeyboard(incident *models.Incident) *telegram.InlineKeyboard {
+	if incident.State == models.IncidentStateResolved || incident.AcknowledgedAt != nil {
+		return nil
+	}
+
+	return telegram.AckKeyboard(incident.UID)
 }
 
 // sendTelegramAlert sends the alert, threading it under the incident's first
@@ -171,12 +185,14 @@ func (r *EscalationStepJobRun) sendTelegramAlert(
 	params *telegram.AlertParams,
 ) (int64, error) {
 	body := telegram.BuildAlertHTML(params)
+	keyboard := telegramAckKeyboard(incident)
 	replyTo := r.telegramThreadAnchor(ctx, jctx, log, incident, chatID)
 
 	messageID, err := sendTelegramHonoringRetryAfter(ctx, log, client, &telegram.Message{
 		ChatID:           chatID,
 		HTML:             body,
 		ReplyToMessageID: replyTo,
+		ReplyMarkup:      keyboard,
 	})
 
 	if err != nil && replyTo != 0 && errors.Is(err, telegram.ErrReplyTargetMissing) {
@@ -185,7 +201,7 @@ func (r *EscalationStepJobRun) sendTelegramAlert(
 		r.clearTelegramThreadAnchor(ctx, jctx, log, incident, chatID)
 
 		messageID, err = sendTelegramHonoringRetryAfter(
-			ctx, log, client, &telegram.Message{ChatID: chatID, HTML: body},
+			ctx, log, client, &telegram.Message{ChatID: chatID, HTML: body, ReplyMarkup: keyboard},
 		)
 	}
 
@@ -195,11 +211,15 @@ func (r *EscalationStepJobRun) sendTelegramAlert(
 
 	if replyTo != 0 && params.State == telegram.StateResolved {
 		// Best effort: rewrite the original so someone scrolling back does not
-		// read a stale red alert as live. A failure here never costs anything —
-		// the resolution message itself already went out above.
-		if editErr := client.EditMessageText(
-			ctx, chatID, replyTo, telegram.BuildResolvedOriginalHTML(params),
-		); editErr != nil {
+		// read a stale red alert as live, and TAKE ITS ACKNOWLEDGE BUTTON AWAY —
+		// a resolved incident has nothing left to ack. An absent reply_markup
+		// would leave the old keyboard in place, so the empty one is explicit.
+		if editErr := client.EditMessage(ctx, &telegram.Edit{
+			ChatID:      chatID,
+			MessageID:   replyTo,
+			HTML:        telegram.BuildResolvedOriginalHTML(params),
+			ReplyMarkup: telegram.EmptyInlineKeyboard(),
+		}); editErr != nil {
 			log.InfoContext(ctx, "could not mark the original telegram alert resolved",
 				"incidentUID", incident.UID, "chatId", chatID, "error", editErr)
 		}

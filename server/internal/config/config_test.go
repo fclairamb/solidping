@@ -748,6 +748,137 @@ func TestValidateACMEProxyProtocol(t *testing.T) {
 	}
 }
 
+// TestValidateACMEFallbackUpstreams pins the startup contract of the chained
+// fallback: a next hop that is not a dialable host:port, or one configured on
+// an edge that never listens, must fail at startup rather than surface later as
+// "every unknown-host connection is silently dropped".
+func TestValidateACMEFallbackUpstreams(t *testing.T) {
+	t.Parallel()
+
+	base := func(mutate func(*ACMEConfig)) ACMEConfig {
+		cfg := ACMEConfig{
+			Enabled: true, Email: "ops@solidping.io",
+			ListenHTTP: DefaultACMEListenHTTP, ListenHTTPS: DefaultACMEListenHTTPS,
+		}
+		mutate(&cfg)
+
+		return cfg
+	}
+
+	tests := []struct {
+		name    string
+		acme    ACMEConfig
+		wantErr error
+	}{
+		{
+			name: "no upstream is the default and stays valid",
+			acme: base(func(*ACMEConfig) {}),
+		},
+		{
+			name: "both upstreams as host:port",
+			acme: base(func(c *ACMEConfig) {
+				c.FallbackUpstreamHTTPS = "10.42.0.9:443"
+				c.FallbackUpstreamHTTP = "dev.internal:80"
+			}),
+		},
+		{
+			name: "an IPv6 upstream in bracket form",
+			acme: base(func(c *ACMEConfig) {
+				c.FallbackUpstreamHTTPS = "[2001:db8::1]:443"
+			}),
+		},
+		{
+			name: "a bare host with no port is rejected",
+			acme: base(func(c *ACMEConfig) {
+				c.FallbackUpstreamHTTPS = "dev.internal"
+			}),
+			wantErr: ErrACMEFallbackUpstreamInvalid,
+		},
+		{
+			name: "a port-only address is rejected",
+			acme: base(func(c *ACMEConfig) {
+				c.FallbackUpstreamHTTP = ":80"
+			}),
+			wantErr: ErrACMEFallbackUpstreamInvalid,
+		},
+		{
+			name: "a non-numeric port is rejected",
+			acme: base(func(c *ACMEConfig) {
+				c.FallbackUpstreamHTTPS = "dev.internal:https"
+			}),
+			wantErr: ErrACMEFallbackUpstreamInvalid,
+		},
+		{
+			name: "an out-of-range port is rejected",
+			acme: base(func(c *ACMEConfig) {
+				c.FallbackUpstreamHTTPS = "dev.internal:70000"
+			}),
+			wantErr: ErrACMEFallbackUpstreamInvalid,
+		},
+		{
+			// The two ACME listeners are the only ones that forward, so a next
+			// hop without them is a no-op the operator must hear about.
+			name:    "an upstream without acme.enabled is rejected",
+			acme:    ACMEConfig{FallbackUpstreamHTTPS: "10.42.0.9:443"},
+			wantErr: ErrACMEFallbackUpstreamRequiresACME,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			server := ServerConfig{CustomDomainCNAMEMode: "shared"}
+			acme := tt.acme
+
+			err := validateCustomDomainTLSConfig(&server, &acme)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
+}
+
+// TestApplyACMEFallbackUpstreamEnv covers the same koanf quirk for the chained
+// fallback keys, including the default-true boolean that only an explicit
+// falsey value may turn off. Uses t.Setenv, which is incompatible with
+// t.Parallel.
+func TestApplyACMEFallbackUpstreamEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_ACME_FALLBACK_UPSTREAM_HTTPS", "10.42.0.9:443")
+	t.Setenv("SP_ACME_FALLBACK_UPSTREAM_HTTP", "10.42.0.9:80")
+
+	cfg := ACMEConfig{FallbackUpstreamProxyProtocol: true}
+	applyACMEEnv(&cfg)
+
+	r.Equal("10.42.0.9:443", cfg.FallbackUpstreamHTTPS)
+	r.Equal("10.42.0.9:80", cfg.FallbackUpstreamHTTP)
+	r.True(cfg.FallbackUpstreamProxyProtocol, "an unset env var must keep the default")
+
+	t.Setenv("SP_ACME_FALLBACK_UPSTREAM_PROXY_PROTOCOL", "false")
+	applyACMEEnv(&cfg)
+	r.False(cfg.FallbackUpstreamProxyProtocol)
+}
+
+// TestACMEFallbackDefaults pins the default of the only new key whose zero
+// value is not its default: a chained hop must carry the client address unless
+// the operator explicitly opts out — and forwarding itself stays off.
+func TestACMEFallbackDefaults(t *testing.T) { //nolint:paralleltest // Load reads process env
+	r := require.New(t)
+
+	cfg, err := Load()
+	r.NoError(err)
+
+	r.True(cfg.ACME.FallbackUpstreamProxyProtocol)
+	r.Empty(cfg.ACME.FallbackUpstreamHTTPS, "forwarding must be off by default")
+	r.Empty(cfg.ACME.FallbackUpstreamHTTP, "forwarding must be off by default")
+}
+
 // TestApplyACMEProxyProtocolEnv covers the koanf quirk: both new keys contain
 // underscores, so the env provider can never bind them and applyACMEEnv has to
 // read them by hand. Uses t.Setenv, which is incompatible with t.Parallel.

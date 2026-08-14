@@ -8205,6 +8205,12 @@ components:
         uid:
           type: string
           format: uuid
+        number:
+          type: integer
+          format: int64
+          description: >-
+            Short per-organization incident reference, rendered as `#42` in the
+            dashboard, Slack and Telegram. Assigned at creation, never reused.
         checkUid:
           type: string
           format: uuid
@@ -8235,6 +8241,14 @@ components:
           type: string
         check:
           $ref: "#/components/schemas/IncidentCheck"
+        details:
+          type: object
+          additionalProperties: true
+          description: >-
+            Snapshot of the failing result captured at incident open/reopen:
+            `failure_reason` (string), `first_result` (object —
+            resultUid/status/region/duration/periodStart/output), and, after a
+            relapse, `last_failure` (same shape as `first_result`).
 
     IncidentCheck:
       type: object

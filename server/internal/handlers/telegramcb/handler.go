@@ -36,11 +36,19 @@ import (
 // generous and bounds the memory an attacker can make us allocate.
 const maxWebhookBody = 1 << 20
 
-// Sender is the outbound half the handler needs: a chat reply. Kept as an
-// interface so tests inject a fake **per handler instance** rather than
-// swapping a package-level function, which two parallel tests would race on.
+// Sender is the outbound half the handler needs. Kept as an interface so tests
+// inject a fake **per handler instance** rather than swapping a package-level
+// function, which two parallel tests would race on.
 type Sender interface {
 	SendMessage(ctx context.Context, chatID, html string) error
+	// SendKeyboard posts a message carrying an inline keyboard.
+	SendKeyboard(ctx context.Context, chatID, html string, keyboard *telegram.InlineKeyboard) error
+	// EditMessage rewrites an earlier message in place. A non-nil keyboard
+	// replaces the buttons; telegram.EmptyInlineKeyboard() removes them.
+	EditMessage(ctx context.Context, chatID string, messageID int64, html string,
+		keyboard *telegram.InlineKeyboard) error
+	// AnswerCallback closes an inline-button press with a toast.
+	AnswerCallback(ctx context.Context, callbackID, text string) error
 }
 
 // clientSender is the production implementation, built per request from the
@@ -51,14 +59,57 @@ type clientSender struct {
 
 // SendMessage posts one HTML message to a chat.
 func (s *clientSender) SendMessage(ctx context.Context, chatID, html string) error {
+	return s.SendKeyboard(ctx, chatID, html, nil)
+}
+
+// SendKeyboard posts one HTML message with an inline keyboard.
+func (s *clientSender) SendKeyboard(
+	ctx context.Context, chatID, html string, keyboard *telegram.InlineKeyboard,
+) error {
 	client, err := telegram.NewClientFromConfig(&s.cfg)
 	if err != nil {
 		return err
 	}
 
-	_, err = client.SendMessage(ctx, &telegram.Message{ChatID: chatID, HTML: html})
+	_, err = client.SendMessage(ctx, &telegram.Message{ChatID: chatID, HTML: html, ReplyMarkup: keyboard})
 
 	return err
+}
+
+// EditMessage rewrites a message in place.
+func (s *clientSender) EditMessage(
+	ctx context.Context, chatID string, messageID int64, html string, keyboard *telegram.InlineKeyboard,
+) error {
+	client, err := telegram.NewClientFromConfig(&s.cfg)
+	if err != nil {
+		return err
+	}
+
+	return client.EditMessage(ctx, &telegram.Edit{
+		ChatID:      chatID,
+		MessageID:   messageID,
+		HTML:        html,
+		ReplyMarkup: keyboard,
+	})
+}
+
+// AnswerCallback closes an inline-button press with a toast.
+func (s *clientSender) AnswerCallback(ctx context.Context, callbackID, text string) error {
+	client, err := telegram.NewClientFromConfig(&s.cfg)
+	if err != nil {
+		return err
+	}
+
+	return client.AnswerCallbackQuery(ctx, callbackID, text, false)
+}
+
+// Acknowledger is the incident-service seam the ack paths need. An interface
+// rather than the concrete *incidents.Service so this package keeps depending
+// on nothing heavier than db.Service, exactly as the Slack integration does.
+type Acknowledger interface {
+	AcknowledgeIncidentFromTelegram(
+		ctx context.Context, orgUID, incidentUID, userUID, actor string,
+	) (*models.Incident, error)
 }
 
 // Handler serves the inbound Telegram webhook.
@@ -67,6 +118,7 @@ type Handler struct {
 	cfg    *config.Config
 	log    *slog.Logger
 	sender Sender
+	acker  Acknowledger
 }
 
 // Option customizes a Handler at construction.
@@ -76,6 +128,13 @@ type Option func(*Handler)
 // config-derived one. Per handler instance, never a package global.
 func WithSender(sender Sender) Option {
 	return func(h *Handler) { h.sender = sender }
+}
+
+// WithAcknowledger injects the incident service used by /ack and the inline
+// Acknowledge button. Without it the bot still links, unlinks and answers the
+// read-only commands — it simply cannot acknowledge.
+func WithAcknowledger(acker Acknowledger) Option {
+	return func(h *Handler) { h.acker = acker }
 }
 
 // NewHandler builds a Telegram webhook handler.
@@ -139,6 +198,8 @@ func (h *Handler) dispatch(ctx context.Context, update *telegram.Update) {
 	switch {
 	case update.Message != nil && update.Message.Chat != nil:
 		h.handleMessage(ctx, update.Message)
+	case update.CallbackQuery != nil:
+		h.handleCallbackQuery(ctx, update.CallbackQuery)
 	case update.MyChatMember != nil:
 		h.handleChatMember(ctx, update.MyChatMember)
 	default:
@@ -146,10 +207,12 @@ func (h *Handler) dispatch(ctx context.Context, update *telegram.Update) {
 	}
 }
 
-// handleMessage implements the v1 command set: /start <token>, /stop and
-// /unlink. Anything else is info-logged and answered with a one-line hint —
-// the bot's advertised command list is trimmed to match, so no command is
-// offered that answers nothing.
+// handleMessage routes one inbound command.
+//
+// /start and /stop are the linking lifecycle and answer in ANY chat. Everything
+// else reads or changes org data and is therefore gated on the chat being
+// linked — see requireLinked, which answers identically for every command so an
+// unlinked chat cannot use the bot to probe what exists.
 func (h *Handler) handleMessage(ctx context.Context, msg *telegram.IncomingMessage) {
 	chatID := telegram.ChatIDString(msg.Chat.ID)
 	command, arg := telegram.Command(msg.Text)
@@ -159,9 +222,18 @@ func (h *Handler) handleMessage(ctx context.Context, msg *telegram.IncomingMessa
 		h.handleStart(ctx, msg, chatID, arg)
 	case "stop", "unlink":
 		h.handleStop(ctx, chatID)
+	case "help":
+		h.handleHelp(ctx, chatID)
+	case "status":
+		h.handleStatus(ctx, chatID)
+	case "incidents":
+		h.handleIncidents(ctx, chatID)
+	case "ack":
+		h.handleAck(ctx, msg, chatID, arg)
+	case "incident":
+		h.handleIncidentDetail(ctx, chatID, arg)
 	case "":
-		h.log.InfoContext(ctx, "ignoring non-command telegram message (no command handling in v1)",
-			"chatId", chatID)
+		h.log.InfoContext(ctx, "ignoring non-command telegram message", "chatId", chatID)
 	default:
 		h.log.InfoContext(ctx, "ignoring unknown telegram command", "chatId", chatID, "command", command)
 		h.reply(ctx, chatID, telegram.BuildUnknownCommandHTML())
@@ -169,9 +241,22 @@ func (h *Handler) handleMessage(ctx context.Context, msg *telegram.IncomingMessa
 }
 
 // handleStart redeems a connect token and links the chat.
+//
+// A /start with NO token on an already-linked chat is the help text, not the
+// linking flow: someone re-opening the bot months later types /start out of
+// habit, and answering "this link has expired" to a perfectly healthy
+// connection reads like the integration broke.
 func (h *Handler) handleStart(
 	ctx context.Context, msg *telegram.IncomingMessage, chatID, token string,
 ) {
+	if token == "" {
+		if contacts := h.linkedContacts(ctx, chatID); len(contacts) > 0 {
+			h.reply(ctx, chatID, telegram.BuildHelpHTML())
+
+			return
+		}
+	}
+
 	if !h.chatIsConnectable(ctx, msg, chatID) {
 		return
 	}

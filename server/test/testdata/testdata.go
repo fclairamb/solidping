@@ -329,6 +329,24 @@ func createTestIncidentNotification(ctx context.Context, dbService db.Service, o
 	incident.UID = incidentUID
 	incident.CreatedAt = now
 	incident.UpdatedAt = now
+	// Same shape the incidents service's failureDetails() writes at open time
+	// (spec 2026-08-13-11) — seeded by hand here since this is deterministic
+	// fixture data, not exercising the real write path. Gives the dash0 E2E a
+	// stable incident whose detail page renders the "First failure" card.
+	incident.Details = models.JSONMap{
+		"failure_reason": "HTTP request failed: 503 Service Unavailable",
+		"first_result": models.JSONMap{
+			"resultUid":   "00000000-0000-0000-0000-000000000015",
+			"status":      "DOWN",
+			"region":      "eu",
+			"duration":    float32(1.42),
+			"periodStart": now,
+			"output": models.JSONMap{
+				"error":       "HTTP request failed: 503 Service Unavailable",
+				"status_code": float64(503),
+			},
+		},
+	}
 	if err := dbService.CreateIncident(ctx, incident); err != nil {
 		return fmt.Errorf("failed to create test incident: %w", err)
 	}

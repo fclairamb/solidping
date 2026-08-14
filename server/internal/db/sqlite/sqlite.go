@@ -2632,9 +2632,46 @@ func applyClearFields(query *bun.UpdateQuery, update *models.IncidentUpdate) *bu
 	return query
 }
 
+// CreateIncident inserts an incident, claiming its short per-org number first.
+// Mirrors the Postgres implementation (sync-pg-to-sqlite): the retry-on-
+// collision loop is shared so both engines behave identically.
 func (s *Service) CreateIncident(ctx context.Context, incident *models.Incident) error {
-	_, err := s.db.NewInsert().Model(incident).Exec(ctx)
-	return err
+	return db.CreateIncidentWithNumber(ctx, incident, s.nextIncidentNumber, func(ctx context.Context) error {
+		_, err := s.db.NewInsert().Model(incident).Exec(ctx)
+		return err
+	})
+}
+
+// nextIncidentNumber returns MAX(number)+1 for an organization. Soft-deleted
+// rows are deliberately counted: a number is never reused.
+func (s *Service) nextIncidentNumber(ctx context.Context, orgUID string) (int64, error) {
+	var next int64
+
+	err := s.db.NewSelect().
+		Model((*models.Incident)(nil)).
+		ColumnExpr("COALESCE(MAX(number), 0) + 1").
+		Where("organization_uid = ?", orgUID).
+		Scan(ctx, &next)
+
+	return next, err
+}
+
+// GetIncidentByNumber resolves the short `#42` reference within an
+// organization.
+func (s *Service) GetIncidentByNumber(ctx context.Context, orgUID string, number int64) (*models.Incident, error) {
+	incident := new(models.Incident)
+
+	err := s.db.NewSelect().
+		Model(incident).
+		Where("organization_uid = ?", orgUID).
+		Where("number = ?", number).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return incident, nil
 }
 
 func (s *Service) GetIncident(ctx context.Context, orgUID, uid string) (*models.Incident, error) {

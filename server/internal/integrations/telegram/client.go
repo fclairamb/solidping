@@ -200,6 +200,40 @@ func NewClientWithBaseURL(botToken, baseURL string) (*Client, error) {
 	return NewClient(Options{BaseURL: baseURL, BotToken: botToken})
 }
 
+// InlineButton is one button of an inline keyboard.
+//
+// CallbackData is capped by Telegram at 64 BYTES and the Bot API rejects the
+// whole send when it is longer — which is why every action encoded here stays
+// "<verb>:<uuid>" (4 + 36 bytes) and never grows a third component.
+type InlineButton struct {
+	Text string `json:"text"`
+	//nolint:tagliatelle // Telegram's Bot API wire format uses snake_case.
+	CallbackData string `json:"callback_data,omitempty"`
+	URL          string `json:"url,omitempty"`
+}
+
+// InlineKeyboard is the reply_markup of a message: rows of buttons.
+//
+// An EMPTY keyboard is meaningful, not a no-op: sending `{"inline_keyboard":[]}`
+// on editMessageText is how Telegram is told to REMOVE the buttons from a
+// message. That is exactly what an acknowledged alert needs, so the marker must
+// survive JSON encoding — hence a struct with a non-omitempty slice rather than
+// a bare `[][]InlineButton`.
+type InlineKeyboard struct {
+	//nolint:tagliatelle // Telegram's Bot API wire format uses snake_case.
+	InlineKeyboard [][]InlineButton `json:"inline_keyboard"`
+}
+
+// NewInlineKeyboard builds a single-row keyboard.
+func NewInlineKeyboard(buttons ...InlineButton) *InlineKeyboard {
+	return &InlineKeyboard{InlineKeyboard: [][]InlineButton{buttons}}
+}
+
+// EmptyInlineKeyboard is the "remove the buttons" marker for an edit.
+func EmptyInlineKeyboard() *InlineKeyboard {
+	return &InlineKeyboard{InlineKeyboard: [][]InlineButton{}}
+}
+
 // Message describes one outbound Bot API sendMessage call.
 type Message struct {
 	// ChatID is the destination chat (a numeric id as a string, or "@channel").
@@ -212,6 +246,8 @@ type Message struct {
 	ReplyToMessageID int64
 	// MessageThreadID targets a forum topic. Zero omits it.
 	MessageThreadID int64
+	// ReplyMarkup attaches an inline keyboard. Nil sends no buttons.
+	ReplyMarkup *InlineKeyboard
 }
 
 // sendMessagePayload is the wire shape of sendMessage.
@@ -227,6 +263,8 @@ type sendMessagePayload struct {
 	ReplyToMessageID int64 `json:"reply_to_message_id,omitempty"`
 	//nolint:tagliatelle // Telegram's Bot API wire format uses snake_case.
 	MessageThreadID int64 `json:"message_thread_id,omitempty"`
+	//nolint:tagliatelle // Telegram's Bot API wire format uses snake_case.
+	ReplyMarkup *InlineKeyboard `json:"reply_markup,omitempty"`
 }
 
 type linkPreviewOptions struct {
@@ -262,6 +300,7 @@ func (c *Client) SendMessage(ctx context.Context, msg *Message) (int64, error) {
 		LinkPreviewOptions: linkPreviewOptions{IsDisabled: true},
 		ReplyToMessageID:   msg.ReplyToMessageID,
 		MessageThreadID:    msg.MessageThreadID,
+		ReplyMarkup:        msg.ReplyMarkup,
 	}
 
 	raw, err := c.call(ctx, "sendMessage", payload)
@@ -288,6 +327,22 @@ type editMessagePayload struct {
 	ParseMode string `json:"parse_mode"`
 	//nolint:tagliatelle // Telegram's Bot API wire format uses snake_case.
 	LinkPreviewOptions linkPreviewOptions `json:"link_preview_options"`
+	//nolint:tagliatelle // Telegram's Bot API wire format uses snake_case.
+	ReplyMarkup *InlineKeyboard `json:"reply_markup,omitempty"`
+}
+
+// Edit describes one editMessageText call.
+type Edit struct {
+	// ChatID and MessageID identify the message to rewrite.
+	ChatID    string
+	MessageID int64
+	// HTML is the replacement body.
+	HTML string
+	// ReplyMarkup replaces the message's inline keyboard. Nil LEAVES THE
+	// EXISTING BUTTONS IN PLACE (Telegram treats an absent reply_markup as
+	// "unchanged"), so an acknowledged alert must pass EmptyInlineKeyboard() to
+	// actually take its Acknowledge button away.
+	ReplyMarkup *InlineKeyboard
 }
 
 // EditMessageText rewrites an earlier message in place — used to mark the
@@ -295,21 +350,76 @@ type editMessagePayload struct {
 // alert as live. Best-effort by contract: a failure here never costs a
 // delivery, because the resolution message itself is sent separately.
 func (c *Client) EditMessageText(ctx context.Context, chatID string, messageID int64, html string) error {
-	if strings.TrimSpace(chatID) == "" {
+	return c.EditMessage(ctx, &Edit{ChatID: chatID, MessageID: messageID, HTML: html})
+}
+
+// EditMessage is the keyboard-aware form of EditMessageText.
+func (c *Client) EditMessage(ctx context.Context, edit *Edit) error {
+	if strings.TrimSpace(edit.ChatID) == "" {
 		return ErrInvalidChat
 	}
 
-	if messageID == 0 {
+	if edit.MessageID == 0 {
 		return ErrEmptyMessage
 	}
 
 	_, err := c.call(ctx, "editMessageText", editMessagePayload{
-		ChatID:             strings.TrimSpace(chatID),
-		MessageID:          messageID,
-		Text:               html,
+		ChatID:             strings.TrimSpace(edit.ChatID),
+		MessageID:          edit.MessageID,
+		Text:               edit.HTML,
 		ParseMode:          "HTML",
 		LinkPreviewOptions: linkPreviewOptions{IsDisabled: true},
+		ReplyMarkup:        edit.ReplyMarkup,
 	})
+
+	return err
+}
+
+// answerCallbackPayload is the wire shape of answerCallbackQuery.
+type answerCallbackPayload struct {
+	//nolint:tagliatelle // Telegram's Bot API wire format uses snake_case.
+	CallbackQueryID string `json:"callback_query_id"`
+	Text            string `json:"text,omitempty"`
+	//nolint:tagliatelle // Telegram's Bot API wire format uses snake_case.
+	ShowAlert bool `json:"show_alert,omitempty"`
+}
+
+// AnswerCallbackQuery closes an inline-button press with a toast.
+//
+// This is NOT optional politeness: until the callback is answered, Telegram
+// keeps the button spinning in every client that can see the message, so an
+// unanswered ack looks broken even when it worked. It is therefore called on
+// EVERY path out of the callback handler, success or failure.
+func (c *Client) AnswerCallbackQuery(ctx context.Context, callbackID, text string, showAlert bool) error {
+	if strings.TrimSpace(callbackID) == "" {
+		return ErrEmptyMessage
+	}
+
+	_, err := c.call(ctx, "answerCallbackQuery", answerCallbackPayload{
+		CallbackQueryID: callbackID,
+		Text:            text,
+		ShowAlert:       showAlert,
+	})
+
+	return err
+}
+
+// BotCommand is one entry of the bot's advertised command list.
+type BotCommand struct {
+	Command     string `json:"command"`
+	Description string `json:"description"`
+}
+
+// setMyCommandsPayload is the wire shape of setMyCommands.
+type setMyCommandsPayload struct {
+	Commands []BotCommand `json:"commands"`
+}
+
+// SetMyCommands publishes the command list Telegram autocompletes in the
+// client. Registered at boot so a deploy that adds a command makes it
+// discoverable without anyone touching BotFather.
+func (c *Client) SetMyCommands(ctx context.Context, commands []BotCommand) error {
+	_, err := c.call(ctx, "setMyCommands", setMyCommandsPayload{Commands: commands})
 
 	return err
 }
@@ -344,12 +454,28 @@ func (c *Client) GetMe(ctx context.Context) (*BotUser, error) {
 }
 
 // AllowedUpdates is the exact update set the bot subscribes to. Narrow on
-// purpose: "message" carries /start and /stop, "my_chat_member" carries the
-// block/kick transition. Subscribing to more would only grow the attack and
-// parse surface of a public endpoint.
+// purpose: "message" carries the typed commands, "callback_query" carries the
+// Acknowledge button press, "my_chat_member" carries the block/kick transition.
+// Subscribing to more would only grow the attack and parse surface of a public
+// endpoint.
 //
 //nolint:gochecknoglobals // immutable list, effectively a constant.
-var AllowedUpdates = []string{"message", "my_chat_member"}
+var AllowedUpdates = []string{"message", "callback_query", "my_chat_member"}
+
+// Commands is the bot's advertised command list, published with setMyCommands
+// at boot. It must stay in step with the switch in
+// internal/handlers/telegramcb: a command offered here that answers nothing is
+// worse than no autocomplete at all.
+//
+//nolint:gochecknoglobals // immutable list, effectively a constant.
+var Commands = []BotCommand{
+	{Command: "status", Description: "Org health in one line"},
+	{Command: "incidents", Description: "List the open incidents"},
+	{Command: "ack", Description: "Acknowledge an incident: /ack #42"},
+	{Command: "incident", Description: "Incident detail: /incident #42"},
+	{Command: "help", Description: "What this bot can do"},
+	{Command: "stop", Description: "Disconnect this chat"},
+}
 
 // setWebhookPayload is the wire shape of setWebhook.
 type setWebhookPayload struct {

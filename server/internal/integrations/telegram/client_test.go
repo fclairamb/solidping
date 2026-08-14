@@ -303,7 +303,9 @@ func TestSetWebhook_SendsSecretAndAllowedUpdates(t *testing.T) {
 
 	updates, ok := fake.body["allowed_updates"].([]any)
 	r.True(ok)
-	r.Equal([]any{"message", "my_chat_member"}, updates)
+	// callback_query is what carries the Acknowledge button press; without it in
+	// the subscription Telegram simply never delivers one.
+	r.Equal([]any{"message", "callback_query", "my_chat_member"}, updates)
 }
 
 func TestGetWebhookInfo(t *testing.T) {
@@ -368,4 +370,115 @@ func TestValidChatID(t *testing.T) {
 	// chat, and storing it would create an undeliverable contact.
 	r.False(telegram.ValidChatID("0"))
 	r.False(telegram.ValidChatID(" 0 "))
+}
+
+// TestSendMessage_CarriesTheInlineKeyboard proves the Acknowledge button
+// reaches the wire in the exact shape Telegram expects.
+func TestSendMessage_CarriesTheInlineKeyboard(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fake := newFakeBotAPI(t, http.StatusOK, `{"ok":true,"result":{"message_id":9}}`)
+	client := newTestClient(t, fake)
+
+	_, err := client.SendMessage(context.Background(), &telegram.Message{
+		ChatID:      "987654",
+		HTML:        "<b>alert</b>",
+		ReplyMarkup: telegram.AckKeyboard("inc-1"),
+	})
+	r.NoError(err)
+
+	markup, ok := fake.body["reply_markup"].(map[string]any)
+	r.True(ok, "reply_markup must be sent")
+
+	rows, ok := markup["inline_keyboard"].([]any)
+	r.True(ok)
+	r.Len(rows, 1)
+
+	buttons, ok := rows[0].([]any)
+	r.True(ok)
+	r.Len(buttons, 1)
+
+	button, ok := buttons[0].(map[string]any)
+	r.True(ok)
+	r.Equal("ack:inc-1", button["callback_data"])
+}
+
+// TestSendMessage_OmitsReplyMarkupWhenThereIsNoKeyboard keeps ordinary messages
+// on the wire shape they had before buttons existed.
+func TestSendMessage_OmitsReplyMarkupWhenThereIsNoKeyboard(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fake := newFakeBotAPI(t, http.StatusOK, `{"ok":true,"result":{"message_id":9}}`)
+	client := newTestClient(t, fake)
+
+	_, err := client.SendMessage(context.Background(), &telegram.Message{ChatID: "1", HTML: "hi"})
+	r.NoError(err)
+	r.NotContains(fake.body, "reply_markup")
+}
+
+// TestEditMessage_RemovesTheKeyboard is the button-removal contract: Telegram
+// treats an ABSENT reply_markup on an edit as "leave the buttons alone", so an
+// acknowledged alert must send an explicitly empty keyboard.
+func TestEditMessage_RemovesTheKeyboard(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fake := newFakeBotAPI(t, http.StatusOK, `{"ok":true,"result":{"message_id":9}}`)
+	client := newTestClient(t, fake)
+
+	r.NoError(client.EditMessage(context.Background(), &telegram.Edit{
+		ChatID:      "987654",
+		MessageID:   31,
+		HTML:        "<b>acked</b>",
+		ReplyMarkup: telegram.EmptyInlineKeyboard(),
+	}))
+
+	r.Equal("/bot"+testBotToken+"/editMessageText", fake.path)
+	r.EqualValues(31, fake.body["message_id"])
+
+	markup, ok := fake.body["reply_markup"].(map[string]any)
+	r.True(ok, "an edit that clears buttons must SEND reply_markup")
+	r.Empty(markup["inline_keyboard"])
+}
+
+// TestAnswerCallbackQuery pins the call that stops the button spinning.
+func TestAnswerCallbackQuery(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fake := newFakeBotAPI(t, http.StatusOK, `{"ok":true,"result":true}`)
+	client := newTestClient(t, fake)
+
+	r.NoError(client.AnswerCallbackQuery(context.Background(), "cb-1", "✅ Acknowledged", false))
+	r.Equal("/bot"+testBotToken+"/answerCallbackQuery", fake.path)
+	r.Equal("cb-1", fake.body["callback_query_id"])
+	r.Equal("✅ Acknowledged", fake.body["text"])
+}
+
+// TestSetMyCommands pins the boot-time command registration.
+func TestSetMyCommands(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fake := newFakeBotAPI(t, http.StatusOK, `{"ok":true,"result":true}`)
+	client := newTestClient(t, fake)
+
+	r.NoError(client.SetMyCommands(context.Background(), telegram.Commands))
+	r.Equal("/bot"+testBotToken+"/setMyCommands", fake.path)
+
+	commands, ok := fake.body["commands"].([]any)
+	r.True(ok)
+	r.Len(commands, len(telegram.Commands))
+
+	first, ok := commands[0].(map[string]any)
+	r.True(ok)
+	r.Equal("status", first["command"])
+	r.NotEmpty(first["description"])
 }

@@ -27,7 +27,13 @@ const (
 
 // Incident represents a period when a check was down.
 type Incident struct {
-	UID             string        `bun:"uid,pk,type:varchar(36)"`
+	UID string `bun:"uid,pk,type:varchar(36)"`
+	// Number is the short, per-org, monotonically increasing reference rendered
+	// as `#42` in the dashboard, Slack and Telegram. Nobody types a 36-char UUID
+	// into a chat on a phone, so every human-facing surface addresses an
+	// incident by this instead. Assigned once at creation and never reused —
+	// soft-deleted incidents keep theirs.
+	Number          int64         `bun:"number,notnull,default:0"`
 	OrganizationUID string        `bun:"organization_uid,notnull"`
 	CheckUID        string        `bun:"check_uid,notnull"`
 	Region          *string       `bun:"region"`

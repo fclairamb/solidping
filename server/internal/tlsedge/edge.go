@@ -208,19 +208,34 @@ func (e *Edge) decide(ctx context.Context, name string) error {
 		return fmt.Errorf("%w: empty hostname", ErrHostNotAllowed)
 	}
 
-	for _, reserved := range e.opts.ReservedHosts {
-		if host == normalizeHost(reserved) {
-			return nil
-		}
-	}
-
-	if e.opts.CustomDomainServable(ctx, host) {
+	if e.hostIsLocal(ctx, host) {
 		return nil
 	}
 
 	e.log.WarnContext(ctx, "tlsedge: refusing certificate for unknown host", "host", host)
 
 	return fmt.Errorf("%w: %s", ErrHostNotAllowed, host)
+}
+
+// hostIsLocal is the single definition of "this instance serves that name":
+// one of its own hostnames, or a verified, enabled, public custom domain. It
+// gates certificate issuance (decide) and, when a fallback upstream is
+// configured, whether a connection is terminated here or handed to the next
+// hop — the two must never disagree, or a connection would be kept locally only
+// to be refused a certificate.
+func (e *Edge) hostIsLocal(ctx context.Context, host string) bool {
+	host = normalizeHost(host)
+	if host == "" {
+		return false
+	}
+
+	for _, reserved := range e.opts.ReservedHosts {
+		if host == normalizeHost(reserved) {
+			return true
+		}
+	}
+
+	return e.opts.CustomDomainServable(ctx, host)
 }
 
 // Decide exposes the decision func for tests and for callers that want to check
@@ -292,12 +307,12 @@ func (e *Edge) TLSConfig() *tls.Config {
 // Start brings up the :80 and :443 listeners. It returns once both are bound
 // (or immediately on a bind failure) and serves in background goroutines.
 func (e *Edge) Start(ctx context.Context) error {
-	httpLn, err := e.listen(ctx, e.opts.ACME.ListenHTTP)
+	httpLn, err := e.listen(ctx, e.opts.ACME.ListenHTTP, listenerHTTP)
 	if err != nil {
 		return err
 	}
 
-	httpsLn, err := e.listen(ctx, e.opts.ACME.ListenHTTPS)
+	httpsLn, err := e.listen(ctx, e.opts.ACME.ListenHTTPS, listenerHTTPS)
 	if err != nil {
 		_ = httpLn.Close()
 
@@ -321,7 +336,10 @@ func (e *Edge) Start(ctx context.Context) error {
 
 	e.log.InfoContext(ctx, "tlsedge: starting in-server TLS",
 		"http", e.opts.ACME.ListenHTTP, "https", e.opts.ACME.ListenHTTPS, "ca", e.caLabel(),
-		"proxy_protocol", e.opts.ACME.ProxyProtocol)
+		"proxy_protocol", e.opts.ACME.ProxyProtocol,
+		"fallback_upstream_http", e.opts.ACME.FallbackUpstreamHTTP,
+		"fallback_upstream_https", e.opts.ACME.FallbackUpstreamHTTPS,
+		"fallback_upstream_proxy_protocol", e.opts.ACME.FallbackUpstreamProxyProtocol)
 
 	// The listeners outlive the caller's context (they are stopped by
 	// Shutdown), so log against a cancellation-free copy of it.
@@ -347,7 +365,13 @@ func (e *Edge) Start(ctx context.Context) error {
 // wraps it so the PROXY preamble is consumed below TLS. BOTH listeners are
 // wrapped: the plain one carries the ACME HTTP-01 challenge and the redirect to
 // https, and its client IP feeds the same rate limiter as the TLS one.
-func (e *Edge) listen(ctx context.Context, addr string) (net.Listener, error) {
+//
+// When a fallback upstream is configured for this listener, a splitter goes on
+// top — deliberately ABOVE the PROXY wrapper, so the connection it inspects
+// already knows the real client address and the forwarded PROXY header can
+// carry it on to the next hop. Without an upstream nothing is added at all and
+// the listener behaves exactly as before.
+func (e *Edge) listen(ctx context.Context, addr, kind string) (net.Listener, error) {
 	var lc net.ListenConfig
 
 	listener, err := lc.Listen(ctx, "tcp", addr)
@@ -362,7 +386,45 @@ func (e *Edge) listen(ctx context.Context, addr string) (net.Listener, error) {
 		return nil, err
 	}
 
-	return wrapped, nil
+	split, err := e.wrapFallback(ctx, wrapped, kind)
+	if err != nil {
+		_ = wrapped.Close()
+
+		return nil, err
+	}
+
+	return split, nil
+}
+
+// wrapFallback installs the unknown-host splitter on a listener when the
+// matching acme.fallback_upstream_* address is set.
+func (e *Edge) wrapFallback(ctx context.Context, listener net.Listener, kind string) (net.Listener, error) {
+	upstream := strings.TrimSpace(e.opts.ACME.FallbackUpstreamHTTPS)
+	peek := peekTLSClientHello
+
+	if kind == listenerHTTP {
+		upstream = strings.TrimSpace(e.opts.ACME.FallbackUpstreamHTTP)
+		peek = peekHTTPHost
+	}
+
+	if upstream == "" {
+		return listener, nil
+	}
+
+	split, err := newFallbackListener(ctx, listener, fallbackConfig{
+		listener:      kind,
+		upstream:      upstream,
+		proxyProtocol: e.opts.ACME.FallbackUpstreamProxyProtocol,
+		peek:          peek,
+		peekTimeout:   readHeaderTimeout,
+		isLocal:       e.hostIsLocal,
+		log:           e.log,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return split, nil
 }
 
 // caLabel is a log-friendly name for the configured CA.

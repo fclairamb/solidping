@@ -21,7 +21,7 @@ import { Switch } from "@/components/ui/switch";
 import { PinnedResultBox } from "@/components/checks/pinned-result-box";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { statusStyle } from "@/lib/status-style";
-import { regionDisplayLabel } from "@/lib/region-label";
+import { regionDisplayLabel, sortRegionSlugs } from "@/lib/region-label";
 
 type TimeRange = "hour" | "day" | "week" | "month";
 
@@ -672,7 +672,7 @@ export function ResponseTimeChart({
 
       return {
         chartData: points,
-        regions: Array.from(regionSet),
+        regions: sortRegionSlugs(regionsData?.regions, Array.from(regionSet)),
         formatSpanMs: actualDataSpan || fullSpan,
         domainMin: rangeStartMs,
         domainMax: rangeEndMs,
@@ -693,7 +693,7 @@ export function ResponseTimeChart({
 
     return {
       chartData: dataWithGapMarkers,
-      regions: Array.from(regionSet),
+      regions: sortRegionSlugs(regionsData?.regions, Array.from(regionSet)),
       formatSpanMs: span,
       domainMin: min,
       domainMax: max,
@@ -703,7 +703,15 @@ export function ResponseTimeChart({
     };
     // zoomFrom/zoomTo drive the derived `zoom` window used above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [results, fullRange, periodStartAfter, region, zoomFrom, zoomTo]);
+  }, [
+    results,
+    fullRange,
+    periodStartAfter,
+    region,
+    zoomFrom,
+    zoomTo,
+    regionsData,
+  ]);
 
   const ticks = useMemo(
     () => computeTicks(domainMin, domainMax, chartData),

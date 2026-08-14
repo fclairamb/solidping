@@ -86,7 +86,18 @@
     "checkLabel": "Check",
     "checkTypeLabel": "Check Type",
     "totalDuration": "Total Duration",
-    "ongoing": "(ongoing)"
+    "ongoing": "(ongoing)",
+    "failureDetails": {
+      "title": "First failure",
+      "description": "Snapshot of the result that triggered this incident — captured before raw results age out of retention.",
+      "unknown": "Check failed",
+      "firstFailure": "First failure",
+      "latestRelapse": "Latest relapse",
+      "status": "Status",
+      "region": "Region",
+      "duration": "Duration",
+      "time": "Time"
+    }
   },
   "timeline": {
     "title": "Timeline",

@@ -40,6 +40,7 @@ import {
   useAddComment,
   type Event,
   type IncidentDetail,
+  type IncidentResultSnapshot,
   type StatusUpdate,
   type CreateStatusUpdateRequest,
 } from "@/api/hooks";
@@ -750,6 +751,11 @@ function IncidentDetailPage() {
               <CheckCircle className="h-6 w-6 text-green-500" />
             )}
             <h1 className="text-3xl font-bold tracking-tight">
+              {incident.number ? (
+                <span className="text-muted-foreground tabular-nums mr-2">
+                  #{incident.number}
+                </span>
+              ) : null}
               {incident.title ||
                 incident.checkName ||
                 incident.checkSlug ||
@@ -984,6 +990,8 @@ function IncidentDetailPage() {
         </Card>
       </div>
 
+      <FailureDetailsCard incident={incident} />
+
       <StatusUpdatesPanel org={org} incidentUid={incidentUid} />
 
       <CommentsCard org={org} incidentUid={incidentUid} />
@@ -1105,6 +1113,121 @@ function CausedByBanner({
         })}
       </AlertDescription>
     </Alert>
+  );
+}
+
+// --- Failure Details Card ---
+
+// isPrimitive reports whether a value can be rendered directly as text
+// without a JSON fallback (compact key-value list vs. nested-object dump).
+function isPrimitive(value: unknown): value is string | number | boolean {
+  return (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  );
+}
+
+function FailureSnapshotBlock({
+  title,
+  snapshot,
+}: {
+  title: string;
+  snapshot: IncidentResultSnapshot;
+}) {
+  const { t } = useTranslation("incidents");
+  const output = snapshot.output ?? {};
+  const outputEntries = Object.entries(output).filter(([key]) => key !== "error");
+  const errorText = typeof output.error === "string" ? output.error : undefined;
+
+  return (
+    <div className="space-y-3 rounded-lg border p-4">
+      <div className="text-sm font-medium text-muted-foreground">{title}</div>
+      {errorText && (
+        <div className="break-words font-mono text-sm">{errorText}</div>
+      )}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
+        <div>
+          <div className="text-xs text-muted-foreground">
+            {t("detail.failureDetails.status")}
+          </div>
+          <div>{snapshot.status || "-"}</div>
+        </div>
+        <div>
+          <div className="text-xs text-muted-foreground">
+            {t("detail.failureDetails.region")}
+          </div>
+          <div>{snapshot.region || "-"}</div>
+        </div>
+        <div>
+          <div className="text-xs text-muted-foreground">
+            {t("detail.failureDetails.duration")}
+          </div>
+          <div>
+            {typeof snapshot.duration === "number"
+              ? `${snapshot.duration.toFixed(2)}s`
+              : "-"}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs text-muted-foreground">
+            {t("detail.failureDetails.time")}
+          </div>
+          <div>
+            {snapshot.periodStart
+              ? new Date(snapshot.periodStart).toLocaleString()
+              : "-"}
+          </div>
+        </div>
+      </div>
+      {outputEntries.length > 0 && (
+        <div className="space-y-1 border-t pt-3">
+          {outputEntries.map(([key, value]) => (
+            <div
+              key={key}
+              className="flex flex-wrap items-baseline gap-2 text-sm"
+            >
+              <span className="text-muted-foreground">{key}:</span>
+              <span className="break-all font-mono">
+                {isPrimitive(value) ? String(value) : JSON.stringify(value)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FailureDetailsCard({ incident }: { incident: IncidentDetail }) {
+  const { t } = useTranslation("incidents");
+  const details = incident.details;
+  const firstResult = details?.first_result;
+
+  if (!firstResult) return null;
+
+  return (
+    <Card data-testid="failure-details-card">
+      <CardHeader>
+        <CardTitle>{t("detail.failureDetails.title")}</CardTitle>
+        <CardDescription>{t("detail.failureDetails.description")}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="text-base font-semibold">
+          {details?.failure_reason || t("detail.failureDetails.unknown")}
+        </div>
+        <FailureSnapshotBlock
+          title={t("detail.failureDetails.firstFailure")}
+          snapshot={firstResult}
+        />
+        {details?.last_failure && (
+          <FailureSnapshotBlock
+            title={t("detail.failureDetails.latestRelapse")}
+            snapshot={details.last_failure}
+          />
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

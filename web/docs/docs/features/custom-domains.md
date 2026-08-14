@@ -264,6 +264,23 @@ attempt is rejected with `409 Conflict`.
 | `acme.listen_https`                  | `SP_ACME_LISTEN_HTTPS`                                                   | `:443`             | TLS listener. Requests flow into the normal routing, so custom hosts behave alike.  |
 | `acme.proxy_protocol`                | `SP_ACME_PROXY_PROTOCOL`                                                 | `false`            | Read a PROXY protocol (v1/v2) preamble on **both** ACME listeners — see [Behind a TLS passthrough](#behind-a-tls-passthrough-proxy-protocol). |
 | `acme.proxy_protocol_trusted_cidrs`  | `SP_ACME_PROXY_PROTOCOL_TRUSTED_CIDRS`                                   | *(none)*           | Comma-separated CIDR ranges or IPs whose PROXY header is honored. **Required** when `acme.proxy_protocol` is true — an empty list fails startup. |
+| `acme.fallback_upstream_https`       | `SP_ACME_FALLBACK_UPSTREAM_HTTPS`                                        | *(none)*           | `host:port` of a second instance to hand unknown-SNI TLS connections to, unterminated. Empty = refuse them here, as before. |
+| `acme.fallback_upstream_http`        | `SP_ACME_FALLBACK_UPSTREAM_HTTP`                                         | *(none)*           | Same next hop for plaintext `:80`, so the downstream can solve its own HTTP-01 challenges. |
+| `acme.fallback_upstream_proxy_protocol` | `SP_ACME_FALLBACK_UPSTREAM_PROXY_PROTOCOL`                            | `true`             | Prefix forwarded connections with a PROXY v2 header carrying the original client. |
+
+### Chaining a second instance
+
+Some edges (a Traefik `HostSNI(*)` catch-all, for instance) can only forward
+unknown hostnames to ONE backend. Setting `acme.fallback_upstream_https` and
+`acme.fallback_upstream_http` lets that backend pass on what it does not serve:
+the hostname is read from the TLS ClientHello (or the `Host` header) *below*
+any TLS termination, and a connection for a domain this instance does not own
+is spliced to the next hop with every byte replayed, so that instance completes
+its own handshake with its own certificate. The next hop should trust this one
+for PROXY protocol (`acme.proxy_protocol` +
+`acme.proxy_protocol_trusted_cidrs`) so it still sees the real client. An
+unreachable next hop closes the connection — a forwarded domain is never served
+here.
 
 ## Entitlements
 

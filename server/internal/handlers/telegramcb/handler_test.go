@@ -27,16 +27,56 @@ const (
 // recordingSender captures the bot's replies. Injected PER HANDLER, never a
 // package global, so parallel tests cannot race on it.
 type recordingSender struct {
-	mu   sync.Mutex
-	sent []string
-	err  error
+	mu        sync.Mutex
+	sent      []string
+	keyboards []*telegram.InlineKeyboard
+	edits     []recordedEdit
+	toasts    []string
+	err       error
 }
 
-func (s *recordingSender) SendMessage(_ context.Context, _, html string) error {
+// recordedEdit is one editMessageText the handler asked for.
+type recordedEdit struct {
+	chatID    string
+	messageID int64
+	html      string
+	keyboard  *telegram.InlineKeyboard
+}
+
+func (s *recordingSender) SendMessage(ctx context.Context, chatID, html string) error {
+	return s.SendKeyboard(ctx, chatID, html, nil)
+}
+
+func (s *recordingSender) SendKeyboard(
+	_ context.Context, _, html string, keyboard *telegram.InlineKeyboard,
+) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.sent = append(s.sent, html)
+	s.keyboards = append(s.keyboards, keyboard)
+
+	return s.err
+}
+
+func (s *recordingSender) EditMessage(
+	_ context.Context, chatID string, messageID int64, html string, keyboard *telegram.InlineKeyboard,
+) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.edits = append(s.edits, recordedEdit{
+		chatID: chatID, messageID: messageID, html: html, keyboard: keyboard,
+	})
+
+	return s.err
+}
+
+func (s *recordingSender) AnswerCallback(_ context.Context, _, text string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.toasts = append(s.toasts, text)
 
 	return s.err
 }
@@ -46,6 +86,27 @@ func (s *recordingSender) messages() []string {
 	defer s.mu.Unlock()
 
 	return append([]string(nil), s.sent...)
+}
+
+func (s *recordingSender) sentKeyboards() []*telegram.InlineKeyboard {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return append([]*telegram.InlineKeyboard(nil), s.keyboards...)
+}
+
+func (s *recordingSender) editedMessages() []recordedEdit {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return append([]recordedEdit(nil), s.edits...)
+}
+
+func (s *recordingSender) answeredToasts() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return append([]string(nil), s.toasts...)
 }
 
 type tgEnv struct {
@@ -501,9 +562,13 @@ func TestHandleMessage_UnknownCommandGetsAHint(t *testing.T) {
 		`"chat":{"id":987654321,"type":"private"},"text":"/mute 2h"}}`
 	r.Equal(http.StatusOK, env.post(t, testWebhookSecret, body).Code)
 
+	// The hint is the help text: an answer that names every command that DOES
+	// work is more useful than one that only says the typed command does not.
 	msgs := env.sender.messages()
 	r.Len(msgs, 1)
-	r.Contains(msgs[0], "/start")
+	r.Contains(msgs[0], "/status")
+	r.Contains(msgs[0], "/incidents")
+	r.Contains(msgs[0], "/ack")
 	r.Contains(msgs[0], "/stop")
 }
 

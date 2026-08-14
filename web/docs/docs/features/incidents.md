@@ -35,6 +35,18 @@ flowchart LR
 | `active` | Incident is ongoing, check is failing |
 | `resolved` | Check has recovered, incident closed |
 
+## Incident Number (`#42`)
+
+Every incident also carries a short, **per-organization** number, GitHub-issue
+style, exposed as `number` in the API. It is assigned when the incident opens,
+ordered per organization, and **never reused** — a deleted incident keeps its
+number, so `#42` identifies one incident forever.
+
+It exists because nobody types a 36-character UUID into a chat on a phone. The
+same `#42` is shown in the dashboard incident list and header, in Slack alert
+headers, and in Telegram alerts — where it is what you type back as
+`/ack #42` (see [Telegram](../configuration/telegram.md#in-chat-commands)).
+
 ## Group Incidents (Correlated Outages)
 
 When several checks belong to the same check group, SolidPing correlates their failures into a **single group incident** — one alert per outage instead of one per check. This dramatically reduces noise when a shared dependency (a database, a region, an upstream provider) takes down many checks at once.
@@ -56,6 +68,11 @@ Incidents can be managed directly from the dashboard or API:
 | **Resolve** | Manually closes the incident, cancels all pending notifications, and records a `manual` resolution. |
 
 Auto-resolution (the check recovering on its own) records a `auto` resolution instead.
+
+Acknowledging is not dashboard-only: Slack and Telegram alerts both carry an
+**Acknowledge** button, and Telegram additionally accepts `/ack #42`. Every path
+goes through the same service call, so all of them are idempotent and all of
+them cancel the pending escalation.
 
 ## Comments
 

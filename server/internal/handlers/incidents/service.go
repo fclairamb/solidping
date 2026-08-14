@@ -697,6 +697,7 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 	title := s.generateIncidentTitle(check)
 
 	incident := models.NewIncident(check.OrganizationUID, check.UID, result.PeriodStart, title)
+	incident.Details = failureDetails(result)
 
 	// Roll up under a hard parent if one is open within the correlation window.
 	s.applyRollup(ctx, check, incident)
@@ -863,6 +864,7 @@ func (s *Service) reopenIncident(
 	activeState := models.IncidentStateActive
 	newRelapseCount := incident.RelapseCount + 1
 	newFailureCount := incident.FailureCount + 1
+	newDetails := lastFailureDetails(incident.Details, result)
 
 	update := models.IncidentUpdate{
 		State:               &activeState,
@@ -870,6 +872,7 @@ func (s *Service) reopenIncident(
 		RelapseCount:        &newRelapseCount,
 		LastReopenedAt:      &now,
 		FailureCount:        &newFailureCount,
+		Details:             &newDetails,
 		ClearAcknowledgedAt: true,
 		ClearAcknowledgedBy: true,
 	}
@@ -893,6 +896,7 @@ func (s *Service) reopenIncident(
 
 	incident.PagingSuppressed = suppressed
 	incident.CausedByIncidentUID = tmp.CausedByIncidentUID
+	incident.Details = newDetails
 
 	if err := s.db.UpdateIncident(ctx, incident.UID, &update); err != nil {
 		return fmt.Errorf("failed to reopen incident: %w", err)
@@ -1111,6 +1115,7 @@ func (s *Service) createGroupIncident(
 	title := formatGroupTitle(group, 1, totalMembers)
 	incident := models.NewIncident(check.OrganizationUID, check.UID, result.PeriodStart, title)
 	incident.CheckGroupUID = check.CheckGroupUID
+	incident.Details = failureDetails(result)
 
 	if err := s.db.CreateIncident(ctx, incident); err != nil {
 		// Race: another concurrent failure beat us to it. Re-fetch the existing
@@ -1166,6 +1171,7 @@ func (s *Service) reopenGroupIncident(
 	activeState := models.IncidentStateActive
 	newRelapseCount := incident.RelapseCount + 1
 	newFailureCount := incident.FailureCount + 1
+	newDetails := lastFailureDetails(incident.Details, result)
 
 	update := models.IncidentUpdate{
 		State:               &activeState,
@@ -1173,6 +1179,7 @@ func (s *Service) reopenGroupIncident(
 		RelapseCount:        &newRelapseCount,
 		LastReopenedAt:      &now,
 		FailureCount:        &newFailureCount,
+		Details:             &newDetails,
 		ClearAcknowledgedAt: true,
 		ClearAcknowledgedBy: true,
 	}
@@ -1180,6 +1187,8 @@ func (s *Service) reopenGroupIncident(
 	if err := s.db.UpdateIncident(ctx, incident.UID, &update); err != nil {
 		return fmt.Errorf("failed to reopen group incident: %w", err)
 	}
+
+	incident.Details = newDetails
 
 	// Reset / insert this check's member row to "currently failing".
 	failing := true
@@ -1603,7 +1612,10 @@ type CheckResponse struct {
 
 // IncidentResponse represents an incident in API responses.
 type IncidentResponse struct {
-	UID                 string                   `json:"uid"`
+	UID string `json:"uid"`
+	// Number is the short per-org reference rendered as `#42`. Every human-facing
+	// surface (dashboard, Slack, Telegram) addresses the incident by this.
+	Number              int64                    `json:"number"`
 	CheckUID            string                   `json:"checkUid"`
 	CheckSlug           *string                  `json:"checkSlug,omitempty"`
 	CheckName           *string                  `json:"checkName,omitempty"`
@@ -1629,6 +1641,10 @@ type IncidentResponse struct {
 	Members             []IncidentMemberResponse `json:"members,omitempty"`
 	CausedByIncidentUID *string                  `json:"causedByIncidentUid,omitempty"`
 	PagingSuppressed    bool                     `json:"pagingSuppressed,omitempty"`
+	// Details carries the first-failure / latest-relapse snapshot recorded at
+	// incident open/reopen (failure_reason, first_result, and — after a
+	// relapse — last_failure). See failureDetails / lastFailureDetails.
+	Details models.JSONMap `json:"details,omitempty"`
 }
 
 // IncidentMemberResponse represents a single member of a group incident.
@@ -1673,6 +1689,7 @@ func stateToString(state models.IncidentState) string {
 func incidentToResponse(inc *models.Incident) IncidentResponse {
 	return IncidentResponse{
 		UID:                 inc.UID,
+		Number:              inc.Number,
 		CheckUID:            inc.CheckUID,
 		State:               stateToString(inc.State),
 		StartedAt:           inc.StartedAt,
@@ -1693,6 +1710,7 @@ func incidentToResponse(inc *models.Incident) IncidentResponse {
 		CheckGroupUID:       inc.CheckGroupUID,
 		CausedByIncidentUID: inc.CausedByIncidentUID,
 		PagingSuppressed:    inc.PagingSuppressed,
+		Details:             inc.Details,
 	}
 }
 
@@ -2041,8 +2059,14 @@ type AcknowledgeIncidentRequest struct {
 	// into the event payload so the audit trail names the acker even when the
 	// number belongs to no known platform user.
 	PhoneNumber string
-	Note        string // Optional free-text note
-	Via         string // "slack", "web", "email", "phone", etc.
+	// TelegramActor is the "via Telegram (<first name>)" attribution string.
+	// Telegram acks are credited to the SolidPing user the chat is LINKED to,
+	// but in a group the person who pressed the button may be somebody else
+	// entirely — this records who actually did it, which the user UID alone
+	// cannot express.
+	TelegramActor string
+	Note          string // Optional free-text note
+	Via           string // "slack", "web", "email", "phone", etc.
 }
 
 // AcknowledgeIncident marks an incident as acknowledged. Accepts the org
@@ -2127,6 +2151,12 @@ func (s *Service) acknowledgeIncidentByOrgUID(
 	if req.PhoneNumber != "" {
 		event.Payload["acknowledged_by_phone"] = req.PhoneNumber
 	}
+	// Telegram acks: the credited user is the chat's linked account, so without
+	// this the timeline could not tell "the on-call person acked from their DM"
+	// apart from "a colleague pressed the button in the team group".
+	if req.TelegramActor != "" {
+		event.Payload["acknowledged_by_telegram"] = req.TelegramActor
+	}
 	if req.AcknowledgedBy != "" {
 		event.ActorUID = &req.AcknowledgedBy
 	}
@@ -2202,6 +2232,24 @@ func (s *Service) AcknowledgeIncidentFromPhone(
 		IncidentUID: incidentUID,
 		PhoneNumber: phone,
 		Via:         "phone",
+	})
+}
+
+// AcknowledgeIncidentFromTelegram marks an incident acknowledged from a
+// Telegram chat — the inline Acknowledge button or a typed /ack.
+//
+// userUID is the SolidPing account the chat is linked to (it may be empty when
+// the linkage is gone), and actor is the "via Telegram (<first name>)" label of
+// whoever actually pressed the button. Like every other channel variant it is
+// idempotent and cancels pending escalation jobs.
+func (s *Service) AcknowledgeIncidentFromTelegram(
+	ctx context.Context, orgUID, incidentUID, userUID, actor string,
+) (*models.Incident, error) {
+	return s.acknowledgeIncidentByOrgUID(ctx, orgUID, &AcknowledgeIncidentRequest{
+		IncidentUID:    incidentUID,
+		AcknowledgedBy: userUID,
+		TelegramActor:  actor,
+		Via:            "telegram",
 	})
 }
 
