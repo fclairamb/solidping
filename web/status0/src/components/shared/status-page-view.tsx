@@ -178,8 +178,8 @@ function ResourceCard({
       )}
 
       {/* Response time chart */}
-      {showResponseTime && avail?.responseTimeData && (
-        <ResponseTimeChart data={avail.responseTimeData} />
+      {showResponseTime && avail?.responseTimeSeries && (
+        <ResponseTimeChart series={avail.responseTimeSeries} />
       )}
     </div>
   );

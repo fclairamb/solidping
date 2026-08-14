@@ -24,6 +24,7 @@
   "uptime": "de disponibilité",
   "noData": "Aucune donnée",
   "responseTime": "Temps de réponse",
+  "unknownRegion": "Région inconnue",
   "status": {
     "up": "Disponible",
     "down": "Hors service",
