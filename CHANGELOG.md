@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/fclairamb/solidping/compare/v0.15.0...v0.15.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* **ui:** surface hidden state on escalation, maintenance and event lists ([#220](https://github.com/fclairamb/solidping/issues/220)) ([6d343fa](https://github.com/fclairamb/solidping/commit/6d343fabc0e2e5f449ce61f92a0c58be3ed5569a))
+
 ## [0.15.0](https://github.com/fclairamb/solidping/compare/v0.14.0...v0.15.0) (2026-08-14)
 
 
