@@ -309,8 +309,8 @@ export function StatusPageView({
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <ThemeToggle />
             <LanguageSwitcher />
+            <ThemeToggle />
           </div>
         </div>
       </header>
