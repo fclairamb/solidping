@@ -50,7 +50,7 @@ func TestIncidentNumberBackfillOrdersByStartedAt_Postgres(t *testing.T) {
 
 	// The backfill block is read straight out of the shipped migration rather
 	// than retyped, so the test cannot drift from the SQL that actually runs.
-	migration, err := migrationsFS.ReadFile("migrations/013_incident_number.up.sql")
+	migration, err := migrationsFS.ReadFile("migrations/012_incident_number.up.sql")
 	r.NoError(err)
 
 	backfill := backfillBlock(t, string(migration))
@@ -117,16 +117,16 @@ func backfillBlock(t *testing.T, migration string) string {
 	t.Helper()
 
 	parts := strings.Split(migration, "--bun:split")
-	require.Len(t, parts, 3, "013_incident_number.up.sql must stay three --bun:split blocks")
+	require.Len(t, parts, 3, "012_incident_number.up.sql must stay three --bun:split blocks")
 
 	return parts[1]
 }
 
-// TestIncidentNumberMigrationDoesNotReuseANumber_Postgres is the Postgres twin
-// of the SQLite guard: the two engines must stay in step on the NUMBER, and 012
-// was consumed by a v0.14.0 scratch migration (see the SQLite test for the full
+// TestIncidentNumberMigrationNumbering_Postgres is the Postgres twin of the
+// SQLite guard: the two engines must stay in step on the NUMBER, and no prefix
+// may be reused within a directory (see the SQLite test for the full
 // explanation). This one needs no database, so it runs under -short too.
-func TestIncidentNumberMigrationDoesNotReuseANumber_Postgres(t *testing.T) {
+func TestIncidentNumberMigrationNumbering_Postgres(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -134,12 +134,27 @@ func TestIncidentNumberMigrationDoesNotReuseANumber_Postgres(t *testing.T) {
 	entries, err := migrationsFS.ReadDir("migrations")
 	r.NoError(err)
 
+	seen := make(map[string]string, len(entries))
 	for _, entry := range entries {
-		r.NotContains(entry.Name(), "012_",
-			"012 was consumed by a v0.14.0 scratch migration; a file reusing it is silently skipped")
+		name := entry.Name()
+		prefix, _, found := strings.Cut(name, "_")
+		r.True(found, "%s does not follow the NNN_name.up.sql convention", name)
+
+		direction := ".up.sql"
+		if strings.HasSuffix(name, ".down.sql") {
+			direction = ".down.sql"
+		}
+		key := prefix + direction
+
+		if previous, dup := seen[key]; dup {
+			r.Failf("duplicate migration prefix",
+				"%s and %s share the prefix %s; bun keys on the prefix alone, so one of them is silently skipped",
+				previous, name, prefix)
+		}
+		seen[key] = name
 	}
 
-	for _, name := range []string{"013_incident_number.up.sql", "013_incident_number.down.sql"} {
+	for _, name := range []string{"012_incident_number.up.sql", "012_incident_number.down.sql"} {
 		_, readErr := migrationsFS.ReadFile("migrations/" + name)
 		r.NoError(readErr, "%s must be embedded", name)
 	}

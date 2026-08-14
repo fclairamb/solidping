@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -10,11 +11,11 @@ import (
 )
 
 // incidentNumberBackfillSQL is the backfill block of
-// 013_incident_number.up.sql. The `alter table` that precedes it in the
+// 012_incident_number.up.sql. The `alter table` that precedes it in the
 // migration is NOT re-runnable (SQLite has no ADD COLUMN IF NOT EXISTS), so
 // this test inlines just the backfill — exactly like
 // owner_backfill_migration_test.go does for 011.
-// Keep in sync with migrations/013_incident_number.up.sql.
+// Keep in sync with migrations/012_incident_number.up.sql.
 const incidentNumberBackfillSQL = `
 update incidents
 set number = (
@@ -143,17 +144,16 @@ func TestIncidentNumberSkipsSoftDeletedRows(t *testing.T) {
 	r.Error(err)
 }
 
-// TestIncidentNumberMigrationDoesNotReuseANumber guards the numbering hazard
-// that bit this change during development.
+// TestIncidentNumberMigrationNumbering guards the numbering hazard that bit this
+// change during development.
 //
-// bun keys applied migrations on the NUMERIC PREFIX alone. The v0.14.0 cycle
-// shipped scratch migrations 011 AND 012 before consolidating them into a single
-// 011_v0_14_0, so every database that ran the pre-consolidation branch carries a
-// recorded row for "012". A new file numbered 012 is therefore treated as
-// already applied, silently skipped, and the missing column only surfaces later
-// as a 500 on the first incident query — the exact failure this test exists to
-// make impossible to reintroduce.
-func TestIncidentNumberMigrationDoesNotReuseANumber(t *testing.T) {
+// bun keys applied migrations on the NUMERIC PREFIX alone, so two files sharing
+// a prefix mean the second is treated as already applied and silently skipped —
+// the missing DDL only surfaces later as a 500 on the first query that needs it.
+// The general invariant is therefore "every prefix in this directory is unique",
+// which is what this asserts; the specific files this change adds are pinned
+// separately so a rename or a missed go:embed also fails here.
+func TestIncidentNumberMigrationNumbering(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -161,12 +161,28 @@ func TestIncidentNumberMigrationDoesNotReuseANumber(t *testing.T) {
 	entries, err := migrationsFS.ReadDir("migrations")
 	r.NoError(err)
 
+	seen := make(map[string]string, len(entries))
 	for _, entry := range entries {
-		r.NotContains(entry.Name(), "012_",
-			"012 was consumed by a v0.14.0 scratch migration; a file reusing it is silently skipped")
+		name := entry.Name()
+		prefix, _, found := strings.Cut(name, "_")
+		r.True(found, "%s does not follow the NNN_name.up.sql convention", name)
+
+		// up/down are the two halves of one migration and share a prefix.
+		direction := ".up.sql"
+		if strings.HasSuffix(name, ".down.sql") {
+			direction = ".down.sql"
+		}
+		key := prefix + direction
+
+		if previous, dup := seen[key]; dup {
+			r.Failf("duplicate migration prefix",
+				"%s and %s share the prefix %s; bun keys on the prefix alone, so one of them is silently skipped",
+				previous, name, prefix)
+		}
+		seen[key] = name
 	}
 
-	for _, name := range []string{"013_incident_number.up.sql", "013_incident_number.down.sql"} {
+	for _, name := range []string{"012_incident_number.up.sql", "012_incident_number.down.sql"} {
 		_, readErr := migrationsFS.ReadFile("migrations/" + name)
 		r.NoError(readErr, "%s must be embedded", name)
 	}

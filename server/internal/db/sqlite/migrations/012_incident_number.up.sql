@@ -1,10 +1,13 @@
--- SQLite mirror of postgres/migrations/013_incident_number.up.sql — the short,
+-- SQLite mirror of postgres/migrations/012_incident_number.up.sql — the short,
 -- human-scale per-org incident reference (`#42`). See the Postgres file for the
--- rationale, including why this is 013 and not 012.
+-- rationale, including why this is a scratch 012.
 --
 -- SQLite has no `ADD COLUMN IF NOT EXISTS`, so this statement is the one part
 -- of the file that is not re-runnable. That is fine: bun records the applied
--- migration by its numeric prefix, and 013 is a genuinely fresh number.
+-- migration by its numeric prefix, and 012 is free on every install that has
+-- applied the consolidated 011_v0_14_0. A database that already carries the
+-- column must have the matching `bun_migrations` row, or this fails loudly on
+-- "duplicate column name" — which is the correct, visible failure mode.
 
 alter table incidents add column number bigint not null default 0;
 
