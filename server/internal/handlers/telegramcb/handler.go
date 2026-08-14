@@ -225,9 +225,9 @@ func (h *Handler) handleMessage(ctx context.Context, msg *telegram.IncomingMessa
 	case "help":
 		h.handleHelp(ctx, chatID)
 	case "status":
-		h.handleStatus(ctx, chatID)
+		h.handleStatus(ctx, chatID, arg)
 	case "incidents":
-		h.handleIncidents(ctx, chatID)
+		h.handleIncidents(ctx, chatID, arg)
 	case "ack":
 		h.handleAck(ctx, msg, chatID, arg)
 	case "incident":

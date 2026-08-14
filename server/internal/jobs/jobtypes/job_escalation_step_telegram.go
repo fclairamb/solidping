@@ -213,6 +213,16 @@ func sendTelegramAlertTo(
 	client *telegram.Client, incident *models.Incident, chatID string,
 	params *telegram.AlertParams, replyTo int64,
 ) (int64, error) {
+	// Decide reference qualification HERE, per destination chat, because this is
+	// the single funnel both the escalation step and the resolution-notice job
+	// go through and the only place that knows which chat the message is for.
+	// The resolution job builds ONE params for every chat it notifies, so the
+	// copy is load-bearing: mutating the caller's struct would leak one chat's
+	// decision into the next one's message.
+	perChat := *params
+	perChat.QualifyRef = telegramChatQualifiesRefs(ctx, jctx, log, chatID)
+	params = &perChat
+
 	body := telegram.BuildAlertHTML(params)
 	keyboard := telegramAckKeyboard(incident)
 
@@ -254,6 +264,45 @@ func sendTelegramAlertTo(
 	}
 
 	return messageID, nil
+}
+
+// telegramChatQualifiesRefs reports whether messages to this chat must carry
+// ORG-QUALIFIED incident references ("#acme:42" rather than "#42").
+//
+// True exactly when the chat is verified-linked in two or more organizations.
+// Incident numbers are per-org sequential, so "#42" exists in every org: in such
+// a chat the short reference is genuinely ambiguous, both for the human reading
+// the alert and for the bot parsing the `/ack 42` they type back. A single-org
+// chat — the overwhelming majority — keeps the short form and notices nothing.
+//
+// A lookup failure degrades to the short form: an unqualified reference is the
+// pre-existing behavior, whereas failing the send would cost a page.
+func telegramChatQualifiesRefs(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, chatID string,
+) bool {
+	contacts, err := jctx.DBService.ListUserContactsByTypeValue(
+		ctx, models.UserContactTypeTelegram, chatID,
+	)
+	if err != nil {
+		log.InfoContext(ctx, "could not count the orgs linked to a telegram chat; sending a short ref",
+			"chatId", chatID, "error", err)
+
+		return false
+	}
+
+	orgs := make(map[string]bool, len(contacts))
+
+	for _, contact := range contacts {
+		// Unverified rows are revoked or blocked links: they receive nothing, so
+		// they must not make an otherwise single-org chat read as multi-org.
+		if contact.VerifiedAt == nil {
+			continue
+		}
+
+		orgs[contact.OrganizationUID] = true
+	}
+
+	return len(orgs) > 1
 }
 
 // telegramMaxRetryAfter bounds how long a single send will wait out a Telegram
