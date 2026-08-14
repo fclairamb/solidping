@@ -1999,20 +1999,20 @@ func (s *Service) fetchRecentResults(
 		return recentByCheck
 	}
 
-	for _, r := range recentResp.Results {
+	for _, result := range recentResp.Results {
 		regionKey := ""
-		if r.Region != nil {
-			regionKey = *r.Region
+		if result.Region != nil {
+			regionKey = *result.Region
 		}
 
-		byRegion := recentByCheck[r.CheckUID]
+		byRegion := recentByCheck[result.CheckUID]
 		if byRegion == nil {
 			byRegion = make(map[string][]*models.Result)
-			recentByCheck[r.CheckUID] = byRegion
+			recentByCheck[result.CheckUID] = byRegion
 		}
 
 		if len(byRegion[regionKey]) < responseTimeLimit {
-			byRegion[regionKey] = append(byRegion[regionKey], r)
+			byRegion[regionKey] = append(byRegion[regionKey], result)
 		}
 	}
 
@@ -2234,8 +2234,8 @@ func buildResponseTimeSeries(recentResultsByRegion map[string][]*models.Result) 
 // markers (e.g. the check-creation "created" result) or other durationless
 // rows.
 func responseTimePointsHaveSignal(points []ResponseTimePoint) bool {
-	for _, p := range points {
-		if p.DurationP95 != nil {
+	for i := range points {
+		if points[i].DurationP95 != nil {
 			return true
 		}
 	}
