@@ -10,7 +10,8 @@ import { statusStyle } from "@/lib/status-style";
 function getBarColor(status: string) {
   // noData keeps its distinct light-gray bar; every other status (including
   // the amber warning/degraded pair) routes through the shared util.
-  if (status === "noData" || status === "unknown") return "bg-gray-300";
+  if (status === "noData" || status === "unknown")
+    return "bg-status-neutral/40";
   return statusStyle(status).color;
 }
 

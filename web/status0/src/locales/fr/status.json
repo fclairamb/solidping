@@ -42,5 +42,6 @@
     "checkInbox": "Presque terminé ! Consultez votre boîte de réception pour confirmer votre abonnement.",
     "error": "Une erreur s'est produite. Veuillez réessayer.",
     "feedLink": "S'abonner via RSS"
-  }
+  },
+  "servicesOperational": "{{ok}} service(s) opérationnel(s) sur {{total}}"
 }

@@ -42,5 +42,6 @@
     "checkInbox": "Fast geschafft! Überprüfen Sie Ihren Posteingang, um Ihr Abonnement zu bestätigen.",
     "error": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
     "feedLink": "Per RSS abonnieren"
-  }
+  },
+  "servicesOperational": "{{ok}} von {{total}} Diensten betriebsbereit"
 }

@@ -122,8 +122,8 @@ export function ResponseTimeChart({ data }: ResponseTimeChartProps) {
         <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
           <defs>
             <linearGradient id="colorP95" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.05} />
+              <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="var(--primary)" stopOpacity={0.05} />
             </linearGradient>
           </defs>
           <XAxis
@@ -145,7 +145,7 @@ export function ResponseTimeChart({ data }: ResponseTimeChartProps) {
           <Area
             type="monotone"
             dataKey="durationP95"
-            stroke="#3b82f6"
+            stroke="var(--primary)"
             strokeWidth={1.5}
             fill="url(#colorP95)"
             connectNulls={false}

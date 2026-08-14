@@ -146,6 +146,9 @@ generated markup, these will not change under you.
 |-------|---------|
 | `sp-logo` | Header logo wrapper (the `<img>` sits inside it) |
 | `sp-page-name` | Status page name shown next to the logo |
+| `sp-page-title` | Page heading (`<h1>`) at the top of the body |
+| `sp-page-description` | Page description under the heading |
+| `sp-status-banner` | Overall-status banner strip below the heading |
 | `sp-footer` | Footer container |
 | `sp-powered-by` | "Powered by SolidPing" outbound link |
 | `sp-version` | Version line (`v1.2.3`) |

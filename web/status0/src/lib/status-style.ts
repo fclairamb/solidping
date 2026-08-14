@@ -28,11 +28,25 @@ export interface StatusStyle {
   labelKey: string;
   // True when this status reads as a hard failure (down / error).
   isDown: boolean;
+  // Tailwind classes for the full-width hero banner: border + tinted gradient
+  // fill. Ported from dash0's OverallStatusBanner
+  // (web/dash0/src/components/dashboard/dashboard-page.tsx) so the operator
+  // console and the public page announce a state the same way. Only the
+  // page-level rollup uses these; per-resource rows never render a banner.
+  bannerSurface: string;
+  // Tailwind text colour for the banner headline.
+  bannerTitle: string;
+  // Tailwind classes for the trailing pill on the banner.
+  bannerPill: string;
 }
 
 const NEUTRAL_CHART = "transparent";
-const DOWN_CHART = "#ef4444"; // red-500
-const WARNING_CHART = "#facc15"; // yellow-400
+// Themed via CSS custom properties rather than hex literals, so the
+// availability/response-time SVG fills track light and dark like every other
+// surface. `var()` is legal in an SVG `fill`, and the tokens are defined on
+// :root in index.css, so these resolve wherever the chart is mounted.
+const DOWN_CHART = "var(--status-error)";
+const WARNING_CHART = "var(--status-warning)";
 
 export function statusStyle(status: string | undefined | null): StatusStyle {
   switch (status) {
@@ -40,35 +54,47 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
     case "up":
     case "operational":
       return {
-        color: "bg-green-500",
+        color: "bg-status-ok",
         chartColor: NEUTRAL_CHART,
         badgeVariant: "success",
         labelKey: "operational",
+        bannerSurface: "border-status-ok/25 bg-gradient-to-r from-status-ok/[0.10] via-status-ok/[0.04] to-transparent",
+        bannerTitle: "text-status-ok-foreground",
+        bannerPill: "border-status-ok/25 bg-status-ok/10 text-status-ok-foreground",
         isDown: false,
       };
     case "warning":
       return {
-        color: "bg-yellow-500",
+        color: "bg-status-warning",
         chartColor: WARNING_CHART,
         badgeVariant: "warning",
         labelKey: "warning",
+        bannerSurface: "border-status-warning/30 bg-gradient-to-r from-status-warning/[0.12] via-status-warning/[0.05] to-transparent",
+        bannerTitle: "text-status-warning-foreground",
+        bannerPill: "border-status-warning/30 bg-status-warning/15 text-status-warning-foreground",
         isDown: false,
       };
     case "degraded":
       return {
-        color: "bg-yellow-500",
+        color: "bg-status-warning",
         chartColor: WARNING_CHART,
         badgeVariant: "warning",
         labelKey: "degraded",
+        bannerSurface: "border-status-warning/30 bg-gradient-to-r from-status-warning/[0.12] via-status-warning/[0.05] to-transparent",
+        bannerTitle: "text-status-warning-foreground",
+        bannerPill: "border-status-warning/30 bg-status-warning/15 text-status-warning-foreground",
         isDown: false,
       };
     case "error":
     case "down":
       return {
-        color: "bg-red-500",
+        color: "bg-status-error",
         chartColor: DOWN_CHART,
         badgeVariant: "destructive",
         labelKey: "outage",
+        bannerSurface: "border-status-error/30 bg-gradient-to-r from-status-error/[0.12] via-status-error/[0.05] to-transparent",
+        bannerTitle: "text-status-error-foreground",
+        bannerPill: "border-status-error/30 bg-status-error/15 text-status-error-foreground",
         isDown: true,
       };
     // Page-level rollup only (spec 2026-08-08-05) — no individual check ever
@@ -78,10 +104,13 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
     // a fault.
     case "maintenance":
       return {
-        color: "bg-blue-500",
+        color: "bg-primary",
         chartColor: NEUTRAL_CHART,
         badgeVariant: "info",
         labelKey: "underMaintenance",
+        bannerSurface: "border-primary/25 bg-gradient-to-r from-primary/[0.10] via-primary/[0.04] to-transparent",
+        bannerTitle: "text-primary",
+        bannerPill: "border-primary/25 bg-primary/10 text-primary",
         isDown: false,
       };
     default:
@@ -91,10 +120,13 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
       // "Status Unknown" label text; this default's labelKey stays
       // "unknown" for the per-resource case.
       return {
-        color: "bg-gray-400",
+        color: "bg-status-neutral",
         chartColor: NEUTRAL_CHART,
         badgeVariant: "secondary",
         labelKey: "unknown",
+        bannerSurface: "border-border bg-gradient-to-r from-muted/60 via-muted/25 to-transparent",
+        bannerTitle: "text-foreground",
+        bannerPill: "border-border bg-muted text-muted-foreground",
         isDown: false,
       };
   }

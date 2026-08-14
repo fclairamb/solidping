@@ -110,10 +110,10 @@ function ResourceCard({
   const avail = resource.availability;
 
   return (
-    <div className="py-3 px-4">
+    <div className="py-3 px-4 sm:px-6 transition-colors hover:bg-muted/40">
       {/* Header row */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <Tooltip>
             <TooltipTrigger>
               <span
@@ -125,17 +125,22 @@ function ResourceCard({
               {t(getStatusLabelKey(status))}
             </TooltipContent>
           </Tooltip>
-          <span className="text-sm font-medium">{name}</span>
+          <span className="text-sm font-medium truncate">{name}</span>
           {resource.check?.type && (
-            <Badge variant="outline" className="text-xs">
+            // Monospace + uppercase, matching how dash0's check list renders a
+            // protocol tag — it reads as machine metadata, not a status.
+            <Badge
+              variant="outline"
+              className="hidden sm:inline-flex font-mono text-[10px] uppercase tracking-wider text-muted-foreground shrink-0"
+            >
               {resource.check.type}
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {showAvailability && avail?.overallAvailabilityPct != null && (
             <span
-              className="text-sm font-medium text-green-600"
+              className="text-sm font-medium tabular-nums text-status-ok-foreground"
               data-testid="resource-availability-pct"
               {...NO_TRANSLATE}
             >
@@ -198,8 +203,15 @@ function SectionCard({
 
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-lg">{section.name}</CardTitle>
+      {/* Same treatment dash0 gives a card that groups a list ("Checks at a
+          glance"): text-base semibold, not the text-lg it used to be, so the
+          section stops competing with the page h1. The uppercase micro-label
+          style is deliberately NOT used here — in dash0 that belongs to KPI
+          tiles, and a section is a list container. */}
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base font-semibold tracking-tight">
+          {section.name}
+        </CardTitle>
       </CardHeader>
       <CardContent className="px-0 pb-0">
         {resources.length === 0 ? (
@@ -238,6 +250,34 @@ export function StatusPageView({
   // Server-computed (spec 2026-08-08-05); falls back to "unknown" if a
   // cached/older response ever lacks the field.
   const overallStatus = page.overallStatus ?? "unknown";
+  const overallStyle = statusStyle(overallStatus);
+  // Supporting count for the banner. Uses the SERVER-computed per-status
+  // tallies (spec 2026-08-08-05, same rollup that produced overallStatus) so
+  // the headline and the count can never disagree — recounting the resources
+  // client-side would silently drift from the server's rules (notably
+  // maintenance masking a down check). Absent on a cached/older response, in
+  // which case the line is simply omitted.
+  const counts = page.statusCounts;
+  const resourceTotal = counts
+    ? counts.operational +
+      counts.degraded +
+      counts.down +
+      counts.maintenance +
+      counts.unknown
+    : 0;
+  const operationalCount = counts?.operational ?? 0;
+  const allResources = sections.flatMap((s) => s.resources ?? []);
+  // Mean availability across the resources that actually report one. Null (and
+  // the pill hidden) when none do, or when the page hides availability
+  // entirely — better no number than a fabricated 100%.
+  const uptimeSamples = page.showAvailability
+    ? allResources
+        .map((r) => r.availability?.overallAvailabilityPct)
+        .filter((pct): pct is number => pct != null)
+    : [];
+  const aggregateUptimePct = uptimeSamples.length
+    ? uptimeSamples.reduce((sum, pct) => sum + pct, 0) / uptimeSamples.length
+    : null;
   const { data: versionInfo } = useVersion();
   const feedUrl = `/api/v1/status-pages/${org}/${page.slug}/feed.xml`;
   // Outside preview mode this is just page.customCss; with ?preview=1 the
@@ -256,14 +296,14 @@ export function StatusPageView({
           color is confined to the logo so the page reads as one
           continuous document; the status banner below uses status
           colors only. */}
-      <header className="border-b border-border">
+      <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
         <div className="mx-auto max-w-3xl px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             {/* `sp-logo` is added by <Logo> itself; `sp-page-name` here.
                 Both are documented custom-CSS hooks (public API) — see
                 web/docs/docs/features/status-pages.md. Do not rename. */}
             <Logo size={32} />
-            <span className="sp-page-name font-semibold text-base">
+            <span className="sp-page-name font-semibold text-base tracking-tight">
               {page.name}
             </span>
           </div>
@@ -276,20 +316,84 @@ export function StatusPageView({
       <div className="mx-auto max-w-3xl px-4 py-12">
         {/* Status hero — color is determined exclusively by status.
             Brand color is never used here so the banner reads as
-            green / yellow / red, not as a sibling of the brand bar. */}
-        <div className="mb-8 text-center">
+            green / yellow / red, not as a sibling of the brand bar.
+
+            Structure is ported from dash0's OverallStatusBanner (tinted
+            gradient surface, pulsing state dot, headline + supporting count,
+            trailing pill) so an operator who knows the console recognises the
+            public page instantly. The <Badge> carrying
+            data-testid="overall-status-badge" is kept as the trailing pill —
+            e2e/overall-status-badge.spec.ts asserts on it. */}
+        <div className="mb-8">
+          <h1 className="sp-page-title text-2xl sm:text-3xl font-bold tracking-tight">
+            {page.name}
+          </h1>
           {page.description && (
-            <p className="mt-2 text-muted-foreground">{page.description}</p>
+            <p className="sp-page-description mt-1.5 text-sm text-muted-foreground">
+              {page.description}
+            </p>
           )}
-          <div className="mt-4">
-            <Badge
-              variant={getStatusBadgeVariant(overallStatus)}
-              className="text-sm px-4 py-1"
-              data-testid="overall-status-badge"
-              {...NO_TRANSLATE}
-            >
-              {t(getOverallStatusLabelKey(overallStatus))}
-            </Badge>
+
+          <div
+            className={`sp-status-banner relative overflow-hidden mt-5 rounded-xl border p-3.5 sm:p-4 shadow-sm ${overallStyle.bannerSurface}`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="relative flex h-3 w-3 shrink-0">
+                  {/* The ping ring is decorative; it is skipped for the
+                      "unknown" rollup, where there is no live state worth
+                      drawing attention to. */}
+                  {overallStatus !== "unknown" && (
+                    <span
+                      className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${overallStyle.color}`}
+                    />
+                  )}
+                  <span
+                    className={`relative inline-flex rounded-full h-3 w-3 ${overallStyle.color}`}
+                  />
+                </span>
+                <div className="flex flex-wrap items-baseline gap-2">
+                  {/* THE hero label. It carries data-testid="overall-status-badge"
+                      because it is the element that announces the page status —
+                      the name is historical (it used to be a small <Badge>) and
+                      e2e/overall-status-badge.spec.ts asserts this exact text
+                      for all five rollup values. Renaming the testid would break
+                      that suite for no gain. */}
+                  <h2
+                    className={`text-sm sm:text-base font-semibold ${overallStyle.bannerTitle}`}
+                    data-testid="overall-status-badge"
+                    {...NO_TRANSLATE}
+                  >
+                    {t(getOverallStatusLabelKey(overallStatus))}
+                  </h2>
+                  {resourceTotal > 0 && (
+                    <span
+                      className="text-xs text-muted-foreground"
+                      data-testid="overall-status-summary"
+                      {...NO_TRANSLATE}
+                    >
+                      {t("servicesOperational", {
+                        ok: operationalCount,
+                        total: resourceTotal,
+                      })}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {/* Trailing pill carries a DIFFERENT fact from the headline (the
+                  aggregate uptime), mirroring dash0's "24h SLA Operational"
+                  pill. Repeating the status label here read as a rendering
+                  bug — the two sat side by side with identical text. */}
+              {aggregateUptimePct != null && (
+                <div
+                  className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium tabular-nums ${overallStyle.bannerPill}`}
+                  data-testid="overall-uptime-pill"
+                  {...NO_TRANSLATE}
+                >
+                  {aggregateUptimePct.toFixed(3)}% {t("uptime")}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
