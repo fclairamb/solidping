@@ -538,3 +538,37 @@ func TestMultiOrg_CallbackForAForeignIncidentIsRefused(t *testing.T) {
 	r.Nil(env.storedIncident(t, other.UID, foreign.UID).AcknowledgedAt,
 		"a chat may never ack an incident from an org it is not linked to")
 }
+
+// The maxListedIncidents cap is a per-CHAT budget, not a per-org one: each row
+// is its own message, so a multi-org chat shares the cap rather than
+// multiplying it and carpet-bombing itself past Telegram's per-chat rate limit.
+func TestMultiOrg_IncidentsCapAppliesToTheTotal(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := setupMultiOrgEnv(t)
+
+	checkA := env.seedCheckIn(t, env.org.UID, "api")
+	checkB := env.seedCheckIn(t, env.orgB.UID, "billing")
+
+	// Well past the cap in the first org alone, plus more in the second.
+	for range maxListedIncidents + 3 {
+		env.seedIncidentIn(t, env.org.UID, checkA, time.Minute)
+	}
+
+	for range 4 {
+		env.seedIncidentIn(t, env.orgB.UID, checkB, time.Minute)
+	}
+
+	env.command(t, "/incidents")
+
+	msgs := env.sender.messages()
+	// Two headers plus at most maxListedIncidents rows in TOTAL.
+	r.Len(msgs, 2+maxListedIncidents)
+
+	// The first org exhausts the budget, so org B contributes a header and no
+	// rows — but its header still reports the true count.
+	r.Contains(msgs[0], env.org.Slug)
+	r.Contains(msgs[len(msgs)-1], env.orgB.Slug)
+	r.Contains(msgs[len(msgs)-1], "4 incidents open")
+}
