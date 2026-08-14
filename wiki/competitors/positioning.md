@@ -171,6 +171,46 @@ self-hosted, unlimited, unpaywalled. Do **not** claim "fastest": SaaS vendors
 sell 1-second checks and Uptime Kuma reaches ~20 seconds. The combination is
 what nobody else offers; the superlative is false and checkable.
 
+**Axis 5 confirmation (2026-08-10).** Two SaaS entrants surfaced the same day
+and both land on the wrong side of the floor: **WatchCat** stays at 1 minute on
+every tier including its €49/mo top plan, and **Larm** reaches 30 seconds only
+on its $588/yr Business tier (Free 3 min, Pro 1 min). Larm is the interesting
+one: it is the first rival to independently build SolidPing's actual
+architecture — a fleet of small Go probe binaries distributed across hosting
+providers, with majority-vote confirmation — and *even so* it does not go below
+30 s, and it packages that 30 s as a premium. A competitor with the same
+architecture and every incentive to undercut us has not closed the gap. That is
+what an architectural axis looks like from the outside, and it is the third
+independent confirmation after OneUptime #2937 and the SaaS incumbents.
+
+### Axis 6 candidate — EU data residency: **rejected as an axis, kept as demand signal** (2026-08-10)
+
+Three products in two weeks now lead with EU hosting: Tindra (2026-07-28,
+"EU/German self-hosted Sentry alternative"), and Larm and WatchCat (both
+2026-08-10). WatchCat is the purest case — its homepage sells *"a clear data
+path, not vague residency promises"*, with a published compliance brief, above
+any feature. Larm carries an "🇪🇺 EU Hosted" badge in its header and sells
+"EU-only probe control" as a Business-tier feature.
+
+Run the Axis 5 rule on it — *what stops a competitor writing the same sentence
+next week?* — and the answer is **nothing**. Any EU-incorporated rival writes it
+today; anyone else writes it after one datacenter migration. So **"EU-hosted"
+must not enter SolidPing's positioning line**, exactly as "self-hosted MCP"
+should not have on 2026-07-22 (it expired in six days).
+
+What the signal is actually telling us is that a real buyer segment is shopping
+on **jurisdiction control**. EU hosting is a weak proxy for that: it is a vendor
+decision, and the vendor can revoke it unilaterally with an infra change the
+customer learns about in a changelog. Self-hosting is the strict superset — the
+customer picks the jurisdiction, including their own rack, and no vendor
+decision can move their data. *That* is an architectural property and passes
+the rule.
+
+**Copy discipline:** when the residency objection appears, answer with **"you
+choose the jurisdiction, permanently, because you run it"**. Never counter-claim
+EU hosting — it invites a comparison on datacenter maps, which is a claim war we
+have no reason to enter and a SaaS competitor can always match.
+
 ---
 
 ## Messaging hooks (derived from the analysis)
