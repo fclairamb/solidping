@@ -733,6 +733,169 @@ func TestBadgeStatusPageParity_SameBucketsForSameData(t *testing.T) {
 	r.InDelta(50.0, prevPct, 0.01)
 }
 
+// TestBuildResponseTimeSeries_GroupsAndSortsByRegion pins buildResponseTimeSeries'
+// contract (spec 2026-08-14-04): one ResponseTimeSeries per region key, sorted
+// so output order is stable, NULL/legacy region ("" key) sorting first with no
+// special-casing needed, and each series' points still oldest→newest (delegated
+// to the unchanged buildResponseTimeData).
+func TestBuildResponseTimeSeries_GroupsAndSortsByRegion(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	up := int(models.ResultStatusUp)
+	mkResult := func(region *string, minutesAgo int) *models.Result {
+		duration := float32(42)
+		return &models.Result{
+			UID:         fmt.Sprintf("r-%v-%d", region, minutesAgo),
+			CheckUID:    "check-1",
+			PeriodStart: time.Now().UTC().Add(-time.Duration(minutesAgo) * time.Minute),
+			Region:      region,
+			Status:      &up,
+			Duration:    &duration,
+		}
+	}
+
+	byRegion := map[string][]*models.Result{
+		"us1": {mkResult(strPtr("us1"), 1), mkResult(strPtr("us1"), 2)},
+		"eu2": {mkResult(strPtr("eu2"), 1)},
+		"":    {mkResult(nil, 1)},
+	}
+
+	series := buildResponseTimeSeries(byRegion)
+	r.Len(series, 3, "one series per region key")
+
+	// Sorted order: "" < "eu2" < "us1".
+	r.Nil(series[0].Region, "NULL/legacy region sorts first and has no Region label")
+	r.Len(series[0].Points, 1)
+
+	r.NotNil(series[1].Region)
+	r.Equal("eu2", *series[1].Region)
+	r.Len(series[1].Points, 1)
+
+	r.NotNil(series[2].Region)
+	r.Equal("us1", *series[2].Region)
+	r.Len(series[2].Points, 2)
+
+	// Empty input yields no series at all (not a slice of zero-length groups).
+	r.Nil(buildResponseTimeSeries(nil))
+	r.Nil(buildResponseTimeSeries(map[string][]*models.Result{}))
+
+	// A region group with no real duration signal (e.g. the check-creation
+	// "created" lifecycle marker on its own) is dropped entirely — it must
+	// never manufacture a phantom "unknown region" legend entry.
+	created := int(models.ResultStatusCreated)
+	markerOnly := map[string][]*models.Result{
+		"": {{UID: "marker", CheckUID: "check-1", PeriodStart: time.Now(), Status: &created}},
+	}
+	r.Nil(buildResponseTimeSeries(markerOnly), "a signal-less region group must not produce a series")
+
+	// But a marker mixed into a group that otherwise has real data is kept —
+	// matching the old single-series behavior, which always tolerated it.
+	mixed := map[string][]*models.Result{
+		"": {
+			{UID: "marker", CheckUID: "check-1", PeriodStart: time.Now(), Status: &created},
+			mkResult(nil, 1),
+		},
+	}
+	mixedSeries := buildResponseTimeSeries(mixed)
+	r.Len(mixedSeries, 1)
+	r.Len(mixedSeries[0].Points, 2, "the marker point is kept once the group has real signal")
+}
+
+// TestFetchRecentResults_PerRegionBudgetNotStarved is the direct regression for
+// the bug this spec fixes: previously the 100-result budget was shared across
+// every region interleaved on one check, so two busy regions split it roughly
+// 50/50 instead of getting their own 100. Seed 150 raw rows in each of two
+// regions and assert BOTH series come back with the full 100-point budget.
+func TestFetchRecentResults_PerRegionBudgetNotStarved(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{
+		Name: "Public", Slug: testPublicSlug, HistoryPeriod: strPtr("7d"),
+	})
+	r.NoError(err)
+
+	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
+	r.NoError(err)
+
+	check := models.NewCheck(org.UID, "API", "http")
+	r.NoError(svc.db.CreateCheck(ctx, check))
+	_, err = svc.CreateResource(ctx, org.Slug, page.UID, section.UID, CreateResourceRequest{CheckUID: check.UID})
+	r.NoError(err)
+
+	now := time.Now().UTC()
+	for _, region := range []string{"eu2", "us1"} {
+		for i := 0; i < 150; i++ {
+			res := models.NewResult(org.UID, check.UID, models.ResultStatusUp, 42)
+			res.PeriodStart = now.Add(-time.Duration(i) * time.Minute)
+			res.Region = strPtr(region)
+			r.NoError(svc.db.CreateResult(ctx, res))
+		}
+	}
+
+	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+	r.NoError(err)
+
+	avail := view.Sections[0].Resources[0].Availability
+	r.NotNil(avail)
+	r.Len(avail.ResponseTimeSeries, 2, "one series per region")
+
+	byRegion := make(map[string]int, 2)
+	for _, s := range avail.ResponseTimeSeries {
+		r.NotNil(s.Region)
+		byRegion[*s.Region] = len(s.Points)
+	}
+
+	r.Equal(100, byRegion["eu2"], "eu2 must get its own full 100-point budget")
+	r.Equal(100, byRegion["us1"], "us1 must get its own full 100-point budget, not starved by eu2")
+}
+
+// TestViewStatusPage_NullRegionSeries pins the legacy/single-region path: rows
+// with no recorded region collapse into exactly ONE series carrying no Region
+// label, matching today's single-series rendering with no per-region split.
+func TestViewStatusPage_NullRegionSeries(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{
+		Name: "Public", Slug: testPublicSlug, HistoryPeriod: strPtr("7d"),
+	})
+	r.NoError(err)
+
+	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
+	r.NoError(err)
+
+	check := models.NewCheck(org.UID, "API", "http")
+	r.NoError(svc.db.CreateCheck(ctx, check))
+	_, err = svc.CreateResource(ctx, org.Slug, page.UID, section.UID, CreateResourceRequest{CheckUID: check.UID})
+	r.NoError(err)
+
+	now := time.Now().UTC()
+	for i := 0; i < 5; i++ {
+		res := models.NewResult(org.UID, check.UID, models.ResultStatusUp, 42)
+		res.PeriodStart = now.Add(-time.Duration(i) * time.Minute)
+		// Region left nil — legacy/pre-region data.
+		r.NoError(svc.db.CreateResult(ctx, res))
+	}
+
+	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+	r.NoError(err)
+
+	avail := view.Sections[0].Resources[0].Availability
+	r.NotNil(avail)
+	r.Len(avail.ResponseTimeSeries, 1, "NULL-region rows collapse into one series")
+	r.Nil(avail.ResponseTimeSeries[0].Region)
+	// 5 seeded points + the one "created" lifecycle marker CreateCheck always
+	// inserts (also NULL-region) — it rides along in this same group exactly
+	// like the old single-series behavior always tolerated it.
+	r.Len(avail.ResponseTimeSeries[0].Points, 6)
+}
+
 // TestValidateSlugLengthBoundaries pins the 3-100 char slug length window
 // (raised from 3-40): 2 chars rejected, 3 accepted, 100 accepted, 101
 // rejected.

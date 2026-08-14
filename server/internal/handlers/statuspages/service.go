@@ -2184,6 +2184,15 @@ func buildAvailabilityData(
 // that interleaved every region's points. Region keys are sorted so the
 // output order is stable; the empty-string key (NULL/legacy region) sorts
 // first automatically and needs no special-casing.
+//
+// A region group with NO real duration signal at all is dropped entirely —
+// this matters because every check gets one lifecycle "created" marker result
+// (CreateCheck) with no region and no duration. Pre-region-splitting, that
+// marker was harmless: one more null-duration entry lost in a single combined
+// list. Post-splitting it would otherwise manufacture a phantom one-point
+// "unknown region" series (and legend entry) for every single-region check. A
+// region group that mixes the marker with real data keeps it, exactly as the
+// old single-series behavior always did.
 func buildResponseTimeSeries(recentResultsByRegion map[string][]*models.Result) []ResponseTimeSeries {
 	if len(recentResultsByRegion) == 0 {
 		return nil
@@ -2199,19 +2208,39 @@ func buildResponseTimeSeries(recentResultsByRegion map[string][]*models.Result) 
 	series := make([]ResponseTimeSeries, 0, len(regionKeys))
 
 	for _, key := range regionKeys {
+		points := buildResponseTimeData(recentResultsByRegion[key])
+		if !responseTimePointsHaveSignal(points) {
+			continue
+		}
+
 		var region *string
 		if key != "" {
 			regionValue := key
 			region = &regionValue
 		}
 
-		series = append(series, ResponseTimeSeries{
-			Region: region,
-			Points: buildResponseTimeData(recentResultsByRegion[key]),
-		})
+		series = append(series, ResponseTimeSeries{Region: region, Points: points})
+	}
+
+	if len(series) == 0 {
+		return nil
 	}
 
 	return series
+}
+
+// responseTimePointsHaveSignal reports whether at least one point carries a
+// real duration — false for a region group made up entirely of lifecycle
+// markers (e.g. the check-creation "created" result) or other durationless
+// rows.
+func responseTimePointsHaveSignal(points []ResponseTimePoint) bool {
+	for _, p := range points {
+		if p.DurationP95 != nil {
+			return true
+		}
+	}
+
+	return false
 }
 
 func buildResponseTimeData(recentResults []*models.Result) []ResponseTimePoint {
