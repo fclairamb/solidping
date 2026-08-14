@@ -213,8 +213,6 @@ func ParseCallbackData(data string) (string, string) {
 // rather than imported because this package must not depend on the auth
 // handlers; the shape is stable and a drift would only ever cost a qualified
 // reference being read as unparseable, never a wrong org.
-//
-//nolint:gochecknoglobals // compiled once, immutable.
 var orgSlugRefRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$`)
 
 // ParseIncidentRef reads an incident reference and reports whether it was one.

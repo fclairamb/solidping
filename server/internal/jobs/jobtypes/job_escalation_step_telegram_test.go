@@ -971,3 +971,112 @@ func TestDispatch_TelegramResolutionRemovesTheAckButton(t *testing.T) {
 	r.Len(sends, 2)
 	r.NotContains(sends[1].body, "reply_markup")
 }
+
+// --- Org-qualified references ------------------------------------------------
+
+// A chat linked in TWO organizations gets org-qualified references, because
+// incident numbers are per-org sequential and "#1" exists in every one of them —
+// so the reference someone types back as /ack has to say which org it means.
+func TestDispatch_TelegramMultiOrgChatQualifiesTheRef(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, false, "")
+	fake, baseURL := newFakeBotAPI(t)
+	enableTelegram(env, baseURL)
+
+	// The chat's own org, plus a SECOND org linked to the very same chat id.
+	persistTelegramContact(t, env)
+	linkSecondOrgToTelegramChat(t, env, true)
+
+	run := newRun()
+	sent := run.dispatchRoute(
+		ctx, env.jctx, slog.Default(), env.incident, telegramRoute(env.org.UID, true), nil,
+	)
+	r.Equal(1, sent)
+
+	text, ok := fake.callsFor("sendMessage")[0].body["text"].(string)
+	r.True(ok)
+	r.Contains(text, "🔴 Incident #"+env.org.Slug+":1 — API health")
+	r.NotContains(text, "Incident #1 —", "the short ref would be ambiguous in a multi-org chat")
+}
+
+// The positive control the other way round: a single-org chat — the
+// overwhelming common case — keeps the short "#1" and notices nothing.
+func TestDispatch_TelegramSingleOrgChatKeepsTheShortRef(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, false, "")
+	fake, baseURL := newFakeBotAPI(t)
+	enableTelegram(env, baseURL)
+
+	persistTelegramContact(t, env)
+
+	run := newRun()
+	sent := run.dispatchRoute(
+		ctx, env.jctx, slog.Default(), env.incident, telegramRoute(env.org.UID, true), nil,
+	)
+	r.Equal(1, sent)
+
+	text, ok := fake.callsFor("sendMessage")[0].body["text"].(string)
+	r.True(ok)
+	r.Contains(text, "🔴 Incident #1 — API health")
+	r.NotContains(text, "#"+env.org.Slug+":1")
+}
+
+// An UNVERIFIED second link is a revoked or blocked connection: it receives
+// nothing, so it must not make an otherwise single-org chat start qualifying its
+// references.
+func TestDispatch_TelegramUnverifiedSecondOrgKeepsTheShortRef(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, false, "")
+	fake, baseURL := newFakeBotAPI(t)
+	enableTelegram(env, baseURL)
+
+	persistTelegramContact(t, env)
+	linkSecondOrgToTelegramChat(t, env, false)
+
+	run := newRun()
+	sent := run.dispatchRoute(
+		ctx, env.jctx, slog.Default(), env.incident, telegramRoute(env.org.UID, true), nil,
+	)
+	r.Equal(1, sent)
+
+	text, ok := fake.callsFor("sendMessage")[0].body["text"].(string)
+	r.True(ok)
+	r.Contains(text, "🔴 Incident #1 — API health")
+	r.NotContains(text, "#"+env.org.Slug+":1")
+}
+
+// linkSecondOrgToTelegramChat binds a second organization to the same chat id.
+func linkSecondOrgToTelegramChat(t *testing.T, env *phoneTestEnv, verified bool) {
+	t.Helper()
+
+	ctx := context.Background()
+
+	org := models.NewOrganization("second-org", "Second Org")
+	require.NoError(t, env.db.CreateOrganization(ctx, org))
+
+	user := models.NewUser("oncall-second@example.com")
+	require.NoError(t, env.db.CreateUser(ctx, user))
+
+	contact := models.NewUserContact(
+		user.UID, org.UID, models.UserContactTypeTelegram, testTelegramChat, "@second",
+	)
+
+	if verified {
+		now := time.Now()
+		contact.VerifiedAt = &now
+	}
+
+	require.NoError(t, env.db.UpsertUserContact(ctx, contact))
+}
