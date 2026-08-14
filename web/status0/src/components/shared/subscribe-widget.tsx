@@ -36,7 +36,12 @@ export function SubscribeWidget({
         {subscribe.isSuccess ? (
           <div
             role="status"
-            className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200"
+            // Same soft-tint recipe as the success badge variant
+            // (components/ui/badge.tsx) — a --status-ok-themed surface
+            // instead of hardcoded green-*/dark:green-* literals, so it
+            // tracks the palette automatically instead of needing its own
+            // dark-mode pair.
+            className="rounded-md border border-status-ok/25 bg-status-ok/15 px-4 py-3 text-sm text-status-ok-foreground"
           >
             {t("subscribe.checkInbox")}
           </div>
@@ -60,7 +65,10 @@ export function SubscribeWidget({
                 disabled={subscribe.isPending}
               />
               {subscribe.isError && (
-                <p className="mt-1 text-sm text-red-600">
+                // --destructive (not a hardcoded red-*) so this stays legible
+                // and on-brand in dark mode like every other destructive
+                // surface in the app.
+                <p className="mt-1 text-sm text-destructive">
                   {t("subscribe.error")}
                 </p>
               )}
