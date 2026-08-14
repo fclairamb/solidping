@@ -143,3 +143,94 @@ Table-driven, `testify/require`, `t.Parallel()`, extending
 - Coordination note: `2026-08-14-01-telegram-incident-resolution-notice.md`
   also touches `job_escalation_step_telegram.go`; whichever lands second
   rebases the `AlertParams` change (§2) trivially.
+
+## Implementation Plan
+
+### Step 1 — deterministic ordering (§1)
+
+`ListUserContactsByTypeValue` gains `ORDER BY created_at, uid` in
+`server/internal/db/postgres/user_contact.go` and
+`server/internal/db/sqlite/user_contact.go`. No migration. Test in
+`server/internal/db/dbtest/` (shared PG+SQLite conformance suite) so the
+ordering is proven on both engines.
+
+### Step 2 — qualified refs in the `telegram` package (§2)
+
+`incidentview.go`
+- `QualifiedIncidentRef(orgSlug string, number int64) string` → `#slug:42`,
+  degrading to `IncidentRef(number)` when the slug is empty.
+- unexported `incidentRefOf(qualify bool, orgSlug string, number int64)` used by
+  every renderer, so "qualify or not" is decided in exactly one place.
+- `IncidentLine` and `IncidentDetailView` gain `OrgSlug` + `QualifyRef`.
+- `BuildAckedHTML` / `BuildAlreadyAckedHTML` / `BuildIncidentResolvedHTML` take a
+  rendered `ref string` instead of a bare number, so a multi-org ack confirmation
+  names the org too.
+- New builders: `BuildNotConnectedToOrgHTML(slug)` and
+  `BuildAmbiguousRefHTML(command, lines)`.
+
+`message.go`
+- `AlertParams` gains `QualifyRef bool`; `buildAlertHTML` renders the qualified
+  headline ref when set. `BuildAcknowledgedHTML` / `BuildResolvedOriginalHTML`
+  inherit it because they copy the params.
+
+`webhook.go`
+- `ParseIncidentRef(s) (orgSlug string, number int64, ok bool)`. Accepts `#123`,
+  `123`, `#org:123`, `org:123`; the slug is matched case-insensitively against
+  the canonical org-slug rule (mirror of `auth.orgSlugRegex`,
+  `^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$`) and returned lowercased. Rejects `#:123`,
+  `#org:`, `#org:abc`, `#ab:1` (slug too short).
+
+### Step 3 — the `telegramcb` resolver (§3)
+
+New `resolver.go`:
+- `linkedOrg{contact, orgUID, orgSlug}` and
+  `h.linkedOrgs(ctx, chatID) []linkedOrg` — verified contacts only, deduped by
+  org UID (oldest link wins, which §1 makes deterministic), slug resolved once.
+- `h.requireLinkedOrgs` replaces `requireLinked` for every command.
+- `h.orgBySlug(orgs, slug)` — case-insensitive current-slug match.
+- `h.resolveIncidentRef(ctx, chatID, orgs, command, arg)` implementing the
+  qualified / bare-single / bare-multi (one hit, several hits, zero hits) matrix,
+  answering the chat and returning `false` on every non-resolution.
+
+`commands.go` rewritten around it:
+- `/status [org]` — single org unchanged; multi-org with no arg fans out one line
+  per org; an org argument scopes it (not-connected answer for an unlinked slug).
+- `/incidents [org]` — per-org header + rows in a multi-org chat, refs qualified,
+  `maxListedIncidents` applied to the TOTAL across orgs.
+- `/ack [ref]` — ref path through the resolver; bare path aggregates open
+  incidents across every linked org (0 → nothing to ack, 1 → ack it, several →
+  the needs-a-ref listing with qualified refs).
+- `/incident <ref>` — resolver.
+
+### Step 4 — ack callback routes by incident UID (§4)
+
+`callback.go` iterates the chat's linked orgs and takes the first
+`GetIncident(orgUID, incidentUID)` that hits, acking with THAT contact's
+`(OrganizationUID, UserUID)`. No hit anywhere → the unchanged "no longer
+available" answer. `repaintAcked` qualifies its ref when the chat is multi-org.
+
+### Step 5 — send-path qualification (§2 "when to qualify")
+
+The decision lives in `sendTelegramAlertTo` (`job_escalation_step_telegram.go`),
+which is the single funnel BOTH the escalation step and the resolution-notice job
+go through and is the only place that knows the destination chat: one
+`ListUserContactsByTypeValue` on the chat id, count distinct orgs with a verified
+contact, `>= 2` → render the qualified ref. Params are copied before the flag is
+set, so the caller's shared `*AlertParams` (the resolution job builds one for all
+chats) is never mutated.
+
+### Step 6 — tests (§5)
+
+- `server/internal/db/dbtest/user_contact_test.go` (or equivalent): ordering,
+  PG + SQLite.
+- `telegram/webhook_test.go` + `incidentview_test.go`: parse matrix, qualified vs
+  short rendering.
+- `telegramcb/commands_test.go`: a second org linked to the same chat; bare ref
+  ambiguous → disambiguation reply and NOTHING acked; bare ref unique → acted on;
+  qualified ref wins over the first-sorted org; qualified ref to an unlinked slug
+  → not-connected and no lookup; `/status` and `/ack` fan-out; single-org positive
+  controls asserting `#123` (and NOT `#org:123`).
+- `telegramcb/callback_test.go`: org-B button while org A sorts first → acked in
+  org B with org B's user UID; unknown UID → "no longer available".
+- `jobtypes/job_escalation_step_telegram_test.go`: alert to a two-org chat carries
+  `#org:1`; single-org chat carries `#1` and not `#org:1`.
