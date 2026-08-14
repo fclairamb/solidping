@@ -185,6 +185,11 @@ func (s *Service) ClearUserContactVerified(ctx context.Context, uid string) erro
 
 // ListUserContactsByTypeValue returns every live contact with the given type
 // and value, across all users and organizations.
+//
+// The ORDER BY is load-bearing, not cosmetic: one Telegram chat can be linked in
+// several organizations, and callers that still have to pick a single row must
+// pick the SAME one on every call. Oldest link first, UID as the tiebreaker.
+// Kept identical in the Postgres mirror.
 func (s *Service) ListUserContactsByTypeValue(
 	ctx context.Context, contactType, value string,
 ) ([]*models.UserContact, error) {
@@ -195,6 +200,7 @@ func (s *Service) ListUserContactsByTypeValue(
 		Where("type = ?", contactType).
 		Where("value = ?", value).
 		Where("deleted_at IS NULL").
+		Order("created_at ASC", "uid ASC").
 		Scan(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list user contacts by type/value: %w", err)
