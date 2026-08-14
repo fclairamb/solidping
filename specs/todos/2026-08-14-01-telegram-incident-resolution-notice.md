@@ -186,27 +186,38 @@ spec rebases trivially):
 2. Build the resolved `AlertParams` from the shared helper, overriding `Detail`
    with `resolved after <duration>` (`StartedAt` → `ResolvedAt`).
 3. **Anchor pass.** `ListStateEntries(prefix "telegram_msg:<incidentUID>:")`;
-   the chat id is the key suffix. Per chat:
+   the chat id is the key suffix, the anchor message id is the value. Per chat:
+   - **claim the chat by deleting its anchor** (`DeleteStateEntry` reports
+     whether a live row existed — a real compare-and-set on both drivers). Lost
+     claim ⇒ another runner owns this chat, send nothing;
    - skip when the marker `telegram_resolved:<incidentUID>:<chatID>` already
      exists (a read failure also skips — a missed notice beats a duplicate one);
-   - reserve `Entitlements.ReserveTelegram` — denied ⇒ write a skipped audit row
-     and continue (never fail the job);
-   - send through `sendTelegramAlertShared`, which threads under the anchor,
-     rewrites the original red alert with an explicitly empty keyboard, degrades
-     to standalone on a rejected reply target and honors `retry_after`;
-   - on failure: leave marker and anchor untouched (so a retry still delivers),
-     remember whether the failure was network-class;
-   - on success: write the marker (7d TTL), delete the anchor, record a sent
-     audit row.
+   - reserve `Entitlements.ReserveTelegram` — denied ⇒ restore the anchor, write
+     a skipped audit row and continue (never fail the job);
+   - send through `sendTelegramAlertTo` with the anchor id we consumed, which
+     threads under it, rewrites the original red alert with an explicitly empty
+     keyboard, degrades to standalone on a rejected reply target and honors
+     `retry_after`;
+   - on failure: restore the anchor (so the retry still threads), remember
+     whether the failure was network-class;
+   - on success: write the marker (7d TTL) and record a sent audit row.
 
    **Deviation from §3's suggested primitive, deliberate:** the marker is
    written *after* a delivery with `SetStateEntry`, not reserved before one with
    `SetStateEntryIfNotExists`. `DeleteStateEntry` only soft-deletes while the
    `(organization_uid, key)` uniqueness still covers the dead row, so a
    reserve-then-release scheme could never re-claim a released marker — one
-   throttled send would gag that chat forever. Writing on success keeps the
-   same double-send protection (the job runner leases a job to one worker at a
-   time, and the anchor deletion is the second guard) without that trap.
+   throttled send would gag that chat forever. The mutual exclusion two
+   concurrent jobs need comes from the anchor claim instead, which IS a working
+   CAS because it only ever *deletes*.
+
+   **Known residual window (documented at the fan-out site, not fixed):** the
+   audit-row fallback below has no such claim — its marker check is a plain
+   read-then-write. Two notice jobs for the same incident (resolve → reopen →
+   re-resolve queues a second one) racing on a chat whose anchor already expired
+   past its 7-day TTL could both send. Closing it needs a store CAS that treats
+   a soft-deleted row as absent, which is its own change; the worst case is a
+   duplicate all-clear in a chat nobody has been paged in for a week.
 4. **Fallback pass** — only for chats no anchor covered.
    `ListIncidentNotifications(incidentUID, status=sent)` filtered to
    `channel_type=telegram` **and** `event_type=incident.escalated` (that is what
@@ -232,6 +243,23 @@ on `EventTypeIncidentResolved`, create one `incident_resolution_notice` job.
 Enqueue failures log a warning and never fail the resolution — same contract as
 `queueNotifications`.
 
+**And exempt the job from the ack/snooze/resolve sweep.**
+`jobsvc.CancelPendingForIncident` soft-deletes *every* pending job whose config
+carries this `incidentUid`, which now includes the notice job. Concretely: the
+incident auto-resolves, the notice job is queued, and before a worker picks it
+up the on-call person presses the still-live Acknowledge button on the red
+Telegram alert — the ack path cancels the notice and they never hear the
+all-clear, with the stale button surviving forever. That is the spec's own bug,
+reached through the very button the spec removes.
+
+Fixed in the sweep rather than in the ack path: all three callers (ack, snooze,
+resolve) want to stop *pages*, and none of them ever wants to cancel the
+all-clear owed to someone already paged, so one narrow `type != …` exclusion is
+correct everywhere and cannot be forgotten by a future fourth caller. `jobsvc`
+cannot import `jobdef` (`jobdef` → `app/services` → `jobsvc`), so the type is a
+string literal there, pinned to the constant by
+`TestCancelPendingExemptsResolutionNotice`.
+
 ### Step 5 — Tests
 
 New `job_incident_resolution_notice_test.go` on the existing fake-Bot-API
@@ -248,4 +276,9 @@ service tests for the enqueue/suppression gate:
 5. `PagingSuppressed` child → no job enqueued and the job itself sends nothing;
 6. runaway guard exhausted → no send, skipped audit row, job succeeds;
 7. group incident (anchors under the group incident UID) → notice sent;
-8. unlinked/unverified contact in the fallback → skipped.
+8. unlinked/unverified contact in the fallback → skipped;
+9. ack landing after the resolution → the notice job survives the sweep (and the
+   ordinary paging jobs are still swept), and an acknowledged incident is still
+   notified;
+10. anchor claim has a single winner, a runner that loses the claim sends
+    nothing, and a claim given back after a failed send still threads on retry.

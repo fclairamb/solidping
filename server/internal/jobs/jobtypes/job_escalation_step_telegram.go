@@ -196,9 +196,25 @@ func sendTelegramAlert(
 	client *telegram.Client, incident *models.Incident, chatID string,
 	params *telegram.AlertParams,
 ) (int64, error) {
+	return sendTelegramAlertTo(
+		ctx, jctx, log, client, incident, chatID, params,
+		telegramThreadAnchor(ctx, jctx, log, incident, chatID),
+	)
+}
+
+// sendTelegramAlertTo is sendTelegramAlert with an EXPLICIT reply target
+// (0 = standalone).
+//
+// It exists because the resolution-notice job claims a chat by deleting its
+// anchor before sending — by then the stored anchor is gone, but the message id
+// it held is still exactly what the notice must thread under and rewrite.
+func sendTelegramAlertTo(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	client *telegram.Client, incident *models.Incident, chatID string,
+	params *telegram.AlertParams, replyTo int64,
+) (int64, error) {
 	body := telegram.BuildAlertHTML(params)
 	keyboard := telegramAckKeyboard(incident)
-	replyTo := telegramThreadAnchor(ctx, jctx, log, incident, chatID)
 
 	messageID, err := sendTelegramHonoringRetryAfter(ctx, log, client, &telegram.Message{
 		ChatID:           chatID,
@@ -306,6 +322,13 @@ func telegramThreadAnchor(
 		return 0
 	}
 
+	return telegramAnchorMessageID(entry)
+}
+
+// telegramAnchorMessageID reads the stored message id out of a thread-anchor
+// entry. Shared with the resolution-notice job, which gets its entries from a
+// prefix listing rather than a single lookup.
+func telegramAnchorMessageID(entry *models.StateEntry) int64 {
 	if entry == nil || entry.Value == nil {
 		return 0
 	}
@@ -316,6 +339,8 @@ func telegramThreadAnchor(
 		return int64(id)
 	case int64:
 		return id
+	case int:
+		return int64(id)
 	default:
 		return 0
 	}

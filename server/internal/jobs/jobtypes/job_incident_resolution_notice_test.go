@@ -3,6 +3,7 @@ package jobtypes
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"testing"
 	"time"
@@ -620,6 +621,100 @@ func TestResolutionNotice_TelegramDisabledIsANoOp(t *testing.T) {
 
 	r.NoError(newResolutionRun(env).Run(ctx, env.jctx))
 	r.True(anchorExists(t, env, resolutionChatA))
+}
+
+// --- Concurrent runs --------------------------------------------------------
+
+// resolve → reopen → re-resolve queues a SECOND notice job while the first may
+// still be in flight, and the worker pool runs jobs concurrently. The anchor
+// claim is what keeps that from double-sending: DeleteStateEntry is a real
+// compare-and-set, so exactly one runner wins a chat.
+func TestResolutionNotice_AnchorClaimHasASingleWinner(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, false, "")
+	seedThreadAnchor(t, env, resolutionChatA, 100)
+	incident := resolveTestIncident(t, env, time.Minute)
+
+	r.True(claimTelegramThreadAnchor(ctx, env.jctx, slog.Default(), incident, resolutionChatA),
+		"the first runner takes the chat")
+	r.False(claimTelegramThreadAnchor(ctx, env.jctx, slog.Default(), incident, resolutionChatA),
+		"a second runner must lose the claim, not send a duplicate all-clear")
+
+	// A claim that does not end in a delivery is given back, and is then
+	// re-claimable — a soft-deleted anchor must not become permanently dead.
+	restoreTelegramThreadAnchor(ctx, env.jctx, slog.Default(), incident, resolutionChatA, 100)
+	r.True(anchorExists(t, env, resolutionChatA), "a restored anchor is live again")
+	r.True(claimTelegramThreadAnchor(ctx, env.jctx, slog.Default(), incident, resolutionChatA))
+}
+
+// The interleaving that matters: runner A listed the anchor, runner B claimed it
+// first. A must send nothing at all.
+func TestResolutionNotice_LosingTheClaimSendsNothing(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, false, "")
+	fake, baseURL := newFakeBotAPI(t)
+	enableTelegram(env, baseURL)
+
+	seedThreadAnchor(t, env, resolutionChatA, 100)
+	incident := resolveTestIncident(t, env, time.Minute)
+
+	client, ok := telegramClientFor(ctx, env.jctx, slog.Default())
+	r.True(ok)
+
+	// Runner B gets there first.
+	r.True(claimTelegramThreadAnchor(ctx, env.jctx, slog.Default(), incident, resolutionChatA))
+
+	// Runner A, still holding the anchor it listed a moment ago.
+	runA := newResolutionRun(env)
+	runA.handled = make(map[string]bool)
+	runA.notifyChat(ctx, env.jctx, slog.Default(), client, incident,
+		resolutionAlertParams(ctx, env.jctx, slog.Default(), incident), resolutionChatA, 100)
+
+	r.Equal(0, fake.sendCount(), "the runner that lost the claim must stay silent")
+	r.False(resolvedMarkerExists(t, env, resolutionChatA),
+		"and must not mark a delivery it never made")
+}
+
+// A claim given back after a failed send must leave the anchor exactly as it
+// was, so the retry still THREADS instead of dropping a context-free standalone
+// message into the chat.
+func TestResolutionNotice_FailedSendRestoresTheAnchorForThreading(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, false, "")
+	fake, baseURL := newFakeBotAPI(t,
+		botReply{http.StatusInternalServerError, botErrServer},
+		botReply{http.StatusOK, botOK(201)},
+		botReply{http.StatusOK, botOK(100)},
+	)
+	enableTelegram(env, baseURL)
+
+	seedThreadAnchor(t, env, resolutionChatA, 100)
+	resolveTestIncident(t, env, time.Minute)
+
+	err := newResolutionRun(env).Run(ctx, env.jctx)
+	r.Error(err)
+	r.True(anchorExists(t, env, resolutionChatA))
+
+	r.NoError(newResolutionRun(env).Run(ctx, env.jctx))
+
+	sends := fake.callsFor("sendMessage")
+	r.Len(sends, 2)
+	r.InDelta(float64(100), sends[1].body["reply_to_message_id"], 0,
+		"the retry must still thread under the original message")
+	r.Len(fake.callsFor("editMessageText"), 1,
+		"and still rewrite it, which is what removes the stale Acknowledge button")
 }
 
 // --- Runaway guard ----------------------------------------------------------

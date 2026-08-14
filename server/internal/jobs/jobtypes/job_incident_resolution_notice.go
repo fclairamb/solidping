@@ -244,7 +244,7 @@ func (r *IncidentResolutionNoticeJobRun) notifyAnchoredChats(
 
 		anchored[chatID] = true
 
-		r.notifyChat(ctx, jctx, log, client, incident, params, chatID, true)
+		r.notifyChat(ctx, jctx, log, client, incident, params, chatID, telegramAnchorMessageID(entry))
 	}
 
 	return anchored
@@ -254,6 +254,19 @@ func (r *IncidentResolutionNoticeJobRun) notifyAnchoredChats(
 // incident that outlived the 7-day TTL, or an anchor write that failed. The
 // audit trail still remembers the person was paged; their CURRENT verified
 // contact says where to reach them now.
+//
+// KNOWN RESIDUAL WINDOW (documented, not fixed here). The anchor pass claims
+// each chat with an atomic delete, so two concurrently running notice jobs for
+// the same incident (resolve → reopen → re-resolve queues a second one) can
+// never both send to an anchored chat. This pass has no such claim: the marker
+// is a plain read-then-write, so two jobs racing on a chat whose anchor already
+// expired past its 7-day TTL could both send. Closing it needs a store CAS that
+// treats a soft-deleted row as absent — SetStateEntryIfNotExists cannot serve,
+// because DeleteStateEntry only soft-deletes while the (organization_uid, key)
+// uniqueness still covers the dead row, so a released reservation could never
+// be re-taken and one throttled send would gag that chat forever. Adding that
+// primitive is its own change; the worst case here is a duplicate all-clear in
+// a chat nobody has been paged in for a week.
 func (r *IncidentResolutionNoticeJobRun) notifyAuditedChats(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	client *telegram.Client, incident *models.Incident, params *telegram.AlertParams,
@@ -265,7 +278,7 @@ func (r *IncidentResolutionNoticeJobRun) notifyAuditedChats(
 				continue
 			}
 
-			r.notifyChat(ctx, jctx, log, client, incident, params, chatID, false)
+			r.notifyChat(ctx, jctx, log, client, incident, params, chatID, 0)
 		}
 	}
 }
@@ -339,20 +352,28 @@ func telegramChatsForUser(
 	return out
 }
 
-// notifyChat sends one resolution notice, guarding it with the per-chat marker
-// and the hourly runaway guard.
+// notifyChat sends one resolution notice to a chat, guarding it with the anchor
+// claim, the per-chat marker and the hourly runaway guard. anchorMsgID is the
+// message to thread under, or 0 for a chat reached through the audit fallback.
 //
-// The marker is written AFTER a delivery, never reserved before one. A
-// reserve-then-release scheme cannot work on this store: DeleteStateEntry only
-// soft-deletes, while the (organization_uid, key) uniqueness still covers the
-// dead row — so a released marker could never be re-claimed, and one throttled
-// send would gag that chat forever. Writing on success instead keeps retries
-// correct (a failed chat is untouched) and still cannot duplicate, because the
-// job runner leases a job to a single worker at a time.
+// Two guards, deliberately different in kind:
+//
+//   - The ANCHOR CLAIM (`DeleteStateEntry`) is a real compare-and-set on both
+//     drivers: `UPDATE … WHERE deleted_at IS NULL` reports whether a live row
+//     existed, so of two jobs racing on the same chat exactly one wins. That
+//     matters because resolve → reopen → re-resolve queues a SECOND notice job
+//     while the first may still be in flight. The anchor goes back if the notice
+//     does not go out, so a claim is never a lost message.
+//   - The MARKER is written AFTER a delivery, never reserved before one. A
+//     reserve-then-release scheme cannot work on this store: DeleteStateEntry
+//     only soft-deletes, while the (organization_uid, key) uniqueness still
+//     covers the dead row — so a released marker could never be re-claimed and
+//     one throttled send would gag that chat forever. It is what stops a re-run
+//     and the audit fallback from repeating a delivered notice.
 func (r *IncidentResolutionNoticeJobRun) notifyChat(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	client *telegram.Client, incident *models.Incident, params *telegram.AlertParams,
-	chatID string, hasAnchor bool,
+	chatID string, anchorMsgID int64,
 ) {
 	if r.handled[chatID] {
 		return
@@ -360,18 +381,30 @@ func (r *IncidentResolutionNoticeJobRun) notifyChat(
 
 	r.handled[chatID] = true
 
+	if anchorMsgID != 0 && !claimTelegramThreadAnchor(ctx, jctx, log, incident, chatID) {
+		log.InfoContext(ctx, "another runner already claimed this chat's resolution notice",
+			"chatId", chatID)
+
+		return
+	}
+
 	if alreadyToldAboutResolution(ctx, jctx, log, incident, chatID) {
+		// The anchor we just consumed was stale — a delivery already happened.
+		// Leaving it deleted is the correct end state.
 		return
 	}
 
 	if !reserveTelegramSend(ctx, jctx, log, incident) {
+		restoreTelegramThreadAnchor(ctx, jctx, log, incident, chatID, anchorMsgID)
 		auditResolutionSkip(ctx, jctx, log, incident, entitlements.RunawayKindTelegram+"_runaway_guard")
 
 		return
 	}
 
-	messageID, err := sendTelegramAlert(ctx, jctx, log, client, incident, chatID, params)
+	messageID, err := sendTelegramAlertTo(ctx, jctx, log, client, incident, chatID, params, anchorMsgID)
 	if err != nil {
+		restoreTelegramThreadAnchor(ctx, jctx, log, incident, chatID, anchorMsgID)
+
 		if telegramFailureIsTransient(err) {
 			r.transient = true
 		}
@@ -383,15 +416,57 @@ func (r *IncidentResolutionNoticeJobRun) notifyChat(
 	}
 
 	markResolutionTold(ctx, jctx, log, incident, chatID)
+	auditResolutionSend(ctx, jctx, log, incident, chatID, messageID)
+}
 
-	if hasAnchor {
-		// The anchor has done its job. Dropping it is what stops a later reopen →
-		// re-resolve from sending a second notice for a relapse the person was
-		// never paged about.
-		clearTelegramThreadAnchor(ctx, jctx, log, incident, chatID)
+// claimTelegramThreadAnchor takes exclusive ownership of a chat's notice by
+// consuming its thread anchor. Reports false when another runner got there
+// first.
+//
+// Consuming the anchor here — rather than after a successful send — is also
+// what stops a later reopen → re-resolve from announcing the end of a relapse
+// the person was never paged about.
+func claimTelegramThreadAnchor(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, chatID string,
+) bool {
+	orgUID := incident.OrganizationUID
+
+	claimed, err := jctx.DBService.DeleteStateEntry(ctx, &orgUID, telegramThreadKey(incident.UID, chatID))
+	if err != nil {
+		// Without a claim there is no exclusion, so skip rather than risk two
+		// jobs sending the same all-clear.
+		log.WarnContext(ctx, "could not claim the telegram thread anchor; skipping chat",
+			"chatId", chatID, "error", err)
+
+		return false
 	}
 
-	auditResolutionSend(ctx, jctx, log, incident, chatID, messageID)
+	return claimed
+}
+
+// restoreTelegramThreadAnchor puts a claimed anchor back when the notice did not
+// go out, so the retry still threads under the original message instead of
+// dropping a context-free standalone one. A no-op for the audit fallback, which
+// never held an anchor.
+func restoreTelegramThreadAnchor(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, chatID string, messageID int64,
+) {
+	if messageID == 0 {
+		return
+	}
+
+	orgUID := incident.OrganizationUID
+	ttl := telegramThreadTTL
+	value := &models.JSONMap{telegramThreadMessageIDField: messageID}
+
+	if err := jctx.DBService.SetStateEntry(
+		ctx, &orgUID, telegramThreadKey(incident.UID, chatID), value, &ttl,
+	); err != nil {
+		log.WarnContext(ctx, "could not restore the telegram thread anchor",
+			"chatId", chatID, "error", err)
+	}
 }
 
 // telegramResolvedKey is the marker proving one chat already heard about this

@@ -293,13 +293,23 @@ children stay silent and group incidents are covered. The job:
 - falls back to the `incident_notifications` audit trail (channel `telegram`,
   status `sent`, event `incident.escalated`) for chats whose anchor expired past
   its 7-day TTL, resolving each paged user's *current* verified contact;
+- **claims** each chat by deleting its anchor before sending (`DeleteStateEntry`
+  is a compare-and-set on both drivers, so two concurrently running notice jobs
+  cannot both notify the same chat) and puts the anchor back whenever the notice
+  does not go out;
 - writes a `telegram_resolved:<incidentUID>:<chatID>` marker after each
-  delivery and drops the anchor, which is what makes retries and a
+  delivery, which together with the consumed anchor makes retries and a
   reopen → re-resolve cycle send **exactly one** notice — a relapse never
   re-pages person contacts, so announcing its end would be noise;
 - reserves the hourly Telegram runaway guard per send (a mass recovery must not
   turn into an unbounded burst) and returns a retryable error only for
   network-class failures.
+
+This job type is the one exemption in `jobsvc.CancelPendingForIncident`: ack /
+snooze / resolve cancel every pending **page** for an incident, but never the
+all-clear owed to someone who already got one. Without the exemption, pressing
+Acknowledge on a just-resolved alert would delete the message that removes that
+very button.
 
 ### Event payload
 
