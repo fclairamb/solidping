@@ -11,10 +11,44 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
     <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#e91e63" />
+    <!-- Two media-gated metas instead of one static color: the browser
+         chrome (address bar / task switcher) should match whichever palette
+         actually painted, and that is decided before first paint by the
+         inline script below — a single static theme-color would flash the
+         light tint on a dark first paint. -->
+    <meta name="theme-color" content="#e91e63" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0e0a0e" media="(prefers-color-scheme: dark)" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SolidPing - Status Page</title>
     <meta name="google" content="notranslate" />
+    <!--
+      No-flash dark mode: this MUST run before the bundle paints anything, so
+      it is an inline, synchronous script (not a module, not deferred) placed
+      before <div id="root">. It mirrors the same localStorage("theme") /
+      prefers-color-scheme logic as ThemeToggle
+      (src/components/ui/theme-toggle.tsx) so the very first paint already
+      matches the eventual React state — dash0 can afford to flip the class in
+      a useEffect because it sits behind a login, but this is a public page
+      visited directly, so a dark-mode visitor must never see a white flash.
+      Wrapped in try/catch because localStorage can throw (e.g. Safari private
+      mode, or storage disabled by policy) — fall back to system preference
+      rather than breaking page load.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("theme");
+          var prefersDark = window.matchMedia(
+            "(prefers-color-scheme: dark)"
+          ).matches;
+          if (stored === "dark" || (!stored && prefersDark)) {
+            document.documentElement.classList.add("dark");
+          }
+        } catch (e) {
+          // Ignore — page renders in the light default.
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
