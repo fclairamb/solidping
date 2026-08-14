@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -580,7 +581,14 @@ type ResourceAvailabilityData struct {
 	// kept for back-compat even when BucketUnit is "hour" (hourly buckets); read
 	// BucketUnit/Period to label the axis correctly.
 	DailyAvailability []AvailabilityPoint `json:"dailyAvailability,omitempty"`
-	ResponseTimeData  []ResponseTimePoint `json:"responseTimeData,omitempty"`
+	// ResponseTimeSeries holds one series per region the check has reported
+	// results from (spec 2026-08-14-04). Replaces the old flat
+	// `responseTimeData: []ResponseTimePoint` field, which interleaved every
+	// region's points into one meaningless saw-tooth series — status0 (the
+	// SPA and the embed widget) was the only consumer of that field and this
+	// substructure was never documented in openapi.yaml, so it is dropped
+	// rather than kept alongside.
+	ResponseTimeSeries []ResponseTimeSeries `json:"responseTimeSeries,omitempty"`
 	// Period is the active history period ("24h"|"7d"|"30d"|"90d").
 	Period string `json:"period,omitempty"`
 	// BucketUnit is the granularity of each point: "day" or "hour".
@@ -605,6 +613,14 @@ type ResponseTimePoint struct {
 	// Status indicates the check's outcome at this point: "up", "down",
 	// "timeout", "error", or "" when not applicable.
 	Status string `json:"status,omitempty"`
+}
+
+// ResponseTimeSeries is one region's response-time points for a resource.
+// Region is nil for results with no recorded region (NULL — legacy rows from
+// before regions were tracked, or a check with a single implicit region).
+type ResponseTimeSeries struct {
+	Region *string             `json:"region,omitempty"`
+	Points []ResponseTimePoint `json:"points"`
 }
 
 // --- Request types ---
@@ -1924,7 +1940,8 @@ func (s *Service) enrichWithAvailability(
 	}
 }
 
-// resourceRecentResults returns the response-time series for a resource.
+// resourceRecentResults returns the per-region response-time results for a
+// resource, keyed by region ("" for a NULL/legacy region).
 //
 // A GROUP resource gets NO series: interleaving several members' p95 points
 // into one chart produces a meaningless plot, and it would publish per-member
@@ -1932,8 +1949,8 @@ func (s *Service) enrichWithAvailability(
 // availability bar is the group's public performance surface (spec
 // 2026-08-01-03).
 func resourceRecentResults(
-	recentByCheck map[string][]*models.Result, resource *StatusPageResourceResponse, memberUIDs []string,
-) []*models.Result {
+	recentByCheck map[string]map[string][]*models.Result, resource *StatusPageResourceResponse, memberUIDs []string,
+) map[string][]*models.Result {
 	if resource.CheckGroupUID != nil || len(memberUIDs) != 1 {
 		return nil
 	}
@@ -1941,15 +1958,26 @@ func resourceRecentResults(
 	return recentByCheck[memberUIDs[0]]
 }
 
-// fetchRecentResults loads the last responseTimeLimit results per check (any
-// period type) for the response-time chart. Returns an empty map when the
-// response-time chart is disabled. This is unchanged from the previous behavior
-// and is kept separate from the availability bucketing (Q4: the response-time
-// path is not affected by the data-source unification).
+// regionFanoutCap generously bounds the number of distinct regions
+// fetchRecentResults assumes per check when sizing its query's row limit, so
+// that the per-(check,region) point budget below can't be starved by another
+// region's rows dominating the interleaved fetch. Real deployments run a
+// handful of regions (2-5 is typical for a multi-region check); this mirrors
+// uptimebar.capMaxRegionsPerCheck's "generous, never bites under realistic
+// topology" reasoning for the same class of problem.
+const regionFanoutCap = 20
+
+// fetchRecentResults loads the last responseTimeLimit results per
+// (check, region) pair (any period type) for the response-time chart.
+// Returns an empty map when the response-time chart is disabled. The region
+// key is "" for a NULL/legacy region (spec 2026-08-14-04 — previously this
+// budget was shared across every region interleaved on one check, so a check
+// running in N regions got roughly 100/N points per region instead of 100
+// each).
 func (s *Service) fetchRecentResults(
 	ctx context.Context, orgUID string, checkUIDs []string, showResponseTime bool,
-) map[string][]*models.Result {
-	recentByCheck := make(map[string][]*models.Result)
+) map[string]map[string][]*models.Result {
+	recentByCheck := make(map[string]map[string][]*models.Result)
 
 	if !showResponseTime {
 		return recentByCheck
@@ -1960,7 +1988,7 @@ func (s *Service) fetchRecentResults(
 	recentFilter := &models.ListResultsFilter{
 		OrganizationUID: orgUID,
 		CheckUIDs:       checkUIDs,
-		Limit:           responseTimeLimit * len(checkUIDs),
+		Limit:           responseTimeLimit * regionFanoutCap * len(checkUIDs),
 		// The response-time chart plots duration/status only, so the
 		// metrics/output blobs never reach the page (spec 2026-07-24-02 §5).
 		SkipBlobs: true,
@@ -1972,8 +2000,19 @@ func (s *Service) fetchRecentResults(
 	}
 
 	for _, r := range recentResp.Results {
-		if len(recentByCheck[r.CheckUID]) < responseTimeLimit {
-			recentByCheck[r.CheckUID] = append(recentByCheck[r.CheckUID], r)
+		regionKey := ""
+		if r.Region != nil {
+			regionKey = *r.Region
+		}
+
+		byRegion := recentByCheck[r.CheckUID]
+		if byRegion == nil {
+			byRegion = make(map[string][]*models.Result)
+			recentByCheck[r.CheckUID] = byRegion
+		}
+
+		if len(byRegion[regionKey]) < responseTimeLimit {
+			byRegion[regionKey] = append(byRegion[regionKey], r)
 		}
 	}
 
@@ -2031,7 +2070,8 @@ func (s *Service) enrichHourly(
 // Buckets absent from byBucket (no rows) get status "noData". The overall
 // weighted average matches the daily path.
 func buildHourlyAvailabilityData(
-	byBucket map[time.Time]uptimebar.BucketStats, recentResults []*models.Result, bucketStart time.Time,
+	byBucket map[time.Time]uptimebar.BucketStats, recentResultsByRegion map[string][]*models.Result,
+	bucketStart time.Time,
 	showAvailability, showResponseTime bool, upThreshold, degradedThreshold float64,
 ) *ResourceAvailabilityData {
 	data := &ResourceAvailabilityData{}
@@ -2075,7 +2115,7 @@ func buildHourlyAvailabilityData(
 	}
 
 	if showResponseTime {
-		data.ResponseTimeData = buildResponseTimeData(recentResults)
+		data.ResponseTimeSeries = buildResponseTimeSeries(recentResultsByRegion)
 	}
 
 	return data
@@ -2088,7 +2128,7 @@ func buildHourlyAvailabilityData(
 // oldest bucket is (historyDays-1) days earlier, matching the BucketAvailability
 // call in enrichWithAvailability.
 func buildAvailabilityData(
-	byBucket map[time.Time]uptimebar.BucketStats, recentResults []*models.Result,
+	byBucket map[time.Time]uptimebar.BucketStats, recentResultsByRegion map[string][]*models.Result,
 	todayStart time.Time, historyDays int, showAvailability, showResponseTime bool,
 	upThreshold, degradedThreshold float64,
 ) *ResourceAvailabilityData {
@@ -2133,10 +2173,45 @@ func buildAvailabilityData(
 	}
 
 	if showResponseTime {
-		data.ResponseTimeData = buildResponseTimeData(recentResults)
+		data.ResponseTimeSeries = buildResponseTimeSeries(recentResultsByRegion)
 	}
 
 	return data
+}
+
+// buildResponseTimeSeries groups a resource's recent results into one series
+// per region (spec 2026-08-14-04), replacing the old single-series flattening
+// that interleaved every region's points. Region keys are sorted so the
+// output order is stable; the empty-string key (NULL/legacy region) sorts
+// first automatically and needs no special-casing.
+func buildResponseTimeSeries(recentResultsByRegion map[string][]*models.Result) []ResponseTimeSeries {
+	if len(recentResultsByRegion) == 0 {
+		return nil
+	}
+
+	regionKeys := make([]string, 0, len(recentResultsByRegion))
+	for key := range recentResultsByRegion {
+		regionKeys = append(regionKeys, key)
+	}
+
+	sort.Strings(regionKeys)
+
+	series := make([]ResponseTimeSeries, 0, len(regionKeys))
+
+	for _, key := range regionKeys {
+		var region *string
+		if key != "" {
+			regionValue := key
+			region = &regionValue
+		}
+
+		series = append(series, ResponseTimeSeries{
+			Region: region,
+			Points: buildResponseTimeData(recentResultsByRegion[key]),
+		})
+	}
+
+	return series
 }
 
 func buildResponseTimeData(recentResults []*models.Result) []ResponseTimePoint {
