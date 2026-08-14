@@ -53,6 +53,7 @@ import {
 import { DnsRecordRow } from "@/components/shared/dns-record-row";
 import { DocsLink } from "@/components/shared/docs-link";
 import { LiveDurationAgo } from "@/components/shared/relative-time";
+import { TimeAgo } from "@/components/ui/time-ago";
 import { ErrorFallbackCard } from "@/components/shared/error-boundary";
 import { MaintenanceScheduleSummary } from "@/components/shared/maintenance-schedule-summary";
 import { JsonViewer } from "@/components/shared/json-viewer";
@@ -155,6 +156,7 @@ export const Route = createFileRoute("/orgs/$org/design-reference")({
 // "N ago" showcase below stays a pure render — see the LiveDurationAgo
 // example.
 const RELATIVE_TIME_DEMO_SINCE = new Date(Date.now() - 5 * 60_000).toISOString();
+const TIME_AGO_DEMO_DATE = new Date(Date.now() - 46 * 60_000).toISOString();
 
 const SECTIONS: { id: string; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -1171,6 +1173,38 @@ function ButtonsBadgesSection() {
             </span>
           }
           importLine={`import { LiveDurationAgo } from "@/components/shared/relative-time";\n\n{agent.lastSeenAt ? (\n  <span title={new Date(agent.lastSeenAt).toLocaleString()}>\n    <LiveDurationAgo since={agent.lastSeenAt} />\n  </span>\n) : (\n  t("privateLocations.agents.never", "never")\n)}`}
+        />
+
+        <h3 className="text-sm font-medium">TimeAgo (hover/tap + click-to-copy)</h3>
+        <p className="text-sm text-muted-foreground">
+          The incidents list, incident detail (timeline, comments, header) and jobs
+          pages' timestamp. Unlike <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">LiveDurationAgo</code> above,
+          the absolute time isn't just a passive <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">title</code>{" "}
+          — hovering (or tapping, on touch) opens a{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Tooltip</code> with both local and
+          UTC time, and clicking copies the UTC time as ISO&nbsp;8601 (<code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">2026-08-14T09:31:07Z</code>)
+          to the clipboard — the format that pastes cleanly into a log query. All instances
+          share a single 30s re-render timer (not one <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">setInterval</code> per
+          row) so long-lived tabs don't drift.
+        </p>
+        <ExampleRow
+          preview={
+            <span className="text-sm">
+              <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">tooltip</code> (default,
+              dense lists): <TimeAgo date={TIME_AGO_DEMO_DATE} data-testid="design-ref-time-ago-tooltip" />
+            </span>
+          }
+          importLine={`import { TimeAgo } from "@/components/ui/time-ago";\n\n// Dense lists (incidents index, jobs): compact relative text, absolute\n// time behind hover/tap.\n{incident.startedAt ? <TimeAgo date={incident.startedAt} /> : "-"}`}
+        />
+        <ExampleRow
+          preview={
+            <span className="text-sm">
+              <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">inline</code> (incident
+              detail — several timestamps compared at once):{" "}
+              <TimeAgo date={TIME_AGO_DEMO_DATE} variant="inline" data-testid="design-ref-time-ago-inline" />
+            </span>
+          }
+          importLine={`import { TimeAgo } from "@/components/ui/time-ago";\n\n// Incident detail (timeline, comments, header): absolute time shown\n// inline instead of hidden behind hover.\n<TimeAgo date={u.publishedAt} variant="inline" />`}
         />
 
         <h3 className="text-sm font-medium">Session card</h3>
