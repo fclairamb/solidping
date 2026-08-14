@@ -1382,6 +1382,15 @@ func (s *Service) emitEvent(
 			return nil
 		}
 
+		// People who were PAGED for this incident only ever hear from the
+		// escalation machinery, which stops the moment the incident is handled.
+		// Without this they are paged and then never told it ended. Enqueued
+		// before the group branch on purpose: a group incident pages under its
+		// own UID, so the notice job works identically for it.
+		if eventType == models.EventTypeIncidentResolved {
+			s.queueResolutionNotice(ctx, orgUID, incident.UID)
+		}
+
 		if incident.CheckGroupUID != nil {
 			s.queueGroupNotifications(ctx, orgUID, incident.UID, eventType)
 
@@ -1421,6 +1430,33 @@ func (s *Service) emitEvent(
 	}
 
 	return nil
+}
+
+// queueResolutionNotice enqueues the job that closes the loop with the person
+// contacts (Telegram today) paged for this incident.
+//
+// Same contract as queueNotifications: a failure to enqueue is logged and never
+// fails the resolution. An incident that resolved but whose notice job could not
+// be created is a missed message; an incident that failed to resolve is an
+// outage that never ends.
+func (s *Service) queueResolutionNotice(ctx context.Context, orgUID, incidentUID string) {
+	config, err := json.Marshal(jobtypes.IncidentResolutionNoticeJobConfig{
+		OrganizationUID: orgUID,
+		IncidentUID:     incidentUID,
+	})
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to marshal incident resolution notice config",
+			"incidentUid", incidentUID, "error", err)
+
+		return
+	}
+
+	if _, err := s.jobsSvc.CreateJob(
+		ctx, orgUID, string(jobdef.JobTypeIncidentResolutionNotice), config, nil,
+	); err != nil {
+		slog.WarnContext(ctx, "Failed to create incident resolution notice job",
+			"incidentUid", incidentUID, "error", err)
+	}
 }
 
 // queueGroupNotifications fans out a single notification per (connection,
