@@ -137,6 +137,46 @@ test.describe("Public status page — response-time chart", () => {
     await expect(legend).toContainText("us1");
   });
 
+  test("incident strip rolls up worst status across regions at a shared timestamp", async ({
+    page,
+  }) => {
+    // eu2 and us1 share the SAME three timestamps: eu2 is "down" at the
+    // middle one, us1 is "up" at all three. The single incident strip must
+    // render that shared slot as down (worst-status-wins), not up — pins the
+    // rollup end-to-end, not just at the buildCombinedRows unit level. Each
+    // timestamp is computed once and reused across both series so the rows
+    // merge by exact string equality (buildCombinedRows keys on the raw
+    // `time` string, not a parsed/rounded value).
+    const t0 = isoMinutesAgo(10);
+    const t1 = isoMinutesAgo(5);
+    const t2 = isoMinutesAgo(0);
+    const eu2Points = [
+      { time: t0, durationP95: 40, status: "up" },
+      { time: t1, durationP95: 40, status: "down" },
+      { time: t2, durationP95: 40, status: "up" },
+    ];
+    const us1Points = [
+      { time: t0, durationP95: 160, status: "up" },
+      { time: t1, durationP95: 160, status: "up" },
+      { time: t2, durationP95: 160, status: "up" },
+    ];
+    await mockStatusPage(page, [
+      { region: "eu2", points: eu2Points },
+      { region: "us1", points: us1Points },
+    ]);
+
+    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+    await page.waitForLoadState("networkidle");
+
+    const strip = page.getByTestId("response-time-chart-incident-strip");
+    await expect(strip).toBeVisible({ timeout: 10000 });
+
+    const statuses = await strip.locator("[data-status]").evaluateAll(
+      (nodes) => nodes.map((n) => n.getAttribute("data-status")),
+    );
+    expect(statuses).toEqual(["up", "down", "up"]);
+  });
+
   test("two-region legend stays compact on a mobile viewport", async ({
     page,
   }) => {

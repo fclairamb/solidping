@@ -8,6 +8,12 @@ import {
   Tooltip,
 } from "recharts";
 import type { ResponseTimePoint, ResponseTimeSeries } from "@/api/hooks";
+import {
+  buildCombinedRows,
+  pointKey,
+  statusFieldKey,
+  type CombinedRow,
+} from "@/lib/response-time-rollup";
 
 function formatTick(isoStr: string, spansDays: boolean, locale: string) {
   const date = new Date(isoStr);
@@ -45,23 +51,6 @@ function statusColor(status?: string) {
     default:
       return "transparent";
   }
-}
-
-// Severity rank used to roll several regions' statuses up into ONE incident
-// strip color for a shared timestamp — "worst status wins" (spec
-// 2026-08-14-04). Higher wins; anything not listed (up, created, running,
-// undefined) ranks 0, i.e. never overrides a real incident.
-const STATUS_SEVERITY: Record<string, number> = {
-  down: 4,
-  error: 3,
-  timeout: 2,
-  degraded: 1,
-  warning: 1,
-};
-
-function severityRank(status?: string): number {
-  if (!status) return 0;
-  return STATUS_SEVERITY[status] ?? 0;
 }
 
 function CustomTooltip({
@@ -116,61 +105,6 @@ function CustomTooltip({
 // stable across renders/reloads.
 function seriesColor(index: number): string {
   return `var(--chart-${(index % 5) + 1})`;
-}
-
-function pointKey(index: number): string {
-  return `p${index}`;
-}
-
-function statusFieldKey(index: number): string {
-  return `st${index}`;
-}
-
-interface CombinedRow {
-  time: string;
-  status?: string;
-  [field: string]: string | number | null | undefined;
-}
-
-// Pivots per-region series into ONE array of rows keyed by the sorted union
-// of timestamps across every series (recharts needs one shared data array to
-// render several Areas against the same x-axis). Each row also carries a
-// rolled-up `status` — the worst status among the regions with a point at
-// that exact timestamp — which drives the single incident strip.
-function buildCombinedRows(series: ResponseTimeSeries[]): CombinedRow[] {
-  const byTime = new Map<string, CombinedRow>();
-
-  series.forEach((s, index) => {
-    for (const point of s.points) {
-      let row = byTime.get(point.time);
-      if (!row) {
-        row = { time: point.time };
-        byTime.set(point.time, row);
-      }
-      row[pointKey(index)] = point.durationP95 ?? null;
-      row[statusFieldKey(index)] = point.status;
-    }
-  });
-
-  const rows = Array.from(byTime.values()).sort((a, b) =>
-    a.time.localeCompare(b.time),
-  );
-
-  for (const row of rows) {
-    let worstStatus: string | undefined;
-    let worstRank = -1;
-    series.forEach((_, index) => {
-      const status = row[statusFieldKey(index)] as string | undefined;
-      const rank = severityRank(status);
-      if (rank > worstRank) {
-        worstRank = rank;
-        worstStatus = status;
-      }
-    });
-    row.status = worstStatus;
-  }
-
-  return rows;
 }
 
 interface ResponseTimeChartProps {
@@ -424,6 +358,7 @@ export function ResponseTimeChart({ series }: ResponseTimeChartProps) {
         <div
           className="ml-[50px] mr-[4px] mt-1 flex h-1.5 w-auto overflow-hidden rounded-sm"
           aria-hidden="true"
+          data-testid="response-time-chart-incident-strip"
         >
           {rows.map((row, idx) => {
             const color = statusColor(row.status);
@@ -432,6 +367,7 @@ export function ResponseTimeChart({ series }: ResponseTimeChartProps) {
                 key={`${row.time}-${idx}`}
                 className="flex-1"
                 style={{ backgroundColor: color }}
+                data-status={row.status ?? ""}
               />
             );
           })}
