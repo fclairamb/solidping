@@ -106,6 +106,19 @@ func (s *Storage) Delete(ctx context.Context, key string) error {
 	return s.db.TLSStorageDelete(ctx, normalizeKey(key))
 }
 
+// DeleteSite removes every stored asset for one domain — certificate, private
+// key and metadata — by dropping the folder certmagic keeps them in. Delete
+// already removes everything nested under a key, so the prefix is enough and
+// the three files do not need naming individually.
+//
+// Used when a domain stops being ours (unmapped, or demoted by the
+// re-verification sweep): leaving a live private key in the database for a
+// hostname someone else may now control is not worth the convenience of a
+// warm cache if it ever comes back.
+func (s *Storage) DeleteSite(ctx context.Context, issuerKey, domain string) error {
+	return s.Delete(ctx, certmagic.StorageKeys.CertsSitePrefix(issuerKey, domain))
+}
+
 // Exists reports whether key exists as a value or as a prefix of other keys
 // (certmagic treats both as "exists").
 func (s *Storage) Exists(ctx context.Context, key string) bool {

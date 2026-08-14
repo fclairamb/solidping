@@ -2,6 +2,7 @@ package statuspages
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -383,4 +384,107 @@ func TestCustomDomainServable_Gating(t *testing.T) {
 	_, err = svc.VerifyCustomDomain(ctx, org.Slug, page.UID)
 	r.NoError(err)
 	r.True(svc.CustomDomainServable(ctx, "status.acme.com"))
+}
+
+// recordingEdge is a CertStatusProvider that also implements DomainForgetter,
+// exactly as tlsedge.Edge does, so the optional interface assertion in
+// SetCertStatusProvider is exercised rather than assumed.
+type recordingEdge struct {
+	mu       sync.Mutex
+	forgoten []string
+}
+
+func (e *recordingEdge) CertStatus(string) string { return "issued" }
+
+func (e *recordingEdge) ForgetDomain(_ context.Context, domain string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	e.forgoten = append(e.forgoten, domain)
+}
+
+func (e *recordingEdge) seen() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	return append([]string(nil), e.forgoten...)
+}
+
+// TestClearingCustomDomainForgetsTLSMaterial pins the cleanup half of the
+// takeover fix: clearing a domain must not leave its certificate and private
+// key sitting in tls_storage for the rest of their 90-day life.
+func TestClearingCustomDomainForgetsTLSMaterial(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	ctx, svc, org := setupCustomDomainTest(t)
+	page := mkPage(t, svc, org, "main")
+
+	edge := &recordingEdge{}
+	svc.SetCertStatusProvider(edge)
+
+	_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
+		CustomDomain: strptr("status.acme.com"), CustomDomainSet: true,
+	})
+	r.NoError(err)
+	r.Empty(edge.seen(), "setting a domain must not forget anything")
+
+	_, err = svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
+		CustomDomain: nil, CustomDomainSet: true,
+	})
+	r.NoError(err)
+	r.Equal([]string{"status.acme.com"}, edge.seen(), "clearing must drop the domain's TLS material")
+}
+
+// TestChangingCustomDomainForgetsThePreviousOne covers the other way a
+// hostname stops being ours: it is replaced rather than removed.
+func TestChangingCustomDomainForgetsThePreviousOne(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	ctx, svc, org := setupCustomDomainTest(t)
+	page := mkPage(t, svc, org, "main")
+
+	edge := &recordingEdge{}
+	svc.SetCertStatusProvider(edge)
+
+	_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
+		CustomDomain: strptr("old.acme.com"), CustomDomainSet: true,
+	})
+	r.NoError(err)
+
+	// Re-sending the SAME domain is a no-op and must not forget it.
+	_, err = svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
+		CustomDomain: strptr("old.acme.com"), CustomDomainSet: true,
+	})
+	r.NoError(err)
+	r.Empty(edge.seen(), "an unchanged domain must keep its certificate")
+
+	_, err = svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
+		CustomDomain: strptr("new.acme.com"), CustomDomainSet: true,
+	})
+	r.NoError(err)
+	r.Equal([]string{"old.acme.com"}, edge.seen(), "the replaced hostname must be forgotten")
+}
+
+// TestCertStatusProviderWithoutForgetterIsSafe pins that a provider which does
+// NOT implement DomainForgetter still works — the assertion is optional.
+func TestCertStatusProviderWithoutForgetterIsSafe(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	ctx, svc, org := setupCustomDomainTest(t)
+	page := mkPage(t, svc, org, "main")
+
+	svc.SetCertStatusProvider(stubCertStatus("issued"))
+
+	_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
+		CustomDomain: strptr("status.acme.com"), CustomDomainSet: true,
+	})
+	r.NoError(err)
+
+	_, err = svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
+		CustomDomain: nil, CustomDomainSet: true,
+	})
+	r.NoError(err, "clearing must not require a DomainForgetter")
 }

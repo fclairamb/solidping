@@ -329,6 +329,9 @@ type Service struct {
 	// proxy, or acme.enabled = false), in which case the response simply omits
 	// customDomainCertStatus.
 	certStatus CertStatusProvider
+	// forgetDomain drops TLS state for a domain that stopped being ours. Same
+	// object as certStatus when the edge is running; nil otherwise.
+	forgetDomain DomainForgetter
 	// analytics receives the status_page_published product event. Injectable
 	// for tests: nil means "use the process-wide client" (the no-op unless
 	// PostHog is configured), while a test attaches its OWN recorder here.
@@ -351,10 +354,40 @@ type CertStatusProvider interface {
 	CertStatus(domain string) string
 }
 
+// DomainForgetter drops every trace of a hostname the instance no longer
+// serves — the cached certificate, its private key and the memoized "this host
+// is ours" answer. Implemented by internal/tlsedge.
+//
+// This is hygiene, not the security boundary: the edge refuses to serve any
+// host that is not currently mapped, whether or not the material was cleaned
+// up. It exists so a private key for a domain someone else may now control does
+// not sit in tls_storage until natural expiry.
+type DomainForgetter interface {
+	ForgetDomain(ctx context.Context, domain string)
+}
+
 // SetCertStatusProvider wires the in-server ACME edge into the custom-domain
 // responses. Safe to skip entirely — a nil provider just omits the field.
+//
+// The same object is picked up as a DomainForgetter when it implements one,
+// which avoids a second injection point in the app wiring for what is always
+// the same edge.
 func (s *Service) SetCertStatusProvider(provider CertStatusProvider) {
 	s.certStatus = provider
+
+	if forgetter, ok := provider.(DomainForgetter); ok {
+		s.forgetDomain = forgetter
+	}
+}
+
+// forget drops edge state for a domain that stopped being ours. No-op when
+// in-server TLS is off, which is the default.
+func (s *Service) forget(ctx context.Context, domain *string) {
+	if s.forgetDomain == nil || domain == nil || *domain == "" {
+		return
+	}
+
+	s.forgetDomain.ForgetDomain(ctx, *domain)
 }
 
 // NewService creates a new status pages service. cfg may be nil (e.g. the MCP

@@ -220,9 +220,10 @@ namespaces storage per CA, so the production assets were never at risk).
       before any CA traffic — `tlsedge: refusing certificate for unknown host`.
 - [x] Re-adding a cleared domain restores serving from the stored certificate
       (`customDomainCertStatus: issued`, no new issuance).
-- [⚠️] Clearing the domain stops the **status page** but not the host — see below.
+- [x] Clearing the domain stops the host serving entirely — see the finding
+      below, which this run uncovered and which is now fixed.
 
-### ⚠️ Finding: a cleared domain still serves the dashboard
+### ✅ Fixed: a cleared domain used to keep serving the dashboard
 
 Clearing `customDomain` behaves as documented for everything the decision func
 governs — `/api/v1/public/custom-domains/allowed` flips to 404 immediately, the
@@ -238,12 +239,35 @@ stop responding:
   longer claims. The custom-host path allowlist (which correctly 404s `/dash0`)
   only applies while the mapping exists.
 
-Not an authentication hole — the dashboard still requires a login — but it does
-mean a released or transferred domain keeps a working certificate and a
-SolidPing dashboard on it, which is exactly the takeover scenario section 3 of
-the feature doc says the re-verification sweep exists to close. Worth either
-dropping the cached certificate when a domain is unmapped, or refusing unmapped
-hostnames outright at the edge.
+Not an authentication hole — the dashboard still requires a login — but it was
+exactly the takeover scenario the re-verification sweep exists to close: a
+released or transferred domain kept a working certificate and a SolidPing
+dashboard on it.
+
+**Both halves are now implemented:**
+
+1. **The edge refuses to serve any host it does not currently own.**
+   `TLSConfig` wraps `GetCertificate` with the same `hostIsLocal` predicate that
+   gates issuance, so an unmapped hostname fails the handshake instead of
+   falling through to own-host routing. This is the half that matters: it holds
+   regardless of whether any cleanup has run, and it closes the window
+   immediately rather than at the next sweep.
+2. **The certificate and private key are dropped when a domain stops being
+   ours.** `Edge.ForgetDomain` evicts the certificate from certmagic's in-memory
+   cache and deletes the whole site folder from `tls_storage`. The status-pages
+   service calls it when a custom domain is cleared or changed.
+
+A positive-only TTL cache (`servableCacheTTL`, 30s) sits in front of the
+per-handshake lookup. Negative answers are deliberately never cached, so a
+domain verified in the dashboard starts serving on the very next request — the
+"within the cache TTL" wording above applies only to a domain going *away*.
+
+**Still open:** the re-verification sweep (`job_custom_domain_verify.go`)
+demotes a domain by clearing `CustomDomainVerifiedAt` but does not call
+`ForgetDomain`, because it writes through `jctx.DBService` and has no handle on
+the edge. Serving stops correctly — the gate reads the same verified/enabled/
+public predicate — so this is leftover key material, not exposure. Wiring the
+edge into the job context would close it.
 
 Useful commands while running it:
 

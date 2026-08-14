@@ -268,7 +268,7 @@ func TestTLSConfigKeepsALPNChallenge(t *testing.T) {
 	})
 	r.NoError(err)
 
-	cfg := edge.TLSConfig()
+	cfg := edge.TLSConfig(t.Context())
 	r.NotNil(cfg.GetCertificate)
 	r.Contains(cfg.NextProtos, "acme-tls/1")
 	r.Contains(cfg.NextProtos, "http/1.1")
