@@ -154,3 +154,85 @@ server harness in `job_escalation_step_telegram_test.go`:
   Telegram alert keeps a stale Acknowledge button until resolution. The
   refactored shared send/edit path from §3 is the groundwork; the trigger
   would hang off `EventTypeIncidentAcknowledged`.
+
+## Implementation Plan
+
+### Step 1 — Extract the shared Telegram send path (no behavior change)
+
+`job_escalation_step_telegram.go` currently hangs the whole send path off
+`*EscalationStepJobRun` even though none of it reads run state. Turn each into
+a free function taking `(ctx, jctx, log, …)` and keep a one-line method wrapper
+so every existing call site and test is untouched (and the sibling multi-org
+spec rebases trivially):
+
+- `telegramAlertParamsFor(ctx, jctx, log, incident)`
+- `sendTelegramAlertShared(ctx, jctx, log, client, incident, chatID, params)`
+- `telegramThreadAnchorFor` / `clearTelegramThreadAnchorFor`
+- `orgSlugForOrg(ctx, jctx, log, orgUID)` and `incidentCheckName(ctx, jctx, incident)`
+  (the two helpers `telegramAlertParamsFor` needs, likewise currently methods)
+
+### Step 2 — New job type `incident_resolution_notice`
+
+- `jobdef.JobTypeIncidentResolutionNotice JobType = "incident_resolution_notice"`
+- Registered in `jobtypes/registry.go`.
+- Config `{organizationUid, incidentUid}`; both required at `CreateJobRun` time.
+
+### Step 3 — The job body (`job_incident_resolution_notice.go`)
+
+1. Load the incident. Bail (nil) when: it is `PagingSuppressed`, it is no longer
+   resolved (a reopen beat the job — the notice would be a lie, and the anchors
+   survive so the next resolution notifies), or Telegram is not configured on
+   this instance.
+2. Build the resolved `AlertParams` from the shared helper, overriding `Detail`
+   with `resolved after <duration>` (`StartedAt` → `ResolvedAt`).
+3. **Anchor pass.** `ListStateEntries(prefix "telegram_msg:<incidentUID>:")`;
+   the chat id is the key suffix. Per chat:
+   - claim the marker `telegram_resolved:<incidentUID>:<chatID>` with
+     `SetStateEntryIfNotExists` (7d TTL) — not created ⇒ already notified, skip;
+   - reserve `Entitlements.ReserveTelegram` — denied ⇒ release the marker,
+     write a skipped audit row, continue (never fail the job);
+   - send through `sendTelegramAlertShared`, which threads under the anchor,
+     rewrites the original red alert with an explicitly empty keyboard, degrades
+     to standalone on a rejected reply target and honors `retry_after`;
+   - on failure: release the marker (so a retry can still deliver), remember
+     whether the failure was network-class;
+   - on success: delete the anchor and record a sent audit row.
+4. **Fallback pass** — only for chats no anchor covered.
+   `ListIncidentNotifications(incidentUID, status=sent)` filtered to
+   `channel_type=telegram` **and** `event_type=incident.escalated` (that is what
+   a page is audited as; our own notice rows carry `incident.resolved`, so the
+   scan cannot feed on itself). Each distinct user's *current* verified Telegram
+   contact is resolved through `ListUserContactsWithRoutes`; users who unlinked
+   are skipped. Same marker/reserve/send flow, standalone (no anchor to thread
+   under or edit).
+5. Return a `jobdef.RetryableError` only when at least one chat failed with a
+   network-class error (`telegram.ErrRateLimited`, `telegram.ErrRequestFailed`,
+   `notifications.IsNetworkError`); every other per-chat failure is logged and
+   swallowed. A re-run cannot duplicate: notified chats lost their anchor and
+   kept their marker.
+
+### Step 4 — Enqueue from the resolved hook
+
+In `incidents/service.go` `emitEvent`, inside the lifecycle switch, **after**
+the `PagingSuppressed` early return and **before** the group-incident branch:
+on `EventTypeIncidentResolved`, create one `incident_resolution_notice` job.
+Enqueue failures log a warning and never fail the resolution — same contract as
+`queueNotifications`.
+
+### Step 5 — Tests
+
+New `job_incident_resolution_notice_test.go` on the existing fake-Bot-API
+harness (`setupPhoneEnv` + `newFakeBotAPI`), plus one case in the incidents
+service tests for the enqueue/suppression gate:
+
+1. one paged chat → notice threaded under the anchor, original edited with an
+   empty keyboard, anchor deleted, marker written;
+2. two chats, first send fails (network class) → second still notified, job
+   returns retryable, re-run notifies only the failed chat;
+3. no anchors + audit row → standalone notice via the contact lookup, marker
+   written, second run sends nothing;
+4. reopen relapse (resolve → reopen → resolve) → exactly one notice;
+5. `PagingSuppressed` child → no job enqueued and the job itself sends nothing;
+6. runaway guard exhausted → no send, skipped audit row, job succeeds;
+7. group incident (anchors under the group incident UID) → notice sent;
+8. unlinked/unverified contact in the fallback → skipped.
