@@ -106,13 +106,15 @@ for ~a month"; six days is not that. `track: true` retained, still not used in
 copy — a solo maintainer's quiet stretch is not a shutdown. Re-check next poll.
 
 ### Kuvasz — https://kuvasz-uptime.dev  ·  github.com/kuvasz-uptime/kuvasz
-Self-hosted OSS uptime **and SSL** monitor, Kotlin, AGPL-3.0, **571★** / 34 forks,
-created 2020-07 and still shipping (v4.0.1 2026-06-17, **v4.1.0 2026-07-14**, repo
-pushed the day it was surfaced). A mature rival the listening pipeline had simply
-never surfaced before 2026-07-28 — it predates most of this page.
+Self-hosted OSS uptime **and SSL** monitor, Kotlin, AGPL-3.0, **571★** / 37 forks,
+created 2020-07 and still shipping (v4.0.1 2026-06-17, v4.1.0 2026-07-14,
+**v4.2.0 2026-08-10**, repo pushed 2026-08-12). A mature rival the listening
+pipeline had simply never surfaced before 2026-07-28 — it predates most of this page.
 **Ships:** HTTP monitoring (adjustable intervals, custom headers, keyword matching,
 expected status codes, response-time thresholds); daily SSL-certificate expiry
-checks; push/"cron" heartbeat monitors; ICMP ping monitors — **4 check types**.
+checks; push/"cron" heartbeat monitors; ICMP ping monitors; **TCP monitors** and
+**DNS monitors** (both added in v4.2.0) — **6 check types** (was 4 before
+2026-08-10).
 Per-monitor notification routing across email / Slack / Discord / Telegram /
 PagerDuty / custom webhooks. Public **and private** brandable status pages,
 maintenance windows, full REST API, monitors declared as YAML (IaC), **Prometheus
@@ -127,7 +129,23 @@ self-hosted monitor with an MCP server, so the qualifier no longer separates us:
 MCP belongs in the feature list, not in the positioning. Same arc as multi-probe
 consensus (UpWatch, 2026-07-27) — two candidate differentiators commoditised in
 five weeks.
-**Where SolidPing holds:** 38 check types vs 4; distributed multi-region workers
+**v4.2.0 (2026-08-10) — the check-type count moved, 4 → 6.**
+- **TCP monitors:** periodically opens a connection to any `host:port` (database,
+  SMTP, SSH, broker, game server), measuring reachability and connect latency,
+  DOWN on timeout or on an optional latency threshold.
+- **DNS monitors:** assert on resolved records (`A`, `AAAA`, `CNAME`, `MX`, `NS`,
+  `TXT`, `SOA`, `SRV`, `CAA`, `PTR`) matched `EXACT` / `CONTAINS` / `REGEX`, with
+  an expected response code (so *"this name must not resolve"* works), a custom
+  nameserver over UDP or TCP, and opt-in **drift detection** that notifies on
+  record changes without flipping the monitor DOWN.
+- Rest of the release is polish: UI facelift, empty states, batched status-page
+  uptime queries, ICMP latest-latency gauge fixed under partial packet loss,
+  case-insensitive sorting, SMTP env-var docs.
+The DNS-drift behaviour is worth noting on its own — *notify without alerting* is
+a distinct alert class, not just a check type. **Still single-node:** nothing in
+4.2.0 touches remote or multi-node probing, so our structural gap holds.
+
+**Where SolidPing holds:** 38 check types vs 6; distributed multi-region workers
 and private/deported locations (Kuvasz probes only from the single node it runs
 on — no cross-region confirmation); built-in on-call schedules and multi-step
 escalation (Kuvasz hands off to PagerDuty).
@@ -137,7 +155,54 @@ almost nowhere. Kuvasz is genuinely ahead only on OTLP export (we expose
 Prometheus) and the Home Assistant integration.
 *Watch:* multi-node / remote probing (would close our last structural gap), and
 the MCP server leaving experimental. Surfaced 2026-07-28 via @selfhosted_bot
-Mastodon repost (bot-announced → intel, not a lead).
+Mastodon repost (bot-announced → intel, not a lead). v4.2.0 surfaced 2026-08-13
+via @KuvaszUptime's own Mastodon post on techhub.social.
+
+### URLGuardian — https://urlguardian.app
+Native **macOS desktop app** for uptime monitoring: "Real-time uptime monitoring,
+detailed DNS analysis, and instant outage alerts right from your native Mac app."
+Launched as a 1-point, 0-comment Show HN on 2026-08-12
+([49277497](https://news.ycombinator.com/item?id=49277497), by `madospace`).
+Landing page is a JS-rendered shell; no pricing, no docs, no check-type list
+published at the time of writing — the meta description above is essentially the
+whole disclosed spec.
+**Not in our lane, and the reason is structural, not size.** The probe is the
+user's laptop: it monitors only while the Mac is awake, online, and running the
+app, from exactly one vantage point that moves with its owner. That is a
+different product category from an always-on server-side monitor — closer to a
+developer utility than to SolidPing, Uptime Kuma, or Kuvasz. It cannot page
+someone at 03:00, which is the entire job.
+`track: false`. Logged so the name resolves if it reappears, and as the third
+data point in a pattern this page should keep counting: the *"uptime monitoring"*
+keyword now attracts launches from adjacent categories (Mac utility here, AI
+content farm the same day — see the OpsMate entry below), which
+inflates the raw mention count without adding a single real rival.
+
+### "OpsMate" — no verifiable product (2026-08-13)
+Surfaced as a dev.to post, *"OpsMate vs BetterStack: Latency, Status Pages, and
+Alerting for Global SaaS"*, which reads as a normal competitor launch: free tier
+of 1 site + 1 server, **$9/mo for 5 servers**, HTTP/HTTPS + SSL expiry + keyword
++ Linux CPU/RAM/disk checks, 2–3 probe locations against Better Stack's 30+,
+built-in status page, Slack/webhook/digest alerting, and the claim of
+*"90% of the monitoring functionality for 30% of the price"* without
+*"enterprise bloat"*.
+**No such product could be found.** The canonical link points at a blog path on
+`yunshao.aicreditsapi.com` (403 to fetchers); `opsmate.io` is an unclaimed Framer
+404, `opsmate.app` and `getopsmate.com` do not resolve, `opsmate.dev` returns a
+Cloudflare 523 (origin unreachable), and `opsmate.com` is **Opsmate, Inc.** —
+SSLMate's certificate-transparency company, an unrelated business. Web search for
+the product returns nothing.
+**Recorded as an artifact, not a competitor.** No registry entry, no `track` flag.
+Its value is as evidence for a measurement problem this page has to live with:
+the *"X vs BetterStack"* comparison genre — the exact genre of our twelve pending
+`/vs/` pages — is now being generated at volume by AI content mills, complete
+with plausible pricing tables for products that do not appear to exist. Two
+consequences. (1) **Never enter a competitor number sourced from a comparison
+article into `comparison.md`** — verify against the vendor's own site or an
+implementation, the same rule OneUptime#2937 forced on advertised intervals.
+(2) It strengthens, again, the 2026-08-01/08-10 conclusion: our comparison pages
+cannot win on volume, only on being first-hand, dated, and verifiable.
+
 ### OneUptime — https://oneuptime.com
 Open-source observability platform (uptime + APM + status pages + incident mgmt +
 on-call), both SaaS and self-hostable. Likely the closest **functional** rival:

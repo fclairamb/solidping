@@ -156,9 +156,13 @@ from writing the same sentence next week.**
   line. Consensus, bundling and MCP were all in this category — each is a
   sentence on a landing page, and each was duplicated within weeks.
 - If the answer is an implementation cost or an architectural property, it can
-  carry positioning. Protocol breadth (38 check types vs Kuvasz's 4) means
-  building 34 checkers. In-customer-network probing is an architecture. A check
+  carry positioning. Protocol breadth (38 check types vs Kuvasz's 6) means
+  building 32 checkers. In-customer-network probing is an architecture. A check
   interval floor is a property of the results/aggregation model.
+  *Watch the erosion rate, though: Kuvasz went 4 → 6 in three weeks (TCP and DNS,
+  v4.2.0, 2026-08-10). Protocol breadth is the slowest axis to copy, not an
+  uncopyable one — it is a lead measured in checkers, and the lead shrinks with
+  every release. Re-verify the ratio at publish time, never cite it from a draft.*
 
 The cleanest demonstration in the whole registry: **OneUptime advertises
 1-second checks on its product page and ships a 1-minute floor self-hosted**
