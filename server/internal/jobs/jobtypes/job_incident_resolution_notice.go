@@ -342,10 +342,13 @@ func telegramChatsForUser(
 // notifyChat sends one resolution notice, guarding it with the per-chat marker
 // and the hourly runaway guard.
 //
-// Order matters. The marker is CLAIMED before the send (so two passes, or two
-// runs, cannot both send) and RELEASED whenever the send does not happen (so a
-// throttled or guard-denied chat is still reachable on the next run). Only an
-// actual delivery keeps the marker and drops the anchor.
+// The marker is written AFTER a delivery, never reserved before one. A
+// reserve-then-release scheme cannot work on this store: DeleteStateEntry only
+// soft-deletes, while the (organization_uid, key) uniqueness still covers the
+// dead row — so a released marker could never be re-claimed, and one throttled
+// send would gag that chat forever. Writing on success instead keeps retries
+// correct (a failed chat is untouched) and still cannot duplicate, because the
+// job runner leases a job to a single worker at a time.
 func (r *IncidentResolutionNoticeJobRun) notifyChat(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	client *telegram.Client, incident *models.Incident, params *telegram.AlertParams,
@@ -357,12 +360,11 @@ func (r *IncidentResolutionNoticeJobRun) notifyChat(
 
 	r.handled[chatID] = true
 
-	if !r.claimResolvedMarker(ctx, jctx, log, incident, chatID) {
+	if alreadyToldAboutResolution(ctx, jctx, log, incident, chatID) {
 		return
 	}
 
 	if !reserveTelegramSend(ctx, jctx, log, incident) {
-		r.releaseResolvedMarker(ctx, jctx, log, incident, chatID)
 		auditResolutionSkip(ctx, jctx, log, incident, entitlements.RunawayKindTelegram+"_runaway_guard")
 
 		return
@@ -370,8 +372,6 @@ func (r *IncidentResolutionNoticeJobRun) notifyChat(
 
 	messageID, err := sendTelegramAlertShared(ctx, jctx, log, client, incident, chatID, params)
 	if err != nil {
-		r.releaseResolvedMarker(ctx, jctx, log, incident, chatID)
-
 		if telegramFailureIsTransient(err) {
 			r.transient = true
 		}
@@ -381,6 +381,8 @@ func (r *IncidentResolutionNoticeJobRun) notifyChat(
 
 		return
 	}
+
+	markResolutionTold(ctx, jctx, log, incident, chatID)
 
 	if hasAnchor {
 		// The anchor has done its job. Dropping it is what stops a later reopen →
@@ -398,46 +400,41 @@ func telegramResolvedKey(incidentUID, chatID string) string {
 	return telegramResolvedStatePrefix + incidentUID + ":" + chatID
 }
 
-// claimResolvedMarker atomically reserves the right to notify this chat.
-// Returns false when someone already did.
-func (r *IncidentResolutionNoticeJobRun) claimResolvedMarker(
+// alreadyToldAboutResolution reports whether this chat has already received the
+// notice. A read failure answers "yes": skipping a notice is a missed message,
+// sending a second one is a bug the user sees.
+func alreadyToldAboutResolution(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	incident *models.Incident, chatID string,
 ) bool {
 	orgUID := incident.OrganizationUID
-	ttl := telegramResolvedMarkerTTL
-	value := &models.JSONMap{"notifiedAt": time.Now().UTC().Format(time.RFC3339)}
 
-	created, err := jctx.DBService.SetStateEntryIfNotExists(
-		ctx, &orgUID, telegramResolvedKey(incident.UID, chatID), value, &ttl,
-	)
+	entry, err := jctx.DBService.GetStateEntry(ctx, &orgUID, telegramResolvedKey(incident.UID, chatID))
 	if err != nil {
-		// Without the marker there is no protection against a double send, so a
-		// failed claim skips the chat rather than risking a duplicate.
-		log.WarnContext(ctx, "could not claim the telegram resolution marker; skipping chat",
+		log.WarnContext(ctx, "could not read the telegram resolution marker; skipping chat",
 			"chatId", chatID, "error", err)
 
-		return false
+		return true
 	}
 
-	if !created {
-		log.DebugContext(ctx, "chat already heard about this resolution; skipping", "chatId", chatID)
-	}
-
-	return created
+	return entry != nil
 }
 
-// releaseResolvedMarker undoes a claim whose send never happened, so the next
-// run can try that chat again.
-func (r *IncidentResolutionNoticeJobRun) releaseResolvedMarker(
+// markResolutionTold records that this chat heard the all-clear. SetStateEntry
+// (not SetStateEntryIfNotExists) on purpose: it resurrects a soft-deleted or
+// expired row, so the marker is always actually in place afterwards.
+func markResolutionTold(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	incident *models.Incident, chatID string,
 ) {
 	orgUID := incident.OrganizationUID
-	if _, err := jctx.DBService.DeleteStateEntry(
-		ctx, &orgUID, telegramResolvedKey(incident.UID, chatID),
+	ttl := telegramResolvedMarkerTTL
+	value := &models.JSONMap{"notifiedAt": time.Now().UTC().Format(time.RFC3339)}
+
+	if err := jctx.DBService.SetStateEntry(
+		ctx, &orgUID, telegramResolvedKey(incident.UID, chatID), value, &ttl,
 	); err != nil {
-		log.WarnContext(ctx, "could not release the telegram resolution marker",
+		log.WarnContext(ctx, "could not record the telegram resolution marker",
 			"chatId", chatID, "error", err)
 	}
 }
