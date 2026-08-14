@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:18.4
+    image: postgres:18.6
     container_name: solidping-postgres
     environment:
       POSTGRES_USER: postgres
@@ -32,7 +32,7 @@ services:
     stop_grace_period: 1s
 
   server:
-    image: golang:1.26.5-trixie
+    image: golang:1.26.6-trixie
     container_name: solidping-server
     working_dir: /app
     command: sh -c "go install github.com/air-verse/air@v1.63.4 && air -c .air.toml"
