@@ -112,5 +112,10 @@
   "delete": {
     "confirmTitle": "Wartungsfenster löschen?",
     "confirmBody": "Möchten Sie dieses Wartungsfenster wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
-  }
+  },
+  "noChecks": "Keine Prüfungen",
+  "noChecksTitle": "Dieses Fenster ist mit keiner Prüfung verknüpft und unterdrückt daher nichts.",
+  "checksLabel_one": "Prüfung",
+  "checksLabel_other": "Prüfungen",
+  "emptyHint": "Erstellen Sie eines, um Vorfallwarnungen bei geplanten Arbeiten zu unterdrücken."
 }

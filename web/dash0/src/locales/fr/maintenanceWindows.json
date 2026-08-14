@@ -112,5 +112,10 @@
   "delete": {
     "confirmTitle": "Supprimer la fenêtre de maintenance ?",
     "confirmBody": "Êtes-vous sûr de vouloir supprimer cette fenêtre de maintenance ? Cette action est irréversible."
-  }
+  },
+  "noChecks": "Aucun contrôle",
+  "noChecksTitle": "Cette fenêtre n'est liée à aucun contrôle : elle ne supprime rien.",
+  "checksLabel_one": "contrôle",
+  "checksLabel_other": "contrôles",
+  "emptyHint": "Créez-en une pour suspendre les alertes pendant une intervention planifiée."
 }

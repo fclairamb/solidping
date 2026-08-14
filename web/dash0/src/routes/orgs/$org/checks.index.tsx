@@ -374,6 +374,50 @@ function HostSection({
   );
 }
 
+function ProtocolBadge({ type }: { type?: string }) {
+  const t = (type || "http").toLowerCase();
+  if (t === "http" || t === "https") {
+    return (
+      <Badge variant="outline" className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5 bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/25">
+        HTTP
+      </Badge>
+    );
+  }
+  if (t === "tcp") {
+    return (
+      <Badge variant="outline" className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5 bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/25">
+        TCP
+      </Badge>
+    );
+  }
+  if (t === "dns") {
+    return (
+      <Badge variant="outline" className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/25">
+        DNS
+      </Badge>
+    );
+  }
+  if (t === "icmp" || t === "ping") {
+    return (
+      <Badge variant="outline" className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5 bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/25">
+        ICMP
+      </Badge>
+    );
+  }
+  if (t === "tls" || t === "ssl") {
+    return (
+      <Badge variant="outline" className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/25">
+        TLS
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5">
+      {type}
+    </Badge>
+  );
+}
+
 function CheckRow({
   check,
   org,
@@ -422,8 +466,10 @@ function CheckRow({
     );
   }
 
+  const durationMs = check.lastResult?.durationMs;
+
   return (
-    <TableRow>
+    <TableRow className="hover:bg-muted/40 transition-colors">
       <TableCell>
         <div className="flex items-center gap-2">
           <Link
@@ -457,10 +503,8 @@ function CheckRow({
         </div>
       </TableCell>
       <TableCell>
-        <div className="flex items-center gap-1">
-          <Badge variant="outline" className="text-xs">
-            {check.type}
-          </Badge>
+        <div className="flex items-center gap-1.5">
+          <ProtocolBadge type={check.type} />
           {check.internal && (
             <Badge variant="secondary" className="text-xs">
               {t("internal")}
@@ -468,16 +512,28 @@ function CheckRow({
           )}
         </div>
       </TableCell>
-      <TableCell className="text-muted-foreground">
+      <TableCell className="text-muted-foreground font-mono text-xs max-w-[280px] truncate">
         {renderTarget()}
       </TableCell>
       <TableCell>
         <StatusBadge status={check.status ?? check.lastResult?.status} />
       </TableCell>
-      <TableCell className="text-muted-foreground">
-        {check.lastResult?.durationMs != null
-          ? `${Math.round(check.lastResult.durationMs)}ms`
-          : "\u2014"}
+      <TableCell>
+        {durationMs != null ? (
+          <span
+            className={`inline-flex items-center text-xs font-mono tabular-nums px-2 py-0.5 rounded-md font-medium ${
+              durationMs < 50
+                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20"
+                : durationMs < 250
+                ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20"
+                : "bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20"
+            }`}
+          >
+            {Math.round(durationMs)}ms
+          </span>
+        ) : (
+          <span className="text-muted-foreground text-xs font-mono">\u2014</span>
+        )}
       </TableCell>
       <TableCell>
         <DropdownMenu>

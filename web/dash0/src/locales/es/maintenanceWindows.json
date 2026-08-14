@@ -112,5 +112,10 @@
   "delete": {
     "confirmTitle": "¿Eliminar ventana de mantenimiento?",
     "confirmBody": "¿Seguro que quieres eliminar esta ventana de mantenimiento? Esta acción no se puede deshacer."
-  }
+  },
+  "noChecks": "Sin comprobaciones",
+  "noChecksTitle": "Esta ventana no está vinculada a ninguna comprobación, por lo que no suprime nada.",
+  "checksLabel_one": "comprobación",
+  "checksLabel_other": "comprobaciones",
+  "emptyHint": "Cree una para suprimir las alertas de incidentes durante el trabajo planificado."
 }

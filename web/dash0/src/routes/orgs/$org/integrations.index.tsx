@@ -195,23 +195,23 @@ function IntegrationsListPage() {
             </Button>
           </div>
 
-          <div className="rounded-md border">
+          <div className="rounded-xl border bg-card shadow-card overflow-hidden">
             {isLoading ? (
-              <div className="space-y-2 p-2">
-                {[...Array(6)].map((_, i) => (
+              <div className="space-y-2 p-4">
+                {[...Array(3)].map((_, i) => (
                   <Skeleton key={i} className="h-12 rounded-lg" />
                 ))}
               </div>
             ) : (
               <Table>
-                <TableHeader>
+                <TableHeader className="bg-muted/30">
                   <TableRow>
                     <TableHead>{t("col.name", "Name")}</TableHead>
                     <TableHead>{t("col.type", "Type")}</TableHead>
                     <TableHead>{t("col.status", "Status")}</TableHead>
                     <TableHead>{t("col.usedBy", "Used by")}</TableHead>
                     <TableHead>{t("col.updated", "Updated")}</TableHead>
-                    <TableHead className="w-[100px]" />
+                    <TableHead className="w-[100px] text-right" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -238,9 +238,9 @@ function EmptyState({ org }: { org: string }) {
   const quick: ConnectionType[] = ["slack", "discord", "email", "webhook"];
 
   return (
-    <Card>
+    <Card className="shadow-card">
       <CardHeader>
-        <CardTitle>{t("empty.title", "No integrations yet")}</CardTitle>
+        <CardTitle className="text-base font-semibold">{t("empty.title", "No integrations yet")}</CardTitle>
         <CardDescription>
           {t(
             "empty.body",
@@ -248,15 +248,15 @@ function EmptyState({ org }: { org: string }) {
           )}
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-wrap gap-2">
+      <CardContent className="flex flex-wrap gap-2.5">
         {quick.map((type) => (
-          <Button key={type} variant="outline" size="sm" asChild>
+          <Button key={type} variant="outline" size="sm" className="h-9 px-3.5 gap-2 font-medium" asChild>
             <Link
               to="/orgs/$org/integrations/new"
               params={{ org }}
               search={{ type }}
             >
-              <IntegrationIcon type={type} className="h-4 w-4 mr-1" />
+              <IntegrationIcon type={type} className="h-4 w-4" />
               {integrationLabel(type)}
             </Link>
           </Button>
@@ -276,37 +276,48 @@ function Row({ org, integration, onDelete }: RowProps) {
   const { t } = useTranslation("integrations");
 
   return (
-    <TableRow>
+    <TableRow className="hover:bg-muted/40 transition-colors">
       <TableCell>
         <Link
           to="/orgs/$org/integrations/$integrationUid"
           params={{ org, integrationUid: integration.uid }}
-          className="flex items-center gap-2 font-medium hover:underline"
+          className="flex items-center gap-2.5 font-medium text-foreground hover:text-primary hover:underline transition-colors"
         >
-          <IntegrationIcon type={integration.type} className="h-4 w-4" />
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/60">
+            <IntegrationIcon type={integration.type} className="h-4 w-4" />
+          </div>
           {integration.name}
         </Link>
       </TableCell>
       <TableCell>
-        <Badge variant="outline">{integrationLabel(integration.type)}</Badge>
+        <Badge variant="outline" className="font-mono text-xs font-normal">
+          {integrationLabel(integration.type)}
+        </Badge>
       </TableCell>
       <TableCell className="text-sm">
         <div className="flex items-center gap-2">
-          <Badge variant={integration.enabled ? "default" : "secondary"}>
+          <Badge
+            variant={integration.enabled ? "default" : "secondary"}
+            className={
+              integration.enabled
+                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-medium"
+                : "font-normal"
+            }
+          >
             {integration.enabled ? t("status.enabled", "Enabled") : t("status.disabled", "Disabled")}
           </Badge>
           {integration.isDefault && (
-            <span title={t("default", "Default")}>
-              <Star className="h-3 w-3 fill-yellow-500 stroke-yellow-600" />
+            <span title={t("default", "Default")} className="flex items-center">
+              <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" />
             </span>
           )}
         </div>
       </TableCell>
-      <TableCell className="text-sm text-muted-foreground">—</TableCell>
-      <TableCell className="text-sm text-muted-foreground">
+      <TableCell className="text-xs text-muted-foreground font-mono">—</TableCell>
+      <TableCell className="text-xs text-muted-foreground font-mono">
         {new Date(integration.updatedAt).toLocaleDateString()}
       </TableCell>
-      <TableCell>
+      <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
           <Button asChild variant="ghost" size="icon" aria-label={t("actions.edit", "Edit")}>
             <Link

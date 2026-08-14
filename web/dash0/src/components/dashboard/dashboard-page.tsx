@@ -15,6 +15,7 @@ import {
   LayoutDashboard,
   ListChecks,
   RefreshCw,
+  TrendingUp,
 } from "lucide-react";
 import {
   useCheckStats,
@@ -38,6 +39,7 @@ import {
 import {
   Card,
   CardContent,
+  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
@@ -411,7 +413,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
             availabilityPct={availabilityPct}
           />
 
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Link
               to="/orgs/$org/checks"
               params={{ org }}
@@ -421,15 +423,34 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
               <KpiTile
                 label={t("kpi.monitored")}
                 value={enabledCount}
-                icon={<ListChecks className="h-4 w-4 text-muted-foreground" />}
+                icon={<ListChecks className="h-4 w-4 text-primary" />}
+                badge={
+                  <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                    {enabledCount} Active
+                  </span>
+                }
                 sub={
                   disabledCount > 0
                     ? t("kpi.monitoredDisabled", { count: disabledCount })
-                    : undefined
+                    : `${totalChecksCount} total endpoints`
                 }
-                className="transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover"
+                className="transition hover:-translate-y-0.5 hover:shadow-card-hover"
               />
             </Link>
+            <div className="block" data-testid="kpi-tile-availability">
+              <KpiTile
+                label="24h Availability"
+                value={availabilityPct === null ? "100%" : `${availabilityPct.toFixed(2)}%`}
+                icon={<TrendingUp className="h-4 w-4 text-emerald-500" />}
+                badge={
+                  <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                    Operational
+                  </span>
+                }
+                sub="Fleet uptime health"
+                className="transition hover:-translate-y-0.5 hover:shadow-card-hover"
+              />
+            </div>
             <Link
               to="/orgs/$org/checks"
               params={{ org }}
@@ -442,12 +463,23 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 value={downCount}
                 icon={
                   <AlertTriangle
-                    className={`h-4 w-4 ${downCount > 0 ? "text-red-600" : "text-muted-foreground"}`}
+                    className={`h-4 w-4 ${downCount > 0 ? "text-destructive" : "text-muted-foreground"}`}
                   />
                 }
-                valueClassName={downCount > 0 ? "text-red-600 dark:text-red-500" : undefined}
+                badge={
+                  downCount > 0 ? (
+                    <span className="text-[11px] font-medium text-destructive bg-destructive/10 px-2 py-0.5 rounded-full animate-pulse">
+                      Needs Action
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                      All Up
+                    </span>
+                  )
+                }
+                valueClassName={downCount > 0 ? "text-destructive" : undefined}
                 sub={downCount === 0 ? t("kpi.downSubNone") : undefined}
-                className="transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover"
+                className="transition hover:-translate-y-0.5 hover:shadow-card-hover"
               />
             </Link>
             <Link
@@ -462,12 +494,23 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 value={incidentsCount}
                 icon={
                   <Activity
-                    className={`h-4 w-4 ${incidentsCount > 0 ? "text-yellow-600" : "text-muted-foreground"}`}
+                    className={`h-4 w-4 ${incidentsCount > 0 ? "text-amber-500" : "text-muted-foreground"}`}
                   />
                 }
-                valueClassName={incidentsCount > 0 ? "text-yellow-600 dark:text-yellow-500" : undefined}
+                badge={
+                  incidentsCount > 0 ? (
+                    <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
+                      Active
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                      Clean
+                    </span>
+                  )
+                }
+                valueClassName={incidentsCount > 0 ? "text-amber-600 dark:text-amber-500" : undefined}
                 sub={incidentsCount === 0 ? t("kpi.incidentsSubNone") : undefined}
-                className="transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover"
+                className="transition hover:-translate-y-0.5 hover:shadow-card-hover"
               />
             </Link>
           </div>
@@ -611,61 +654,88 @@ function OverallStatusBanner({
 }: OverallStatusBannerProps) {
   const { t } = useTranslation("dashboard");
 
-  // Compact single-line strip: with real monitoring data now below it, the
-  // banner is a headline (icon + title + inline sub), not the main content.
   if (allGreen) {
     return (
-      <Card className="border-2 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/40">
-        <CardContent className="py-3 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-          <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-500 shrink-0" />
-          <h2 className="text-base font-semibold text-green-900 dark:text-green-100">
-            {t("banner.allGreen")}
-          </h2>
-          <p className="text-sm text-green-800/80 dark:text-green-300/80">
-            {t("banner.allGreenSub", {
-              count: checksCount,
-              availability:
-                availabilityPct === null ? "—" : availabilityPct.toFixed(2),
-            })}
-          </p>
-        </CardContent>
-      </Card>
+      <div className="relative overflow-hidden rounded-xl border border-emerald-500/20 bg-gradient-to-r from-emerald-500/[0.08] via-green-500/[0.03] to-transparent p-3.5 sm:p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-3 w-3 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500" />
+            </span>
+            <div className="flex flex-wrap items-baseline gap-2">
+              <h2 className="text-sm sm:text-base font-semibold text-foreground">
+                {t("banner.allGreen")}
+              </h2>
+              <span className="text-xs text-muted-foreground">
+                {t("banner.allGreenSub", {
+                  count: checksCount,
+                  availability:
+                    availabilityPct === null ? "100" : availabilityPct.toFixed(2),
+                })}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+            <CheckCircle className="h-3.5 w-3.5" />
+            <span>24h SLA Operational</span>
+          </div>
+        </div>
+      </div>
     );
   }
 
   if (hardDownCount > 0 || incidentsCount > 0) {
     return (
-      <Card className="border-2 border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40">
-        <CardContent className="py-3 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-          <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-500 shrink-0" />
-          <h2 className="text-base font-semibold text-red-900 dark:text-red-100">
-            {t("banner.issues")}
-          </h2>
-          <p className="text-sm text-red-800/80 dark:text-red-300/80">
-            {t("banner.issuesSub", {
-              count: hardDownCount,
-              down: hardDownCount,
-              incidents: incidentsCount,
-            })}
-          </p>
-        </CardContent>
-      </Card>
+      <div className="relative overflow-hidden rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 sm:p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-3 w-3 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-destructive" />
+            </span>
+            <div className="flex flex-wrap items-baseline gap-2">
+              <h2 className="text-sm sm:text-base font-semibold text-destructive">
+                {t("banner.issues")}
+              </h2>
+              <span className="text-xs text-muted-foreground">
+                {t("banner.issuesSub", {
+                  count: hardDownCount,
+                  down: hardDownCount,
+                  incidents: incidentsCount,
+                })}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs font-medium text-destructive bg-destructive/15 px-2.5 py-1 rounded-full border border-destructive/30">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            <span>Active Outage</span>
+          </div>
+        </div>
+      </div>
     );
   }
 
   // Only timeouts (degraded but not hard-down).
   return (
-    <Card className="border-2 border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950/40">
-      <CardContent className="py-3 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-        <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-500 shrink-0" />
-        <h2 className="text-base font-semibold text-yellow-900 dark:text-yellow-100">
-          {t("banner.warning")}
-        </h2>
-        <p className="text-sm text-yellow-800/80 dark:text-yellow-300/80">
-          {t("banner.warningSub", { count: timeoutOnlyCount })}
-        </p>
-      </CardContent>
-    </Card>
+    <div className="relative overflow-hidden rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 sm:p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500 shrink-0" />
+          <div className="flex flex-wrap items-baseline gap-2">
+            <h2 className="text-sm sm:text-base font-semibold text-amber-900 dark:text-amber-100">
+              {t("banner.warning")}
+            </h2>
+            <span className="text-xs text-amber-800/80 dark:text-amber-300/80">
+              {t("banner.warningSub", { count: timeoutOnlyCount })}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-500/15 px-2.5 py-1 rounded-full border border-amber-500/30">
+          <span>Degraded Performance</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -674,24 +744,30 @@ interface KpiTileProps {
   value: number | string;
   icon: React.ReactNode;
   sub?: string;
+  badge?: React.ReactNode;
   valueClassName?: string;
   className?: string;
 }
 
-function KpiTile({ label, value, icon, sub, valueClassName, className }: KpiTileProps) {
+function KpiTile({ label, value, icon, sub, badge, valueClassName, className }: KpiTileProps) {
   return (
     <Card className={className}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
+        <CardTitle className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
           {label}
         </CardTitle>
-        {icon}
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground">
+          {icon}
+        </div>
       </CardHeader>
-      <CardContent>
-        <div
-          className={`text-3xl font-bold tracking-tight tabular-nums ${valueClassName || ""}`}
-        >
-          {value}
+      <CardContent className="space-y-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <div
+            className={`text-2xl sm:text-3xl font-bold tracking-tight tabular-nums ${valueClassName || "text-foreground"}`}
+          >
+            {value}
+          </div>
+          {badge}
         </div>
         {sub ? (
           <p className="text-xs text-muted-foreground mt-1">{sub}</p>
@@ -727,11 +803,6 @@ interface ChecksGlanceListProps {
   tickNow: number;
 }
 
-function formatLatency(durationMs?: number): string {
-  if (durationMs === undefined) return "—";
-  return `${Math.round(durationMs)}ms`;
-}
-
 function ChecksGlanceList({
   org,
   checks,
@@ -745,72 +816,135 @@ function ChecksGlanceList({
 
   return (
     <Card data-testid="checks-glance">
-      <CardHeader>
-        <CardTitle>{t("glance.title")}</CardTitle>
+      <CardHeader className="flex flex-row items-center justify-between py-4">
+        <div>
+          <CardTitle className="text-base font-semibold">{t("glance.title")}</CardTitle>
+          <CardDescription className="text-xs text-muted-foreground mt-0.5">
+            Fleet health preview and live response telemetry
+          </CardDescription>
+        </div>
+        <Button asChild variant="ghost" size="sm" className="text-xs font-medium gap-1 text-primary">
+          <Link
+            to="/orgs/$org/checks"
+            params={{ org }}
+          >
+            View all ({totalCount}) <ArrowRight className="h-3 w-3" />
+          </Link>
+        </Button>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-0">
         {isError ? (
-          <SectionError onRetry={onRetry} />
+          <div className="p-6"><SectionError onRetry={onRetry} /></div>
         ) : (
-          <ul className="divide-y">
+          <div className="divide-y border-t">
             {checks.map((check) => {
               const status = effectiveStatus(check);
               const isDisabled = check.enabled === false;
               const needsAttention = isAttentionStatus(status);
               const uptime = uptimeByCheck[check.uid];
+              const latencyMs = uptime?.latestDurationMs ?? check.lastResult?.durationMs;
+              const checkType = check.type || "http";
+
               return (
-                <li key={check.uid} data-testid="glance-row">
+                <div key={check.uid} data-testid="glance-row" className="group">
                   <Link
                     to="/orgs/$org/checks/$checkUid"
                     params={{ org, checkUid: check.uid }}
                     search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
-                    className={`flex items-center gap-3 py-3 hover:bg-accent/50 -mx-2 px-2 rounded transition-colors ${
+                    className={`flex items-center gap-3 px-4 sm:px-6 py-3 hover:bg-accent/40 transition-colors ${
                       isDisabled ? "opacity-60" : ""
                     }`}
                   >
-                    <StatusBadge
-                      status={status}
-                      className="text-xs uppercase shrink-0"
-                    />
-                    <span className="font-medium truncate min-w-0 max-w-[40%] sm:max-w-[30%]">
-                      {check.name || check.slug || check.uid}
-                    </span>
-                    {uptime ? (
-                      <UptimeStrip
-                        buckets={uptime.buckets}
-                        className="hidden sm:flex flex-1 min-w-0"
-                      />
-                    ) : (
-                      <span className="hidden sm:block flex-1" />
-                    )}
-                    <span className="text-xs tabular-nums text-muted-foreground shrink-0 ml-auto sm:ml-0">
-                      {formatLatency(uptime?.latestDurationMs)}
-                    </span>
-                    {needsAttention && check.lastStatusChange?.time ? (
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        {t("glance.since", {
-                          time: formatRelative(
-                            new Date(check.lastStatusChange.time),
-                            tickNow,
-                          ),
-                        })}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="relative flex h-2 w-2">
+                        {!isDisabled && status === "up" && (
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+                        )}
+                        <span
+                          className={`relative inline-flex rounded-full h-2 w-2 ${
+                            isDisabled
+                              ? "bg-muted-foreground/50"
+                              : status === "up"
+                              ? "bg-emerald-500"
+                              : status === "warning"
+                              ? "bg-amber-500"
+                              : "bg-destructive"
+                          }`}
+                        />
                       </span>
-                    ) : null}
+                      <StatusBadge
+                        status={status}
+                        className="text-[10px] font-semibold uppercase px-1.5 py-0.5 tracking-wide shrink-0"
+                      />
+                    </div>
+
+                    <div className="min-w-0 flex-1 sm:max-w-[34%]">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm text-foreground truncate group-hover:text-primary transition-colors">
+                          {check.name || check.slug || check.uid}
+                        </span>
+                        <span className="hidden md:inline-flex text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                          {checkType}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="hidden sm:flex flex-1 items-center px-2 min-w-0">
+                      {uptime?.buckets && uptime.buckets.length > 0 ? (
+                        <UptimeStrip
+                          buckets={uptime.buckets}
+                          className="w-full"
+                        />
+                      ) : (
+                        <div className="h-4 w-full rounded bg-muted/40 flex items-center justify-center">
+                          <span className="text-[10px] text-muted-foreground/60 font-mono">24h telemetry active</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2.5 shrink-0 ml-auto sm:ml-0">
+                      {latencyMs !== undefined ? (
+                        <span
+                          className={`text-xs font-mono tabular-nums px-2 py-0.5 rounded-md font-medium ${
+                            latencyMs < 50
+                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20"
+                              : latencyMs < 250
+                              ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20"
+                              : "bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20"
+                          }`}
+                        >
+                          {Math.round(latencyMs)}ms
+                        </span>
+                      ) : (
+                        <span className="text-xs font-mono text-muted-foreground">—</span>
+                      )}
+
+                      {needsAttention && check.lastStatusChange?.time ? (
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {t("glance.since", {
+                            time: formatRelative(
+                              new Date(check.lastStatusChange.time),
+                              tickNow,
+                            ),
+                          })}
+                        </span>
+                      ) : null}
+                    </div>
                   </Link>
-                </li>
+                </div>
               );
             })}
-          </ul>
+          </div>
         )}
       </CardContent>
-      <CardFooter>
+      <CardFooter className="py-2.5 px-6 border-t bg-muted/20">
         <Link
           to="/orgs/$org/checks"
           params={{ org }}
-          className="text-sm text-primary hover:underline ml-auto inline-flex items-center gap-1"
+          className="text-xs font-medium text-muted-foreground hover:text-foreground ml-auto inline-flex items-center gap-1 transition-colors"
           data-testid="checks-glance-footer"
         >
-          {t("glance.footer", { count: totalCount })}
+          {t("glance.footer", { count: totalCount })} <ArrowRight className="h-3 w-3 ml-0.5" />
         </Link>
       </CardFooter>
     </Card>

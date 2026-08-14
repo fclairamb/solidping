@@ -137,45 +137,47 @@ function IncidentsIndexPage() {
         className="flex-wrap"
       />
 
-      <div className="flex items-center gap-4">
-        <Select
-          value={stateFilter}
-          onValueChange={(v) =>
-            navigate({
-              to: ".",
-              search: { state: v as StateFilter, showSuppressed },
-              replace: true,
-            })
-          }
-        >
-          <SelectTrigger className="w-[180px]" data-testid="incidents-state-filter">
-            <SelectValue placeholder={t("filterByState")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t("allIncidents")}</SelectItem>
-            <SelectItem value="active">{t("activeOnly")}</SelectItem>
-            <SelectItem value="acked">{t("stateFilter.ackedOnly")}</SelectItem>
-            <SelectItem value="snoozed">{t("stateFilter.snoozedOnly")}</SelectItem>
-            <SelectItem value="resolved">{t("resolvedOnly")}</SelectItem>
-          </SelectContent>
-        </Select>
-        <label className="flex items-center gap-2 text-sm">
-          <Switch
-            checked={!!showSuppressed}
-            onCheckedChange={(checked) =>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <Select
+            value={stateFilter}
+            onValueChange={(v) =>
               navigate({
                 to: ".",
-                search: {
-                  state: stateFilter,
-                  showSuppressed: checked ? true : undefined,
-                },
+                search: { state: v as StateFilter, showSuppressed },
                 replace: true,
               })
             }
-            data-testid="incidents-show-suppressed-toggle"
-          />
-          <span>{t("rollup.showRolledUp")}</span>
-        </label>
+          >
+            <SelectTrigger className="w-[180px]" data-testid="incidents-state-filter">
+              <SelectValue placeholder={t("filterByState")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("allIncidents")}</SelectItem>
+              <SelectItem value="active">{t("activeOnly")}</SelectItem>
+              <SelectItem value="acked">{t("stateFilter.ackedOnly")}</SelectItem>
+              <SelectItem value="snoozed">{t("stateFilter.snoozedOnly")}</SelectItem>
+              <SelectItem value="resolved">{t("resolvedOnly")}</SelectItem>
+            </SelectContent>
+          </Select>
+          <label className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground cursor-pointer">
+            <Switch
+              checked={!!showSuppressed}
+              onCheckedChange={(checked) =>
+                navigate({
+                  to: ".",
+                  search: {
+                    state: stateFilter,
+                    showSuppressed: checked ? true : undefined,
+                  },
+                  replace: true,
+                })
+              }
+              data-testid="incidents-show-suppressed-toggle"
+            />
+            <span>{t("rollup.showRolledUp")}</span>
+          </label>
+        </div>
         <Button
           variant="outline"
           onClick={() => refetch()}
@@ -198,9 +200,9 @@ function IncidentsIndexPage() {
           ))}
         </div>
       ) : incidents?.data && incidents.data.length > 0 ? (
-        <div className="rounded-md border">
+        <div className="rounded-xl border bg-card shadow-card overflow-hidden">
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-muted/30">
               <TableRow>
                 <TableHead>{t("table.incident")}</TableHead>
                 <TableHead>{t("table.check")}</TableHead>
@@ -212,21 +214,17 @@ function IncidentsIndexPage() {
             </TableHeader>
             <TableBody>
               {incidents.data.map((incident) => (
-                // data-incident-uid gives tests a handle that is unique per
-                // incident. The row's visible text is not: the title is built
-                // from the check *slug*, and slugs are server-generated
-                // counters that get recycled, so two incidents can render
-                // identical text and trip Playwright's strict mode.
                 <TableRow
                   key={incident.uid}
                   data-testid="incident-row"
                   data-incident-uid={incident.uid}
+                  className="hover:bg-muted/40 transition-colors"
                 >
                   <TableCell>
                     <div className="flex items-center gap-2">
                       {incident.number ? (
                         <span
-                          className="text-muted-foreground tabular-nums text-sm"
+                          className="font-mono text-xs text-muted-foreground font-semibold px-1.5 py-0.5 rounded bg-muted"
                           data-testid="incident-number"
                         >
                           #{incident.number}
@@ -235,14 +233,14 @@ function IncidentsIndexPage() {
                       <Link
                         to="/orgs/$org/incidents/$incidentUid"
                         params={{ org, incidentUid: incident.uid! }}
-                        className="font-medium hover:underline"
+                        className="font-medium text-foreground hover:text-primary hover:underline transition-colors"
                       >
                         {incident.title || incident.checkName || incident.checkSlug}
                       </Link>
                       {incident.state === "active" &&
                         incident.snoozedUntil &&
                         new Date(incident.snoozedUntil).getTime() > Date.now() && (
-                          <Badge variant="outline" className="text-xs">
+                          <Badge variant="outline" className="text-xs font-normal">
                             {t("stateBadges.snoozed")}
                           </Badge>
                         )}
@@ -250,17 +248,17 @@ function IncidentsIndexPage() {
                         incident.acknowledgedAt &&
                         (!incident.snoozedUntil ||
                           new Date(incident.snoozedUntil).getTime() <= Date.now()) && (
-                          <Badge variant="outline" className="text-xs">
+                          <Badge variant="outline" className="text-xs font-normal bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
                             {t("stateBadges.acked")}
                           </Badge>
                         )}
                       {(incident.relapseCount ?? 0) > 0 && (
-                        <Badge variant="outline" className="text-xs">
+                        <Badge variant="outline" className="text-xs font-normal">
                           {t("relapse", { count: incident.relapseCount })}
                         </Badge>
                       )}
                       {incident.pagingSuppressed && (
-                        <Badge variant="outline" className="text-xs">
+                        <Badge variant="outline" className="text-xs font-normal">
                           {t("rollup.rolledUpBadge")}
                         </Badge>
                       )}
@@ -271,29 +269,32 @@ function IncidentsIndexPage() {
                       to="/orgs/$org/checks/$checkUid"
                       params={{ org, checkUid: incident.checkUid! }}
                       search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
-                      className="hover:underline text-sm text-muted-foreground"
+                      className="hover:underline text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                     >
                       {incident.checkSlug || incident.checkName}
                     </Link>
                   </TableCell>
                   <TableCell>
                     {incident.state === "active" ? (
-                      <span title={t("active")}><AlertTriangle className="h-4 w-4 text-yellow-500" /></span>
+                      <span title={t("active")} className="relative flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-destructive" />
+                      </span>
                     ) : (
-                      <span title={t("resolved")}><CheckCircle className="h-4 w-4 text-green-500" /></span>
+                      <span title={t("resolved")} className="flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
                     )}
                   </TableCell>
-                  <TableCell className="text-sm">
+                  <TableCell className="text-xs text-muted-foreground font-mono">
                     {incident.startedAt ? (
                       <span title={new Date(incident.startedAt).toLocaleString()}>
                         {formatRelativeTime(incident.startedAt)}
                       </span>
                     ) : "-"}
                   </TableCell>
-                  <TableCell className="text-sm">
+                  <TableCell className="text-xs font-mono font-medium">
                     <IncidentDuration incident={incident} />
                   </TableCell>
-                  <TableCell className="text-sm">
+                  <TableCell className="text-xs text-muted-foreground font-mono tabular-nums">
                     {incident.failureCount ?? "-"}
                   </TableCell>
                 </TableRow>
@@ -302,16 +303,20 @@ function IncidentsIndexPage() {
           </Table>
         </div>
       ) : (
-        <div className="text-center py-12 text-muted-foreground">
-          <CheckCircle className="h-12 w-12 mx-auto mb-4 text-green-500 opacity-50" />
-          <p className="text-lg font-medium">{t("noIncidentsFound")}</p>
-          <p className="text-sm">
-            {stateFilter === "active"
-              ? t("allOperational")
-              : stateFilter === "resolved"
-                ? t("noResolved")
-                : t("noIncidents")}
-          </p>
+        <div className="rounded-xl border bg-card p-12 text-center shadow-card space-y-3">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+            <CheckCircle className="h-6 w-6" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="font-semibold text-base text-foreground">{t("noIncidentsFound")}</h3>
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+              {stateFilter === "active"
+                ? t("allOperational")
+                : stateFilter === "resolved"
+                  ? t("noResolved")
+                  : t("noIncidents")}
+            </p>
+          </div>
         </div>
       )}
     </div>

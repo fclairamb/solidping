@@ -1,13 +1,14 @@
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { Calendar, RefreshCw, User, Cpu } from "lucide-react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { AlertTriangle, Calendar, RefreshCw, User, Cpu } from "lucide-react";
 import { useEvents } from "@/api/hooks";
 import {
   getEventCheckName,
-  getEventIcon,
   getEventLabel,
+  getEventTone,
 } from "@/components/dashboard/event-display";
+import { DurationAgo } from "@/components/shared/relative-time";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,10 +30,6 @@ import {
 import { QueryErrorView } from "@/components/shared/error-views";
 import { PageHeader } from "@/components/shared/page-header";
 
-export const Route = createFileRoute("/orgs/$org/events")({
-  component: EventsPage,
-});
-
 type EventType =
   | "check.created"
   | "check.updated"
@@ -53,10 +50,32 @@ const eventTypeValues: (EventType | "all")[] = [
   "incident.resolved",
 ];
 
+interface EventsSearch {
+  type?: EventType;
+}
+
+export const Route = createFileRoute("/orgs/$org/events")({
+  component: EventsPage,
+  // The type filter is this page's core navigation — it decides what the page
+  // is showing — so it lives in the URL rather than in useState: bookmarkable,
+  // deep-linkable, and it survives a refresh. Anything unrecognized normalizes
+  // back to "all" (undefined) instead of filtering to nothing.
+  validateSearch: (search: Record<string, unknown>): EventsSearch => {
+    const type = search.type;
+    return typeof type === "string" &&
+      (eventTypeValues as string[]).includes(type) &&
+      type !== "all"
+      ? { type: type as EventType }
+      : {};
+  },
+});
+
 function EventsPage() {
   const { t } = useTranslation("events");
   const { org } = Route.useParams();
-  const [typeFilter, setTypeFilter] = useState<EventType | "all">("all");
+  const { type } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  const typeFilter: EventType | "all" = type ?? "all";
 
   const {
     data: events,
@@ -78,12 +97,18 @@ function EventsPage() {
         className="flex-wrap"
       />
 
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <Select
           value={typeFilter}
-          onValueChange={(v) => setTypeFilter(v as EventType | "all")}
+          onValueChange={(v) =>
+            navigate({
+              to: ".",
+              search: v === "all" ? {} : { type: v as EventType },
+              replace: true,
+            })
+          }
         >
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger className="w-[200px]" data-testid="events-type-filter">
             <SelectValue placeholder={t("filterByType")} />
           </SelectTrigger>
           <SelectContent>
@@ -116,77 +141,99 @@ function EventsPage() {
           ))}
         </div>
       ) : events?.data && events.data.length > 0 ? (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("table.time")}</TableHead>
-                <TableHead>{t("table.event")}</TableHead>
-                <TableHead>{t("table.actor")}</TableHead>
-                <TableHead>{t("table.related")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {events.data.map((event) => (
-                <TableRow key={event.uid}>
-                  <TableCell className="text-sm">
-                    {event.createdAt
-                      ? new Date(event.createdAt).toLocaleString()
-                      : "-"}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {getEventIcon(event.eventType)}
-                      <Badge variant="outline" className="text-xs">
+        <div className="overflow-hidden rounded-xl border bg-card shadow-card">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader className="bg-muted/30">
+                <TableRow>
+                  <TableHead className="w-[140px]">{t("table.time")}</TableHead>
+                  <TableHead className="w-[220px]">{t("table.event")}</TableHead>
+                  <TableHead className="w-[120px]">{t("table.actor")}</TableHead>
+                  <TableHead>{t("table.related")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {events.data.map((event) => (
+                  <TableRow
+                    key={event.uid}
+                    className="transition-colors hover:bg-muted/40"
+                  >
+                    <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+                      {event.createdAt ? (
+                        // Relative reads faster when scanning a log; the exact
+                        // timestamp stays one hover away.
+                        <span title={new Date(event.createdAt).toLocaleString()}>
+                          <DurationAgo since={event.createdAt} />
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "gap-1.5 text-xs font-medium",
+                          getEventTone(event.eventType),
+                        )}
+                      >
                         {getEventLabel(event.eventType, t)}
                       </Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1 text-sm">
-                      {event.actorType === "user" ? (
-                        <User className="h-3 w-3 text-muted-foreground" />
-                      ) : (
-                        <Cpu className="h-3 w-3 text-muted-foreground" />
-                      )}
-                      <span className="capitalize">
-                        {t(`actorTypes.${event.actorType || "system"}`)}
+                    </TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                        {event.actorType === "user" ? (
+                          <User className="h-3 w-3 shrink-0 text-muted-foreground/70" />
+                        ) : (
+                          <Cpu className="h-3 w-3 shrink-0 text-muted-foreground/70" />
+                        )}
+                        <span className="capitalize">
+                          {t(`actorTypes.${event.actorType || "system"}`)}
+                        </span>
                       </span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      {event.checkUid && (
-                        <Link
-                          to="/orgs/$org/checks/$checkUid"
-                          params={{ org, checkUid: event.checkUid }}
-                          search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
-                          className="text-xs text-primary hover:underline"
-                        >
-                          {getEventCheckName(event) ?? t("links.check")}
-                        </Link>
-                      )}
-                      {event.incidentUid && (
-                        <Link
-                          to="/orgs/$org/incidents/$incidentUid"
-                          params={{ org, incidentUid: event.incidentUid }}
-                          className="text-xs text-primary hover:underline"
-                        >
-                          {t("links.incident")}
-                        </Link>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {event.checkUid && (
+                          <Link
+                            to="/orgs/$org/checks/$checkUid"
+                            params={{ org, checkUid: event.checkUid }}
+                            search={{
+                              graphPeriod: undefined,
+                              graphFull: undefined,
+                              region: undefined,
+                            }}
+                            className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground transition-colors hover:text-primary hover:underline"
+                          >
+                            <Cpu className="h-3 w-3 shrink-0 text-muted-foreground/70" />
+                            {getEventCheckName(event) ?? t("links.check")}
+                          </Link>
+                        )}
+                        {event.incidentUid && (
+                          <Link
+                            to="/orgs/$org/incidents/$incidentUid"
+                            params={{ org, incidentUid: event.incidentUid }}
+                            className="inline-flex items-center gap-1 rounded border bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground transition-colors hover:text-foreground"
+                          >
+                            <AlertTriangle className="h-3 w-3 shrink-0" />
+                            {t("links.incident")}
+                          </Link>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       ) : (
-        <div className="text-center py-12 text-muted-foreground">
-          <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
-          <p className="text-lg font-medium">{t("noEvents")}</p>
-          <p className="text-sm">
+        <div className="space-y-3 rounded-xl border bg-card p-12 text-center shadow-card">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <Calendar className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <p className="text-sm font-medium text-foreground">{t("noEvents")}</p>
+          <p className="mx-auto max-w-sm text-xs text-muted-foreground">
             {typeFilter !== "all"
               ? t("noEventsMatchFilter")
               : t("noEventsRecorded")}

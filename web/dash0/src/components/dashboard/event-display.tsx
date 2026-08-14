@@ -18,6 +18,42 @@ export function getEventIcon(eventType?: string) {
   return <Calendar className="h-4 w-4" />;
 }
 
+// getEventTone maps an event type to the badge classes for its family, so an
+// audit log can be scanned by color before it is read. The tint is decoration
+// layered on the translated label — never the only signal — and an
+// unrecognized type falls back to the neutral outline badge rather than
+// inventing a color.
+//
+// Families: failure/escalation reads red, recovery reads emerald, operator
+// acknowledgement reads amber, configuration changes read blue, and
+// onboarding milestones read violet.
+export function getEventTone(eventType?: string): string {
+  if (!eventType) return "";
+
+  if (
+    eventType === "incident.created" ||
+    eventType === "incident.opened" ||
+    eventType === "incident.reopened" ||
+    eventType === "incident.escalated" ||
+    eventType === "incident.escalation_failed"
+  ) {
+    return "border-destructive/20 bg-destructive/10 text-destructive";
+  }
+  if (eventType === "incident.resolved") {
+    return "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+  }
+  if (eventType.startsWith("incident.")) {
+    return "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400";
+  }
+  if (eventType.startsWith("check.") || eventType.startsWith("status_update.")) {
+    return "border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-400";
+  }
+  if (eventType.startsWith("org.activation.")) {
+    return "border-violet-500/20 bg-violet-500/10 text-violet-700 dark:text-violet-400";
+  }
+  return "";
+}
+
 export function getEventLabel(
   eventType: string | undefined,
   t: (key: string, options?: Record<string, unknown>) => string,
