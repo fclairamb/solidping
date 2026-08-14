@@ -1,4 +1,4 @@
--- SQLite mirror of postgres/migrations/012_incident_number.up.sql — the short,
+-- SQLite mirror of postgres/migrations/012_v0_15_0.up.sql — the short,
 -- human-scale per-org incident reference (`#42`). See the Postgres file for the
 -- rationale, including why this is a scratch 012.
 --

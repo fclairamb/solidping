@@ -62,6 +62,32 @@ The Go backend follows a clean architecture pattern with strict separation of co
 - **`internal/handlers/base/`**: Common handler functionality (`HandlerBase`) for error handling and JSON responses
 - **`internal/models/`**: Bun ORM models for database entities with custom types
 - **`internal/db/postgres/migrations/`** and **`internal/db/sqlite/migrations/`**: Database migration files (one consolidated `NNN_vX_Y_Z.up.sql` per release)
+
+### Migration file naming (hard rule)
+
+**A migration file is named after the version it will ship in — never after what it does.**
+Format: `NNN_vX_Y_Z.up.sql` / `NNN_vX_Y_Z.down.sql`, where `vX_Y_Z` is the **upcoming**
+release (the next version to be cut, not the current one). A feature-named file such as
+`012_incident_number.up.sql` is wrong and must be renamed before release.
+
+Why: there is exactly one consolidated migration per release, and the version is the only
+name that stays meaningful once the feature that motivated it is old news. It also makes
+"which schema does this deployment need?" answerable by reading the filename.
+
+Mechanics worth knowing before you touch an existing file:
+
+- Bun keys applied migrations on the **numeric prefix only** — `fnameRE` is
+  `^(\d{1,14})_([0-9a-z_\-]+)\.`, and `migrationsWithStatus` matches on `Name` (`012`),
+  with the rest kept as an informational `Comment`. **Renaming the comment half of an
+  already-applied migration is therefore safe** — no existing database re-runs it.
+- **Renumbering is NOT safe.** Changing `012` to anything else makes every already-migrated
+  database treat it as new (or silently skip a real one), which surfaces as a startup crash
+  or 500s. If a consolidation forces a renumber, the dev DB must be reset or
+  `bun_migrations` reconciled by hand.
+- The comment half must match `[0-9a-z_\-]+` — lowercase only, so `v0_15_0`, never `v0.15.0`.
+- Rename **both** dialects (`postgres/` and `sqlite/`) and **both** directions
+  (`.up.sql`/`.down.sql`) together, and grep for the filename first: migration tests read
+  these files by name via `migrationsFS.ReadFile`.
 - **`internal/middleware/`**: Authentication, CORS, logging, and organization context
 - **`internal/config/`**: Configuration management using koanf (YAML + environment variables)
 
