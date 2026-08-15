@@ -350,7 +350,7 @@ func (c *Client) do(ctx context.Context, method, path string, payload, out any) 
 // Exported so the scheme can be tested against known-good vectors independently
 // of any HTTP round trip.
 func Signature(appSecret, consumerKey, method, url, body string, timestamp int64) string {
-	hasher := sha1.New() //nolint:gosec // OVH mandates SHA1 for this scheme.
+	hasher := sha1.New()
 	hasher.Write([]byte(strings.Join([]string{
 		appSecret, consumerKey, method, url, body, strconv.FormatInt(timestamp, 10),
 	}, "+")))

@@ -675,42 +675,10 @@ func (r *EscalationStepJobRun) pagePhone(
 		return 0
 	}
 
-	if jctx.Services == nil || jctx.Services.SMS == nil {
-		log.InfoContext(ctx, "sms resolver not wired; skipping phone route",
-			"contactUID", contact.UID, "orgUID", incident.OrganizationUID)
-
-		return 0
-	}
-
-	// Two-step resolution, per capability: the org's own Twilio integration
-	// first (bring-your-own), then the instance-level provider. An org with no
-	// integration of its own is NOT left resolving to nothing — that is the
-	// whole point of the server-provided default.
-	resolution, err := jctx.Services.SMS.Resolve(ctx, incident.OrganizationUID)
-	if err != nil {
-		// An org integration exists but could not be opened → keep today's
-		// info-log skip; never fail the escalation step over a provider.
-		log.InfoContext(ctx, "could not resolve a phone provider; skipping phone route",
-			"contactUID", contact.UID, "orgUID", incident.OrganizationUID, "error", err)
-
-		return 0
-	}
-
-	if wantSMS && !resolution.SMSAvailable() {
-		log.InfoContext(ctx, "sms requested but no provider available; skipping",
-			"contactUID", contact.UID, "orgUID", incident.OrganizationUID)
-
-		wantSMS = false
-	}
-
-	if wantVoice && !resolution.VoiceAvailable() {
-		log.InfoContext(ctx, "voice requested but no caller ID configured; skipping call",
-			"contactUID", contact.UID, "orgUID", incident.OrganizationUID)
-
-		wantVoice = false
-	}
-
-	if !wantSMS && !wantVoice {
+	resolution, wantSMS, wantVoice := resolvePhoneProviders(
+		ctx, jctx, log, incident, contact, wantSMS, wantVoice,
+	)
+	if resolution == nil {
 		return 0
 	}
 
@@ -731,6 +699,54 @@ func (r *EscalationStepJobRun) pagePhone(
 	}
 
 	return sent
+}
+
+// resolvePhoneProviders performs the two-step, per-capability resolution: the
+// org's own Twilio integration first (bring-your-own), then the instance-level
+// provider. An org with no integration of its own is NOT left resolving to
+// nothing — that is the whole point of the server-provided default.
+//
+// Returns the resolution plus the capabilities that are actually deliverable,
+// or a nil resolution when there is nothing to send at all. A missing provider
+// degrades to an info-log skip; it never fails the escalation step.
+func resolvePhoneProviders(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, contact *models.UserContact, wantSMS, wantVoice bool,
+) (*smssvc.Resolution, bool, bool) {
+	if jctx.Services == nil || jctx.Services.SMS == nil {
+		log.InfoContext(ctx, "sms resolver not wired; skipping phone route",
+			"contactUID", contact.UID, "orgUID", incident.OrganizationUID)
+
+		return nil, false, false
+	}
+
+	resolution, err := jctx.Services.SMS.Resolve(ctx, incident.OrganizationUID)
+	if err != nil {
+		log.InfoContext(ctx, "could not resolve a phone provider; skipping phone route",
+			"contactUID", contact.UID, "orgUID", incident.OrganizationUID, "error", err)
+
+		return nil, false, false
+	}
+
+	if wantSMS && !resolution.SMSAvailable() {
+		log.InfoContext(ctx, "sms requested but no provider available; skipping",
+			"contactUID", contact.UID, "orgUID", incident.OrganizationUID)
+
+		wantSMS = false
+	}
+
+	if wantVoice && !resolution.VoiceAvailable() {
+		log.InfoContext(ctx, "voice requested but no caller ID configured; skipping call",
+			"contactUID", contact.UID, "orgUID", incident.OrganizationUID)
+
+		wantVoice = false
+	}
+
+	if !wantSMS && !wantVoice {
+		return nil, false, false
+	}
+
+	return resolution, wantSMS, wantVoice
 }
 
 // reserveInstanceSMSSpend applies the INSTANCE-SPEND guards — the

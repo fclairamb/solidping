@@ -1,6 +1,7 @@
 package entitlements
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -110,17 +111,7 @@ func TestCountryAllowList(t *testing.T) {
 }
 
 func joinCodes(codes []string) string {
-	out := ""
-
-	for i, c := range codes {
-		if i > 0 {
-			out += ","
-		}
-
-		out += c
-	}
-
-	return out
+	return strings.Join(codes, ",")
 }
 
 // TestNoGuardsConfiguredIsInert proves a deployment that configures neither

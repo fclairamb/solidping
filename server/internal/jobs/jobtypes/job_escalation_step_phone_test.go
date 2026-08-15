@@ -251,6 +251,8 @@ func newRun() *EscalationStepJobRun {
 // TestDispatch_SMSFilterPagesPhoneSkipsEmail proves severity {sms} texts a
 // verified phone and does NOT email.
 func TestDispatch_SMSFilterPagesPhoneSkipsEmail(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
@@ -274,6 +276,8 @@ func TestDispatch_SMSFilterPagesPhoneSkipsEmail(t *testing.T) {
 // TestDispatch_EmailSlackBehavesAsToday is the backward-compat control:
 // severity {email, slack} emails and never touches the phone.
 func TestDispatch_EmailSlackBehavesAsToday(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
@@ -338,6 +342,8 @@ func TestDispatch_EscalationEmailShowsIncidentNumberNotUUID(t *testing.T) {
 // TestDispatch_VoicePlacesCallWithoutSMS proves severity {voice} calls but
 // does not text.
 func TestDispatch_VoicePlacesCallWithoutSMS(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
@@ -358,6 +364,8 @@ func TestDispatch_VoicePlacesCallWithoutSMS(t *testing.T) {
 // TestDispatch_UnverifiedPhoneNeverContacted proves an unverified number is
 // never texted or dialed.
 func TestDispatch_UnverifiedPhoneNeverContacted(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
@@ -384,6 +392,8 @@ func TestDispatch_UnverifiedPhoneNeverContacted(t *testing.T) {
 // connection's configured region — a test covering only the notifications
 // sender would have passed the old, broken code for these two paths.
 func TestDispatch_RegionResolvesRegionalBase(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
@@ -421,6 +431,8 @@ func TestDispatch_RegionResolvesRegionalBase(t *testing.T) {
 // TestDispatch_MissingProviderDegradesToSkip proves that with no Twilio
 // connection the phone route quietly returns 0 (no panic, no error).
 func TestDispatch_MissingProviderDegradesToSkip(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
@@ -439,6 +451,8 @@ func TestDispatch_MissingProviderDegradesToSkip(t *testing.T) {
 // TestDispatch_SMSQuotaExhaustedSkips proves an exhausted monthly SMS cap skips
 // the send and records a quota-skip audit row, without failing the step.
 func TestDispatch_SMSQuotaExhaustedSkips(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
@@ -513,6 +527,8 @@ func seedPolicyWithPhoneStep(
 // a user reachable via BOTH a `user` target and an `all_admins` target in one
 // escalation-step run is texted once and called once, not twice.
 func TestDispatch_DedupsSamePhoneAcrossTargets(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
@@ -538,6 +554,8 @@ func TestDispatch_DedupsSamePhoneAcrossTargets(t *testing.T) {
 // TestRun_UnackedIncidentPagesPhone is the positive control for the ack guard:
 // through the real Run() an OPEN incident pages the on-call phone.
 func TestRun_UnackedIncidentPagesPhone(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
@@ -561,6 +579,8 @@ func TestRun_UnackedIncidentPagesPhone(t *testing.T) {
 // through the real Run() entrypoint (not just dispatchRoute): an acknowledged
 // incident sends no SMS and places no call, even under a {sms, voice} severity.
 func TestRun_AckedIncidentSendsNothing(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 

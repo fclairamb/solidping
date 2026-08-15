@@ -89,6 +89,8 @@ func withFakeVerifyTwilio(svc *Service, dbSvc db.Service, srv *httptest.Server) 
 }
 
 func TestVerifyContact_IssuesCode(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
@@ -107,6 +109,8 @@ func TestVerifyContact_IssuesCode(t *testing.T) {
 }
 
 func TestVerifyContact_NoProvider(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
@@ -124,7 +128,9 @@ func TestVerifyContact_RegionResolvesRegionalBase(t *testing.T) {
 	r := require.New(t)
 	ctx := context.Background()
 
-	svc, org, _, _, _ := setupVerifyEnv(t, true)
+	svc, org, user, contact, _ := setupVerifyEnv(t, true)
+	r.NotNil(user)
+	r.Nil(contact.VerifiedAt)
 
 	channels, err := svc.db.ListChannels(ctx, &models.ListIntegrationsFilter{OrganizationUID: org.UID})
 	r.NoError(err)
@@ -145,6 +151,8 @@ func TestVerifyContact_RegionResolvesRegionalBase(t *testing.T) {
 }
 
 func TestVerifyContact_ResendRateLimited(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 

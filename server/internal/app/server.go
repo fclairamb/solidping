@@ -350,8 +350,8 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	sshtunnel.ResolverFunc = sshtunnel.NewResolver(dbService, credSvc)
 
 	// Initialize Sentry error tracking
-	if err := initSentry(cfg.Sentry); err != nil {
-		return nil, fmt.Errorf("failed to initialize Sentry: %w", err)
+	if sentryErr := initSentry(cfg.Sentry); sentryErr != nil {
+		return nil, fmt.Errorf("failed to initialize Sentry: %w", sentryErr)
 	}
 
 	// Entitlements service. Defaults are deployment-mode dependent
@@ -402,7 +402,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	if err := smssvc.ConfigureOVHDeliveryCallback(
 		ctx, instanceSMSSender, ovhsmscb.CallbackURL(cfg.Server.BaseURL, ovhsmscb.ResolveToken(cfg)),
 	); err != nil {
-		slog.Warn("could not register the OVH SMS delivery callback; "+
+		slog.WarnContext(ctx, "could not register the OVH SMS delivery callback; "+
 			"set it manually on the SMS account if you want delivery receipts", "error", err)
 	}
 

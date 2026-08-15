@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -135,13 +136,13 @@ func NewTwilioSender(creds *TwilioCredentials) PhoneSender {
 	}
 }
 
-func (s *twilioSender) SendSMS(ctx context.Context, p *SendParams) (*SendResult, error) {
+func (s *twilioSender) SendSMS(ctx context.Context, params *SendParams) (*SendResult, error) {
 	res, err := s.client.SendSMS(ctx, &twilio.SendSMSParams{
-		To:                  p.To,
+		To:                  params.To,
 		From:                s.from,
 		MessagingServiceSID: s.messagingServiceSID,
-		Body:                p.Body,
-		StatusCallback:      p.StatusCallback,
+		Body:                params.Body,
+		StatusCallback:      params.StatusCallback,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("twilio send: %w", err)
@@ -150,12 +151,12 @@ func (s *twilioSender) SendSMS(ctx context.Context, p *SendParams) (*SendResult,
 	return &SendResult{ProviderMessageID: res.SID}, nil
 }
 
-func (s *twilioSender) PlaceCall(ctx context.Context, p *CallParams) (*SendResult, error) {
+func (s *twilioSender) PlaceCall(ctx context.Context, params *CallParams) (*SendResult, error) {
 	res, err := s.client.CreateCall(ctx, twilio.CreateCallParams{
-		To:             p.To,
+		To:             params.To,
 		From:           s.voiceFrom,
-		TwiMLURL:       p.TwiMLURL,
-		StatusCallback: p.StatusCallback,
+		TwiMLURL:       params.TwiMLURL,
+		StatusCallback: params.StatusCallback,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("twilio call: %w", err)
@@ -172,14 +173,14 @@ type ovhSender struct {
 	sender string
 }
 
-func (s *ovhSender) SendSMS(ctx context.Context, p *SendParams) (*SendResult, error) {
-	// p.StatusCallback is deliberately ignored: OVH's POST /sms/{svc}/jobs
+func (s *ovhSender) SendSMS(ctx context.Context, params *SendParams) (*SendResult, error) {
+	// params.StatusCallback is deliberately ignored: OVH's POST /sms/{svc}/jobs
 	// carries no per-job callback field. Delivery receipts arrive on the
 	// service-level `callBack` URL, which the OVH DLR handler authenticates
 	// with its own token.
 	report, err := s.client.Send(ctx, &ovhsms.SendParams{
-		Receivers: []string{p.To},
-		Message:   p.Body,
+		Receivers: []string{params.To},
+		Message:   params.Body,
 		Sender:    s.sender,
 	})
 	if err != nil {
@@ -188,7 +189,7 @@ func (s *ovhSender) SendSMS(ctx context.Context, p *SendParams) (*SendResult, er
 
 	id := ""
 	if len(report.IDs) > 0 {
-		id = fmt.Sprintf("%d", report.IDs[0])
+		id = strconv.FormatInt(report.IDs[0], 10)
 	}
 
 	return &SendResult{ProviderMessageID: id}, nil

@@ -121,6 +121,8 @@ func (f *capturingTwilio) sent() []map[string]string {
 // TestDispatchTestRoute_PhoneSendsSMS proves a phone route's test rides the
 // org's default Twilio connection, exactly like a verification code does.
 func TestDispatchTestRoute_PhoneSendsSMS(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
@@ -302,6 +304,8 @@ func TestSendTestNotification_UnverifiedContactRejected(t *testing.T) {
 // for the rejection above: the same phone contact, once verified, sails
 // through the public entry point and reaches Twilio.
 func TestSendTestNotification_VerifiedPhoneGoesThrough(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 

@@ -39,7 +39,7 @@ type Handler struct {
 
 // NewHandler builds the callback handler. token is the path secret; an empty
 // token disables the endpoint entirely (every request 404s), which is the
-// correct behaviour when no OVH provider is configured.
+// correct behavior when no OVH provider is configured.
 func NewHandler(dbSvc db.Service, token string) *Handler {
 	return &Handler{db: dbSvc, token: token}
 }
@@ -132,13 +132,13 @@ func (h *Handler) tokenMatches(candidate string) bool {
 	return hmac.Equal([]byte(h.token), []byte(candidate))
 }
 
-func clamp(s string) string {
-	s = strings.TrimSpace(s)
-	if len(s) > maxFieldLen {
-		return s[:maxFieldLen]
+func clamp(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) > maxFieldLen {
+		return value[:maxFieldLen]
 	}
 
-	return s
+	return value
 }
 
 func notFound(writer http.ResponseWriter) error {

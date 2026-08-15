@@ -94,7 +94,6 @@ func TestSMSDefaultsOff(t *testing.T) {
 	r.Empty(cfg.SMS.AllowedCountryCodes())
 }
 
-//nolint:funlen // one table row per Active() combination worth pinning.
 func TestSMSConfigActive(t *testing.T) {
 	t.Parallel()
 

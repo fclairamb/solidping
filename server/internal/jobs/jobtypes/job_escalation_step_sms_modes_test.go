@@ -191,7 +191,7 @@ func TestNoOrgIntegrationUsesInstanceProvider(t *testing.T) {
 }
 
 // TestDeletingOrgIntegrationFallsBackToInstance proves the documented
-// deletion behaviour the UI promises: removing the bring-your-own integration
+// deletion behavior the UI promises: removing the bring-your-own integration
 // drops the org back to the server-provided mode on the next send, rather than
 // leaving it unable to page anyone.
 func TestDeletingOrgIntegrationFallsBackToInstance(t *testing.T) {

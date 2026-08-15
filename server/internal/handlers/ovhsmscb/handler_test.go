@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -76,7 +77,7 @@ func (e *dlrEnv) get(t *testing.T, path string) *httptest.ResponseRecorder {
 	t.Helper()
 
 	rec := httptest.NewRecorder()
-	e.handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, http.NoBody))
+	e.handler.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, http.NoBody))
 
 	return rec
 }
@@ -179,10 +180,7 @@ func TestMalformedPayloadIsAcceptedAndInert(t *testing.T) {
 
 	env := setupDLR(t, testToken)
 
-	longID := ""
-	for range 500 {
-		longID += "9"
-	}
+	longID := strings.Repeat("9", 500)
 
 	cases := []string{
 		"",                                     // no query at all

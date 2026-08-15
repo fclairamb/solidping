@@ -1,7 +1,7 @@
 package ovhsms
 
 import (
-	"crypto/sha1" //nolint:gosec // the scheme under test mandates SHA1.
+	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -26,7 +26,7 @@ func TestSignature(t *testing.T) {
 
 	vector := func(secret, ck, method, url, body string, ts int64) string {
 		joined := strings.Join([]string{secret, ck, method, url, body, strconv.FormatInt(ts, 10)}, "+")
-		sum := sha1.Sum([]byte(joined)) //nolint:gosec // scheme mandates SHA1.
+		sum := sha1.Sum([]byte(joined))
 
 		return "$1$" + hex.EncodeToString(sum[:])
 	}
