@@ -286,6 +286,16 @@ func (s *Service) extractValue(value models.JSONMap) any {
 	return value
 }
 
+// newEmailSender constructs the outbound SMTP sender for TestEmail from the
+// just-loaded config — a test seam (mirrors patterns elsewhere in the
+// codebase, e.g. jobtypes.newTwilioClient) so the rendering path can be
+// exercised with a capturing fake instead of a live SMTP server.
+//
+//nolint:gochecknoglobals // test seam, not mutable application state.
+var newEmailSender = func(cfg *config.EmailConfig, logger *slog.Logger) email.Sender {
+	return email.NewSender(cfg, logger)
+}
+
 // TestEmailRequest represents a request to send a test email.
 type TestEmailRequest struct {
 	Recipient string `json:"recipient"`
@@ -318,7 +328,7 @@ func (s *Service) TestEmail(ctx context.Context, recipient string) (*TestEmailRe
 	}
 
 	// Create a temporary sender with current settings
-	sender := email.NewSender(emailCfg, slog.Default())
+	sender := newEmailSender(emailCfg, slog.Default())
 
 	subject, htmlBody, textBody, err := s.formatter.Format("test-email.html", map[string]any{
 		"Subject": "SolidPing Test Email",
