@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { createFileRoute } from "@tanstack/react-router";
-import { ExternalLink } from "lucide-react";
+import { AlertTriangle, ExternalLink } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Card,
   CardContent,
@@ -138,6 +139,38 @@ function UsagePage() {
                 unlimitedLabel={t("usage.unlimited")}
               />
             </div>
+            {/*
+              An instance-spend guard that refused a send dropped an ALERT, so
+              it has to be visible to the organization, not only in the
+              operator's logs. Rendered as a warning rather than a usage row:
+              it is an incident to act on, not a level to watch.
+            */}
+            {data.usage?.smsGuard &&
+              (data.usage.smsGuard.globalRunawayBreaches > 0 ||
+                data.usage.smsGuard.countryBlockedBreaches > 0) && (
+                <Alert variant="warning" data-testid="usage-sms-guard-breach">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>{t("usage.smsGuard.title")}</AlertTitle>
+                  <AlertDescription>
+                    {data.usage.smsGuard.globalRunawayBreaches > 0 && (
+                      <p>
+                        {t("usage.smsGuard.runaway", {
+                          count: data.usage.smsGuard.globalRunawayBreaches,
+                          limit: data.usage.smsGuard.globalRunawayPerHour,
+                        })}
+                      </p>
+                    )}
+                    {data.usage.smsGuard.countryBlockedBreaches > 0 && (
+                      <p>
+                        {t("usage.smsGuard.country", {
+                          count: data.usage.smsGuard.countryBlockedBreaches,
+                          countries: (data.usage.smsGuard.allowedCountries ?? []).join(", "),
+                        })}
+                      </p>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
             {data.upgradeUrl && (
               <div className="flex justify-end pt-2">
                 <Button asChild>

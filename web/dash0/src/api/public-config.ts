@@ -1,5 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchPublicConfig, type PublicConfig } from "@/lib/analytics";
+import {
+  fetchPublicConfig,
+  type PublicConfig,
+  type SMSPublicConfig,
+} from "@/lib/analytics";
 
 /**
  * Reads the instance's unauthenticated public configuration document
@@ -56,4 +60,28 @@ export function useTelegramEnabled(): boolean {
   const { data } = usePublicConfig();
 
   return Boolean(data?.telegram?.enabled);
+}
+
+/**
+ * The instance's server-provided SMS capability. Mirrors the backend's
+ * resolved `config.SMSConfig.Active()` / `config.VoiceConfig.Active()` rules.
+ *
+ * Returns a fully-populated object rather than a possibly-undefined one so
+ * callers never have to guard: while the document is loading, or on an
+ * instance that predates the field, the answer is simply "the server provides
+ * nothing", which is the safe default for a panel that explains where an
+ * organization's SMS comes from.
+ *
+ * Deliberately over the same cached query as `useWhatsAppEnabled` /
+ * `useTelegramEnabled` — one public-config document, one fetch.
+ */
+export function useInstanceSMSConfig(): SMSPublicConfig {
+  const { data } = usePublicConfig();
+
+  return {
+    enabled: Boolean(data?.sms?.enabled),
+    sender: data?.sms?.sender,
+    provider: data?.sms?.provider,
+    voiceEnabled: Boolean(data?.sms?.voiceEnabled),
+  };
 }

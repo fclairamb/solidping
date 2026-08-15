@@ -167,5 +167,34 @@
     "webpush": "Browser-Benachrichtigungen auf abonnierten Geräten empfangen",
     "kubernetes": "Replikat-Gesundheit von Kubernetes-Workloads überwachen (Deployments, ReplicaSets)",
     "msteams-bot": "Bidirektionaler Teams-Bot: Alarme, @Mention-Befehle und gebündelte Vorfall-Updates"
+  },
+  "sms": {
+    "title": "SMS & Anrufe",
+    "subtitle": "Woher die SMS und Alarmanrufe dieser Organisation gesendet werden.",
+    "mode": {
+      "byo": "Ihr eigenes Konto",
+      "server": "Von dieser Instanz bereitgestellt",
+      "unavailable": "Nicht verfügbar"
+    },
+    "server": {
+      "body": "SMS werden von dieser Instanz bereitgestellt — keine Einrichtung nötig.",
+      "bodyWithSender": "SMS werden von dieser Instanz bereitgestellt. Nachrichten werden von {{sender}} gesendet — keine Einrichtung nötig.",
+      "override": "Sie können eine eigene Twilio-Integration hinzufügen, um mit Ihrem Konto, Absender und Ihrer Abrechnung zu senden. Sie überschreibt den Anbieter der Instanz für diese Organisation."
+    },
+    "byo": {
+      "body": "Diese Organisation sendet über ihre eigene Twilio-Integration („{{name}}“). Sie überschreibt den Anbieter der Instanz für SMS und Anrufe dieser Organisation, und Twilio rechnet direkt mit Ihnen ab.",
+      "onDeleteFallback": "Beim Löschen fällt die Organisation auf die von dieser Instanz bereitgestellten SMS zurück.",
+      "onDeleteUnavailable": "Beim Löschen sind SMS für diese Organisation nicht mehr verfügbar — diese Instanz stellt keine eigenen bereit."
+    },
+    "unavailable": {
+      "body": "Diese Instanz stellt keine SMS bereit und diese Organisation hat keine eigene Twilio-Integration, daher können keine SMS- und Sprachalarme gesendet werden.",
+      "fix": "Fügen Sie eine Twilio-Integration hinzu, um Ihr eigenes Konto zu nutzen, oder bitten Sie den Betreiber, SMS für diese Instanz zu konfigurieren."
+    },
+    "voice": {
+      "byo": "Alarmanrufe nutzen dasselbe Twilio-Konto, sofern eine Anrufer-ID konfiguriert ist.",
+      "server": "Alarmanrufe werden von dieser Instanz bereitgestellt.",
+      "none": "Alarmanrufe sind nicht verfügbar — es ist kein Sprachanbieter konfiguriert."
+    },
+    "addOwn": "Mein eigenes Twilio-Konto verwenden"
   }
 }

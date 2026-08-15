@@ -4817,6 +4817,26 @@ export interface EntitlementsLimits {
   maxWhatsappPerMonth?: number | null;
 }
 
+/**
+ * The instance-spend SMS guards and how many of this organization's sends they
+ * have refused since the server started.
+ *
+ * These two guard the INSTANCE's bill, so they apply only to sends made on the
+ * server's own SMS credentials — an organization sending through its own
+ * Twilio integration is billed by Twilio directly and is never gated by them.
+ *
+ * Absent entirely when the deployment configures no instance-spend guard.
+ */
+export interface EntitlementsSMSGuard {
+  /** Instance-wide hourly cap; 0 when disabled. */
+  globalRunawayPerHour: number;
+  /** Allowed E.164 country calling codes; absent/empty means all countries. */
+  allowedCountries?: string[];
+  globalRunawayBreaches: number;
+  countryBlockedBreaches: number;
+  lastBreachAt?: string;
+}
+
 export interface EntitlementsUsage {
   checks: number;
   checksPerMinute: number;
@@ -4830,6 +4850,11 @@ export interface EntitlementsUsage {
    * persistent counter, not a live count — sent messages cannot be un-sent.
    */
   whatsappThisMonth: number;
+  /**
+   * Instance-spend guard state. A breach must never fail silently — what it
+   * drops is an alert — so it surfaces here as well as in the server logs.
+   */
+  smsGuard?: EntitlementsSMSGuard;
 }
 
 export interface EntitlementsResponse {

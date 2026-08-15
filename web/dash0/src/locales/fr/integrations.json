@@ -188,5 +188,34 @@
     "webpush": "Recevoir des alertes sous forme de notifications navigateur sur vos appareils abonnés",
     "kubernetes": "Surveiller la santé des réplicas Kubernetes (Deployments, ReplicaSets)",
     "msteams-bot": "Bot Teams bidirectionnel : alertes, commandes @mention et suivi d'incident groupé"
+  },
+  "sms": {
+    "title": "SMS et appels",
+    "subtitle": "D'où partent les SMS et les appels d'alerte de cette organisation.",
+    "mode": {
+      "byo": "Votre propre compte",
+      "server": "Fourni par cette instance",
+      "unavailable": "Indisponible"
+    },
+    "server": {
+      "body": "Les SMS sont fournis par cette instance — aucune configuration nécessaire.",
+      "bodyWithSender": "Les SMS sont fournis par cette instance. Les messages partent de {{sender}} — aucune configuration nécessaire.",
+      "override": "Vous pouvez ajouter votre propre intégration Twilio pour envoyer avec votre compte, votre expéditeur et votre facturation. Elle remplace le fournisseur de l'instance pour cette organisation."
+    },
+    "byo": {
+      "body": "Cette organisation envoie via sa propre intégration Twilio (« {{name}} »). Elle remplace le fournisseur de l'instance pour les SMS et les appels de cette organisation, et Twilio vous facture directement.",
+      "onDeleteFallback": "Si vous la supprimez, l'organisation revient aux SMS fournis par cette instance.",
+      "onDeleteUnavailable": "Si vous la supprimez, les SMS deviennent indisponibles pour cette organisation — cette instance n'en fournit aucun."
+    },
+    "unavailable": {
+      "body": "Cette instance ne fournit pas de SMS et cette organisation n'a pas d'intégration Twilio, donc les alertes SMS et vocales ne peuvent pas être envoyées.",
+      "fix": "Ajoutez une intégration Twilio pour utiliser votre propre compte, ou demandez à l'opérateur de configurer les SMS pour cette instance."
+    },
+    "voice": {
+      "byo": "Les appels d'alerte utilisent le même compte Twilio, s'il a un numéro d'appelant configuré.",
+      "server": "Les appels d'alerte sont fournis par cette instance.",
+      "none": "Les appels d'alerte ne sont pas disponibles — aucun fournisseur vocal n'est configuré."
+    },
+    "addOwn": "Utiliser mon propre compte Twilio"
   }
 }

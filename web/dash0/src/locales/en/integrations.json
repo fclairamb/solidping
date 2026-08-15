@@ -192,5 +192,34 @@
     "webpush": "Receive alerts as browser notifications on your subscribed devices",
     "kubernetes": "Monitor Kubernetes workload replica health (Deployments, ReplicaSets)",
     "msteams-bot": "Two-way Teams bot: alerts, @mention commands and threaded incident updates"
+  },
+  "sms": {
+    "title": "SMS & voice",
+    "subtitle": "Where this organization's text messages and alert calls are sent from.",
+    "mode": {
+      "byo": "Your own account",
+      "server": "Provided by this instance",
+      "unavailable": "Not available"
+    },
+    "server": {
+      "body": "SMS is provided by this instance — no setup needed.",
+      "bodyWithSender": "SMS is provided by this instance. Messages go out from {{sender}} — no setup needed.",
+      "override": "You may add your own Twilio integration to send with your own account, sender and billing instead. It overrides the instance provider for this organization."
+    },
+    "byo": {
+      "body": "This organization sends through its own Twilio integration (\"{{name}}\"). It overrides the instance provider for this organization's SMS and voice, and Twilio bills you directly.",
+      "onDeleteFallback": "Delete it and this organization falls back to the SMS provided by this instance.",
+      "onDeleteUnavailable": "Delete it and SMS becomes unavailable for this organization — this instance provides no SMS of its own."
+    },
+    "unavailable": {
+      "body": "This instance provides no SMS, and this organization has no Twilio integration of its own, so SMS and voice alerts cannot be sent.",
+      "fix": "Add a Twilio integration to use your own account, or ask the operator to configure SMS for this instance."
+    },
+    "voice": {
+      "byo": "Alert calls use the same Twilio account, when it has a caller ID configured.",
+      "server": "Alert calls are provided by this instance.",
+      "none": "Alert calls are not available — no voice provider is configured."
+    },
+    "addOwn": "Use my own Twilio account"
   }
 }

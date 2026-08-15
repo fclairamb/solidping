@@ -167,5 +167,34 @@
     "webpush": "Recibir alertas como notificaciones del navegador en sus dispositivos suscritos",
     "kubernetes": "Monitorizar la salud de réplicas de cargas Kubernetes (Deployments, ReplicaSets)",
     "msteams-bot": "Bot de Teams bidireccional: alertas, comandos con @mención y actualizaciones agrupadas"
+  },
+  "sms": {
+    "title": "SMS y llamadas",
+    "subtitle": "Desde dónde se envían los SMS y las llamadas de alerta de esta organización.",
+    "mode": {
+      "byo": "Tu propia cuenta",
+      "server": "Proporcionado por esta instancia",
+      "unavailable": "No disponible"
+    },
+    "server": {
+      "body": "Esta instancia proporciona los SMS — no hace falta configurar nada.",
+      "bodyWithSender": "Esta instancia proporciona los SMS. Los mensajes salen desde {{sender}} — no hace falta configurar nada.",
+      "override": "Puedes añadir tu propia integración de Twilio para enviar con tu cuenta, tu remitente y tu facturación. Sustituye al proveedor de la instancia para esta organización."
+    },
+    "byo": {
+      "body": "Esta organización envía a través de su propia integración de Twilio («{{name}}»). Sustituye al proveedor de la instancia para los SMS y las llamadas de esta organización, y Twilio te factura directamente.",
+      "onDeleteFallback": "Si la eliminas, la organización vuelve a los SMS proporcionados por esta instancia.",
+      "onDeleteUnavailable": "Si la eliminas, los SMS dejan de estar disponibles para esta organización — esta instancia no proporciona ninguno."
+    },
+    "unavailable": {
+      "body": "Esta instancia no proporciona SMS y esta organización no tiene una integración de Twilio propia, así que no se pueden enviar alertas por SMS ni por llamada.",
+      "fix": "Añade una integración de Twilio para usar tu propia cuenta, o pide al operador que configure los SMS de esta instancia."
+    },
+    "voice": {
+      "byo": "Las llamadas de alerta usan la misma cuenta de Twilio, si tiene un identificador de llamada configurado.",
+      "server": "Esta instancia proporciona las llamadas de alerta.",
+      "none": "Las llamadas de alerta no están disponibles — no hay proveedor de voz configurado."
+    },
+    "addOwn": "Usar mi propia cuenta de Twilio"
   }
 }

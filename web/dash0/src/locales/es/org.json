@@ -58,7 +58,12 @@
     "unlimited": "Ilimitado",
     "upgrade": "Mejorar plan",
     "loadError": "No se pudo cargar el uso.",
-    "whatsappThisMonth": "Mensajes de WhatsApp este mes"
+    "whatsappThisMonth": "Mensajes de WhatsApp este mes",
+    "smsGuard": {
+      "title": "Algunas alertas por SMS no se enviaron",
+      "runaway": "Se rechazaron {{count}} mensaje(s) porque se alcanzó el límite de SMS de esta instancia ({{limit}}/hora). Se están perdiendo alertas en toda la instancia — avisa a tu operador.",
+      "country": "Se rechazaron {{count}} mensaje(s) porque el país de destino no está en la lista permitida de esta instancia ({{countries}})."
+    }
   },
   "ai": {
     "title": "Asistentes de IA",
