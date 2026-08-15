@@ -7,7 +7,6 @@ import {
   Bell,
   BellOff,
   CheckCircle,
-  Clock,
   Eye,
   EyeOff,
   ExternalLink,
@@ -16,7 +15,6 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  RotateCcw,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -44,9 +42,11 @@ import {
   type CreateStatusUpdateRequest,
 } from "@/api/hooks";
 import {
+  EventTypeBadge,
   getCommentSource,
   getCommentText,
   getCommentSlackAuthor,
+  getEventIcon,
 } from "@/components/dashboard/event-display";
 import { useLiveSubscription } from "@/contexts/LiveEventsContext";
 import { SnoozeDialog } from "@/components/incidents/snooze-dialog";
@@ -952,34 +952,34 @@ function IncidentDetailPage() {
               <TimelineItem
                 label={t("timeline.started")}
                 timestamp={incident.startedAt}
-                icon={<AlertTriangle className="h-4 w-4 text-yellow-500" />}
+                icon={getEventIcon("incident.created")}
               />
               {incident.acknowledgedAt && (
                 <TimelineItem
                   label={t("timeline.acknowledged")}
                   timestamp={incident.acknowledgedAt}
-                  icon={<Clock className="h-4 w-4 text-blue-400" />}
+                  icon={getEventIcon("incident.acknowledged")}
                 />
               )}
               {incident.escalatedAt && (
                 <TimelineItem
                   label={t("timeline.escalated")}
                   timestamp={incident.escalatedAt}
-                  icon={<AlertTriangle className="h-4 w-4 text-red-500" />}
+                  icon={getEventIcon("incident.escalated")}
                 />
               )}
               {incident.lastReopenedAt && (
                 <TimelineItem
                   label={t("timeline.reopenedRelapse", { count: relapseCount })}
                   timestamp={incident.lastReopenedAt}
-                  icon={<RotateCcw className="h-4 w-4 text-orange-500" />}
+                  icon={getEventIcon("incident.reopened")}
                 />
               )}
               {incident.resolvedAt && (
                 <TimelineItem
                   label={t("timeline.resolved")}
                   timestamp={incident.resolvedAt}
-                  icon={<CheckCircle className="h-4 w-4 text-green-500" />}
+                  icon={getEventIcon("incident.resolved")}
                 />
               )}
             </div>
@@ -1324,6 +1324,7 @@ function NotificationsCard({
   incidentUid: string;
 }) {
   const { t } = useTranslation("common");
+  const { t: tEvents } = useTranslation("events");
   const navigate = useNavigate();
   const { data: rows, isLoading } = useIncidentNotifications(org, incidentUid);
 
@@ -1361,6 +1362,7 @@ function NotificationsCard({
             <TableHeader>
               <TableRow>
                 <TableHead>Time</TableHead>
+                <TableHead>Event</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Target</TableHead>
                 <TableHead>Source</TableHead>
@@ -1386,6 +1388,9 @@ function NotificationsCard({
                 >
                   <TableCell className="text-sm whitespace-nowrap" title={row.createdAt}>
                     {new Date(row.createdAt).toLocaleString()}
+                  </TableCell>
+                  <TableCell>
+                    <EventTypeBadge eventType={row.eventType} t={tEvents} />
                   </TableCell>
                   <TableCell>
                     <Badge variant={notificationStatusVariant(row.status)} className="text-xs capitalize">
