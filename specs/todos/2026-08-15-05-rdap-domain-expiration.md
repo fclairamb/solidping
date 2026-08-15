@@ -102,3 +102,88 @@ it from the primitives catalogued in
 `web/dash0/src/routes/orgs/$org/design-reference.tsx` — do not hand-roll a
 raw Radix select. The field is optional everywhere: leaving it unset must
 serialize to the zero value and behave as `auto`.
+
+## Implementation Plan
+
+### Backend
+
+1. **`server/internal/checkers/checkdomain/rdap.go` (new)** — small internal
+   RDAP client, no new dependency:
+   - `rdapClient` struct: `httpClient *http.Client`, `bootstrapURL string`,
+     `cacheTTL time.Duration`, plus a mutex-guarded `bootstrap *bootstrapDoc` /
+     `bootstrapAt time.Time` cache. A package-level `defaultRDAPClient` singleton
+     (`bootstrapURL = "https://data.iana.org/rdap/dns.json"`, TTL 24h, 10s HTTP
+     client) is what production `DomainChecker` instances use — this lives at
+     package scope (not on the `DomainChecker` struct) because
+     `registry.GetChecker` constructs a fresh `&DomainChecker{}` on every call,
+     so an instance-level cache would never actually be reused.
+   - `bootstrapDoc.Services [][][]string` decodes IANA's
+     `[[tlds...],[urls...]]` service-array shape directly.
+   - `lookup(ctx, domain) (*rdapResult, error)`: extract the TLD, resolve it to
+     a base URL via the (cached) bootstrap doc, `GET {base}/domain/{name}`
+     with `Accept: application/rdap+json` via `http.NewRequestWithContext`
+     (context honored, redirects followed by the default `http.Client`).
+   - Parse `events[]` for `eventAction == "expiration"` → RFC3339 `eventDate`;
+     parse the registrar name from the `entities[]` entry with role
+     `"registrar"` via its `vcardArray` `"fn"` property.
+   - Distinct sentinel errors (`errRDAPUnknownTLD`, `errRDAPNoExpirationEvent`)
+     so `auto` mode's fallback logic and error-result messages can
+     distinguish failure modes; err113-compliant (declared `errors.New` vars,
+     wrapped with `%w`).
+2. **`config.go`** — add `Method string` (`json:"method,omitempty"`) to
+   `DomainConfig`, `auto`/`rdap`/`whois` constants, `FromMap`/`GetConfig`
+   wiring, and `Validate` rejecting anything outside `{"", auto, rdap,
+   whois}` (empty stays the zero value = auto, so existing checks are
+   untouched).
+3. **`checker.go`** — inject testability without changing production
+   wiring: unexported `rdapClient *rdapClient` and `whoisFunc func(string)
+   (string, error)` fields on `DomainChecker`, both defaulting (nil) to
+   `defaultRDAPClient.lookup` / `whois.Whois` inside `Execute`. Dispatch on
+   `cfg.Method` (auto → try RDAP, on ANY error fall back to WHOIS; rdap →
+   RDAP only, error result on failure, no fallback; whois → today's path
+   unchanged, RDAP never invoked). Honor `ctx` for the RDAP path (was
+   previously ignored entirely). Keep `days_remaining`/`expiry_date`/
+   `registrar`/threshold logic byte-for-byte identical; add `"method":
+   "rdap"|"whois"` to `Output`.
+4. Update the WHOIS-only description in `web/docs/docs/features/check-types.md`
+   (Domain Expiration section) to describe RDAP-first/WHOIS-fallback and
+   document the `method` option. Leave `checkerdef/types.go`'s
+   `CheckTypeDomain` description untouched (doesn't mention WHOIS). Light-touch
+   fix the same wording in `server/CLAUDE.md` and `wiki/architecture.md` since
+   they're one-liners in the neighborhood.
+5. **Tests (`checker_test.go`)** — `httptest.NewServer` fake serving both the
+   bootstrap doc and one or more `/domain/{name}` responses, `rdapClient`
+   pointed at it via the injected field:
+   - RDAP success (method auto and method rdap)
+   - RDAP failure → WHOIS fallback (method auto), with a positive control
+     (RDAP success + method auto asserts the fallback whois func was NOT
+     called, e.g. via a call-counting stub) proving the fallback path isn't
+     vacuously passing
+   - unknown TLD (bootstrap doc has no entry) → auto falls back, rdap errors
+   - missing expiration event in the RDAP response → auto falls back, rdap
+     errors
+   - `method: whois` forces the legacy path and never touches the RDAP
+     client (assert via call counter / a client that errors if hit)
+   - `method: rdap` does NOT fall back to WHOIS on failure
+   - context cancellation: pre-cancelled `context.Context` + `method: rdap`
+     surfaces a context error in the result, never falls back (avoids a real
+     WHOIS network call in the failure path)
+
+### Frontend (`web/dash0/src/components/checks/form/types/dns.tsx` + `index.ts`)
+
+6. Extend `DomainState` with `method: string` (`""` | `"auto"` | `"rdap"` |
+   `"whois"`); `fromConfig` reads it via `getConfigField(config, "method")`;
+   `toConfig` writes `cfg.method` only when non-empty/non-"auto" (so the
+   default serializes to nothing, matching the backend's zero-value = auto).
+7. Add `DomainAdvancedFields` (a `Select` with Auto (default) / RDAP / WHOIS
+   options, mirroring `HttpOptionsFields`'s shape) and
+   `domainAdvancedSummary` (mirroring `httpOptionsSummary`: summary text +
+   `customized` only when `method` is set to something other than
+   `""`/`"auto"`) in `dns.tsx`.
+8. Register `domain: { Fields: DomainAdvancedFields, summary:
+   domainAdvancedSummary }` in `advancedFieldsRegistry` in `index.ts`, adding
+   the two new imports from `./dns`.
+9. Add/extend a Playwright spec asserting the Advanced section on a Domain
+   check exposes the method select, defaults to Auto, and round-trips a
+   non-default selection through save/reload (author-only if the local
+   `:4000` devloop can't run E2E in `SP_RUNMODE=test`).
