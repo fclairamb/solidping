@@ -269,3 +269,25 @@ func NewOrgTwilioSender(settings *models.TwilioSettings) PhoneSender {
 		VoiceFrom:           settings.VoiceFromNumber,
 	})
 }
+
+// ConfigureOVHDeliveryCallback points the OVH SMS account's service-level
+// `callBack` at callbackURL, reusing the already-constructed client so the
+// /auth/time delta is not fetched twice.
+//
+// A no-op (nil) unless the instance sender is actually OVH-backed and a
+// callback URL is available. Failures are returned rather than swallowed, but
+// callers should treat them as a warning: an operator can set the same URL in
+// the OVH control panel, and losing delivery receipts must not stop the
+// process from booting and paging people.
+func ConfigureOVHDeliveryCallback(ctx context.Context, sender Sender, callbackURL string) error {
+	ovh, ok := sender.(*ovhSender)
+	if !ok || callbackURL == "" {
+		return nil
+	}
+
+	if err := ovh.client.SetDeliveryCallback(ctx, callbackURL); err != nil {
+		return fmt.Errorf("register ovh delivery callback: %w", err)
+	}
+
+	return nil
+}

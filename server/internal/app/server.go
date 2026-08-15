@@ -79,6 +79,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/members"
 	"github.com/fclairamb/solidping/server/internal/handlers/oncallschedules"
 	"github.com/fclairamb/solidping/server/internal/handlers/orglogo"
+	"github.com/fclairamb/solidping/server/internal/handlers/ovhsmscb"
 	"github.com/fclairamb/solidping/server/internal/handlers/publicconfig"
 	"github.com/fclairamb/solidping/server/internal/handlers/realtimews"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
@@ -392,6 +393,18 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	svcList.SMS = smssvc.NewResolver(
 		dbService, credSvc, instanceSMSSender, instanceVoiceCaller, cfg.SMS.Sender,
 	)
+
+	// OVH has no per-job callback field: delivery receipts only arrive if the
+	// SMS account's service-level `callBack` points back here. Register it at
+	// startup, best-effort — an operator can set the same URL in the OVH
+	// control panel, and losing receipts must never stop the process from
+	// booting and paging people.
+	if err := smssvc.ConfigureOVHDeliveryCallback(
+		ctx, instanceSMSSender, ovhsmscb.CallbackURL(cfg.Server.BaseURL, ovhsmscb.ResolveToken(cfg)),
+	); err != nil {
+		slog.Warn("could not register the OVH SMS delivery callback; "+
+			"set it manually on the SMS account if you want delivery receipts", "error", err)
+	}
 
 	// Create auth service. The entitlements service gates SSO membership
 	// caps inside JoinOrgViaLogin (every OAuth/SAML/LDAP callback) and inside
@@ -1513,6 +1526,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	twilioIntegration.POST("/voice", twilioHandler.VerifyMiddleware(twilioHandler.HandleVoice))
 	twilioIntegration.POST("/voice/gather", twilioHandler.VerifyMiddleware(twilioHandler.HandleGather))
 	twilioIntegration.POST("/status", twilioHandler.VerifyMiddleware(twilioHandler.HandleStatus))
+
+	// OVH SMS delivery receipts. OVH does not sign its callbacks and offers no
+	// per-job callback field, so the route authenticates by construction with a
+	// high-entropy path token; an unknown token 404s. The route is registered
+	// unconditionally so a token rotation needs no restart-order coordination —
+	// the handler itself refuses every request while no token is configured.
+	ovhSMSHandler := ovhsmscb.NewHandler(s.dbService, ovhsmscb.ResolveToken(s.config))
+	ovhSMSIntegration := api.NewGroup("/integrations/ovhsms")
+	ovhSMSIntegration.GET(ovhsmscb.DLRPath, ovhSMSHandler.HandleDLR)
+	ovhSMSIntegration.POST(ovhsmscb.DLRPath, ovhSMSHandler.HandleDLR)
 
 	// Meta WhatsApp Cloud API inbound webhook (subscription handshake +
 	// delivery statuses + inbound replies). Instance-level, so unlike Twilio
