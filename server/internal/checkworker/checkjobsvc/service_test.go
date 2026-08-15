@@ -969,6 +969,61 @@ func TestClaimJobsBoundedClaimAheadWindow(t *testing.T) {
 	})
 }
 
+// TestClaimJobs_LongPeriodLeaseExpiry proves (rather than assumes) that a
+// long check period — e.g. domain's new 336h (2-week) interval option, spec
+// 2026-08-15-07 — flows correctly through claim-time lease accounting:
+//   - the job is still claimable when due, regardless of how long its period is
+//   - lease_expires_at is computed as latest(scheduled_at, now) + period + 30s
+//     (updateSingleJobLease, checkjobsvc/service.go) with NO cap at 24h — a
+//     wrong implementation (e.g. one that silently clamped the lease window)
+//     would fail this assertion.
+//
+//nolint:paralleltest // Test shares database state
+func TestClaimJobs_LongPeriodLeaseExpiry(t *testing.T) {
+	dbSvc, ctx := setupTestDB(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	svc := checkjobsvc.NewService(dbSvc.DB())
+	org := createTestOrg(t, ctx, dbSvc)
+	worker := createTestWorker(t, ctx, dbSvc, nil)
+
+	now := time.Now()
+	longPeriod := 336 * time.Hour // 2 weeks
+
+	// Due now (scheduled slightly in the past), long period.
+	job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-5*time.Second), nil)
+	setTestCheckJobPeriod(t, ctx, dbSvc, job.UID, longPeriod)
+
+	jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+	require.NoError(t, err)
+
+	var claimed *models.CheckJob
+
+	for _, j := range jobs {
+		if j.UID == job.UID {
+			claimed = j
+		}
+	}
+
+	require.NotNil(t, claimed, "a due-now job with a 2-week period must still be claimed")
+	require.NotNil(t, claimed.LeaseExpiresAt)
+
+	latest := *claimed.ScheduledAt
+	if now.After(latest) {
+		latest = now
+	}
+
+	expectedExpiry := latest.Add(longPeriod + 30*time.Second)
+	assert.WithinDuration(t, expectedExpiry, *claimed.LeaseExpiresAt, 2*time.Second,
+		"lease_expires_at must be scheduled_at/now + FULL period + 30s, not clamped to a shorter window")
+
+	// Sanity bound proving the assertion above is actually exercising the
+	// long-period path (not silently passing because it's ~= a short lease):
+	// the lease must be valid for well over 24h.
+	assert.Greater(t, claimed.LeaseExpiresAt.Sub(now), 24*time.Hour,
+		"a 2-week-period job's lease must extend well beyond 24h")
+}
+
 // TestClaimJobsFleetScaleClampBoundsParkedCount is the aggregate/fleet-scale
 // counterpart of TestClaimJobsBoundedClaimAheadWindow, modeling AC4 directly:
 // with ~28 jobs on a short (3-minute, i.e. 1-minute base period split across

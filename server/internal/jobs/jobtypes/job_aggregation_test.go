@@ -956,3 +956,127 @@ func TestAggregatePeriod_KeepsLifecycleMarkerRows(t *testing.T) {
 	r.NotNil(hourRows.Results[0].TotalChecks)
 	r.Equal(2, *hourRows.Results[0].TotalChecks)
 }
+
+// TestAggregatePeriod_SparseLongPeriodSeries proves — rather than assumes —
+// that the raw→hour rollup handles a check whose results are spaced far
+// apart in time (e.g. domain's new 336h/2-week period option, spec
+// 2026-08-15-07), not just a dense once-a-minute series:
+//   - each bucket that actually HAS a raw row aggregates to total_checks=1
+//     with the correct status, i.e. nothing divides by an assumed
+//     rows-per-bucket count;
+//   - the many hour buckets in between that have ZERO raw rows are simply
+//     never materialized as rollup rows — aggregatePeriod is driven by
+//     findAggregatableResults locating an actual row, not by iterating a
+//     fixed grid of buckets, so a sparse series cannot "corrupt" or
+//     zero-out buckets that never had data to begin with.
+func TestAggregatePeriod_SparseLongPeriodSeries(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("agg-sparse-org", "")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "agg-sparse-check", "domain")
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	// Remove the auto-seeded "created" marker so it doesn't leak into our
+	// synthetic old windows below (same cleanup as
+	// TestAggregatePeriod_KeepsLifecycleMarkerRows).
+	seeded, err := dbSvc.ListResults(ctx, &models.ListResultsFilter{
+		OrganizationUID: org.UID,
+		CheckUIDs:       []string{check.UID},
+		Limit:           10,
+	})
+	r.NoError(err)
+
+	seededUIDs := make([]string, 0, len(seeded.Results))
+	for _, row := range seeded.Results {
+		seededUIDs = append(seededUIDs, row.UID)
+	}
+
+	if len(seededUIDs) > 0 {
+		_, delErr := dbSvc.DeleteResults(ctx, org.UID, seededUIDs)
+		r.NoError(delErr)
+	}
+
+	// Two raw executions 336 hours (2 weeks) apart, both older than the
+	// default 24h raw-retention floor so both are ready to aggregate.
+	firstHour := time.Now().UTC().Add(-400 * time.Hour).Truncate(time.Hour)
+	secondHour := firstHour.Add(336 * time.Hour)
+
+	newRaw := func(hour time.Time, status models.ResultStatus) *models.Result {
+		res := models.NewResult(org.UID, check.UID, status, 0.1)
+		res.PeriodStart = hour.Add(1 * time.Minute)
+		r.NoError(dbSvc.CreateResult(ctx, res))
+
+		return res
+	}
+
+	first := newRaw(firstHour, models.ResultStatusUp)
+	second := newRaw(secondHour, models.ResultStatusDown)
+
+	jctx := &jobdef.JobContext{DBService: dbSvc, Logger: slog.Default()}
+	run := &AggregationJobRun{}
+
+	// Aggregate repeatedly: each call finds and compacts exactly one
+	// check-region's ready bucket (findAggregatableResults returns ONE
+	// pair per call), so two calls are needed to roll up both sparse rows.
+	aggregatedOnce, aggErr := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
+	r.NoError(aggErr)
+	r.True(aggregatedOnce, "expected the first sparse bucket to aggregate")
+
+	aggregatedTwice, aggErr := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
+	r.NoError(aggErr)
+	r.True(aggregatedTwice, "expected the second sparse bucket (2 weeks later) to aggregate")
+
+	// A third call must find nothing left to aggregate — no phantom
+	// zero-row buckets were ever created for the ~335 empty hours between.
+	aggregatedThrice, aggErr := run.aggregatePeriod(ctx, jctx, org.UID, periodRaw, periodHour)
+	r.NoError(aggErr)
+	r.False(aggregatedThrice, "no third bucket should exist to aggregate")
+
+	// Both raw rows must have been rolled up and deleted.
+	_, err = dbSvc.GetResult(ctx, first.UID)
+	r.Error(err, "first sparse raw row must be deleted after aggregation")
+	_, err = dbSvc.GetResult(ctx, second.UID)
+	r.Error(err, "second sparse raw row must be deleted after aggregation")
+
+	// Exactly two hour rollups exist — one per real data point, zero for
+	// the empty hours in between — each with total_checks=1 and the
+	// correct dominant status (never a count inflated/deflated by an
+	// assumed bucket size).
+	hourRows, err := dbSvc.ListResults(ctx, &models.ListResultsFilter{
+		OrganizationUID: org.UID,
+		CheckUIDs:       []string{check.UID},
+		PeriodTypes:     []string{periodHour},
+		Limit:           10,
+	})
+	r.NoError(err)
+	r.Len(hourRows.Results, 2, "exactly one hour rollup per real data point, no phantom empty buckets")
+
+	byPeriodStart := map[time.Time]*models.Result{}
+	for _, row := range hourRows.Results {
+		byPeriodStart[row.PeriodStart.UTC()] = row
+	}
+
+	firstBucket, ok := byPeriodStart[firstHour]
+	r.True(ok, "expected a rollup at the first bucket's hour")
+	r.NotNil(firstBucket.TotalChecks)
+	r.Equal(1, *firstBucket.TotalChecks)
+	r.NotNil(firstBucket.SuccessfulChecks)
+	r.Equal(1, *firstBucket.SuccessfulChecks, "the Up row must count as successful")
+
+	secondBucket, ok := byPeriodStart[secondHour]
+	r.True(ok, "expected a rollup at the second bucket's hour, 2 weeks later")
+	r.NotNil(secondBucket.TotalChecks)
+	r.Equal(1, *secondBucket.TotalChecks)
+	r.NotNil(secondBucket.SuccessfulChecks)
+	r.Equal(0, *secondBucket.SuccessfulChecks, "the Down row must NOT count as successful")
+}

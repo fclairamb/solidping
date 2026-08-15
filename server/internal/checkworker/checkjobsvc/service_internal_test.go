@@ -74,6 +74,16 @@ func TestClampAhead(t *testing.T) {
 			period:   timeutils.Duration(3 * time.Minute), // 3 regions x 1m base -> period/2=90s > floor
 			want:     maxClaimAheadFloor,
 		},
+		{
+			// A 2-week (336h) period — domain's new long-interval option
+			// (spec 2026-08-15-07) — must clamp to the SAME 30s floor as any
+			// other long period, not blow up or degrade to something else
+			// once period/2 measures in days instead of minutes.
+			name:     "TwoWeekPeriodStillClampsToFloor",
+			maxAhead: 5 * time.Minute,
+			period:   timeutils.Duration(336 * time.Hour), // period/2 = 168h, way above floor
+			want:     maxClaimAheadFloor,
+		},
 	}
 
 	for _, tc := range tests {
