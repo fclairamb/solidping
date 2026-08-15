@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	smssvc "github.com/fclairamb/solidping/server/internal/integrations/sms"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
@@ -70,7 +71,18 @@ func (s *TwilioSender) Send(ctx context.Context, jctx *jobdef.JobContext, payloa
 
 	body := s.buildBody(jctx, payload, settings)
 
-	client := twilio.NewClientWithBaseURL(settings.AccountSID, settings.AuthToken, s.resolveBaseURL(settings.Region))
+	// Goes through the provider-neutral seam like every other send path. This
+	// one is always bring-your-own by construction — a channel target IS a
+	// per-org connection — but there is no reason for it to be the last place
+	// still building a concrete provider client by hand.
+	sender := smssvc.NewTwilioSender(&smssvc.TwilioCredentials{
+		AccountSID:          settings.AccountSID,
+		AuthToken:           settings.AuthToken,
+		Region:              settings.Region,
+		BaseURL:             s.BaseURL,
+		From:                settings.FromNumber,
+		MessagingServiceSID: settings.MessagingServiceSID,
+	})
 
 	var statusCallback string
 	if payload.AppBaseURL != "" {
@@ -80,19 +92,17 @@ func (s *TwilioSender) Send(ctx context.Context, jctx *jobdef.JobContext, payloa
 
 	var lastSID string
 	for _, toNumber := range settings.ToNumbers {
-		res, sendErr := client.SendSMS(ctx, &twilio.SendSMSParams{
-			To:                  toNumber,
-			From:                settings.FromNumber,
-			MessagingServiceSID: settings.MessagingServiceSID,
-			Body:                body,
-			StatusCallback:      statusCallback,
+		res, sendErr := sender.SendSMS(ctx, &smssvc.SendParams{
+			To:             toNumber,
+			Body:           body,
+			StatusCallback: statusCallback,
 		})
 		if sendErr != nil {
 			return fmt.Errorf("sending SMS to %s: %w", toNumber, sendErr)
 		}
 
 		if res != nil {
-			lastSID = res.SID
+			lastSID = res.ProviderMessageID
 		}
 	}
 

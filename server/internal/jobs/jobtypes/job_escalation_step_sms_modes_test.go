@@ -395,3 +395,53 @@ func (f *fakeTwilio) lastForm(t *testing.T) url.Values {
 
 	return f.forms[len(f.forms)-1]
 }
+
+// TestPerOrgCapRefusesSendInBothModes pins the third guard's scope. Unlike the
+// two instance-spend guards, the per-org runaway cap applies to EVERY send
+// whoever pays — including a bring-your-own one — and it too must refuse
+// rather than merely count.
+func TestPerOrgCapRefusesSendInBothModes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		withOrgInt bool
+	}{
+		{"server-provided", false},
+		{"bring-your-own", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			ctx := context.Background()
+
+			env := setupPhoneEnv(t, tt.withOrgInt, "")
+			orgFake, orgSrv := newFakeTwilio(t)
+			env.useFakeTwilio(orgSrv)
+
+			instanceFake, instanceSrv := newFakeTwilio(t)
+			env.useInstanceSender(instanceTwilioSender(t, instanceSrv.URL), nil, "+15550001111")
+
+			// A per-org cap of one SMS/hour, and no instance-spend guard at all
+			// so only the per-org one can be responsible for a refusal.
+			env.jctx.Services.Entitlements = entitlements.NewService(
+				env.db, entitlements.DefaultsFor(config.DeploymentModeSelfHosted), 0,
+				entitlements.WithRunawayCaps(1, 10),
+			)
+
+			total := func() int { return orgFake.smsCount() + instanceFake.smsCount() }
+
+			r.Equal(1, newRun().dispatchRoute(ctx, env.jctx, slog.Default(), env.incident,
+				verifiedPhoneRoute(env.org.UID), smsFilter()))
+			r.Equal(1, total())
+
+			r.Equal(0, newRun().dispatchRoute(ctx, env.jctx, slog.Default(), env.incident,
+				verifiedPhoneRoute(env.org.UID), smsFilter()),
+				"the per-org cap must refuse the second send")
+			r.Equal(1, total(), "the refused send must never reach any provider")
+		})
+	}
+}
