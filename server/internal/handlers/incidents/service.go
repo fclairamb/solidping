@@ -2518,9 +2518,14 @@ func (s *Service) commentAuthorName(ctx context.Context, req *AddCommentRequest)
 }
 
 // queueCommentNotifications fans an incident comment out to the channels
-// attached to the incident's check (or, for a group incident, to the union of
-// its currently-failing members' channels — the same connection set the
-// lifecycle events use).
+// attached to the incident's check, or — for a group incident — to the union
+// of EVERY member check's channels.
+//
+// Deliberately not filtered to currently-failing members the way a mid-incident
+// lifecycle event is: a comment is discussion about the group incident as a
+// whole, and a channel that heard it open should hear the discussion even if
+// its own member check has since recovered. Same reasoning that puts recovered
+// members back in scope for `incident.resolved`.
 //
 // Two filters apply on top of that set, and both live somewhere reusable
 // rather than inline here:

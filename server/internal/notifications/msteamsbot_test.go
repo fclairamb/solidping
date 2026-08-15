@@ -427,3 +427,47 @@ func TestMSTeamsBotSender_RejectsUncapturedDefaultChannel(t *testing.T) {
 	r.ErrorIs(err, ErrMSTeamsBotUnknownDestination)
 	r.Empty(fake.recorded())
 }
+
+// TestMSTeamsBotSender_CommentRepliesWithoutTouchingCard is the correctness
+// point for comments on a stateful sender: the incident card shows LIVE
+// incident state, so a comment must be a reply under it and must never rewrite
+// it (which would erase "is DOWN" from the channel) or claim its state entry.
+func TestMSTeamsBotSender_CommentRepliesWithoutTouchingCard(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fake := newBotFake(t)
+	db := fake.storedCardDB()
+
+	payload := fake.payload(t, eventTypeIncidentComment)
+	payload.Comment = &CommentInfo{Text: "central DNS looks down", AuthorName: "Ada", Source: "web"}
+
+	r.NoError(fake.sender("bot-comment").Send(context.Background(), botJCtx(db), payload))
+
+	calls := fake.recorded()
+	r.Len(calls, 1, "a comment must produce exactly one reply, and no card update")
+	r.Equal(http.MethodPost, calls[0].Method)
+	r.Equal("existing-activity", calls[0].Activity.ReplyToID)
+	r.Contains(calls[0].Activity.Text, "central DNS looks down")
+	r.Contains(calls[0].Activity.Text, "Ada")
+
+	r.Empty(db.setStateCalls, "a comment must not claim the incident's card reference")
+}
+
+// TestMSTeamsBotSender_CommentWithoutCardIsSkipped is the orphan guard: a
+// channel that never heard the incident open gets no context-free comment.
+func TestMSTeamsBotSender_CommentWithoutCardIsSkipped(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fake := newBotFake(t)
+
+	payload := fake.payload(t, eventTypeIncidentComment)
+	payload.Comment = &CommentInfo{Text: "hello?", AuthorName: "Ada"}
+
+	r.NoError(fake.sender("bot-comment-orphan").Send(
+		context.Background(), botJCtx(&mockDBService{}), payload))
+	r.Empty(fake.recorded())
+}

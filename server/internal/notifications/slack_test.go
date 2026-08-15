@@ -2468,3 +2468,71 @@ func TestSlackSender_IncidentHeadersCarryTheRef(t *testing.T) {
 		})
 	}
 }
+
+// TestSlackSender_Send_CommentNoThreadStateDoesNotPost is the orphan guard for
+// comments. Beyond "context-free message": posting top-level would CLAIM the
+// incident's thread mapping, so the eventual resolved notice would thread under
+// a comment instead of under the alert.
+func TestSlackSender_Send_CommentNoThreadStateDoesNotPost(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	payload := &Payload{
+		EventType: eventTypeIncidentComment,
+		Incident:  &models.Incident{UID: "incident-c1", OrganizationUID: "org-c1"},
+		Check:     &models.Check{},
+		Integration: &models.Integration{
+			Settings: models.JSONMap{"access_token": "xoxb-test-token", "channel_id": "C123"},
+		},
+		Comment: &CommentInfo{Text: "central DNS looks down", AuthorName: "Ada"},
+	}
+
+	db := &mockDBService{
+		getStateEntryFunc: func(_ context.Context, _ *string, _ string) (*models.StateEntry, error) {
+			return nil, nil //nolint:nilnil // no stored thread state
+		},
+	}
+	jctx := &jobdef.JobContext{DBService: db, Logger: slog.Default()}
+
+	r.NoError((&SlackSender{}).Send(context.Background(), jctx, payload))
+	r.Empty(db.setStateCalls, "a comment must never claim the incident's thread mapping")
+}
+
+// TestSlackSender_buildCommentThreadReply pins the rendered shape: author line
+// with the comment emoji, and the body quoted under it.
+func TestSlackSender_buildCommentThreadReply(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	name := "api-health"
+	payload := &Payload{
+		EventType: eventTypeIncidentComment,
+		Incident:  &models.Incident{UID: "inc-1", Number: 42},
+		Check:     &models.Check{Name: &name},
+		Comment: &CommentInfo{
+			Text: "central DNS looks down\nchecking resolvers", AuthorName: "Ada", Source: "slack",
+		},
+	}
+
+	msg := (&SlackSender{}).buildMessage(payload)
+	r.NotNil(msg)
+	r.Contains(msg.Text, "Ada")
+	r.Contains(msg.Text, "#42")
+	r.Contains(msg.Text, "api-health")
+	r.Contains(msg.Text, "via Slack")
+	// Every line of a multi-line comment is quoted, not just the first.
+	r.Contains(msg.Text, "> central DNS looks down")
+	r.Contains(msg.Text, "> checking resolvers")
+}
+
+// TestCommentAuthor_FallsBackToNeutralLabel keeps an unresolved author from
+// rendering as an empty byline in somebody's channel.
+func TestCommentAuthor_FallsBackToNeutralLabel(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.Equal("Someone", commentAuthor(nil))
+	r.Equal("Someone", commentAuthor(&CommentInfo{Text: "x"}))
+	r.Equal("Ada", commentAuthor(&CommentInfo{AuthorName: " Ada ", Text: "x"}))
+	r.Empty(commentText(nil))
+}

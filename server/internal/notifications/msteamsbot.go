@@ -100,11 +100,50 @@ func (s *MSTeamsBotSender) Send(ctx context.Context, jctx *jobdef.JobContext, pa
 		return nil
 	}
 
+	// A comment must never REPLACE the incident card — that card shows live
+	// incident state and someone reading the channel would lose it. It is
+	// posted as a reply under the existing card instead, and only when one
+	// exists (same orphan rule as resolved/reopened).
+	if payload.EventType == eventTypeIncidentComment {
+		if !hasCard(entry) {
+			return nil
+		}
+
+		return s.replyWithComment(ctx, jctx, appID, appSecret, entry, payload)
+	}
+
 	if hasCard(entry) {
 		return s.updateExistingCard(ctx, jctx, appID, appSecret, entry, payload)
 	}
 
 	return s.postNewCard(ctx, jctx, appID, appSecret, settings, payload, stateKey)
+}
+
+// replyWithComment posts an incident comment as a reply under the incident's
+// existing card, leaving both the card and its stored reference untouched.
+func (s *MSTeamsBotSender) replyWithComment(
+	ctx context.Context,
+	jctx *jobdef.JobContext,
+	appID, appSecret string,
+	entry *models.StateEntry,
+	payload *Payload,
+) error {
+	ref := cardRef(entry)
+
+	client := s.client(appID, appSecret, ref.ServiceURL, s.pinnedTenant(jctx))
+
+	reply := msteams.NewTextMessage(commentEmoji + " " + commentPlainBody(payload))
+
+	result, err := client.ReplyToActivity(ctx, ref.ConversationID, ref.ActivityID, reply)
+	if err != nil {
+		return fmt.Errorf("replying with microsoft teams comment: %w", err)
+	}
+
+	if result != nil {
+		payload.MessageID = result.ID
+	}
+
+	return nil
 }
 
 // credentials resolves the instance-level Entra app credentials.
@@ -352,8 +391,6 @@ func (s *MSTeamsBotSender) titleAndColor(payload *Payload, checkName string) (st
 	case eventTypeIncidentReopened:
 		return fmt.Sprintf("🔁 %s REOPENED (relapse #%d)", checkName, payload.Incident.RelapseCount),
 			msteams.CardColorAttention
-	case eventTypeIncidentComment:
-		return commentEmoji + " " + checkName + " — comment", msteams.CardColorAccent
 	default:
 		return "ℹ️ " + checkName, ""
 	}
@@ -368,17 +405,12 @@ func (s *MSTeamsBotSender) buildFacts(payload *Payload, checkName string) []mste
 	}
 
 	switch {
-	case payload.EventType == eventTypeIncidentComment:
-		facts = append(facts,
-			msteams.CardFact{Title: fieldLabelAuthor, Value: commentAuthor(payload.Comment)},
-			msteams.CardFact{Title: fieldLabelComment, Value: commentText(payload.Comment)},
-		)
 	case payload.EventType == eventTypeIncidentResolved && payload.Incident.ResolvedAt != nil:
 		facts = append(facts, msteams.CardFact{
 			Title: "Duration",
 			Value: formatDuration(payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt)),
 		})
-	case payload.EventType != eventTypeIncidentResolved && payload.EventType != eventTypeIncidentComment:
+	case payload.EventType != eventTypeIncidentResolved:
 		facts = append(facts,
 			msteams.CardFact{Title: mmFieldCause, Value: getFailureReason(payload.Incident)},
 			msteams.CardFact{Title: "Started", Value: payload.Incident.StartedAt.UTC().Format(time.RFC1123)},
