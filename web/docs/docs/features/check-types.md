@@ -9,7 +9,7 @@ SolidPing supports **39 check types** across multiple categories for monitoring 
 
 ## Network Checks
 
-### HTTP/HTTPS
+### HTTP/HTTPS {#httphttps}
 
 Monitor web services, APIs, and websites.
 
@@ -72,7 +72,7 @@ body: '{"test": true}'
 expected_status: 200
 ```
 
-### TCP
+### TCP {#tcp}
 
 Monitor TCP services like databases, message queues, and custom services.
 
@@ -90,7 +90,7 @@ tcps://hostname:port  # With TLS
 | Timeout | Connection timeout | `10s` |
 | SSH tunnel | Dial through an [SSH check's bastion](./ssh-tunnels.md) — the hostname is resolved by the bastion | An `ssh` check with `expected_fingerprint` set |
 
-### UDP
+### UDP {#udp}
 
 Check UDP port reachability.
 
@@ -105,7 +105,7 @@ udp://hostname:port
 | Port | Target port | `53` |
 | Timeout | Connection timeout | `10s` |
 
-### ICMP (Ping)
+### ICMP (Ping) {#icmp-ping}
 
 Check host availability using ICMP echo requests.
 
@@ -126,7 +126,7 @@ icmp://hostname
 ICMP checks may require elevated permissions on some systems. Docker containers typically need `NET_RAW` capability.
 :::
 
-### DNS
+### DNS {#dns}
 
 Verify DNS resolution and record values.
 
@@ -143,7 +143,7 @@ dns://8.8.8.8/example.com?type=MX
 | Type | Record type | `A`, `AAAA`, `MX`, `TXT`, `CNAME`, `NS`, `SOA` |
 | Expected | Expected values | `93.184.216.34` |
 
-### WebSocket
+### WebSocket {#websocket}
 
 Monitor WebSocket endpoint availability.
 
@@ -158,7 +158,7 @@ wss://hostname/path  # With TLS
 | URL | WebSocket endpoint | `wss://api.example.com/ws` |
 | Timeout | Connection timeout | `10s` |
 
-### RDP (Remote Desktop)
+### RDP (Remote Desktop) {#rdp-remote-desktop}
 
 Monitor Remote Desktop Protocol servers. Unlike a plain TCP/3389 port probe, this checker performs the **pre-auth RDP negotiation handshake** (X.224 Connection Request/Confirm, MS-RDPBCGR): a valid answer proves the RDP listener (TermService, xrdp, …) actually parsed the request — not just that a firewall forwards the port. The handshake needs **no credentials** and stops before any authentication.
 
@@ -181,7 +181,7 @@ RDP hosts are typically reachable only from inside a network — run the check f
 
 ## Security & Certificates
 
-### SSL/TLS Certificate
+### SSL/TLS Certificate {#ssltls-certificate}
 
 Monitor SSL/TLS certificate expiration and validity.
 
@@ -198,7 +198,7 @@ Monitor SSL/TLS certificate expiration and validity.
 - Chain validation
 - Hostname verification
 
-### Domain Expiration
+### Domain Expiration {#domain-expiration}
 
 Monitor domain name registration expiration. Lookups go through RDAP
 (RFC 7480–7484), the structured, HTTPS-based successor to WHOIS, with an
@@ -216,7 +216,7 @@ The check result reports which path answered via a `method` field
 (`"rdap"` or `"whois"`) alongside the existing `expiry_date`, `days_remaining`,
 and `registrar` fields.
 
-### DNSBL (DNS Blocklist)
+### DNSBL (DNS Blocklist) {#dnsbl-dns-blocklist}
 
 Check whether an IP address or hostname is listed on DNS-based blocklists (DNSBLs) such as Spamhaus, SpamCop, Barracuda, or UCEPROTECT. This is essential for monitoring the reputation of mail servers and public IPs.
 
@@ -235,7 +235,7 @@ Hostnames are resolved to IPv4 before lookup. The check **fails** when the targe
 
 ## Database Checks
 
-### PostgreSQL
+### PostgreSQL {#postgresql}
 
 Monitor PostgreSQL database connectivity and query execution.
 
@@ -250,7 +250,7 @@ postgres://user:password@hostname:5432/database
 | Query | Optional test query | `SELECT 1` |
 | Timeout | Connection timeout | `10s` |
 
-### MySQL / MariaDB
+### MySQL / MariaDB {#mysql--mariadb}
 
 Monitor MySQL or MariaDB database connectivity and query execution.
 
@@ -265,7 +265,7 @@ mysql://user:password@hostname:3306/database
 | Query | Optional test query | `SELECT 1` |
 | Timeout | Connection timeout | `10s` |
 
-### MongoDB
+### MongoDB {#mongodb}
 
 Monitor MongoDB connectivity using the ping command.
 
@@ -279,7 +279,7 @@ mongodb://user:password@hostname:27017/database
 | URL | Connection string | `mongodb://user:pass@db:27017/mydb` |
 | Timeout | Connection timeout | `10s` |
 
-### Redis
+### Redis {#redis}
 
 Monitor Redis server availability using the PING command.
 
@@ -294,7 +294,7 @@ redis://:password@hostname:6379
 | URL | Connection string | `redis://redis:6379` |
 | Timeout | Connection timeout | `10s` |
 
-### Microsoft SQL Server
+### Microsoft SQL Server {#microsoft-sql-server}
 
 Monitor MSSQL database connectivity and query execution.
 
@@ -309,7 +309,7 @@ sqlserver://user:password@hostname:1433?database=mydb
 | Query | Optional test query | `SELECT 1` |
 | Timeout | Connection timeout | `10s` |
 
-### Oracle Database
+### Oracle Database {#oracle-database}
 
 Monitor Oracle database connectivity and query execution.
 
@@ -324,7 +324,7 @@ oracle://user:password@hostname:1521/service
 | Query | Optional test query | `SELECT 1 FROM DUAL` |
 | Timeout | Connection timeout | `10s` |
 
-### ClickHouse
+### ClickHouse {#clickhouse}
 
 Monitor ClickHouse connectivity and query execution over the **native (binary)
 protocol** — not the HTTP interface — so the check exercises the same transport
@@ -348,7 +348,7 @@ server version is reported in the result output, and `connection_time_ms` /
 
 ## Email Services
 
-### SMTP
+### SMTP {#smtp}
 
 Monitor SMTP server availability with optional authentication.
 
@@ -367,7 +367,7 @@ smtps://hostname:465  # With SSL
 | Auth | Test authentication | `user:password` |
 | Timeout | Connection timeout | `10s` |
 
-### IMAP
+### IMAP {#imap}
 
 Monitor IMAP server availability and authentication.
 
@@ -392,7 +392,7 @@ automatically from port 993 if `tls`/`starttls` are both left unset, but
 spelling it out keeps a copy-pasted config unambiguous.
 :::
 
-### POP3
+### POP3 {#pop3}
 
 Monitor POP3 server availability and authentication.
 
@@ -417,7 +417,7 @@ automatically from port 995 if `tls`/`starttls` are both left unset, but
 spelling it out keeps a copy-pasted config unambiguous.
 :::
 
-### Email Reception (Passive Inbox)
+### Email Reception (Passive Inbox) {#email-reception-passive-inbox}
 
 Verify end-to-end email **delivery** rather than just server connectivity. SolidPing generates a unique address for the check; when a message arrives at that address, the check is marked up. This is ideal for monitoring a full sending pipeline (queue → relay → inbox).
 
@@ -433,7 +433,7 @@ Email-reception checks are receive-only — SolidPing waits for mail instead of 
 
 ## Remote Access
 
-### SSH
+### SSH {#ssh}
 
 Monitor SSH server availability.
 
@@ -448,7 +448,7 @@ ssh://hostname:22
 | Port | SSH port | `22` |
 | Timeout | Connection timeout | `10s` |
 
-### FTP
+### FTP {#ftp}
 
 Monitor FTP server availability.
 
@@ -463,7 +463,7 @@ ftp://hostname:21
 | Port | FTP port | `21` |
 | Timeout | Connection timeout | `10s` |
 
-### SFTP
+### SFTP {#sftp}
 
 Monitor SFTP server availability.
 
@@ -480,7 +480,7 @@ sftp://hostname:22
 
 ## Messaging & Streaming
 
-### gRPC
+### gRPC {#grpc}
 
 Monitor gRPC services using the standard health check protocol (`grpc.health.v1`).
 
@@ -497,7 +497,7 @@ grpc://hostname:50051
 | TLS | Enable TLS | `true` / `false` |
 | Timeout | Connection timeout | `10s` |
 
-### Kafka
+### Kafka {#kafka}
 
 Monitor Apache Kafka broker connectivity.
 
@@ -511,7 +511,7 @@ kafka://hostname:9092
 | Broker | Kafka broker address | `kafka:9092` |
 | Timeout | Connection timeout | `10s` |
 
-### RabbitMQ
+### RabbitMQ {#rabbitmq}
 
 Monitor RabbitMQ message queue connectivity.
 
@@ -525,7 +525,7 @@ amqp://user:password@hostname:5672
 | URL | AMQP connection string | `amqp://guest:guest@rabbitmq:5672` |
 | Timeout | Connection timeout | `10s` |
 
-### MQTT
+### MQTT {#mqtt}
 
 Monitor MQTT broker connectivity via subscription.
 
@@ -543,7 +543,7 @@ mqtts://hostname:8883  # With TLS
 
 ## Telephony
 
-### SIP (VoIP)
+### SIP (VoIP) {#sip-voip}
 
 Monitor SIP servers used for voice/VoIP, either by checking reachability with an `OPTIONS` ping or by verifying that a user can register (`REGISTER` with digest authentication).
 
@@ -571,7 +571,7 @@ tls://host:5061
 - **OPTIONS mode** succeeds when the server returns a valid SIP status code (matching `expect_status` if set).
 - **REGISTER mode** performs the standard two-step challenge/response and succeeds only on a final `200 OK`.
 
-### NTP (Time Server)
+### NTP (Time Server) {#ntp-time-server}
 
 Monitor an NTP time server. Unlike a plain UDP/123 reachability probe, this checker sends a real NTP request and judges the server **as a clock**: it confirms the server returns a valid response and reports itself healthy (stratum, leap indicator, and root distance, via the server's own self-report — no trust in the worker's clock). Two optional, opt-in thresholds let you also alert on the measured clock offset and on the server's stratum depth.
 
@@ -595,7 +595,7 @@ NTP uses outbound **UDP port 123**, which is frequently blocked by egress firewa
 
 ## Infrastructure
 
-### SNMP
+### SNMP {#snmp}
 
 Monitor devices via SNMP protocol.
 
@@ -607,7 +607,7 @@ Monitor devices via SNMP protocol.
 | Version | SNMP version | `2c` |
 | Timeout | Connection timeout | `10s` |
 
-### Docker
+### Docker {#docker}
 
 Monitor remote Docker daemon connectivity.
 
@@ -623,7 +623,7 @@ docker://hostname:2375
 | TLS | Enable TLS | `true` / `false` |
 | Timeout | Connection timeout | `10s` |
 
-### A2S Game Server (Source / Steam)
+### A2S Game Server (Source / Steam) {#a2s-game-server-source--steam}
 
 Query Source-engine and Steam game servers using the Valve A2S protocol (`A2S_INFO`).
 
@@ -633,7 +633,7 @@ Query Source-engine and Steam game servers using the Valve A2S protocol (`A2S_IN
 | Port | Query port | `27015` |
 | Timeout | Connection timeout | `10s` |
 
-### Minecraft
+### Minecraft {#minecraft}
 
 Monitor Minecraft servers (both Java and Bedrock editions), with optional player-count thresholds.
 
@@ -648,7 +648,7 @@ Monitor Minecraft servers (both Java and Bedrock editions), with optional player
 
 The check reports online players, max players, MOTD, and version. It fails if the query fails or the player count falls outside the configured bounds.
 
-### Freebox Line (xDSL / FTTH)
+### Freebox Line (xDSL / FTTH) {#freebox-line-xdsl--ftth}
 
 Monitor the quality of a Freebox broadband line (xDSL or FTTH) through the Freebox OS API. The check connects via a stored **Freebox integration connection** rather than a direct address.
 
@@ -664,7 +664,7 @@ Monitor the quality of a Freebox broadband line (xDSL or FTTH) through the Freeb
 
 The check reports sync rates, SNR, attenuation, CRC counts (xDSL) or optical power and SFP details (FTTH), and fails when the WAN is down, the link is not trained, or any configured threshold is violated.
 
-### Kubernetes (Workload Replica Health)
+### Kubernetes (Workload Replica Health) {#kubernetes-workload-replica-health}
 
 Monitor a Kubernetes workload's replica health — the structural analog of how the Docker check mirrors a container's HEALTHCHECK. The check connects via a stored **Kubernetes cluster connection** (an integration of type `kubernetes`) referenced by UID, never an inline credential.
 
@@ -726,7 +726,7 @@ subjects:
 
 ## Special Check Types
 
-### Heartbeat
+### Heartbeat {#heartbeat}
 
 Passive monitoring that expects incoming pings at regular intervals. Instead of SolidPing checking a service, the service pings SolidPing to report it's alive.
 
@@ -823,7 +823,7 @@ pushes for a few days would trip the grace window and page someone for
 nothing. Reporting push-triggered CI failures is a different, useful feature,
 but it isn't this one.
 
-### JavaScript
+### JavaScript {#javascript}
 
 Custom monitoring scripts with arbitrary logic. Write JavaScript code that runs on each check cycle.
 
@@ -835,7 +835,7 @@ Minimum period: `30s` (default `1m`) — see [Check Intervals](#check-intervals)
 - Conditional checks based on time or state
 - Aggregating multiple checks into one
 
-### Browser
+### Browser {#browser}
 
 Headless browser-based monitoring using a real browser engine.
 
