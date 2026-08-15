@@ -257,7 +257,11 @@ test.describe("Status page appearance editor", () => {
     const version = publicPage.locator(".sp-version");
     await expect(logoImg).toBeVisible({ timeout: 15000 });
     await expect(version).toBeVisible({ timeout: 15000 });
-    expect((await logoImg.boundingBox())?.width).toBeCloseTo(32, 0);
+    // 26 tracks <Logo size={26}> in status0's status-page-view.tsx header —
+    // update both together. The number itself is not the contract; what this
+    // baseline buys is that the app's own size is something other than the
+    // 140px the operator sets below, so that assertion cannot pass vacuously.
+    expect((await logoImg.boundingBox())?.width).toBeCloseTo(26, 0);
 
     // --- Technique 1: repaint the <img> and resize it ----------------------
     await editor.fill(
