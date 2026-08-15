@@ -403,6 +403,61 @@ func TestDomainChecker_Execute_MethodWhoisSkipsRDAPEntirely(t *testing.T) {
 	require.Equal(t, int32(0), srv.domainHits.Load(), "method=whois must never contact RDAP")
 }
 
+func TestDomainChecker_Execute_GradedExpiryTiers(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		daysOut      int
+		warningDays  int
+		criticalDays int
+		wantStatus   checkerdef.Status
+		wantSeverity string
+	}{
+		{
+			name: "beyond both tiers → up, no severity",
+			// Comfortably beyond both tiers even after the whole-day floor.
+			daysOut: 100, warningDays: 30, criticalDays: 7,
+			wantStatus: checkerdef.StatusUp, wantSeverity: checkerdef.SeverityNone,
+		},
+		{
+			name:    "inside warning, outside critical → warning",
+			daysOut: 20, warningDays: 30, criticalDays: 7,
+			wantStatus: checkerdef.StatusWarning, wantSeverity: checkerdef.SeverityWarning,
+		},
+		{
+			name:    "inside critical → down",
+			daysOut: 5, warningDays: 30, criticalDays: 7,
+			wantStatus: checkerdef.StatusDown, wantSeverity: checkerdef.SeverityCritical,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// A 12h buffer keeps the floor(time.Until/24h) computation from
+			// landing one day short of tt.daysOut due to test execution time.
+			expiry := time.Now().Add(time.Duration(tt.daysOut)*24*time.Hour + 12*time.Hour)
+			srv := newFakeRDAPServer(t, []string{"com"}, rdapSuccessHandler(expiry, "Registrar"))
+			whoisFunc, _ := countingWhoisFunc("")
+
+			checker := &DomainChecker{rdapClient: srv.client(), whoisFunc: whoisFunc}
+			cfg := &DomainConfig{
+				Domain:       "example.com",
+				WarningDays:  tt.warningDays,
+				CriticalDays: tt.criticalDays,
+			}
+
+			result, err := checker.Execute(context.Background(), cfg)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantStatus, result.Status)
+			require.Equal(t, tt.wantSeverity, result.Output["severity"])
+			require.Equal(t, tt.daysOut, result.Metrics["days_remaining"])
+		})
+	}
+}
+
 func TestDomainChecker_Execute_ContextCancellation(t *testing.T) {
 	t.Parallel()
 

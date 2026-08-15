@@ -14,9 +14,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
-// DefaultThresholdDays is the default threshold for domain expiration.
-const DefaultThresholdDays = 30
-
 // outputKeyMethod is the Output key naming which lookup path answered.
 const outputKeyMethod = "method"
 
@@ -126,14 +123,16 @@ func (c *DomainChecker) Execute(ctx context.Context, config checkerdef.Config) (
 
 	daysRemaining := int(time.Until(expiryDate).Hours() / hoursPerDay)
 
-	threshold := cfg.ThresholdDays
-	if threshold <= 0 {
-		threshold = DefaultThresholdDays
-	}
+	warningDays, criticalDays := cfg.effectiveThresholds()
+	status, severity := checkerdef.GradedExpiryStatus(daysRemaining, warningDays, criticalDays)
 
-	status := checkerdef.StatusUp
-	if daysRemaining <= threshold {
-		status = checkerdef.StatusDown
+	output := map[string]any{
+		checkerdef.OutputKeyDomain: cfg.Domain,
+		"expiry_date":              expiryDate.Format(time.RFC3339),
+		"days_remaining":           daysRemaining,
+		"registrar":                registrar,
+		outputKeyMethod:            method,
+		"severity":                 severity,
 	}
 
 	return &checkerdef.Result{
@@ -143,13 +142,7 @@ func (c *DomainChecker) Execute(ctx context.Context, config checkerdef.Config) (
 			"days_remaining": daysRemaining,
 			"duration_ms":    float64(duration.Microseconds()) / microsecondsPerMillisecond,
 		},
-		Output: map[string]any{
-			checkerdef.OutputKeyDomain: cfg.Domain,
-			"expiry_date":              expiryDate.Format(time.RFC3339),
-			"days_remaining":           daysRemaining,
-			"registrar":                registrar,
-			outputKeyMethod:            method,
-		},
+		Output: output,
 	}, nil
 }
 

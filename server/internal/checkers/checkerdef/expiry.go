@@ -16,8 +16,8 @@ const (
 // GradedExpiryStatus maps a days-remaining value onto a two-tier expiry policy,
 // returning the Status to report and a severity label for output. It is the
 // single source of truth for the tiering rule shared by expiry-aware checkers
-// (checkssl today; checkdomain in a follow-up) so the comparison literal is not
-// duplicated across checkers.
+// (checkssl and checkdomain) so the comparison literal is not duplicated
+// across checkers.
 //
 // Tiering (callers pass the MINIMUM days-remaining across whatever they
 // monitor, e.g. the whole certificate chain):
