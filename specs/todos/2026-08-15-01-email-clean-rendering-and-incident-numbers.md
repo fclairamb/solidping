@@ -124,3 +124,72 @@ builders once migrated.
    without error there.
 5. Existing List-Unsubscribe behavior for status-subscriber and per-recipient
    incident emails is unchanged.
+
+## Implementation Plan
+
+1. **Incident number plumbing (B).** Add `"IncidentNumber": payload.Incident.Number`
+   to `buildIncidentViewModel` (`notifications/email.go`). Update all four
+   `incident-*.html` templates: subject appends ` (#N)` when `IncidentNumber > 0`
+   (legacy incidents predating the backfill may still be 0 — never render `#0`),
+   and a new `Incident` details-table row (`#N`, linked to `IncidentURL` when
+   present) plus a matching `Incident: #N` line in the `text` block. Update
+   `formatter_test.go`'s `incidentViewModel()` helper and assertions, and
+   `emailpreview/fixtures.go`'s `incidentFixture()`.
+
+2. **Escalation-policy email (A.1).** New `escalation.html` template (statusbanner
+   `escalated`, details table: Check/Started at/Failure count/Incident #N,
+   dashboard button, no ack/unsubscribe — this is an internal paging email, not a
+   per-recipient incident notification). In `job_escalation_step.go`,
+   `sendEscalationEmail` builds a view model (check name/URL via
+   `DBService.GetCheck`, org slug via `DBService.GetOrganization`, incident
+   number/URL, started-at, failure count) and renders through
+   `jctx.Services.EmailFormatter.Format("escalation.html", ...)` instead of
+   `fmt.Sprintf`; nil-guard `EmailFormatter` alongside the existing `EmailSender`
+   guard. Update `job_escalation_step_phone_test.go`'s `setupPhoneEnv` to wire a
+   real `email.NewFormatter()` into `services.Registry.EmailFormatter` (its
+   `TestDispatch_EmailSlackBehavesAsToday` asserts a real email send). Add an
+   `escalation.html` fixture + entry in `emailpreview/fixtures.go` and
+   `handler_test.go`'s `shippedTemplates()`.
+
+3. **Admin test email + user-notification test email (A.2, A.4).** New
+   `test-email.html` template (data-driven `Subject`/`Heading`/`Body` fields, one
+   template for both call sites). `system/service.go`'s `Service` gains a
+   `formatter email.Formatter` field + `SetEmailFormatter` setter (mirrors
+   `SetEmailInboxManager`), wired in `server.go`; `TestEmail` renders through it
+   instead of hand-rolled `<h2>/<p>`. `usernotifications.EmailSenderAdapter`
+   gains a `formatter email.Formatter` field via a new `NewEmailSenderAdapter`
+   parameter; `SendTestEmail` renders through it. Update `server.go` wiring for
+   both. Add a fixture + `shippedTemplates()` entry.
+
+4. **Member paging nudge (A.3).** New `paging-nudge.html` template (org name,
+   notifications-settings link). `members.Service` gains a
+   `formatter email.Formatter` field via a new `WithEmailFormatter` option,
+   wired in `server.go`. `SendPagingNudge` renders through it; nil-guard
+   alongside the existing `email == nil` check. Update
+   `coverage_provisioning_test.go`'s `newMemberFixture` to pass a real formatter
+   (existing assertions check `mailer.last.Text` for the link — template text
+   block must preserve that substring). Add a fixture + `shippedTemplates()`
+   entry.
+
+5. **Status-subscriber emails (A.5).** New `status-subscriber-confirm.html` and
+   `status-subscriber-update.html` templates — the update template covers
+   incident-opened/update/resolved via a `Kind`/`Label` field mirroring today's
+   `MailKind.label()` switch, preserving today's exact subjects (built in Go,
+   passed as a `Subject` field, not re-derived in the template) and the
+   `white-space:pre-wrap` **escaped-text** treatment of `BodyMarkdown` (no HTML
+   interpretation). `statussubscribers.NewHandler` and `NewNotifier` each gain a
+   `formatter email.Formatter` parameter, wired from `server.go`
+   (`s.services.EmailFormatter`). `sendConfirmMail` and `sendOne` render through
+   the formatter instead of `MailKind.buildHTML`/`buildText`. Delete
+   `buildHTML`/`buildText`/`writeConfirmBody`/`writeUpdateBody` from `mail.go`
+   once both call sites are migrated (keep `subject()`/`label()` — still used to
+   build the `Subject`/`Label` template fields). Update
+   `handler_test.go`/`notifier_test.go` call sites for the new constructor
+   params (real `email.NewFormatter()`); assertions on `HTML`/`Text` substrings
+   should still pass since the template preserves the same wording. Add two
+   fixtures + `shippedTemplates()` entries.
+
+6. **Sweep + gate.** Grep for `email.Message{` across `server/` to confirm every
+   remaining site's `Subject`/`HTML`/`Text` traces back to a `Format(...)` call
+   (acceptance criterion 1). Run `make build-backend lint-back test` as the
+   final gate.
