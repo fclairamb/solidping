@@ -30,7 +30,7 @@ Based on competitive analysis, prioritize these features:
 8. ✅ SSH, FTP, SFTP monitoring
 9. ✅ WebSocket, gRPC monitoring
 10. ✅ DNS monitoring (A, AAAA, CNAME, MX, NS, TXT)
-11. ✅ Domain expiration monitoring (WHOIS-based)
+11. ✅ Domain expiration monitoring (RDAP-first, WHOIS fallback)
 12. ✅ Database monitoring (Postgres, MySQL, MSSQL, Oracle, MongoDB, Redis)
 13. ✅ Message-queue monitoring (Kafka, RabbitMQ, MQTT)
 14. ✅ Docker container, SNMP, A2S/Minecraft game server, custom JS check, browser (Rod) monitoring

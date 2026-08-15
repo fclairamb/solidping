@@ -300,7 +300,7 @@ export function DomainAdvancedFields({
   onChange,
 }: CheckTypeFieldsProps<DomainState>) {
   return (
-    <div className="space-y-2 w-56">
+    <div className="space-y-2">
       <Label htmlFor="domainMethod">Lookup method</Label>
       <Select
         value={state.method || "auto"}

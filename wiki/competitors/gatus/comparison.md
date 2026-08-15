@@ -105,7 +105,7 @@ Both are:
 8. **Historical data**: Rich time-series data with min/max/avg metrics
 9. **Multiple status pages**: Per-organization status pages with sections
 10. **Incident management**: Sophisticated tracking with escalation, relapse detection
-11. **Domain expiration**: WHOIS-based monitoring (not available in Gatus)
+11. **Domain expiration**: RDAP-based monitoring with WHOIS fallback (not available in Gatus)
 12. **Distributed workers**: Multi-region monitoring with lease-based job distribution
 
 ### Feature Gaps in SolidPing
@@ -119,7 +119,7 @@ Areas where SolidPing should match Gatus:
 4. **Prometheus metrics**: `/metrics` endpoint
 5. **GitHub/GitLab integration**: Issue creation
 6. **Certificate expiration**: TLS monitoring (type defined, not yet implemented)
-7. **Domain expiration**: Domain tracking (done - WHOIS-based)
+7. **Domain expiration**: Domain tracking (done - RDAP-based, WHOIS fallback)
 8. **Multiple alert providers**: Currently 3 (Slack, Email, Webhooks) vs Gatus 20+
 
 **Should Have**:
