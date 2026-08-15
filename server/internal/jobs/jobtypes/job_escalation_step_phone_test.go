@@ -157,11 +157,15 @@ func setupPhoneEnv(t *testing.T, withTwilio bool, voiceFrom string) *phoneTestEn
 	cfg.Server.BaseURL = "https://app.example.com"
 
 	emails := &recordingEmail{}
+
+	formatter, err := email.NewFormatter()
+	require.NoError(t, err)
+
 	jctx := &jobdef.JobContext{
 		DBService: dbSvc,
 		Logger:    slog.Default(),
 		AppConfig: cfg,
-		Services:  &services.Registry{EmailSender: emails},
+		Services:  &services.Registry{EmailSender: emails, EmailFormatter: formatter},
 	}
 
 	return &phoneTestEnv{db: dbSvc, org: org, incident: incident, jctx: jctx, emails: emails}

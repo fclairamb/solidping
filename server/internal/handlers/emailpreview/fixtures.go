@@ -26,6 +26,8 @@ func fixtureFor(templateName string) (map[string]any, bool) {
 		return incidentFixture(), true
 	case "incident-resolved.html":
 		return resolvedIncidentFixture(), true
+	case "escalation.html":
+		return escalationFixture(), true
 	case "registration.html":
 		return map[string]any{
 			"ConfirmURL": "https://solidping.example/api/v1/auth/confirm?token=preview-token",
@@ -92,6 +94,25 @@ func incidentFixture() map[string]any {
 		"DocsURL":              "https://solidping.example/docs",
 		"UnsubscribeURL":       "https://solidping.example/unsubscribe?token=preview-unsub-token",
 		"UnsubscribeCheckName": "Production API",
+	}
+}
+
+// escalationFixture is the fixture for the escalation-policy email
+// (job_escalation_step.go's sendEscalationEmail) — a smaller view-model than
+// the four incident-lifecycle templates: no ack/unsubscribe (it's an internal
+// paging email, not a per-recipient incident notification).
+func escalationFixture() map[string]any {
+	incidentURL := "https://solidping.example/dash0/orgs/acme/incidents/" + fixtureIncidentUID
+
+	return map[string]any{
+		"CheckName":      "Production API",
+		"CheckURL":       "https://solidping.example/dash0/orgs/acme/checks/prod-api",
+		"IncidentNumber": fixtureIncidentNumber,
+		"IncidentURL":    incidentURL,
+		"StartedAt":      "2026-07-05 10:00:00",
+		"FailureCount":   3,
+		keyDashboardURL:  fixtureDashboardURL,
+		"DocsURL":        "https://solidping.example/docs",
 	}
 }
 
