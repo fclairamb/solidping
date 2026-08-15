@@ -516,6 +516,10 @@ func (s *Service) resolveOrganizationForOAuth(
 func (s *Service) updateExistingChannel(
 	ctx context.Context, channelUID string, oauthResp *OAuthResponse,
 ) (string, error) {
+	// The row already exists, so this is not a "new integration": carry the
+	// operator's current choices over instead of resetting them to defaults.
+	choices := s.existingOperatorChoices(ctx, channelUID)
+
 	settings := &models.SlackSettings{
 		TeamID:            oauthResp.Team.ID,
 		TeamName:          oauthResp.Team.Name,
@@ -523,9 +527,8 @@ func (s *Service) updateExistingChannel(
 		AccessToken:       oauthResp.AccessToken,
 		InstalledByUserID: oauthResp.AuthedUser.ID,
 		Scopes:            strings.Split(oauthResp.Scope, ","),
-		// The row already exists, so this is not a "new integration": carry the
-		// operator's current choice over instead of flipping it on.
-		MentionOnCall: s.existingMentionOnCall(ctx, channelUID),
+		MentionOnCall:     choices.MentionOnCall,
+		CommentIngestion:  choices.CommentIngestion,
 	}
 
 	settingsMap, err := settings.ToJSONMap()
@@ -580,22 +583,45 @@ func (s *Service) runIdentitySync(ctx context.Context, orgSlug, integrationUID s
 // identitySyncTimeout bounds the detached post-install auto-match.
 const identitySyncTimeout = 2 * time.Minute
 
-// existingMentionOnCall reads the mention_on_call flag off a stored Slack
-// integration. Defaults to false — for a row that already exists, "no opinion
-// recorded" means the historical behavior (no mentions), which is exactly what
-// the spec asks for existing integrations.
-func (s *Service) existingMentionOnCall(ctx context.Context, channelUID string) bool {
+// operatorSlackChoices are the SlackSettings fields an OPERATOR decides, as
+// opposed to the ones OAuth hands us. Both re-install paths rebuild the
+// settings blob from the OAuth response, so anything in here must be read off
+// the stored row and carried over — a re-install must never flip a setting the
+// operator already decided.
+//
+// Add a field here (not to one call site) when a new operator-owned Slack
+// setting ships, or a reconnect will silently discard it.
+type operatorSlackChoices struct {
+	// MentionOnCall defaults to false: for a row that already exists, "no
+	// opinion recorded" means the historical behavior (no mentions), which is
+	// what spec 2026-08-12-03 asks for existing integrations.
+	MentionOnCall bool
+	// CommentIngestion defaults to "" (== explicit), the safe direction: a
+	// pre-2026-08-15-08 row never opted into capturing every thread reply.
+	// A workspace that DID opt into "all" keeps it across a reconnect.
+	CommentIngestion string
+}
+
+// existingOperatorChoices reads the operator-owned settings off a stored Slack
+// integration. Every failure path returns the zero value, which is the
+// conservative default for each field.
+func (s *Service) existingOperatorChoices(
+	ctx context.Context, channelUID string,
+) operatorSlackChoices {
 	conn, err := s.db.GetChannel(ctx, channelUID)
 	if err != nil || conn == nil {
-		return false
+		return operatorSlackChoices{}
 	}
 
 	settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
 	if err != nil {
-		return false
+		return operatorSlackChoices{}
 	}
 
-	return settings.MentionOnCall
+	return operatorSlackChoices{
+		MentionOnCall:    settings.MentionOnCall,
+		CommentIngestion: settings.CommentIngestion,
+	}
 }
 
 // resolveOrganization derives the org display name and slug candidates from
@@ -647,10 +673,11 @@ func (s *Service) createOrUpdateConnection(
 
 	// Create Slack settings.
 	//
-	// mention_on_call is ON for a brand-new integration and preserved for an
-	// existing one (spec 2026-08-12-03, resolved question 1): a re-install must
-	// never flip a setting the operator already decided, and no stored row is
-	// ever backfilled.
+	// Operator-owned fields (mention_on_call, comment_ingestion) take their
+	// NEW-integration defaults here and are overwritten with the stored choice
+	// when the row already exists (spec 2026-08-12-03 resolved question 1, and
+	// spec 2026-08-15-08): a re-install must never flip a setting the operator
+	// already decided, and no stored row is ever backfilled.
 	settings := &models.SlackSettings{
 		TeamID:            oauthResp.Team.ID,
 		TeamName:          oauthResp.Team.Name,
@@ -659,10 +686,13 @@ func (s *Service) createOrUpdateConnection(
 		InstalledByUserID: oauthResp.AuthedUser.ID,
 		Scopes:            strings.Split(oauthResp.Scope, ","),
 		MentionOnCall:     true,
+		CommentIngestion:  models.SlackCommentIngestionExplicit,
 	}
 
 	if existingConn != nil {
-		settings.MentionOnCall = s.existingMentionOnCall(ctx, existingConn.UID)
+		choices := s.existingOperatorChoices(ctx, existingConn.UID)
+		settings.MentionOnCall = choices.MentionOnCall
+		settings.CommentIngestion = choices.CommentIngestion
 	}
 
 	settingsMap, err := settings.ToJSONMap()

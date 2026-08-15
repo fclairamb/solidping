@@ -157,3 +157,114 @@ func TestResolveResultChannelUID(t *testing.T) {
 		})
 	}
 }
+
+// setCommentIngestion rewrites a stored connection's comment_ingestion,
+// simulating an operator flipping the dashboard toggle.
+func setCommentIngestion(t *testing.T, svc *Service, connUID, mode string) {
+	t.Helper()
+	r := require.New(t)
+	ctx := t.Context()
+
+	conn, err := svc.db.GetChannel(ctx, connUID)
+	r.NoError(err)
+
+	settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
+	r.NoError(err)
+
+	settings.CommentIngestion = mode
+
+	settingsMap, err := settings.ToJSONMap()
+	r.NoError(err)
+
+	r.NoError(svc.db.UpdateChannel(ctx, connUID, &models.IntegrationUpdate{Settings: &settingsMap}))
+}
+
+// storedCommentIngestion reads the mode back off the row.
+func storedCommentIngestion(t *testing.T, svc *Service, connUID string) string {
+	t.Helper()
+	r := require.New(t)
+
+	conn, err := svc.db.GetChannel(t.Context(), connUID)
+	r.NoError(err)
+
+	settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
+	r.NoError(err)
+
+	return settings.CommentIngestion
+}
+
+// TestCreateOrUpdateConnection_PreservesCommentIngestion is the re-auth guard:
+// the install path rebuilds SlackSettings from the OAuth response, so an
+// operator-decided setting must be carried over explicitly or a reconnect
+// silently reverts a workspace that opted into capturing every thread reply.
+func TestCreateOrUpdateConnection_PreservesCommentIngestion(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc := setupSlackService(t)
+
+	org := models.NewOrganization("reinstall-ingestion", "")
+	r.NoError(svc.db.CreateOrganization(ctx, org))
+
+	oauthResp := fakeOAuthResponse("T-REINSTALL", "Acme")
+
+	connUID, err := svc.createOrUpdateConnection(ctx, org.UID, oauthResp)
+	r.NoError(err)
+
+	// A brand-new integration starts explicit.
+	r.Equal(models.SlackCommentIngestionExplicit, storedCommentIngestion(t, svc, connUID))
+
+	// The operator deliberately opts into capturing every thread reply…
+	setCommentIngestion(t, svc, connUID, models.SlackCommentIngestionAll)
+
+	// …and re-runs the install flow (token refresh, scope change, re-auth).
+	sameConnUID, err := svc.createOrUpdateConnection(ctx, org.UID, oauthResp)
+	r.NoError(err)
+	r.Equal(connUID, sameConnUID, "re-install must update the same row")
+
+	r.Equal(models.SlackCommentIngestionAll, storedCommentIngestion(t, svc, connUID),
+		"a re-install must never discard the operator's comment_ingestion choice")
+
+	// The OAuth-owned half is still refreshed, so this is a real re-install and
+	// not an accidental no-op that would make the assertion above vacuous.
+	conn, err := svc.db.GetChannel(ctx, connUID)
+	r.NoError(err)
+	r.Equal("xoxb-fake-token", conn.Settings["access_token"])
+}
+
+// TestUpdateExistingChannel_PreservesCommentIngestion is the same guard on the
+// OTHER re-install path — install triggered from the channel edit page, which
+// also rebuilds the settings blob from scratch.
+func TestUpdateExistingChannel_PreservesCommentIngestion(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc := setupSlackService(t)
+
+	org := models.NewOrganization("edit-page-ingestion", "")
+	r.NoError(svc.db.CreateOrganization(ctx, org))
+
+	conn := models.NewIntegration(org.UID, models.ConnectionTypeSlack, "Acme")
+	conn.Enabled = true
+	conn.Settings = models.JSONMap{
+		settingsKeyTeamID:   "T-EDITPAGE",
+		"access_token":      "xoxb-old",
+		"mention_on_call":   true,
+		"comment_ingestion": models.SlackCommentIngestionAll,
+	}
+	r.NoError(svc.db.CreateChannel(ctx, conn))
+
+	updated, err := svc.updateExistingChannel(ctx, conn.UID, fakeOAuthResponse("T-EDITPAGE", "Acme"))
+	r.NoError(err)
+	r.Equal(conn.UID, updated)
+
+	r.Equal(models.SlackCommentIngestionAll, storedCommentIngestion(t, svc, conn.UID),
+		"connecting from the edit page must never discard comment_ingestion")
+
+	// Both operator-owned fields survive, and the credentials really were
+	// rewritten (otherwise the assertions above prove nothing).
+	after, err := svc.db.GetChannel(ctx, conn.UID)
+	r.NoError(err)
+	r.Equal("xoxb-fake-token", after.Settings["access_token"])
+	r.Equal(true, after.Settings["mention_on_call"])
+}

@@ -3,6 +3,7 @@ package incidents_test
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -248,5 +249,151 @@ func TestAddComment_TelegramSourceAttributesToUser(t *testing.T) {
 		r.NotNil(cfg.Comment)
 		r.Equal("Bob", cfg.Comment.AuthorName)
 		r.Equal(incidents.CommentSourceTelegram, cfg.Comment.Source)
+	}
+}
+
+// attachChannelToCheck creates an enabled channel and wires it to an arbitrary
+// check (not just the setup's default one), returning it.
+func attachChannelToCheck(
+	t *testing.T, s *resolveSetup, checkUID string, connType models.ConnectionType, name string,
+) *models.Integration {
+	t.Helper()
+	r := require.New(t)
+	ctx := t.Context()
+
+	conn := models.NewIntegration(s.org.UID, connType, name)
+	conn.Enabled = true
+	r.NoError(s.dbSvc.CreateChannel(ctx, conn))
+	r.NoError(s.dbSvc.CreateCheckConnection(ctx, models.NewCheckConnection(checkUID, conn.UID, s.org.UID)))
+
+	return conn
+}
+
+// linkMember adds a check to a group incident's member list.
+//
+// currently_failing is set with a follow-up UPDATE rather than on the insert:
+// the column is `notnull,default:true`, so bun sends the DEFAULT for a false
+// zero value and a member asked to be "recovered" would silently come back
+// failing — which would make the no-CurrentlyFailing-filter assertion below
+// vacuous. The read-back is the guard against that regressing.
+func linkMember(t *testing.T, s *resolveSetup, incidentUID, checkUID string, currentlyFailing bool) {
+	t.Helper()
+	r := require.New(t)
+	ctx := t.Context()
+	now := time.Now()
+
+	r.NoError(s.dbSvc.UpsertIncidentMemberCheck(ctx, &models.IncidentMemberCheck{
+		IncidentUID:    incidentUID,
+		CheckUID:       checkUID,
+		JoinedAt:       now,
+		FirstFailureAt: now,
+		LastFailureAt:  now,
+		FailureCount:   1,
+	}))
+
+	r.NoError(s.dbSvc.UpdateIncidentMemberCheck(ctx, incidentUID, checkUID, &models.IncidentMemberUpdate{
+		CurrentlyFailing: &currentlyFailing,
+	}))
+
+	member, err := s.dbSvc.GetIncidentMemberCheck(ctx, incidentUID, checkUID)
+	r.NoError(err)
+	r.Equal(currentlyFailing, member.CurrentlyFailing, "member state must be what the test asked for")
+}
+
+// TestAddComment_GroupIncidentFansOutToEveryMembersChannels covers the second
+// half of commentFanoutConnections, which the per-check tests never reach.
+//
+// Three things are asserted at once because they are the three ways this
+// branch can break:
+//
+//  1. UNION — a channel attached to member A and a different channel attached
+//     to member B both get a job.
+//  2. DE-DUPLICATION — a channel attached to BOTH members gets exactly one job,
+//     not one per member.
+//  3. NO `CurrentlyFailing` FILTER — a member that has already recovered still
+//     contributes its channels. A comment is discussion about the group
+//     incident as a whole (service.go, queueCommentNotifications), so an
+//     "optimization" that copies queueGroupNotifications' mid-incident filter
+//     must fail this test rather than silently muting a channel.
+func TestAddComment_GroupIncidentFansOutToEveryMembersChannels(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	s := newResolveSetup(t)
+	ctx := t.Context()
+
+	group := models.NewCheckGroup(s.org.UID, "API Group", "api-group")
+	r.NoError(s.dbSvc.CreateCheckGroup(ctx, group))
+
+	failing := models.NewCheck(s.org.UID, "group-failing", "http")
+	failing.CheckGroupUID = &group.UID
+	r.NoError(s.dbSvc.CreateCheck(ctx, failing))
+
+	recovered := models.NewCheck(s.org.UID, "group-recovered", "http")
+	recovered.CheckGroupUID = &group.UID
+	r.NoError(s.dbSvc.CreateCheck(ctx, recovered))
+
+	// The group incident itself hangs off the failing member's check.
+	groupIncident := models.NewIncident(s.org.UID, failing.UID, time.Now().Add(-time.Minute), "group is down")
+	groupIncident.CheckGroupUID = &group.UID
+	r.NoError(s.dbSvc.CreateIncident(ctx, groupIncident))
+
+	linkMember(t, s, groupIncident.UID, failing.UID, true)
+	linkMember(t, s, groupIncident.UID, recovered.UID, false)
+
+	onlyFailing := attachChannelToCheck(t, s, failing.UID, models.ConnectionTypeDiscord, "failing-only")
+	onlyRecovered := attachChannelToCheck(t, s, recovered.UID, models.ConnectionTypeEmail, "recovered-only")
+
+	// One channel attached to BOTH members — the de-dup case.
+	shared := models.NewIntegration(s.org.UID, models.ConnectionTypeWebhook, "shared")
+	shared.Enabled = true
+	r.NoError(s.dbSvc.CreateChannel(ctx, shared))
+	r.NoError(s.dbSvc.CreateCheckConnection(ctx, models.NewCheckConnection(failing.UID, shared.UID, s.org.UID)))
+	r.NoError(s.dbSvc.CreateCheckConnection(ctx, models.NewCheckConnection(recovered.UID, shared.UID, s.org.UID)))
+
+	_, err := s.svc.AddComment(ctx, s.org.Slug, &incidents.AddCommentRequest{
+		IncidentUID: groupIncident.UID,
+		Text:        "both members are flapping",
+		Source:      incidents.CommentSourceWeb,
+	})
+	r.NoError(err)
+
+	targets, configs := commentJobTargets(t, s.dbSvc, s.org.UID)
+
+	// (1) union across members.
+	r.Contains(targets, onlyFailing.UID)
+	// (3) a recovered member still contributes — no CurrentlyFailing filter.
+	r.Contains(targets, onlyRecovered.UID, "a recovered group member must still receive comments")
+	r.Contains(targets, shared.UID)
+
+	// (2) exactly three deliveries: the shared channel was not double-sent, and
+	// the setup's own unrelated check channel is not in a group member's set.
+	//
+	// Asserted on the AUDIT rows, not just the job rows: jobsvc.CreateJob
+	// collapses two identical configs into one job by itself, so a lost
+	// de-duplication shows up as a duplicated incident_notifications row (the
+	// incident page listing the same channel twice) rather than a second send.
+	r.Len(configs, 3, "the shared channel must produce exactly one job")
+	r.Len(targets, 3)
+	r.NotContains(targets, s.connUID, "a channel on a non-member check must not be pulled in")
+
+	notifs, err := s.dbSvc.ListIncidentNotifications(ctx, s.org.UID, db.ListIncidentNotificationsFilter{
+		IncidentUID: groupIncident.UID,
+	})
+	r.NoError(err)
+
+	auditedConns := make(map[string]int, len(notifs))
+
+	for _, n := range notifs {
+		if n.EventType == string(models.EventTypeIncidentComment) && n.ConnectionUID != nil {
+			auditedConns[*n.ConnectionUID]++
+		}
+	}
+
+	r.Len(auditedConns, 3)
+	r.Equal(1, auditedConns[shared.UID], "the shared channel must be audited exactly once")
+
+	for _, cfg := range configs {
+		r.NotNil(cfg.Comment)
+		r.Equal("both members are flapping", cfg.Comment.Text)
 	}
 }

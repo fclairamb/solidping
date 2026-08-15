@@ -1510,24 +1510,32 @@ func (s *Service) queueGroupNotifications(
 			}
 
 			seen[conn.UID] = true
-			s.enqueueNotificationJob(ctx, orgUID, conn.UID, string(conn.Type), incidentUID, eventType)
+			s.enqueueNotificationJob(ctx, orgUID, conn, incidentUID, eventType, nil)
 		}
 	}
 }
 
-// enqueueNotificationJob marshals the config and creates a single job row.
-// Shared between per-check and group fan-out paths.
+// enqueueNotificationJob marshals the config, creates a single job row, and
+// records the pending audit row. Shared by EVERY fan-out path — per-check,
+// group, and comment — so the job config and the audit row can only ever be
+// built one way.
+//
+// comment is nil for lifecycle events and carries the body/author for
+// `incident.comment`; it is the only thing that differs between the paths,
+// which is why they are not separate functions.
 func (s *Service) enqueueNotificationJob(
-	ctx context.Context, orgUID, connectionUID, channelType, incidentUID string, eventType models.EventType,
+	ctx context.Context, orgUID string, conn *models.Integration,
+	incidentUID string, eventType models.EventType, comment *notifications.CommentInfo,
 ) {
 	config, err := json.Marshal(jobtypes.NotificationJobConfig{
-		ConnectionUID: connectionUID,
+		ConnectionUID: conn.UID,
 		IncidentUID:   incidentUID,
 		EventType:     string(eventType),
+		Comment:       comment,
 	})
 	if err != nil {
 		slog.WarnContext(ctx, "Failed to marshal notification config",
-			"connectionUid", connectionUID,
+			"connectionUid", conn.UID,
 			"incidentUid", incidentUID,
 			"error", err,
 		)
@@ -1538,7 +1546,7 @@ func (s *Service) enqueueNotificationJob(
 	job, err := s.jobsSvc.CreateJob(ctx, orgUID, string(jobdef.JobTypeNotification), config, nil)
 	if err != nil {
 		slog.WarnContext(ctx, "Failed to create notification job",
-			"connectionUid", connectionUID,
+			"connectionUid", conn.UID,
 			"incidentUid", incidentUID,
 			"error", err,
 		)
@@ -1550,7 +1558,7 @@ func (s *Service) enqueueNotificationJob(
 	if auditErr := s.db.CreateIncidentNotification(ctx, models.NewIncidentNotificationForJob(
 		orgUID, incidentUID, string(eventType),
 		models.IncidentNotificationSourceCheckConnection,
-		connectionUID, job.UID, channelType,
+		conn.UID, job.UID, string(conn.Type),
 		nil, nil,
 	)); auditErr != nil {
 		slog.WarnContext(ctx, "failed to create notification audit row", "error", auditErr)
@@ -1573,7 +1581,7 @@ func (s *Service) queueNotifications(
 			continue
 		}
 
-		s.enqueueNotificationJob(ctx, orgUID, conn.UID, string(conn.Type), incidentUID, eventType)
+		s.enqueueNotificationJob(ctx, orgUID, conn, incidentUID, eventType, nil)
 	}
 }
 
@@ -2565,7 +2573,7 @@ func (s *Service) queueCommentNotifications(
 			continue
 		}
 
-		s.enqueueCommentNotificationJob(ctx, orgUID, conn, incident.UID, comment)
+		s.enqueueNotificationJob(ctx, orgUID, conn, incident.UID, models.EventTypeIncidentComment, comment)
 	}
 }
 
@@ -2642,46 +2650,6 @@ func isCommentEchoOrigin(conn *models.Integration, req *AddCommentRequest) bool 
 	}
 
 	return settings.TeamID == req.EchoOriginTeamID
-}
-
-// enqueueCommentNotificationJob is enqueueNotificationJob with the comment
-// body attached. Kept separate rather than widening the lifecycle helper's
-// signature, so the lifecycle path stays exactly as it was.
-func (s *Service) enqueueCommentNotificationJob(
-	ctx context.Context, orgUID string, conn *models.Integration,
-	incidentUID string, comment *notifications.CommentInfo,
-) {
-	eventType := string(models.EventTypeIncidentComment)
-
-	config, err := json.Marshal(jobtypes.NotificationJobConfig{
-		ConnectionUID: conn.UID,
-		IncidentUID:   incidentUID,
-		EventType:     eventType,
-		Comment:       comment,
-	})
-	if err != nil {
-		slog.WarnContext(ctx, "Failed to marshal comment notification config",
-			"connectionUid", conn.UID, "incidentUid", incidentUID, "error", err)
-
-		return
-	}
-
-	job, err := s.jobsSvc.CreateJob(ctx, orgUID, string(jobdef.JobTypeNotification), config, nil)
-	if err != nil {
-		slog.WarnContext(ctx, "Failed to create comment notification job",
-			"connectionUid", conn.UID, "incidentUid", incidentUID, "error", err)
-
-		return
-	}
-
-	if auditErr := s.db.CreateIncidentNotification(ctx, models.NewIncidentNotificationForJob(
-		orgUID, incidentUID, eventType,
-		models.IncidentNotificationSourceCheckConnection,
-		conn.UID, job.UID, string(conn.Type),
-		nil, nil,
-	)); auditErr != nil {
-		slog.WarnContext(ctx, "failed to create comment notification audit row", "error", auditErr)
-	}
 }
 
 // UnacknowledgeIncident clears the acknowledgment on an incident. Use case:
