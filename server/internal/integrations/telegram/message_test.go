@@ -50,7 +50,11 @@ func TestBuildAlertHTML_EscapesEveryInterpolatedValue(t *testing.T) {
 	r.Contains(body, "A &amp; B &lt;script&gt;")
 	r.Contains(body, "Service &lt;Unavailable&gt; &amp; angry")
 	r.Contains(body, "acme&amp;co")
-	r.Contains(body, "incidents/abc?a=1&amp;b=2")
+
+	// IncidentURL is NOT rendered into the body — it ships as the View button
+	// (telegram.IncidentKeyboard) instead, so the message does not say it twice.
+	r.NotContains(body, "incidents/abc")
+	r.NotContains(body, "<a href")
 
 	// ...and no raw script tag or bare ampersand survived anywhere.
 	r.NotContains(body, "<script>")

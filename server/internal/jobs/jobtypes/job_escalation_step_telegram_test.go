@@ -212,7 +212,19 @@ func TestDispatch_TelegramFilterSendsAndSkipsEmail(t *testing.T) {
 	r.Contains(text, "🔴 Incident #1 — API health")
 	r.Contains(text, "<b>Status:</b> DOWN")
 	r.Contains(text, "<b>Org:</b> "+env.org.Slug)
-	r.Contains(text, "https://app.example.com/dash0/orgs/"+env.org.Slug+"/incidents/incident-1")
+	// The dashboard link is NOT in the body — it ships as the View button
+	// instead, so the message does not say it twice.
+	r.NotContains(text, "https://app.example.com")
+
+	markup, ok := body["reply_markup"].(map[string]any)
+	r.True(ok, "the alert must carry the View button")
+	rows, ok := markup["inline_keyboard"].([]any)
+	r.True(ok)
+	buttons, ok := rows[0].([]any)
+	r.True(ok)
+	view, ok := buttons[len(buttons)-1].(map[string]any)
+	r.True(ok)
+	r.Equal("https://app.example.com/dash0/orgs/"+env.org.Slug+"/incidents/incident-1", view["url"])
 
 	// The first alert of an incident is standalone.
 	_, hasReply := body["reply_to_message_id"]
@@ -802,17 +814,20 @@ func TestTelegramDetail(t *testing.T) {
 	r.Contains(detail, "open for")
 }
 
+// TestTelegramIncidentURL pins telegramAlertParams wiring the shared
+// telegram.IncidentURL builder in through appBaseURL — the actual URL shape is
+// covered once, in the telegram package itself.
 func TestTelegramIncidentURL(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 
 	r.Equal("https://app.example.com/dash0/orgs/acme/incidents/abc",
-		telegramIncidentURL("https://app.example.com/", "acme", "abc"))
+		telegram.IncidentURL("https://app.example.com/", "acme", "abc"))
 	// No base URL / no org slug simply omits the link rather than emitting a
 	// broken one.
-	r.Empty(telegramIncidentURL("", "acme", "abc"))
-	r.Empty(telegramIncidentURL("https://app.example.com", "", "abc"))
+	r.Empty(telegram.IncidentURL("", "acme", "abc"))
+	r.Empty(telegram.IncidentURL("https://app.example.com", "", "abc"))
 }
 
 // Telegram's per-chat burst limit is ~1 message/second, and it tells us exactly
@@ -874,7 +889,10 @@ func TestDispatch_TelegramDoesNotWaitOutALongCooldown(t *testing.T) {
 // TestDispatch_TelegramAlertCarriesTheAckButton pins the button-first path: an
 // open, unacknowledged incident ships with an inline Acknowledge button whose
 // callback_data addresses THAT incident.
-func TestDispatch_TelegramAlertCarriesTheAckButton(t *testing.T) {
+// TestDispatch_TelegramAlertCarriesAckAndViewButtons proves an open incident
+// alert carries the COMBINED keyboard: Acknowledge first, View second — a
+// stable row order rather than one call sites could accidentally shuffle.
+func TestDispatch_TelegramAlertCarriesAckAndViewButtons(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -891,7 +909,7 @@ func TestDispatch_TelegramAlertCarriesTheAckButton(t *testing.T) {
 	body := fake.callsFor("sendMessage")[0].body
 
 	markup, ok := body["reply_markup"].(map[string]any)
-	r.True(ok, "an open incident alert must carry the Acknowledge button")
+	r.True(ok, "an open incident alert must carry buttons")
 
 	rows, ok := markup["inline_keyboard"].([]any)
 	r.True(ok)
@@ -899,17 +917,24 @@ func TestDispatch_TelegramAlertCarriesTheAckButton(t *testing.T) {
 
 	buttons, ok := rows[0].([]any)
 	r.True(ok)
-	r.Len(buttons, 1)
+	r.Len(buttons, 2)
 
-	button, ok := buttons[0].(map[string]any)
+	ack, ok := buttons[0].(map[string]any)
 	r.True(ok)
-	r.Equal(telegram.AckCallbackData(env.incident.UID), button["callback_data"])
+	r.Equal(telegram.AckCallbackData(env.incident.UID), ack["callback_data"])
+	r.NotContains(ack, "url", "the Ack button carries no url")
+
+	view, ok := buttons[1].(map[string]any)
+	r.True(ok)
+	r.Equal("https://app.example.com/dash0/orgs/test-org/incidents/incident-1", view["url"])
+	r.NotContains(view, "callback_data", "a URL button carries no callback_data")
 }
 
-// TestDispatch_TelegramAckedIncidentCarriesNoButton: a button that answers
-// "already done" is noise, and worse, an alert still offering it reads as an
-// unclaimed page.
-func TestDispatch_TelegramAckedIncidentCarriesNoButton(t *testing.T) {
+// TestDispatch_TelegramAckedIncidentCarriesViewButtonOnly: Acknowledge answers
+// "already done", which is noise once acked — and worse, an alert still
+// offering it reads as an unclaimed page. View is never stale noise though:
+// it stays on every alert, acked or not.
+func TestDispatch_TelegramAckedIncidentCarriesViewButtonOnly(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -928,14 +953,29 @@ func TestDispatch_TelegramAckedIncidentCarriesNoButton(t *testing.T) {
 		telegramRoute(env.org.UID, true), map[string]bool{"telegram": true}))
 
 	body := fake.callsFor("sendMessage")[0].body
-	r.NotContains(body, "reply_markup")
+
+	markup, ok := body["reply_markup"].(map[string]any)
+	r.True(ok, "an already-acked alert still carries the View button")
+
+	rows, ok := markup["inline_keyboard"].([]any)
+	r.True(ok)
+	r.Len(rows, 1)
+
+	buttons, ok := rows[0].([]any)
+	r.True(ok)
+	r.Len(buttons, 1, "no Acknowledge button once already acked")
+
+	button, ok := buttons[0].(map[string]any)
+	r.True(ok)
+	r.Equal("https://app.example.com/dash0/orgs/test-org/incidents/incident-1", button["url"])
 }
 
-// TestDispatch_TelegramResolutionRemovesTheAckButton: Telegram treats an ABSENT
+// TestDispatch_TelegramResolutionKeepsViewButton: Telegram treats an ABSENT
 // reply_markup on an edit as "leave the buttons alone", so the resolution edit
-// has to send an explicitly EMPTY keyboard — otherwise a resolved incident keeps
-// offering Acknowledge forever.
-func TestDispatch_TelegramResolutionRemovesTheAckButton(t *testing.T) {
+// has to send an explicit reply_markup to take the Ack button away — but it
+// must NOT be the fully empty marker, because View stays: viewing a resolved
+// incident's history is legitimate.
+func TestDispatch_TelegramResolutionKeepsViewButton(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -963,13 +1003,36 @@ func TestDispatch_TelegramResolutionRemovesTheAckButton(t *testing.T) {
 	r.Len(edits, 1)
 
 	markup, ok := edits[0].body["reply_markup"].(map[string]any)
-	r.True(ok, "the resolution edit must SEND reply_markup to clear the button")
-	r.Empty(markup["inline_keyboard"], "and it must be the empty keyboard")
+	r.True(ok, "the resolution edit must SEND reply_markup to clear the Ack button")
 
-	// The resolution message itself carries no button either.
+	rows, ok := markup["inline_keyboard"].([]any)
+	r.True(ok)
+	r.Len(rows, 1, "the empty-keyboard marker would have ZERO rows; a View-only keyboard has one")
+
+	buttons, ok := rows[0].([]any)
+	r.True(ok)
+	r.Len(buttons, 1)
+
+	button, ok := buttons[0].(map[string]any)
+	r.True(ok)
+	r.Equal("https://app.example.com/dash0/orgs/test-org/incidents/incident-1", button["url"])
+	r.NotContains(button, "callback_data")
+
+	// The resolution message itself also carries the View button — a URL
+	// button is never stale noise, even on a resolved incident.
 	sends := fake.callsFor("sendMessage")
 	r.Len(sends, 2)
-	r.NotContains(sends[1].body, "reply_markup")
+
+	resolutionMarkup, ok := sends[1].body["reply_markup"].(map[string]any)
+	r.True(ok, "the resolution message itself carries the View button")
+
+	resolutionRows, ok := resolutionMarkup["inline_keyboard"].([]any)
+	r.True(ok)
+	r.Len(resolutionRows, 1)
+
+	resolutionButtons, ok := resolutionRows[0].([]any)
+	r.True(ok)
+	r.Len(resolutionButtons, 1, "no Acknowledge button on a resolved incident")
 }
 
 // --- Org-qualified references ------------------------------------------------

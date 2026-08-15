@@ -224,6 +224,82 @@ func TestAckKeyboard(t *testing.T) {
 	r.Contains(keyboard.InlineKeyboard[0][0].Text, "Acknowledge")
 }
 
+// TestIncidentKeyboard covers every combination of the combined keyboard: both
+// buttons, either one alone, and neither.
+func TestIncidentKeyboard(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.Nil(telegram.IncidentKeyboard("", "", true), "nothing to ack and no URL means no keyboard")
+	r.Nil(telegram.IncidentKeyboard("inc-1", "", false), "acked/resolved and no URL means no keyboard")
+
+	ackOnly := telegram.IncidentKeyboard("inc-1", "", true)
+	r.NotNil(ackOnly)
+	r.Len(ackOnly.InlineKeyboard[0], 1)
+	r.Equal("ack:inc-1", ackOnly.InlineKeyboard[0][0].CallbackData)
+	r.Empty(ackOnly.InlineKeyboard[0][0].URL)
+
+	viewOnly := telegram.IncidentKeyboard("inc-1", "https://solidping.example/x", false)
+	r.NotNil(viewOnly)
+	r.Len(viewOnly.InlineKeyboard[0], 1)
+	r.Equal("https://solidping.example/x", viewOnly.InlineKeyboard[0][0].URL)
+	r.Empty(viewOnly.InlineKeyboard[0][0].CallbackData, "a URL button carries no callback_data")
+	r.Contains(viewOnly.InlineKeyboard[0][0].Text, "View")
+
+	// Both present: Acknowledge first, View second — a stable, predictable row
+	// order rather than one that depends on call-site argument shuffling.
+	both := telegram.IncidentKeyboard("inc-1", "https://solidping.example/x", true)
+	r.NotNil(both)
+	r.Len(both.InlineKeyboard, 1)
+	r.Len(both.InlineKeyboard[0], 2)
+	r.Equal("ack:inc-1", both.InlineKeyboard[0][0].CallbackData)
+	r.Empty(both.InlineKeyboard[0][0].URL)
+	r.Equal("https://solidping.example/x", both.InlineKeyboard[0][1].URL)
+	r.Empty(both.InlineKeyboard[0][1].CallbackData)
+
+	// The 64-byte callback_data cap holds regardless of a second button sharing
+	// the row: URL buttons never touch callback_data at all.
+	longUID := "2f1b0a1e-1111-4000-8000-000000000001"
+	withView := telegram.IncidentKeyboard(longUID, "https://solidping.example/very/long/path/x", true)
+	r.LessOrEqual(len(withView.InlineKeyboard[0][0].CallbackData), 64)
+}
+
+// TestIncidentKeyboardForEdit proves an edit never leaves a stale button in
+// place: it falls back to the empty-keyboard removal marker rather than nil.
+func TestIncidentKeyboardForEdit(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// Nothing to show: must be the EMPTY marker, not nil — a nil ReplyMarkup on
+	// an edit means "leave the old buttons", the opposite of what is needed.
+	empty := telegram.IncidentKeyboardForEdit("inc-1", "", false)
+	r.NotNil(empty)
+	r.Empty(empty.InlineKeyboard)
+
+	// View survives an ack/resolve edit that drops only the Ack button.
+	viewOnly := telegram.IncidentKeyboardForEdit("inc-1", "https://solidping.example/x", false)
+	r.NotNil(viewOnly)
+	r.Len(viewOnly.InlineKeyboard[0], 1)
+	r.Equal("https://solidping.example/x", viewOnly.InlineKeyboard[0][0].URL)
+}
+
+// TestIncidentURL is the one deduped dashboard-link builder every Telegram
+// surface shares.
+func TestIncidentURL(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.Equal("https://app.example.com/dash0/orgs/acme/incidents/abc",
+		telegram.IncidentURL("https://app.example.com/", "acme", "abc"))
+	// No base URL / no org slug simply omits the link rather than emitting a
+	// broken one.
+	r.Empty(telegram.IncidentURL("", "acme", "abc"))
+	r.Empty(telegram.IncidentURL("https://app.example.com", "", "abc"))
+}
+
 // TestBuildAlertHTML_CarriesTheIncidentRef proves the ref reaches the alert
 // body — the whole point of the number is that an on-call person can read it
 // off the notification and type it straight back.

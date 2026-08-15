@@ -208,7 +208,17 @@ func TestResolutionNotice_ThreadsUnderAnchorAndEditsTheOriginal(t *testing.T) {
 	r.Contains(text, "🟢 Resolved")
 	r.Contains(text, "<b>Status:</b> RESOLVED")
 	r.Contains(text, "resolved after 12m0s")
-	r.NotContains(sends[0].body, "reply_markup", "a resolved incident has nothing left to acknowledge")
+
+	// A resolved incident has nothing left to acknowledge, but View stays — a
+	// URL button is never stale noise, and viewing a resolved incident's
+	// history is legitimate.
+	sentMarkup, ok := sends[0].body["reply_markup"].(map[string]any)
+	r.True(ok, "the resolution notice still carries the View button")
+	sentRows, ok := sentMarkup["inline_keyboard"].([]any)
+	r.True(ok)
+	sentButtons, ok := sentRows[0].([]any)
+	r.True(ok)
+	r.Len(sentButtons, 1, "no Acknowledge button on a resolved incident")
 
 	edits := fake.callsFor("editMessageText")
 	r.Len(edits, 1, "the original red alert must be rewritten")
@@ -216,7 +226,14 @@ func TestResolutionNotice_ThreadsUnderAnchorAndEditsTheOriginal(t *testing.T) {
 
 	markup, ok := edits[0].body["reply_markup"].(map[string]any)
 	r.True(ok, "the edit must SEND reply_markup to strip the stale Acknowledge button")
-	r.Empty(markup["inline_keyboard"])
+
+	rows, ok := markup["inline_keyboard"].([]any)
+	r.True(ok)
+	r.Len(rows, 1, "the empty-keyboard marker would have ZERO rows; a View-only keyboard has one")
+
+	buttons, ok := rows[0].([]any)
+	r.True(ok)
+	r.Len(buttons, 1)
 
 	r.False(anchorExists(t, env, resolutionChatA), "a used anchor must be dropped")
 	r.True(resolvedMarkerExists(t, env, resolutionChatA), "the notified chat must be marked")
