@@ -1853,8 +1853,9 @@ func TestSlackSender_buildIncidentResolvedThreadReply_RenderedOnce(t *testing.T)
 	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkSlg + "|" + checkName + ">"
 	r.Contains(msg.Text, checkLink, "resolved reply must link the monitor to its dashboard page")
 
-	// The at-a-glance success cue is kept.
-	r.Contains(msg.Text, ":white_check_mark:")
+	// The at-a-glance success cue is kept (aligned with the dash0 registry's
+	// 🟢 for incident.resolved).
+	r.Contains(msg.Text, ":large_green_circle:")
 }
 
 // TestSlackSender_buildIncidentResolvedThreadReply_NamesMonitorWithoutBaseURL

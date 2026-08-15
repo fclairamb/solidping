@@ -14,12 +14,16 @@ const (
 // StateEmoji maps an incident state label to its leading emoji. An unknown
 // state degrades to the DOWN emoji rather than rendering nothing — an alert
 // with no color still has to look like an alert.
+//
+// These emoji are kept aligned with dash0's per-event-type registry
+// (web/dash0/src/components/dashboard/event-display.tsx, EVENT_TYPE_REGISTRY)
+// and msteamsbot.go: one emoji per event/state product-wide.
 func StateEmoji(state string) string {
 	switch state {
 	case StateResolved:
 		return "🟢"
 	case StateEscalated:
-		return "🟠"
+		return "⚠️"
 	default:
 		return "🔴"
 	}

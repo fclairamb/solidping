@@ -179,7 +179,7 @@ func TestBuildAlertHTML_StatesAndOptionalFields(t *testing.T) {
 	r.NotContains(down, "<a href")
 
 	escalated := telegram.BuildAlertHTML(&telegram.AlertParams{State: telegram.StateEscalated, CheckName: "api"})
-	r.Contains(escalated, "🟠 Incident — api")
+	r.Contains(escalated, "⚠️ Incident — api")
 	r.Contains(escalated, "<b>Status:</b> ESCALATED")
 
 	resolved := telegram.BuildAlertHTML(&telegram.AlertParams{State: telegram.StateResolved, CheckName: "api"})
@@ -214,7 +214,7 @@ func TestStateEmoji(t *testing.T) {
 	r := require.New(t)
 
 	r.Equal("🔴", telegram.StateEmoji(telegram.StateDown))
-	r.Equal("🟠", telegram.StateEmoji(telegram.StateEscalated))
+	r.Equal("⚠️", telegram.StateEmoji(telegram.StateEscalated))
 	r.Equal("🟢", telegram.StateEmoji(telegram.StateResolved))
 	r.Equal("🔴", telegram.StateEmoji("something-new"))
 }
