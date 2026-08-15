@@ -37,14 +37,14 @@ func newHTTPClient(timeout time.Duration) *http.Client {
 	notificationTransportOnce.Do(func() {
 		// Clone the standard transport so we keep its proxy, dial and TLS
 		// defaults, then own the resulting pool ourselves.
-		_, ok := http.DefaultTransport.(*http.Transport)
+		base, ok := http.DefaultTransport.(*http.Transport)
 		if !ok {
 			notificationTransport = http.DefaultTransport
 
 			return
 		}
 
-		notificationTransport = http.DefaultTransport
+		notificationTransport = base.Clone()
 	})
 
 	return &http.Client{
