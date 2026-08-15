@@ -129,3 +129,60 @@ channels only. Note the limitation in the docs, as the spec asks.
 
 **Decision:** Email is **in** the default comment fan-out set. Twilio
 (SMS/voice) remains the only excluded sender, opted out via the registry.
+
+## Implementation Plan
+
+### Part 1 — comment fan-out
+
+1. **Registry opt-out seam** (`server/internal/notifications/registry.go`):
+   add `SenderCapabilities` (`NotifiesComments bool`) plus
+   `AcceptsEventType(connType, eventType) bool`, backed by one table.
+   `twilio` is the only type with `NotifiesComments: false`. No
+   `if senderType == "twilio"` anywhere in the fan-out.
+2. **Payload plumbing**: `notifications.CommentInfo{Text, AuthorName, Source}`
+   on `notifications.Payload`; `NotificationJobConfig.Comment` carries it from
+   the fan-out into the job so senders render exactly the commented text
+   without a second event lookup. `eventTypeIncidentComment = "incident.comment"`.
+3. **Fan-out** (`incidents/service.go`): `addCommentByOrgUID` calls a new
+   `queueCommentNotifications`, which resolves the same connection set as
+   `queueNotifications` / `queueGroupNotifications` (per-check, or the union of
+   currently-failing group members), filters by `AcceptsEventType`, applies
+   echo suppression, and enqueues jobs + `incident_notifications` audit rows
+   through the shared `enqueueNotificationJob`.
+4. **Echo suppression**: `isCommentEchoOrigin(conn, req)` — a Slack-sourced
+   comment skips every Slack connection whose `team_id` equals the comment's
+   `slackTeamId` (the incident thread state is per-incident, so any connection
+   in that workspace would post into the very thread the author typed in).
+5. **Senders**: every sender renders `incident.comment` (💬, the registry emoji
+   from spec 2026-08-15-02, added to the dash0 registry too). Slack replies in
+   the incident's existing thread and posts nothing when no thread exists
+   (same defense as resolved/reopened). Email included. Twilio excluded by (1).
+
+### Part 2 — Slack explicit ingestion + `/comment`
+
+6. `models.SlackSettings.CommentIngestion` (`comment_ingestion`), values
+   `explicit` (default, empty string included) and `all`.
+7. `slack/events.go handleMessage`: in `explicit` mode a plain thread reply is
+   not ingested. The reverse-thread lookup and dedupe machinery are untouched
+   and still used by `all`.
+8. `/comment [#N] <text>` registered in `DispatchCommand` (so HTTP + Socket
+   Mode both work) and declared in the app manifest docs. Incident resolution:
+   explicit `#N` wins; else the channel's tracked-thread state entries are
+   listed and, if exactly one maps to an active incident, that one is used;
+   else an ephemeral error listing candidates. Ephemeral ack on success.
+9. dash0: a switch on the Slack integration form ("Capture every thread reply
+   as a comment"), off = `explicit`. Playwright coverage.
+
+### Part 3 — Telegram `/comment`
+
+10. `CommentSourceTelegram` + telegram attribution fields on
+    `AddCommentRequest`; `AddCommentFromTelegram` on the incidents service and
+    a `Commenter` seam in `telegramcb`.
+11. `/comment [#ref] <text>` in the `telegramcb` command switch, reusing
+    `resolveIncidentRef` / the single-open-incident rule, `/help` updated.
+
+### Docs
+
+12. `web/docs/` + `wiki/` Slack and Telegram integration pages: the new
+    commands, the ingestion toggle, and the v1 limitation that comment fan-out
+    reaches check-attached channels only (not escalation-paged person contacts).
