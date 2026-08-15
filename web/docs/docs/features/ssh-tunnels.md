@@ -13,8 +13,10 @@ A tunnel-capable check carries a reference to an **SSH check** in the same
 organization. At each execution the worker opens a fresh SSH session to that
 bastion and dials the check's target through it.
 
-```
-worker ──SSH──▶ bastion ──▶ internal-api.private:8080
+```mermaid
+flowchart LR
+    Worker["Worker"] -->|SSH| Bastion["Bastion<br/>(SSH check)"]
+    Bastion --> Target["internal-api.private:8080"]
 ```
 
 ## When to use this vs. a private location
