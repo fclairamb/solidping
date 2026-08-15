@@ -7,6 +7,12 @@ var (
 	// ErrJobNotFound is returned when a job cannot be found.
 	ErrJobNotFound = errors.New("job not found")
 
+	// ErrInvalidJobConfig is returned when a job's config payload is not a
+	// JSON object. It is a client error, not an infrastructure failure — HTTP
+	// callers must map it to 400, which is why it is a sentinel rather than an
+	// anonymous fmt.Errorf that could only be matched on its message.
+	ErrInvalidJobConfig = errors.New("invalid job config")
+
 	// ErrJobAlreadyCompleted is returned when trying to cancel a completed job.
 	ErrJobAlreadyCompleted = errors.New("job not found or already completed")
 

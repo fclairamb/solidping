@@ -215,7 +215,7 @@ func (s *serviceImpl) parseJobConfig(config json.RawMessage) (models.JSONMap, er
 	var configMap models.JSONMap
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &configMap); err != nil {
-			return nil, fmt.Errorf("invalid config: %w", err)
+			return nil, fmt.Errorf("%w: %w", ErrInvalidJobConfig, err)
 		}
 	} else {
 		configMap = make(models.JSONMap)

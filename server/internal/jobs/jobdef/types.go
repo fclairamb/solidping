@@ -76,3 +76,31 @@ const (
 	// (spec 2026-07-27-01).
 	JobTypeAgentGC JobType = "agent_gc"
 )
+
+// publiclyCreatableJobTypes is the allowlist of job types that may be enqueued
+// through the public API (POST /api/v1/orgs/:org/jobs). It is an ALLOWLIST, not
+// a blocklist: anything absent is refused, so a job type added later stays
+// closed until someone deliberately opts it in here.
+//
+// Only `sleep` is on it. Every other type is either directly abusable from
+// outside — `email` sends attacker-authored content through the org's own SMTP
+// sender, `webhook` issues arbitrary server-side HTTP requests (an SSRF
+// primitive) — or is internal plumbing that schedulers enqueue themselves.
+// `sleep` is harmless and doubles as the endpoint's own smoke test.
+//
+// This governs the HTTP surface only. Internal callers (auth's transactional
+// mail, testapi, every scheduler) go through jobsvc.CreateJob directly and are
+// unaffected — the gate lives in jobs.Handler.CreateJob, never in the service.
+//
+//nolint:gochecknoglobals // static lookup table, treated as a constant.
+var publiclyCreatableJobTypes = map[JobType]struct{}{
+	JobTypeSleep: {},
+}
+
+// IsPubliclyCreatable reports whether a job type may be created through the
+// public job-creation endpoint. Deny by default.
+func IsPubliclyCreatable(jobType JobType) bool {
+	_, ok := publiclyCreatableJobTypes[jobType]
+
+	return ok
+}

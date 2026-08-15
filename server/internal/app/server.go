@@ -767,14 +767,17 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	oauthGroup.POST("/register", oauthHandler.Register)
 	oauthGroup.POST("/revoke", oauthHandler.Revoke)
 
-	// Job routes (auth required for org-scoped routes)
+	// Job routes. GET/DELETE are membership-gated; POST additionally requires
+	// org admin and only accepts allowlisted job types (spec 2026-08-15-04).
+	// The route table itself lives in the handler so the tests exercise this
+	// exact wiring rather than a parallel copy of it.
 	jobHandler := jobs.NewHandler(s.jobSvc)
-	orgJobsGroup := api.NewGroup("/orgs/:org/jobs").
-		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
-	orgJobsGroup.POST("", jobHandler.CreateJob)
-	orgJobsGroup.GET("", jobHandler.ListJobs)
-	orgJobsGroup.GET("/:uid", jobHandler.GetJob)
-	orgJobsGroup.DELETE("/:uid", jobHandler.CancelJob)
+	jobHandler.RegisterRoutes(api, jobs.RouteMiddleware{
+		Shared: []httpx.Middleware{
+			orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess,
+		},
+		CreateOnly: []httpx.Middleware{authMiddleware.RequireOrgAdmin},
+	})
 
 	// Admin Jobs observability (spec 2026-06-15-05). Read-only views over the
 	// background-jobs queue and the check-schedule (check_jobs) table. Org
