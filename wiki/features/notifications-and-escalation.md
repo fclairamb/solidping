@@ -261,6 +261,7 @@ notification jobs.
 | `incident.unacknowledged` | manual ack clear | no | does not restart |
 | `incident.snoozed` | `SnoozeIncident` | no | canceled until snooze expires |
 | `incident.unsnoozed` | snooze cleared, or `SweepUnsnooze` (`service.go:2151`) when window closes | no | does not restart |
+| `incident.comment` | `addCommentByOrgUID` (dashboard, API, Slack `/comment`, Telegram `/comment`, Slack thread reply in `all` mode) | yes — see below | — |
 | `incident.escalation_failed` | a step couldn't deliver (no on-call user, empty schedule) | no | — |
 | `check.created/updated/deleted` | check CRUD endpoints | no | — |
 | `org.activation.*` (5 milestones) | activation funnel (`internal/activation/`) | no | — |
@@ -270,6 +271,49 @@ Full enum: `db/models/event.go:12-56`.
 The "no notifications on ack/snooze" decision is intentional: at 3 AM
 you already know you acked your own page; channel members don't need an
 "acked!" buzz. If you need that signal, watch the events stream.
+
+### Comment fan-out (spec `2026-08-15-08`)
+
+`incident.comment` is the one notifying event that does NOT travel through
+`emitEvent`. `addCommentByOrgUID` writes its own event row and calls
+`queueCommentNotifications` directly, because the fan-out needs two things
+`emitEvent` never carries: the comment body, and the connection the comment came
+from. The `emitEvent` switch keeps an explicit (empty) `incident.comment` case
+so it cannot be re-read as "comments are silent" — which is the bug this
+replaced.
+
+The connection set is identical to the lifecycle path (per-check
+`ListChannelsForCheck`, or the union of a group incident's member checks). Two
+filters apply on top:
+
+1. **Registry opt-out** — `notifications.AcceptsEventType(connType, eventType)`
+   (`notifications/registry.go`). The per-sender table declares
+   `NotifiesComments`; only `twilio` sets it false, because an SMS or a phone
+   call per operator note is noise the recipient pays for. Everything absent
+   from the table, including email, gets the default (all on). Call sites never
+   name an integration type, which is what keeps the opt-out in one place.
+2. **Echo suppression** — `isCommentEchoOrigin`. A comment carries
+   `EchoOriginTeamID`, set ONLY by the Slack thread-reply ingest path, and every
+   Slack connection in that workspace is skipped. Matching is at workspace
+   level, not per connection row, because the incident's Slack thread is stored
+   once per incident: any connection in that workspace would post into the very
+   thread the author is reading. `/comment` deliberately leaves
+   `EchoOriginTeamID` empty — a slash command posts nothing visible, so the
+   channel that typed it must still receive the fan-out.
+
+   This is distinct from the `bot_id` ingest guard
+   (`slack/events.go`), which stops our own posts being re-ingested. Both are
+   needed: one prevents an echo, the other prevents a loop.
+
+The comment body travels in `NotificationJobConfig.Comment`
+(`notifications.CommentInfo{Text, AuthorName, Source}`) rather than being
+re-read from the event row at send time, so a job renders exactly the text that
+was commented. Audit rows are written exactly as for lifecycle events.
+
+**v1 limitation:** comment fan-out reaches **check-attached channels only**.
+The `queueResolutionNotice` person-contact path (Telegram contacts paged by an
+escalation policy) is out of scope — someone paged individually is not
+forwarded comments unless a channel is attached to the check.
 
 ### Closing the loop with person contacts
 

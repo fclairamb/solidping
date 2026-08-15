@@ -153,6 +153,7 @@ so the bot cannot be used to probe whether an organization or an incident exists
 | `/incidents` | The open incidents, oldest first, each as its own message with an **Acknowledge** button. |
 | `/ack #42` | Acknowledges an incident. With **no** number it acks the single open incident, and lists the candidates when there are several. |
 | `/incident #42` | State, duration, failing regions, last error, and who acknowledged it. |
+| `/comment your note` | Adds a comment to an incident. With **no** `#42` it comments on the single open incident, and lists the candidates when there are several. |
 | `/help` | The command list. `/start` with no token on a connected chat shows the same thing. |
 | `/stop` | Disconnects this chat (also `/unlink`). |
 
@@ -163,6 +164,28 @@ is assigned when the incident opens, never reused (a deleted incident keeps its
 number), and it is the SAME reference the dashboard, Slack messages and Telegram
 alerts all display — so a number read off an alert can be typed straight back as
 `/ack #42`. The `#` is optional when you type it.
+
+### Commenting from Telegram
+
+`/comment` appends a free-text note to an incident's timeline, and that note is
+**fanned out** to every channel attached to the failing check — so a responder
+paged on Telegram can tell the Slack channel what they found without leaving
+the chat.
+
+```
+/comment the central DNS is down, escalating to the network team
+/comment #42 restarting the pod
+```
+
+The comment is attributed to the SolidPing account this chat is linked to (the
+only identity the platform knows), with the Telegram first name recorded
+alongside it — in a group chat the person typing is frequently not the account
+holder, and the timeline says so rather than quietly crediting the wrong human.
+
+The target incident is resolved exactly like `/ack`: an explicit `#42` wins;
+otherwise the single open incident is used; and when several are open the bot
+**lists them instead of guessing**. Commenting on the wrong incident is silent —
+the note ends up where nobody handling the real outage will read it.
 
 ### Acknowledging from a button
 
