@@ -27,6 +27,8 @@ func shippedTemplates() []string {
 		"escalation.html",
 		"test-email.html",
 		"paging-nudge.html",
+		"status-subscriber-confirm.html",
+		"status-subscriber-update.html",
 		"registration.html",
 		"password-reset.html",
 		"invitation.html",

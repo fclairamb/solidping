@@ -1338,7 +1338,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Fan published status updates out to confirmed status-page subscribers by
 	// email. The notifier runs detached (fire-and-forget) inside the service.
 	statusSubscriberNotifier := statussubscribers.NewNotifier(
-		s.dbService, s.services.EmailSender, s.config.Server.BaseURL, slog.Default())
+		s.dbService, s.services.EmailSender, s.services.EmailFormatter, s.config.Server.BaseURL, slog.Default())
 	statusUpdatesService.SetSubscriberNotifier(statusSubscriberNotifier)
 	statusUpdatesHandler := statusupdates.NewHandler(statusUpdatesService, s.config)
 	orgStatusUpdates := orgGroup("/orgs/:org/status-updates")
@@ -1380,7 +1380,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// down, outside RequireAuth).
 	statusSubscribersService := statussubscribers.NewService(s.dbService)
 	statusSubscribersHandler := statussubscribers.NewHandler(
-		statusSubscribersService, s.dbService, s.services.EmailSender, s.config)
+		statusSubscribersService, s.dbService, s.services.EmailSender, s.services.EmailFormatter, s.config)
 	// Authed admin: list (count + redactable addresses) and remove.
 	orgStatusPages.GET("/:statusPageUid/subscribers", statusSubscribersHandler.ListSubscribers)
 	orgStatusPages.DELETE("/:statusPageUid/subscribers/:uid", statusSubscribersHandler.RemoveSubscriber)

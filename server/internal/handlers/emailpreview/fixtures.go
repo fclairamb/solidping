@@ -39,6 +39,22 @@ func fixtureFor(templateName string) (map[string]any, bool) {
 			keyOrgName:         fixtureOrgName,
 			"NotificationsURL": "https://solidping.example/dash0/orgs/acme/account/notifications",
 		}, true
+	case "status-subscriber-confirm.html":
+		return map[string]any{
+			"Subject":    "Confirm your subscription to Acme Status",
+			"PageName":   "Acme Status",
+			"ConfirmURL": "https://solidping.example/api/v1/public/status-subscribers/confirm?token=preview-token",
+		}, true
+	case "status-subscriber-update.html":
+		return map[string]any{
+			"Subject":                  "[Acme Status] New incident: Elevated error rates",
+			"Label":                    "New incident",
+			"Title":                    "Elevated error rates",
+			"BodyMarkdown":             "We are investigating elevated error rates on the API.",
+			"LinkURL":                  "https://solidping.example/status0/acme/acme-status",
+			"PageName":                 "Acme Status",
+			"SubscriberUnsubscribeURL": "https://solidping.example/api/v1/public/status-subscribers/unsubscribe?token=preview-token",
+		}, true
 	case "registration.html":
 		return map[string]any{
 			"ConfirmURL": "https://solidping.example/api/v1/auth/confirm?token=preview-token",

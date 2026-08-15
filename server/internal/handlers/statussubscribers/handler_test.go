@@ -11,6 +11,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/statussubscribers"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 )
@@ -30,7 +31,10 @@ func newHandlerSetup(t *testing.T) *handlerSetup {
 	cfg := &config.Config{}
 	cfg.Server.BaseURL = "https://status.example.com"
 
-	handler := statussubscribers.NewHandler(ts.svc, ts.dbSvc, sender, cfg)
+	formatter, err := email.NewFormatter()
+	require.NoError(t, err)
+
+	handler := statussubscribers.NewHandler(ts.svc, ts.dbSvc, sender, formatter, cfg)
 
 	router := httpx.New()
 	router.POST("/api/v1/orgs/:org/status-pages/:statusPageUid/subscribers", handler.Subscribe)
