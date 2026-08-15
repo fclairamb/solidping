@@ -206,6 +206,32 @@ func TestIncidents_ListsEachWithItsOwnAckButton(t *testing.T) {
 	r.Equal(telegram.AckCallbackData(second.UID), keyboards[2].InlineKeyboard[0][0].CallbackData)
 }
 
+// TestIncidents_CarriesTheViewButtonWhenBaseURLConfigured proves the /incidents
+// row's keyboard combines Ack and View — Acknowledge first, View second — once
+// the instance has a base URL to link to.
+func TestIncidents_CarriesTheViewButtonWhenBaseURLConfigured(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := setupCommandEnv(t, true)
+	env.handler.cfg.Server.BaseURL = "https://app.example.com"
+
+	check := env.seedCheck(t, "api")
+	incident := env.seedIncident(t, check, 23*time.Minute)
+
+	env.command(t, "/incidents")
+
+	keyboards := env.sender.sentKeyboards()
+	r.Len(keyboards, 2, "one header plus one row")
+	r.NotNil(keyboards[1])
+	r.Len(keyboards[1].InlineKeyboard[0], 2)
+	r.Equal(telegram.AckCallbackData(incident.UID), keyboards[1].InlineKeyboard[0][0].CallbackData)
+	r.Equal(
+		"https://app.example.com/dash0/orgs/"+env.org.Slug+"/incidents/"+incident.UID,
+		keyboards[1].InlineKeyboard[0][1].URL,
+	)
+}
+
 func TestIncidents_NothingOpen(t *testing.T) {
 	t.Parallel()
 
@@ -247,6 +273,44 @@ func TestIncidentDetail(t *testing.T) {
 	r.Contains(msgs[0], "eu2")
 	r.Contains(msgs[0], "503 Service Unavailable")
 	r.Contains(msgs[0], "not yet")
+
+	// An open, unacked incident's detail reply carries the Acknowledge button —
+	// every incident line, including the detail view, is tappable through to
+	// the dashboard once a URL is available, but here none is configured.
+	keyboards := env.sender.sentKeyboards()
+	r.Len(keyboards, 1)
+	r.NotNil(keyboards[0])
+	r.Len(keyboards[0].InlineKeyboard[0], 1)
+	r.Equal(telegram.AckCallbackData(incident.UID), keyboards[0].InlineKeyboard[0][0].CallbackData)
+}
+
+// TestIncidentDetail_AckedCarriesViewButtonOnly: once acked, /incident answers
+// with the View button alone — Acknowledge would be noise, but the dashboard
+// link stays useful.
+func TestIncidentDetail_AckedCarriesViewButtonOnly(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := setupCommandEnv(t, true)
+	env.handler.cfg.Server.BaseURL = "https://app.example.com"
+
+	check := env.seedCheck(t, "api")
+	incident := env.seedIncident(t, check, time.Hour)
+
+	env.pressAck(t, incident.UID, "Alice")
+
+	env.command(t, "/incident "+telegram.IncidentRef(incident.Number))
+
+	// The ack flow only EDITS the original alert; /incident's own reply is a
+	// fresh SendKeyboard call, so it is the last (and only) one recorded here.
+	keyboards := env.sender.sentKeyboards()
+	last := keyboards[len(keyboards)-1]
+	r.NotNil(last)
+	r.Len(last.InlineKeyboard[0], 1, "no Acknowledge button once already acked")
+	r.Equal(
+		"https://app.example.com/dash0/orgs/"+env.org.Slug+"/incidents/"+incident.UID,
+		last.InlineKeyboard[0][0].URL,
+	)
 }
 
 func TestIncidentDetail_UnknownRefAndBadRef(t *testing.T) {
@@ -379,7 +443,35 @@ func TestCallbackAck_AcksEditsAndAnswers(t *testing.T) {
 	r.Contains(edits[0].html, "Acknowledged by")
 	r.Contains(edits[0].html, telegram.IncidentRef(incident.Number))
 	r.NotNil(edits[0].keyboard, "the edit must SEND a keyboard to clear the button")
-	r.Empty(edits[0].keyboard.InlineKeyboard, "and it must be the empty one")
+	r.Empty(edits[0].keyboard.InlineKeyboard, "and it must be the empty one — no base URL is configured")
+}
+
+// TestCallbackAck_EditKeepsViewButtonWhenBaseURLConfigured: once a base URL is
+// available the ack edit must NOT fall back to the fully-empty marker — it
+// drops only Acknowledge and keeps View, since a URL button is never stale
+// noise.
+func TestCallbackAck_EditKeepsViewButtonWhenBaseURLConfigured(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := setupCommandEnv(t, true)
+	env.handler.cfg.Server.BaseURL = "https://app.example.com"
+
+	check := env.seedCheck(t, "api")
+	incident := env.seedIncident(t, check, time.Minute)
+
+	env.pressAck(t, incident.UID, "Alice")
+
+	edits := env.sender.editedMessages()
+	r.Len(edits, 1)
+	r.NotNil(edits[0].keyboard)
+	r.Len(edits[0].keyboard.InlineKeyboard, 1, "the empty marker has ZERO rows; a View-only keyboard has one")
+	r.Len(edits[0].keyboard.InlineKeyboard[0], 1)
+	r.Equal(
+		"https://app.example.com/dash0/orgs/"+env.org.Slug+"/incidents/"+incident.UID,
+		edits[0].keyboard.InlineKeyboard[0][0].URL,
+	)
+	r.Empty(edits[0].keyboard.InlineKeyboard[0][0].CallbackData)
 }
 
 // TestCallbackAck_RecordsTheTelegramActor pins the group-chat attribution: the
