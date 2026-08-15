@@ -13,6 +13,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
@@ -120,6 +121,40 @@ func TestTwilioSender_ResolvedHasNoAckLink(t *testing.T) {
 	r.Len(fake.forms, 1)
 	r.Contains(fake.forms[0].Get("Body"), "RECOVERED")
 	r.NotContains(fake.forms[0].Get("Body"), "Ack:")
+}
+
+// TestTwilioSender_BodiesCarryOptOut guards a carrier-compliance requirement
+// rather than a behavioral one: the US A2P 10DLC campaign registered for this
+// number declares that recurring alert traffic carries opt-out language. Dropping
+// the footer would put the registration out of step with real traffic, so every
+// event type is checked, not just a representative one.
+func TestTwilioSender_BodiesCarryOptOut(t *testing.T) {
+	t.Parallel()
+
+	for _, eventType := range []string{
+		eventTypeIncidentCreated,
+		eventTypeIncidentReopened,
+		eventTypeIncidentEscalated,
+		eventTypeIncidentResolved,
+	} {
+		t.Run(eventType, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			fake, baseURL := newTwilioFake(t)
+			sender := &TwilioSender{BaseURL: baseURL}
+
+			settings := fullTwilioSettings()
+			settings["to_numbers"] = []any{"+15551230000"}
+
+			r.NoError(sender.Send(context.Background(), twilioJobCtx(), twilioPayload(eventType, settings)))
+
+			fake.mu.Lock()
+			defer fake.mu.Unlock()
+			r.Len(fake.forms, 1)
+			r.Contains(fake.forms[0].Get("Body"), twilio.OptOutFooter)
+		})
+	}
 }
 
 func TestTwilioSender_EmptyRecipientsErrors(t *testing.T) {

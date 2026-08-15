@@ -869,6 +869,8 @@ func (r *EscalationStepJobRun) sendPhoneSMS(
 			strings.TrimRight(baseURL, "/"), orgSlug, incident.UID, ackToken)
 	}
 
+	body += twilio.OptOutFooter
+
 	client := newTwilioClient(settings.AccountSID, settings.AuthToken, twilio.BaseURLForRegion(settings.Region))
 	res, err := client.SendSMS(ctx, &twilio.SendSMSParams{
 		To:                  route.Contact.Value,

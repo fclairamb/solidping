@@ -207,7 +207,8 @@ Each user adds their own number under **Account → Notifications → add contac
 Phone (SMS)**, then requests a code:
 
 - A 6-digit code arrives by SMS: *"[SolidPing] Your verification code is 123456
-  (valid 10 minutes)."*
+  (valid 10 minutes). Msg&data rates may apply. Reply STOP to unsubscribe, HELP
+  for help."*
 - The code is valid **10 minutes**, allows **5 attempts**, and can be re-sent at
   most **3 times per hour** per contact.
 - **An unverified phone contact is never paged.** This is what keeps a typo
@@ -230,13 +231,17 @@ A severity listing only `email`/`slack` is unaffected by this feature.
 
 ### What an alert looks like
 
-An escalation SMS is deliberately short, to stay within one GSM-7 segment:
+An escalation SMS is deliberately short:
 
 ```text
-[SolidPing] acme: Payments API needs attention (escalated). Ack: https://…/ack?token=…
+[SolidPing] acme: Payments API needs attention (escalated). Ack: https://…/ack?token=… Reply STOP to unsubscribe.
 ```
 
 The `Ack:` link is a signed one-click acknowledgement — no login needed.
+
+Every alert body carries the `Reply STOP to unsubscribe.` footer. US A2P 10DLC
+registration declares that recurring traffic carries opt-out language, so the
+footer is not optional decoration — see [Opt-out handling](#opt-out-handling).
 
 A voice call reads the organization and check name aloud, then:
 

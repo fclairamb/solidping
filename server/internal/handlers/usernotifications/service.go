@@ -551,7 +551,8 @@ func (s *Service) dispatchTestSMS(ctx context.Context, orgUID, toNumber string) 
 		To:                  toNumber,
 		From:                settings.FromNumber,
 		MessagingServiceSID: settings.MessagingServiceSID,
-		Body:                "[SolidPing] Test notification. Your SMS delivery is working correctly.",
+		Body: "[SolidPing] Test notification. Your SMS delivery is working correctly." +
+			twilio.OptOutFooter,
 	}); err != nil {
 		return fmt.Errorf("send test SMS: %w", err)
 	}

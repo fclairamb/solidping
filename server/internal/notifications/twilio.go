@@ -114,7 +114,7 @@ func (s *TwilioSender) buildBody(
 	var msg string
 	switch payload.EventType {
 	case eventTypeIncidentResolved:
-		return fmt.Sprintf("[%s] %s: %s RECOVERED.", productName, org, checkName)
+		return fmt.Sprintf("[%s] %s: %s RECOVERED.", productName, org, checkName) + twilio.OptOutFooter
 	case eventTypeIncidentEscalated:
 		msg = fmt.Sprintf("[%s] %s: %s STILL DOWN (escalated).", productName, org, checkName)
 	case eventTypeIncidentReopened:
@@ -127,7 +127,7 @@ func (s *TwilioSender) buildBody(
 		msg += " Ack: " + ackURL
 	}
 
-	return msg
+	return msg + twilio.OptOutFooter
 }
 
 // ackURL builds the signed magic-link ack URL for the SMS. The shared

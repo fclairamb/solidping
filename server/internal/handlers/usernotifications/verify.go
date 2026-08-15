@@ -262,7 +262,8 @@ func sendVerificationSMS(
 		To:                  toNumber,
 		From:                settings.FromNumber,
 		MessagingServiceSID: settings.MessagingServiceSID,
-		Body:                fmt.Sprintf("[SolidPing] Your verification code is %s (valid 10 minutes).", code),
+		Body: fmt.Sprintf("[SolidPing] Your verification code is %s (valid 10 minutes).", code) +
+			twilio.FirstContactFooter,
 	})
 
 	return err
