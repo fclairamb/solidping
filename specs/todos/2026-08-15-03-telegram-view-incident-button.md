@@ -79,3 +79,49 @@ Secondary annoyances in the same area:
 
 Out of scope: new callback actions (resolve/mute/snooze buttons) — they need
 verb + dispatch + permission work and deserve their own spec if wanted.
+
+## Implementation Plan
+
+1. `server/internal/integrations/telegram/incidentview.go`:
+   - Add `IncidentKeyboard(incidentUID, incidentURL string, canAck bool) *InlineKeyboard`:
+     one row, `[✅ Acknowledge][🔎 View]` / `[✅ Acknowledge]` / `[🔎 View]` / `nil`,
+     built on top of the existing `NewInlineKeyboard`. Keep `AckKeyboard` (still
+     tested, still used wherever there is genuinely only an Ack decision to make).
+   - Add `IncidentKeyboardForEdit(incidentUID, incidentURL string, canAck bool) *InlineKeyboard`:
+     same as `IncidentKeyboard` but never returns nil — falls back to
+     `EmptyInlineKeyboard()` — because a nil `ReplyMarkup` on an *edit* means
+     "leave the old buttons", which is never what an edit site wants.
+   - Add `IncidentURL(baseURL, orgSlug, incidentUID string) string`: the one
+     deduped dashboard-link builder (trims baseURL, empty when baseURL or
+     orgSlug is blank).
+   - Drop the trailing `<a href>` anchor from `BuildIncidentLineHTML` and
+     `BuildIncidentDetailHTML` — both callers now attach the URL as a button
+     via `IncidentKeyboard`, so the text line would say it twice.
+2. `server/internal/integrations/telegram/message.go`:
+   - Drop the trailing anchor block from `buildAlertHTML` (used by
+     `BuildAlertHTML`, `BuildResolvedOriginalHTML`, `BuildAcknowledgedHTML`) —
+     every caller now attaches the URL as a button instead. Update the
+     `AlertParams.IncidentURL` doc comment (no longer rendered inline; consumed
+     by callers to build the button).
+3. `server/internal/jobs/jobtypes/job_escalation_step_telegram.go`:
+   - Replace `telegramIncidentURL` with a call to `telegram.IncidentURL`.
+   - Replace `telegramAckKeyboard` with a keyboard builder that always attaches
+     View (when `params.IncidentURL` is non-empty) and Ack only while there is
+     something to acknowledge — used in `sendTelegramAlertTo`.
+   - Resolution edit (`EmptyInlineKeyboard()` call): switch to
+     `telegram.IncidentKeyboardForEdit(incident.UID, params.IncidentURL, false)`.
+4. `server/internal/handlers/telegramcb/callback.go`: `repaintAcked`'s edit
+   switches from `EmptyInlineKeyboard()` to
+   `telegram.IncidentKeyboardForEdit(incident.UID, params.IncidentURL, false)`.
+5. `server/internal/handlers/telegramcb/commands.go`:
+   - `incidentURL` delegates to `telegram.IncidentURL`.
+   - `listOrgIncidents`: build the keyboard via `telegram.IncidentKeyboard`
+     instead of the ack-only branch.
+   - `handleIncidentDetail`: currently sends no keyboard at all — switch to
+     `replyWithKeyboard` with `telegram.IncidentKeyboard`.
+6. Tests: update the existing pinned tests whose assertions describe the OLD
+   behavior (ack-only button, empty-keyboard-on-resolve, anchor line present in
+   escalation alert body) and add coverage for: two-button row ordering,
+   View-only keyboard after ack/resolve edits, a URL button carrying no
+   `callback_data`, the 64-byte `callback_data` cap still holding with a second
+   button in the row, and `/incident` detail now carrying a button.
