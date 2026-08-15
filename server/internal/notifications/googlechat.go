@@ -162,6 +162,9 @@ func (s *GoogleChatSender) buildMessage(payload *Payload) *googleChatMessage {
 	case eventTypeIncidentReopened:
 		title = fmt.Sprintf("[REOPENED] %s (relapse #%d)", checkName, payload.Incident.RelapseCount)
 		subtitle = getFailureReason(payload.Incident)
+	case eventTypeIncidentComment:
+		title = commentTitle(payload)
+		subtitle = commentAuthor(payload.Comment)
 	default:
 		title = "[UPDATE] " + checkName
 		subtitle = "An incident update occurred"
@@ -188,6 +191,10 @@ func (s *GoogleChatSender) buildWidgets(payload *Payload, checkName string) []go
 	}
 
 	switch payload.EventType {
+	case eventTypeIncidentComment:
+		widgets = append(widgets, googleChatWidget{
+			DecoratedText: &googleChatDecoratedText{TopLabel: "Comment", Text: commentText(payload.Comment)},
+		})
 	case eventTypeIncidentResolved:
 		if payload.Incident.ResolvedAt != nil {
 			duration := payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt)

@@ -39,6 +39,7 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   "incident.acknowledged": { emoji: "✅", tone: TONE_AMBER },
   "incident.unacknowledged": { emoji: "↩️", tone: TONE_AMBER },
   "incident.snoozed": { emoji: "💤", tone: TONE_SLATE },
+  "incident.comment": { emoji: "💬", tone: TONE_BLUE },
 };
 
 // getEventEmoji returns the registry emoji for an event type, or undefined
@@ -266,9 +267,10 @@ export function getCommentText(event: {
 // undefined for non-comment events / payloads that predate the field.
 export function getCommentSource(event: {
   payload?: Record<string, unknown>;
-}): "web" | "slack" | undefined {
+}): "web" | "slack" | "telegram" | undefined {
   const source = event.payload?.source;
   if (source === "slack") return "slack";
+  if (source === "telegram") return "telegram";
   if (source === "web") return "web";
   return undefined;
 }

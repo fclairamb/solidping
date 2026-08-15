@@ -150,6 +150,10 @@ func (s *NtfySender) buildContent(
 		title = fmt.Sprintf("[REOPENED] %s (relapse #%d)", checkName, payload.Incident.RelapseCount)
 		tags = "repeat"
 		body = s.buildDownBody(payload, checkName)
+	case eventTypeIncidentComment:
+		title = commentTitle(payload)
+		tags = "speech_balloon"
+		body = commentPlainBody(payload)
 	default:
 		title = "[UPDATE] " + checkName
 		tags = "bell"

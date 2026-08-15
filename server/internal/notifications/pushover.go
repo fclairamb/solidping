@@ -199,6 +199,9 @@ func (s *PushoverSender) buildContent(
 	case eventTypeIncidentReopened:
 		title = fmt.Sprintf("[REOPENED] %s (relapse #%d)", checkName, payload.Incident.RelapseCount)
 		body = s.buildDownBody(payload, checkName)
+	case eventTypeIncidentComment:
+		title = commentTitle(payload)
+		body = commentPlainBody(payload)
 	default:
 		title = "[UPDATE] " + checkName
 		body = "An incident update occurred for " + checkName

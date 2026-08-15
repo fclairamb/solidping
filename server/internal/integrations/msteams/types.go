@@ -257,7 +257,10 @@ const (
 	CardColorAttention = "Attention"
 	CardColorGood      = "Good"
 	CardColorWarning   = "Warning"
-	CardWidthFull      = "Full"
+	// CardColorAccent is the neutral-informational Adaptive Card color, used for
+	// non-severity content such as incident comments.
+	CardColorAccent = "Accent"
+	CardWidthFull   = "Full"
 )
 
 // NewCardMessage wraps an Adaptive Card in a message activity, with `text` as

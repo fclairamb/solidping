@@ -55,6 +55,15 @@ func (s *SlackSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 		return nil
 	}
 
+	// A comment is a reply to a conversation this channel is having about the
+	// incident. With no stored thread this channel never heard the incident
+	// open, so a bare "someone said X" would be a context-free orphan — and
+	// posting it top-level would also claim the incident's thread mapping,
+	// sending the eventual resolved notice under a comment. Skip instead.
+	if payload.EventType == eventTypeIncidentComment && (threadEntry == nil || threadEntry.Value == nil) {
+		return nil
+	}
+
 	client := slack.NewClient(settings.AccessToken)
 
 	// Handle incident resolution - update the original message AND post a thread reply
@@ -188,6 +197,8 @@ func (s *SlackSender) buildMessage(payload *Payload) *slack.MessageResponse {
 		return s.buildIncidentEscalatedMessage(payload)
 	case eventTypeIncidentReopened:
 		return s.buildIncidentReopenedThreadReply(payload)
+	case eventTypeIncidentComment:
+		return s.buildCommentThreadReply(payload)
 	default:
 		return s.buildSimpleMessage(payload)
 	}
@@ -619,6 +630,43 @@ func (s *SlackSender) buildIncidentEscalatedBlocks(payload *Payload, checkName s
 				slack.ContextElement{
 					Type: slack.BlockTypeMrkdwn,
 					Text: slackLink(incidentURL, ":warning: Escalated") + "  " + slackLink(incidentURL, ":warning: Incident"),
+				},
+			},
+		},
+	}
+}
+
+// buildCommentThreadReply renders an incident comment as a thread reply. Kept
+// deliberately plain — quoted body under an author line — because it lands in
+// a human conversation, not in an alert card.
+func (s *SlackSender) buildCommentThreadReply(payload *Payload) *slack.MessageResponse {
+	checkName := getCheckName(payload.Check)
+	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
+	author := commentAuthor(payload.Comment)
+
+	header := fmt.Sprintf(
+		":speech_balloon: *%s* commented on %s%s",
+		author, incidentRefPrefix(payload.Incident), slackLink(checkURL, checkName),
+	)
+
+	if label := commentSourceLabel(payload.Comment); label != "" {
+		header += " _(" + label + ")_"
+	}
+
+	body := commentText(payload.Comment)
+	text := header
+	if body != "" {
+		text += "\n> " + strings.ReplaceAll(body, "\n", "\n> ")
+	}
+
+	return &slack.MessageResponse{
+		Text: text,
+		Blocks: []slack.Block{
+			{
+				Type: slack.BlockTypeSection,
+				Text: &slack.Text{
+					Type: slack.BlockTypeMrkdwn,
+					Text: text,
 				},
 			},
 		},

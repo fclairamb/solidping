@@ -21,6 +21,8 @@ const msTeamsTimeout = 30 * time.Second
 const (
 	msTeamsColorAttention = "Attention"
 	msTeamsColorGood      = "Good"
+	// Accent is the Adaptive Card neutral-informational color, used for comments.
+	msTeamsColorAccent = "Accent"
 )
 
 // msTeamsFieldMonitor is the FactSet label for the check name + type, distinct
@@ -192,6 +194,8 @@ func (s *MSTeamsSender) eventTitleAndColor(payload *Payload, checkName string) (
 		return "[ESCALATED] " + checkName, msTeamsColorAttention
 	case eventTypeIncidentReopened:
 		return fmt.Sprintf("[REOPENED] %s (relapse #%d)", checkName, payload.Incident.RelapseCount), msTeamsColorAttention
+	case eventTypeIncidentComment:
+		return commentTitle(payload), msTeamsColorAccent
 	default:
 		return "[UPDATE] " + checkName, ""
 	}
@@ -202,6 +206,15 @@ func (s *MSTeamsSender) eventTitleAndColor(payload *Payload, checkName string) (
 func (s *MSTeamsSender) buildFacts(payload *Payload, checkName string) []msTeamsFact {
 	facts := []msTeamsFact{
 		{Title: msTeamsFieldMonitor, Value: checkName + " (" + payload.Check.Type + ")"},
+	}
+
+	if payload.EventType == eventTypeIncidentComment {
+		facts = append(facts,
+			msTeamsFact{Title: "Author", Value: commentAuthor(payload.Comment)},
+			msTeamsFact{Title: "Comment", Value: commentText(payload.Comment)},
+		)
+
+		return facts
 	}
 
 	if payload.EventType == eventTypeIncidentResolved {

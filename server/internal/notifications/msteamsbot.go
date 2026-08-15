@@ -352,6 +352,8 @@ func (s *MSTeamsBotSender) titleAndColor(payload *Payload, checkName string) (st
 	case eventTypeIncidentReopened:
 		return fmt.Sprintf("🔁 %s REOPENED (relapse #%d)", checkName, payload.Incident.RelapseCount),
 			msteams.CardColorAttention
+	case eventTypeIncidentComment:
+		return commentEmoji + " " + checkName + " — comment", msteams.CardColorAccent
 	default:
 		return "ℹ️ " + checkName, ""
 	}
@@ -366,12 +368,17 @@ func (s *MSTeamsBotSender) buildFacts(payload *Payload, checkName string) []mste
 	}
 
 	switch {
+	case payload.EventType == eventTypeIncidentComment:
+		facts = append(facts,
+			msteams.CardFact{Title: "Author", Value: commentAuthor(payload.Comment)},
+			msteams.CardFact{Title: "Comment", Value: commentText(payload.Comment)},
+		)
 	case payload.EventType == eventTypeIncidentResolved && payload.Incident.ResolvedAt != nil:
 		facts = append(facts, msteams.CardFact{
 			Title: "Duration",
 			Value: formatDuration(payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt)),
 		})
-	case payload.EventType != eventTypeIncidentResolved:
+	case payload.EventType != eventTypeIncidentResolved && payload.EventType != eventTypeIncidentComment:
 		facts = append(facts,
 			msteams.CardFact{Title: mmFieldCause, Value: getFailureReason(payload.Incident)},
 			msteams.CardFact{Title: "Started", Value: payload.Incident.StartedAt.UTC().Format(time.RFC1123)},

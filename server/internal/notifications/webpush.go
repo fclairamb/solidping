@@ -179,6 +179,8 @@ func buildWebPushContent(payload *Payload, checkName string) (string, string) {
 	case eventTypeIncidentReopened:
 		return "[REOPENED] " + checkName,
 			checkName + " is down again."
+	case eventTypeIncidentComment:
+		return commentTitle(payload), commentPreview(payload.Comment)
 	default:
 		return "[UPDATE] " + checkName,
 			"An incident update occurred for " + checkName

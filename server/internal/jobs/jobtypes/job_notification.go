@@ -40,6 +40,11 @@ type NotificationJobConfig struct {
 	ConnectionUID string `json:"connectionUid"`
 	IncidentUID   string `json:"incidentUid"`
 	EventType     string `json:"eventType"` // "incident.created", "incident.resolved", "incident.escalated"
+	// Comment carries the body and author of an `incident.comment` event.
+	// Embedded in the job rather than re-read from the event row at send time:
+	// the job then renders exactly the text that was commented, even if the
+	// event is aggregated away or the incident is deleted before delivery.
+	Comment *notifications.CommentInfo `json:"comment,omitempty"`
 	// JobUID is the UID of the job row itself. Populated at Sites 1+2 so that
 	// NotificationJobRun.Run can update the matching audit row by job_uid.
 	JobUID string `json:"jobUid,omitempty"`
@@ -157,6 +162,7 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		// have handed over since. Returns nil for every uncertain case, so a
 		// mention is only ever added when we know exactly who to name.
 		OnCallMentions: ResolveOnCallMentions(ctx, jctx, log, connection, check, r.config.EventType),
+		Comment:        r.config.Comment,
 	}
 
 	// 6. Send notification

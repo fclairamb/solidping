@@ -62,6 +62,8 @@ func (ds *DiscordSender) buildMessage(payload *Payload) *discord.WebhookMessage 
 		embed = ds.buildIncidentEscalatedEmbed(payload)
 	case eventTypeIncidentReopened:
 		embed = ds.buildIncidentReopenedEmbed(payload)
+	case eventTypeIncidentComment:
+		embed = ds.buildCommentEmbed(payload)
 	default:
 		embed = ds.buildDefaultEmbed(payload)
 	}
@@ -83,6 +85,25 @@ func (ds *DiscordSender) buildIncidentCreatedEmbed(payload *Payload) discord.Emb
 		Color:       discord.ColorRed,
 		Fields:      fields,
 		Timestamp:   payload.Incident.StartedAt.Format(time.RFC3339),
+		Footer:      &discord.Footer{Text: productMonitoring},
+	}
+}
+
+// buildCommentEmbed builds an embed for incident.comment events.
+func (ds *DiscordSender) buildCommentEmbed(payload *Payload) discord.Embed {
+	checkName := getCheckName(payload.Check)
+
+	fields := []discord.Field{
+		{Name: fieldLabelMonitor, Value: checkName, Inline: true},
+		{Name: "Author", Value: commentAuthor(payload.Comment), Inline: true},
+	}
+
+	return discord.Embed{
+		Title:       commentTitle(payload),
+		Description: commentText(payload.Comment),
+		Color:       discord.ColorBlue,
+		Fields:      fields,
+		Timestamp:   time.Now().Format(time.RFC3339),
 		Footer:      &discord.Footer{Text: productMonitoring},
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
+	"github.com/fclairamb/solidping/server/internal/notifications"
 	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
@@ -44,6 +45,10 @@ const (
 	CommentSourceWeb = "web"
 	// CommentSourceSlack marks a comment ingested from a Slack thread reply.
 	CommentSourceSlack = "slack"
+	// CommentSourceTelegram marks a comment posted with the Telegram bot's
+	// /comment command. Unlike Slack, the author is a verified linked contact,
+	// so the comment is attributed to their SolidPing user via ActorUID.
+	CommentSourceTelegram = "telegram"
 )
 
 // Comment event payload keys. camelCase to match the wire shape the dashboard
@@ -56,6 +61,8 @@ const (
 	payloadKeySlackUserName = "slackUserName"
 	payloadKeySlackTeamID   = "slackTeamId"
 	payloadKeySlackTs       = "slackTs"
+	payloadKeyTelegramChat  = "telegramChatId"
+	payloadKeyCommentAuthor = "authorName"
 )
 
 // MaxSnoozeDuration caps how long an operator can silence an incident in a
@@ -1417,7 +1424,6 @@ func (s *Service) emitEvent(
 		models.EventTypeIncidentAcknowledged, models.EventTypeIncidentUnacknowledged,
 		models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed,
 		models.EventTypeIncidentEscalationFailed,
-		models.EventTypeIncidentComment,
 		models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
 		models.EventTypeStatusUpdateDeleted,
 		models.EventTypeOrgActivationSignupCompleted,
@@ -1425,8 +1431,15 @@ func (s *Service) emitEvent(
 		models.EventTypeOrgActivationFirstResultReceived,
 		models.EventTypeOrgActivationFirstNotificationConfigured,
 		models.EventTypeOrgActivationFirstIncidentPaged:
-		// No notifications for these event types — operator actions, comments,
-		// soft escalation failures, status updates, or activation milestones.
+		// No notifications for these event types — operator actions, soft
+		// escalation failures, status updates, or activation milestones.
+	case models.EventTypeIncidentComment:
+		// Comments DO notify — but never through here. addCommentByOrgUID
+		// writes its own event row and calls queueCommentNotifications
+		// directly, because the fan-out needs the comment body and the
+		// connection it originated from, neither of which emitEvent carries.
+		// Listed explicitly so this switch cannot be read as "comments are
+		// silent", which is exactly the bug this case used to encode.
 	}
 
 	return nil
@@ -2295,8 +2308,9 @@ func (s *Service) AcknowledgeIncidentFromTelegram(
 type AddCommentRequest struct {
 	IncidentUID string
 	Text        string
-	Source      string // CommentSourceWeb | CommentSourceSlack
-	// ActorUID is the authenticated dashboard user's UID (web source).
+	Source      string // CommentSourceWeb | CommentSourceSlack | CommentSourceTelegram
+	// ActorUID is the SolidPing user's UID. Set for the web source and for the
+	// telegram source (a verified linked contact always maps to a user).
 	ActorUID string
 	// Slack attribution (slack source) — the author usually has no SolidPing
 	// user, so these go into the payload and ActorUID stays empty.
@@ -2304,6 +2318,10 @@ type AddCommentRequest struct {
 	SlackUserName string
 	SlackTeamID   string
 	SlackTs       string
+	// Telegram attribution (telegram source). ActorUID carries the identity;
+	// these two are display/provenance detail for the timeline.
+	TelegramChatID string
+	TelegramActor  string
 }
 
 // AddComment appends a user-authored comment to an incident's timeline as an
@@ -2335,6 +2353,24 @@ func (s *Service) AddCommentFromSlack(
 		SlackUserName: slackUserName,
 		SlackTeamID:   slackTeamID,
 		SlackTs:       slackTs,
+	})
+}
+
+// AddCommentFromTelegram appends a comment posted with the Telegram bot's
+// /comment command. Unlike Slack, the author is a VERIFIED linked contact, so
+// the comment is attributed to their SolidPing user (actorUID) exactly as a
+// dashboard comment would be — the Telegram identity is provenance detail, not
+// the identity itself. Satisfies the telegramcb package's Commenter interface.
+func (s *Service) AddCommentFromTelegram(
+	ctx context.Context, orgUID, incidentUID, text, userUID, actor, chatID string,
+) (*models.Event, error) {
+	return s.addCommentByOrgUID(ctx, orgUID, &AddCommentRequest{
+		IncidentUID:    incidentUID,
+		Text:           text,
+		Source:         CommentSourceTelegram,
+		ActorUID:       userUID,
+		TelegramActor:  actor,
+		TelegramChatID: chatID,
 	})
 }
 
@@ -2381,6 +2417,12 @@ func (s *Service) addCommentByOrgUID(
 		payload[payloadKeySlackUserName] = req.SlackUserName
 		payload[payloadKeySlackTeamID] = req.SlackTeamID
 		payload[payloadKeySlackTs] = req.SlackTs
+	case CommentSourceTelegram:
+		if req.ActorUID != "" {
+			event.ActorUID = &req.ActorUID
+		}
+		payload[payloadKeyTelegramChat] = req.TelegramChatID
+		payload[payloadKeyVia] = CommentSourceTelegram
 	}
 
 	// Best-effort check identity for rendering, mirroring the ack path — the
@@ -2388,6 +2430,11 @@ func (s *Service) addCommentByOrgUID(
 	if check, chkErr := s.db.GetCheck(ctx, orgUID, incident.CheckUID); chkErr == nil && check != nil {
 		payload[keyCheckSlug] = check.Slug
 		payload[keyCheckName] = check.Name
+	}
+
+	author := s.commentAuthorName(ctx, req)
+	if author != "" {
+		payload[payloadKeyCommentAuthor] = author
 	}
 
 	event.Payload = payload
@@ -2400,7 +2447,206 @@ func (s *Service) addCommentByOrgUID(
 	// comment reaches watching dashboards without a manual refresh.
 	s.rt.PublishImmediate(ctx, orgUID, incident.CheckUID, realtime.KindEvents)
 
+	// Fan the comment out to the channels handling this incident. Best-effort,
+	// exactly like the lifecycle events: a comment that was recorded but not
+	// broadcast is a missed message; a comment that failed to record is lost
+	// operator knowledge, and the caller has already been told it succeeded.
+	s.queueCommentNotifications(ctx, orgUID, incident, req, text, author)
+
 	return event, nil
+}
+
+// commentAuthorName resolves the human label a channel message attributes the
+// comment to. Slack carries its own display name, Telegram carries the actor
+// label the bot saw, and a dashboard comment is looked up from the user row.
+// Returns "" when nothing better than "someone" is known — senders render a
+// neutral fallback rather than an empty byline.
+func (s *Service) commentAuthorName(ctx context.Context, req *AddCommentRequest) string {
+	switch req.Source {
+	case CommentSourceSlack:
+		return strings.TrimSpace(req.SlackUserName)
+	case CommentSourceTelegram:
+		if actor := strings.TrimSpace(req.TelegramActor); actor != "" {
+			return actor
+		}
+	}
+
+	if req.ActorUID == "" {
+		return ""
+	}
+
+	user, err := s.db.GetUser(ctx, req.ActorUID)
+	if err != nil || user == nil {
+		return ""
+	}
+
+	if name := strings.TrimSpace(user.Name); name != "" {
+		return name
+	}
+
+	return user.Email
+}
+
+// queueCommentNotifications fans an incident comment out to the channels
+// attached to the incident's check (or, for a group incident, to the union of
+// its currently-failing members' channels — the same connection set the
+// lifecycle events use).
+//
+// Two filters apply on top of that set, and both live somewhere reusable
+// rather than inline here:
+//
+//   - notifications.AcceptsEventType — the registry's per-sender opt-out. SMS
+//     and voice do not receive comments.
+//   - isCommentEchoOrigin — the connection the comment CAME FROM is skipped,
+//     or the bot repeats the author's own words back into the thread they just
+//     typed them in. (Distinct from the bot_id ingest guard, which stops the
+//     re-posted message from being re-ingested; both are needed.)
+//
+// v1 scope: check-attached channels only. People paged through an escalation
+// policy are not forwarded comments — see wiki/features/incident-comments.md.
+func (s *Service) queueCommentNotifications(
+	ctx context.Context, orgUID string, incident *models.Incident,
+	req *AddCommentRequest, text, author string,
+) {
+	comment := &notifications.CommentInfo{
+		Text:       text,
+		AuthorName: author,
+		Source:     req.Source,
+	}
+
+	for _, conn := range s.commentFanoutConnections(ctx, incident) {
+		if !conn.Enabled {
+			continue
+		}
+
+		if !notifications.AcceptsEventType(conn.Type, string(models.EventTypeIncidentComment)) {
+			continue
+		}
+
+		if isCommentEchoOrigin(conn, req) {
+			slog.DebugContext(ctx, "Skipping comment fan-out to its own origin connection",
+				"connectionUid", conn.UID, "incidentUid", incident.UID)
+
+			continue
+		}
+
+		s.enqueueCommentNotificationJob(ctx, orgUID, conn, incident.UID, comment)
+	}
+}
+
+// commentFanoutConnections resolves the connection set a comment reaches,
+// mirroring queueNotifications / queueGroupNotifications so a comment lands
+// exactly where the incident's own alerts landed.
+func (s *Service) commentFanoutConnections(
+	ctx context.Context, incident *models.Incident,
+) []*models.Integration {
+	if incident.CheckGroupUID == nil {
+		conns, err := s.db.ListChannelsForCheck(ctx, incident.CheckUID)
+		if err != nil {
+			slog.WarnContext(ctx, "Failed to load connections for comment fan-out",
+				"checkUid", incident.CheckUID, "error", err)
+
+			return nil
+		}
+
+		return conns
+	}
+
+	members, err := s.db.ListIncidentMemberChecks(ctx, incident.UID)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to list group members for comment fan-out",
+			"incidentUid", incident.UID, "error", err)
+
+		return nil
+	}
+
+	seen := make(map[string]bool)
+	out := make([]*models.Integration, 0, len(members))
+
+	for _, member := range members {
+		conns, err := s.db.ListChannelsForCheck(ctx, member.CheckUID)
+		if err != nil {
+			slog.WarnContext(ctx, "Failed to load connections for group member comment fan-out",
+				"checkUid", member.CheckUID, "error", err)
+
+			continue
+		}
+
+		for _, conn := range conns {
+			if seen[conn.UID] {
+				continue
+			}
+
+			seen[conn.UID] = true
+
+			out = append(out, conn)
+		}
+	}
+
+	return out
+}
+
+// isCommentEchoOrigin reports whether this connection is the one the comment
+// was typed in.
+//
+// Matched at WORKSPACE level for Slack, not per connection row: the incident's
+// Slack thread is stored once per incident, so every Slack connection in that
+// workspace would post into the very thread the author is reading.
+func isCommentEchoOrigin(conn *models.Integration, req *AddCommentRequest) bool {
+	if req.Source != CommentSourceSlack || conn.Type != models.ConnectionTypeSlack {
+		return false
+	}
+
+	if req.SlackTeamID == "" {
+		return false
+	}
+
+	settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
+	if err != nil || settings == nil {
+		return false
+	}
+
+	return settings.TeamID == req.SlackTeamID
+}
+
+// enqueueCommentNotificationJob is enqueueNotificationJob with the comment
+// body attached. Kept separate rather than widening the lifecycle helper's
+// signature, so the lifecycle path stays exactly as it was.
+func (s *Service) enqueueCommentNotificationJob(
+	ctx context.Context, orgUID string, conn *models.Integration,
+	incidentUID string, comment *notifications.CommentInfo,
+) {
+	eventType := string(models.EventTypeIncidentComment)
+
+	config, err := json.Marshal(jobtypes.NotificationJobConfig{
+		ConnectionUID: conn.UID,
+		IncidentUID:   incidentUID,
+		EventType:     eventType,
+		Comment:       comment,
+	})
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to marshal comment notification config",
+			"connectionUid", conn.UID, "incidentUid", incidentUID, "error", err)
+
+		return
+	}
+
+	job, err := s.jobsSvc.CreateJob(ctx, orgUID, string(jobdef.JobTypeNotification), config, nil)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to create comment notification job",
+			"connectionUid", conn.UID, "incidentUid", incidentUID, "error", err)
+
+		return
+	}
+
+	if auditErr := s.db.CreateIncidentNotification(ctx, models.NewIncidentNotificationForJob(
+		orgUID, incidentUID, eventType,
+		models.IncidentNotificationSourceCheckConnection,
+		conn.UID, job.UID, string(conn.Type),
+		nil, nil,
+	)); auditErr != nil {
+		slog.WarnContext(ctx, "failed to create comment notification audit row", "error", auditErr)
+	}
 }
 
 // UnacknowledgeIncident clears the acknowledgment on an incident. Use case:

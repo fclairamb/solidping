@@ -122,6 +122,7 @@
     "placeholder": "Add a comment…",
     "submit": "Comment",
     "viaSlack": "via Slack",
+    "viaTelegram": "via Telegram",
     "slackUser": "Slack user",
     "teamMember": "Team member",
     "addFailed": "Failed to add comment"
