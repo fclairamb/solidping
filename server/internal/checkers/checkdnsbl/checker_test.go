@@ -177,18 +177,21 @@ func TestDNSBLChecker_Validate(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		config  *DNSBLConfig
-		wantErr bool
-		errMsg  string
+		name     string
+		config   *DNSBLConfig
+		wantErr  bool
+		errMsg   string
+		wantSlug string
 	}{
 		{
-			name:   "valid minimal config",
-			config: &DNSBLConfig{Target: sampleMailServerIP},
+			name:     "valid minimal config",
+			config:   &DNSBLConfig{Target: sampleMailServerIP},
+			wantSlug: "dnsbl-203-0-113-10",
 		},
 		{
-			name:   "valid full config",
-			config: &DNSBLConfig{Target: "mail.example.com", Nameserver: "127.0.0.1:53", Timeout: 20 * time.Second},
+			name:     "valid full config",
+			config:   &DNSBLConfig{Target: "mail.example.com", Nameserver: "127.0.0.1:53", Timeout: 20 * time.Second},
+			wantSlug: "dnsbl-mail-example-com",
 		},
 		{
 			name:    "empty target",
@@ -233,6 +236,8 @@ func TestDNSBLChecker_Validate(t *testing.T) {
 			}
 
 			r.NoError(err)
+			r.NotEqual("x", spec.Slug, "auto-generated slug must never fall back to the bare sanitize-padding value")
+			r.Equal(tt.wantSlug, spec.Slug)
 		})
 	}
 }

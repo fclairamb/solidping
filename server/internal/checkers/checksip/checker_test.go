@@ -154,11 +154,12 @@ func TestSIPChecker_Validate(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		config  map[string]any
-		wantErr bool
+		name     string
+		config   map[string]any
+		wantErr  bool
+		wantSlug string
 	}{
-		{name: "valid options", config: map[string]any{"host": "sip.example.com"}},
+		{name: "valid options", config: map[string]any{"host": "sip.example.com"}, wantSlug: "sip-sip-example-com"},
 		{name: "empty host", config: map[string]any{"transport": "udp"}, wantErr: true},
 		{name: "bad transport", config: map[string]any{"host": "x", "transport": "sctp"}, wantErr: true},
 		{name: "bad mode", config: map[string]any{"host": "x", "mode": "invite"}, wantErr: true},
@@ -173,11 +174,12 @@ func TestSIPChecker_Validate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:   "register with credentials",
-			config: map[string]any{"host": "x", "mode": "register", "username": "1001", "password": "p"},
+			name:     "register with credentials",
+			config:   map[string]any{"host": "x", "mode": "register", "username": "1001", "password": "p"},
+			wantSlug: "sip-x",
 		},
 		{name: "port too high", config: map[string]any{"host": "x", "port": float64(70000)}, wantErr: true},
-		{name: "port zero ok", config: map[string]any{"host": "x", "port": float64(0)}},
+		{name: "port zero ok", config: map[string]any{"host": "x", "port": float64(0)}, wantSlug: "sip-x"},
 		{name: "timeout too high", config: map[string]any{"host": "x", "timeout": "120s"}, wantErr: true},
 	}
 
@@ -186,12 +188,15 @@ func TestSIPChecker_Validate(t *testing.T) {
 			t.Parallel()
 
 			r := require.New(t)
-			err := (&SIPChecker{}).Validate(&checkerdef.CheckSpec{Config: tt.config})
+			spec := &checkerdef.CheckSpec{Config: tt.config}
+			err := (&SIPChecker{}).Validate(spec)
 
 			if tt.wantErr {
 				r.Error(err)
 			} else {
 				r.NoError(err)
+				r.NotEqual("x", spec.Slug, "auto-generated slug must never fall back to the bare sanitize-padding value")
+				r.Equal(tt.wantSlug, spec.Slug)
 			}
 		})
 	}
