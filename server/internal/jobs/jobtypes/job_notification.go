@@ -151,19 +151,7 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 	}
 
 	// 5. Build notification payload
-	payload := &notifications.Payload{
-		EventType:   r.config.EventType,
-		Incident:    incident,
-		Check:       check,
-		Integration: connection,
-		OrgSlug:     r.lookupOrgSlug(ctx, jctx, log, connection.OrganizationUID),
-		AppBaseURL:  appBaseURL(jctx),
-		// Resolved at send time, not at incident-open: the on-call rotation may
-		// have handed over since. Returns nil for every uncertain case, so a
-		// mention is only ever added when we know exactly who to name.
-		OnCallMentions: ResolveOnCallMentions(ctx, jctx, log, connection, check, r.config.EventType),
-		Comment:        r.config.Comment,
-	}
+	payload := r.buildPayload(ctx, jctx, log, connection, incident, check)
 
 	// 6. Send notification
 	log.InfoContext(ctx, "Sending notification",
@@ -193,6 +181,27 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		})
 
 	return nil
+}
+
+// buildPayload assembles everything a sender needs for one delivery.
+func (r *NotificationJobRun) buildPayload(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	connection *models.Integration, incident *models.Incident, check *models.Check,
+) *notifications.Payload {
+	return &notifications.Payload{
+		EventType:   r.config.EventType,
+		Incident:    incident,
+		Check:       check,
+		Integration: connection,
+		OrgSlug:     r.lookupOrgSlug(ctx, jctx, log, connection.OrganizationUID),
+		AppBaseURL:  appBaseURL(jctx),
+		// Resolved at send time, not at incident-open: the on-call rotation may
+		// have handed over since. Returns nil for every uncertain case, so a
+		// mention is only ever added when we know exactly who to name.
+		OnCallMentions: ResolveOnCallMentions(ctx, jctx, log, connection, check, r.config.EventType),
+		// Non-nil only for `incident.comment`.
+		Comment: r.config.Comment,
+	}
 }
 
 // lookupOrgSlug resolves the organization slug so senders can build

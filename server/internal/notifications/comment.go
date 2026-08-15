@@ -7,6 +7,13 @@ import "strings"
 // One emoji per event type product-wide — change both sides together.
 const commentEmoji = "💬"
 
+// Field labels shared by every card/attachment-style sender, so one event
+// reads identically whichever channel it lands in.
+const (
+	fieldLabelAuthor  = "Author"
+	fieldLabelComment = "Comment"
+)
+
 // maxCommentPreview bounds how much of a comment a length-capped channel (SMS
 // title, push notification, ntfy body) renders. The dashboard always has the
 // full text; a channel summary only has to carry enough to make someone look.
@@ -88,11 +95,6 @@ func commentPlainBody(payload *Payload) string {
 	}
 
 	return author + ": " + text
-}
-
-// isCommentEvent reports whether a payload is an incident comment.
-func isCommentEvent(payload *Payload) bool {
-	return payload.EventType == eventTypeIncidentComment
 }
 
 // commentSourceLabel renders where the comment came from, for surfaces that

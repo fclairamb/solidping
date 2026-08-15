@@ -43,24 +43,7 @@ func (s *SlackSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 		return fmt.Errorf("getting thread state entry: %w", err)
 	}
 
-	// Defense-in-depth: a resolved/reopened event with no stored thread state has
-	// no original message to update or thread under, so a standalone top-level
-	// "resolved"/"reopened" message is never the right output. Skip posting rather
-	// than falling through to postNewMessage, which would emit a context-free
-	// orphan message. This bounds the blast radius of any "resolved/reopened with
-	// no opened" path (e.g. a still-suppressed rolled-up child that recorded its
-	// event but was never paged on open).
-	if (payload.EventType == eventTypeIncidentResolved || payload.EventType == eventTypeIncidentReopened) &&
-		(threadEntry == nil || threadEntry.Value == nil) {
-		return nil
-	}
-
-	// A comment is a reply to a conversation this channel is having about the
-	// incident. With no stored thread this channel never heard the incident
-	// open, so a bare "someone said X" would be a context-free orphan — and
-	// posting it top-level would also claim the incident's thread mapping,
-	// sending the eventual resolved notice under a comment. Skip instead.
-	if payload.EventType == eventTypeIncidentComment && (threadEntry == nil || threadEntry.Value == nil) {
+	if requiresExistingThread(payload.EventType) && (threadEntry == nil || threadEntry.Value == nil) {
 		return nil
 	}
 
@@ -77,6 +60,24 @@ func (s *SlackSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 	}
 
 	return s.postNewMessage(ctx, jctx, client, payload, channel, stateKey, threadEntry)
+}
+
+// requiresExistingThread reports whether an event may ONLY be posted as a
+// reply under an already-stored incident thread.
+//
+// Resolved/reopened have no original message to update or thread under without
+// one, so a standalone top-level "resolved" is never the right output — it
+// would be a context-free orphan. This bounds the blast radius of any
+// "resolved/reopened with no opened" path (e.g. a still-suppressed rolled-up
+// child that recorded its event but was never paged on open).
+//
+// A comment is the same, plus one extra hazard: posting it top-level would
+// CLAIM the incident's thread mapping, so the eventual resolved notice would
+// thread under a comment instead of under the alert.
+func requiresExistingThread(eventType string) bool {
+	return eventType == eventTypeIncidentResolved ||
+		eventType == eventTypeIncidentReopened ||
+		eventType == eventTypeIncidentComment
 }
 
 // parseSettings extracts and validates Slack settings from the payload.

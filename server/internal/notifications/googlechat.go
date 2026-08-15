@@ -193,7 +193,7 @@ func (s *GoogleChatSender) buildWidgets(payload *Payload, checkName string) []go
 	switch payload.EventType {
 	case eventTypeIncidentComment:
 		widgets = append(widgets, googleChatWidget{
-			DecoratedText: &googleChatDecoratedText{TopLabel: "Comment", Text: commentText(payload.Comment)},
+			DecoratedText: &googleChatDecoratedText{TopLabel: fieldLabelComment, Text: commentText(payload.Comment)},
 		})
 	case eventTypeIncidentResolved:
 		if payload.Incident.ResolvedAt != nil {

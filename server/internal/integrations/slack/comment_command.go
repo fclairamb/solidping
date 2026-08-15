@@ -15,6 +15,11 @@ import (
 const commentUsage = "*Usage:* `/comment [#N] <text>`\n\n" +
 	"Examples:\n• `/comment I think the central DNS is down`\n• `/comment #42 restarting the pod`"
 
+// settingsKeyTeamID is the Slack integration settings key holding the
+// workspace id. Named once so the writer (install flow), the lookup
+// (GetConnectionByTeamID) and tests cannot drift.
+const settingsKeyTeamID = "team_id"
+
 // maxCommentCandidates bounds the disambiguation list. More than a handful of
 // simultaneously-tracked incidents in one channel and the list stops being a
 // help — the user should name the incident.
@@ -33,8 +38,8 @@ const maxCommentCandidates = 10
 //     incident or an error, never a silent substitution.
 //  2. Otherwise the channel's tracked incident threads are listed. Exactly one
 //     ACTIVE incident is used; zero or several are answered with an error that
-//     lists the candidates. Commenting on the wrong incident is silent — the
-//     note lands where nobody handling the real outage will read it.
+//     lists the candidates. Commenting on the wrong incident is silent — such a
+//     comment ends up where nobody handling the real outage will read it.
 func (h *Handler) handleCommentCommand(ctx context.Context, cmd *Command) (*MessageResponse, error) {
 	ref, text := parseCommentArgs(cmd.Text)
 
@@ -50,9 +55,9 @@ func (h *Handler) handleCommentCommand(ctx context.Context, cmd *Command) (*Mess
 		return ephemeral("This Slack workspace is not connected to SolidPing. Please reconnect the app."), nil
 	}
 
-	incident, resolveErr := h.resolveCommentIncident(ctx, conn.OrganizationUID, cmd, ref)
-	if resolveErr != nil {
-		return ephemeral(resolveErr.Error()), nil
+	incident, problem := h.resolveCommentIncident(ctx, conn.OrganizationUID, cmd, ref)
+	if problem != "" {
+		return ephemeral(problem), nil
 	}
 
 	displayName := h.resolveSlackUserName(ctx, cmd.TeamID, cmd.UserID)
@@ -98,11 +103,13 @@ func parseCommentArgs(raw string) (string, string) {
 	return head, strings.TrimSpace(tail)
 }
 
-// resolveCommentIncident picks the incident a `/comment` refers to. The error
-// it returns is user-facing text, already formatted for an ephemeral reply.
+// resolveCommentIncident picks the incident a `/comment` refers to. The second
+// return is user-facing text for an ephemeral reply, empty on success — a
+// message rather than an `error`, because none of these are conditions a caller
+// branches on and Go error strings are not sentences.
 func (h *Handler) resolveCommentIncident(
 	ctx context.Context, orgUID string, cmd *Command, ref string,
-) (*models.Incident, error) {
+) (*models.Incident, string) {
 	if ref != "" {
 		return h.incidentByRef(ctx, orgUID, ref)
 	}
@@ -111,35 +118,30 @@ func (h *Handler) resolveCommentIncident(
 
 	switch len(candidates) {
 	case 0:
-		//nolint:err113 // user-facing message, not a sentinel callers branch on.
-		return nil, fmt.Errorf(
-			"No active SolidPing incident is tracked in this channel. "+
-				"Name one explicitly:\n%s", commentUsage)
+		return nil, "No active SolidPing incident is tracked in this channel. " +
+			"Name one explicitly:\n" + commentUsage
 	case 1:
-		return candidates[0], nil
+		return candidates[0], ""
 	default:
-		//nolint:err113 // user-facing message, not a sentinel callers branch on.
-		return nil, fmt.Errorf(
+		return nil, fmt.Sprintf(
 			"Several active incidents are tracked in this channel — say which one:\n%s\n\n%s",
 			strings.Join(candidateLines(candidates), "\n"), commentUsage)
 	}
 }
 
 // incidentByRef resolves an explicit `#N`.
-func (h *Handler) incidentByRef(ctx context.Context, orgUID, ref string) (*models.Incident, error) {
+func (h *Handler) incidentByRef(ctx context.Context, orgUID, ref string) (*models.Incident, string) {
 	number, err := strconv.ParseInt(ref, 10, 64)
 	if err != nil {
-		//nolint:err113 // user-facing message.
-		return nil, fmt.Errorf("`#%s` is not an incident number.\n%s", ref, commentUsage)
+		return nil, fmt.Sprintf("`#%s` is not an incident number.\n%s", ref, commentUsage)
 	}
 
 	incident, err := h.svc.db.GetIncidentByNumber(ctx, orgUID, number)
 	if err != nil || incident == nil {
-		//nolint:err113 // user-facing message.
-		return nil, fmt.Errorf("Incident `#%s` was not found in this workspace's organization.", ref)
+		return nil, fmt.Sprintf("Incident `#%s` was not found in this workspace's organization.", ref)
 	}
 
-	return incident, nil
+	return incident, ""
 }
 
 // activeChannelIncidents lists the still-open incidents whose Slack thread

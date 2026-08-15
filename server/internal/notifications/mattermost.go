@@ -199,8 +199,8 @@ func (s *MattermostSender) buildFields(payload *Payload, checkName string) []mat
 	if payload.EventType == eventTypeIncidentComment {
 		return []mattermostField{
 			{Short: true, Title: mmFieldCheck, Value: checkName},
-			{Short: true, Title: "Author", Value: commentAuthor(payload.Comment)},
-			{Short: false, Title: "Comment", Value: commentText(payload.Comment)},
+			{Short: true, Title: fieldLabelAuthor, Value: commentAuthor(payload.Comment)},
+			{Short: false, Title: fieldLabelComment, Value: commentText(payload.Comment)},
 		}
 	}
 

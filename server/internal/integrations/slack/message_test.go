@@ -100,21 +100,19 @@ func seedIncidentThread(t *testing.T, svc *Service) (string, string) {
 // seedSlackConnection creates the workspace's Slack channel row in the given
 // comment-ingestion mode. Required by every ingest test: the handler resolves
 // the mode from this row and fails closed (explicit) when it cannot.
-func seedSlackConnection(t *testing.T, svc *Service, orgUID, mode string) *models.Integration {
+func seedSlackConnection(t *testing.T, svc *Service, orgUID, mode string) {
 	t.Helper()
 	r := require.New(t)
 
 	conn := models.NewIntegration(orgUID, models.ConnectionTypeSlack, "workspace")
 	conn.Enabled = true
 	conn.Settings = models.JSONMap{
-		"team_id":           msgTeamID,
+		settingsKeyTeamID:   msgTeamID,
 		"access_token":      "xoxb-test",
 		"channel_id":        msgChannel,
 		"comment_ingestion": mode,
 	}
 	r.NoError(svc.db.CreateChannel(t.Context(), conn))
-
-	return conn
 }
 
 // threadReply builds a human thread-reply message event under the seeded

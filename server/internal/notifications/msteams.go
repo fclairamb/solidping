@@ -210,8 +210,8 @@ func (s *MSTeamsSender) buildFacts(payload *Payload, checkName string) []msTeams
 
 	if payload.EventType == eventTypeIncidentComment {
 		facts = append(facts,
-			msTeamsFact{Title: "Author", Value: commentAuthor(payload.Comment)},
-			msTeamsFact{Title: "Comment", Value: commentText(payload.Comment)},
+			msTeamsFact{Title: fieldLabelAuthor, Value: commentAuthor(payload.Comment)},
+			msTeamsFact{Title: fieldLabelComment, Value: commentText(payload.Comment)},
 		)
 
 		return facts

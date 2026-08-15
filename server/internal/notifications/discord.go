@@ -95,7 +95,7 @@ func (ds *DiscordSender) buildCommentEmbed(payload *Payload) discord.Embed {
 
 	fields := []discord.Field{
 		{Name: fieldLabelMonitor, Value: checkName, Inline: true},
-		{Name: "Author", Value: commentAuthor(payload.Comment), Inline: true},
+		{Name: fieldLabelAuthor, Value: commentAuthor(payload.Comment), Inline: true},
 	}
 
 	return discord.Embed{

@@ -772,8 +772,8 @@ func (s *Service) findOrCreateUser(
 	if provider == nil {
 		provider = models.NewUserProvider(user.UID, models.ProviderTypeSlack, userInfo.Sub)
 		provider.Metadata = models.JSONMap{
-			"team_id":   teamID,
-			"team_name": teamName,
+			settingsKeyTeamID: teamID,
+			"team_name":       teamName,
 		}
 
 		if err := s.db.CreateUserProvider(ctx, provider); err != nil {

@@ -54,7 +54,9 @@ func TestHandleMessage_UnsetModeDefaultsToExplicit(t *testing.T) {
 
 	conn := models.NewIntegration(org.UID, models.ConnectionTypeSlack, "legacy")
 	conn.Enabled = true
-	conn.Settings = models.JSONMap{"team_id": msgTeamID, "access_token": "xoxb", "channel_id": msgChannel}
+	conn.Settings = models.JSONMap{
+		settingsKeyTeamID: msgTeamID, "access_token": "xoxb", "channel_id": msgChannel,
+	}
 	r.NoError(svc.db.CreateChannel(ctx, conn))
 
 	fake := &fakeIncidentService{}

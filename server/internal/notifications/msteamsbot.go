@@ -370,8 +370,8 @@ func (s *MSTeamsBotSender) buildFacts(payload *Payload, checkName string) []mste
 	switch {
 	case payload.EventType == eventTypeIncidentComment:
 		facts = append(facts,
-			msteams.CardFact{Title: "Author", Value: commentAuthor(payload.Comment)},
-			msteams.CardFact{Title: "Comment", Value: commentText(payload.Comment)},
+			msteams.CardFact{Title: fieldLabelAuthor, Value: commentAuthor(payload.Comment)},
+			msteams.CardFact{Title: fieldLabelComment, Value: commentText(payload.Comment)},
 		)
 	case payload.EventType == eventTypeIncidentResolved && payload.Incident.ResolvedAt != nil:
 		facts = append(facts, msteams.CardFact{
