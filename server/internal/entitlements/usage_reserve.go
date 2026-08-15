@@ -11,8 +11,13 @@ import (
 
 // Runaway-guard hourly caps, independent of the billing-driven monthly quota.
 // These bound a broken escalation loop even for self-hosted (unlimited-quota)
-// orgs so a bug can't run up an unbounded Twilio bill. They are the defaults;
+// orgs so a bug can't run up an unbounded provider bill. They are the defaults;
 // deployments override them via config (WithRunawayCaps).
+//
+// They are PER ORG and apply to every send whoever pays for it. The
+// instance-wide cap and country allow-list that guard the SERVER's own spend
+// live in instance_sms_guard.go and deliberately do not apply to a
+// bring-your-own send.
 const (
 	defaultSMSRunawayPerHour  = 30
 	defaultCallRunawayPerHour = 10
@@ -82,7 +87,7 @@ func (s *Service) reserveUsage(ctx context.Context, orgUID, kind string) error {
 
 	limit := monthlyLimitFor(resolved.Limits, kind)
 	if limit == nil {
-		return nil // unlimited (self-hosted, bring-your-own Twilio)
+		return nil // unlimited (self-hosted: the operator's own credentials pay)
 	}
 
 	if *limit <= 0 {

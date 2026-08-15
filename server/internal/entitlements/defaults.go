@@ -79,7 +79,9 @@ const (
 	defaultMaxCustomDomainsSaaS = 0
 	// defaultMaxSmsPerMonthSaaS / defaultMaxCallsPerMonthSaaS are 0: the Free
 	// plan ships no SMS/voice; billing raises them per paid plan. Self-hosted
-	// stays unlimited (nil) — bring-your-own Twilio.
+	// stays unlimited (nil) — the operator's own credentials pay, whether those
+	// are the instance-level SP_SMS_*/SP_VOICE_* ones or a per-org
+	// bring-your-own integration.
 	defaultMaxSmsPerMonthSaaS   = 0
 	defaultMaxCallsPerMonthSaaS = 0
 	// defaultMaxWhatsappPerMonthSaaS is 0 for the same reason: the Free plan

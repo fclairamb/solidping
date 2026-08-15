@@ -37,6 +37,12 @@ type Usage struct {
 	// Unlike the other figures this is a persistent counter, not a live count
 	// — sent messages cannot be un-sent.
 	WhatsappThisMonth int `json:"whatsappThisMonth"`
+	// SMSGuard reports the instance-spend guards (instance-wide hourly cap,
+	// destination-country allow-list) and how many of this org's sends they
+	// have refused since process start. Nil when the deployment configures no
+	// instance-spend guard at all. A breach must never fail silently, so it
+	// surfaces here as well as in the logs.
+	SMSGuard *SMSGuardStatus `json:"smsGuard,omitempty"`
 }
 
 // Usage computes the org's current resource consumption. Non-internal
@@ -92,6 +98,7 @@ func (s *Service) Usage(ctx context.Context, orgUID string) (Usage, error) {
 		Checks: len(rates), ChecksPerMinute: perMin, SSOUsers: members,
 		Agents: agentCount, CustomDomains: customDomains,
 		WhatsappThisMonth: whatsapp,
+		SMSGuard:          s.SMSGuardStatusFor(orgUID),
 	}, nil
 }
 
