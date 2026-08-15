@@ -125,6 +125,27 @@ builders once migrated.
 5. Existing List-Unsubscribe behavior for status-subscriber and per-recipient
    incident emails is unchanged.
 
+**Note on criterion 1 — deliberate carve-out.**
+`server/internal/jobs/jobtypes/job_email.go` still assembles `email.Message`
+from raw `config.HTML` / `config.Text` (`EmailJobRun.buildMessage`) when no
+`Template` is set on the job config. This is intentional and out of scope: it
+is a generic user-authored email job — the caller supplies the content
+outright — not one of the five hand-rolled SolidPing templates this spec set
+out to migrate, and templating it would remove the capability rather than
+fix a bug. Both in-repo callers always set `Template` and never the raw
+fields: `handlers/auth/service.go`'s `enqueueEmail` (registration,
+password-reset, membership-request notifications) and
+`handlers/testapi/handler.go`'s test-send endpoint. The raw-content branch is
+reachable in production, though, via the generic
+`POST /api/v1/orgs/:org/jobs` endpoint (`internal/handlers/jobs/handler.go`
+`CreateJob`, mounted in `internal/app/server.go`), which takes an arbitrary
+job `type`/`config` body and is gated only by `RequireOrgAccess` — any org
+member, not just admins, can enqueue an `email` job with hand-written
+`subject`/`html`/`text` and have SolidPing deliver it. Whether that generic
+job-creation endpoint should expose this raw-content email path to any org
+member (versus admin-only, versus removing the raw-content branch entirely)
+is a separate product/security decision tracked outside this spec.
+
 ## Implementation Plan
 
 1. **Incident number plumbing (B).** Add `"IncidentNumber": payload.Incident.Number`
