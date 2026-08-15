@@ -5,9 +5,10 @@ package emailpreview
 // are the map KEYS (not just the values), which repeat across several of the
 // view-models below since multiple templates share field names.
 const (
-	fixtureOrgName      = "Acme Corp"
-	fixtureDashboardURL = "https://solidping.example/dash0"
-	fixtureIncidentUID  = "8f14e45f-ceea-467e-adde-3f4edd1a5b22"
+	fixtureOrgName        = "Acme Corp"
+	fixtureDashboardURL   = "https://solidping.example/dash0"
+	fixtureIncidentUID    = "8f14e45f-ceea-467e-adde-3f4edd1a5b22"
+	fixtureIncidentNumber = 42
 
 	keyOrgName      = "OrgName"
 	keyDashboardURL = "DashboardURL"
@@ -82,6 +83,7 @@ func incidentFixture() map[string]any {
 		"CheckURL":             "https://solidping.example/dash0/orgs/acme/checks/prod-api",
 		"StartedAt":            "2026-07-05 10:00:00",
 		"IncidentUID":          fixtureIncidentUID,
+		"IncidentNumber":       fixtureIncidentNumber,
 		"IncidentURL":          incidentURL,
 		"AckURL":               ackURL,
 		"FailureCount":         3,

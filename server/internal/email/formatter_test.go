@@ -24,20 +24,21 @@ func TestNewFormatter(t *testing.T) {
 // (which would create an import cycle: notifications imports email).
 func incidentViewModel() map[string]any {
 	return map[string]any{
-		"CheckName":     "Production API",
-		"CheckType":     "http",
-		"CheckURL":      "https://example.com/dash0/orgs/acme/checks/prod-api",
-		"StartedAt":     "2026-07-05 10:00:00",
-		"IncidentUID":   "inc-123",
-		"IncidentURL":   "https://example.com/dash0/orgs/acme/incidents/inc-123",
-		"AckURL":        "https://example.com/api/v1/orgs/acme/incidents/inc-123/ack?token=abc",
-		"DashboardURL":  "https://example.com/dash0",
-		"DocsURL":       "https://example.com/docs",
-		"FailureCount":  3,
-		"RelapseCount":  2,
-		"ResolvedAt":    "2026-07-05 10:15:00",
-		"Duration":      "15m0s",
-		"SubjectPrefix": "",
+		"CheckName":      "Production API",
+		"CheckType":      "http",
+		"CheckURL":       "https://example.com/dash0/orgs/acme/checks/prod-api",
+		"StartedAt":      "2026-07-05 10:00:00",
+		"IncidentUID":    "inc-123",
+		"IncidentNumber": int64(42),
+		"IncidentURL":    "https://example.com/dash0/orgs/acme/incidents/inc-123",
+		"AckURL":         "https://example.com/api/v1/orgs/acme/incidents/inc-123/ack?token=abc",
+		"DashboardURL":   "https://example.com/dash0",
+		"DocsURL":        "https://example.com/docs",
+		"FailureCount":   3,
+		"RelapseCount":   2,
+		"ResolvedAt":     "2026-07-05 10:15:00",
+		"Duration":       "15m0s",
+		"SubjectPrefix":  "",
 	}
 }
 
@@ -52,7 +53,7 @@ func TestFormatter_FormatIncidentCreated(t *testing.T) {
 	subject, html, text, err := formatter.Format("incident-created.html", incidentViewModel())
 	r.NoError(err)
 
-	r.Equal("[DOWN] Production API is down", subject)
+	r.Equal("[DOWN] Production API is down (#42)", subject)
 
 	r.Contains(html, "Production API")
 	r.Contains(html, "is down")
@@ -63,10 +64,35 @@ func TestFormatter_FormatIncidentCreated(t *testing.T) {
 	r.Contains(html, "Acknowledge incident")
 	r.Contains(html, "SolidPing")
 	r.Contains(html, "style=") // CSS inlined onto elements
+	r.Contains(html, "#42")
 
 	r.Contains(text, "Production API is down")
 	r.Contains(text, "https://example.com/dash0/orgs/acme/incidents/inc-123")
 	r.Contains(text, "Acknowledge this incident")
+	r.Contains(text, "Incident: #42")
+}
+
+// TestFormatter_IncidentNumberOmittedWhenZero pins the legacy-incident
+// behavior: incidents created before the per-org number backfill have
+// IncidentNumber == 0, and the templates must never render a bogus "#0" —
+// the whole "Incident" row/line is omitted instead.
+func TestFormatter_IncidentNumberOmittedWhenZero(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	formatter, err := NewFormatter()
+	r.NoError(err)
+
+	data := incidentViewModel()
+	data["IncidentNumber"] = int64(0)
+
+	subject, html, text, err := formatter.Format("incident-created.html", data)
+	r.NoError(err)
+	r.NotContains(subject, "#0")
+	r.NotContains(subject, "#")
+	r.NotContains(html, "#0")
+	r.NotContains(text, "Incident: #")
 }
 
 func TestFormatter_FormatIncidentCreatedWithoutAckURL(t *testing.T) {
@@ -99,7 +125,7 @@ func TestFormatter_FormatIncidentCreatedWithSubjectPrefix(t *testing.T) {
 
 	subject, _, _, err := formatter.Format("incident-created.html", data)
 	r.NoError(err)
-	r.Equal("[Acme] [DOWN] Production API is down", subject)
+	r.Equal("[Acme] [DOWN] Production API is down (#42)", subject)
 }
 
 func TestFormatter_FormatIncidentResolved(t *testing.T) {
@@ -113,12 +139,14 @@ func TestFormatter_FormatIncidentResolved(t *testing.T) {
 	subject, html, text, err := formatter.Format("incident-resolved.html", incidentViewModel())
 	r.NoError(err)
 
-	r.Equal("[RECOVERED] Production API is back up", subject)
+	r.Equal("[RECOVERED] Production API is back up (#42)", subject)
 	r.Contains(html, "recovered")
 	r.Contains(html, "15m0s")
+	r.Contains(html, "#42")
 	r.NotContains(html, "Acknowledge incident", "resolved events have nothing to ack")
 	r.Contains(text, "recovered")
 	r.Contains(text, "15m0s")
+	r.Contains(text, "Incident: #42")
 }
 
 func TestFormatter_FormatIncidentEscalated(t *testing.T) {
@@ -132,12 +160,14 @@ func TestFormatter_FormatIncidentEscalated(t *testing.T) {
 	subject, html, text, err := formatter.Format("incident-escalated.html", incidentViewModel())
 	r.NoError(err)
 
-	r.Equal("[ESCALATED] Production API incident escalated", subject)
+	r.Equal("[ESCALATED] Production API incident escalated (#42)", subject)
 	r.Contains(html, "escalated")
 	r.Contains(html, "Failure count")
 	r.Contains(html, "3")
+	r.Contains(html, "#42")
 	r.Contains(text, "escalated")
 	r.Contains(text, "Failure count: 3")
+	r.Contains(text, "Incident: #42")
 }
 
 func TestFormatter_FormatIncidentReopened(t *testing.T) {
@@ -151,11 +181,13 @@ func TestFormatter_FormatIncidentReopened(t *testing.T) {
 	subject, html, text, err := formatter.Format("incident-reopened.html", incidentViewModel())
 	r.NoError(err)
 
-	r.Equal("[REOPENED] Production API incident reopened (relapse #2)", subject)
+	r.Equal("[REOPENED] Production API incident reopened (relapse #2) (#42)", subject)
 	r.Contains(html, "reopened")
 	r.Contains(html, "Relapse count")
+	r.Contains(html, "#42")
 	r.Contains(text, "reopened")
 	r.Contains(text, "Relapse count: 2")
+	r.Contains(text, "Incident: #42")
 }
 
 func TestFormatter_UnsubscribeFooterLink(t *testing.T) {
