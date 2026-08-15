@@ -629,6 +629,7 @@ function CommentsCard({ org, incidentUid }: { org: string; incidentUid: string }
 
 function IncidentDetailPage() {
   const { t } = useTranslation("incidents");
+  const { t: tEvents } = useTranslation("events");
   const { org, incidentUid } = Route.useParams();
   const navigate = useNavigate();
 
@@ -1047,9 +1048,7 @@ function IncidentDetailPage() {
                         : "-"}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-xs">
-                        {event.eventType}
-                      </Badge>
+                      <EventTypeBadge eventType={event.eventType} t={tEvents} />
                     </TableCell>
                     <TableCell className="text-sm capitalize">
                       {event.actorType || "-"}

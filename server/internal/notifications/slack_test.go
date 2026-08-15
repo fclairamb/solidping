@@ -1924,7 +1924,8 @@ func TestSlackSender_buildIncidentReopenedThreadReply_RenderedOnce(t *testing.T)
 	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkSlg + "|" + checkName + ">"
 	r.Contains(msg.Text, checkLink, "reopened reply must link the monitor to its dashboard page")
 
-	r.Contains(msg.Text, ":warning:")
+	// Aligned with the dash0 registry's 🔁 for incident.reopened.
+	r.Contains(msg.Text, ":repeat:")
 }
 
 // TestSlackSender_DMChannelID verifies that a destination_type="dm" setting

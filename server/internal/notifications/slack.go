@@ -818,7 +818,7 @@ func (s *SlackSender) buildIncidentReopenedThreadReply(payload *Payload) *slack.
 	checkName := getCheckName(payload.Check)
 	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
 	text := fmt.Sprintf(
-		":warning: %s%s — incident reopened (relapse #%d). "+
+		":repeat: %s%s — incident reopened (relapse #%d). "+
 			"Recovery requires the check to stay up for %d seconds.",
 		incidentRefPrefix(payload.Incident), slackLink(checkURL, checkName),
 		relapseCount, payload.Check.RecoveryPeriodSeconds,
@@ -857,7 +857,7 @@ func (s *SlackSender) buildReopenedUpdateMessage(payload *Payload) *slack.Messag
 			Elements: []any{
 				slack.ContextElement{
 					Type: slack.BlockTypeMrkdwn,
-					Text: slackLink(incidentURL, ":warning: Reopened") + "  " + slackLink(checkURL, ":large_blue_circle: Monitor"),
+					Text: slackLink(incidentURL, ":repeat: Reopened") + "  " + slackLink(checkURL, ":large_blue_circle: Monitor"),
 				},
 			},
 		},
