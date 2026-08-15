@@ -43,6 +43,10 @@ type Service struct {
 	// instances with no outbound email, which makes the nudge endpoint answer a
 	// clear error instead of silently doing nothing.
 	email email.Sender
+	// formatter renders the nudge through the shared template pipeline
+	// (paging-nudge.html). Nil on instances that never wired one — the nudge
+	// endpoint then answers a clear error rather than sending an empty email.
+	formatter email.Formatter
 	// appBaseURL builds the dashboard link inside that nudge.
 	appBaseURL string
 }

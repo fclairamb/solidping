@@ -1171,6 +1171,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	membersService := members.NewService(s.dbService,
 		// Powers the admin "set up your paging" nudge email (spec 2026-08-12-03).
 		members.WithEmailSender(s.services.EmailSender),
+		members.WithEmailFormatter(s.services.EmailFormatter),
 		members.WithAppBaseURL(s.config.Server.BaseURL))
 	membersHandler := members.NewHandler(membersService, s.config)
 	orgMembers := orgGroup("/orgs/:org/members")

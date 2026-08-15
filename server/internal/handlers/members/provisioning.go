@@ -30,6 +30,9 @@ var (
 	// ErrEmailSenderNotConfigured is returned when a nudge is requested on an
 	// instance with no outbound email.
 	ErrEmailSenderNotConfigured = errors.New("email sending is not configured on this server")
+	// ErrEmailFormatterNotConfigured is returned when a nudge is requested on
+	// an instance with no email template formatter wired.
+	ErrEmailFormatterNotConfigured = errors.New("email formatter is not configured on this server")
 )
 
 // Option customizes a members Service at construction.
@@ -38,6 +41,12 @@ type Option func(*Service)
 // WithEmailSender supplies the outbound email sender used by the paging nudge.
 func WithEmailSender(sender email.Sender) Option {
 	return func(s *Service) { s.email = sender }
+}
+
+// WithEmailFormatter supplies the shared template formatter used to render
+// the paging nudge (paging-nudge.html).
+func WithEmailFormatter(formatter email.Formatter) Option {
+	return func(s *Service) { s.formatter = formatter }
 }
 
 // WithAppBaseURL supplies the base URL used to build dashboard links in emails.
@@ -201,30 +210,30 @@ func (s *Service) SendPagingNudge(ctx context.Context, orgSlug, memberUID string
 		return ErrEmailSenderNotConfigured
 	}
 
+	if s.formatter == nil {
+		return ErrEmailFormatterNotConfigured
+	}
+
 	user, err := s.db.GetUser(ctx, member.UserUID)
 	if err != nil {
 		return ErrUserNotFound
 	}
 
 	link := s.appBaseURL + "/dash0/orgs/" + org.Slug + "/account/notifications"
-	subject := "Set up your alert notifications for " + org.Name
 
-	text := "Hi,\n\n" +
-		"An administrator of " + org.Name + " asked you to set up how SolidPing should " +
-		"reach you when something breaks.\n\n" +
-		"Add and verify a phone or messaging contact here:\n" + link + "\n\n" +
-		"Until you verify a contact, alerts can only reach you by email.\n"
-
-	html := "<p>Hi,</p><p>An administrator of <strong>" + org.Name + "</strong> asked you to set up " +
-		"how SolidPing should reach you when something breaks.</p>" +
-		`<p><a href="` + link + `">Add and verify a phone or messaging contact</a></p>` +
-		"<p>Until you verify a contact, alerts can only reach you by email.</p>"
+	subject, htmlBody, textBody, err := s.formatter.Format("paging-nudge.html", map[string]any{
+		"OrgName":          org.Name,
+		"NotificationsURL": link,
+	})
+	if err != nil {
+		return fmt.Errorf("format paging nudge: %w", err)
+	}
 
 	if _, err := s.email.Send(ctx, &email.Message{
 		Recipients: email.Recipients{To: []string{user.Email}},
 		Subject:    subject,
-		HTML:       html,
-		Text:       text,
+		HTML:       htmlBody,
+		Text:       textBody,
 	}); err != nil {
 		return fmt.Errorf("send paging nudge: %w", err)
 	}
