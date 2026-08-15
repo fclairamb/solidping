@@ -38,7 +38,14 @@ import {
   icmpModule,
 } from "./network";
 import { smtpModule, mailboxModule } from "./mail";
-import { dnsModule, domainModule, dnsblModule } from "./dns";
+import {
+  dnsModule,
+  domainModule,
+  dnsblModule,
+  DomainAdvancedFields,
+  domainAdvancedSummary,
+} from "./dns";
+import type { DomainState } from "./dns";
 import {
   sqlDatabaseModule,
   redisModule,
@@ -149,5 +156,9 @@ export const advancedFieldsRegistry: Partial<
   http: {
     Fields: HttpOptionsFields as unknown as FC<CheckTypeFieldsProps>,
     summary: (state) => httpOptionsSummary(state as HttpState),
+  },
+  domain: {
+    Fields: DomainAdvancedFields as unknown as FC<CheckTypeFieldsProps>,
+    summary: (state) => domainAdvancedSummary(state as DomainState),
   },
 };

@@ -243,14 +243,22 @@ function DnsFields({ state, onChange, errors }: CheckTypeFieldsProps<DnsState>) 
 // ── Domain (expiry) ──
 export interface DomainState {
   domain: string;
+  // Lookup method: "" (or "auto", default) tries RDAP first and falls back
+  // to WHOIS on any RDAP failure; "rdap"/"whois" force one path. Empty
+  // serializes to nothing, so existing checks upgrade transparently.
+  method: string;
 }
 
 export const domainModule: CheckTypeModule<DomainState> = {
   types: ["domain"],
-  fromConfig: (config) => ({ domain: getConfigField(config, "domain") }),
+  fromConfig: (config) => ({
+    domain: getConfigField(config, "domain"),
+    method: getConfigField(config, "method"),
+  }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
     if (state.domain) cfg.domain = state.domain;
+    if (state.method && state.method !== "auto") cfg.method = state.method;
     const errors: FieldErrors = state.domain
       ? []
       : [{ name: "domain", message: "Domain is required" }];
@@ -283,6 +291,46 @@ function DomainFields({
       )}
     </div>
   );
+}
+
+// DomainAdvancedFields renders the "Advanced" section's lookup-method select
+// (RDAP first with WHOIS fallback by default, or force one path).
+export function DomainAdvancedFields({
+  state,
+  onChange,
+}: CheckTypeFieldsProps<DomainState>) {
+  return (
+    <div className="space-y-2 w-56">
+      <Label htmlFor="domainMethod">Lookup method</Label>
+      <Select
+        value={state.method || "auto"}
+        onValueChange={(method) => onChange({ ...state, method })}
+      >
+        <SelectTrigger id="domainMethod" data-testid="check-domain-method-select">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="auto">Auto (RDAP, WHOIS fallback)</SelectItem>
+          <SelectItem value="rdap">RDAP only</SelectItem>
+          <SelectItem value="whois">WHOIS only</SelectItem>
+        </SelectContent>
+      </Select>
+      <p className="text-xs text-muted-foreground">
+        Auto tries RDAP first and falls back to WHOIS on any failure. RDAP
+        only and WHOIS only never fall back.
+      </p>
+    </div>
+  );
+}
+
+// domainAdvancedSummary drives the "Advanced" section's summary line for the
+// lookup-method select above.
+export function domainAdvancedSummary(state: DomainState): {
+  text: string;
+  customized: boolean;
+} {
+  const customized = !!state.method && state.method !== "auto";
+  return { text: customized ? `method ${state.method}` : "", customized };
 }
 
 // ── DNSBL ──
