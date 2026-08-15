@@ -149,7 +149,10 @@ func newFakeRDAPServer(t *testing.T, rdapTLDs []string, domainHandler http.Handl
 			},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		require.NoError(t, json.NewEncoder(w).Encode(doc))
+
+		if err := json.NewEncoder(w).Encode(doc); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	})
 	mux.HandleFunc("/rdap/domain/", func(w http.ResponseWriter, r *http.Request) {
 		fs.domainHits.Add(1)
@@ -157,7 +160,7 @@ func newFakeRDAPServer(t *testing.T, rdapTLDs []string, domainHandler http.Handl
 	})
 
 	fs.Server = httptest.NewServer(mux)
-	t.Cleanup(fs.Server.Close)
+	t.Cleanup(fs.Close)
 
 	return fs
 }
@@ -166,8 +169,8 @@ func newFakeRDAPServer(t *testing.T, rdapTLDs []string, domainHandler http.Handl
 // DomainChecker.rdapClient.
 func (fs *fakeRDAPServer) client() *rdapClient {
 	return &rdapClient{
-		httpClient:   fs.Server.Client(),
-		bootstrapURL: fs.Server.URL + "/bootstrap",
+		httpClient:   fs.Client(),
+		bootstrapURL: fs.URL + "/bootstrap",
 		cacheTTL:     time.Hour,
 	}
 }
@@ -194,7 +197,7 @@ func rdapSuccessHandler(expiry time.Time, registrar string) http.HandlerFunc {
 			},
 		}
 		w.Header().Set("Content-Type", "application/rdap+json")
-		_ = json.NewEncoder(w).Encode(resp) //nolint:errcheck // test helper
+		writeJSON(w, resp)
 	}
 }
 
@@ -208,7 +211,16 @@ func rdapMissingExpirationHandler() http.HandlerFunc {
 			},
 		}
 		w.Header().Set("Content-Type", "application/rdap+json")
-		_ = json.NewEncoder(w).Encode(resp) //nolint:errcheck // test helper
+		writeJSON(w, resp)
+	}
+}
+
+// writeJSON encodes v as the response body, falling back to a 500 on
+// encoding failure (which should never happen for these fixed test
+// payloads).
+func writeJSON(w http.ResponseWriter, v any) {
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
@@ -219,17 +231,22 @@ func rdapErrorHandler() http.HandlerFunc {
 	}
 }
 
+// whoisFixtureRegistrar is the registrar name embedded in whoisFixture, for
+// tests to assert against.
+const whoisFixtureRegistrar = "WHOIS Registrar LLC"
+
 // whoisFixture builds raw WHOIS text (generic gTLD format) that
-// likexian/whois-parser can parse, with a fixed registrar/expiration.
-func whoisFixture(registrar, expiryRFC3339 string) string {
+// likexian/whois-parser can parse, with a fixed registrar and a far-future
+// expiration date.
+func whoisFixture() string {
 	return "Domain Name: EXAMPLE-WHOIS-TEST.COM\n" +
 		"Registry Domain ID: 123456_DOMAIN_COM-VRSN\n" +
 		"Registrar WHOIS Server: whois.example-registrar.test\n" +
 		"Registrar URL: http://www.example-registrar.test\n" +
 		"Updated Date: 2025-01-01T00:00:00.0Z\n" +
 		"Creation Date: 2015-01-01T00:00:00.0Z\n" +
-		"Registrar Registration Expiration Date: " + expiryRFC3339 + "\n" +
-		"Registrar: " + registrar + "\n" +
+		"Registrar Registration Expiration Date: 2099-01-01T00:00:00.0Z\n" +
+		"Registrar: " + whoisFixtureRegistrar + "\n" +
 		"Registrar IANA ID: 9999\n" +
 		"Registrar Abuse Contact Email: abuse@example-registrar.test\n" +
 		"Registrar Abuse Contact Phone: +1.5555555555\n" +
@@ -240,24 +257,24 @@ func whoisFixture(registrar, expiryRFC3339 string) string {
 		">>> Last update of WHOIS database: 2025-01-01T00:00:00.0Z <<<\n"
 }
 
-// countingWhoisFunc returns a whoisFunc stub and a call counter, so tests can
-// assert WHOIS was (not) invoked.
-func countingWhoisFunc(raw string, err error) (func(string) (string, error), *atomic.Int32) {
+// countingWhoisFunc returns an always-succeeding whoisFunc stub returning
+// raw, plus a call counter so tests can assert WHOIS was (not) invoked.
+func countingWhoisFunc(raw string) (func(string) (string, error), *atomic.Int32) {
 	var calls atomic.Int32
 
 	return func(string) (string, error) {
 		calls.Add(1)
 
-		return raw, err
+		return raw, nil
 	}, &calls
 }
 
 func TestDomainChecker_Execute_RDAPSuccess(t *testing.T) {
 	t.Parallel()
 
-	expiry := time.Now().Add(365 * 24 * time.Hour) //nolint:mnd // ~1 year out, well past any threshold
+	expiry := time.Now().AddDate(1, 0, 0) // ~1 year out, well past any threshold
 	srv := newFakeRDAPServer(t, []string{"com"}, rdapSuccessHandler(expiry, "RDAP Registrar Inc."))
-	whoisFunc, whoisCalls := countingWhoisFunc("", nil)
+	whoisFunc, whoisCalls := countingWhoisFunc("")
 
 	for _, method := range []string{"", "auto", "rdap"} {
 		t.Run("method="+method, func(t *testing.T) {
@@ -280,7 +297,7 @@ func TestDomainChecker_Execute_RDAPFailureFallsBackToWHOIS(t *testing.T) {
 	t.Parallel()
 
 	srv := newFakeRDAPServer(t, []string{"com"}, rdapErrorHandler())
-	whoisFunc, whoisCalls := countingWhoisFunc(whoisFixture("WHOIS Registrar LLC", "2099-01-01T00:00:00.0Z"), nil)
+	whoisFunc, whoisCalls := countingWhoisFunc(whoisFixture())
 
 	checker := &DomainChecker{rdapClient: srv.client(), whoisFunc: whoisFunc}
 	cfg := &DomainConfig{Domain: "example.com", ThresholdDays: 30, Method: "auto"}
@@ -289,7 +306,7 @@ func TestDomainChecker_Execute_RDAPFailureFallsBackToWHOIS(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, checkerdef.StatusUp, result.Status)
 	require.Equal(t, "whois", result.Output["method"])
-	require.Equal(t, "WHOIS Registrar LLC", result.Output["registrar"])
+	require.Equal(t, whoisFixtureRegistrar, result.Output["registrar"])
 	require.Equal(t, int32(1), whoisCalls.Load())
 }
 
@@ -297,12 +314,12 @@ func TestDomainChecker_Execute_UnknownTLD(t *testing.T) {
 	t.Parallel()
 
 	// Bootstrap only knows "com"; the domain under test is ".zzz".
-	srv := newFakeRDAPServer(t, []string{"com"}, rdapSuccessHandler(time.Now().Add(24*time.Hour), "irrelevant")) //nolint:mnd
+	srv := newFakeRDAPServer(t, []string{"com"}, rdapSuccessHandler(time.Now().AddDate(0, 0, 1), "irrelevant"))
 
 	t.Run("auto falls back to whois", func(t *testing.T) {
 		t.Parallel()
 
-		whoisFunc, whoisCalls := countingWhoisFunc(whoisFixture("WHOIS Registrar LLC", "2099-01-01T00:00:00.0Z"), nil)
+		whoisFunc, whoisCalls := countingWhoisFunc(whoisFixture())
 		checker := &DomainChecker{rdapClient: srv.client(), whoisFunc: whoisFunc}
 		cfg := &DomainConfig{Domain: "example.zzz", ThresholdDays: 30, Method: "auto"}
 
@@ -315,7 +332,7 @@ func TestDomainChecker_Execute_UnknownTLD(t *testing.T) {
 	t.Run("rdap does not fall back", func(t *testing.T) {
 		t.Parallel()
 
-		whoisFunc, whoisCalls := countingWhoisFunc("", nil)
+		whoisFunc, whoisCalls := countingWhoisFunc("")
 		checker := &DomainChecker{rdapClient: srv.client(), whoisFunc: whoisFunc}
 		cfg := &DomainConfig{Domain: "example.zzz", ThresholdDays: 30, Method: "rdap"}
 
@@ -335,7 +352,7 @@ func TestDomainChecker_Execute_MissingExpirationEvent(t *testing.T) {
 	t.Run("auto falls back to whois", func(t *testing.T) {
 		t.Parallel()
 
-		whoisFunc, whoisCalls := countingWhoisFunc(whoisFixture("WHOIS Registrar LLC", "2099-01-01T00:00:00.0Z"), nil)
+		whoisFunc, whoisCalls := countingWhoisFunc(whoisFixture())
 		checker := &DomainChecker{rdapClient: srv.client(), whoisFunc: whoisFunc}
 		cfg := &DomainConfig{Domain: "example.com", ThresholdDays: 30, Method: "auto"}
 
@@ -348,7 +365,7 @@ func TestDomainChecker_Execute_MissingExpirationEvent(t *testing.T) {
 	t.Run("rdap does not fall back", func(t *testing.T) {
 		t.Parallel()
 
-		whoisFunc, whoisCalls := countingWhoisFunc("", nil)
+		whoisFunc, whoisCalls := countingWhoisFunc("")
 		checker := &DomainChecker{rdapClient: srv.client(), whoisFunc: whoisFunc}
 		cfg := &DomainConfig{Domain: "example.com", ThresholdDays: 30, Method: "rdap"}
 
@@ -365,8 +382,8 @@ func TestDomainChecker_Execute_MethodWhoisSkipsRDAPEntirely(t *testing.T) {
 
 	// Even though the fake server would happily answer, method=whois must
 	// never contact it at all.
-	srv := newFakeRDAPServer(t, []string{"com"}, rdapSuccessHandler(time.Now().Add(24*time.Hour), "irrelevant")) //nolint:mnd
-	whoisFunc, whoisCalls := countingWhoisFunc(whoisFixture("WHOIS Registrar LLC", "2099-01-01T00:00:00.0Z"), nil)
+	srv := newFakeRDAPServer(t, []string{"com"}, rdapSuccessHandler(time.Now().AddDate(0, 0, 1), "irrelevant"))
+	whoisFunc, whoisCalls := countingWhoisFunc(whoisFixture())
 
 	checker := &DomainChecker{rdapClient: srv.client(), whoisFunc: whoisFunc}
 	cfg := &DomainConfig{Domain: "example.com", ThresholdDays: 30, Method: "whois"}
@@ -382,8 +399,8 @@ func TestDomainChecker_Execute_MethodWhoisSkipsRDAPEntirely(t *testing.T) {
 func TestDomainChecker_Execute_ContextCancellation(t *testing.T) {
 	t.Parallel()
 
-	srv := newFakeRDAPServer(t, []string{"com"}, rdapSuccessHandler(time.Now().Add(24*time.Hour), "irrelevant")) //nolint:mnd
-	whoisFunc, whoisCalls := countingWhoisFunc("", nil)
+	srv := newFakeRDAPServer(t, []string{"com"}, rdapSuccessHandler(time.Now().AddDate(0, 0, 1), "irrelevant"))
+	whoisFunc, whoisCalls := countingWhoisFunc("")
 
 	checker := &DomainChecker{rdapClient: srv.client(), whoisFunc: whoisFunc}
 	cfg := &DomainConfig{Domain: "example.com", ThresholdDays: 30, Method: "rdap"}

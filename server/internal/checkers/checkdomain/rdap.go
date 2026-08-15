@@ -34,6 +34,10 @@ var errRDAPUnknownTLD = errors.New("no RDAP service found for TLD")
 // "expiration" event.
 var errRDAPNoExpirationEvent = errors.New("no expiration event in RDAP response")
 
+// errRDAPRequestFailed is returned when an RDAP HTTP request returns a
+// non-200 status.
+var errRDAPRequestFailed = errors.New("RDAP request failed")
+
 // rdapResult is the outcome of a successful RDAP lookup.
 type rdapResult struct {
 	ExpiryDate time.Time
@@ -131,8 +135,10 @@ func (c *rdapClient) baseURLForTLD(ctx context.Context, tld string) (string, err
 		return "", err
 	}
 
+	const serviceEntryLen = 2 // [tlds, urls]
+
 	for _, entry := range doc.Services {
-		if len(entry) < 2 { //nolint:mnd // a service entry is always [tlds, urls]
+		if len(entry) < serviceEntryLen {
 			continue
 		}
 
@@ -172,10 +178,13 @@ func (c *rdapClient) bootstrapDocument(ctx context.Context) (*bootstrapDoc, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch RDAP bootstrap document: %w", err)
 	}
-	defer resp.Body.Close()
+
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("RDAP bootstrap fetch failed: status %d", resp.StatusCode) //nolint:err113 // dynamic status, not a sentinel
+		return nil, fmt.Errorf("%w: bootstrap fetch status %d", errRDAPRequestFailed, resp.StatusCode)
 	}
 
 	var doc bootstrapDoc
@@ -207,10 +216,13 @@ func (c *rdapClient) queryDomain(ctx context.Context, base, domain string) (*rda
 	if err != nil {
 		return nil, fmt.Errorf("RDAP domain query failed: %w", err)
 	}
-	defer resp.Body.Close()
+
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("RDAP domain query failed: status %d", resp.StatusCode) //nolint:err113 // dynamic status, not a sentinel
+		return nil, fmt.Errorf("%w: domain query status %d", errRDAPRequestFailed, resp.StatusCode)
 	}
 
 	var doc rdapDomainResponse
@@ -226,9 +238,9 @@ func (c *rdapClient) queryDomain(ctx context.Context, base, domain string) (*rda
 func parseDomainResponse(doc *rdapDomainResponse) (*rdapResult, error) {
 	var expiryStr string
 
-	for _, e := range doc.Events {
-		if e.EventAction == rdapEventActionExpiration {
-			expiryStr = e.EventDate
+	for i := range doc.Events {
+		if doc.Events[i].EventAction == rdapEventActionExpiration {
+			expiryStr = doc.Events[i].EventDate
 
 			break
 		}
@@ -245,9 +257,9 @@ func parseDomainResponse(doc *rdapDomainResponse) (*rdapResult, error) {
 
 	var registrar string
 
-	for _, ent := range doc.Entities {
-		if hasRole(ent.Roles, rdapRoleRegistrar) {
-			registrar = vcardFN(ent.VCardArray)
+	for i := range doc.Entities {
+		if hasRole(doc.Entities[i].Roles, rdapRoleRegistrar) {
+			registrar = vcardFN(doc.Entities[i].VCardArray)
 
 			break
 		}
@@ -277,8 +289,10 @@ func vcardFN(raw json.RawMessage) string {
 		return ""
 	}
 
+	const jCardLen = 2 // [vcard, props]
+
 	var arr []any
-	if err := json.Unmarshal(raw, &arr); err != nil || len(arr) < 2 { //nolint:mnd // jCard is always [vcard, props]
+	if err := json.Unmarshal(raw, &arr); err != nil || len(arr) < jCardLen {
 		return ""
 	}
 

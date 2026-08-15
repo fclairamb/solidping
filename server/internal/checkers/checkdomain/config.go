@@ -75,7 +75,9 @@ func (c *DomainConfig) Validate() error {
 	switch c.Method {
 	case "", MethodAuto, MethodRDAP, MethodWHOIS:
 	default:
-		return checkerdef.NewConfigError("method", fmt.Sprintf("must be one of %q, %q, %q (or empty)", MethodAuto, MethodRDAP, MethodWHOIS))
+		msg := fmt.Sprintf("must be one of %q, %q, %q (or empty)", MethodAuto, MethodRDAP, MethodWHOIS)
+
+		return checkerdef.NewConfigError("method", msg)
 	}
 
 	return nil
