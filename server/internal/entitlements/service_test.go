@@ -53,11 +53,11 @@ func TestDefaultsForSaaS(t *testing.T) {
 
 	defaults := entitlements.DefaultsFor(config.DeploymentModeSaaS)
 	// Aligned with the billing Free plan (pricing decision 2026-07-12:
-	// 100 checks, 6 checks/min, 5 seats).
+	// 100 checks, 5 seats; check rate raised to 10/min on 2026-08-15).
 	r.NotNil(defaults.Limits.MaxUsers)
 	r.Equal(5, *defaults.Limits.MaxUsers)
 	r.NotNil(defaults.Limits.MaxChecksPerMinute)
-	r.Equal(6, *defaults.Limits.MaxChecksPerMinute)
+	r.Equal(10, *defaults.Limits.MaxChecksPerMinute)
 	r.NotNil(defaults.Limits.MaxChecks)
 	r.Equal(100, *defaults.Limits.MaxChecks)
 	// Mirrors the Free SKU's private-location agent cap (ladder 1/3/6/9).
@@ -150,7 +150,7 @@ func TestResolveSaaSDefaultsWhenNoRow(t *testing.T) {
 	r.NotNil(resolved.Limits.MaxChecks)
 	r.Equal(100, *resolved.Limits.MaxChecks)
 	r.NotNil(resolved.Limits.MaxChecksPerMinute)
-	r.Equal(6, *resolved.Limits.MaxChecksPerMinute)
+	r.Equal(10, *resolved.Limits.MaxChecksPerMinute)
 	r.NotNil(resolved.Limits.MaxUsers)
 	r.Equal(5, *resolved.Limits.MaxUsers)
 	r.NotNil(resolved.DisplayName)
@@ -385,9 +385,9 @@ func TestReserveCheckExecutionBucketDrains(t *testing.T) {
 
 	svc := entitlements.NewService(dbSvc, entitlements.DefaultsFor(config.DeploymentModeSaaS), 0)
 
-	// SaaS default cap is 6/min — the bucket starts full so the first
-	// six calls succeed; the seventh is denied.
-	for i := range 6 {
+	// SaaS default cap is 10/min — the bucket starts full so the first
+	// ten calls succeed; the eleventh is denied.
+	for i := range 10 {
 		r.NoError(svc.ReserveCheckExecution(ctx, org.UID), "call %d", i+1)
 	}
 
@@ -398,7 +398,7 @@ func TestReserveCheckExecutionBucketDrains(t *testing.T) {
 	var quotaErr *entitlements.QuotaError
 	r.ErrorAs(err, &quotaErr)
 	r.Equal("MaxChecksPerMinute", quotaErr.LimitName)
-	r.Equal(6, quotaErr.Limit)
+	r.Equal(10, quotaErr.Limit)
 }
 
 func TestReserveCheckExecutionResetOnSet(t *testing.T) {
@@ -415,7 +415,7 @@ func TestReserveCheckExecutionResetOnSet(t *testing.T) {
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
 	svc := entitlements.NewService(dbSvc, entitlements.DefaultsFor(config.DeploymentModeSaaS), 0)
-	for range 6 {
+	for range 10 {
 		r.NoError(svc.ReserveCheckExecution(ctx, org.UID))
 	}
 	r.Error(svc.ReserveCheckExecution(ctx, org.UID))
