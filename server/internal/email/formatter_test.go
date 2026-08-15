@@ -190,6 +190,40 @@ func TestFormatter_FormatIncidentReopened(t *testing.T) {
 	r.Contains(text, "Incident: #42")
 }
 
+// TestFormatter_FormatEscalation pins the escalation.html template at the
+// formatter layer (job_escalation_step.go's sendEscalationEmail builds this
+// same shape): an HTML part exists, and the incident is addressed by its
+// human-facing #N reference in both subject and body, HTML and text.
+func TestFormatter_FormatEscalation(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	formatter, err := NewFormatter()
+	r.NoError(err)
+
+	data := map[string]any{
+		"CheckName":      "Production API",
+		"CheckURL":       "https://example.com/dash0/orgs/acme/checks/prod-api",
+		"IncidentNumber": int64(42),
+		"IncidentURL":    "https://example.com/dash0/orgs/acme/incidents/inc-123",
+		"StartedAt":      "2026-07-05 10:00:00",
+		"FailureCount":   3,
+		"DashboardURL":   "https://example.com/dash0",
+		"DocsURL":        "https://example.com/docs",
+	}
+
+	subject, html, text, err := formatter.Format("escalation.html", data)
+	r.NoError(err)
+
+	r.Contains(subject, "#42")
+	r.NotEmpty(html, "escalation email must have an HTML part")
+	r.Contains(html, "#42")
+	r.Contains(html, "style=") // CSS inlined
+	r.NotEmpty(text)
+	r.Contains(text, "Incident: #42")
+}
+
 func TestFormatter_UnsubscribeFooterLink(t *testing.T) {
 	t.Parallel()
 
