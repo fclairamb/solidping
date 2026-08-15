@@ -969,11 +969,15 @@ func GetCommands() []*cli.Command {
 				},
 				{
 					Name:  cmdCreate,
-					Usage: "Create a job",
+					Usage: "Create a job (org admin; allowlisted types only — currently 'sleep')",
+					Description: "The server only accepts allowlisted job types on the public create\n" +
+						"endpoint — currently 'sleep' alone. Types such as 'email' and 'webhook'\n" +
+						"are refused with 403: SolidPing enqueues those itself, and exposing them\n" +
+						"would mean an arbitrary mail sender and arbitrary outbound HTTP.",
 					Flags: []cli.Flag{
 						&cli.StringFlag{
 							Name:     "type",
-							Usage:    "Job type",
+							Usage:    "Job type (allowlisted types only — currently 'sleep')",
 							Required: true,
 						},
 						&cli.StringFlag{
